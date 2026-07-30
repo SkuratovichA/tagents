@@ -1,0 +1,681 @@
+#!/usr/bin/env bash
+#
+# tagents — live dashboard of every Claude Code session running under tmux.
+#
+# State comes from ~/.claude/hooks/tmux-agent-state.sh, which every Claude
+# session writes to on each hook event; this script joins that with the live
+# pane list and renders it through fzf.
+#
+#   tagents                 interactive dashboard (default)
+#   tagents --list          one row per agent, for fzf reloads
+#   tagents --flat          same, but ungrouped regardless of the saved mode
+#   tagents --counts        compact summary, for the tmux status bar
+#   tagents --preview PANE  live view of a pane, for the fzf preview window
+#   tagents --ensure-dash   create the dedicated dashboard session if missing
+#
+# Agents are grouped into a tree by working directory, so several sessions in
+# one repo sit under one header. Groups sort by their most urgent member, so a
+# blocked agent still floats its whole project to the top. ctrl-t (or TA_FLAT=1)
+# switches to one flat list ordered purely by urgency.
+#
+# "Running" means a Claude process really is alive in that pane, checked against
+# the process tree — not merely that a state file exists. Panes whose Claude has
+# exited are listed as closed, dimmed and sorted below everything live, and
+# enter restarts them with `claude --resume <id>` (see RESUME_CMD).
+#
+# The dedicated dashboard session is a sidebar: the list on the left, the
+# selected agent's own pane docked on the right, swapped in live so you can type
+# into it. Enter only changes the right half; the list is never disturbed.
+#
+# Keys inside the dashboard:
+#   enter / dbl-click  in the dedicated session: dock that agent into the right
+#                      half and put the cursor in it. Elsewhere (e.g. the popup):
+#                      borrow the agent's whole window into the session you are
+#                      in via link-window, leaving it in its own session too.
+#                      On a closed session: resume it, then dock it.
+#                      On a group header: act on the group's most urgent agent.
+#   ctrl-g             go to the agent where it lives instead
+#   ctrl-e             type a line straight into that agent without leaving
+#                      (ctrl-s does the same; it only works because the
+#                      dashboard turns off terminal flow control, where ctrl-s
+#                      would otherwise be XOFF and freeze the pane's output)
+#   ctrl-x             undock (send the docked pane home), or give a borrowed
+#                      window back when running outside the dashboard
+#   ctrl-t             toggle tree / flat
+#   ctrl-v             show the text preview (hidden while docking, where the
+#                      docked pane is the live thing itself)
+#   ctrl-r             refresh now
+#   ctrl-q             quit (only way out of the dedicated session — Esc and
+#                      ctrl-c are absorbed there so the dashboard cannot be
+#                      closed by accident; in the popup Esc closes it normally)
+#
+# bash 3.2 compatible on purpose — macOS ships nothing newer.
+
+set -uo pipefail
+
+SELF=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")
+STATE_DIR="$HOME/.claude/agent-state"
+DASH_SESSION=${TA_SESSION:-agents}
+# Subagent records are cleared explicitly on SubagentStop and on the parent's
+# Stop, so this is only a safety net for records that never got cleaned up. It
+# has to outlast a single long tool call, or a subagent running one 10-minute
+# command would silently drop out of the count.
+SUB_TTL=${TA_SUB_TTL:-1800}
+DEAD_TTL=${TA_DEAD_TTL:-86400}  # how long a closed session stays offered for resume
+DASH_WIDTH=${TA_WIDTH:-45}    # percent of the dashboard window the list occupies
+RESUME_CMD=${TA_RESUME_CMD:-claude --dangerously-skip-permissions --resume}
+TAB=$'\t'
+US=$'\037'   # unit separator: unlike tab it is not IFS whitespace, so `read`
+             # keeps empty fields instead of silently shifting the rest left
+
+# ---------------------------------------------------------------------------
+# rows
+# ---------------------------------------------------------------------------
+
+# Which panes actually have a running Claude. The CLI lives at
+# ~/.local/share/claude/versions/<version>, which is why pane_current_command
+# shows a bare version number; matching the path is version-proof. A state file
+# alone proves nothing — Claude may have exited and left the shell behind.
+live_panes() {
+  {
+    # The pane map goes through stdin, not -v: BWK awk (the macOS one) rejects
+    # a -v value containing newlines, and fails silently enough to look like
+    # "no Claude is running anywhere".
+    tmux list-panes -a -F 'MAP #{pane_pid} #{pane_id}' 2>/dev/null
+    ps -eo pid=,ppid=,comm= 2>/dev/null
+  } | awk '
+      $1 == "MAP" { pane[$2] = $3; next }
+      {
+        pid = $1; c = $0
+        sub(/^[ \t]*[0-9]+[ \t]+[0-9]+[ \t]+/, "", c)
+        up[pid] = $2
+        if (index(c, "/claude/versions/") > 0 || c ~ /\/claude$/ || c == "claude") cl[pid] = 1
+      }
+      END {
+        for (p in cl) {
+          q = p
+          for (i = 0; i < 50 && q != "" && q != "0" && q != "1"; i++) {
+            if (q in pane) { print pane[q]; break }
+            q = up[q]
+          }
+        }
+      }'
+
+  # Secondary signal, in case the process walk comes up empty.
+  tmux list-panes -a -F '#{pane_id} #{pane_current_command}' 2>/dev/null |
+    awk '$2 ~ /^[0-9]+\.[0-9]+\.[0-9]+$/ || $2 == "claude" { print $1 }'
+}
+
+# Sessions started from a subdirectory of a repo belong with the rest of that
+# repo — grouping by raw cwd would file ~/repo/packages/client separately from
+# ~/repo and make it look like an agent had gone missing. Walk up to the .git.
+repo_root() {
+  local d=$1
+  # Absolute paths only, and bail out when there is no slash left to strip:
+  # ${d%/*} on a slashless value returns it unchanged, i.e. an infinite loop.
+  case $d in /*) ;; *) return 1 ;; esac
+  while [ -n "$d" ] && [ "$d" != / ]; do
+    [ -e "$d/.git" ] && { printf '%s' "$d"; return 0; }
+    case $d in */*) d=${d%/*} ;; *) return 1 ;; esac
+  done
+  return 1
+}
+
+dir_roots() {
+  local d r
+  {
+    tmux list-panes -a -F '#{pane_current_path}' 2>/dev/null
+    for d in "$STATE_DIR"/*.tsv; do
+      [ -e "$d" ] || continue
+      awk -F"$TAB" 'FNR == 1 { print $4 }' "$d"
+    done
+  } | sort -u | while IFS= read -r d; do
+    [ -n "$d" ] || continue
+    r=$(repo_root "$d") || continue
+    [ "$r" = "$d" ] && continue
+    printf 'R%s%s%s%s\n' "$TAB" "$d" "$TAB" "$r"
+  done
+}
+
+collect() {
+  tmux list-panes -a -F "P${TAB}#{pane_id}${TAB}#{session_name}:#{window_index}.#{pane_index}${TAB}#{pane_title}${TAB}#{pane_current_path}" 2>/dev/null
+  live_panes | sed "s/^/L${TAB}/"
+  dir_roots
+
+  local f
+  for f in "$STATE_DIR"/*.tsv; do
+    [ -e "$f" ] || continue
+    awk -v OFS="$TAB" '
+      FNR==1 { n=split(FILENAME,a,"/"); k=a[n]; sub(/\.tsv$/,"",k) }
+      { print "S", "%" k, $0 }' "$f"
+  done
+
+  for f in "$STATE_DIR"/sub/*; do
+    [ -e "$f" ] || continue
+    awk -v OFS="$TAB" '
+      FNR==1 { n=split(FILENAME,a,"/"); k=a[n]; sub(/\..*$/,"",k) }
+      { print "B", "%" k, $0 }' "$f"
+  done
+}
+
+grouped() {  # tree by directory unless explicitly turned off
+  [ "${TA_FLAT:-0}" = 1 ] && return 1
+  [ -e "$STATE_DIR/.flat" ] && return 1
+  return 0
+}
+
+toggle_group() {
+  if [ -e "$STATE_DIR/.flat" ]; then rm -f "$STATE_DIR/.flat"; else : >"$STATE_DIR/.flat"; fi
+}
+
+list() {
+  # Nothing is excluded. There used to be a "skip my own pane" rule that fell
+  # back to #{pane_id} when $TMUX_PANE was unset — which resolves through the
+  # *attached client*, so it silently hid whichever agent you happened to be
+  # looking at. The dashboard pane runs fzf, never Claude, so it can never show
+  # up here anyway and needs no special case.
+  local grp=1
+  grouped || grp=0
+
+  collect | awk -F"$TAB" -v now="$(date +%s)" -v ttl="$SUB_TTL" \
+                -v grp="$grp" -v home="$HOME" -v deadttl="$DEAD_TTL" '
+    function agestr(t,   d) {
+      d = now - t; if (d < 0) d = 0
+      if (d < 3600) return sprintf("%d:%02d", int(d/60), d%60)
+      return sprintf("%dh%02d", int(d/3600), int((d%3600)/60))
+    }
+    function base(p,   n, a) { n = split(p, a, "/"); return n ? a[n] : p }
+    # keep the tail of a location: "…iana-cms_git:2.1" beats "git@github_com_A"
+    function tailfit(s, w) { return (length(s) <= w) ? s : "…" substr(s, length(s)-w+2) }
+    function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
+    function dirname(p) { return (p == home) ? "~" : base(p) }
+    BEGIN {
+      R = "\033[0m"; DIM = "\033[90m"; BOLD = "\033[1m"
+      prio["blocked"]=0; icon["blocked"]="⚠"; lbl["blocked"]="BLOCKED"; col["blocked"]="\033[1;33m"
+      prio["done"]   =1; icon["done"]   ="✓"; lbl["done"]   ="waiting"; col["done"]   ="\033[36m"
+      prio["working"]=2; icon["working"]="●"; lbl["working"]="working"; col["working"]="\033[32m"
+      prio["idle"]   =3; icon["idle"]   ="○"; lbl["idle"]   ="idle";    col["idle"]   ="\033[90m"
+      prio["?"]      =4; icon["?"]      ="·"; lbl["?"]      ="?";       col["?"]      ="\033[90m"
+      prio["dead"]   =5; icon["dead"]   ="✗"; lbl["dead"]   ="closed";  col["dead"]   ="\033[90m"
+      norder = split("blocked done working idle ? dead", ORD, " ")
+    }
+    $1=="P" { alive[$2]=1; loc[$2]=$3; title[$2]=$4; path[$2]=$5; next }
+    $1=="L" { live[$2]=1; next }
+    $1=="R" { root[$2]=$3; next }
+    $1=="S" { ts[$2]=$3; st[$2]=$4; sid[$2]=$5; cwd[$2]=$6; det[$2]=$8; next }
+    $1=="B" { if (now - $3 < ttl) subs[$2]++; next }
+    END {
+      # A session id that is running right now must not also be offered as a
+      # closed one: resuming re-registers under a new pane, and the old record
+      # lingers until its file is cleaned up.
+      for (p in alive) if ((p in live) && (p in sid)) livesid[sid[p]] = 1
+
+      for (p in alive) seen[p] = 1
+      for (p in st)    seen[p] = 1
+
+      n = 0
+      for (p in seen) {
+        isalive = (p in alive); islive = isalive && (p in live)
+
+        if (islive) {
+          if (p in st) {
+            s = st[p]; d = det[p]; age = now - ts[p]; agetxt = agestr(ts[p])
+            dir = (cwd[p] != "") ? cwd[p] : path[p]
+          } else {
+            # Claude is running but no hook has fired yet — fall back to the
+            # window title, which it keeps up to date on its own.
+            s = "?"; d = title[p]; age = 0; agetxt = "  --"; dir = path[p]
+          }
+          if (!(s in prio) || s == "dead") s = "?"
+        } else {
+          # No Claude process in this pane. Worth showing only if we know what
+          # it was, recently enough to be worth resuming.
+          if (!(p in st)) continue
+          if (now - ts[p] > deadttl) continue
+          if (sid[p] != "" && (sid[p] in livesid)) continue
+          s = "dead"; age = now - ts[p]; agetxt = agestr(ts[p])
+          dir = (cwd[p] != "") ? cwd[p] : path[p]
+          d = (sid[p] != "") ? "closed — enter resumes it" : "closed, no session id — cannot resume"
+        }
+        if (dir == "") dir = "(unknown)"
+        where = isalive ? loc[p] : "—"
+
+        # Group by the repo, but keep the subdirectory visible on the row so a
+        # session started deeper in the tree is still identifiable.
+        grpkey = (dir in root) ? root[dir] : dir
+        subp = (grpkey != dir) ? substr(dir, length(grpkey) + 2) "  " : ""
+
+        n++; rp[n] = p; rs[n] = s; rage[n] = age; rg[n] = grpkey
+        rsid[n] = (p in sid) ? sid[p] : ""
+        pre = (islive && subs[p] > 0) ? sprintf("⑂%d ", subs[p]) : ""
+        # Grouped rows drop the project column — the group header carries it.
+        if (grp)
+          rbody[n] = sprintf("%s%s %-7s%s %6s  %s%-24s%s %s%s%s%s",
+                             col[s], icon[s], lbl[s], R, agetxt,
+                             DIM, tailfit(where, 24), R, pre, DIM, subp, d R)
+        else
+          rbody[n] = sprintf("%s%s %-7s%s %6s  %-18.18s %s%-24s%s %s%s%s%s",
+                             col[s], icon[s], lbl[s], R, agetxt, base(grpkey),
+                             DIM, tailfit(where, 24), R, pre, DIM, subp, d R)
+
+        if (!(grpkey in gtotal) || prio[s] < gmin[grpkey]) { gmin[grpkey] = prio[s]; gfirst[grpkey] = p }
+        gtotal[grpkey]++
+        gcount[grpkey SUBSEP s]++
+      }
+
+      if (grp) {
+        for (g in gtotal) {
+          badge = ""
+          for (i = 1; i <= norder; i++)
+            if (gcount[g SUBSEP ORD[i]])
+              badge = badge sprintf("%s%s%d%s ", col[ORD[i]], icon[ORD[i]], gcount[g SUBSEP ORD[i]], R)
+          # A project with nothing running is dimmed and sinks below every
+          # project that still has a live agent, so the closed ones read as
+          # their own section rather than being mixed in.
+          hdr = sprintf("%s▾ %s%s  %s%s%s  %s",
+                        (gmin[g] < prio["dead"] ? BOLD : DIM), dirname(g), R,
+                        DIM, tilde(g), R, badge)
+          printf "%d\t%s\t0\t0\t0\t%s\t%s\tgroup\t\t\n", gmin[g], g, gfirst[g], hdr
+        }
+      }
+      for (i = 1; i <= n; i++)
+        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n",
+               (grp ? gmin[rg[i]] : prio[rs[i]]), (grp ? rg[i] : ""),
+               prio[rs[i]], -rage[i], rp[i], rbody[i], rs[i], rsid[i], rg[i]
+    }' |
+    sort -t"$TAB" -k1,1n -k2,2 -k3,3n -k4,4n -k5,5n |
+    awk -F"$TAB" -v grp="$grp" '
+      { g[NR]=$2; kind[NR]=$3; pane[NR]=$6; body[NR]=$7; state[NR]=$8; sid[NR]=$9; dir[NR]=$10 }
+      END {
+        DIM = "\033[90m"; R = "\033[0m"
+        for (i = 1; i <= NR; i++) {
+          if (!grp || kind[i] == 0) { tee = "" } else {
+            tee = DIM "  " ((i == NR || g[i+1] != g[i]) ? "└─" : "├─") R " "
+          }
+          print pane[i] "\t" tee body[i] "\t" state[i] "\t" sid[i] "\t" dir[i]
+        }
+      }'
+}
+
+counts() {
+  list | awk -F"$TAB" '
+    { n[$3]++ }
+    END {
+      out = ""
+      if (n["blocked"]) out = out sprintf("#[fg=yellow]⚠%d ", n["blocked"])
+      if (n["done"])    out = out sprintf("#[fg=cyan]✓%d ",   n["done"])
+      if (n["working"]) out = out sprintf("#[fg=green]●%d ",  n["working"])
+      printf "%s#[default]", out
+    }'
+}
+
+preview() {
+  local pane=$1 state=${2:-} f ts st sid cwd tr detail
+  [ "$pane" = "-" ] && return 0
+  f="$STATE_DIR/${pane#%}.tsv"
+  if [ -e "$f" ]; then
+    # Not IFS=TAB: tab is IFS whitespace, so an empty field (no session id, no
+    # detail) would collapse and shift every later value one slot left.
+    IFS="$US" read -r ts st sid cwd tr detail < <(
+      awk -F"$TAB" -v OFS="$US" 'NR==1 { print $1, $2, $3, $4, $5, $6; exit }' "$f")
+    printf '\033[1m%s\033[0m\n' "$cwd"
+    printf '\033[90m%s · %s\033[0m\n' "$st" "$detail"
+    [ -n "$sid" ] && printf '\033[90msession %s\033[0m\n' "$sid"
+    printf '\033[90m%s\033[0m\n' "----------------------------------------"
+  fi
+  if [ "$state" = dead ]; then
+    printf '\033[90mno Claude running in this pane any more.\n\nenter runs:\033[0m\n  %s %s\n' \
+      "$RESUME_CMD" "${sid:-<unknown>}"
+    [ -n "${tr:-}" ] && [ -e "${tr:-}" ] &&
+      printf '\n\033[90mlast lines of its transcript:\033[0m\n' &&
+      tail -n 3 "$tr" | cut -c1-400
+    return 0
+  fi
+  tmux capture-pane -e -p -t "$pane" 2>/dev/null | tail -n 60
+}
+
+# ---------------------------------------------------------------------------
+# actions
+# ---------------------------------------------------------------------------
+
+win_index_in() {  # <window_id> <session> -> index, empty if not linked there
+  tmux list-windows -t "$2" -F '#{window_index} #{window_id}' 2>/dev/null |
+    awk -v w="$1" '$2==w { print $1; exit }'
+}
+
+borrow() {  # bring the agent's window into $home without moving it out of its own session
+  local pane=$1 home=$2 win src idx
+  [ "$pane" = "-" ] && return 0
+  win=$(tmux display -p -t "$pane" '#{window_id}' 2>/dev/null) || return 0
+  src=$(tmux display -p -t "$pane" '#{session_name}' 2>/dev/null)
+  if [ "$src" != "$home" ]; then
+    idx=$(win_index_in "$win" "$home")
+    if [ -z "$idx" ]; then
+      tmux link-window -s "$win" -t "$home:" 2>/dev/null
+      idx=$(win_index_in "$win" "$home")
+    fi
+    [ -n "$idx" ] && tmux select-window -t "$home:$idx" 2>/dev/null
+  else
+    tmux select-window -t "$win" 2>/dev/null
+  fi
+  tmux select-pane -t "$pane" 2>/dev/null
+  tmux switch-client -t "$home" 2>/dev/null
+}
+
+goto() {
+  local pane=$1 sess win
+  [ "$pane" = "-" ] && return 0
+  sess=$(tmux display -p -t "$pane" '#{session_name}' 2>/dev/null) || return 0
+  win=$(tmux display -p -t "$pane" '#{window_index}' 2>/dev/null)
+  tmux switch-client -t "$sess" 2>/dev/null
+  tmux select-window -t "$sess:$win" 2>/dev/null
+  tmux select-pane -t "$pane" 2>/dev/null
+}
+
+give_back() {
+  local pane=$1 home=$2 win idx
+  [ "$pane" = "-" ] && return 0
+  win=$(tmux display -p -t "$pane" '#{window_id}' 2>/dev/null) || return 0
+  idx=$(win_index_in "$win" "$home")
+  # unlink-window refuses when this is the window's last session, so a window
+  # that actually lives here cannot be destroyed by accident.
+  [ -n "$idx" ] && tmux unlink-window -t "$home:$idx" 2>/dev/null
+}
+
+send_line() {
+  local pane=$1 text
+  [ "$pane" = "-" ] && return 0
+  # Bounded read on purpose. This runs through fzf's `execute`, which hands over
+  # the terminal, so a read that can block forever freezes the whole dashboard
+  # with nothing on screen to explain why.
+  printf '\033[1msend to %s\033[0m — empty line or 90s cancels\n> ' "$pane"
+  IFS= read -r -t 90 text || return 0
+  [ -z "$text" ] && return 0
+  tmux send-keys -t "$pane" -l -- "$text" 2>/dev/null
+  sleep 0.2   # let the TUI settle before the newline, or it reads as a paste
+  tmux send-keys -t "$pane" Enter 2>/dev/null
+}
+
+refresher() {
+  local port=${TA_PORT:-}
+  [ -z "$port" ] && return 0
+  while sleep 2; do
+    curl -s -XPOST "http://127.0.0.1:$port" -d "reload-sync($SELF --list)" \
+      >/dev/null 2>&1 || break
+  done
+}
+
+# Markers, not names: tmux renames windows after whatever command is running,
+# and the placeholder pane travels between windows, so both need stable handles.
+dash_window() {
+  tmux list-windows -t "=$DASH_SESSION" -F '#{window_id} #{@tagents}' 2>/dev/null |
+    awk '$2 == "1" { print $1; exit }'
+}
+dash_pane() {
+  tmux list-panes -a -F '#{pane_id} #{@tagents_dash}' 2>/dev/null |
+    awk '$2 == "1" { print $1; exit }'
+}
+slot_pane() {
+  tmux list-panes -a -F '#{pane_id} #{@tagents_slot}' 2>/dev/null |
+    awk '$2 == "1" { print $1; exit }'
+}
+docked_pane() {  # whatever currently occupies the dashboard window's right half
+  local dp=$1
+  tmux list-panes -t "$dp" -F '#{pane_id}' 2>/dev/null | grep -vx -- "$dp" | head -1
+}
+
+# The placeholder that holds the right half open while nothing is docked. It
+# also stands in for an agent while that agent is docked, so it says where the
+# agent went when it finds itself outside the dashboard window.
+slot() {
+  local dwin last="" win
+  while :; do
+    dwin=$(dash_window)
+    win=$(tmux display -p -t "${TMUX_PANE:-}" '#{window_id}' 2>/dev/null)
+    if [ "$win" != "$last" ]; then
+      last=$win
+      printf '\033[2J\033[H\033[90m\n'
+      if [ -n "$dwin" ] && [ "$win" = "$dwin" ]; then
+        printf '   pick an agent on the left and press enter —\n'
+        printf '   it is swapped in here, live, ready to type into.\n'
+      else
+        printf '   this pane'\''s agent is docked in the "%s" dashboard.\n' "$DASH_SESSION"
+        printf '   prefix+A to go there, or undock it with ctrl-x.\n'
+      fi
+      printf '\033[0m'
+    fi
+    sleep 2
+  done
+}
+
+ensure_slot() {  # print the placeholder's pane id, creating or repairing it
+  local dp=$1 sp cur
+  sp=$(slot_pane)
+  if [ -z "$sp" ]; then
+    # Placeholder was killed. If a real agent is sitting in the right half,
+    # push it out to its own window first so we do not end up with three panes.
+    cur=$(docked_pane "$dp")
+    [ -n "$cur" ] && tmux break-pane -d -s "$cur" 2>/dev/null
+    sp=$(tmux split-window -h -d -P -F '#{pane_id}' -l "$((100 - DASH_WIDTH))%" \
+           -t "$dp" "exec '$SELF' --slot" 2>/dev/null) || return 1
+    tmux set -p -t "$sp" @tagents_slot 1 2>/dev/null
+  fi
+  printf '%s' "$sp"
+}
+
+ensure_dash() {
+  local win="" dp
+  if tmux has-session -t "=$DASH_SESSION" 2>/dev/null; then
+    win=$(dash_window)
+    # The session can outlive the dashboard window — a docked or borrowed window
+    # keeps it alive on its own — so re-create it rather than assuming it.
+    [ -z "$win" ] && win=$(tmux new-window -d -t "$DASH_SESSION:" -n dash -P \
+                             -F '#{window_id}' "exec '$SELF'" 2>/dev/null)
+  else
+    tmux new-session -d -s "$DASH_SESSION" -n dash -x 200 -y 50 "exec '$SELF'" 2>/dev/null || return 1
+    win=$(tmux list-windows -t "=$DASH_SESSION" -F '#{window_id}' 2>/dev/null | head -1)
+  fi
+  [ -z "$win" ] && return 1
+  tmux set -w -t "$win" @tagents 1 \; set -w -t "$win" automatic-rename off 2>/dev/null
+
+  dp=$(dash_pane)
+  if [ -z "$dp" ]; then
+    dp=$(tmux list-panes -t "$win" -F '#{pane_id}' 2>/dev/null | head -1)
+    [ -n "$dp" ] && tmux set -p -t "$dp" @tagents_dash 1 2>/dev/null
+  fi
+  [ -n "$dp" ] && ensure_slot "$dp" >/dev/null
+  tmux select-window -t "$win" 2>/dev/null
+  [ -n "$dp" ] && tmux select-pane -t "$dp" 2>/dev/null
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# docking: the agent's pane is swapped into the dashboard window's right half.
+# swap-pane, not join-pane — a swap leaves both windows with the same number of
+# panes and the same layout, so nothing anywhere gets rearranged or destroyed.
+# ---------------------------------------------------------------------------
+
+undock() {
+  local dp cur sp
+  dp=$(dash_pane) || return 0
+  [ -z "$dp" ] && return 0
+  cur=$(docked_pane "$dp")
+  sp=$(slot_pane)
+  [ -z "$cur" ] || [ -z "$sp" ] && return 0
+  [ "$cur" = "$sp" ] && return 0          # placeholder already home
+  tmux swap-pane -d -s "$cur" -t "$sp" 2>/dev/null
+}
+
+dock() {
+  local pane=$1 dp cur sp
+  [ "$pane" = "-" ] && return 0
+  dp=$(dash_pane)
+  [ -z "$dp" ] && return 1
+  [ "$pane" = "$dp" ] && return 0
+  sp=$(ensure_slot "$dp") || return 1
+  cur=$(docked_pane "$dp")
+
+  if [ "$cur" = "$pane" ]; then           # already docked — just go to it
+    tmux select-pane -t "$pane" 2>/dev/null
+    return 0
+  fi
+  # Send whoever is docked back to where they came from, then swap the new one
+  # in. The placeholder is the marker for "the empty right half".
+  [ -n "$cur" ] && [ "$cur" != "$sp" ] && tmux swap-pane -d -s "$cur" -t "$sp" 2>/dev/null
+  tmux swap-pane -d -s "$pane" -t "$sp" 2>/dev/null || return 1
+  tmux select-window -t "$(dash_window)" 2>/dev/null
+  tmux select-pane -t "$pane" 2>/dev/null
+}
+
+# Every key runs through here as a short-lived child of fzf, so fzf itself never
+# has to exit and restart. That is what keeps the list from repainting on each
+# action — execute-silent does not touch the screen.
+act() {
+  local what=${1:-} pane=${2:-} state=${3:-} sid=${4:-} dir=${5:-}
+  case "$what" in
+    open)
+      if [ "$state" = dead ]; then
+        resume_agent "$pane" "$sid" "$dir"
+      elif [ "${TA_CAN_DOCK:-0}" = 1 ]; then
+        dock "$pane"
+      else
+        borrow "$pane" "${TA_HOME:-}"
+      fi ;;
+    goto)   goto "$pane" ;;
+    send)   send_line "$pane" ;;
+    undock)
+      if [ "${TA_CAN_DOCK:-0}" = 1 ]; then undock; else give_back "$pane" "${TA_HOME:-}"; fi ;;
+  esac
+}
+
+# Restart a closed session with `claude --resume <id>`. Reuse its old pane when
+# that pane still exists and is sitting at a shell; otherwise open a new window
+# in the dashboard session. Either way the result gets docked.
+resume_agent() {
+  local pane=$1 sid=$2 dir=$3 cmd cur newpane
+  if [ -z "$sid" ]; then
+    tmux display-message "tagents: no session id recorded — cannot resume" 2>/dev/null
+    return 1
+  fi
+  [ -d "$dir" ] || dir=$HOME
+  cmd="$RESUME_CMD $sid"
+
+  if [ -n "$pane" ] && tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx -- "$pane"; then
+    cur=$(tmux display -p -t "$pane" '#{pane_current_command}' 2>/dev/null)
+    case "$cur" in
+      zsh|bash|sh|fish|dash|tcsh|ksh)
+        # Its own pane, idle at a prompt — the natural place to bring it back.
+        rm -f "$STATE_DIR/${pane#%}.tsv"
+        tmux send-keys -t "$pane" -l -- "cd \"$dir\" && $cmd"
+        tmux send-keys -t "$pane" Enter
+        dock "$pane"
+        return 0 ;;
+    esac
+  fi
+
+  # Pane is gone, or busy with something else — do not type into it.
+  rm -f "$STATE_DIR/${pane#%}.tsv"
+  newpane=$(tmux new-window -d -t "$DASH_SESSION:" -P -F '#{pane_id}' \
+              -c "$dir" "$cmd" 2>/dev/null) || return 1
+  dock "$newpane"
+}
+
+# ---------------------------------------------------------------------------
+# dashboard
+# ---------------------------------------------------------------------------
+
+dash() {
+  local home=${TA_HOME:-} mode=${TA_MODE:-dash} out key rows
+  local rc started fails=0 esc_bind='esc:ignore' quit='ctrl-q quit · '
+  local can_dock=0 enter_lbl='borrow' undo_lbl='give back' preview_win after=''
+  [ -z "$home" ] && home=$(tmux display -p '#S' 2>/dev/null)
+  if [ -z "$home" ]; then
+    echo "tagents: not inside tmux" >&2
+    return 1
+  fi
+  # In a popup Esc is the natural "close this overlay". In the dedicated
+  # dashboard session it must not close anything: the window is the session's
+  # reason to exist, and losing it leaves you staring at whatever else is there.
+  # A popup also closes once it has done what you asked; the sidebar stays.
+  if [ "$mode" = popup ]; then esc_bind='esc:abort'; quit=''; after='+abort'; fi
+
+  # Running as the left half of the dashboard window? Then enter docks the agent
+  # into the right half instead of pulling a whole window in from elsewhere, and
+  # the docked pane itself replaces fzf's preview — it is the live thing.
+  if [ -n "${TMUX_PANE:-}" ] && [ "$TMUX_PANE" = "$(dash_pane)" ]; then
+    can_dock=1; enter_lbl='open here'; undo_lbl='undock'
+    preview_win='hidden'
+  else
+    preview_win='right,55%,border-left,wrap'
+  fi
+  export TA_HOME="$home" TA_CAN_DOCK="$can_dock"
+
+  # Terminal flow control has to go. With ixon on, ctrl-s is XOFF: it blocks
+  # every write to this tty, so the dashboard goes blank and stays blank, and
+  # ctrl-q is XON, which means the documented quit key never reaches fzf.
+  stty -ixon 2>/dev/null || true
+
+  while :; do
+    rows=$(list)
+    [ -z "$rows" ] && rows="-${TAB}$(printf '\033[90m')no claude sessions running$(printf '\033[0m')${TAB}none"
+    started=$SECONDS
+    out=$(printf '%s\n' "$rows" | fzf \
+      --ansi --no-sort --delimiter="$TAB" --with-nth=2 \
+      --listen --height=100% --layout=reverse --info=inline \
+      --prompt='agents> ' \
+      --header="enter ${enter_lbl} · ctrl-g goto · ctrl-e send · ctrl-x ${undo_lbl} · ctrl-t tree/flat · ctrl-r refresh · ${quit}" \
+      --preview="$SELF --preview {1} {3}" \
+      --preview-window="$preview_win" \
+      --bind="enter:execute-silent($SELF --act open {1} {3} {4} {5})$after" \
+      --bind="double-click:execute-silent($SELF --act open {1} {3} {4} {5})$after" \
+      --bind="ctrl-g:execute-silent($SELF --act goto {1})$after" \
+      --bind="ctrl-e:execute($SELF --act send {1})$after" \
+      --bind="ctrl-s:execute($SELF --act send {1})$after" \
+      --bind="ctrl-x:execute-silent($SELF --act undock {1})+reload-sync($SELF --list)" \
+      --bind="$esc_bind" \
+      --bind='ctrl-v:toggle-preview' \
+      --bind='ctrl-t:execute-silent('"$SELF"' --toggle-group)+reload-sync('"$SELF"' --list)' \
+      --bind='ctrl-r:reload-sync('"$SELF"' --list)' \
+      --bind="start:execute-silent(TA_PORT=\$FZF_PORT nohup $SELF --refresher >/dev/null 2>&1 &)" \
+      --expect=ctrl-q)
+    rc=$?
+
+    if [ $rc -ne 0 ]; then
+      [ "$mode" = popup ] && break
+      # Never let an abort take the dashboard down — just come back up. Bail out
+      # only if fzf is dying instantly, which would otherwise spin forever.
+      if [ $(( SECONDS - started )) -lt 1 ]; then
+        fails=$((fails + 1))
+        [ $fails -ge 5 ] && { echo "tagents: fzf keeps failing, giving up" >&2; break; }
+      else
+        fails=0
+      fi
+      continue
+    fi
+    fails=0
+
+    # Keys do their work inside fzf now, so reaching here means a deliberate
+    # quit — or, in a popup, the abort that follows a completed action.
+    key=$(printf '%s\n' "$out" | sed -n 1p)
+    [ "$key" = ctrl-q ] && break
+    [ "$mode" = popup ] && break
+  done
+}
+
+# ---------------------------------------------------------------------------
+
+case "${1:-}" in
+  --list)         list ;;
+  --flat)         TA_FLAT=1 list ;;
+  --toggle-group) toggle_group ;;
+  --act)          shift; act "$@" ;;
+  --counts)       counts ;;
+  --preview)      preview "${2:-}" "${3:-}" ;;
+  --slot)         slot ;;
+  --refresher)    refresher ;;
+  --ensure-dash)  ensure_dash ;;
+  --goto)         goto "${2:-}" ;;
+  -h|--help)      sed -n '3,47p' "$SELF" | sed 's/^# \{0,1\}//' ;;
+  "")            dash ;;
+  *)             echo "tagents: unknown option $1" >&2; exit 2 ;;
+esac
