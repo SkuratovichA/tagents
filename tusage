@@ -1,0 +1,576 @@
+#!/usr/bin/env bash
+#
+# tusage — token accounting for Claude Code, read straight from the transcripts
+# in ~/.claude/projects. Answers "where did my limit go", per project, per
+# session, per subagent.
+#
+#   tusage                      summary: last 5h window, today, last 7 days
+#   tusage --by day|project|session|agent|model|hour
+#   tusage --since 5h|3d        window for --by (default 7d)
+#   tusage --sessions           machine-readable per-session totals (for tagents)
+#   tusage --session <sid>      one session in detail
+#   tusage --burn               one-line status-bar string
+#   tusage --update             refresh the index and exit
+#   tusage --rebuild            throw the index away and rescan everything
+#   tusage --json               emit the current window as JSON
+#
+# WHY AN INDEX. 800 MB of transcripts across ~1300 files: a full scan costs a
+# second and a half, which is fine once and far too slow for a dashboard that
+# refreshes every two seconds. So the parsed byte offset of every file is
+# remembered and only the tail is re-read.
+#
+# WHY DEDUPE. One API response is written to the transcript once per content
+# block, each copy carrying the SAME usage object and the same requestId.
+# Summing entries naively overcounts by ~2.2x. Everything here counts unique
+# requestIds. Duplicates are adjacent in the file, so carrying the last few ids
+# across an incremental read is enough to keep the seam honest.
+#
+# WHY "COST UNITS". Raw token counts are not comparable: a cached read is an
+# order of magnitude cheaper than a fresh write, and output is several times
+# more expensive than input. The `cost` column normalises everything to
+# input-token equivalents using the published cache multipliers:
+#
+#     cost = input + 1.25*cache_write_5m + 2.0*cache_write_1h
+#                  + 0.1*cache_read + 5*output
+#
+# It is a proxy for what a request actually costs you, not a billing figure.
+# Raw totals are always available with --raw.
+#
+# bash 3.2 compatible — macOS ships nothing newer.
+
+set -uo pipefail
+
+PROJECTS=${TU_PROJECTS:-$HOME/.claude/projects}
+STATE=${TU_STATE:-$HOME/.claude/agent-state/usage}
+OFFSETS="$STATE/offsets.tsv"
+FACTS="$STATE/facts.tsv"
+META="$STATE/sessions.tsv"
+STAMP="$STATE/.stamp"
+BUCKET=300                          # facts are aggregated into 5-minute buckets
+KEEP_DAYS=${TU_KEEP_DAYS:-30}
+TAB=$'\t'
+
+W_IN=1; W_CW5=1.25; W_CW1H=2.0; W_CR=0.1; W_OUT=5
+
+mkdir -p "$STATE" 2>/dev/null
+
+command -v jq >/dev/null 2>&1 || { echo "tusage: jq is required" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+# extraction
+# ---------------------------------------------------------------------------
+# NB: every project directory begins with "-" (e.g. -Users-suka--git-work-x),
+# so a relative path is parsed as an option by jq, tail, head and wc alike.
+# Absolute paths are used everywhere below for exactly that reason.
+
+EXTRACT='
+  select(.type == "assistant" and (.message.usage != null))
+  | .message.usage as $u
+  | ($u.cache_creation // null) as $cc
+  | [ (.requestId // .message.id // "-"),
+      ((.timestamp // "") | if . == "" then 0
+         else (sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601? // 0) end),
+      (.sessionId // "-"),
+      (.agentId // "-"),
+      (.attributionAgent // "-"),
+      (.sessionKind // "-"),
+      (.message.model // "-"),
+      ($u.input_tokens // 0),
+      (if $cc then ($cc.ephemeral_5m_input_tokens // 0)
+               else ($u.cache_creation_input_tokens // 0) end),
+      (if $cc then ($cc.ephemeral_1h_input_tokens // 0) else 0 end),
+      ($u.cache_read_input_tokens // 0),
+      ($u.output_tokens // 0)
+    ] | @tsv'
+
+# Bytes of a file that end in a complete line. A transcript being appended to
+# right now usually has a partial last line; consuming it would corrupt the
+# offset and silently drop the record when the rest arrives.
+complete_bytes() {
+  local f=$1 sz
+  sz=$(wc -c <"$f" 2>/dev/null | tr -d ' ') || return 1
+  [ "${sz:-0}" -eq 0 ] && { printf '0'; return 0; }
+  if [ "$(tail -c 1 -- "$f" 2>/dev/null | wc -l | tr -d ' ')" -eq 1 ]; then
+    printf '%s' "$sz"
+  else
+    local part
+    part=$(tail -c 4194304 -- "$f" 2>/dev/null | tail -1 | wc -c | tr -d ' ')
+    printf '%s' "$(( sz - ${part:-0} ))"
+  fi
+}
+
+# Transcripts are NOT one file per session. A subagent gets its own file under
+#   <project-slug>/<parent-session-id>/subagents/agent-<id>.jsonl
+# and a Workflow run one file per agent under
+#   <project-slug>/<parent-session-id>/subagents/workflows/wf_<id>/agent-<id>.jsonl
+# Those nested files carry the PARENT's sessionId, so attribution is exact — but
+# the project must come from the first path component, not from dirname, or every
+# workflow shows up as a project of its own. Verified: no requestId appears in
+# both a parent file and a nested one, so per-file dedupe cannot double-count.
+path_facets() {  # <abs path> -> "slug<TAB>origin" where origin = main|sub|wf:<id>
+  local rel=${1#"$PROJECTS"/} slug rest
+  slug=${rel%%/*}; rest=${rel#*/}
+  case "$rest" in
+    */workflows/wf_*/*) rest=${rest#*/workflows/}; printf '%s\t%s' "$slug" "wf:${rest%%/*}" ;;
+    */subagents/*)      printf '%s\t%s' "$slug" "sub" ;;
+    *)                  printf '%s\t%s' "$slug" "main" ;;
+  esac
+}
+
+# facts rows: bucket, project-slug, sid, agentid, agenttype, kind, model,
+#             reqs, in, cw5, cw1h, cr, out, maxctx
+fold_rows() {  # <project-slug> <carried ids> <origin> ; extracted TSV on stdin
+  awk -F"$TAB" -v OFS="$TAB" -v proj="$1" -v seen0="$2" -v origin="$3" -v bucket="$BUCKET" '
+    BEGIN { n = split(seen0, carry, ","); for (i = 1; i <= n; i++) if (carry[i] != "") seen[carry[i]] = 1 }
+    {
+      id = $1
+      if (id in seen) next
+      seen[id] = 1
+      tail[++t] = id
+      # attributionAgent is absent in nested transcripts of some versions; the
+      # path always knows what the file is, so it is the fallback.
+      who = $5
+      if (who == "-" || who == "") who = (origin == "main" ? "-" : (origin == "sub" ? "subagent" : "workflow"))
+      kind = $6
+      if (kind == "-" && origin != "main") kind = (origin == "sub" ? "sub" : origin)
+      b = int($2 / bucket) * bucket
+      k = b SUBSEP $3 SUBSEP $4 SUBSEP who SUBSEP kind SUBSEP $7
+      if (!(k in R)) { order[++m] = k }
+      ctx = $8 + $9 + $10 + $11
+      R[k]++; I[k] += $8; C5[k] += $9; C1[k] += $10; CR[k] += $11; O[k] += $12
+      if (ctx > X[k]) X[k] = ctx
+      if (!($3 in fts) || $2 < fts[$3]) fts[$3] = $2
+      if (!($3 in lts) || $2 > lts[$3]) lts[$3] = $2
+      mdl[$3] = $7
+    }
+    END {
+      for (i = 1; i <= m; i++) {
+        k = order[i]; split(k, a, SUBSEP)
+        print "F", a[1], proj, a[2], a[3], a[4], a[5], a[6], R[k], I[k], C5[k], C1[k], CR[k], O[k], X[k]
+      }
+      for (s in fts) print "M", s, proj, fts[s], lts[s], mdl[s]
+      # the last few ids, so the next incremental read does not double-count a
+      # response whose content blocks straddle the seam
+      out = ""
+      for (i = (t > 32 ? t - 31 : 1); i <= t; i++) out = out (out == "" ? "" : ",") tail[i]
+      print "T", out
+    }'
+}
+
+update() {
+  local rebuild=${1:-0} f sz off end slug seen tmp work newoff n=0
+  [ "$rebuild" = 1 ] && rm -f "$OFFSETS" "$FACTS" "$META" "$STAMP"
+
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/tusage.XXXXXX") || return 1
+  trap 'rm -rf "$tmp"' RETURN
+
+  # Candidates: everything on a rebuild or a first run, otherwise only what has
+  # been touched since the last update (plus anything the index never saw).
+  if [ -e "$STAMP" ] && [ -s "$OFFSETS" ]; then
+    find "$PROJECTS" -name '*.jsonl' -newer "$STAMP" 2>/dev/null >"$tmp/cand"
+    awk -F"$TAB" 'NR==FNR { known[$1]=1; next } !($0 in known)' "$OFFSETS" \
+      <(find "$PROJECTS" -name '*.jsonl' 2>/dev/null) >>"$tmp/cand" 2>/dev/null
+    sort -u "$tmp/cand" -o "$tmp/cand"
+  else
+    find "$PROJECTS" -name '*.jsonl' 2>/dev/null >"$tmp/cand"
+  fi
+  [ -s "$tmp/cand" ] || { : >"$STAMP"; return 0; }
+
+  : >"$tmp/newfacts"; : >"$tmp/newmeta"; : >"$tmp/newoff"
+
+  while IFS= read -r f; do
+    [ -e "$f" ] || continue
+    off=0; seen=""
+    if [ -s "$OFFSETS" ]; then
+      IFS="$TAB" read -r _ off seen < <(awk -F"$TAB" -v k="$f" '$1==k { print; exit }' "$OFFSETS")
+      off=${off:-0}
+    fi
+    sz=$(wc -c <"$f" 2>/dev/null | tr -d ' '); sz=${sz:-0}
+    [ "$sz" -lt "$off" ] && { off=0; seen=""; }        # file was rewritten
+    end=$(complete_bytes "$f"); end=${end:-0}
+    if [ "$end" -le "$off" ]; then
+      printf '%s\t%s\t%s\n' "$f" "$off" "$seen" >>"$tmp/newoff"
+      continue
+    fi
+    IFS="$TAB" read -r slug origin < <(path_facets "$f")
+    if [ "$off" -eq 0 ] && [ "$end" -eq "$sz" ]; then
+      jq -rc "$EXTRACT" -- "$f" 2>/dev/null
+    else
+      tail -c "+$((off + 1))" -- "$f" 2>/dev/null | head -c "$((end - off))" |
+        jq -rc "$EXTRACT" 2>/dev/null
+    fi | fold_rows "$slug" "$seen" "$origin" >"$tmp/out"
+    grep '^F'"$TAB" "$tmp/out" 2>/dev/null | cut -f2- >>"$tmp/newfacts"
+    grep '^M'"$TAB" "$tmp/out" 2>/dev/null | cut -f2- >>"$tmp/newmeta"
+    newoff=$(grep '^T'"$TAB" "$tmp/out" 2>/dev/null | cut -f2- | head -1)
+    printf '%s\t%s\t%s\n' "$f" "$end" "$newoff" >>"$tmp/newoff"
+    n=$((n + 1))
+  done <"$tmp/cand"
+
+  # merge offsets: untouched files keep their row
+  if [ -s "$OFFSETS" ]; then
+    awk -F"$TAB" -v OFS="$TAB" 'NR==FNR { upd[$1]=$0; next }
+                                { if ($1 in upd) next; print }' \
+        "$tmp/newoff" "$OFFSETS" >>"$tmp/newoff.merged" 2>/dev/null
+  fi
+  cat "$tmp/newoff" >>"$tmp/newoff.merged" 2>/dev/null
+  sort -u "$tmp/newoff.merged" 2>/dev/null | awk -F"$TAB" '!seen[$1]++' >"$tmp/off.final"
+  mv -f "$tmp/off.final" "$OFFSETS" 2>/dev/null
+
+  [ -s "$tmp/newfacts" ] && cat "$tmp/newfacts" >>"$FACTS"
+  if [ -s "$tmp/newmeta" ]; then
+    cat "$META" "$tmp/newmeta" 2>/dev/null |
+      awk -F"$TAB" -v OFS="$TAB" '
+        { if (!($1 in f) || $3 < f[$1]) f[$1] = $3
+          if (!($1 in l) || $4 > l[$1]) l[$1] = $4
+          p[$1] = $2; if ($5 != "" && $5 != "-") m[$1] = $5 }
+        END { for (s in f) print s, p[s], f[s], l[s], (s in m ? m[s] : "-") }' \
+      >"$tmp/meta.final" 2>/dev/null
+    mv -f "$tmp/meta.final" "$META" 2>/dev/null
+  fi
+
+  # keep facts bounded
+  if [ -s "$FACTS" ]; then
+    awk -F"$TAB" -v cut="$(( $(date +%s) - KEEP_DAYS * 86400 ))" '$1 + 0 >= cut' \
+      "$FACTS" >"$tmp/facts.trim" 2>/dev/null && mv -f "$tmp/facts.trim" "$FACTS"
+  fi
+  : >"$STAMP"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# reporting
+# ---------------------------------------------------------------------------
+# facts columns: 1 bucket 2 slug 3 sid 4 agentid 5 agenttype 6 kind 7 model
+#                8 reqs 9 in 10 cw5 11 cw1h 12 cr 13 out
+
+since_secs() {
+  case "$1" in
+    *h) printf '%s' "$(( ${1%h} * 3600 ))" ;;
+    *d) printf '%s' "$(( ${1%d} * 86400 ))" ;;
+    *m) printf '%s' "$(( ${1%m} * 60 ))" ;;
+    *)  printf '%s' "$1" ;;
+  esac
+}
+
+# slug -> the real directory. Decoding the slug itself is impossible (a dash
+# stands for both "/" and "-"), so the first cwd written into any transcript of
+# that project is used instead, and cached.
+SLUGMAP="$STATE/projects.tsv"
+slug_map() {
+  local d slug f cwd
+  if [ -e "$SLUGMAP" ] && [ -z "${TU_REFRESH_SLUGS:-}" ]; then
+    # refresh only when a project directory appeared since the map was written
+    [ "$(find "$PROJECTS" -maxdepth 1 -type d -newer "$SLUGMAP" 2>/dev/null | wc -l)" -eq 0 ] &&
+      { cat "$SLUGMAP"; return 0; }
+  fi
+  : >"$SLUGMAP.tmp"
+  for d in "$PROJECTS"/*/; do
+    [ -d "$d" ] || continue
+    slug=$(basename "$d")
+    f=$(ls -1t "$d"*.jsonl 2>/dev/null | head -1)
+    cwd=""
+    [ -n "$f" ] && cwd=$(head -200 -- "$f" 2>/dev/null | jq -rc 'select(.cwd)|.cwd' 2>/dev/null | head -1)
+    [ -z "$cwd" ] && cwd="$slug"
+    printf '%s\t%s\n' "$slug" "$cwd" >>"$SLUGMAP.tmp"
+  done
+  mv -f "$SLUGMAP.tmp" "$SLUGMAP" 2>/dev/null
+  cat "$SLUGMAP"
+}
+
+# sid -> the directory the session was launched in. The hook's cwd follows the
+# Bash tool around, so it is useless as an identity; the first cwd recorded in
+# the transcript is the launch directory and never changes.
+origin_dir() {
+  local sid=$1 slug=${2:-} cache="$STATE/origin.tsv" d f
+  if [ -e "$cache" ]; then
+    d=$(awk -F"$TAB" -v k="$sid" '$1==k { print $2; exit }' "$cache")
+    [ -n "$d" ] && { printf '%s' "$d"; return 0; }
+  fi
+  f=$(ls -1 "$PROJECTS/$slug/$sid.jsonl" 2>/dev/null | head -1)
+  [ -z "$f" ] && f=$(find "$PROJECTS" -name "$sid.jsonl" 2>/dev/null | head -1)
+  if [ -n "$f" ]; then
+    d=$(head -200 -- "$f" 2>/dev/null | jq -rc 'select(.cwd) | .cwd' 2>/dev/null | head -1)
+  fi
+  [ -z "$d" ] && d="?"
+  printf '%s\t%s\n' "$sid" "$d" >>"$cache" 2>/dev/null
+  printf '%s' "$d"
+}
+
+AWK_FMT='
+  function human(x) {
+    if (x >= 1e9) return sprintf("%.1fG", x/1e9)
+    if (x >= 1e6) return sprintf("%.1fM", x/1e6)
+    if (x >= 1e3) return sprintf("%.0fk", x/1e3)
+    return sprintf("%d", x)
+  }
+  function cost(i, c5, c1, cr, o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
+  function bar(v, mx, w,   n, s, i) {
+    n = (mx > 0) ? int(v / mx * w + 0.5) : 0
+    s = ""; for (i = 0; i < w; i++) s = s (i < n ? "█" : "·")
+    return s
+  }
+'
+
+report_by() {
+  local dim=$1 since=$2 cut
+  cut=$(( $(date +%s) - $(since_secs "$since") ))
+  [ -s "$FACTS" ] || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
+
+  { slug_map | sed 's/^/P\t/'; cat "$FACTS"; } |
+  awk -F"$TAB" -v cut="$cut" -v dim="$dim" -v tz="$(date +%z)" -v home="$HOME" "$AWK_FMT"'
+    BEGIN {
+      zh = substr(tz,2,2) + 0; zm = substr(tz,4,2) + 0
+      off = zh*3600 + zm*60; if (substr(tz,1,1) == "-") off = -off
+      R = "\033[0m"; DIM = "\033[90m"; B = "\033[1m"
+    }
+    function daykey(t,   lt) { lt = t + off; return int(lt/86400) }
+    function hourkey(t,  lt) { lt = t + off; return int(lt/3600) }
+    function daystr(d,   z, y, m, dd, e) {
+      # civil-from-days, so no shelling out to date per row
+      z = d + 719468
+      e = (z >= 0 ? z : z - 146096) / 146097; e = int(e)
+      doe = z - e*146097
+      yoe = int((doe - int(doe/1460) + int(doe/36524) - int(doe/146096)) / 365)
+      y = yoe + e*400
+      doy = doe - (365*yoe + int(yoe/4) - int(yoe/100))
+      mp = int((5*doy + 2)/153)
+      dd = doy - int((153*mp+2)/5) + 1
+      m = mp + (mp < 10 ? 3 : -9)
+      y += (m <= 2)
+      return sprintf("%04d-%02d-%02d", y, m, dd)
+    }
+    function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
+    $1 == "P" { pdir[$2] = $3; next }
+    $1 + 0 < cut { next }
+    {
+      proj = ($2 in pdir) ? tilde(pdir[$2]) : $2
+      if      (dim == "day")      k = daystr(daykey($1))
+      else if (dim == "hour")     k = daystr(daykey($1)) sprintf(" %02d:00", hourkey($1) % 24)
+      else if (dim == "project")  k = proj
+      else if (dim == "session")  k = substr($3, 1, 8) "  " proj
+      else if (dim == "model")    k = $7
+      else if (dim == "workflow") { if ($6 !~ /^wf:/) next; k = $6 "  " proj }
+      else if (dim == "agent") {
+        if ($4 == "-")           k = "· main session"
+        else if ($6 ~ /^wf:/)    k = "⑂ workflow agent"
+        else                     k = "⑂ " $5 ($6 == "bg" ? " (bg)" : "")
+      }
+      else                        k = proj
+      if (!(k in seen)) { seen[k] = 1; order[++n] = k }
+      REQ[k] += $8; IN[k] += $9; C5[k] += $10; C1[k] += $11; CR[k] += $12; OUT[k] += $13
+      if ($14 + 0 > CX[k]) CX[k] = $14 + 0
+      C[k] = cost(IN[k], C5[k], C1[k], CR[k], OUT[k])
+      if (C[k] > mx) mx = C[k]
+      TOT += cost($9, $10, $11, $12, $13); TREQ += $8
+    }
+    END {
+      if (n == 0) { print "no data in this window" > "/dev/stderr"; exit 1 }
+      printf "%s%-36s %8s %7s %8s %8s %8s %8s  %s%s\n", DIM, dim,
+             "cost", "reqs", "cwrite", "cread", "out", "maxctx", "share", R
+      # sort by cost, descending — the answer to "who ate it" should be line 1
+      for (i = 1; i <= n; i++) for (j = i + 1; j <= n; j++)
+        if (C[order[j]] > C[order[i]]) { t = order[i]; order[i] = order[j]; order[j] = t }
+      for (i = 1; i <= n; i++) {
+        k = order[i]
+        printf "%-36.36s %8s %7d %8s %8s %8s %7.0fk  %s%s%s %s%4.1f%%%s\n",
+               k, human(C[k]), REQ[k], human(C5[k] + C1[k]), human(CR[k]),
+               human(OUT[k]), CX[k]/1000,
+               DIM, bar(C[k], mx, 14), R, DIM, 100*C[k]/TOT, R
+      }
+      printf "%s%-36s %8s %7d%s\n", DIM, "TOTAL", human(TOT), TREQ, R
+    }'
+}
+
+# sid, cost, reqs, ctx, last_ts, slug, subagent_cost, live_subagents, cost_5h
+# ctx is the largest context seen in the last hour — the number that says
+# "this session is fat, compact it", which an average over the window hides.
+sessions() {
+  [ -s "$FACTS" ] || return 0
+  local now; now=$(date +%s)
+  awk -F"$TAB" -v OFS="$TAB" -v cut="$(( now - $(since_secs "${1:-7d}") ))" \
+      -v h1="$(( now - 3600 ))" -v h5="$(( now - 18000 ))" '
+    function cost(i,c5,c1,cr,o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
+    $1 + 0 >= cut {
+      s = $3; c = cost($9,$10,$11,$12,$13)
+      C[s] += c; R[s] += $8; P[s] = $2
+      if ($1 + 0 >= h5) C5H[s] += c
+      if ($1 + 0 >= h1 && $14 + 0 > X[s]) X[s] = $14 + 0
+      if ($14 + 0 > XMAX[s]) XMAX[s] = $14 + 0
+      if ($1 + 0 > L[s]) L[s] = $1 + 0
+      if ($4 != "-") { SUB[s] += c; NSUB[s SUBSEP $4] = ($1 + 0) }
+    }
+    END { for (s in C) {
+        k = 0
+        for (q in NSUB) { split(q, a, SUBSEP); if (a[1] == s && NSUB[q] >= h1) k++ }
+        print s, int(C[s]), R[s], int(X[s] ? X[s] : XMAX[s]), L[s], P[s],
+              int(SUB[s]), k, int(C5H[s]) } }' "$FACTS"
+}
+
+burn() {   # what the last 5h cost, for the tmux status bar
+  [ -s "$FACTS" ] || return 0
+  awk -F"$TAB" -v cut="$(( $(date +%s) - 18000 ))" '
+    function human(x) { if (x >= 1e6) return sprintf("%.1fM", x/1e6)
+                        if (x >= 1e3) return sprintf("%.0fk", x/1e3); return sprintf("%d", x) }
+    $1 + 0 >= cut { c = $9 + 1.25*$10 + 2.0*$11 + 0.1*$12 + 5*$13; T += c; S[$3] += c }
+    END {
+      if (T <= 0) exit 0
+      top = ""; mx = 0
+      for (s in S) if (S[s] > mx) { mx = S[s]; top = s }
+      printf "#[fg=#665c54]5h #[fg=%s]%s ", (T > 40e6 ? "red" : T > 20e6 ? "yellow" : "#928374"), human(T)
+    }' "$FACTS"
+}
+
+session_detail() {
+  local sid=$1 full slug
+  [ -s "$FACTS" ] || return 1
+  # accept a short prefix; everything downstream needs the full id
+  full=$(awk -F"$TAB" -v k="$sid" 'index($1, k) == 1 { print $1; exit }' "$META" 2>/dev/null)
+  [ -n "$full" ] && sid=$full
+  slug=$(awk -F"$TAB" -v k="$sid" '$1 == k { print $2; exit }' "$META" 2>/dev/null)
+  printf '\033[1m%s\033[0m  %s\n' "$sid" "$(origin_dir "$sid" "$slug")"
+  awk -F"$TAB" -v k="$sid" "$AWK_FMT"'
+    $3 ~ "^" k {
+      a = ($4 == "-" ? "· main" : ($6 ~ /^wf:/ ? "⑂ " $6 : "⑂ " $5 ($6 == "bg" ? " (bg)" : "")))
+      REQ[a] += $8; IN[a] += $9; C5[a] += $10; C1[a] += $11; CR[a] += $12; OUT[a] += $13
+      if (!(a in seen)) { seen[a] = 1; ord[++n] = a }
+      if ($1 + 0 > last) { last = $1 + 0 }
+      T += cost($9,$10,$11,$12,$13)
+    }
+    END {
+      if (n == 0) { print "  (no usage recorded in the retained window)"; exit }
+      printf "\033[90m  %-26s %8s %7s %8s %8s %8s\033[0m\n", "who", "cost", "reqs", "cwrite", "cread", "out"
+      for (i = 1; i <= n; i++) { a = ord[i]
+        printf "  %-26.26s %8s %7d %8s %8s %8s\n", a, human(cost(IN[a],C5[a],C1[a],CR[a],OUT[a])),
+               REQ[a], human(C5[a]+C1[a]), human(CR[a]), human(OUT[a]) }
+      printf "\033[90m  %-26s %8s\033[0m\n", "TOTAL", human(T)
+    }' "$FACTS"
+}
+
+summary() {
+  local now; now=$(date +%s)
+  [ -s "$FACTS" ] || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
+  { slug_map | sed 's/^/P\t/'; cat "$FACTS"; } |
+  awk -F"$TAB" -v now="$now" -v home="$HOME" "$AWK_FMT"'
+    BEGIN { R = "\033[0m"; DIM = "\033[90m"; B = "\033[1m" }
+    function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
+    # pad by CHARACTERS: macOS awk counts bytes, so a "⑂" would eat three of them
+    function uclen(s,   i, n, c) { n = 0
+      for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
+        if (c >= "\200" && c <= "\277") continue; n++ }
+      return n }
+    function upad(s, w,   n) { n = uclen(s); return (w > n) ? s sprintf("%" (w-n) "s", "") : s }
+    $1 == "P" { pdir[$2] = $3; next }
+    {
+      c = cost($9,$10,$11,$12,$13); age = now - ($1 + 0)
+      if (age <= 18000) { W5 += c; W5R += $8; if ($14 + 0 > W5X) W5X = $14 + 0 }
+      if (age <= 86400) { D1 += c; D1R += $8 }
+      if (age <= 604800) { D7 += c; D7R += $8
+        P[$2] += c
+        if ($4 == "-") MAIN += c
+        else { SUBC += c
+               SA[$6 ~ /^wf:/ ? "workflow agent" : $5 ($6 == "bg" ? " (bg)" : "")] += c
+               if ($6 ~ /^wf:/) { WF[$6] += c; WFR[$6] += $8 } }
+        CW += $10 + $11; CW5 += $10; CW1 += $11; CR += $12; OU += $13; INP += $9
+        if ($14 + 0 > 200000) BIG += $8
+        TREQ += $8
+      }
+    }
+    END {
+      printf "%s cost = input-token equivalents: in + 1.25*cw5m + 2*cw1h + 0.1*cread + 5*out%s\n\n", DIM, R
+      printf "%slast 5 h%s   %s%10s%s   %5d requests   %speak ctx %.0fk%s\n", B, R, B, human(W5), R, W5R, DIM, W5X/1000, R
+      printf "%slast 24 h%s  %s%10s%s   %5d requests\n", B, R, B, human(D1), R, D1R
+      printf "%slast 7 d%s   %s%10s%s   %5d requests\n\n", B, R, B, human(D7), R, D7R
+
+      printf "%swhere it goes (7 d)%s\n", B, R
+      wcw = 1.25*CW5 + 2.0*CW1; wcr = 0.1*CR; wou = 5*OU; wt = INP + wcw + wcr + wou
+      printf "  cache WRITE %10s raw -> %9s  %s%s %2.0f%%%s\n", human(CW), human(wcw), DIM, bar(wcw, wt, 22), 100*wcw/wt, R
+      printf "  cache READ  %10s raw -> %9s  %s%s %2.0f%%%s\n", human(CR), human(wcr), DIM, bar(wcr, wt, 22), 100*wcr/wt, R
+      printf "  output      %10s raw -> %9s  %s%s %2.0f%%%s\n", human(OU), human(wou), DIM, bar(wou, wt, 22), 100*wou/wt, R
+      if (TREQ) printf "  %s%.0f%% of requests carry more than 200k of context%s\n", DIM, 100*BIG/TREQ, R
+
+      printf "\n%stop projects (7 d)%s\n", B, R
+      for (p in P) if (P[p] > pm) pm = P[p]
+      k = 0; for (p in P) arr[++k] = P[p] SUBSEP p
+      for (i = 1; i <= k; i++) for (j = i+1; j <= k; j++) {
+        split(arr[i], x, SUBSEP); split(arr[j], y, SUBSEP)
+        if (y[1] + 0 > x[1] + 0) { t = arr[i]; arr[i] = arr[j]; arr[j] = t } }
+      for (i = 1; i <= k && i <= 6; i++) { split(arr[i], x, SUBSEP)
+        printf "  %-42.42s %9s  %s%s%s\n",
+               (x[2] in pdir ? tilde(pdir[x[2]]) : x[2]), human(x[1]), DIM, bar(x[1], pm, 16), R }
+
+      printf "\n%smain sessions vs everything they spawn (7 d)%s\n", B, R
+      tot = MAIN + SUBC + 0.001
+      printf "  %s %9s  %s%s %2.0f%%%s\n", upad("main sessions", 42), human(MAIN), DIM, bar(MAIN, tot, 16), 100*MAIN/tot, R
+      k = 0; for (a in SA) arr2[++k] = SA[a] SUBSEP a
+      for (i = 1; i <= k; i++) for (j = i+1; j <= k; j++) {
+        split(arr2[i], x, SUBSEP); split(arr2[j], y, SUBSEP)
+        if (y[1] + 0 > x[1] + 0) { t = arr2[i]; arr2[i] = arr2[j]; arr2[j] = t } }
+      for (i = 1; i <= k && i <= 7; i++) { split(arr2[i], x, SUBSEP)
+        printf "  %s %9s  %s%s %2.0f%%%s\n", upad("⑂ " x[2], 42), human(x[1]), DIM, bar(x[1], tot, 16), 100*x[1]/tot, R }
+
+      nwf = 0; for (w in WF) nwf++
+      if (nwf) {
+        printf "\n%sworkflow runs (7 d) — %d of them%s\n", B, nwf, R
+        k = 0; for (w in WF) arr3[++k] = WF[w] SUBSEP w
+        for (i = 1; i <= k; i++) for (j = i+1; j <= k; j++) {
+          split(arr3[i], x, SUBSEP); split(arr3[j], y, SUBSEP)
+          if (y[1] + 0 > x[1] + 0) { t = arr3[i]; arr3[i] = arr3[j]; arr3[j] = t } }
+        for (i = 1; i <= k && i <= 5; i++) { split(arr3[i], x, SUBSEP)
+          printf "  %-42.42s %9s  %s%d requests%s\n", x[2], human(x[1]), DIM, WFR[x[2]], R }
+      }
+    }'
+  echo
+  printf '\033[1mheaviest sessions (7 d)\033[0m\n'
+  sessions 7d | sort -t"$TAB" -k2,2nr | head -8 |
+  while IFS="$TAB" read -r sid c reqs ctx last slug subc nsub c5h; do
+    printf '  \033[90m%-9.9s\033[0m %9s %6s req  ctx %5.0fk  sub %7s  \033[90m%s\033[0m\n' \
+      "$sid" \
+      "$(awk -v v="$c" 'BEGIN{ if (v>=1e6) printf "%.1fM", v/1e6; else if (v>=1e3) printf "%.0fk", v/1e3; else printf "%d", v }')" \
+      "$reqs" "$(( ctx / 1000 ))" \
+      "$(awk -v v="$subc" 'BEGIN{ if (v>=1e6) printf "%.1fM", v/1e6; else if (v>=1e3) printf "%.0fk", v/1e3; else printf "%d", v }')" \
+      "$(origin_dir "$sid" "$slug")"
+  done
+}
+
+json() {
+  [ -s "$FACTS" ] || { echo '{"error":"no data"}'; return 1; }
+  awk -F"$TAB" -v cut="$(( $(date +%s) - $(since_secs "${1:-7d}") ))" '
+    function cost(i,c5,c1,cr,o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
+    $1 + 0 >= cut { C[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += cost($9,$10,$11,$12,$13)
+                    R[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += $8 }
+    END { printf "["; first = 1
+      for (k in C) { split(k, a, SUBSEP)
+        printf "%s{\"project\":\"%s\",\"session\":\"%s\",\"who\":\"%s\",\"cost\":%d,\"requests\":%d}",
+               (first ? "" : ","), a[1], a[2], a[3], C[k], R[k]; first = 0 }
+      print "]" }' "$FACTS"
+}
+
+# ---------------------------------------------------------------------------
+
+SINCE=7d; DIM=""; DO_UPDATE=1
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --by)       DIM=${2:-project}; shift 2 ;;
+    --since)    SINCE=${2:-7d}; shift 2 ;;
+    --sessions) DIM=__sessions; shift ;;
+    --session)  DIM=__detail; SID=${2:-}; shift 2 ;;
+    --burn)     DIM=__burn; shift ;;
+    --json)     DIM=__json; shift ;;
+    --update)   update 0; exit $? ;;
+    --rebuild)  update 1; exit $? ;;
+    --no-update) DO_UPDATE=0; shift ;;
+    -h|--help)  sed -n '3,36p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *)          echo "tusage: unknown option $1" >&2; exit 2 ;;
+  esac
+done
+
+[ "$DO_UPDATE" = 1 ] && update 0
+
+case "$DIM" in
+  "")          summary ;;
+  __sessions)  sessions "$SINCE" ;;
+  __detail)    session_detail "${SID:-}" ;;
+  __burn)      burn ;;
+  __json)      json "$SINCE" ;;
+  *)           report_by "$DIM" "$SINCE" ;;
+esac

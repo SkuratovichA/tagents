@@ -35,8 +35,12 @@ if [ -z "$pane" ]; then
       }')
 fi
 [ -n "$pane" ] || exit 0
+# A pane id is %<number>. Anything else means the walk above latched onto
+# something that is not a pane, and writing it out would leave junk state files
+# named after nothing (that is where a stray ".tsv" comes from).
+case "$pane" in %[0-9]*) ;; *) exit 0 ;; esac
 
-dir="$HOME/.claude/agent-state"
+dir=${TA_STATE_DIR:-$HOME/.claude/agent-state}
 mkdir -p "$dir/sub" 2>/dev/null || exit 0
 
 payload=$(cat 2>/dev/null) || exit 0
@@ -80,6 +84,34 @@ EOF
 
 key=${pane#%}
 now=$(date +%s)
+
+# ---------------------------------------------------------------------------
+# Append-only history, read by `tagents --timeline`. Only three event kinds get
+# logged, so this stays a handful of lines per session instead of one per tool
+# call: session start, end of a turn — which is what makes "was working at this
+# time" derivable even for a session killed without SessionEnd — and end.
+# ---------------------------------------------------------------------------
+if [ -z "${agent:-}" ]; then
+  hist=
+  case "$event" in
+    SessionStart) hist=start ;;
+    Stop)         hist=turn ;;
+    SessionEnd)   hist=end ;;
+  esac
+  if [ -n "$hist" ]; then
+    if [ "$hist" = start ] && [ -e "$dir/history.tsv" ]; then
+      # Rotate on start only: rare enough that the size check costs nothing.
+      sz=$(wc -c <"$dir/history.tsv" 2>/dev/null || echo 0)
+      [ "${sz:-0}" -gt 5242880 ] && mv -f "$dir/history.tsv" "$dir/history.tsv.1"
+    fi
+    # TA_LABEL is optional: export it before starting claude and the timeline
+    # has a name for the session from its first line, without waiting for one to
+    # be typed in the dashboard.
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$now" "$hist" "${sid:-}" "$pane" "${TA_LABEL:-}" "${cwd:-}" \
+      >>"$dir/history.tsv" 2>/dev/null
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # Subagents are tracked per (pane, agent_id) so the dashboard can show how much
