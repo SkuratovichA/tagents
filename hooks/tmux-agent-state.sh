@@ -85,6 +85,20 @@ EOF
 key=${pane#%}
 now=$(date +%s)
 
+# A session started as a BACKGROUND JOB has no $TMUX_PANE, so the walk above
+# resolves it to whatever pane its ancestor chain reaches — which is the pane of
+# the session that spawned it, already occupied by a different, live
+# conversation. Keying state by pane then makes the two silently overwrite each
+# other: the parent agent's row starts showing the background job's session id,
+# name and token counts. Observed live. Give the intruder its own key rather
+# than letting it steal the pane's.
+if [ -z "${TMUX_PANE:-}" ] && [ -n "${sid:-}" ] && [ -e "$dir/$key.tsv" ]; then
+  owner=$(awk -F'	' 'NR==1 { print $3 }' "$dir/$key.tsv" 2>/dev/null)
+  if [ -n "$owner" ] && [ "$owner" != "$sid" ]; then
+    key="s-$sid"
+  fi
+fi
+
 # ---------------------------------------------------------------------------
 # Append-only history, read by `tagents --timeline`. Only three event kinds get
 # logged, so this stays a handful of lines per session instead of one per tool

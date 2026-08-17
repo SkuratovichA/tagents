@@ -163,7 +163,13 @@ state_files() {
   for f in "$STATE_DIR"/*.tsv; do
     [ -e "$f" ] || continue
     b=${f##*/}; b=${b%.tsv}
-    case $b in ''|*[!0-9]*) continue ;; esac
+    # <pane number>.tsv, or s-<session id>.tsv for a session with no pane of its
+    # own (a background job, which would otherwise overwrite the record of the
+    # pane it happens to descend from).
+    case $b in
+      s-?*) ;;
+      ''|*[!0-9]*) continue ;;
+    esac
     printf '%s\n' "$f"
   done
 }
@@ -894,6 +900,17 @@ dock_here() {
   [ "$cur" = "$pane" ] && { tmux select-pane -t "$pane" 2>/dev/null; return 0; }
 
   slot=$(here_slot "$win")
+  # Same trap as the dedicated dashboard (see ensure_slot): when the agent that
+  # was docked here exits, its pane dies in THIS window while the placeholder
+  # stays stranded in the window it was swapped into. here_slot still finds it,
+  # and swapping against it would fling the next agent into that stranded
+  # window — the right-hand pane "disappearing". So if this window has no right
+  # half any more, fetch the placeholder back before swapping anything.
+  if [ -n "$slot" ] && [ -z "$cur" ] &&
+     [ "$(tmux display -p -t "$slot" '#{window_id}' 2>/dev/null)" != "$win" ]; then
+    tmux join-pane -h -d -s "$slot" -t "$host" -l "$((100 - DASH_WIDTH))%" 2>/dev/null ||
+      { tmux kill-pane -t "$slot" 2>/dev/null; slot=""; }
+  fi
   if [ -z "$slot" ]; then
     slot=$(tmux split-window -h -d -P -F '#{pane_id}' -l "$((100 - DASH_WIDTH))%" \
              -t "$host" "exec '$SELF' --slot" 2>/dev/null) || return 1
@@ -907,6 +924,8 @@ dock_here() {
   fi
   tmux swap-pane -d -s "$pane" -t "$slot" 2>/dev/null || return 1
   tmux set -p -t "$pane" @tagents_docked "$win" 2>/dev/null
+  tmux set -p -t "$slot" @tagents_parked "$pane" 2>/dev/null
+  install_focus_hooks
   tmux select-window -t "$win" 2>/dev/null
   tmux select-pane -t "$pane" 2>/dev/null
 }
@@ -964,15 +983,24 @@ ask_send() {
 }
 
 refresher() {
-  local port=${TA_PORT:-} tick=0
+  local port=${TA_PORT:-} tick=0 dp
   [ -z "$port" ] && return 0
   while sleep 2; do
     # Advance the token index out here, not in list(): parsing the tail of every
     # transcript costs a few hundred milliseconds, and a keystroke must never
     # wait on it. Every 5th tick is ~10s of lag on a number that moves slowly.
     tick=$(( (tick + 1) % 5 ))
-    [ "$tick" = 0 ] && command -v tusage >/dev/null 2>&1 &&
-      tusage --update >/dev/null 2>&1
+    if [ "$tick" = 0 ]; then
+      command -v tusage >/dev/null 2>&1 && tusage --update >/dev/null 2>&1
+      # Self-heal the sidebar. When a docked agent's Claude exits, its pane dies
+      # inside the dashboard window and the right half is simply gone until
+      # something docks again. Put it back on its own rather than making the
+      # user notice and work out what happened.
+      dp=$(dash_pane)
+      if [ -n "$dp" ] && [ "$(tmux display -p -t "$dp" '#{window_panes}' 2>/dev/null)" = 1 ]; then
+        ensure_slot "$dp" >/dev/null 2>&1
+      fi
+    fi
     curl -s -XPOST "http://127.0.0.1:$port" -d "reload-sync($SELF --list)" \
       >/dev/null 2>&1 || break
   done
@@ -997,6 +1025,45 @@ docked_pane() {  # whatever currently occupies the dashboard window's right half
   tmux list-panes -t "$dp" -F '#{pane_id}' 2>/dev/null | grep -vx -- "$dp" | head -1
 }
 
+# GOING TO THE PANE IS THE UNDOCK. Docking physically moves the agent's pane
+# into the dashboard and leaves this placeholder in its seat, so the pane in
+# your own session stops showing the agent — it reads as if tmux had taken the
+# pane hostage. The old text told you to press ctrl-x, which is an fzf binding
+# that exists only inside the dashboard and does nothing whatsoever here.
+#
+# So there is no key any more: focusing the placeholder IS the request to have
+# the agent back, and it is swapped home the instant you arrive.
+unpark() {  # <pane-id> — if this is a placeholder, bring its agent back here
+  local sp=${1:-} agent
+  [ -n "$sp" ] || return 0
+  [ "$(tmux display -p -t "$sp" '#{@tagents_slot}' 2>/dev/null)" = 1 ] || return 0
+  agent=$(tmux display -p -t "$sp" '#{@tagents_parked}' 2>/dev/null)
+  [ -n "$agent" ] || return 0
+  if ! tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx -- "$agent"; then
+    tmux set -up -t "$sp" @tagents_parked 2>/dev/null    # agent is gone
+    return 0
+  fi
+  tmux set -up -t "$agent" @tagents_docked 2>/dev/null
+  tmux set -up -t "$sp" @tagents_parked 2>/dev/null
+  tmux swap-pane -d -s "$agent" -t "$sp" 2>/dev/null || return 0
+  tmux select-pane -t "$agent" 2>/dev/null
+}
+
+# Installed the first time anything is docked, so a user who never docks gets no
+# hooks at all. Several events because pane-focus-in alone misses arriving from
+# another window or another session.
+install_focus_hooks() {
+  # if-shell -F evaluates a tmux format WITHOUT spawning anything, so the script
+  # only ever runs when the pane you just focused really is a placeholder.
+  # These hooks fire on every pane switch; a bash start-up on each one would be
+  # a tax on simply moving around tmux.
+  local ev cmd
+  cmd="if-shell -F '#{@tagents_slot}' \"run-shell -b \\\"'$SELF' --unpark '#{pane_id}'\\\"\""
+  for ev in pane-focus-in after-select-pane after-select-window client-session-changed; do
+    tmux set-hook -g "$ev" "$cmd" 2>/dev/null
+  done
+}
+
 # The placeholder that holds the right half open while nothing is docked. It
 # also stands in for an agent while that agent is docked, so it says where the
 # agent went when it finds itself outside the dashboard window.
@@ -1012,27 +1079,63 @@ slot() {
         printf '   pick an agent on the left and press enter —\n'
         printf '   it is swapped in here, live, ready to type into.\n'
       else
-        printf '   this pane'\''s agent is docked in the "%s" dashboard.\n' "$DASH_SESSION"
-        printf '   prefix+A to go there, or undock it with ctrl-x.\n'
+        printf '   this pane'\''s agent is being shown in the "%s" dashboard.\n' "$DASH_SESSION"
+        printf '   it comes straight back the moment you focus this pane.\n'
       fi
       printf '\033[0m'
+    fi
+    # Belt and braces for the focus hooks: if this placeholder is the pane the
+    # user is actually looking at, hand the agent back without waiting for an
+    # event that may never arrive (focus-events off, an older tmux, a hook
+    # someone else overwrote).
+    if [ "$(tmux display -p -t "${TMUX_PANE:-}" \
+              '#{&&:#{pane_active},#{&&:#{window_active},#{session_attached}}}' 2>/dev/null)" = 1 ]; then
+      unpark "${TMUX_PANE:-}"
     fi
     sleep 2
   done
 }
 
+# THE PANE THAT DISAPPEARED. Docking is a swap: the agent comes into the
+# dashboard window and the placeholder goes out to the agent's own window. When
+# that agent's Claude then exits, its pane dies *inside the dashboard window*,
+# so the right half is gone — and the placeholder is left stranded in whatever
+# window it was swapped into. slot_pane() searches every window, so it still
+# finds it, concludes there is nothing to repair, and the next dock swaps the
+# next agent into that stranded window instead of the dashboard. From the
+# outside: the right-hand pane with Claude in it vanishes.
+#
+# So the two questions have to be asked separately: "is the dashboard's right
+# half there?" is about THIS window, while "where does a docked agent go home
+# to?" is about the placeholder wherever it currently lives.
 ensure_slot() {  # print the placeholder's pane id, creating or repairing it
-  local dp=$1 sp cur
-  sp=$(slot_pane)
-  if [ -z "$sp" ]; then
-    # Placeholder was killed. If a real agent is sitting in the right half,
-    # push it out to its own window first so we do not end up with three panes.
-    cur=$(docked_pane "$dp")
-    [ -n "$cur" ] && tmux break-pane -d -s "$cur" 2>/dev/null
-    sp=$(tmux split-window -h -d -P -F '#{pane_id}' -l "$((100 - DASH_WIDTH))%" \
-           -t "$dp" "exec '$SELF' --slot" 2>/dev/null) || return 1
-    tmux set -p -t "$sp" @tagents_slot 1 2>/dev/null
+  local dp=$1 sp cur win
+  win=$(tmux display -p -t "$dp" '#{window_id}' 2>/dev/null)
+  cur=$(docked_pane "$dp")
+  if [ -n "$cur" ]; then
+    # Right half is occupied — by the placeholder itself, or by a live agent
+    # whose way home is the placeholder wherever it sits. Nothing to repair.
+    sp=$(slot_pane)
+    [ -n "$sp" ] && { printf '%s' "$sp"; return 0; }
+    # Occupied, but the placeholder is gone entirely: the docked agent has no
+    # way back. Give it one by breaking it out to its own window again.
+    tmux break-pane -d -s "$cur" 2>/dev/null
   fi
+
+  # Right half is empty. Bring the placeholder back if it still exists — moving
+  # it, not copying, so no third pane appears anywhere.
+  sp=$(slot_pane)
+  if [ -n "$sp" ] && [ -n "$win" ]; then
+    if tmux join-pane -h -d -s "$sp" -t "$dp" -l "$((100 - DASH_WIDTH))%" 2>/dev/null; then
+      printf '%s' "$sp"; return 0
+    fi
+    # join-pane refuses when that placeholder is its window's only pane and the
+    # window would vanish; killing it and splitting a fresh one is equivalent.
+    tmux kill-pane -t "$sp" 2>/dev/null
+  fi
+  sp=$(tmux split-window -h -d -P -F '#{pane_id}' -l "$((100 - DASH_WIDTH))%" \
+         -t "$dp" "exec '$SELF' --slot" 2>/dev/null) || return 1
+  tmux set -p -t "$sp" @tagents_slot 1 2>/dev/null
   printf '%s' "$sp"
 }
 
@@ -1096,6 +1199,11 @@ dock() {
   # in. The placeholder is the marker for "the empty right half".
   [ -n "$cur" ] && [ "$cur" != "$sp" ] && tmux swap-pane -d -s "$cur" -t "$sp" 2>/dev/null
   tmux swap-pane -d -s "$pane" -t "$sp" 2>/dev/null || return 1
+  # The placeholder now sits in the agent's seat; record whose seat it is, so
+  # focusing it can hand the agent straight back.
+  tmux set -p -t "$sp" @tagents_parked "$pane" 2>/dev/null
+  tmux set -p -t "$pane" @tagents_docked "$(dash_window)" 2>/dev/null
+  install_focus_hooks
   tmux select-window -t "$(dash_window)" 2>/dev/null
   tmux select-pane -t "$pane" 2>/dev/null
 }
@@ -1268,6 +1376,7 @@ case "${1:-}" in
   --counts)       counts ;;
   --preview)      preview "${2:-}" "${3:-}" ;;
   --slot)         slot ;;
+  --unpark)       unpark "${2:-}" ;;
   --refresher)    refresher ;;
   --ensure-dash)  ensure_dash ;;
   --goto)         goto "${2:-}" ;;
