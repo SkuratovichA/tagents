@@ -22,7 +22,7 @@
 # switches to one flat list ordered purely by urgency.
 #
 # Claude sessions have no names of their own, so each row shows that session's
-# terminal title (what /rename sets) until you name it with ctrl-n. Names are
+# terminal title (what /rename sets) until you name it with ctrl-r. Names are
 # keyed by session id, so they survive docking, resuming and the pane being
 # moved; when the agent has its tmux window to itself the window is renamed to
 # match, which is what makes the status bar and prefix+w findable too.
@@ -43,19 +43,36 @@
 # exited are listed as closed, dimmed and sorted below everything live, and
 # enter restarts them with `claude --resume <id>` (see RESUME_CMD).
 #
-# The dedicated dashboard session is a sidebar: the list on the left, the
-# selected agent's own pane docked on the right, swapped in live so you can type
-# into it. Enter only changes the right half; the list is never disturbed.
+# The dashboard is a sidebar: the list on the left, the selected agent's own pane
+# docked on the right, swapped in live so you can type into it. Enter only changes
+# the right half; the list is never disturbed.
+#
+# WHEREVER THE LIST IS, THAT IS THE SIDEBAR. Run it in a pane — the dedicated
+# session, a split, any window at all — and it claims that pane, so enter docks
+# the chat into the right half of that same window and leaves the cursor in it.
+# You are never taken anywhere. The one exception is the popup, which has no pane
+# of its own to claim and nowhere to put a right half, so it hands the chat to the
+# dedicated sidebar and takes you there.
+#
+# Two bugs lived here. Enter used to dock into the right half of whatever window
+# the POPUP had been opened over — nearly always a window you were reading a chat
+# in — so it stood a second chat next to yours with no list in sight, and left a
+# stranded placeholder pane behind. Then, with that fixed, enter followed a marker
+# to find the sidebar; the marker had drifted onto a Claude chat in another window,
+# so enter docked beside that chat and switched the client there, abandoning the
+# list. Hence claim_dash(): the list running in a pane is the sidebar, by
+# definition, and no marker gets to disagree. See open_agent() for the rest.
 #
 # Keys inside the dashboard:
-#   enter / dbl-click  dock that agent's pane into the right half of the window
-#                      you are looking at, splitting it on demand, and put the
-#                      cursor in it. The agent's own window keeps its pane count
-#                      and layout (a placeholder is swapped into its place), so
-#                      nothing is moved or destroyed and ctrl-x reverses it.
+#   enter / dbl-click  dock that agent's pane into the sidebar's right half,
+#                      splitting it on demand, and put the cursor in it. The
+#                      agent's own window keeps its pane count and layout (a
+#                      placeholder is swapped into its place), so nothing is
+#                      moved or destroyed and ctrl-x reverses it.
 #                      On a closed session: resume it, then dock it.
 #                      On a group header: act on the group's most urgent agent.
-#   ctrl-g             go to the agent where it lives instead
+#   ctrl-g             go to the agent where it lives instead, leaving the
+#                      sidebar out of it
 #   ctrl-o             borrow the agent's whole WINDOW into this session via
 #                      link-window (the old enter behaviour), leaving it in its
 #                      own session too
@@ -63,15 +80,27 @@
 #                      (ctrl-s does the same; it only works because the
 #                      dashboard turns off terminal flow control, where ctrl-s
 #                      would otherwise be XOFF and freeze the pane's output)
-#   ctrl-n             name this agent; an empty name goes back to its title
+#   ctrl-n             start a NEW agent in the project under the cursor, with
+#                      `claude --dangerously-skip-permissions` (TA_NEW_CMD).
+#                      Works on a group header and on an agent row alike — both
+#                      name a project. The window is opened in the tmux session
+#                      that already owns that project's windows, so the new chat
+#                      joins its siblings rather than landing under "agents";
+#                      only a project with no windows left falls back to the
+#                      dashboard session. It does NOT dock and does NOT move you:
+#                      the list stays on screen, the new agent shows up in the
+#                      tree on the next refresh, and enter opens it like any
+#                      other agent. See new_agent().
+#   ctrl-r             name this agent; an empty name goes back to its title
 #                      (F2 does the same, for keyboards that have an F-row;
 #                      set TA_RENAME_KEY to move it somewhere else)
-#   ctrl-x             undock (send the docked pane home), or give a borrowed
-#                      window back when running outside the dashboard
+#   ctrl-x             undock — send the docked pane home. With nothing docked,
+#                      give a borrowed window back instead (unlink it from this
+#                      session only)
 #   ctrl-t             toggle tree / flat
 #   ctrl-v             show the text preview (hidden while docking, where the
 #                      docked pane is the live thing itself)
-#   ctrl-r             refresh now
+#   ctrl-l             refresh now
 #   ctrl-q             quit (only way out of the dedicated session — Esc and
 #                      ctrl-c are absorbed there so the dashboard cannot be
 #                      closed by accident; in the popup Esc closes it normally)
@@ -93,11 +122,15 @@ SUB_TTL=${TA_SUB_TTL:-1800}
 DEAD_TTL=${TA_DEAD_TTL:-86400}  # how long a closed session stays offered for resume
 DASH_WIDTH=${TA_WIDTH:-45}    # percent of the dashboard window the list occupies
 RESUME_CMD=${TA_RESUME_CMD:-claude --dangerously-skip-permissions --resume}
+# Starting a fresh agent in a project, as opposed to resuming a closed one.
+NEW_CMD=${TA_NEW_CMD:-claude --dangerously-skip-permissions}
 # Naming an agent is bound here rather than to a function key: a Mac keyboard
 # either has no F-row at all or needs fn held down for it, which is no way to
-# reach a key you use constantly. ctrl-n costs fzf its second "move down"
-# binding — ctrl-j and the arrows still do that — and F2 stays as an alias.
-RENAME_KEY=${TA_RENAME_KEY:-ctrl-n}
+# reach a key you use constantly. ctrl-r costs fzf nothing it does not already
+# have another key for, and F2 stays as an alias. It used to be ctrl-n, which
+# ctrl-n now needs for "new agent here"; refresh moved off ctrl-r to ctrl-l, the
+# terminal's own redraw key, to make room.
+RENAME_KEY=${TA_RENAME_KEY:-ctrl-r}
 TAB=$'\t'
 US=$'\037'   # unit separator: unlike tab it is not IFS whitespace, so `read`
              # keeps empty fields instead of silently shifting the rest left
@@ -291,7 +324,7 @@ pane_for_sid() {
   done | head -1
 }
 
-# The --label entry point: same as ctrl-n, for scripts and for naming an agent from
+# The --label entry point: same as ctrl-r, for scripts and for naming an agent from
 # somewhere other than the dashboard.
 label_cmd() {
   local keyv=$1 name=${2:-} pane
@@ -865,81 +898,6 @@ borrow() {  # bring the agent's window into $home without moving it out of its o
   tmux switch-client -t "$home" 2>/dev/null
 }
 
-# Enter should put the agent NEXT to the list, not somewhere else entirely.
-# Outside the dedicated dashboard the old behaviour was link-window, which drops
-# the agent's whole WINDOW into your session as a new window — so instead of the
-# chat appearing beside you, the screen changed to a different window. This
-# docks the agent's pane into the right half of the window the dashboard was
-# opened over, creating that half on demand.
-#
-# swap-pane, never join-pane: a swap leaves both windows with the same pane
-# count and layout, so the agent's own window is neither rebuilt nor destroyed
-# when the agent was its only pane, and the move is exactly reversible.
-here_slot() {   # <window-id> -> the placeholder that belongs to that window
-  tmux list-panes -a -F '#{pane_id} #{@tagents_slot} #{@tagents_home}' 2>/dev/null |
-    awk -v w="$1" '$2 == "1" && $3 == w { print $1; exit }'
-}
-here_docked() { # <window-id> -> the agent currently swapped into that window
-  tmux list-panes -t "$1" -F '#{pane_id} #{@tagents_docked}' 2>/dev/null |
-    awk -v w="$1" '$2 == w { print $1; exit }'
-}
-
-dock_here() {
-  local pane=$1 host win slot cur
-  [ "$pane" = "-" ] && return 0
-  # $TMUX_PANE is empty inside display-popup; the client's active pane is the
-  # pane the popup was opened over, which is exactly what to dock beside.
-  # TA_DOCK_HOST overrides it — needed to test this without a client attached.
-  host=${TA_DOCK_HOST:-$(tmux display-message -p '#{pane_id}' 2>/dev/null)}
-  [ -n "$host" ] || return 1
-  win=$(tmux display -p -t "$host" '#{window_id}' 2>/dev/null)
-  [ -n "$win" ] || return 1
-  [ "$pane" = "$host" ] && return 0
-
-  cur=$(here_docked "$win")
-  [ "$cur" = "$pane" ] && { tmux select-pane -t "$pane" 2>/dev/null; return 0; }
-
-  slot=$(here_slot "$win")
-  # Same trap as the dedicated dashboard (see ensure_slot): when the agent that
-  # was docked here exits, its pane dies in THIS window while the placeholder
-  # stays stranded in the window it was swapped into. here_slot still finds it,
-  # and swapping against it would fling the next agent into that stranded
-  # window — the right-hand pane "disappearing". So if this window has no right
-  # half any more, fetch the placeholder back before swapping anything.
-  if [ -n "$slot" ] && [ -z "$cur" ] &&
-     [ "$(tmux display -p -t "$slot" '#{window_id}' 2>/dev/null)" != "$win" ]; then
-    tmux join-pane -h -d -s "$slot" -t "$host" -l "$((100 - DASH_WIDTH))%" 2>/dev/null ||
-      { tmux kill-pane -t "$slot" 2>/dev/null; slot=""; }
-  fi
-  if [ -z "$slot" ]; then
-    slot=$(tmux split-window -h -d -P -F '#{pane_id}' -l "$((100 - DASH_WIDTH))%" \
-             -t "$host" "exec '$SELF' --slot" 2>/dev/null) || return 1
-    tmux set -p -t "$slot" @tagents_slot 1 2>/dev/null
-    tmux set -p -t "$slot" @tagents_home "$win" 2>/dev/null
-  fi
-  # whoever is docked here right now goes back where they came from first
-  if [ -n "$cur" ]; then
-    tmux set -up -t "$cur" @tagents_docked 2>/dev/null
-    tmux swap-pane -d -s "$cur" -t "$slot" 2>/dev/null
-  fi
-  tmux swap-pane -d -s "$pane" -t "$slot" 2>/dev/null || return 1
-  tmux set -p -t "$pane" @tagents_docked "$win" 2>/dev/null
-  tmux set -p -t "$slot" @tagents_parked "$pane" 2>/dev/null
-  install_focus_hooks
-  tmux select-window -t "$win" 2>/dev/null
-  tmux select-pane -t "$pane" 2>/dev/null
-}
-
-undock_here() {
-  local host win cur slot
-  host=${TA_DOCK_HOST:-$(tmux display-message -p '#{pane_id}' 2>/dev/null)}
-  win=$(tmux display -p -t "${host:-}" '#{window_id}' 2>/dev/null) || return 0
-  cur=$(here_docked "$win"); [ -n "$cur" ] || return 0
-  slot=$(here_slot "$win"); [ -n "$slot" ] || return 0
-  tmux set -up -t "$cur" @tagents_docked 2>/dev/null
-  tmux swap-pane -d -s "$cur" -t "$slot" 2>/dev/null
-}
-
 goto() {
   local pane=$1 sess win
   [ "$pane" = "-" ] && return 0
@@ -1008,13 +966,84 @@ refresher() {
 
 # Markers, not names: tmux renames windows after whatever command is running,
 # and the placeholder pane travels between windows, so both need stable handles.
-dash_window() {
-  tmux list-windows -t "=$DASH_SESSION" -F '#{window_id} #{@tagents}' 2>/dev/null |
-    awk '$2 == "1" { print $1; exit }'
-}
+#
+# THE SIDEBAR IS WHEREVER THE LIST IS. Both of these used to be answered by a
+# marker and nothing else, and a marker outlives the thing it describes.
+# ensure_dash can only guess which pane the list is in — the first pane of the
+# window — and a guess made once drifts as panes are docked, swapped and killed
+# around it. Observed: @tagents_dash sat on a pane the list had long since left,
+# a Claude chat was started in that pane, and so a chat became "the dashboard
+# pane". Enter then docked beside it, in a window the list was not even in, and
+# switched the client there — the list left behind, the screen somewhere else.
+# So the pane answers first and the marker is only the fallback, and claim_dash
+# keeps the marker honest for as long as a list is actually running.
 dash_pane() {
   tmux list-panes -a -F '#{pane_id} #{@tagents_dash}' 2>/dev/null |
     awk '$2 == "1" { print $1; exit }'
+}
+dash_window() {   # the window the list sits in — the sidebar, wherever that is
+  local dp
+  dp=$(dash_pane)
+  if [ -n "$dp" ]; then
+    tmux display -p -t "$dp" '#{window_id}' 2>/dev/null
+    return 0
+  fi
+  dash_session_window   # no list running: the window kept for one
+}
+# TWO DIFFERENT QUESTIONS. "Where is the sidebar right now" is answered by the
+# pane the list is in (dash_window, above). "Which window does the dedicated
+# session keep for a list" is answered by the marker alone, and ensure_dash needs
+# that one: it re-homes a marker that has drifted, so it cannot take the drifted
+# pane's own window as the answer it is checking against.
+dash_session_window() {
+  tmux list-windows -t "=$DASH_SESSION" -F '#{window_id} #{@tagents}' 2>/dev/null |
+    awk '$2 == "1" { print $1; exit }'
+}
+
+# The list claims the pane it is running in. Nothing else can know as reliably,
+# and any older claim is dropped, so exactly one pane and one window are ever the
+# sidebar however many lists have come and gone.
+claim_dash() {
+  local me=${TMUX_PANE:-} win old
+  [ -n "$me" ] || return 1
+  win=$(tmux display -p -t "$me" '#{window_id}' 2>/dev/null)
+  [ -n "$win" ] || return 1
+  tmux list-panes -a -F '#{pane_id} #{@tagents_dash}' 2>/dev/null |
+    awk -v me="$me" '$2 == "1" && $1 != me { print $1 }' |
+    while IFS= read -r old; do tmux set -up -t "$old" @tagents_dash 2>/dev/null; done
+  tmux list-windows -a -F '#{window_id} #{@tagents}' 2>/dev/null |
+    awk -v w="$win" '$2 == "1" && $1 != w { print $1 }' |
+    while IFS= read -r old; do tmux set -uw -t "$old" @tagents 2>/dev/null; done
+  tmux set -p -t "$me" @tagents_dash 1 2>/dev/null
+  tmux set -w -t "$win" @tagents 1 \; set -w -t "$win" automatic-rename off 2>/dev/null
+  return 0
+}
+
+# ...and gives the claim up on the way out, because what runs in this pane next is
+# very often a Claude chat, and that is exactly how a chat came to be mistaken for
+# the list. A pane that is killed outright cannot run this, which is why
+# claim_dash clears stale claims rather than trusting them to be gone.
+release_dash() {
+  local me=${TMUX_PANE:-} win sess
+  [ -n "$me" ] || return 0
+  [ "$(tmux display -p -t "$me" '#{@tagents_dash}' 2>/dev/null)" = 1 ] || return 0
+  tmux set -up -t "$me" @tagents_dash 2>/dev/null
+  sess=$(tmux display -p -t "$me" '#{session_name}' 2>/dev/null)
+  win=$(tmux display -p -t "$me" '#{window_id}' 2>/dev/null)
+  # The dedicated session keeps its window marked — ensure_dash runs the list
+  # there again. A window anywhere else was only the sidebar while the list was
+  # in it, and should not be remembered as one.
+  [ "$sess" = "$DASH_SESSION" ] || tmux set -uw -t "$win" @tagents 2>/dev/null
+  return 0
+}
+
+# Which placeholder is holding a given chat's seat. There can be more than one
+# placeholder about — the list can move to another window, leaving the one it used
+# before still standing in for a chat that is docked — so "the" placeholder is not
+# good enough when the question is "where does THIS chat go home to".
+parked_slot() {  # <pane-id> -> the placeholder standing in for it
+  tmux list-panes -a -F '#{pane_id} #{@tagents_slot} #{@tagents_parked}' 2>/dev/null |
+    awk -v a="$1" '$2 == "1" && $3 == a { print $1; exit }'
 }
 slot_pane() {
   tmux list-panes -a -F '#{pane_id} #{@tagents_slot}' 2>/dev/null |
@@ -1025,6 +1054,37 @@ docked_pane() {  # whatever currently occupies the dashboard window's right half
   tmux list-panes -t "$dp" -F '#{pane_id}' 2>/dev/null | grep -vx -- "$dp" | head -1
 }
 
+# NOT `live_panes | grep -q`: this script runs under pipefail, and grep -q closes
+# the pipe the moment it matches, so live_panes dies of SIGPIPE and the pipeline
+# reports failure on exactly the runs that FOUND something. That inverted every
+# guard built on it — a chat tested as "not an agent" and kept the list marker.
+is_agent_pane() {  # <pane-id> — is a Claude actually running in it?
+  local p list
+  [ -n "${1:-}" ] || return 1
+  list=$(live_panes 2>/dev/null)
+  for p in $list; do
+    [ "$p" = "$1" ] && return 0
+  done
+  return 1
+}
+
+# A pane in the dashboard window that could be the list: not a chat, not a chat
+# that is currently docked here, and not the placeholder marking the empty half.
+dash_candidate() {  # <window-id>
+  local win=$1 p flags list found=""
+  list=$(live_panes 2>/dev/null)
+  while read -r p flags; do
+    [ -n "$p" ] || continue
+    case " $flags " in *" D "*|*" S "*) continue ;; esac
+    case " $list " in *" $p "*) continue ;; esac
+    found=$p
+    break
+  done <<EOF
+$(tmux list-panes -t "$win" -F '#{pane_id}#{?@tagents_docked, D,}#{?@tagents_slot, S,}' 2>/dev/null)
+EOF
+  [ -n "$found" ] && printf '%s\n' "$found"
+}
+
 # GOING TO THE PANE IS THE UNDOCK. Docking physically moves the agent's pane
 # into the dashboard and leaves this placeholder in its seat, so the pane in
 # your own session stops showing the agent — it reads as if tmux had taken the
@@ -1033,20 +1093,37 @@ docked_pane() {  # whatever currently occupies the dashboard window's right half
 #
 # So there is no key any more: focusing the placeholder IS the request to have
 # the agent back, and it is swapped home the instant you arrive.
+#
+# ONLY OUTSIDE THE SIDEBAR, though. In the sidebar's own right half this pane is
+# not standing in for anybody — it is just the marker for "nothing is docked" —
+# and the cursor sits there constantly, since that is where a docked chat is typed
+# into. Without this guard ctrl-x could not work: undock swaps the chat home,
+# leaving the placeholder focused in the right half, and two seconds later this
+# dragged the chat straight back in.
 unpark() {  # <pane-id> — if this is a placeholder, bring its agent back here
   local sp=${1:-} agent
   [ -n "$sp" ] || return 0
   [ "$(tmux display -p -t "$sp" '#{@tagents_slot}' 2>/dev/null)" = 1 ] || return 0
+  [ "$(tmux display -p -t "$sp" '#{window_id}' 2>/dev/null)" = "$(dash_window)" ] && return 0
   agent=$(tmux display -p -t "$sp" '#{@tagents_parked}' 2>/dev/null)
   [ -n "$agent" ] || return 0
   if ! tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx -- "$agent"; then
     tmux set -up -t "$sp" @tagents_parked 2>/dev/null    # agent is gone
     return 0
   fi
-  tmux set -up -t "$agent" @tagents_docked 2>/dev/null
-  tmux set -up -t "$sp" @tagents_parked 2>/dev/null
-  tmux swap-pane -d -s "$agent" -t "$sp" 2>/dev/null || return 0
-  tmux select-pane -t "$agent" 2>/dev/null
+  # ONE KEYPRESS, SEVERAL HOOKS. Arriving at the placeholder can change the pane,
+  # the window and the session at once, and there is a hook on each of those
+  # events on top of the poll in slot(). Two unparks that both read
+  # @tagents_parked before either clears it swap the same two panes twice —
+  # straight back to where they started, with both markers wiped, so the chat
+  # never comes home and the placeholder keeps the seat. The claim has to be
+  # atomic, so the test, the markers and the swap go into one tmux command list:
+  # the server runs a list to completion before the next one, and whoever loses
+  # the race finds the marker already empty and does nothing. Pane ids are %<n>,
+  # so there is nothing here to quote.
+  tmux if-shell -F -t "$sp" '#{@tagents_parked}' \
+    "set -up -t $sp @tagents_parked ; set -up -t $agent @tagents_docked ; \
+     swap-pane -d -s $agent -t $sp ; select-pane -t $agent" 2>/dev/null
 }
 
 # Installed the first time anything is docked, so a user who never docks gets no
@@ -1068,10 +1145,33 @@ install_focus_hooks() {
 # also stands in for an agent while that agent is docked, so it says where the
 # agent went when it finds itself outside the dashboard window.
 slot() {
-  local dwin last="" win
+  local dwin last="" win parked stray=0
   while :; do
     dwin=$(dash_window)
     win=$(tmux display -p -t "${TMUX_PANE:-}" '#{window_id}' 2>/dev/null)
+    # NOBODY'S SEAT LEFT TO KEEP WARM. A placeholder outside the dashboard window
+    # is standing in for one docked agent, and @tagents_parked names it. When that
+    # agent is gone — its Claude exited, or the pane was killed while docked in the
+    # sidebar — this pane is holding somebody else's window hostage for nothing,
+    # over a grey note about a dashboard the agent is not in. That is the pane that
+    # used to have to be hunted down and killed by hand. Exiting closes it, so the
+    # window falls straight back to the layout it had before anything was docked.
+    #
+    # The marker is not enough on its own: unpark only clears it while the user is
+    # actually looking at this pane, so a killed agent leaves it pointing at a pane
+    # id that no longer exists. Ask tmux, not the marker.
+    parked=$(tmux display -p -t "${TMUX_PANE:-}" '#{@tagents_parked}' 2>/dev/null)
+    if [ -n "$parked" ] &&
+       ! tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx -- "$parked"; then
+      parked=""
+    fi
+    # Two ticks, not one: at birth the pane exists a moment before its markers do.
+    if [ -n "$win" ] && [ "$win" != "${dwin:-}" ] && [ -z "$parked" ]; then
+      stray=$((stray + 1))
+      [ "$stray" -ge 2 ] && return 0
+    else
+      stray=0
+    fi
     if [ "$win" != "$last" ]; then
       last=$win
       printf '\033[2J\033[H\033[90m\n'
@@ -1115,17 +1215,34 @@ ensure_slot() {  # print the placeholder's pane id, creating or repairing it
   if [ -n "$cur" ]; then
     # Right half is occupied — by the placeholder itself, or by a live agent
     # whose way home is the placeholder wherever it sits. Nothing to repair.
-    sp=$(slot_pane)
+    # Its own placeholder first: with several about, any other one is a seat
+    # belonging to a different chat, and sending this chat there would drop it in
+    # a window it never came from. A free placeholder is fair game; one that is
+    # parked for somebody else is not, and neither is nothing at all — fall
+    # through and let the occupant be broken out to a window of its own.
+    sp=$(parked_slot "$cur")
+    if [ -z "$sp" ]; then
+      sp=$(slot_pane)
+      [ -n "$sp" ] &&
+        [ -n "$(tmux display -p -t "$sp" '#{@tagents_parked}' 2>/dev/null)" ] && sp=""
+    fi
     [ -n "$sp" ] && { printf '%s' "$sp"; return 0; }
     # Occupied, but the placeholder is gone entirely: the docked agent has no
     # way back. Give it one by breaking it out to its own window again.
     tmux break-pane -d -s "$cur" 2>/dev/null
   fi
 
-  # Right half is empty. Bring the placeholder back if it still exists — moving
-  # it, not copying, so no third pane appears anywhere.
+  # Right half is empty. Bring the placeholder back if there is one going spare —
+  # moving it, not copying, so no third pane appears anywhere. Spare is the word:
+  # a placeholder with @tagents_parked set is keeping a seat for a chat that is
+  # docked right now, and taking it away leaves that chat no way home. If it is
+  # also the only pane in its window, moving it would destroy that window
+  # outright. In either case split a fresh one instead and let the stranded-
+  # placeholder check in slot() clear up whatever was left behind.
   sp=$(slot_pane)
-  if [ -n "$sp" ] && [ -n "$win" ]; then
+  if [ -n "$sp" ] && [ -n "$win" ] &&
+     [ -z "$(tmux display -p -t "$sp" '#{@tagents_parked}' 2>/dev/null)" ] &&
+     [ "$(tmux display -p -t "$sp" '#{window_panes}' 2>/dev/null)" != 1 ]; then
     if tmux join-pane -h -d -s "$sp" -t "$dp" -l "$((100 - DASH_WIDTH))%" 2>/dev/null; then
       printf '%s' "$sp"; return 0
     fi
@@ -1142,7 +1259,7 @@ ensure_slot() {  # print the placeholder's pane id, creating or repairing it
 ensure_dash() {
   local win="" dp
   if tmux has-session -t "=$DASH_SESSION" 2>/dev/null; then
-    win=$(dash_window)
+    win=$(dash_session_window)
     # The session can outlive the dashboard window — a docked or borrowed window
     # keeps it alive on its own — so re-create it rather than assuming it.
     [ -z "$win" ] && win=$(tmux new-window -d -t "$DASH_SESSION:" -n dash -P \
@@ -1154,9 +1271,26 @@ ensure_dash() {
   [ -z "$win" ] && return 1
   tmux set -w -t "$win" @tagents 1 \; set -w -t "$win" automatic-rename off 2>/dev/null
 
+  # THE DASHBOARD PANE IS THE ONE RUNNING THE LIST, and taking "the first pane in
+  # the window" for it is how the marker ended up on a chat: docking swaps an
+  # agent INTO this window, where it is frequently the first pane, so a lost
+  # marker was handed straight to somebody's Claude session. Everything then
+  # docked around that chat and ctrl-n switched the client to a sidebar with no
+  # list in it. Re-home the marker instead of trusting it, and never give it to a
+  # pane that is running an agent.
   dp=$(dash_pane)
+  if [ -n "$dp" ]; then
+    if [ "$(tmux display -p -t "$dp" '#{window_id}' 2>/dev/null)" != "$win" ] || is_agent_pane "$dp"; then
+      tmux set -up -t "$dp" @tagents_dash 2>/dev/null
+      dp=
+    fi
+  fi
   if [ -z "$dp" ]; then
-    dp=$(tmux list-panes -t "$win" -F '#{pane_id}' 2>/dev/null | head -1)
+    dp=$(dash_candidate "$win")
+    # Every pane in the window is a chat or a placeholder — there is no list left
+    # to adopt, so grow one rather than promoting one of them.
+    [ -z "$dp" ] && dp=$(tmux split-window -d -t "$win" -P -F '#{pane_id}' \
+                           -b -h -l "$DASH_WIDTH%" "exec '$SELF'" 2>/dev/null)
     [ -n "$dp" ] && tmux set -p -t "$dp" @tagents_dash 1 2>/dev/null
   fi
   [ -n "$dp" ] && ensure_slot "$dp" >/dev/null
@@ -1171,15 +1305,19 @@ ensure_dash() {
 # panes and the same layout, so nothing anywhere gets rearranged or destroyed.
 # ---------------------------------------------------------------------------
 
-undock() {
+undock() {  # returns 1 when there was nothing docked to send home
   local dp cur sp
-  dp=$(dash_pane) || return 0
-  [ -z "$dp" ] && return 0
+  dp=$(dash_pane); [ -n "$dp" ] || return 1
   cur=$(docked_pane "$dp")
-  sp=$(slot_pane)
-  [ -z "$cur" ] || [ -z "$sp" ] && return 0
-  [ "$cur" = "$sp" ] && return 0          # placeholder already home
-  tmux swap-pane -d -s "$cur" -t "$sp" 2>/dev/null
+  sp=$(parked_slot "$cur"); [ -n "$sp" ] || sp=$(slot_pane)
+  { [ -n "$cur" ] && [ -n "$sp" ]; } || return 1
+  [ "$cur" = "$sp" ] && return 1          # placeholder already home
+  tmux swap-pane -d -s "$cur" -t "$sp" 2>/dev/null || return 1
+  # Both markers are about a pane being away from its seat, and it no longer is.
+  # Leaving them set points the placeholder at a chat that is already home.
+  tmux set -up -t "$cur" @tagents_docked 2>/dev/null
+  tmux set -up -t "$sp" @tagents_parked 2>/dev/null
+  return 0
 }
 
 dock() {
@@ -1197,15 +1335,65 @@ dock() {
   fi
   # Send whoever is docked back to where they came from, then swap the new one
   # in. The placeholder is the marker for "the empty right half".
-  [ -n "$cur" ] && [ "$cur" != "$sp" ] && tmux swap-pane -d -s "$cur" -t "$sp" 2>/dev/null
-  tmux swap-pane -d -s "$pane" -t "$sp" 2>/dev/null || return 1
-  # The placeholder now sits in the agent's seat; record whose seat it is, so
-  # focusing it can hand the agent straight back.
+  if [ -n "$cur" ] && [ "$cur" != "$sp" ]; then
+    tmux swap-pane -d -s "$cur" -t "$sp" 2>/dev/null
+    tmux set -up -t "$cur" @tagents_docked 2>/dev/null   # home again, like undock
+  fi
+  # Whose seat the placeholder is about to sit in, recorded BEFORE the swap that
+  # puts it there, so focusing it can hand the agent straight back. Before, not
+  # after: between the swap and the marker the placeholder is a pane outside the
+  # sidebar with nothing to say it is standing in for anybody, which is exactly
+  # what slot() treats as stranded and closes.
   tmux set -p -t "$sp" @tagents_parked "$pane" 2>/dev/null
+  tmux swap-pane -d -s "$pane" -t "$sp" 2>/dev/null || return 1
   tmux set -p -t "$pane" @tagents_docked "$(dash_window)" 2>/dev/null
   install_focus_hooks
   tmux select-window -t "$(dash_window)" 2>/dev/null
   tmux select-pane -t "$pane" 2>/dev/null
+}
+
+# ONE PLACE A CHAT IS EVER DOCKED, and this is the way in. Enter used to mean
+# something different depending on where the list happened to be running: the
+# sidebar docked into its own right half, while the popup docked into the right
+# half of whatever window it had been opened over (dock_here, now gone). That
+# second behaviour was the bug. The window you open the popup over is nearly
+# always the one you are already reading a chat in, so choosing an agent squeezed
+# your own chat to 45% and stood a second one next to it — no list in sight,
+# since the popup closes the moment it has acted — and choosing an agent that
+# already lived in that window wedged a third, blank placeholder pane between the
+# two.
+#
+# What it left behind was worse than the layout. Every dock parks a placeholder
+# in the agent's vacated seat, and a placeholder is a real pane running this
+# script. Kill the docked chat and that placeholder is stranded: it holds a
+# window hostage behind a grey note about a dashboard the agent is not in, and
+# slot_pane() — which matches @tagents_slot in any window — later hands it to the
+# sidebar as if it were the sidebar's own, flinging the next agent into it.
+#
+# So there is one docking site, the sidebar, and enter always means the same
+# thing: put this chat in the right half and leave the cursor in it, ready to
+# type. From the popup that means coming up the sidebar first and switching to
+# it. Nothing is ever docked into a window you were using for something else, so
+# no placeholder can ever be created outside the one window that knows how to
+# repair itself. (Going to an agent where it lives is still ctrl-g, and borrowing
+# its whole window is still ctrl-o — both untouched, neither is what enter does.)
+open_agent() {  # <pane> — dock into the sidebar and put the cursor in the chat
+  local pane=$1 sess here
+  [ "$pane" = "-" ] && return 0
+  # Bring the dedicated session up only when there is no sidebar at all. A list
+  # running in a pane already is one, and starting the other would be a second.
+  [ -n "$(dash_pane)" ] || ensure_dash >/dev/null 2>&1 || return 1
+  dock "$pane" || return 1
+  # dock has already selected the sidebar window and the chat inside it. Switching
+  # sessions on top of that is right only when the sidebar is in a different one;
+  # doing it unconditionally WAS the redirect — from the window holding the list
+  # to the dedicated session, for no reason, every single time.
+  sess=$(tmux display -p -t "$(dash_pane)" '#{session_name}' 2>/dev/null)
+  here=$(tmux display-message -p '#{session_name}' 2>/dev/null)
+  if [ -n "$sess" ] && [ "$sess" != "$here" ]; then
+    tmux switch-client -t "=$sess" 2>/dev/null
+  fi
+  return 0
 }
 
 # Every key runs through here as a short-lived child of fzf, so fzf itself never
@@ -1215,25 +1403,30 @@ act() {
   local what=${1:-} pane=${2:-} state=${3:-} sid=${4:-} dir=${5:-}
   case "$what" in
     open)
+      # Same thing wherever the list is running: the chat ends up in the sidebar's
+      # right half with the cursor in it. See open_agent().
       if [ "$state" = dead ]; then
         resume_agent "$pane" "$sid" "$dir"
-      elif [ "${TA_CAN_DOCK:-0}" = 1 ]; then
-        dock "$pane"
       else
-        dock_here "$pane"
+        open_agent "$pane"
       fi ;;
     borrow) borrow "$pane" "${TA_HOME:-}" ;;
     goto)   goto "$pane" ;;
     send)   send_line "$pane" ;;
     rename) rename_agent "$pane" "$sid" ;;
+    new)    new_agent "$dir" ;;
     undock)
-      if [ "${TA_CAN_DOCK:-0}" = 1 ]; then undock; else undock_here; fi ;;
+      # Send the docked chat home. With nothing docked, the only other way a
+      # window gets pulled in here is ctrl-o's borrow — undo that instead.
+      undock || give_back "$pane" "${TA_HOME:-}" ;;
   esac
 }
 
 # Restart a closed session with `claude --resume <id>`. Reuse its old pane when
 # that pane still exists and is sitting at a shell; otherwise open a new window
-# in the dashboard session. Either way the result gets docked.
+# in the dashboard session — which has to exist before a window can be opened in
+# it, so the sidebar is brought up first. Either way the result is docked and
+# focused, exactly as enter on a live agent would leave it.
 resume_agent() {
   local pane=$1 sid=$2 dir=$3 cmd cur newpane
   if [ -z "$sid" ]; then
@@ -1251,16 +1444,92 @@ resume_agent() {
         rm -f "$STATE_DIR/${pane#%}.tsv"
         tmux send-keys -t "$pane" -l -- "cd \"$dir\" && $cmd"
         tmux send-keys -t "$pane" Enter
-        dock "$pane"
+        open_agent "$pane"
         return 0 ;;
     esac
   fi
 
   # Pane is gone, or busy with something else — do not type into it.
   rm -f "$STATE_DIR/${pane#%}.tsv"
+  ensure_dash >/dev/null 2>&1 || return 1
   newpane=$(tmux new-window -d -t "$DASH_SESSION:" -P -F '#{pane_id}' \
               -c "$dir" "$cmd" 2>/dev/null) || return 1
-  dock "$newpane"
+  open_agent "$newpane"
+}
+
+# WHICH TMUX SESSION OWNS A PROJECT. A new agent for a project belongs beside
+# that project's other windows, not in the dashboard session — that is what keeps
+# prefix+w, the status bar and `tmux ls` reading as one window list per project
+# rather than a pile of unrelated chats under "agents".
+#
+# Decided by majority vote over the live panes sitting in that directory, NOT by
+# asking the selected pane what session it is in: while an agent is docked its
+# pane really is in the dashboard window (that is what docking does), so the
+# selected row would name the dashboard session for a project that lives
+# somewhere else entirely.
+#
+# What is skipped is the dashboard WINDOW (@tagents), not the dashboard session:
+# the docked chat and the list itself sit in that window and would both vote for
+# the wrong place, while an ordinary window that merely happens to live in the
+# dashboard session is a real home for a project and must still count.
+session_for_dir() {  # <dir> -> session name, empty when the project has no windows
+  local dir=$1
+  [ -n "$dir" ] || return 1
+  tmux list-panes -a -F "#{session_name}$TAB#{pane_current_path}$TAB#{@tagents}" 2>/dev/null |
+    awk -F"$TAB" -v dir="$dir" -v dash="$DASH_SESSION" '
+      $3 != "" { next }                                   # the dashboard window
+      $2 == dir || index($2, dir "/") == 1 { c[$1]++ }
+      END {
+        best = ""; n = -1; bd = -1
+        for (s in c) {
+          # On a tie, a real project session beats the dashboard session: an
+          # ordinary window that happens to live under "agents" is a weaker claim
+          # to being the projects home than any session of its own.
+          nd = (s == dash) ? 0 : 1
+          if (c[s] > n || (c[s] == n && nd > bd) || (c[s] == n && nd == bd && s < best)) {
+            n = c[s]; bd = nd; best = s
+          }
+        }
+        if (best != "") print best
+      }'
+}
+
+# ctrl-n: start a fresh Claude for the project under the cursor. Works on a group
+# header (the project as a whole) and on an agent row (the project it belongs
+# to) — both carry a directory, so both mean the same thing here.
+#
+# The directory is normalised to the repo root, so a session started from
+# ~/repo/packages/client makes the new agent a sibling in ~/repo rather than
+# burying it in a subdirectory the tree would file separately.
+new_agent() {  # <dir>
+  local dir=${1:-} root sess newpane
+  [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
+  [ -d "$dir" ] || { tmux display-message "tagents: $dir is not a directory" 2>/dev/null; return 1; }
+  root=$(repo_root "$dir") || root=$dir
+
+  # No windows for this project yet (every agent in it is closed, or it is new):
+  # the dashboard session is the only place left that is certainly there.
+  sess=$(session_for_dir "$root")
+  if [ -z "$sess" ]; then
+    ensure_dash >/dev/null 2>&1 || return 1
+    sess=$DASH_SESSION
+  fi
+
+  # -d so the new window does not steal the current session's view before it is
+  # docked; open_agent puts the cursor in it deliberately, a moment later.
+  newpane=$(tmux new-window -d -t "$sess:" -P -F '#{pane_id}' \
+              -c "$root" "$NEW_CMD" 2>/dev/null) || {
+    tmux display-message "tagents: could not open a window in $sess" 2>/dev/null; return 1; }
+
+  # IT STAYS WHERE IT WAS BORN, and so do you. Docking it would swap the pane out
+  # of the session it was just created in and into the dashboard window, then
+  # switch the client there — which is how this lost the sidebar: the new agent
+  # turned up in a window the list was not in, and the list was not on screen any
+  # more either. A brand-new chat has nothing to read yet, so there is nothing
+  # worth being moved for; it appears in the tree on the next refresh and enter
+  # opens it like any other agent.
+  tmux display-message "tagents: new agent in $(basename "$root") ($sess:$(tmux display -p -t "$newpane" '#{window_index}' 2>/dev/null))" 2>/dev/null
+  return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -1270,7 +1539,7 @@ resume_agent() {
 dash() {
   local home=${TA_HOME:-} mode=${TA_MODE:-dash} out key rows
   local rc started fails=0 esc_bind='esc:ignore' quit='ctrl-q quit · '
-  local can_dock=0 enter_lbl='open beside' undo_lbl='undock' preview_win after=''
+  local enter_lbl='open in sidebar' preview_win after=''
   # A prompt that opens a popup returns at once, so fzf never has to give up the
   # screen for it — that is what keeps rename and send from flashing the list.
   # Without popups the prompt has to happen in this pane, which needs `execute`.
@@ -1287,16 +1556,24 @@ dash() {
   # A popup also closes once it has done what you asked; the sidebar stays.
   if [ "$mode" = popup ]; then esc_bind='esc:abort'; quit=''; after='+abort'; fi
 
-  # Running as the left half of the dashboard window? Then enter docks the agent
-  # into the right half instead of pulling a whole window in from elsewhere, and
-  # the docked pane itself replaces fzf's preview — it is the live thing.
-  if [ -n "${TMUX_PANE:-}" ] && [ "$TMUX_PANE" = "$(dash_pane)" ]; then
-    can_dock=1; enter_lbl='open here'; undo_lbl='undock'
+  # A LIST RUNNING IN A PANE IS THE SIDEBAR. Not "is it running in the pane some
+  # marker points at" — it claims the pane, so enter docks the chat into the right
+  # half of this very window and the cursor lands in it, whichever window that
+  # happens to be. Reading the marker instead is what sent you to another window:
+  # the marker had drifted onto a chat elsewhere, and enter followed the marker.
+  # The docked pane then stands in for fzf's preview — it is the live thing.
+  #
+  # A popup is the one list with no pane of its own (TMUX_PANE is empty inside
+  # display-popup) and nowhere to put a right half, so it keeps the text preview
+  # and hands the chat to the dedicated sidebar instead.
+  if [ "$mode" != popup ] && [ -n "${TMUX_PANE:-}" ] && claim_dash; then
+    trap release_dash EXIT INT TERM
+    enter_lbl='open here'
     preview_win='hidden'
   else
     preview_win='right,55%,border-left,wrap'
   fi
-  export TA_HOME="$home" TA_CAN_DOCK="$can_dock"
+  export TA_HOME="$home"
 
   # First frame only: fzf hands every later reload an authoritative FZF_COLUMNS,
   # but the initial list is built before fzf exists. `tput cols` is unreliable
@@ -1320,7 +1597,7 @@ dash() {
       --ansi --no-sort --delimiter="$TAB" --with-nth=2 \
       --listen --height=100% --layout=reverse --info=inline \
       --prompt='agents> ' \
-      --header="enter ${enter_lbl} · ctrl-g goto · ctrl-o borrow window · ctrl-e send · ${RENAME_KEY} rename · ctrl-x ${undo_lbl} · ctrl-t tree/flat · ctrl-r refresh · ${quit}" \
+      --header="enter ${enter_lbl} · ctrl-n new · ctrl-g goto · ctrl-o borrow window · ctrl-e send · ${RENAME_KEY} rename · ctrl-x undock · ctrl-t tree/flat · ctrl-l refresh · ${quit}" \
       --preview="$SELF --preview {1} {3}" \
       --preview-window="$preview_win" \
       --bind="enter:execute-silent($SELF --act open {1} {3} {4} {5})$after" \
@@ -1332,10 +1609,11 @@ dash() {
       --bind="$RENAME_KEY:$ask($SELF --act rename {1} {3} {4})" \
       --bind="f2:$ask($SELF --act rename {1} {3} {4})" \
       --bind="ctrl-x:execute-silent($SELF --act undock {1})+reload-sync($SELF --list)" \
+      --bind="ctrl-n:execute-silent($SELF --act new {1} {3} {4} {5})$after" \
       --bind="$esc_bind" \
       --bind='ctrl-v:toggle-preview' \
       --bind='ctrl-t:execute-silent('"$SELF"' --toggle-group)+reload-sync('"$SELF"' --list)' \
-      --bind='ctrl-r:reload-sync('"$SELF"' --list)' \
+      --bind='ctrl-l:reload-sync('"$SELF"' --list)' \
       --bind="start:execute-silent(TA_PORT=\$FZF_PORT nohup $SELF --refresher >/dev/null 2>&1 &)" \
       --expect=ctrl-q)
     rc=$?
