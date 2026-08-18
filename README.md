@@ -6,11 +6,11 @@ has spent — with the selected chat docked beside the list so you can type into
 it without leaving.
 
 ```
-▾ salon-reach  ~/git/work/salon-reach   ⚠1 ✓1 ●1   84k/5h
+▾ storefront   ~/git/storefront          ⚠1 ✓1 ●1   84k/5h
   ├─ ⚠ BLOCKED   2:14  api      %31   142k  31k/5h
   ├─ ● working   0:08  web      %44    38k   9k/5h  ⑂2
   └─ ✓ idle     17:02  worker   %12    12k
-▾ .dotfiles    ~/git/personal/.dotfiles  ●1
+▾ .dotfiles    ~/git/.dotfiles           ●1
   └─ ● working   0:31  dotfiles %3     71k  44k/5h
 ```
 
