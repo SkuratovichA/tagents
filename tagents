@@ -44,7 +44,15 @@
 # what is actually spending it, and the project header totals the last five
 # hours. The preview breaks a session down per subagent AND per model.
 #
-# THE DOLLAR FIGURE IS PRICED PER REQUEST, at the model that actually served it
+# WHERE THE DOLLAR FIGURE COMES FROM. Claude Code keeps its own cost ledger and
+# publishes it to the status line, so for any session that has rendered one the
+# number shown IS that ledger — exact, and inclusive of the requests that never
+# reach the transcript at all (retries, title and summary generation). Sessions
+# it cannot cover — closed ones, and the 5h burn and the ⑂ subagent share, which
+# it reports no breakdown for — fall back to tusage, which prices the transcript
+# per request. Expect that estimate to run a few percent under the ledger.
+#
+# THE FALLBACK IS PRICED PER REQUEST, at the model that actually served it
 # — never at the model the session happens to be on now. That distinction is not
 # academic: a session that starts on Fable and finishes on Opus, or fans work out
 # to subagents on a cheaper tier, is mispriced by ~2x if you multiply its token
@@ -312,7 +320,7 @@ collect() {
   for f in "$STATE_DIR"/model/*.tsv; do
     [ -e "$f" ] || continue
     key=${f##*/}; key=${key%.tsv}
-    awk -F"$TAB" -v OFS="$TAB" -v s="$key" 'NR==1 { print "M", s, $2; exit }' "$f"
+    awk -F"$TAB" -v OFS="$TAB" -v s="$key" 'NR==1 { print "M", s, $2, $4; exit }' "$f"
   done
 
   # Token accounting, joined on session id. --no-update keeps this to one awk
@@ -630,8 +638,12 @@ list() {
     # model that produced it, so they stay right across a mid-session /model and
     # across subagents deliberately run on a cheaper tier; umdl is only what the
     # session is on NOW, and is never used to compute money.
-    # claude-statusline.sh: the model the session is configured on right now.
-    $1=="M" { smdl[$2]=$3; next }
+    # claude-statusline.sh: the model the session is configured on right now, and
+    # Claude Code own running cost for it. That figure is not an estimate — it is
+    # what is actually being billed, including the requests that never reach the
+    # transcript at all (retries, title and summary generation), which is why it
+    # wins over the priced one wherever it exists.
+    $1=="M" { smdl[$2]=$3; if ($4 + 0 > 0) scost[$2]=$4 + 0; next }
     $1=="U" { uctx[$2]=$5+0; u5h[$2]=$10+0; usub[$2]=$8+0; utot[$2]=$3+0
               umdl[$2]=$11; uusd[$2]=$12+0; uusd5h[$2]=$13+0; uusdsub[$2]=$14+0
               uunp[$2]=$15+0; next }
@@ -689,7 +701,12 @@ list() {
         cx = (sq in uctx) ? uctx[sq] : 0
         bn = (sq in u5h)  ? u5h[sq]  : 0
         sb = (sq in usub) ? usub[sq] : 0
-        ud = (sq in uusd) ? uusd[sq] : 0        # session total, all models
+        # Session total. Claude Code own ledger when the status line has reported
+        # one, the per-request priced estimate otherwise — a closed session, or
+        # one that has not rendered a status line yet, has only the estimate.
+        ud = (sq in uusd) ? uusd[sq] : 0
+        exact = (sq in scost)
+        if (exact) ud = scost[sq]
         udsub = (sq in uusdsub) ? uusdsub[sq] : 0
         unp = (sq in uunp) ? uunp[sq] : 0
         gburn[grpkey] += (sq in uusd5h) ? uusd5h[sq] : 0
@@ -704,7 +721,7 @@ list() {
         # it. A trailing ? means some of it ran on a model with no published
         # rate, so the figure is a floor rather than the whole bill.
         if (burnw) row = row sprintf(" %s%*s%s", DIM, burnw,
-                                     money(ud) (unp > 0 && ud > 0 ? "?" : ""), R)
+                                     money(ud) (!exact && unp > 0 && ud > 0 ? "?" : ""), R)
         if (mdlw)  row = row sprintf(" %s%-*.*s%s", DIM, mdlw, mdlw, curmodel(sq), R)
         if (locw)  row = row sprintf(" %s%-*s%s", DIM, locw, tailfit(where, locw), R)
         # The subagent share of that money — the answer to "why is this session

@@ -59,8 +59,13 @@ if [ -n "${sid:-}" ] && [ -n "${mid:-}" ]; then
     # here — on the rare path, not on the one that runs every few hundred ms.
     find "$d" -name '*.tsv' -mtime +30 -delete 2>/dev/null
   fi
+  # cost is Claude Code's OWN running total for this session — the only figure
+  # that is not an estimate, since it is what actually gets billed. tusage
+  # prices the transcript instead, which is the only way to answer "what did
+  # the subagents cost" or "what did the last five hours cost", but where the
+  # two disagree this one is right.
   tmpf="$d/.$sid.$$"
-  if printf '%s\t%s\t%s\n' "$(date +%s)" "$mid" "$mname" >"$tmpf" 2>/dev/null; then
+  if printf '%s\t%s\t%s\t%s\n' "$(date +%s)" "$mid" "$mname" "${cost:-0}" >"$tmpf" 2>/dev/null; then
     mv -f "$tmpf" "$d/$sid.tsv" 2>/dev/null || rm -f "$tmpf"
   fi
 fi

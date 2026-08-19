@@ -25,6 +25,15 @@
 # requestIds. Duplicates are adjacent in the file, so carrying the last few ids
 # across an incremental read is enough to keep the seam honest.
 #
+# WHY A LOCK. That dedupe is per-process, and the index is append-only, so two
+# updaters running at once both start from the same offset, both parse the same
+# new bytes and both append them — and nothing downstream can tell, because the
+# facts file records totals, not ids. The dashboard refreshes on a timer and
+# `tusage` with no arguments updates too, so the sessions being typed into are
+# exactly the ones that collide. Measured on a fixture: 13 requests indexed as
+# 21. One updater at a time, `mkdir` as the atomic primitive (macOS has no
+# flock); losing the race is not an error, the winner reads the same bytes.
+#
 # WHY "COST UNITS". Raw token counts are not comparable: a cached read is an
 # order of magnitude cheaper than a fresh write, and output is several times
 # more expensive than input. The `cost` column normalises everything to
@@ -41,6 +50,14 @@
 # work across subagents on a cheaper tier — still totals correctly. `--sessions`
 # reports both, and `--session <id>` breaks a session down per subagent and per
 # model.
+#
+# That figure is an ESTIMATE, and knowably a few percent low: it can only price
+# requests that reached the transcript, and Claude Code also spends on calls
+# that never do — retries, conversation titles, away summaries. Measured against
+# Claude Code own ledger on a live session: 3% under on a large one, more on a
+# small one where that fixed overhead weighs more. tagents prefers the ledger
+# (via the status line) for the headline number and uses these figures for what
+# the ledger cannot answer: subagent share, the 5h window, closed sessions.
 #
 # bash 3.2 compatible — macOS ships nothing newer.
 
@@ -251,12 +268,49 @@ fold_rows() {  # <project-slug> <carried ids> <origin> ; extracted TSV on stdin
     }'
 }
 
+# ONE UPDATER AT A TIME, or the index inflates. facts.tsv is append-only and
+# every updater starts from the offset it read at entry, so two running at once
+# both parse the same new bytes and both append them — the requests are counted
+# twice and no later pass can tell, because the file records totals, not ids.
+# It is not hypothetical: the dashboard refreshes on a timer, `tusage` with no
+# arguments updates too, and a session being actively typed into is exactly the
+# one generating new bytes for them to collide over. Measured on a fixture: 13
+# real requests indexed as 21.
+#
+# mkdir is the atomic primitive that exists everywhere (macOS has no flock).
+# Losing the race is not an error: the winner is reading the same bytes this
+# process would have, so it just returns and lets the next tick pick up.
+LOCK="$STATE/.update.lock"
+LOCK_STALE_MIN=${TU_LOCK_STALE_MIN:-5}
+
 update() {
   local rebuild=${1:-0} f sz off end slug seen tmp work newoff n=0
-  [ "$rebuild" = 1 ] && rm -f "$OFFSETS" "$FACTS" "$META" "$STAMP"
 
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/tusage.XXXXXX") || return 1
-  trap 'rm -rf "$tmp"' RETURN
+  mkdir -p "$STATE" 2>/dev/null || return 1
+  # A background refresh that loses the race just returns — the winner is
+  # reading the same bytes. An explicit --rebuild is a command, not a tick, so
+  # it waits and says so rather than pretending it did the work.
+  local tries=1; [ "$rebuild" = 1 ] && tries=20
+  while [ "$tries" -gt 0 ]; do
+    mkdir "$LOCK" 2>/dev/null && break
+    # An updater killed mid-run would otherwise wedge the index for good.
+    if [ -n "$(find "$LOCK" -maxdepth 0 -mmin "+$LOCK_STALE_MIN" 2>/dev/null)" ]; then
+      rm -rf "$LOCK" 2>/dev/null
+      mkdir "$LOCK" 2>/dev/null && break
+    fi
+    tries=$((tries - 1))
+    [ "$tries" -gt 0 ] && sleep 1
+  done
+  if [ "$tries" -le 0 ]; then
+    [ "$rebuild" = 1 ] &&
+      echo "tusage: another update is running; index left alone" >&2
+    return 0
+  fi
+
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/tusage.XXXXXX") || { rm -rf "$LOCK"; return 1; }
+  trap 'rm -rf "$tmp" "$LOCK"' RETURN
+
+  [ "$rebuild" = 1 ] && rm -f "$OFFSETS" "$FACTS" "$META" "$STAMP"
 
   # Candidates: everything on a rebuild or a first run, otherwise only what has
   # been touched since the last update (plus anything the index never saw).

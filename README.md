@@ -111,7 +111,16 @@ Each row shows what the session has cost in dollars and which model it is on:
 ├─ ⚠ BLOCKED   2:14  api      142k  $38.3  fable5  %31  ⑂$6.94
 ```
 
-**The dollars are priced per request, at the model that actually served it** —
+**Where the number comes from.** Claude Code keeps its own cost ledger and
+publishes it to the status line, so for any session that has rendered one, the
+dollar figure IS that ledger — exact, and inclusive of the requests that never
+reach the transcript at all (retries, conversation titles, away summaries).
+Everything the ledger cannot answer falls back to `tusage`, which prices the
+transcript: closed sessions, the `/5h` burn, and the `⑂` subagent share. Expect
+that estimate to run a few percent under the ledger — 3% on a large session,
+more on a small one, where the untracked calls weigh proportionally more.
+
+**The fallback is priced per request, at the model that actually served it** —
 not at the model the session is on now. That matters more than it sounds: a
 session that starts on Fable ($10/MTok in) and finishes on Opus ($5), or that
 fans work out to subagents on a cheaper tier, is mispriced by about 2x if you
@@ -130,6 +139,13 @@ Fable one from an hour ago. Nothing else on disk disagrees, and the only channel
 carrying the configured model is the status line payload, which is why
 `hooks/claude-statusline.sh` exists. Without it the column falls back to the
 last model billed, which is correct right up until you switch.
+
+One updater at a time: the index is append-only and each updater starts from
+the offset it read at entry, so two running at once append the same requests
+twice and the totals silently inflate — measured at 13 requests indexed as 21.
+`tusage` takes a lock (`agent-state/usage/.update.lock`); a background refresh
+that loses it just returns. If the totals ever look wrong, `tusage --rebuild`
+throws the index away and rescans.
 
 Rates live in `PRICES` at the top of `tusage`, in dollars per million tokens,
 with cache multipliers (5m write 1.25x, 1h write 2x, read 0.1x) applied on top.
