@@ -112,13 +112,18 @@ Each row shows what the session has cost in dollars and which model it is on:
 ```
 
 **Where the number comes from.** Claude Code keeps its own cost ledger and
-publishes it to the status line, so for any session that has rendered one, the
-dollar figure IS that ledger — exact, and inclusive of the requests that never
-reach the transcript at all (retries, conversation titles, away summaries).
-Everything the ledger cannot answer falls back to `tusage`, which prices the
-transcript: closed sessions, the `/5h` burn, and the `⑂` subagent share. Expect
-that estimate to run a few percent under the ledger — 3% on a large session,
-more on a small one, where the untracked calls weigh proportionally more.
+publishes it to the status line, so for any session that is open the dollar
+figure IS that ledger — exact, and inclusive of the requests that never reach
+the transcript at all (retries, conversation titles, away summaries). The status
+line is registered with `refreshInterval: 30`, which matters more than it looks:
+without it an idle session never re-renders, so it would sit on a stale estimate
+precisely when you are staring at it wondering why the two disagree.
+
+A figure prefixed **`~` is an estimate** — `tusage` pricing the transcript,
+which is what closed sessions get, and what the `/5h` burn and the `⑂` subagent
+share always are, since the ledger publishes no breakdown. Measured against the
+ledger it lands within a few percent; never compare a `~` figure to the status
+line and expect them to match.
 
 **The fallback is priced per request, at the model that actually served it** —
 not at the model the session is on now. That matters more than it sounds: a
@@ -149,6 +154,10 @@ throws the index away and rescans.
 
 Rates live in `PRICES` at the top of `tusage`, in dollars per million tokens,
 with cache multipliers (5m write 1.25x, 1h write 2x, read 0.1x) applied on top.
+They are checked against the ledger rather than trusted: `fable` is 15/75 there,
+not the 10/50 of the public table, because 10/50 does not reproduce the bill —
+solving `ledger = a*fable + b*opus` across four sessions read at one instant
+gives a = 1.5 consistently. The header of `tusage` explains how to re-derive it.
 A model with no published rate is **never guessed at**: its usage is excluded
 and the figure is marked with a trailing `?` to say it is a floor. Add a rate
 without editing the file via `TU_PRICES`:

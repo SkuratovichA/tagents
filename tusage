@@ -103,9 +103,23 @@ W_IN=1; W_CW5=1.25; W_CW1H=2.0; W_CR=0.1; W_OUT=5
 #  A model with no row here is NOT guessed at — see usd(). Add one with
 #  TU_PRICES rather than editing this file if you just need a rate today.
 # ---------------------------------------------------------------------------
+# Dollars per million tokens, input then output; an optional trailing
+# "<until-epoch> <in> <out>" is an introductory rate that applies up to that
+# instant. These are what a request is priced at; the cache multipliers below
+# ride on top of the input rate.
+#
+# fable is 15/75, not the 10/50 of the public table, because 10/50 does not
+# reproduce the bill. Solving `ledger = a*fable + b*opus` across four sessions
+# read at one instant against Claude Code own cost ledger gives b = 1.05 (the
+# untracked-request overhead, see above) and a = 1.49, 1.49, 1.65 — i.e. fable
+# costs 1.5x what that table says, which lands two of those sessions inside 1%.
+# Whether that is the list price or a 1M-context premium is not observable from
+# here. Re-derive it the same way if it ever stops matching: `tusage --session
+# <id>` prints the per-model split, and agent-state/model/<id>.tsv holds the
+# ledger figure to fit against.
 PRICES=${TU_PRICES:-'
-claude-fable-5     10 50
-claude-mythos-5    10 50
+claude-fable-5     15 75
+claude-mythos-5    15 75
 claude-opus-5       5 25
 claude-opus-4-8     5 25
 claude-opus-4-7     5 25

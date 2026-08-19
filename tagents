@@ -45,12 +45,14 @@
 # hours. The preview breaks a session down per subagent AND per model.
 #
 # WHERE THE DOLLAR FIGURE COMES FROM. Claude Code keeps its own cost ledger and
-# publishes it to the status line, so for any session that has rendered one the
-# number shown IS that ledger — exact, and inclusive of the requests that never
-# reach the transcript at all (retries, title and summary generation). Sessions
-# it cannot cover — closed ones, and the 5h burn and the ⑂ subagent share, which
-# it reports no breakdown for — fall back to tusage, which prices the transcript
-# per request. Expect that estimate to run a few percent under the ledger.
+# publishes it to the status line, so for any session that is open the number
+# shown IS that ledger — exact, and inclusive of the requests that never reach
+# the transcript at all (retries, title and summary generation). settings.json
+# gives the status line refreshInterval: 30 for this, otherwise an idle session
+# never re-renders one and sits on a stale estimate exactly when you are looking
+# at it. A "~" prefix means the figure IS the estimate: a closed session, and
+# always the 5h burn and the ⑂ subagent share, which the ledger does not break
+# down. Do not compare a ~ figure to the status line and expect a match.
 #
 # THE FALLBACK IS PRICED PER REQUEST, at the model that actually served it
 # — never at the model the session happens to be on now. That distinction is not
@@ -720,8 +722,14 @@ list() {
         # What this session has cost, priced per request at the model that ran
         # it. A trailing ? means some of it ran on a model with no published
         # rate, so the figure is a floor rather than the whole bill.
+        # An estimate is never shown as though it were the bill. "~" means this
+        # is tusage pricing the transcript, which cannot see retries, titles or
+        # summaries and so reads a few percent — sometimes a fifth — under what
+        # Claude Code says. "?" on top of that means part of it ran on a model
+        # with no rate at all, so it is a floor.
         if (burnw) row = row sprintf(" %s%*s%s", DIM, burnw,
-                                     money(ud) (!exact && unp > 0 && ud > 0 ? "?" : ""), R)
+                                     (exact ? "" : "~") money(ud) \
+                                     (!exact && unp > 0 && ud > 0 ? "?" : ""), R)
         if (mdlw)  row = row sprintf(" %s%-*.*s%s", DIM, mdlw, mdlw, curmodel(sq), R)
         if (locw)  row = row sprintf(" %s%-*s%s", DIM, locw, tailfit(where, locw), R)
         # The subagent share of that money — the answer to "why is this session
