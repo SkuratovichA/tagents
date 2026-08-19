@@ -36,6 +36,12 @@
 # It is a proxy for what a request actually costs you, not a billing figure.
 # Raw totals are always available with --raw.
 #
+# For actual money, see PRICES below: every row is priced at the model that
+# produced it, so a session that switched models mid-conversation — or spread
+# work across subagents on a cheaper tier — still totals correctly. `--sessions`
+# reports both, and `--session <id>` breaks a session down per subagent and per
+# model.
+#
 # bash 3.2 compatible — macOS ships nothing newer.
 
 set -uo pipefail
@@ -51,6 +57,94 @@ KEEP_DAYS=${TU_KEEP_DAYS:-30}
 TAB=$'\t'
 
 W_IN=1; W_CW5=1.25; W_CW1H=2.0; W_CR=0.1; W_OUT=5
+
+# ---------------------------------------------------------------------------
+#  Model prices — US dollars per million tokens
+# ---------------------------------------------------------------------------
+#  WHY A TABLE AND NOT ONE MULTIPLIER. The cost units above are comparable
+#  across models but they are not money: a million Haiku tokens and a million
+#  Fable tokens differ by a factor of ten. Dollars need the per-model rate.
+#
+#  And — this is the part worth doing properly — A SESSION'S MODEL CHANGES.
+#  /model mid-conversation, a fallback after a refusal, a subagent deliberately
+#  put on a cheaper tier. Pricing a session's whole token total at whatever
+#  model it happens to be on right now is simply wrong, and wrong by 2x between
+#  the two models this index actually holds. The facts index is already keyed
+#  per model (field 7), so every row is priced at the model that produced it and
+#  the session total is the sum. Subagent rows are priced the same way and are
+#  part of that sum — a cheap courier and an expensive architect land in the
+#  same session at their own rates.
+#
+#  Rows: <model> <input $/MTok> <output $/MTok> [<until epoch> <in> <out>]
+#  The optional tail is introductory pricing, applied to usage at or before that
+#  instant: Sonnet 5 is $2/$10 through 2026-08-31 and $3/$15 after, and a
+#  transcript kept for KEEP_DAYS can easily straddle the change.
+#
+#  Cache multipliers are ratios of the input rate and hold for every model: a 5m
+#  write is 1.25x, a 1h write 2x, a read 0.1x.
+#
+#  A model with no row here is NOT guessed at — see usd(). Add one with
+#  TU_PRICES rather than editing this file if you just need a rate today.
+# ---------------------------------------------------------------------------
+PRICES=${TU_PRICES:-'
+claude-fable-5     10 50
+claude-mythos-5    10 50
+claude-opus-5       5 25
+claude-opus-4-8     5 25
+claude-opus-4-7     5 25
+claude-opus-4-6     5 25
+claude-sonnet-5     3 15 1788220799 2 10
+claude-sonnet-4-6   3 15
+claude-haiku-4-5    1  5
+'}
+
+# BWK awk rejects a -v value containing newlines and fails silently enough to
+# look like "nothing is priced", so the table crosses on one line.
+prices_arg() { printf '%s' "$PRICES" | tr '\n' ';'; }
+
+# Shared by every awk below that reports money.
+AWK_PRICE='
+  function price_load(  n, i, a, row) {
+    PLOADED = 1
+    n = split(prices, row, ";")
+    for (i = 1; i <= n; i++) {
+      if (row[i] ~ /^[ \t]*$/) continue
+      split(row[i], a, " ")
+      PN++; PK[PN] = a[1]; PIN[a[1]] = a[2] + 0; POUT[a[1]] = a[3] + 0
+      if (a[4] != "") { PUNTIL[a[1]] = a[4] + 0; PIN0[a[1]] = a[5] + 0; POUT0[a[1]] = a[6] + 0 }
+    }
+  }
+  # Transcripts carry dated snapshot ids (claude-haiku-4-5-20251001), so an
+  # exact hit is tried first and the longest matching prefix second.
+  function price_key(m,   i, k, best) {
+    if (!PLOADED) price_load()
+    if (m in PIN) return m
+    best = ""
+    for (i = 1; i <= PN; i++) {
+      k = PK[i]
+      if (index(m, k) == 1 && length(k) > length(best)) best = k
+    }
+    return best
+  }
+  # Dollars for one facts row. Returns -1 for a model with no published rate —
+  # a caller must surface that rather than fold an unpriced model in as free,
+  # which would quietly under-report the bill.
+  function usd(m, ts, i, c5, c1, cr, o,   k, pin, pout) {
+    k = price_key(m)
+    if (k == "") return -1
+    pin = PIN[k]; pout = POUT[k]
+    if ((k in PUNTIL) && ts <= PUNTIL[k]) { pin = PIN0[k]; pout = POUT0[k] }
+    return (i * pin + 1.25 * c5 * pin + 2.0 * c1 * pin + 0.1 * cr * pin + o * pout) / 1000000
+  }
+  function money(d) {
+    if (d < 0)     return "?"
+    if (d >= 100)  return sprintf("$%.0f", d)
+    if (d >= 10)   return sprintf("$%.1f", d)
+    if (d >= 0.01) return sprintf("$%.2f", d)
+    if (d > 0)     return "<$0.01"
+    return "$0"
+  }
+'
 
 mkdir -p "$STATE" 2>/dev/null
 
@@ -381,42 +475,67 @@ report_by() {
     }'
 }
 
-# sid, cost, reqs, ctx, last_ts, slug, subagent_cost, live_subagents, cost_5h
+# sid, cost, reqs, ctx, last_ts, slug, subagent_cost, live_subagents, cost_5h,
+#   model, usd, usd_5h, usd_subagent, unpriced
 # ctx is the largest context seen in the last hour — the number that says
 # "this session is fat, compact it", which an average over the window hides.
+#
+# `model` is the session's CURRENT model — the one the newest row was billed at,
+# which is what a status line should show. The dollar figures are emphatically
+# not derived from it: each row is priced at its own model (see usd), so a
+# session that switched tiers mid-conversation, or fanned work out to subagents
+# on a cheaper one, still totals correctly. Subagent rows are in the session
+# total AND in usd_subagent, which is a subset of it, not an addition.
+# `unpriced` counts rows whose model has no published rate; when it is non-zero
+# the dollar figures are a floor, not the whole bill.
 sessions() {
   [ -s "$FACTS" ] || return 0
   local now; now=$(date +%s)
   awk -F"$TAB" -v OFS="$TAB" -v cut="$(( now - $(since_secs "${1:-7d}") ))" \
-      -v h1="$(( now - 3600 ))" -v h5="$(( now - 18000 ))" '
+      -v h1="$(( now - 3600 ))" -v h5="$(( now - 18000 ))" \
+      -v prices="$(prices_arg)" "$AWK_PRICE"'
     function cost(i,c5,c1,cr,o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
     $1 + 0 >= cut {
       s = $3; c = cost($9,$10,$11,$12,$13)
+      d = usd($7, $1 + 0, $9,$10,$11,$12,$13)
+      # An unpriced row that spent nothing is not a hole in the bill: Claude Code
+      # writes a zero-token "<synthetic>" placeholder that would otherwise make
+      # every session claim its total was incomplete.
+      if (d < 0) { d = 0; if (c > 0) UNP[s]++ }
       C[s] += c; R[s] += $8; P[s] = $2
-      if ($1 + 0 >= h5) C5H[s] += c
+      D[s] += d
+      if ($1 + 0 >= h5) { C5H[s] += c; D5H[s] += d }
       if ($1 + 0 >= h1 && $14 + 0 > X[s]) X[s] = $14 + 0
       if ($14 + 0 > XMAX[s]) XMAX[s] = $14 + 0
       if ($1 + 0 > L[s]) L[s] = $1 + 0
-      if ($4 != "-") { SUB[s] += c; NSUB[s SUBSEP $4] = ($1 + 0) }
+      # The newest row that actually spent something wins the model column, so a
+      # mid-session /model shows up at once — but the placeholder never does.
+      if (c > 0 && $1 + 0 >= LM[s]) { LM[s] = $1 + 0; MDL[s] = $7 }
+      if ($4 != "-") { SUB[s] += c; DSUB[s] += d; NSUB[s SUBSEP $4] = ($1 + 0) }
     }
     END { for (s in C) {
         k = 0
         for (q in NSUB) { split(q, a, SUBSEP); if (a[1] == s && NSUB[q] >= h1) k++ }
         print s, int(C[s]), R[s], int(X[s] ? X[s] : XMAX[s]), L[s], P[s],
-              int(SUB[s]), k, int(C5H[s]) } }' "$FACTS"
+              int(SUB[s]), k, int(C5H[s]),
+              MDL[s], sprintf("%.6f", D[s]), sprintf("%.6f", D5H[s]),
+              sprintf("%.6f", DSUB[s]), UNP[s] + 0 } }' "$FACTS"
 }
 
 burn() {   # what the last 5h cost, for the tmux status bar
   [ -s "$FACTS" ] || return 0
-  awk -F"$TAB" -v cut="$(( $(date +%s) - 18000 ))" '
+  awk -F"$TAB" -v cut="$(( $(date +%s) - 18000 ))" -v prices="$(prices_arg)" "$AWK_PRICE"'
     function human(x) { if (x >= 1e6) return sprintf("%.1fM", x/1e6)
                         if (x >= 1e3) return sprintf("%.0fk", x/1e3); return sprintf("%d", x) }
-    $1 + 0 >= cut { c = $9 + 1.25*$10 + 2.0*$11 + 0.1*$12 + 5*$13; T += c; S[$3] += c }
+    $1 + 0 >= cut {
+      c = $9 + 1.25*$10 + 2.0*$11 + 0.1*$12 + 5*$13; T += c; S[$3] += c
+      d = usd($7, $1 + 0, $9,$10,$11,$12,$13); if (d > 0) TD += d
+    }
     END {
       if (T <= 0) exit 0
-      top = ""; mx = 0
-      for (s in S) if (S[s] > mx) { mx = S[s]; top = s }
-      printf "#[fg=#665c54]5h #[fg=%s]%s ", (T > 40e6 ? "red" : T > 20e6 ? "yellow" : "#928374"), human(T)
+      # Money is the honest threshold now that a bar can mix a $5 and a $10
+      # model: the same token count is two different bills.
+      printf "#[fg=#665c54]5h #[fg=%s]%s ", (TD > 200 ? "red" : TD > 100 ? "yellow" : "#928374"), money(TD)
     }' "$FACTS"
 }
 
@@ -428,21 +547,35 @@ session_detail() {
   [ -n "$full" ] && sid=$full
   slug=$(awk -F"$TAB" -v k="$sid" '$1 == k { print $2; exit }' "$META" 2>/dev/null)
   printf '\033[1m%s\033[0m  %s\n' "$sid" "$(origin_dir "$sid" "$slug")"
-  awk -F"$TAB" -v k="$sid" "$AWK_FMT"'
+  awk -F"$TAB" -v k="$sid" -v prices="$(prices_arg)" "$AWK_FMT$AWK_PRICE"'
     $3 ~ "^" k {
       a = ($4 == "-" ? "· main" : ($6 ~ /^wf:/ ? "⑂ " $6 : "⑂ " $5 ($6 == "bg" ? " (bg)" : "")))
       REQ[a] += $8; IN[a] += $9; C5[a] += $10; C1[a] += $11; CR[a] += $12; OUT[a] += $13
       if (!(a in seen)) { seen[a] = 1; ord[++n] = a }
       if ($1 + 0 > last) { last = $1 + 0 }
-      T += cost($9,$10,$11,$12,$13)
+      c = cost($9,$10,$11,$12,$13)
+      d = usd($7, $1 + 0, $9,$10,$11,$12,$13)
+      if (d < 0) { d = 0; if (c > 0) { UNP++; MUNP[$7] = 1 } }
+      T += c; TD += d; DOL[a] += d
+      # Per model, so a mid-session switch is visible as two priced rows rather
+      # than one blended number that matches neither rate.
+      MC[$7] += c; MD[$7] += d
+      if (!($7 in mseen) && c > 0) { mseen[$7] = 1; mord[++mn] = $7 }
     }
     END {
       if (n == 0) { print "  (no usage recorded in the retained window)"; exit }
-      printf "\033[90m  %-26s %8s %7s %8s %8s %8s\033[0m\n", "who", "cost", "reqs", "cwrite", "cread", "out"
+      printf "\033[90m  %-26s %8s %8s %7s %8s %8s %8s\033[0m\n", "who", "cost", "$", "reqs", "cwrite", "cread", "out"
       for (i = 1; i <= n; i++) { a = ord[i]
-        printf "  %-26.26s %8s %7d %8s %8s %8s\n", a, human(cost(IN[a],C5[a],C1[a],CR[a],OUT[a])),
-               REQ[a], human(C5[a]+C1[a]), human(CR[a]), human(OUT[a]) }
-      printf "\033[90m  %-26s %8s\033[0m\n", "TOTAL", human(T)
+        printf "  %-26.26s %8s %8s %7d %8s %8s %8s\n", a, human(cost(IN[a],C5[a],C1[a],CR[a],OUT[a])),
+               money(DOL[a]), REQ[a], human(C5[a]+C1[a]), human(CR[a]), human(OUT[a]) }
+      printf "\033[90m  %-26s %8s %8s\033[0m\n", "TOTAL", human(T), money(TD)
+      if (mn > 1 || UNP) {
+        printf "\n\033[90m  %-26s %8s %8s\033[0m\n", "model", "cost", "$"
+        for (i = 1; i <= mn; i++) { m = mord[i]
+          printf "  %-26.26s %8s %8s%s\n", m, human(MC[m]), money(MD[m]),
+                 ((m in MUNP) ? "  \033[33m(no published rate)\033[0m" : "") }
+      }
+      if (UNP) printf "\033[33m  %d request(s) ran on a model with no published rate — $ is a floor\033[0m\n", UNP
     }' "$FACTS"
 }
 
@@ -559,7 +692,9 @@ while [ $# -gt 0 ]; do
     --update)   update 0; exit $? ;;
     --rebuild)  update 1; exit $? ;;
     --no-update) DO_UPDATE=0; shift ;;
-    -h|--help)  sed -n '3,36p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    # Print to the first non-comment line, never a hardcoded range: the header
+    # grows, the range does not, and the help silently loses its tail.
+    -h|--help)  awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
     *)          echo "tusage: unknown option $1" >&2; exit 2 ;;
   esac
 done

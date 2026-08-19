@@ -19,7 +19,7 @@ it without leaving.
 | file | what it does |
 |------|--------------|
 | `tagents` | the dashboard itself — the tree, the sidebar, the timeline |
-| `tusage`  | per-session cost and context accounting, read from the transcripts |
+| `tusage`  | per-session cost, dollars and context accounting, read from the transcripts |
 | `hooks/tmux-agent-state.sh` | the Claude Code hook that publishes session state |
 
 The three are one system. The hook writes a record per session into
@@ -79,6 +79,35 @@ Keys inside the dashboard:
 
 `tagents --help` is the real documentation — the script's header explains the
 model, and every non-obvious decision in it is commented with the reason.
+
+## Cost
+
+Each row shows what the session has cost in dollars and which model it is on:
+
+```
+├─ ⚠ BLOCKED   2:14  api      %31   142k  $38.3  fable5   ⑂$6.94
+```
+
+**The dollars are priced per request, at the model that actually served it** —
+not at the model the session is on now. That matters more than it sounds: a
+session that starts on Fable ($10/MTok in) and finishes on Opus ($5), or that
+fans work out to subagents on a cheaper tier, is mispriced by about 2x if you
+multiply its token total by a single rate. Subagent spend is included in the
+session total and also shown separately (`⑂`), because "why is this session
+expensive when I have barely typed into it" is usually answered by a workflow.
+
+`tagents --preview` / `tusage --session <id>` breaks a session down per subagent
+and per model, so a mid-session switch shows up as two priced rows.
+
+Rates live in `PRICES` at the top of `tusage`, in dollars per million tokens,
+with cache multipliers (5m write 1.25x, 1h write 2x, read 0.1x) applied on top.
+A model with no published rate is **never guessed at**: its usage is excluded
+and the figure is marked with a trailing `?` to say it is a floor. Add a rate
+without editing the file via `TU_PRICES`:
+
+```sh
+TU_PRICES='claude-opus-5 5 25;claude-fable-5 10 50' tagents
+```
 
 ## Notes
 
