@@ -6,12 +6,12 @@ has spent — with the selected chat docked beside the list so you can type into
 it without leaving.
 
 ```
-▾ storefront   ~/git/storefront          ⚠1 ✓1 ●1   84k/5h
-  ├─ ⚠ BLOCKED   2:14  api      %31   142k  31k/5h
-  ├─ ● working   0:08  web      %44    38k   9k/5h  ⑂2
-  └─ ✓ idle     17:02  worker   %12    12k
+▾ storefront   ~/git/storefront          ⚠1 ✓1 ●1   $31.4/5h
+  ├─ ⚠ BLOCKED   2:14  api      142k  $38.3  opus5    %31
+  ├─ ● working   0:08  web       38k   $9.1  sonnet5  %44  ⑂2
+  └─ ✓ IDLE     17:02  worker    12k   $2.7  haiku4.5 %12
 ▾ .dotfiles    ~/git/.dotfiles           ●1
-  └─ ● working   0:31  dotfiles %3     71k  44k/5h
+  └─ ● working   0:31  dotfiles  71k  $44.0  opus5    %3
 ```
 
 ## What is in here
@@ -21,12 +21,13 @@ it without leaving.
 | `tagents` | the dashboard itself — the tree, the sidebar, the timeline |
 | `tusage`  | per-session cost, dollars and context accounting, read from the transcripts |
 | `hooks/tmux-agent-state.sh` | the Claude Code hook that publishes session state |
+| `hooks/claude-statusline.sh` | the Claude Code status line — and the only source for which model a session is *set* to |
 
-The three are one system. The hook writes a record per session into
+They are one system. The hook writes a record per session into
 `~/.claude/agent-state/`; `tagents` joins that with the live tmux pane list and
 renders it; `tusage` supplies the two cost columns, joined on the session id.
-`tagents` degrades gracefully when `tusage` is missing, but without the hook
-there is nothing to show.
+`tagents` degrades gracefully when `tusage` or the status line is missing, but
+without the state hook there is nothing to show.
 
 ## Install
 
@@ -37,15 +38,22 @@ cd tagents
 # 1. on $PATH
 ln -sf "$PWD/tagents" "$PWD/tusage" ~/.local/bin/
 
-# 2. the hook script
+# 2. the hook scripts
 mkdir -p ~/.claude/hooks
-ln -sf "$PWD/hooks/tmux-agent-state.sh" ~/.claude/hooks/
+ln -sf "$PWD/hooks/tmux-agent-state.sh" "$PWD/hooks/claude-statusline.sh" ~/.claude/hooks/
 
 # 3. register the hook, so Claude actually calls it
 #    add tmux-agent-state.sh to ~/.claude/settings.json under "hooks" for
 #    SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Notification,
 #    Stop, SubagentStop and SessionEnd. PreToolUse/PostToolUse/SubagentStop
 #    should be "async": true so they never sit in the tool-call critical path.
+
+# 4. the status line, which is what feeds the model column
+#    "statusLine": {
+#      "type": "command",
+#      "command": "sh \"$HOME/.claude/hooks/claude-statusline.sh\"",
+#      "padding": 0
+#    }
 ```
 
 Needs `tmux`, `fzf`, `jq` and `awk`. Written for bash 3.2 on purpose — macOS
@@ -80,12 +88,27 @@ Keys inside the dashboard:
 `tagents --help` is the real documentation — the script's header explains the
 model, and every non-obvious decision in it is commented with the reason.
 
+## States
+
+| | | |
+|--|--|--|
+| `⚠` | **BLOCKED** | Claude asked something and cannot go on until you answer |
+| `✓` | **IDLE** | the turn ended; nothing is stuck, it is your move |
+| `●` | working | a prompt or a tool call is in flight |
+| `○` | new | the session just opened and has not been given anything yet |
+| `✗` | closed | no Claude process in that pane — `enter` resumes it |
+
+Claude Code also pings a notification after about a minute of silence, which
+says nothing beyond "your move". That is folded into IDLE rather than shown as
+its own state with its own message, so `⚠` stays a signal worth reacting to —
+including on the tmux window tab, which flags `blocked` panes only.
+
 ## Cost
 
 Each row shows what the session has cost in dollars and which model it is on:
 
 ```
-├─ ⚠ BLOCKED   2:14  api      %31   142k  $38.3  fable5   ⑂$6.94
+├─ ⚠ BLOCKED   2:14  api      142k  $38.3  fable5  %31  ⑂$6.94
 ```
 
 **The dollars are priced per request, at the model that actually served it** —
@@ -98,6 +121,15 @@ expensive when I have barely typed into it" is usually answered by a workflow.
 
 `tagents --preview` / `tusage --session <id>` breaks a session down per subagent
 and per model, so a mid-session switch shows up as two priced rows.
+
+**The model column is the model the session is set to now**, which is a
+different question with a different source. The transcript records the model of
+every assistant *message*, so it can only ever say what answered last — flip a
+session to Opus and say nothing, and the newest message on disk is still the
+Fable one from an hour ago. Nothing else on disk disagrees, and the only channel
+carrying the configured model is the status line payload, which is why
+`hooks/claude-statusline.sh` exists. Without it the column falls back to the
+last model billed, which is correct right up until you switch.
 
 Rates live in `PRICES` at the top of `tusage`, in dollars per million tokens,
 with cache multipliers (5m write 1.25x, 1h write 2x, read 0.1x) applied on top.

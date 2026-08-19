@@ -58,15 +58,26 @@ line=$(printf '%s' "$payload" | jq -r --arg us "$us" '
   def arg:  (.tool_input // {})
             | (.command // .file_path // .pattern // .path // .url
                // .description // .prompt // "") | tostring;
+  # A Notification is not automatically something to act on. Claude Code sends
+  # one when it wants a decision ("Claude needs your permission to use Bash"),
+  # and it also sends one after ~60s of silence purely to say the turn is over
+  # and it is your move — which is the same situation Stop already reports. The
+  # second kind is folded into "done" and carries no text: the state column
+  # already says it, and repeating "Claude is waiting for your input" on every
+  # such row was noise. Only a real ask keeps the "blocked" state, and there the
+  # message is the whole point, so it is kept verbatim.
+  def idleping: ((.notification_type // .notificationType // "") == "idle_prompt")
+                or ((.message // "") | test("waiting for your input"; "i"));
   . as $h
   | ($h.hook_event_name // "") as $e
-  | (if   $e == "Notification"     then ["blocked", ($h.message // "нужен твой ответ")]
-     elif $e == "Stop"             then ["done",    "ход закончен — ждёт ввода"]
+  | (if   $e == "Notification"     then (if ($h | idleping) then ["done", ""]
+                                         else ["blocked", ($h.message // "")] end)
+     elif $e == "Stop"             then ["done",    ""]
      elif $e == "UserPromptSubmit" then ["working", ($h.prompt // "")]
      elif $e == "PreToolUse"       then ["working", (($h.tool_name // "tool")
                                                      + (($h | arg) | if . == "" then "" else " " + . end))]
      elif $e == "PostToolUse"      then ["working", (($h.tool_name // "tool") + " ✓")]
-     elif $e == "SessionStart"     then ["idle",    ("сессия: " + ($h.source // "start"))]
+     elif $e == "SessionStart"     then ["new",     ("session " + ($h.source // "start"))]
      elif $e == "SessionEnd"       then ["gone",    ""]
      elif $e == "SubagentStop"     then ["subdone", ""]
      else                               ["working", $e] end) as [$state, $detail]

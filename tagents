@@ -4,7 +4,17 @@
 #
 # State comes from ~/.claude/hooks/tmux-agent-state.sh, which every Claude
 # session writes to on each hook event; this script joins that with the live
-# pane list and renders it through fzf.
+# pane list and renders it through fzf. The model column comes from
+# ~/.claude/hooks/claude-statusline.sh, registered as Claude Code's statusLine,
+# which is the only channel that knows which model a session is SET to.
+#
+# STATES, in the order they sort. ⚠ BLOCKED means Claude asked a question and
+# cannot go on until it is answered. ✓ IDLE means the turn simply ended — your
+# move, but nothing is stuck; Claude Code also pings a notification after a
+# minute of silence saying exactly that, and it is folded in here rather than
+# given a louder state of its own. Then ● working, ○ new (opened, never used)
+# and ✗ closed. Only "blocked" reaches the tmux window tab, so the ⚠ there
+# stays worth reacting to.
 #
 #   tagents                 interactive dashboard (default)
 #   tagents --timeline      who worked when over the last day, as bars
@@ -30,7 +40,7 @@
 # Each row carries three columns joined on the session id via `tusage`: the live
 # context size (yellow past 200k, red past 600k — that is where every request
 # starts re-reading a book from cache), what the session has cost in dollars,
-# and the model it is on now. A ⑂ figure appears when subagents or workflows are
+# and the model it is set to now. A ⑂ figure appears when subagents or workflows are
 # what is actually spending it, and the project header totals the last five
 # hours. The preview breaks a session down per subagent AND per model.
 #
@@ -38,7 +48,10 @@
 # — never at the model the session happens to be on now. That distinction is not
 # academic: a session that starts on Fable and finishes on Opus, or fans work out
 # to subagents on a cheaper tier, is mispriced by ~2x if you multiply its token
-# total by one rate. The model column is display only; see PRICES in `tusage`.
+# total by one rate. The model column is display only, and deliberately answers
+# a different question from the money: it is what the NEXT request will be
+# billed at, read from the status line, because the transcript can only say what
+# answered last and that lags a /model switch until you type again.
 # A trailing `?` means part of the session ran on a model with no published
 # rate, so the figure is a floor rather than the whole bill.
 #
@@ -292,6 +305,16 @@ collect() {
       { print "B", "%" k, $0 }' "$f"
   done
 
+  # Which model each session is SET to, recorded by claude-statusline.sh. This
+  # is not the same question tusage answers: tusage reports the model that
+  # served the newest request, which is what the money is computed from and
+  # which goes stale the moment you /model a session and do not talk to it.
+  for f in "$STATE_DIR"/model/*.tsv; do
+    [ -e "$f" ] || continue
+    key=${f##*/}; key=${key%.tsv}
+    awk -F"$TAB" -v OFS="$TAB" -v s="$key" 'NR==1 { print "M", s, $2; exit }' "$f"
+  done
+
   # Token accounting, joined on session id. --no-update keeps this to one awk
   # pass over the index; advancing the index is the refresher loop's job, so a
   # keystroke never waits on it.
@@ -528,6 +551,14 @@ list() {
       if (n == 2) return a[1] a[2]
       return s
     }
+    # What the session is on NOW. The status line knows this first-hand and is
+    # the only thing that does; tusage can only report the model that answered
+    # last, which lags a /model switch by however long you take to type the next
+    # prompt — long enough that the column read as simply wrong.
+    function curmodel(sq) {
+      if (sq != "" && (sq in smdl) && smdl[sq] != "") return shortmodel(smdl[sq])
+      return shortmodel(umdl[sq])
+    }
     # RESPONSIVE COLUMNS. A row that does not fit is not merely ugly: fzf hard
     # -truncates it, so in a narrow sidebar the detail, then the location, then
     # the cost silently vanished with nothing to say they had. Columns are now
@@ -570,19 +601,28 @@ list() {
     BEGIN {
       fitcols()
       R = "\033[0m"; DIM = "\033[90m"; BOLD = "\033[1m"
+      # BLOCKED is reserved for an agent that has actually asked you something
+      # and cannot go on until you answer. A turn that simply ended is IDLE —
+      # nothing is stuck, it is just your move — and the hook folds Claude Code
+      # idle ping into the same state, since it says nothing "done" did not.
       prio["blocked"]=0; icon["blocked"]="⚠"; lbl["blocked"]="BLOCKED"; col["blocked"]="\033[1;33m"
-      prio["done"]   =1; icon["done"]   ="✓"; lbl["done"]   ="waiting"; col["done"]   ="\033[36m"
+      prio["done"]   =1; icon["done"]   ="✓"; lbl["done"]   ="IDLE";    col["done"]   ="\033[36m"
       prio["working"]=2; icon["working"]="●"; lbl["working"]="working"; col["working"]="\033[32m"
-      prio["idle"]   =3; icon["idle"]   ="○"; lbl["idle"]   ="idle";    col["idle"]   ="\033[90m"
+      prio["new"]    =3; icon["new"]    ="○"; lbl["new"]    ="new";     col["new"]    ="\033[90m"
       prio["?"]      =4; icon["?"]      ="·"; lbl["?"]      ="?";       col["?"]      ="\033[90m"
       prio["dead"]   =5; icon["dead"]   ="✗"; lbl["dead"]   ="closed";  col["dead"]   ="\033[90m"
-      norder = split("blocked done working idle ? dead", ORD, " ")
+      norder = split("blocked done working new ? dead", ORD, " ")
     }
     $1=="P" { alive[$2]=1; loc[$2]=$3; title[$2]=$4; path[$2]=$5; next }
     $1=="L" { live[$2]=1; next }
     $1=="R" { root[$2]=$3; next }
     $1=="N" { lab[$2]=$3; next }
-    $1=="S" { ts[$2]=$3; st[$2]=$4; sid[$2]=$5; cwd[$2]=$6; det[$2]=$8; next }
+    # "idle" was what SessionStart used to write, before that state was renamed
+    # to "new" and "idle" became the label of a finished turn. A session that
+    # started under the old hook and has not fired an event since would show as
+    # "?" forever without this.
+    $1=="S" { ts[$2]=$3; st[$2]=($4 == "idle" ? "new" : $4); sid[$2]=$5; cwd[$2]=$6
+              det[$2]=$8; next }
     $1=="B" { if (now - $3 < ttl) subs[$2]++; next }
     # tusage --sessions: sid, cost, reqs, ctx, last, slug, subagent cost, live
     # subagents, cost in the last 5h, model, $, $ in the last 5h, $ subagents,
@@ -590,6 +630,8 @@ list() {
     # model that produced it, so they stay right across a mid-session /model and
     # across subagents deliberately run on a cheaper tier; umdl is only what the
     # session is on NOW, and is never used to compute money.
+    # claude-statusline.sh: the model the session is configured on right now.
+    $1=="M" { smdl[$2]=$3; next }
     $1=="U" { uctx[$2]=$5+0; u5h[$2]=$10+0; usub[$2]=$8+0; utot[$2]=$3+0
               umdl[$2]=$11; uusd[$2]=$12+0; uusd5h[$2]=$13+0; uusdsub[$2]=$14+0
               uunp[$2]=$15+0; next }
@@ -663,7 +705,7 @@ list() {
         # rate, so the figure is a floor rather than the whole bill.
         if (burnw) row = row sprintf(" %s%*s%s", DIM, burnw,
                                      money(ud) (unp > 0 && ud > 0 ? "?" : ""), R)
-        if (mdlw)  row = row sprintf(" %s%-*.*s%s", DIM, mdlw, mdlw, shortmodel(umdl[sq]), R)
+        if (mdlw)  row = row sprintf(" %s%-*.*s%s", DIM, mdlw, mdlw, curmodel(sq), R)
         if (locw)  row = row sprintf(" %s%-*s%s", DIM, locw, tailfit(where, locw), R)
         # The subagent share of that money — the answer to "why is this session
         # expensive when I have barely typed into it".
