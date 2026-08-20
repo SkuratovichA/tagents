@@ -80,7 +80,8 @@ Keys inside the dashboard:
 | `ctrl-o` | borrow the agent's whole window into this session |
 | `ctrl-e` | type a line straight into that agent without leaving |
 | `ctrl-r` | name this agent (`F2` too) |
-| `ctrl-x` | undock — send the docked pane home |
+| `ctrl-u` | undock — send the docked pane home |
+| `ctrl-x` | kill this agent — hang up its Claude and close its pane (asks first). On a row that is already closed, forget it instead |
 | `ctrl-t` | toggle tree / flat |
 | `ctrl-l` | refresh now |
 | `ctrl-q` | quit |
@@ -96,7 +97,7 @@ model, and every non-obvious decision in it is commented with the reason.
 | `✓` | **IDLE** | the turn ended; nothing is stuck, it is your move |
 | `●` | working | a prompt or a tool call is in flight |
 | `○` | new | the session just opened and has not been given anything yet |
-| `✗` | closed | no Claude process in that pane — `enter` resumes it |
+| `✗` | closed | no Claude process in that pane — `enter` resumes it, `ctrl-x` forgets it |
 
 Claude Code also pings a notification after about a minute of silence, which
 says nothing beyond "your move". That is folded into IDLE rather than shown as

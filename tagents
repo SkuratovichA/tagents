@@ -100,7 +100,7 @@
 #                      splitting it on demand, and put the cursor in it. The
 #                      agent's own window keeps its pane count and layout (a
 #                      placeholder is swapped into its place), so nothing is
-#                      moved or destroyed and ctrl-x reverses it.
+#                      moved or destroyed and ctrl-u reverses it.
 #                      On a closed session: resume it, then dock it.
 #                      On a group header: act on the group's most urgent agent.
 #   ctrl-g             go to the agent where it lives instead, leaving the
@@ -126,9 +126,16 @@
 #   ctrl-r             name this agent; an empty name goes back to its title
 #                      (F2 does the same, for keyboards that have an F-row;
 #                      set TA_RENAME_KEY to move it somewhere else)
-#   ctrl-x             undock — send the docked pane home. With nothing docked,
+#   ctrl-u             undock — send the docked pane home. With nothing docked,
 #                      give a borrowed window back instead (unlink it from this
 #                      session only)
+#   ctrl-x             kill this agent: hang up its Claude and close its pane,
+#                      and its window with it when that was the pane's window.
+#                      Asks first, naming the agent. The session stays
+#                      resumable — the row turns into a closed one that enter
+#                      brings back — so on a row that is ALREADY closed there is
+#                      nothing to kill and this forgets the record instead,
+#                      taking the row off the list
 #   ctrl-t             toggle tree / flat
 #   ctrl-v             show the text preview (hidden while docking, where the
 #                      docked pane is the live thing itself)
@@ -727,9 +734,14 @@ list() {
         # summaries and so reads a few percent — sometimes a fifth — under what
         # Claude Code says. "?" on top of that means part of it ran on a model
         # with no rate at all, so it is a floor.
-        if (burnw) row = row sprintf(" %s%*s%s", DIM, burnw,
-                                     (exact ? "" : "~") money(ud) \
-                                     (!exact && unp > 0 && ud > 0 ? "?" : ""), R)
+        # Built as a string first, because the markers only mean anything
+        # when there is a figure to mark: money() returns nothing at all below a
+        # cent, and prefixing that left a lone "~" sitting in the column of every
+        # session that had not spent anything yet.
+        udtxt = money(ud)
+        if (udtxt != "")
+          udtxt = (exact ? "" : "~") udtxt (!exact && unp > 0 ? "?" : "")
+        if (burnw) row = row sprintf(" %s%*s%s", DIM, burnw, udtxt, R)
         if (mdlw)  row = row sprintf(" %s%-*.*s%s", DIM, mdlw, mdlw, curmodel(sq), R)
         if (locw)  row = row sprintf(" %s%-*s%s", DIM, locw, tailfit(where, locw), R)
         # The subagent share of that money — the answer to "why is this session
@@ -1058,6 +1070,116 @@ ask_send() {
   tmux send-keys -t "$pane" -l -- "$text" 2>/dev/null
   sleep 0.2   # let the TUI settle before the newline, or it reads as a paste
   tmux send-keys -t "$pane" Enter 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# killing an agent
+#
+# ctrl-x ends the agent under the cursor: the Claude in it is hung up and its
+# pane goes with it, which takes the window too when it was the only pane there.
+# Same end state as typing /exit and then exiting the shell, in one keypress.
+#
+# IT ASKS FIRST, and not only because it is destructive. ctrl-x used to be
+# undock (that moved to ctrl-u), so the muscle memory of every earlier version
+# of this dashboard now lands on the one key that ends a session — and on a
+# group header the row stands in for the group's most urgent member, which is
+# not a pane you chose by name. The popup says which agent it is about to kill,
+# so a wrong press costs a glance and a keystroke instead of a conversation.
+#
+# NOTHING IS LOST that /exit would have kept: Claude Code writes its transcript
+# as it goes, so the row simply becomes "closed — enter resumes it", like any
+# other session you have quit, and picks up where it stopped. Pressing ctrl-x on
+# that closed row is the second half of the same gesture — there is no process
+# left to hang up, so it drops the record and the row goes away.
+# ---------------------------------------------------------------------------
+kill_agent() {
+  local pane=${1:-} sid=${2:-}
+  [ "$pane" = "-" ] && return 0
+  # The list itself is a pane in the same window as the chat it docks, and it is
+  # never an agent row — but a marker can drift, and killing the list from the
+  # list is not a mistake worth allowing.
+  if [ "$pane" = "$(dash_pane)" ]; then
+    tmux display-message "tagents: that is the dashboard itself" 2>/dev/null
+    return 0
+  fi
+  prompt 11 --ask-kill "$pane" "$sid" && return 0
+  ask_kill "$pane" "$sid"
+}
+
+ask_kill() {  # the confirmation itself — normally the body of the popup
+  local pane=${1:-} sid=${2:-} nm dir where ans alive=0
+  [ "$pane" = "-" ] && return 0
+  # Asked of tmux, not taken from the row: the row was rendered up to two
+  # seconds ago, and what is about to happen depends on whether there is still a
+  # pane to kill. A row keyed "s-<session>" — a session that had no $TMUX_PANE
+  # and was never resolved to one — names no pane at all and lands here too.
+  case "$pane" in
+    %[0-9]*) tmux list-panes -a -F '#{pane_id}' 2>/dev/null |
+               grep -qx -- "$pane" && alive=1 ;;
+  esac
+  # The same name the row shows, worked out the same way: an explicit label
+  # first, then the pane title with Claude Code leading glyph stripped, then the
+  # project. A title that is just the hostname is tmux default and names nothing.
+  nm=$(label_of "${sid:-$pane}")
+  dir=$(awk -F"$TAB" 'NR==1 { print $4 }' "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)
+  if [ "$alive" = 1 ]; then
+    [ -z "$dir" ] && dir=$(tmux display -p -t "$pane" '#{pane_current_path}' 2>/dev/null)
+    if [ -z "$nm" ]; then
+      nm=$(tmux display -p -t "$pane" '#{pane_title}' 2>/dev/null)
+      nm=${nm#* }
+      [ "$nm" = "$(hostname -s 2>/dev/null)" ] && nm=""
+    fi
+    [ -z "$nm" ] && nm=$(basename "${dir:-?}")
+    where=$(tmux display -p -t "$pane" \
+              '#{session_name}:#{window_index}  #{pane_current_path}' 2>/dev/null)
+    printf '\033[1mkill this agent?\033[0m\n'
+    printf '%s\n' "${nm:-$pane}"
+    printf '\033[90m%s\033[0m\n' "$where"
+    printf '\033[90mclaude is hung up and the pane goes with it — the window too\n'
+    printf 'if it is the last pane there. the session stays resumable.\033[0m\n'
+  else
+    [ -z "$nm" ] && [ -n "$dir" ] && nm=$(basename "$dir")
+    printf '\033[1mforget this closed session?\033[0m\n'
+    printf '%s\n' "${nm:-${sid:-$pane}}"
+    [ -n "$dir" ] && printf '\033[90m%s\033[0m\n' "$dir"
+    printf '\033[90mno pane of this session is left, so there is nothing to hang\n'
+    printf 'up. this drops the record, which is what enter resumes from.\033[0m\n'
+  fi
+  printf '\033[90my confirms · anything else cancels\033[0m\n> '
+  # Bounded, like every other prompt here: without popups this runs inline,
+  # where fzf has handed over the terminal and a read that never returns takes
+  # the dashboard with it. A confirmation nobody answers means "no".
+  IFS= read -r -t 60 ans || return 0
+  case "$ans" in
+    y|Y|yes|YES|Yes) ;;
+    *) return 0 ;;
+  esac
+  if [ "$alive" = 1 ]; then end_agent "$pane"; else forget_agent "$pane"; fi
+}
+
+end_agent() {  # <pane> — hang up the agent running in it
+  local pane=$1 key=${pane#%} dp
+  # Send it home first if it is docked. Killing it where it sits leaves the
+  # placeholder parked in its seat pointing at a pane that no longer exists;
+  # slot() does clear that up by itself, but only after two ticks, and until
+  # then the sidebar's right half is blank for no visible reason.
+  dp=$(dash_pane)
+  [ -n "$dp" ] && [ "$(docked_pane "$dp")" = "$pane" ] && undock
+  tmux kill-pane -t "$pane" 2>/dev/null || return 1
+  # SessionEnd cannot fire for a pane that has been killed, so do the half of
+  # its cleanup that would otherwise show: the subagent files, which keep
+  # claiming this session has work fanned out under it. Its own record is kept
+  # on purpose — that is what leaves the row as "closed, enter resumes it".
+  [ -n "$key" ] && rm -f "$STATE_DIR/sub/$key".* 2>/dev/null
+  return 0
+}
+
+forget_agent() {  # <pane-key> — drop a closed session's record from the list
+  local key=${1#%}
+  [ -n "$key" ] || return 0
+  rm -f "$STATE_DIR/$key.tsv" 2>/dev/null
+  rm -f "$STATE_DIR/sub/$key".* 2>/dev/null
+  return 0
 }
 
 refresher() {
@@ -1539,6 +1661,7 @@ act() {
       # Send the docked chat home. With nothing docked, the only other way a
       # window gets pulled in here is ctrl-o's borrow — undo that instead.
       undock || give_back "$pane" "${TA_HOME:-}" ;;
+    kill)   kill_agent "$pane" "$sid" ;;
   esac
 }
 
@@ -1656,9 +1779,53 @@ new_agent() {  # <dir>
 # dashboard
 # ---------------------------------------------------------------------------
 
+# The key list, packed into as few lines as fit. fzf TRUNCATES a header, it does
+# not wrap one, so in a sidebar 90 columns wide everything from rename onwards
+# was simply not on screen — which is no place to keep the key that ends a
+# session. Packed from the real width rather than split at a fixed point,
+# because the items are not fixed either: enter is labelled differently
+# depending on where the list is running, ctrl-q is absent in a popup, and
+# TA_RENAME_KEY can be any length.
+#
+# Two columns go on fzf own left indent and two more on the ellipsis it draws
+# when a line still does not fit, so a line has cols - 4 to play with.
+keyhdr() {  # <cols> <item>... -> the header, one item per line at worst
+  local cols=${1:-80}
+  shift
+  case $cols in ''|*[!0-9]*) cols=80 ;; esac
+  [ "$cols" -lt 24 ] && cols=24
+  printf '%s\n' "$@" | awk -v w="$((cols - 4))" '
+    function uclen(s,   i, n, c) {
+      n = 0
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c >= "\200" && c <= "\277") continue   # UTF-8 continuation byte
+        n++
+      }
+      return n
+    }
+    { it[++n] = $0 }
+    END {
+      # Greedy first-fit, which for a fixed width is also the fewest lines
+      # possible — so no key is dropped and none is hidden, and a wide dashboard
+      # collapses the lot back onto one line by itself. The cap is only there so
+      # a pane too narrow to hold the keys spends four rows on them rather than
+      # every row it has; past that fzf truncates, as it did for all of them
+      # before.
+      for (i = 1; i <= n; i++) {
+        cand = (line == "") ? it[i] : line " · " it[i]
+        if (line != "" && uclen(cand) > w && lines < 3) {
+          out = out line "\n"; lines++; line = it[i]
+        } else line = cand
+      }
+      printf "%s%s", out, line
+    }'
+}
+
 dash() {
   local home=${TA_HOME:-} mode=${TA_MODE:-dash} out key rows
-  local rc started fails=0 esc_bind='esc:ignore' quit='ctrl-q quit · '
+  local rc started fails=0 esc_bind='esc:ignore' quit='ctrl-q quit'
+  local header
   local enter_lbl='open in sidebar' preview_win after=''
   # A prompt that opens a popup returns at once, so fzf never has to give up the
   # screen for it — that is what keeps rename and send from flashing the list.
@@ -1713,11 +1880,15 @@ dash() {
     rows=$(list)
     [ -z "$rows" ] && rows="-${TAB}$(printf '\033[90m')no claude sessions running$(printf '\033[0m')${TAB}none"
     started=$SECONDS
+    header=$(keyhdr "${TA_COLS:-80}" \
+      "enter $enter_lbl" "ctrl-n new" "ctrl-g goto" "ctrl-o borrow" "ctrl-e send" \
+      "$RENAME_KEY name" "ctrl-u undock" "ctrl-x kill" "ctrl-t tree" \
+      "ctrl-l refresh" ${quit:+"$quit"})
     out=$(printf '%s\n' "$rows" | fzf \
       --ansi --no-sort --delimiter="$TAB" --with-nth=2 \
       --listen --height=100% --layout=reverse --info=inline \
       --prompt='agents> ' \
-      --header="enter ${enter_lbl} · ctrl-n new · ctrl-g goto · ctrl-o borrow window · ctrl-e send · ${RENAME_KEY} rename · ctrl-x undock · ctrl-t tree/flat · ctrl-l refresh · ${quit}" \
+      --header="$header" \
       --preview="$SELF --preview {1} {3}" \
       --preview-window="$preview_win" \
       --bind="enter:execute-silent($SELF --act open {1} {3} {4} {5})$after" \
@@ -1728,7 +1899,8 @@ dash() {
       --bind="ctrl-s:$ask($SELF --act send {1})$after" \
       --bind="$RENAME_KEY:$ask($SELF --act rename {1} {3} {4})" \
       --bind="f2:$ask($SELF --act rename {1} {3} {4})" \
-      --bind="ctrl-x:execute-silent($SELF --act undock {1})+reload-sync($SELF --list)" \
+      --bind="ctrl-u:execute-silent($SELF --act undock {1})+reload-sync($SELF --list)" \
+      --bind="ctrl-x:$ask($SELF --act kill {1} {3} {4})" \
       --bind="ctrl-n:execute-silent($SELF --act new {1} {3} {4} {5})$after" \
       --bind="$esc_bind" \
       --bind='ctrl-v:toggle-preview' \
@@ -1770,6 +1942,7 @@ case "${1:-}" in
   --label)        label_cmd "${2:-}" "${3:-}" ;;
   --ask-rename)   ask_rename "${2:-}" "${3:-}" ;;
   --ask-send)     ask_send "${2:-}" ;;
+  --ask-kill)     ask_kill "${2:-}" "${3:-}" ;;
   --act)          shift; act "$@" ;;
   --counts)       counts ;;
   --preview)      preview "${2:-}" "${3:-}" ;;
