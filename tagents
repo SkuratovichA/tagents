@@ -25,6 +25,20 @@
 #   tagents --counts        compact summary, for the tmux status bar
 #   tagents --preview PANE  live view of a pane, for the fzf preview window
 #   tagents --ensure-dash   create the dedicated dashboard session if missing
+#   tagents --new [DIR] [PROFILE]
+#                           start an agent in DIR from outside the list — a tmux
+#                           binding, a shell, anything. DIR defaults to $PWD and
+#                           the account to whatever the rules below pick
+#   tagents --profile-for DIR [SESSION]
+#                           which account those rules pick, without launching
+#                           anything. Prints a profile name or "ask"; exits 1
+#                           when no profiles are configured
+#   tagents --config        the config as tagents actually reads it, one
+#                           path<TAB>value line per leaf. This is the answer to
+#                           "why is my rule not firing"
+#   tagents --agent-cmd PROFILE new|resume [SID]
+#                           the exact command string a launch on that profile
+#                           would run, quoting and all
 #
 # Agents are grouped into a tree by working directory, so several sessions in
 # one repo sit under one header. Groups sort by their most urgent member, so a
@@ -42,7 +56,11 @@
 # starts re-reading a book from cache), what the session has cost in dollars,
 # and the model it is set to now. A ⑂ figure appears when subagents or workflows are
 # what is actually spending it, and the project header totals the last five
-# hours. The preview breaks a session down per subagent AND per model.
+# hours. The preview breaks a session down per subagent AND per model. On a wide
+# enough list one more column follows: which Claude ACCOUNT the session is on,
+# named after the profile in the config that claims its CLAUDE_CONFIG_DIR (see
+# CONFIG below). It is blank for a session whose record predates that column
+# rather than guessed at.
 #
 # WHERE THE DOLLAR FIGURE COMES FROM. Claude Code keeps its own cost ledger and
 # publishes it to the status line, so for any session that is open the number
@@ -74,6 +92,52 @@
 # the process tree — not merely that a state file exists. Panes whose Claude has
 # exited are listed as closed, dimmed and sorted below everything live, and
 # enter restarts them with `claude --resume <id>` (see RESUME_CMD).
+#
+# CONFIG — WHICH ACCOUNT AN AGENT IS STARTED ON.
+# ~/.config/tagents/config.yaml (or $TA_CONFIG). With no such file nothing below
+# happens and every agent is started exactly as it always was: a plain
+# `claude --dangerously-skip-permissions` with the environment inherited.
+#
+# An account is a Claude Code config dir, and it is a whole login rather than a
+# preference: Claude derives its keychain item from the literal path, so
+# ~/.claude-personal and ~/.claude are two independent logins that never evict
+# each other, and CLAUDE_CONFIG_DIR *unset* is a third thing again — not the
+# same as empty. That is why the config names accounts as `profiles` (a profile
+# with no config_dir IS the default account) and why every launch goes out as
+# `env -u CLAUDE_CONFIG_DIR [CLAUDE_CONFIG_DIR=…] claude …`.
+#
+# The reason this exists at all: tmux runs a new-window command through /bin/sh
+# as a child of the tmux SERVER, so your .zshrc never runs and never gets to
+# choose the account from $PWD. The server has no CLAUDE_CONFIG_DIR of its own,
+# so before this every agent tagents started ran on the default account whatever
+# directory it was in. The `env` prefix is carried in the command string rather
+# than passed with `tmux -e` so the very same string also works when it is typed
+# into a shell (the resume-in-its-own-pane path), and so it bypasses any
+# `claude()` shell function that would re-resolve the account itself.
+#
+#   claude:
+#     args: --dangerously-skip-permissions   # a string, or a list of arguments
+#     profiles:
+#       personal:
+#         config_dir: ~/.claude-personal
+#       work:         # no config_dir: CLAUDE_CONFIG_DIR is unset for this one
+#     rules:          # first match wins
+#       - dir: ~/git/personal                # the directory and everything under it
+#         profile: personal
+#       - session: work                      # tmux session name CONTAINS this
+#         profile: work
+#     default: ask    # when nothing matches; `ask` opens the dialog
+#
+# A profile may also carry `command:` (the binary or wrapper to run), its own
+# `args:`, and an `env:` map of extra variables. See config.example.yaml.
+#
+# `profile: ask` — and the default `ask` — open a small fzf over the profiles
+# instead of guessing. ctrl-p opens it unconditionally, so an account can always
+# be chosen by hand whatever the rules say. RESUMING NEVER CONSULTS THE RULES:
+# the account a closed session comes back on is the one it actually ran on,
+# recorded by the state hook, because a conversation resumed on another login
+# simply is not there. `tagents --config` shows what tagents thinks the file
+# says, and `--agent-cmd` the command it would build from it.
 #
 # The dashboard is a sidebar: the list on the left, the selected agent's own pane
 # docked on the right, swapped in live so you can type into it. Enter only changes
@@ -123,6 +187,11 @@
 #                      the list stays on screen, the new agent shows up in the
 #                      tree on the next refresh, and enter opens it like any
 #                      other agent. See new_agent().
+#   ctrl-p             the same, but always asking which account to start it on,
+#                      whatever the rules would have picked. ctrl-p is fzf own
+#                      "up", but ctrl-n (down) was already spent on "new", so the
+#                      pair is at least consistent; the arrows and ctrl-j/ctrl-k
+#                      still move the cursor
 #   ctrl-r             name this agent; an empty name goes back to its title
 #                      (F2 does the same, for keyboards that have an F-row;
 #                      set TA_RENAME_KEY to move it somewhere else)
@@ -173,6 +242,547 @@ RENAME_KEY=${TA_RENAME_KEY:-ctrl-r}
 TAB=$'\t'
 US=$'\037'   # unit separator: unlike tab it is not IFS whitespace, so `read`
              # keeps empty fields instead of silently shifting the rest left
+
+# ---------------------------------------------------------------------------
+# config: which Claude account an agent is started on
+#
+# Everything here is inert without ~/.config/tagents/config.yaml. No file means
+# no profiles, which means agent_cmd falls back to exactly the strings this
+# script has always used and nothing ever asks you anything.
+#
+# The parser is one awk program over a deliberate subset of YAML — mappings,
+# sequences, quoted scalars, comments — flattened to `path<TAB>value`, one line
+# per leaf, in file order. yq is not installed anywhere this has to run, and a
+# config that decides which LOGIN an agent gets is not worth a python start-up
+# on every keypress. Sequence items are `path.N`, so a rule is claude.rules.0.dir
+# and the whole thing stays greppable by hand: that is what --config prints.
+# ---------------------------------------------------------------------------
+CONFIG_FILE=${TA_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/tagents/config.yaml}
+CFG=""          # the flattened config, parsed at most once per process
+CFG_LOADED=0
+RS=$'\036'      # record separator: awk -v cannot take a value with a newline in
+                # it (BWK awk errors out and prints nothing), so the profile
+                # table handed to list() is joined with this instead
+
+cfg_parse() {  # stdin: yaml -> stdout: path<TAB>value, warnings on stderr
+  awk -v FNAME="$CONFIG_FILE" '
+    function warn(wn, wy) {
+      printf "tagents: config: %s:%d: %s\n", FNAME, wn, wy > "/dev/stderr"
+    }
+    # A # only starts a comment outside quotes and at the start of a word, so
+    # `note: "a # b"` and `url: http://x#y` both survive intact.
+    function stripc(sc,   si, sh, sq, so, sp) {
+      sq = ""; so = ""; sp = " "
+      for (si = 1; si <= length(sc); si++) {
+        sh = substr(sc, si, 1)
+        if (sq == "") {
+          if (sh == "#" && (si == 1 || sp == " " || sp == "\t")) return so
+          # A quote opens a scalar only at the start of a word, the same rule
+          # the # above follows. Without it an apostrophe anywhere in a plain
+          # value opened a scalar that never closed, so the trailing comment was
+          # taken as part of the value — which for a config_dir is a path that
+          # does not exist and a login that silently is not the one asked for.
+          # (No apostrophe in this comment: the program is one quoted string.)
+          if ((sh == DQ || sh == SQ) &&
+              (si == 1 || sp == " " || sp == "\t" || sp == ":")) sq = sh
+        } else if (sq == DQ) {
+          if (sh == "\\" && si < length(sc)) {
+            so = so sh; si++; sh = substr(sc, si, 1); so = so sh; sp = sh; continue
+          }
+          if (sh == DQ) sq = ""
+        } else if (sh == SQ) sq = ""
+        so = so sh; sp = sh
+      }
+      return so
+    }
+    function unq(uv,   ui, uh, uo, un) {
+      if (length(uv) >= 2 && substr(uv, 1, 1) == DQ && substr(uv, length(uv), 1) == DQ) {
+        uv = substr(uv, 2, length(uv) - 2); uo = ""
+        for (ui = 1; ui <= length(uv); ui++) {
+          uh = substr(uv, ui, 1)
+          if (uh == "\\" && ui < length(uv)) {
+            un = substr(uv, ui + 1, 1)
+            if (un == DQ || un == "\\") { uo = uo un; ui++; continue }
+          }
+          uo = uo uh
+        }
+        return uo
+      }
+      if (length(uv) >= 2 && substr(uv, 1, 1) == SQ && substr(uv, length(uv), 1) == SQ)
+        return substr(uv, 2, length(uv) - 2)
+      return uv
+    }
+    # A key is a key only when the colon is followed by a space or ends the
+    # line; otherwise `- ~/x:y` would parse as a mapping. Env var names have to
+    # work as keys, hence the character class.
+    function keyof(ks,   kp, kk) {
+      kp = index(ks, ":")
+      if (kp < 2) return ""
+      if (kp < length(ks) && substr(ks, kp + 1, 1) != " ") return ""
+      kk = substr(ks, 1, kp - 1)
+      if (kk !~ /^[A-Za-z0-9_.-]+$/) return ""
+      return kk
+    }
+    function valof(vs,   vp) {
+      vp = substr(vs, index(vs, ":") + 1)
+      sub(/^ +/, "", vp)
+      return vp
+    }
+    # Refused rather than half-understood: a flow mapping read as a scalar, or a
+    # block scalar read as the character that introduces it, is a config that
+    # silently means something other than what it says.
+    function badval(bv, bn) {
+      if (bv ~ /^\{/ || bv ~ /^\[/) { warn(bn, "flow style is not supported"); return 1 }
+      if (bv ~ /^\|/ || bv ~ /^>/)  { warn(bn, "multi-line scalars are not supported"); return 1 }
+      if (bv ~ /^&/ || bv ~ /^\*/)  { warn(bn, "anchors are not supported"); return 1 }
+      return 0
+    }
+    function push(pp, pi, pk, pn) {
+      np++; cpath[np] = pp; cind[np] = pi; ckey[np] = pk; ckind[np] = pn; ccnt[np] = 0
+    }
+    # A `key:` on its own opens a container whose kind and indentation are not
+    # known until the NEXT line: it may be a mapping, a sequence at the same
+    # column or deeper, or nothing at all — in which case the key was a leaf with
+    # an empty value and is emitted as one here, on the way back out.
+    function resolve(ri, rd) {
+      while (np > 1 || cind[np] == -1) {
+        if (cind[np] == -1) {
+          if (ri > ckey[np] || (rd && ri == ckey[np])) {
+            cind[np] = ri; ckind[np] = rd ? "s" : "m"; ccnt[np] = 0
+            return
+          }
+          print cpath[np] "\t"
+          np--
+          continue
+        }
+        if (ri < cind[np]) { np--; continue }
+        # A key back at the sequence own column ends the sequence.
+        if (!rd && ckind[np] == "s" && ri == cind[np]) { np--; continue }
+        return
+      }
+    }
+    BEGIN {
+      # Built with %c: the whole program is one single-quoted shell string, so a
+      # literal apostrophe anywhere in it would end that string.
+      SQ = sprintf("%c", 39); DQ = sprintf("%c", 34)
+      np = 1; cpath[1] = ""; cind[1] = 0; ckey[1] = -1; ckind[1] = "m"; ccnt[1] = 0
+    }
+    {
+      ln = $0
+      # A CRLF file is not rejected, it is mis-parsed: the \r sits between the
+      # colon and the end of the line, so every `key:` fails keyof() while every
+      # `key: value` keeps the \r inside the value — a config_dir nothing can
+      # open, and no error anywhere to say why.
+      sub(/\r$/, "", ln)
+      # Only a tab in the INDENT is fatal; one inside a value is just a character.
+      if (ln ~ /^[ \t]*\t/) {
+        if (ln ~ /[^ \t]/) warn(NR, "tab indentation is not supported")
+        next
+      }
+      ln = stripc(ln)
+      sub(/[ \t]+$/, "", ln)
+      if (ln ~ /^ *$/) next
+      ind = match(ln, /[^ ]/) - 1
+      body = substr(ln, ind + 1)
+      isdash = (body ~ /^- / || body == "-")
+      resolve(ind, isdash)
+
+      if (isdash) {
+        if (ckind[np] != "s") { warn(NR, "unexpected sequence item"); next }
+        ipath = (cpath[np] == "") ? (ccnt[np] "") : (cpath[np] "." ccnt[np])
+        ccnt[np]++
+        rest = body
+        # Dash then ZERO or more spaces: with a `- ` required, a bare `-` on its
+        # own line could never become the empty rest the branch below is for, so
+        # the item parsed as the scalar string "-" and every key underneath it
+        # was warned away and lost. off is computed from the lengths either way,
+        # so `- dir: x` and `-   dir: x` still land on their own columns.
+        sub(/^- */, "", rest)
+        # A mapping item carries its further keys at the column after the dash.
+        off = ind + (length(body) - length(rest))
+        if (rest == "") { push(ipath, -1, ind, "m"); next }
+        ik = keyof(rest)
+        if (ik == "") {
+          if (!badval(rest, NR)) print ipath "\t" unq(rest)
+          next
+        }
+        push(ipath, off, -2, "m")
+        iv = valof(rest)
+        if (iv == "") push(ipath "." ik, -1, off, "m")
+        else if (!badval(iv, NR)) print ipath "." ik "\t" unq(iv)
+        next
+      }
+
+      if (ckind[np] == "s") { warn(NR, "unexpected mapping inside a sequence"); next }
+      k = keyof(body)
+      if (k == "") { warn(NR, "not a key: value line"); next }
+      kpath = (cpath[np] == "") ? k : (cpath[np] "." k)
+      v = valof(body)
+      if (v == "") { push(kpath, -1, ind, "m"); next }
+      if (badval(v, NR)) next
+      print kpath "\t" unq(v)
+    }
+    END {
+      while (np > 1) {
+        if (cind[np] == -1) print cpath[np] "\t"
+        np--
+      }
+    }'
+}
+
+# Parsed once per process, however many lookups follow: every key press runs a
+# fresh copy of this script, so the cost that matters is one awk, not one per
+# cfg_get. A missing file is not an error anywhere but --config.
+cfg_load() {
+  [ "$CFG_LOADED" = 1 ] && return 0
+  CFG_LOADED=1
+  # -f as well as -r: a directory is readable, and feeding one to awk gets a
+  # raw "i/o error occurred on /dev/stdin" on every single invocation.
+  { [ -f "$CONFIG_FILE" ] && [ -r "$CONFIG_FILE" ]; } || return 1
+  CFG=$(cfg_parse <"$CONFIG_FILE")
+  return 0
+}
+
+# Return 1 for "absent", 0 with empty output for "present and empty" — the two
+# are different answers, and `config_dir:` written blank must not read as
+# ~/.claude-personal having been left out.
+cfg_get() {  # <path>
+  local out
+  cfg_load
+  out=$(printf '%s\n' "$CFG" | awk -F"$TAB" -v k="$1" '$1 == k { print "=" $2; exit }')
+  [ -n "$out" ] || return 1
+  printf '%s' "${out#=}"
+  return 0
+}
+
+cfg_children() {  # <path> -> direct child names, file order, no repeats
+  cfg_load
+  printf '%s\n' "$CFG" | awk -F"$TAB" -v k="$1" '
+    BEGIN { pre = k "."; pl = length(pre) }
+    index($1, pre) == 1 {
+      ch = substr($1, pl + 1)
+      dot = index(ch, ".")
+      if (dot > 0) ch = substr(ch, 1, dot - 1)
+      if (ch != "" && !(ch in seen)) { seen[ch] = 1; print ch }
+    }'
+}
+
+cfg_list() {  # <path> -> a scalar as one line, or a sequence as one line each
+  local v i=0
+  if v=$(cfg_get "$1"); then printf '%s\n' "$v"; return 0; fi
+  while v=$(cfg_get "$1.$i"); do printf '%s\n' "$v"; i=$((i + 1)); done
+  [ "$i" -gt 0 ] || return 1
+  return 0
+}
+
+# THE ONE PLACE A ~ IS EXPANDED, and it expands to $HOME textually — never
+# realpath, never `cd`. The keychain item Claude Code logs into is
+# sha256(the literal string), so ~/.claude-personal and the resolved path of a
+# symlinked ~/.claude-personal are two different logins. The .zshrc exports
+# $HOME/..., so that is exactly what has to be exported here.
+cfg_expand_dir() {  # <value>
+  local d=${1:-}
+  case $d in
+    '~')   d=$HOME ;;
+    '~/'*) d=$HOME/${d#'~/'} ;;
+  esac
+  while [ ${#d} -gt 1 ] && [ "${d%/}" != "$d" ]; do d=${d%/}; done
+  printf '%s' "$d"
+}
+
+# Single-quote a value for the command string tmux hands to /bin/sh. Done in
+# bash rather than through sed because it runs several times per launch and a
+# config dir with a quote in it is not a reason to fork.
+cfg_quote() {  # <value>
+  local s=${1:-} out=""
+  while [ "${s#*\'}" != "$s" ]; do
+    out=$out${s%%\'*}"'\\''"
+    s=${s#*\'}
+  done
+  printf "'%s'" "$out$s"
+}
+
+# A directory as the rules compare it. Resolved through the filesystem when it
+# exists, so a symlinked checkout still matches the rule naming its real path,
+# and left textual when it does not — a rule about a directory you have not
+# cloned yet is not a reason to stop matching the ones you have.
+# CDPATH= because a `cd` that resolves through CDPATH PRINTS where it went, so
+# with the usual `export CDPATH` in a .zshrc — inherited by the tmux server and
+# by every agent under it — a relative directory came back as two lines and
+# every dir rule quietly stopped matching. `--` for a directory starting with a
+# dash.
+norm_dir() {  # <dir>
+  local d=${1:-} r
+  r=$(CDPATH= cd -- "$d" 2>/dev/null && pwd -P)
+  if [ -n "$r" ]; then printf '%s' "$r"; return 0; fi
+  while [ ${#d} -gt 1 ] && [ "${d%/}" != "$d" ]; do d=${d%/}; done
+  printf '%s' "$d"
+}
+
+# The other direction, for anything a human reads: a header three lines tall has
+# no room for /Users/<name>/ on every one of them.
+tilde_of() {  # <path>
+  local p=${1:-}
+  case $p in "$HOME"/*) printf '~%s' "${p#$HOME}" ;; *) printf '%s' "$p" ;; esac
+}
+
+profile_exists() {  # <name>
+  local p=${1:-} c
+  [ -n "$p" ] || return 1
+  for c in $(cfg_children claude.profiles); do
+    [ "$c" = "$p" ] && return 0
+  done
+  return 1
+}
+
+# A rule that names a profile nobody configured is a typo, and the expensive way
+# to find out is an agent quietly running on the wrong login. Say so and skip it.
+profile_named() {  # <name> <where> -> 0 when usable
+  local p=${1:-} where=${2:-}
+  # Nothing at all is the likeliest typo of the lot: a `profile:` line indented
+  # one column short of its `- dir:` item parses as a rule of its own, and both
+  # halves then go quietly missing. Its own wording, so it does not read as
+  # "unknown profile" with an empty name.
+  if [ -z "$p" ]; then
+    echo "tagents: config: $where names no profile — skipped" >&2
+    return 1
+  fi
+  [ "$p" = ask ] && return 0
+  profile_exists "$p" && return 0
+  echo "tagents: config: $where names unknown profile \"$p\" — skipped" >&2
+  return 1
+}
+
+# WHICH ACCOUNT A DIRECTORY BELONGS TO. Prints a profile name, or "ask" when the
+# config wants to be asked; returns 1 with no output when there are no profiles
+# at all, which is the caller signal to launch exactly as it always did.
+profile_for() {  # <dir> [tmux-session-name]
+  local dir=${1:-} sess=${2:-} nd i s d p
+  cfg_load
+  [ -n "$(cfg_children claude.profiles)" ] || return 1
+  nd=$(norm_dir "$dir")
+  for i in $(cfg_children claude.rules); do
+    s=$(cfg_get "claude.rules.$i.session") || s=""
+    d=$(cfg_get "claude.rules.$i.dir") || d=""
+    p=$(cfg_get "claude.rules.$i.profile") || p=""
+    # A session is matched by containment: tmux session names are short and get
+    # suffixed (work, work-2, personal-old), and nobody wants a rule per suffix.
+    if [ -n "$s" ]; then
+      case "$sess" in *"$s"*) ;; *) continue ;; esac
+    fi
+    # ...a directory by path component, so ~/git/personalx is NOT under
+    # ~/git/personal however much of a prefix it looks like.
+    if [ -n "$d" ]; then
+      d=$(norm_dir "$(cfg_expand_dir "$d")")
+      case "$nd" in "$d"|"$d"/*) ;; *) continue ;; esac
+    fi
+    profile_named "$p" "rule $i" || continue
+    printf '%s' "$p"
+    return 0
+  done
+  p=$(cfg_get claude.default) || p="ask"
+  [ -n "$p" ] || p="ask"
+  profile_named "$p" "default" || p="ask"
+  printf '%s' "$p"
+  return 0
+}
+
+# The arguments a profile launches with: its own, else the global ones, else the
+# flag this script has always used. A scalar goes in verbatim — those are the
+# shell words the user wrote, and requoting them would turn `--model opus` into
+# a single argument — while a list is quoted item by item, which is the way to
+# pass an argument that contains a space.
+profile_args() {  # <profile>
+  local prof=${1:-} v i out=""
+  if v=$(cfg_get "claude.profiles.$prof.args"); then printf '%s' "$v"; return 0; fi
+  if cfg_get "claude.profiles.$prof.args.0" >/dev/null 2>&1; then
+    i=0
+    while v=$(cfg_get "claude.profiles.$prof.args.$i"); do
+      out="${out:+$out }$(cfg_quote "$v")"; i=$((i + 1))
+    done
+    printf '%s' "$out"; return 0
+  fi
+  if v=$(cfg_get claude.args); then printf '%s' "$v"; return 0; fi
+  if cfg_get claude.args.0 >/dev/null 2>&1; then
+    i=0
+    while v=$(cfg_get "claude.args.$i"); do
+      out="${out:+$out }$(cfg_quote "$v")"; i=$((i + 1))
+    done
+    printf '%s' "$out"; return 0
+  fi
+  printf '%s' '--dangerously-skip-permissions'
+}
+
+# THE COMMAND STRING A LAUNCH ACTUALLY RUNS. One string, because both callers
+# need one: tmux new-window hands it to /bin/sh, and the resume-in-place path
+# types it into a shell with send-keys.
+#
+# With no profile it is byte for byte what this script produced before any of
+# this existed — that is what makes a missing config a no-op rather than a
+# behaviour change.
+#
+# `env -u CLAUDE_CONFIG_DIR` comes first unconditionally, even when a config dir
+# follows it. An inherited value is a different login, and clearing it with
+# CLAUDE_CONFIG_DIR= would not do: empty is not unset, and only unset means the
+# default account (see LEARNING.md, "claude accounts").
+#
+# A profile of the form `dir:<path>` is not a configured profile at all but a
+# raw config dir — the account a closed session was recorded as having run on,
+# which no profile claims any more. Resume builds one of those so a conversation
+# still comes back on the login that holds it. `dir:` with nothing after it is
+# the default account, stated explicitly.
+agent_cmd() {  # <profile> <new|resume> [sid]
+  local prof=${1:-} what=${2:-new} sid=${3:-}
+  local cdir="" cdset=0 cmd="" args="" pre="" k v out
+
+  if [ -z "$prof" ]; then
+    if [ "$what" = resume ]; then printf '%s %s' "$RESUME_CMD" "$sid"
+    else printf '%s' "$NEW_CMD"; fi
+    return 0
+  fi
+
+  case $prof in
+    dir:*)
+      cdir=$(cfg_expand_dir "${prof#dir:}"); cdset=1 ;;
+    ask)
+      # "ask" is the instruction to open the dialog, not an account. Building a
+      # command for it would look up claude.profiles.ask, find nothing, and
+      # produce a launch on the DEFAULT login — a wrong account, silently.
+      echo "tagents: \"ask\" is not a profile" >&2
+      return 1 ;;
+    *)
+      # Everything inside this script hands over a name that came out of the
+      # config; --new and --agent-cmd take one from a human, and a typo there
+      # used to render as plain `env -u CLAUDE_CONFIG_DIR claude …` — the wrong
+      # login, with nothing said. Refuse rather than guess.
+      profile_exists "$prof" || {
+        echo "tagents: no claude profile \"$prof\" in $CONFIG_FILE" >&2
+        return 1
+      }
+      if v=$(cfg_get "claude.profiles.$prof.config_dir"); then
+        cdir=$(cfg_expand_dir "$v"); cdset=1
+      fi
+      cmd=$(cfg_get "claude.profiles.$prof.command") || cmd="" ;;
+  esac
+  [ -n "$cmd" ] || cmd=claude
+
+  pre='env -u CLAUDE_CONFIG_DIR'
+  [ "$cdset" = 1 ] && [ -n "$cdir" ] && pre="$pre CLAUDE_CONFIG_DIR=$(cfg_quote "$cdir")"
+  case $prof in
+    dir:*) ;;
+    *)
+      for k in $(cfg_children "claude.profiles.$prof.env"); do
+        v=$(cfg_get "claude.profiles.$prof.env.$k") || v=""
+        pre="$pre $k=$(cfg_quote "$v")"
+      done ;;
+  esac
+
+  # TA_NEW_CMD / TA_RESUME_CMD replace the binary and its arguments but never
+  # the account prefix: they exist to point tagents at a wrapper, and a wrapper
+  # still has to be started on the right login.
+  if [ "$what" = resume ]; then
+    if [ -n "${TA_RESUME_CMD:-}" ]; then out="$RESUME_CMD"
+    else
+      args=$(profile_args "$prof")
+      out="$cmd${args:+ $args} --resume"
+    fi
+    printf '%s %s %s' "$pre" "$out" "$sid"
+  else
+    if [ -n "${TA_NEW_CMD:-}" ]; then out="$NEW_CMD"
+    else
+      args=$(profile_args "$prof")
+      out="$cmd${args:+ $args}"
+    fi
+    printf '%s %s' "$pre" "$out"
+  fi
+}
+
+# WHICH PROFILE REALLY CLAIMS A CONFIG DIR — a name only when one does, and a
+# non-zero return when none does. This is the identity question, kept apart from
+# the display question below on purpose: profile_of_cfg has to print SOMETHING
+# for a column, so it falls back to the literal word "default" and to the
+# directory basename, and a config with a profile actually named `default` (or
+# named after somebody else basename) would otherwise hand those labels back as
+# if a profile had matched, and resume the conversation on a login it never ran
+# on. Takes the dir already expanded.
+profile_claiming() {  # <expanded config dir, empty for the default account>
+  local cd=${1:-} p pd nodef="" ndn=0
+  cfg_load
+  for p in $(cfg_children claude.profiles); do
+    if pd=$(cfg_get "claude.profiles.$p.config_dir"); then
+      pd=$(cfg_expand_dir "$pd")
+      [ -n "$cd" ] && [ "$pd" = "$cd" ] && { printf '%s' "$p"; return 0; }
+    else
+      nodef=$p; ndn=$((ndn + 1))
+    fi
+  done
+  # An empty value is CLAUDE_CONFIG_DIR unset, which is the account of the one
+  # profile that has no config_dir — and only when there is exactly one, since
+  # two of them are two names for the same login and neither is the answer.
+  [ -z "$cd" ] && [ "$ndn" = 1 ] && { printf '%s' "$nodef"; return 0; }
+  return 1
+}
+
+# The account a state record names, as a NAME FOR DISPLAY rather than a path. An
+# old record has no such field at all, and hascfg=0 means exactly that: print
+# nothing, because "unset" and "we never wrote it down" would otherwise both
+# read as the default account. Nothing may launch on what this returns — see
+# profile_claiming.
+profile_of_cfg() {  # <recorded config dir> <hascfg>
+  local cd=${1:-} has=${2:-0} p
+  [ "$has" = 1 ] || return 0
+  cfg_load
+  [ -n "$cd" ] && cd=$(cfg_expand_dir "$cd")
+  p=$(profile_claiming "$cd") && { printf '%s' "$p"; return 0; }
+  [ -n "$cd" ] || { printf 'default'; return 0; }
+  # No profile claims it: name it after the directory, which is at least the
+  # login it is. ~/.claude-personal reads as "claude-personal".
+  cd=${cd##*/}
+  printf '%s' "${cd#.}"
+}
+
+# WHICH ACCOUNT A CLOSED SESSION COMES BACK ON — the one it ran on, never the
+# rules. A conversation resumed on a different login is not there at all:
+# --resume looks in that config dir and finds nothing, so the rules are only the
+# fallback for a record written before the account was being recorded.
+resume_profile() {  # <recorded cfg dir> <hascfg> <dir> <session> -> profile/ask
+  local cd=${1:-} has=${2:-0} dir=${3:-} sess=${4:-} p
+  if [ "$has" = 1 ]; then
+    [ -n "$cd" ] && cd=$(cfg_expand_dir "$cd")
+    # profile_claiming, never profile_of_cfg: the latter is a label for a
+    # column and answers "default" or a basename when nothing matches, and
+    # spelling a profile like a label is not the same as being one.
+    p=$(profile_claiming "$cd") && { printf '%s' "$p"; return 0; }
+    # Recorded, but no profile claims it. With no profiles configured at all
+    # there is nothing to say, so the launch stays exactly as it always was.
+    [ -n "$(cfg_children claude.profiles)" ] || return 0
+    printf 'dir:%s' "$cd"
+    return 0
+  fi
+  profile_for "$dir" "$sess" || return 0
+}
+
+# The profile table list() renders the account column from, joined with $RS
+# because awk -v cannot take a newline. Empty second field = the default account.
+prof_pairs() {
+  local p pd
+  cfg_load
+  for p in $(cfg_children claude.profiles); do
+    if pd=$(cfg_get "claude.profiles.$p.config_dir"); then pd=$(cfg_expand_dir "$pd")
+    else pd=""; fi
+    printf '%s%s%s%s' "$p" "$US" "$pd" "$RS"
+  done
+}
+
+config_cmd() {
+  if ! { [ -f "$CONFIG_FILE" ] && [ -r "$CONFIG_FILE" ]; }; then
+    echo "tagents: no config at $CONFIG_FILE" >&2
+    return 1
+  fi
+  cfg_load
+  [ -n "$CFG" ] && printf '%s\n' "$CFG"
+  return 0
+}
 
 # ---------------------------------------------------------------------------
 # rows
@@ -303,16 +913,21 @@ collect() {
   dir_roots
   [ -e "$LABELS" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "N", $1, $2 }' "$LABELS"
 
-  local f key ts st sid cwd tr det orig
+  local f key ts st sid cwd tr det cfgd hascfg orig
   state_files | while IFS= read -r f; do
     key=${f##*/}; key=${key%.tsv}
     # Not IFS=TAB: tab is IFS whitespace, so the (often empty) session id would
     # collapse and shift every later field one slot to the left.
-    IFS="$US" read -r ts st sid cwd tr det < <(
-      awk -F"$TAB" -v OFS="$US" 'NR==1 { print $1, $2, $3, $4, $5, $6; exit }' "$f" 2>/dev/null)
+    # The 7th field is the account. A record written by an older hook has six
+    # fields and no opinion at all, which is a different answer from "unset, so
+    # the default account" — hence the flag alongside it.
+    IFS="$US" read -r ts st sid cwd tr det cfgd hascfg < <(
+      awk -F"$TAB" -v OFS="$US" \
+          'NR==1 { print $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0); exit }' "$f" 2>/dev/null)
     orig=$(origin_of "${sid:-}" "${tr:-}")
-    printf 'S\t%%%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$key" "${ts:-0}" "${st:-}" "${sid:-}" "${orig:-${cwd:-}}" "${tr:-}" "${det:-}"
+    printf 'S\t%%%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$key" "${ts:-0}" "${st:-}" "${sid:-}" "${orig:-${cwd:-}}" "${tr:-}" "${det:-}" \
+      "${cfgd:-}" "${hascfg:-0}"
   done
 
   for f in "$STATE_DIR"/sub/*; do
@@ -427,6 +1042,13 @@ has_popup() { tmux list-commands display-popup >/dev/null 2>&1; }
 prompt() {  # <height> <args for $SELF...>
   local h=$1
   shift
+  # A display-popup issued from INSIDE a popup returns rc=0 and silently does
+  # nothing, so in prefix+a mode every prompt here was dead: the key appeared to
+  # work, the popup closed, and nothing had been asked. There is no second popup
+  # to be had — but a popup is a terminal of its own, so the inline body works
+  # perfectly well there. dash() binds these keys to `execute` in popup mode so
+  # fzf hands the terminal over for it.
+  [ "${TA_MODE:-}" = popup ] && return 1
   has_popup || return 1
   # No `--` before the command: tmux 3.4 does not take one there and fails
   # silently. Every argument is ours, so nothing needs quoting anyway.
@@ -499,7 +1121,8 @@ list() {
 
   collect | awk -F"$TAB" -v now="$(date +%s)" -v ttl="$SUB_TTL" \
                 -v grp="$grp" -v home="$HOME" -v deadttl="$DEAD_TTL" -v cols="$cols" \
-                -v host="$(hostname -s 2>/dev/null)" '
+                -v host="$(hostname -s 2>/dev/null)" \
+                -v profs="$(prof_pairs)" -v USC="$US" -v RSC="$RS" '
     # macOS awk counts bytes, so substr and %-Ns cut Cyrillic mid-character and
     # pad it to half width. Count characters instead, and never split one.
     function uclen(s,   i, n, c) {
@@ -576,6 +1199,32 @@ list() {
       if (sq != "" && (sq in smdl) && smdl[sq] != "") return shortmodel(smdl[sq])
       return shortmodel(umdl[sq])
     }
+    # WHICH LOGIN A SESSION IS ON, named rather than pathed: the profile whose
+    # config_dir the hook recorded, or the one profile that has none for a
+    # session running with CLAUDE_CONFIG_DIR unset. A dir no profile claims is
+    # named after itself, which at least identifies the account. An empty answer
+    # means the record predates the column — and "we do not know" must not be
+    # rendered as "the default account", which is exactly the thing this column
+    # exists to stop being assumed.
+    function acctname(cv, hv,   ai, an, ac) {
+      if (hv != 1) return ""
+      # cfg_expand_dir has already taken any trailing slash off the profile
+      # side, so it has to come off here too: without it nothing matched AND the
+      # basename fallback below ate the whole string, leaving the column blank —
+      # which in this column means "the record predates it", a different answer.
+      while (length(cv) > 1 && substr(cv, length(cv), 1) == "/")
+        cv = substr(cv, 1, length(cv) - 1)
+      an = ""; ac = 0
+      for (ai = 1; ai <= npf; ai++) {
+        if (pdir[ai] == "") { an = pnm[ai]; ac++; continue }
+        if (cv != "" && pdir[ai] == cv) return pnm[ai]
+      }
+      if (cv == "") return (ac == 1) ? an : "default"
+      ai = cv
+      sub(/^.*\//, "", ai)
+      sub(/^\./, "", ai)
+      return ai
+    }
     # RESPONSIVE COLUMNS. A row that does not fit is not merely ugly: fzf hard
     # -truncates it, so in a narrow sidebar the detail, then the location, then
     # the cost silently vanished with nothing to say they had. Columns are now
@@ -587,18 +1236,22 @@ list() {
       # mdlw goes early in the drop order: which model a session is on matters
       # less than what it is doing and what it has cost, and the cost column
       # already implies the tier.
-      if      (avail >= 128) { lw=7; namew=24; ctxw=5; burnw=6; mdlw=9; locw=16 }
-      else if (avail >= 112) { lw=7; namew=22; ctxw=5; burnw=6; mdlw=8; locw=12 }
-      else if (avail >=  98) { lw=7; namew=24; ctxw=5; burnw=6; mdlw=0; locw=14 }
-      else if (avail >=  80) { lw=7; namew=22; ctxw=5; burnw=6; mdlw=0; locw=0  }
-      else if (avail >=  66) { lw=0; namew=20; ctxw=5; burnw=6; mdlw=0; locw=0  }
-      else if (avail >=  50) { lw=0; namew=18; ctxw=5; burnw=0; mdlw=0; locw=0  }
-      else if (avail >=  38) { lw=0; namew=14; ctxw=5; burnw=0; mdlw=0; locw=0  }
-      else                   { lw=0; namew=12; ctxw=0; burnw=0; mdlw=0; locw=0  }
+      # acctw goes earlier still. Which account an agent is on is a thing you
+      # check once and then trust, unlike the state and the money; and on all but
+      # the widest lists it is answered by the project column beside it anyway.
+      if      (avail >= 128) { lw=7; namew=24; ctxw=5; burnw=6; mdlw=9; acctw=8; locw=16 }
+      else if (avail >= 112) { lw=7; namew=22; ctxw=5; burnw=6; mdlw=8; acctw=8; locw=12 }
+      else if (avail >=  98) { lw=7; namew=24; ctxw=5; burnw=6; mdlw=0; acctw=0; locw=14 }
+      else if (avail >=  80) { lw=7; namew=22; ctxw=5; burnw=6; mdlw=0; acctw=0; locw=0  }
+      else if (avail >=  66) { lw=0; namew=20; ctxw=5; burnw=6; mdlw=0; acctw=0; locw=0  }
+      else if (avail >=  50) { lw=0; namew=18; ctxw=5; burnw=0; mdlw=0; acctw=0; locw=0  }
+      else if (avail >=  38) { lw=0; namew=14; ctxw=5; burnw=0; mdlw=0; acctw=0; locw=0  }
+      else                   { lw=0; namew=12; ctxw=0; burnw=0; mdlw=0; acctw=0; locw=0  }
       # 2 icon, lw + its space, 6 age + 2, name + 1, then whatever is left
       fixed = 2 + (lw ? lw + 1 : 0) + 8 + namew + 1 \
               + (ctxw ? ctxw + 1 : 0) + (burnw ? burnw + 1 : 0) \
-              + (mdlw ? mdlw + 1 : 0) + (locw ? locw + 1 : 0)
+              + (mdlw ? mdlw + 1 : 0) + (acctw ? acctw + 1 : 0) \
+              + (locw ? locw + 1 : 0)
       detw = avail - fixed - 1
       if (detw < 6) detw = 0
     }
@@ -617,6 +1270,18 @@ list() {
     }
     BEGIN {
       fitcols()
+      # name<US>expanded config_dir, joined with RS rather than newlines: awk -v
+      # rejects a value containing one (see live_panes).
+      npf = 0
+      npa = split(profs, pfa, RSC)
+      for (pfi = 1; pfi <= npa; pfi++) {
+        if (pfa[pfi] == "") continue
+        pfk = index(pfa[pfi], USC)
+        if (pfk == 0) continue
+        npf++
+        pnm[npf] = substr(pfa[pfi], 1, pfk - 1)
+        pdir[npf] = substr(pfa[pfi], pfk + 1)
+      }
       R = "\033[0m"; DIM = "\033[90m"; BOLD = "\033[1m"
       # BLOCKED is reserved for an agent that has actually asked you something
       # and cannot go on until you answer. A turn that simply ended is IDLE —
@@ -639,7 +1304,7 @@ list() {
     # started under the old hook and has not fired an event since would show as
     # "?" forever without this.
     $1=="S" { ts[$2]=$3; st[$2]=($4 == "idle" ? "new" : $4); sid[$2]=$5; cwd[$2]=$6
-              det[$2]=$8; next }
+              det[$2]=$8; cfgd[$2]=$9; hascfg[$2]=$10; next }
     $1=="B" { if (now - $3 < ttl) subs[$2]++; next }
     # tusage --sessions: sid, cost, reqs, ctx, last, slug, subagent cost, live
     # subagents, cost in the last 5h, model, $, $ in the last 5h, $ subagents,
@@ -743,6 +1408,9 @@ list() {
           udtxt = (exact ? "" : "~") udtxt (!exact && unp > 0 ? "?" : "")
         if (burnw) row = row sprintf(" %s%*s%s", DIM, burnw, udtxt, R)
         if (mdlw)  row = row sprintf(" %s%-*.*s%s", DIM, mdlw, mdlw, curmodel(sq), R)
+        if (acctw) row = row sprintf(" %s%-*.*s%s", DIM, acctw, acctw,
+                                     acctname((p in cfgd) ? cfgd[p] : "",
+                                              (p in hascfg) ? hascfg[p] : 0), R)
         if (locw)  row = row sprintf(" %s%-*s%s", DIM, locw, tailfit(where, locw), R)
         # The subagent share of that money — the answer to "why is this session
         # expensive when I have barely typed into it".
@@ -972,18 +1640,25 @@ counts() {
 }
 
 preview() {
-  local pane=$1 state=${2:-} f ts st sid cwd tr detail
+  local pane=$1 state=${2:-} f ts st sid cwd tr detail cfgd hascfg acct rprof
   [ "$pane" = "-" ] && return 0
   f="$STATE_DIR/${pane#%}.tsv"
   if [ -e "$f" ]; then
     # Not IFS=TAB: tab is IFS whitespace, so an empty field (no session id, no
     # detail) would collapse and shift every later value one slot left.
-    IFS="$US" read -r ts st sid cwd tr detail < <(
-      awk -F"$TAB" -v OFS="$US" 'NR==1 { print $1, $2, $3, $4, $5, $6; exit }' "$f")
+    IFS="$US" read -r ts st sid cwd tr detail cfgd hascfg < <(
+      awk -F"$TAB" -v OFS="$US" \
+          'NR==1 { print $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0); exit }' "$f")
     printf '\033[1m%s\033[0m\n' "$(origin_of "${sid:-}" "${tr:-}" || printf '%s' "$cwd")"
     [ -n "$cwd" ] && printf '\033[90mcwd now: %s\033[0m\n' "$cwd"
     printf '\033[90m%s · %s\033[0m\n' "$st" "$detail"
     [ -n "$sid" ] && printf '\033[90msession %s\033[0m\n' "$sid"
+    # Which login this conversation belongs to — the thing you cannot see from
+    # the pane itself, and the thing that decides whether resuming it will find
+    # anything. Silent for a record written before the hook recorded it.
+    acct=$(profile_of_cfg "${cfgd:-}" "${hascfg:-0}")
+    [ -n "$acct" ] &&
+      printf '\033[90maccount: %s  (%s)\033[0m\n' "$acct" "${cfgd:-default ~/.claude}"
     # What this session has actually cost, broken down by every subagent and
     # workflow it spawned — the part that is invisible from the pane itself.
     if [ -n "$sid" ] && command -v tusage >/dev/null 2>&1; then
@@ -992,8 +1667,22 @@ preview() {
     printf '\033[90m%s\033[0m\n' "----------------------------------------"
   fi
   if [ "$state" = dead ]; then
-    printf '\033[90mno Claude running in this pane any more.\n\nenter runs:\033[0m\n  %s %s\n' \
-      "$RESUME_CMD" "${sid:-<unknown>}"
+    # The REAL command, account prefix and all — built the same way enter builds
+    # it. Printing the bare RESUME_CMD here said the session would come back on
+    # whatever account you happened to be on, which is the misunderstanding this
+    # whole thing exists to end.
+    # Silenced HERE and nowhere else: this runs on every preview refresh, and
+    # fzf captures only stdout from a preview command, so a warning about a
+    # misspelt rule would land on the dashboard terminal a few times a second.
+    # --profile-for, --config and the launch paths stay loud, which is where
+    # somebody is actually asking the config a question.
+    rprof=$(resume_profile "${cfgd:-}" "${hascfg:-0}" "${cwd:-}" "$DASH_SESSION" 2>/dev/null)
+    printf '\033[90mno Claude running in this pane any more.\n\nenter runs:\033[0m\n'
+    if [ "$rprof" = ask ]; then
+      printf '  \033[90m(enter asks which account first)\033[0m\n'
+    else
+      printf '  %s\n' "$(agent_cmd "$rprof" resume "${sid:-<unknown>}")"
+    fi
     [ -n "${tr:-}" ] && [ -e "${tr:-}" ] &&
       printf '\n\033[90mlast lines of its transcript:\033[0m\n' &&
       tail -n 3 "$tr" | cut -c1-400
@@ -1712,6 +2401,7 @@ act() {
     send)   send_line "$pane" ;;
     rename) rename_agent "$pane" "$sid" ;;
     new)    new_agent "$dir" ;;
+    pick)   new_agent_pick "$dir" ;;
     undock)
       # Send the docked chat home. With nothing docked, the only other way a
       # window gets pulled in here is ctrl-o's borrow — undo that instead.
@@ -1720,19 +2410,49 @@ act() {
   esac
 }
 
-# Restart a closed session with `claude --resume <id>`. Reuse its old pane when
-# that pane still exists and is sitting at a shell; otherwise open a new window
-# in the dashboard session — which has to exist before a window can be opened in
-# it, so the sidebar is brought up first. Either way the result is docked and
-# focused, exactly as enter on a live agent would leave it.
+# Restart a closed session with `claude --resume <id>`, on the account it ran on
+# (see resume_profile). Reuse its old pane when that pane still exists and is
+# sitting at a shell; otherwise open a new window in the dashboard session —
+# which has to exist before a window can be opened in it, so the sidebar is
+# brought up first. Either way the result is docked and focused, exactly as
+# enter on a live agent would leave it.
+#
+# Both paths send the SAME command string, `env` prefix and all. That is why the
+# prefix is carried in the string rather than passed with tmux -e: typed into a
+# shell it does the identical thing, and it steps around any claude() shell
+# function that would work the account out from $PWD all over again.
 resume_agent() {
-  local pane=$1 sid=$2 dir=$3 cmd cur newpane
+  local pane=$1 sid=$2 dir=$3 cfgd hascfg sess prof
   if [ -z "$sid" ]; then
     tmux display-message "tagents: no session id recorded — cannot resume" 2>/dev/null
     return 1
   fi
   [ -d "$dir" ] || dir=$HOME
-  cmd="$RESUME_CMD $sid"
+  # READ THE ACCOUNT BEFORE THE RECORD IS DELETED, which is the first thing both
+  # launch paths below do. It is the account this conversation ran on, and the
+  # rules never get a vote: resuming it on another login opens another history,
+  # where the session simply does not exist.
+  IFS="$US" read -r cfgd hascfg < <(
+    awk -F"$TAB" -v OFS="$US" 'NR==1 { print $7, (NF >= 7 ? 1 : 0); exit }' \
+        "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)
+  sess=$(tmux display -p -t "$pane" '#{session_name}' 2>/dev/null)
+  [ -n "$sess" ] || sess=$DASH_SESSION
+  prof=$(resume_profile "${cfgd:-}" "${hascfg:-0}" "$dir" "$sess")
+  if [ "$prof" = ask ]; then
+    prompt "$(ask_height)" --ask-profile resume "$pane" "$sid" "$dir" && return 0
+    ask_profile resume "$pane" "$sid" "$dir"
+    return 0
+  fi
+  resume_with "$pane" "$sid" "$dir" "$prof"
+}
+
+resume_with() {  # <pane> <sid> <dir> <profile> — the restart itself
+  local pane=$1 sid=$2 dir=$3 prof=${4:-} cmd cur newpane
+  # A refusal must not become an empty string: the first path below TYPES this
+  # into somebody shell, where `cd "$dir" && ` is a syntax error in their pane.
+  cmd=$(agent_cmd "$prof" resume "$sid") || {
+    tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
+    return 1; }
 
   if [ -n "$pane" ] && tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx -- "$pane"; then
     cur=$(tmux display -p -t "$pane" '#{pane_current_command}' 2>/dev/null)
@@ -1799,10 +2519,22 @@ session_for_dir() {  # <dir> -> session name, empty when the project has no wind
 # The directory is normalised to the repo root, so a session started from
 # ~/repo/packages/client makes the new agent a sibling in ~/repo rather than
 # burying it in a subdirectory the tree would file separately.
-new_agent() {  # <dir>
-  local dir=${1:-} root sess newpane
+new_agent() {  # <dir> [profile]
+  local dir=${1:-} prof=${2:-} root sess
   [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
   [ -d "$dir" ] || { tmux display-message "tagents: $dir is not a directory" 2>/dev/null; return 1; }
+  # A NAME THAT CAME FROM A HUMAN IS CHECKED FIRST, before a window or a
+  # dashboard session is brought into being for it. profile_for only ever
+  # returns names the config already has; `tagents --new <dir> personl` used to
+  # sail straight through to a launch on the default account, which is the exact
+  # silent wrong login all of this exists to end. Not profile_named: nothing is
+  # being skipped here, the launch is refused. `ask` passes — it is not a
+  # profile, it is the instruction to ask for one.
+  if [ -n "$prof" ] && [ "$prof" != ask ] && ! profile_exists "$prof"; then
+    echo "tagents: no claude profile \"$prof\" in $CONFIG_FILE" >&2
+    tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
+    return 1
+  fi
   root=$(repo_root "$dir") || root=$dir
 
   # No windows for this project yet (every agent in it is closed, or it is new):
@@ -1813,10 +2545,57 @@ new_agent() {  # <dir>
     sess=$DASH_SESSION
   fi
 
+  # The session name is worked out first because a rule may match on it: an
+  # agent for a project that lives in the "work" tmux session is a work agent
+  # whatever its directory looks like.
+  [ -n "$prof" ] || prof=$(profile_for "$root" "$sess") || prof=""
+  if [ "$prof" = ask ]; then
+    prompt "$(ask_height)" --ask-profile new "$root" "$sess" && return 0
+    ask_profile new "$root" "$sess"
+    return 0
+  fi
+  start_agent "$root" "$sess" "$prof"
+}
+
+# ctrl-p: the same thing, but always asking. A rule is a default, not a verdict —
+# one agent in a personal repo that has to run on the work account is an ordinary
+# request, and there is no other way to make it.
+new_agent_pick() {  # <dir>
+  local dir=${1:-} root sess
+  [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
+  [ -d "$dir" ] || { tmux display-message "tagents: $dir is not a directory" 2>/dev/null; return 1; }
+  # Asked before anything is created: with nothing to choose between, bringing
+  # the dashboard session up to host a dialog that cannot open would be a window
+  # out of nowhere for no reason.
+  if [ -z "$(cfg_children claude.profiles)" ]; then
+    tmux display-message "tagents: no claude profiles in $CONFIG_FILE" 2>/dev/null
+    return 0
+  fi
+  root=$(repo_root "$dir") || root=$dir
+  sess=$(session_for_dir "$root")
+  if [ -z "$sess" ]; then
+    ensure_dash >/dev/null 2>&1 || return 1
+    sess=$DASH_SESSION
+  fi
+  prompt "$(ask_height)" --ask-profile pick "$root" "$sess" && return 0
+  ask_profile pick "$root" "$sess"
+}
+
+# The one place a fresh agent gets a window. Both entry points come through here
+# so the command, the message and the "it stays where it was born" policy are
+# decided once.
+start_agent() {  # <root> <session> <profile>
+  local root=$1 sess=$2 prof=${3:-} newpane idx cmd
+  # Built before the window exists: agent_cmd refuses a profile it cannot
+  # account for, and opening a window on an empty command string would give you
+  # a bare shell where an agent was asked for.
+  cmd=$(agent_cmd "$prof" new) || {
+    tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
+    return 1; }
   # -d so the new window does not steal the current session's view before it is
   # docked; open_agent puts the cursor in it deliberately, a moment later.
   newpane=$(tmux new-window -d -t "$sess:" -P -F '#{pane_id}' \
-              -c "$root" "$NEW_CMD" 2>/dev/null) || {
+              -c "$root" "$cmd" 2>/dev/null) || {
     tmux display-message "tagents: could not open a window in $sess" 2>/dev/null; return 1; }
 
   # IT STAYS WHERE IT WAS BORN, and so do you. Docking it would swap the pane out
@@ -1826,8 +2605,80 @@ new_agent() {  # <dir>
   # more either. A brand-new chat has nothing to read yet, so there is nothing
   # worth being moved for; it appears in the tree on the next refresh and enter
   # opens it like any other agent.
-  tmux display-message "tagents: new agent in $(basename "$root") ($sess:$(tmux display -p -t "$newpane" '#{window_index}' 2>/dev/null))" 2>/dev/null
+  idx=$(tmux display -p -t "$newpane" '#{window_index}' 2>/dev/null)
+  tmux display-message \
+    "tagents: new agent in $(basename "$root") ($sess:$idx)${prof:+ as $prof}" 2>/dev/null
   return 0
+}
+
+# Tall enough for the profiles plus the three header lines, the prompt and a
+# little air: a picker that scrolls when it is showing three things reads as
+# broken.
+ask_height() {
+  local n
+  n=$(cfg_children claude.profiles | wc -l | tr -d ' ')
+  printf '%s' "$(( ${n:-0} + 7 ))"
+}
+
+# THE ACCOUNT DIALOG — normally the body of a popup, inline when there is no
+# popup to be had (including inside one; see prompt()). It is an fzf rather than
+# a y/n read because the answer is one of a list, and because typing "wo<enter>"
+# is the whole interaction.
+ask_profile() {  # <new|pick|resume> <args…>
+  local purpose=${1:-new} root sess pane sid dir
+  local p pd w=0 rows="" hdr sub note pick nm
+  shift
+  case $purpose in
+    resume) pane=${1:-}; sid=${2:-}; dir=${3:-} ;;
+    *)      root=${1:-}; sess=${2:-} ;;
+  esac
+
+  for p in $(cfg_children claude.profiles); do
+    [ ${#p} -gt "$w" ] && w=${#p}
+  done
+  [ "$w" -gt 0 ] || { tmux display-message "tagents: no claude profiles in $CONFIG_FILE" 2>/dev/null; return 0; }
+  # The name is column 1 and never shown; what you read is column 2, where the
+  # config dir sits next to it — the profile name alone does not say which login
+  # it is, and that is the whole question being asked.
+  for p in $(cfg_children claude.profiles); do
+    pd=$(cfg_get "claude.profiles.$p.config_dir") || pd="default (~/.claude)"
+    [ -n "$pd" ] || pd="default (~/.claude)"
+    rows="$rows$p$TAB$(printf '%-*s' "$w" "$p")  $pd
+"
+  done
+
+  case $purpose in
+    new)
+      hdr="which claude account for $(basename "$root")?"
+      sub="$(tilde_of "$root") · session $sess"
+      note="no rule in $(tilde_of "$CONFIG_FILE") decides this · esc cancels" ;;
+    pick)
+      hdr="start a new agent in $(basename "$root") as…"
+      sub="$(tilde_of "$root") · session $sess"
+      note="whatever the rules in $(tilde_of "$CONFIG_FILE") say · esc cancels" ;;
+    resume)
+      nm=$(label_of "${sid:-$pane}")
+      [ -n "$nm" ] || nm=$(basename "${dir:-?}")
+      hdr="resume $nm as…"
+      sub="$(tilde_of "$dir") · session ${sid:-?}"
+      note="its record does not say which account it ran on · esc cancels" ;;
+  esac
+
+  # Not piped into `cut`: under pipefail an esc (fzf exits 130) would take the
+  # whole pipeline down, and the empty answer is the normal way out of here.
+  pick=$(printf '%s' "$rows" | fzf --delimiter="$TAB" --with-nth=2 \
+           --layout=reverse --height=100% --no-info --prompt='account> ' \
+           --header="$hdr
+$sub
+$note" 2>/dev/null)
+  pick=${pick%%$TAB*}
+  [ -n "$pick" ] || return 0
+  profile_exists "$pick" || return 0
+
+  case $purpose in
+    new|pick) start_agent "$root" "$sess" "$pick" ;;
+    resume)   resume_with "$pane" "$sid" "$dir" "$pick" ;;
+  esac
 }
 
 # ---------------------------------------------------------------------------
@@ -1885,8 +2736,11 @@ dash() {
   # A prompt that opens a popup returns at once, so fzf never has to give up the
   # screen for it — that is what keeps rename and send from flashing the list.
   # Without popups the prompt has to happen in this pane, which needs `execute`.
+  # So does a list that IS a popup: a popup cannot open a second one, so its
+  # prompts run inline too, on the tty the popup already has. Without this every
+  # prompt in prefix+a mode ran behind execute-silent and was never seen.
   local ask='execute-silent'
-  has_popup || ask='execute'
+  { has_popup && [ "$mode" != popup ]; } || ask='execute'
   [ -z "$home" ] && home=$(tmux display -p '#S' 2>/dev/null)
   if [ -z "$home" ]; then
     echo "tagents: not inside tmux" >&2
@@ -1936,7 +2790,7 @@ dash() {
     [ -z "$rows" ] && rows="-${TAB}$(printf '\033[90m')no claude sessions running$(printf '\033[0m')${TAB}none"
     started=$SECONDS
     header=$(keyhdr "${TA_COLS:-80}" \
-      "enter $enter_lbl" "ctrl-n new" "ctrl-g goto" "ctrl-o borrow" "ctrl-e send" \
+      "enter $enter_lbl" "ctrl-n new" "ctrl-p new as…" "ctrl-g goto" "ctrl-o borrow" "ctrl-e send" \
       "$RENAME_KEY name" "ctrl-u undock" "ctrl-x kill" "ctrl-t tree" \
       "ctrl-l refresh" ${quit:+"$quit"})
     out=$(printf '%s\n' "$rows" | fzf \
@@ -1956,7 +2810,8 @@ dash() {
       --bind="f2:$ask($SELF --act rename {1} {3} {4})" \
       --bind="ctrl-u:execute-silent($SELF --act undock {1})+reload-sync($SELF --list)" \
       --bind="ctrl-x:$ask($SELF --act kill {1} {3} {4})" \
-      --bind="ctrl-n:execute-silent($SELF --act new {1} {3} {4} {5})$after" \
+      --bind="ctrl-n:$ask($SELF --act new {1} {3} {4} {5})$after" \
+      --bind="ctrl-p:$ask($SELF --act pick {1} {3} {4} {5})$after" \
       --bind="$esc_bind" \
       --bind='ctrl-v:toggle-preview' \
       --bind='ctrl-t:execute-silent('"$SELF"' --toggle-group)+reload-sync('"$SELF"' --list)' \
@@ -1998,7 +2853,16 @@ case "${1:-}" in
   --ask-rename)   ask_rename "${2:-}" "${3:-}" ;;
   --ask-send)     ask_send "${2:-}" ;;
   --ask-kill)     ask_kill "${2:-}" "${3:-}" ;;
+  --ask-profile)  shift; ask_profile "$@" ;;
   --act)          shift; act "$@" ;;
+  # Starting an agent from outside the list: a tmux binding, a shell, a script.
+  --new)          shift; new_agent "${1:-}" "${2:-}" ;;
+  # ...and the two ways to ask what the config would do without doing it.
+  # Prints nothing and exits 1 when there are no profiles, so a caller can tell
+  # "the config decided nothing" from "the config said ask".
+  --profile-for)  profile_for "${2:-}" "${3:-}" && echo ;;
+  --config)       config_cmd ;;
+  --agent-cmd)    agent_cmd "${2:-}" "${3:-new}" "${4:-}" && echo ;;
   --counts)       counts ;;
   --preview)      preview "${2:-}" "${3:-}" ;;
   --slot)         slot ;;

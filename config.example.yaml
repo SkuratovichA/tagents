@@ -1,0 +1,50 @@
+# tagents — which Claude account an agent is started on.
+#
+# Copy to ~/.config/tagents/config.yaml (or point $TA_CONFIG at it). With no
+# such file tagents behaves exactly as it did before this existed: a plain
+# `claude --dangerously-skip-permissions`, the environment inherited, and no
+# dialog ever.
+#
+# `tagents --config` prints this file the way tagents reads it, one
+# path<TAB>value line per leaf — the thing to look at when a rule will not fire.
+
+claude:
+  # Arguments every agent is started with, unless a profile overrides them.
+  # A string (passed verbatim, your own shell words) or a list (each item is
+  # quoted, which is how an argument containing a space gets through).
+  args: --dangerously-skip-permissions
+
+  # An account is a Claude Code config dir, and it is a whole login rather than
+  # a preference: Claude derives its keychain item from the literal path. Omit
+  # config_dir for the default account — omit it, do not write ~/.claude, since
+  # an explicitly set CLAUDE_CONFIG_DIR is a different keychain item from an
+  # unset one.
+  profiles:
+    personal:
+      config_dir: ~/.claude-personal
+
+    work:
+      # config_dir omitted: CLAUDE_CONFIG_DIR is unset for this one
+      # command: claude                                    # the binary to run
+      # args: --dangerously-skip-permissions --model opus  # replaces claude.args
+      # env:                                               # extra environment
+      #   ANTHROPIC_BASE_URL: https://proxy.example.com
+
+  # First matching rule wins. `dir` matches the agent's directory and everything
+  # under it (by path component: ~/git/personalx is not under ~/git/personal).
+  # `session` matches when the tmux session name CONTAINS the text. Both present
+  # means both must match, neither present is a catch-all. `profile: ask` forces
+  # the dialog for anything the rule catches.
+  rules:
+    - dir: ~/git/personal
+      profile: personal
+    - dir: ~/git/work
+      profile: work
+    - session: personal
+      profile: personal
+    - session: work
+      profile: work
+
+  # When no rule matches. The default is `ask` — a small picker over the
+  # profiles above. Any profile name works here instead.
+  # default: ask

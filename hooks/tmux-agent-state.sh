@@ -4,7 +4,8 @@
 #
 # Registered in ~/.claude/settings.json for SessionStart, UserPromptSubmit,
 # PreToolUse, PostToolUse, Notification, Stop, SubagentStop and SessionEnd.
-# Writes one record per pane into ~/.claude/agent-state/<pane>.tsv and mirrors
+# Writes one record per pane into ~/.claude/agent-state/<pane>.tsv (7 tab-separated
+# fields, the last being the CLAUDE_CONFIG_DIR the session runs on) and mirrors
 # the coarse state onto the tmux pane option @agent (read by the status bar).
 #
 # Runs on every tool call, so it stays deliberately cheap: one jq, one tmux.
@@ -164,9 +165,17 @@ fi
 # A finished turn means no subagent of this session can still be running.
 [ "$state" = "done" ] && rm -f "$dir/sub/$key".* 2>/dev/null
 
+# WHICH ACCOUNT THIS SESSION IS ON, as the 7th field. A hook runs inside
+# Claude's own process, so it is the only thing that can see the CLAUDE_CONFIG_DIR
+# the session was actually started with — and that is a whole login, not a
+# setting: resuming the conversation anywhere else finds nothing. An empty value
+# means the default account; a record with only 6 fields was written before this
+# existed and means nothing at all, which is why the reader tests NF rather than
+# treating the two the same.
 tmpf="$dir/.$key.$$"
-if printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-     "$now" "$state" "$sid" "$cwd" "$transcript" "${detail:-}" >"$tmpf" 2>/dev/null; then
+if printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+     "$now" "$state" "$sid" "$cwd" "$transcript" "${detail:-}" \
+     "${CLAUDE_CONFIG_DIR:-}" >"$tmpf" 2>/dev/null; then
   mv -f "$tmpf" "$dir/$key.tsv" 2>/dev/null || rm -f "$tmpf"
 fi
 
