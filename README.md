@@ -7,12 +7,18 @@ it without leaving.
 
 ```
 ▾ storefront   ~/git/storefront          ⚠1 ✓1 ●1   $31.4/5h
-  ├─ ⚠ BLOCKED   2:14  api      142k  $38.3  opus5    %31
-  ├─ ● working   0:08  web       38k   $9.1  sonnet5  %44  ⑂2
-  └─ ✓ IDLE     17:02  worker    12k   $2.7  haiku4.5 %12
+  ├─ ⚠ BLOCKED   2:14  api      142k  $38.3  opus5    work      %31
+  ├─ ● working   0:08  web       38k   $9.1  sonnet5  work      %44  ⑂2
+  └─ ✓ IDLE     17:02  worker    12k   $2.7  haiku4.5 work      %12
 ▾ .dotfiles    ~/git/.dotfiles           ●1
-  └─ ● working   0:31  dotfiles  71k  $44.0  opus5    %3
+  └─ ● working   0:31  dotfiles  71k  $44.0  opus5    personal  %3
 ```
+
+state · age · name · context · cost · model · **account** · pane. The account
+column is the Claude login the session is on, named after the profile in
+`config.yaml` that claims its `CLAUDE_CONFIG_DIR` — see
+[Configuration](#configuration). It appears on wide lists only, and stays blank
+for a session whose state record predates it rather than guessing.
 
 ## What is in here
 
@@ -22,6 +28,7 @@ it without leaving.
 | `tusage`  | per-session cost, dollars and context accounting, read from the transcripts |
 | `hooks/tmux-agent-state.sh` | the Claude Code hook that publishes session state |
 | `hooks/claude-statusline.sh` | the Claude Code status line — and the only source for which model a session is *set* to |
+| `config.example.yaml` | a commented example of the optional per-directory account config |
 
 They are one system. The hook writes a record per session into
 `~/.claude/agent-state/`; `tagents` joins that with the live tmux pane list and
@@ -74,13 +81,15 @@ Keys inside the dashboard:
 
 | key | |
 |-----|--|
-| `enter` | dock that agent's pane into the sidebar and put the cursor in it |
+| `enter` | dock that agent's pane into the sidebar's current seat and put the cursor in it |
+| `ctrl-s` | dock it *beside* the current seat instead — two chats side by side |
 | `ctrl-n` | start a new agent in the project under the cursor |
+| `ctrl-p` | the same, but choose the Claude account by hand whatever the rules say |
 | `ctrl-g` | go to the agent where it lives instead |
 | `ctrl-o` | borrow the agent's whole window into this session |
 | `ctrl-e` | type a line straight into that agent without leaving |
 | `ctrl-r` | name this agent (`F2` too) |
-| `ctrl-u` | undock — send the docked pane home |
+| `ctrl-u` | undock — send the chat in the current seat home and close the seat behind it |
 | `ctrl-x` | kill this agent — hang up its Claude and close its pane (asks first). On a row that is already closed, forget it instead |
 | `ctrl-t` | toggle tree / flat |
 | `ctrl-l` | refresh now |
@@ -88,6 +97,145 @@ Keys inside the dashboard:
 
 `tagents --help` is the real documentation — the script's header explains the
 model, and every non-obvious decision in it is commented with the reason.
+
+## Several chats side by side
+
+The sidebar window holds **seats**: panes the dashboard owns, each of them either
+a placeholder (the grey "pick an agent" pane) or a chat docked into one. `enter`
+opens a chat in the seat you were last in, `ctrl-s` opens one in a new seat
+beside it — so `enter` on A and `ctrl-s` on B leaves you with
+
+```
+columns(list, A, B)
+```
+
+both live and typeable. With nothing docked yet there is nothing to sit beside,
+so `ctrl-s` opens in the empty seat exactly as `enter` would, rather than
+standing a blank placeholder a whole chat wide between the list and the chat.
+
+The list says which is which: a `▶` on the row of the
+chat whose seat the cursor is in — the one `enter` is about to replace — and a
+dim `▹` on every other docked chat. `ctrl-u` sends the current seat's chat home
+and closes the seat behind it, so the layout shrinks back to `columns(list, A)`.
+The last seat always stays; that pane is what says "pick an agent on the left".
+
+**Panes you opened yourself are never touched.** What the dashboard owns is said
+by two markers (`@tagents_docked`, `@tagents_slot`) and by nothing else, so a
+terminal split off beside the list is never swapped, broken out or killed here,
+whatever the pane order in that window happens to be. It used to be answered by
+position — the first pane that is not the list — which was true only while the
+window had exactly two panes.
+
+**Closing a pane must not close a session.** A docked pane *is* the session's own
+pane — that is what makes it typeable — so `prefix+x` on it hangs up the Claude
+for good, and no tmux hook can veto a kill. The answer is a binding that asks
+first, in your `.tmux.conf`:
+
+```tmux
+bind-key x if-shell -F '#{@tagents_docked}' \
+  "run-shell \"tagents --undock-pane '#{pane_id}'\"" kill-pane
+bind-key & run-shell "tagents --undock-window '#{window_id}'" \; kill-window
+```
+
+`tagents --undock-pane` sends that chat home and exits 0; on anything else — the
+list, a placeholder, your own terminal — it does nothing and exits 1, so the
+binding stays a plain `kill-pane` everywhere else. `--undock-window` does the
+same for every chat docked in a window and always exits 0.
+
+## Configuration
+
+Optional, and only about one thing: **which Claude account an agent is started
+on**. Without `~/.config/tagents/config.yaml` (or `$TA_CONFIG`) nothing below
+happens and every agent is started exactly as it always was — a plain `claude
+--dangerously-skip-permissions`, environment inherited, no dialog ever.
+
+### The bug it fixes
+
+`tmux new-window "<command>"` runs that command through `/bin/sh` as a direct
+child of the **tmux server**. Your interactive shell is never involved, so
+`.zshrc` never runs — and `.zshrc` is where a per-directory account is usually
+chosen. The tmux server has no `CLAUDE_CONFIG_DIR` of its own, so every agent
+started from the dashboard ran on the default account whatever directory it was
+in, silently and for as long as nobody looked.
+
+An account is a config dir, and it is a whole **login**, not a preference:
+Claude Code derives its keychain item from the literal path, so
+`~/.claude-personal` and `~/.claude` are two independent logins. Unset is a
+third thing again and is not the same as empty — which is why every launch goes
+out as `env -u CLAUDE_CONFIG_DIR [CLAUDE_CONFIG_DIR=…] claude …`, prefix carried
+in the command string so the identical string also works when it is typed into a
+shell (the resume-in-place path) and so it steps around any `claude()` shell
+function that would resolve the account all over again.
+
+### The file
+
+```yaml
+claude:
+  # What every agent is started with, unless a profile overrides it.
+  # A string (your own shell words, verbatim) or a list (each item quoted).
+  args: --dangerously-skip-permissions
+
+  profiles:
+    personal:
+      config_dir: ~/.claude-personal
+    work:
+      # config_dir omitted: CLAUDE_CONFIG_DIR is UNSET for this one. Omit it,
+      # do not write ~/.claude — set and unset are different keychain items.
+      # command: claude                                     # binary or wrapper
+      # args: --dangerously-skip-permissions --model opus   # replaces claude.args
+      # env:
+      #   ANTHROPIC_BASE_URL: https://proxy.example.com
+
+  # First match wins. `dir` matches that directory and everything under it, by
+  # path component (~/git/personalx is not under ~/git/personal). `session`
+  # matches when the tmux session name CONTAINS the text. Both present means
+  # both must match; neither present is a catch-all.
+  rules:
+    - dir: ~/git/personal
+      profile: personal
+    - session: work
+      profile: work
+
+  # When nothing matches. `ask` (the default) opens a picker; a profile name
+  # settles it silently.
+  default: ask
+```
+
+Every `config_dir` you name here needs its own copy of Install steps 2–4 — the
+`hooks/` symlinks and the `settings.json` entries — inside it. A config dir with
+no `settings.json` runs no state hook and no status line, so agents started on
+it never appear in the dashboard at all and have no model column, which reads as
+a `tagents` bug and is a config-dir one.
+
+The parser is a deliberate YAML subset — mappings, sequences, `#` comments,
+single- and double-quoted scalars. Tabs for indentation, flow style (`{}`,
+`[]`), block scalars (`|`, `>`) and anchors are refused with a one-line warning
+naming the line, and the rest of the file is still read.
+
+### Choosing by hand
+
+`profile: ask`, `default: ask`, or **`ctrl-p`** on any row open a small picker
+over the profiles. `ctrl-p` ignores the rules entirely, which is the answer to
+"this one agent in a personal repo has to run on the work account".
+
+**Resuming never consults the rules.** The account a closed session comes back
+on is the one it actually ran on, recorded as the 7th field of its state record
+by `hooks/tmux-agent-state.sh` — a conversation resumed on another login is
+simply not there. A record written before that field existed falls back to the
+rules, and asks if they say `ask`.
+
+### Checking it
+
+```sh
+tagents --config                    # the file as tagents reads it, path<TAB>value
+tagents --profile-for ~/git/work    # which profile the rules pick for a directory
+tagents --agent-cmd personal new    # the exact command string a launch would run
+tagents --new ~/git/thing personal  # start one from outside the dashboard
+```
+
+`--config` is the thing to look at when a rule will not fire: it prints one leaf
+per line (`claude.rules.0.dir`), which is also how a rule is referred to in the
+warnings.
 
 ## States
 
@@ -176,4 +324,12 @@ is recovered from the first `cwd` in the transcript and cached per session id.
 
 "Running" means a Claude process really is alive in that pane, checked against
 the process tree — a state file alone proves nothing. Panes whose Claude has
-exited are listed as closed and `enter` resumes them.
+exited are listed as closed and `enter` resumes them, on the account they ran
+on.
+
+`tests/config.sh` covers the config parser, the rules and the command builder
+with no tmux involved; `tests/launch.sh` starts and resumes real agents, and
+`tests/panes.sh` docks, undocks and kills them across seats — both against a
+throwaway tmux server of their own (`tmux -L tatest-$$`), never the default
+socket. All three are bash 3.2, run every check, and exit non-zero when any of
+them fails.
