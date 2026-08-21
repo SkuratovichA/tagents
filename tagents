@@ -1219,9 +1219,52 @@ refresher() {
 # switched the client there — the list left behind, the screen somewhere else.
 # So the pane answers first and the marker is only the fallback, and claim_dash
 # keeps the marker honest for as long as a list is actually running.
+# Is a list actually running in this pane? Every list stamps its own pane with
+# its pid, so the answer is one kill -0 rather than a walk through ps.
+list_in_pane() {  # <pane-id>
+  local pid
+  pid=$(tmux display -p -t "${1:-}" '#{@tagents_list}' 2>/dev/null)
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+# THE SIDEBAR IS THE LIST YOU ARE PRESSING THE KEY IN. Two failures here, both
+# of them the same mistake — trusting a global marker to say where the sidebar
+# is.
+#
+# A MARKER IS ONLY WORTH THE PROCESS THAT SET IT. A marker whose list is gone —
+# killed pane, killed process, or one ensure_dash used to leave on a pane that
+# never ran a list at all — does not merely go unused, it actively sends every
+# dock somewhere wrong. Observed live: the marker sat on a pane that was later
+# given to a claude, so enter docked each chat NEXT TO THAT CHAT and switched the
+# client into its window. It is cleared here rather than ignored, so the next
+# ensure_dash starts from a clean slate.
+#
+# AND THERE CAN BE MORE THAN ONE LIST. Running `tagents` in any pane is a
+# perfectly ordinary thing to do, and every one of them used to claim the single
+# marker, so the newest list silently became "the sidebar" for all of them: enter
+# in the one you were looking at docked the chat into some other window and took
+# the client with it. Which is the report. So the caller answers first — a list
+# asking where to dock gets its own pane — and the marker is only for callers
+# that are not a list themselves (a popup, which has no pane of its own; a tmux
+# hook; the status bar).
 dash_pane() {
-  tmux list-panes -a -F '#{pane_id} #{@tagents_dash}' 2>/dev/null |
-    awk '$2 == "1" { print $1; exit }'
+  local p pid
+  if [ -n "${TMUX_PANE:-}" ] && list_in_pane "$TMUX_PANE"; then
+    printf '%s\n' "$TMUX_PANE"
+    return 0
+  fi
+  while read -r p pid; do
+    [ -n "$p" ] || continue
+    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+      printf '%s\n' "$p"
+      return 0
+    fi
+    tmux set -up -t "$p" @tagents_dash 2>/dev/null
+  done <<EOF
+$(tmux list-panes -a -F '#{pane_id} #{@tagents_dash} #{@tagents_list}' 2>/dev/null |
+    awk '$2 == "1" { print $1, $3 }')
+EOF
+  return 0
 }
 dash_window() {   # the window the list sits in — the sidebar, wherever that is
   local dp
@@ -1256,6 +1299,13 @@ claim_dash() {
   tmux list-windows -a -F '#{window_id} #{@tagents}' 2>/dev/null |
     awk -v w="$win" '$2 == "1" && $1 != w { print $1 }' |
     while IFS= read -r old; do tmux set -uw -t "$old" @tagents 2>/dev/null; done
+  # Two different statements. @tagents_list says "a list with this pid is running
+  # in this pane" and belongs to this list alone — it is never taken away, which
+  # is what lets several lists coexist, each its own sidebar. @tagents_dash is the
+  # shared "which one do non-list callers mean", and that one is stolen, newest
+  # list wins. The pid is what tells a live claim from a marker left behind,
+  # without asking ps about the pane every time.
+  tmux set -p -t "$me" @tagents_list "$$" 2>/dev/null
   tmux set -p -t "$me" @tagents_dash 1 2>/dev/null
   tmux set -w -t "$win" @tagents 1 \; set -w -t "$win" automatic-rename off 2>/dev/null
   return 0
@@ -1268,6 +1318,9 @@ claim_dash() {
 release_dash() {
   local me=${TMUX_PANE:-} win sess
   [ -n "$me" ] || return 0
+  # My own stamp goes unconditionally: a list that has since lost the shared
+  # marker to a newer one still has to say it is not running any more.
+  tmux set -up -t "$me" @tagents_list 2>/dev/null
   [ "$(tmux display -p -t "$me" '#{@tagents_dash}' 2>/dev/null)" = 1 ] || return 0
   tmux set -up -t "$me" @tagents_dash 2>/dev/null
   sess=$(tmux display -p -t "$me" '#{session_name}' 2>/dev/null)
@@ -1310,22 +1363,6 @@ is_agent_pane() {  # <pane-id> — is a Claude actually running in it?
   return 1
 }
 
-# A pane in the dashboard window that could be the list: not a chat, not a chat
-# that is currently docked here, and not the placeholder marking the empty half.
-dash_candidate() {  # <window-id>
-  local win=$1 p flags list found=""
-  list=$(live_panes 2>/dev/null)
-  while read -r p flags; do
-    [ -n "$p" ] || continue
-    case " $flags " in *" D "*|*" S "*) continue ;; esac
-    case " $list " in *" $p "*) continue ;; esac
-    found=$p
-    break
-  done <<EOF
-$(tmux list-panes -t "$win" -F '#{pane_id}#{?@tagents_docked, D,}#{?@tagents_slot, S,}' 2>/dev/null)
-EOF
-  [ -n "$found" ] && printf '%s\n' "$found"
-}
 
 # GOING TO THE PANE IS THE UNDOCK. Docking physically moves the agent's pane
 # into the dashboard and leaves this placeholder in its seat, so the pane in
@@ -1528,12 +1565,30 @@ ensure_dash() {
     fi
   fi
   if [ -z "$dp" ]; then
-    dp=$(dash_candidate "$win")
-    # Every pane in the window is a chat or a placeholder — there is no list left
-    # to adopt, so grow one rather than promoting one of them.
-    [ -z "$dp" ] && dp=$(tmux split-window -d -t "$win" -P -F '#{pane_id}' \
-                           -b -h -l "$DASH_WIDTH%" "exec '$SELF'" 2>/dev/null)
-    [ -n "$dp" ] && tmux set -p -t "$dp" @tagents_dash 1 2>/dev/null
+    # A PANE THAT COULD HOLD THE LIST IS NOT A PANE THAT DOES. This used to adopt
+    # any spare pane in the window and mark it as the dashboard without starting
+    # anything in it, which is the bug behind "enter shows nothing and throws me
+    # into another window": the marker sat on a pane that would never claim or
+    # release it, and the moment a claude was started there — which is what a
+    # spare pane in this window is usually for — every dock went to that chat
+    # instead of to a sidebar, client and all.
+    #
+    # So a list is grown, never adopted. Typing `exec tagents` into somebody's
+    # shell would take the shell with it, and there is no way to tell a pane
+    # being kept for the list from a pane being kept for something else. One
+    # extra pane is the cheaper mistake. Nothing here marks anything either —
+    # only a list that is actually running claims, in claim_dash.
+    dp=$(tmux split-window -d -t "$win" -P -F '#{pane_id}' \
+           -b -h -l "$DASH_WIDTH%" "exec '$SELF'" 2>/dev/null)
+    # The list claims the marker itself, a moment after it starts. Wait for it:
+    # the caller's next move is dock(), and dock with no sidebar to dock into
+    # does nothing at all — one keypress silently lost.
+    if [ -n "$dp" ]; then
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        [ -n "$(dash_pane)" ] && break
+        sleep 0.2
+      done
+    fi
   fi
   [ -n "$dp" ] && ensure_slot "$dp" >/dev/null
   tmux select-window -t "$win" 2>/dev/null
