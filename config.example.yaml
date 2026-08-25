@@ -22,6 +22,10 @@ claude:
   profiles:
     personal:
       config_dir: ~/.claude-personal
+      # badge: p    # the one or two characters the column before the agent name
+      #             # shows for this account. Defaults to the first character of
+      #             # the profile name, so personal and work are already p and
+      #             # w — set it only when two accounts start with the same one.
 
     work:
       # config_dir omitted: CLAUDE_CONFIG_DIR is unset for this one

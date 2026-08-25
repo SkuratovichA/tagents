@@ -24,6 +24,19 @@
 #                           pane id), an empty NAME clears it back to the title
 #   tagents --counts        compact summary, for the tmux status bar
 #   tagents --preview PANE  live view of a pane, for the fzf preview window
+#   tagents --keys          every shortcut the dashboard binds, one
+#                           key<TAB>verb<TAB>what it does line each. This table
+#                           is what the ? window is built from, so it is also
+#                           the one place a new key has to be named
+#   tagents --hidden-cols   which columns are hidden right now (see ctrl-w)
+#   tagents --col-rows      the picker's rows as the picker itself reads them,
+#                           key<TAB>the checkmark line — what ctrl-w shows you
+#   tagents --toggle-col KEY [PORT]
+#                           flip one column, which is exactly what enter in that
+#                           picker runs; PORT is the list's fzf listen port, so
+#                           the rows behind the picker redraw (empty: no reload)
+#   tagents --header [COLS] the key header the dashboard would draw at that
+#                           width. One line, which is the whole point of it
 #   tagents --ensure-dash   create the dedicated dashboard session if missing
 #   tagents --new [DIR] [PROFILE]
 #                           start an agent in DIR from outside the list — a tmux
@@ -79,6 +92,28 @@
 # named after the profile in the config that claims its CLAUDE_CONFIG_DIR (see
 # CONFIG below). It is blank for a session whose record predates that column
 # rather than guessed at.
+#
+# THE BADGE is that same answer in the width a sidebar can always afford: one
+# dim character — two at the outside — immediately before the name, on every row
+# at every width. It is the first character of the profile name, so personal and
+# work read as p and w with nothing configured at all; claude.profiles.X.badge
+# sets it by hand where two accounts start with the same letter. A longer one is
+# clipped to two: the column is as wide as the widest badge configured, at every
+# breakpoint, so a badge that ignored the promise took the detail column off
+# every list. "·" is the default account when no single profile claims it, "?" a
+# config dir no profile knows about, and a space a record written before the
+# account was recorded — the column says nothing rather than guessing. No
+# profiles configured means no column at all, and rows byte for byte as they
+# were before it existed.
+#
+# ANY OF THESE COLUMNS CAN GO. ctrl-w opens a small window with a checkmark per
+# column — badge, ctx, cost, model, acct, loc — where enter toggles the one
+# under the cursor and the list reloads behind it, picker still open. Hiding
+# `cost` takes every figure in dollars with it: the column, the ⑂ share and the
+# project header's /5h total. What is hidden is one key per line in
+# $STATE_DIR/cols, so it survives a restart, and TA_HIDE_COLS=cost,model
+# overrides that file for a single run. Nothing is ever reordered: the freed
+# width goes to the detail column, exactly as it does when the pane is narrow.
 #
 # WHERE THE DOLLAR FIGURE COMES FROM. Claude Code keeps its own cost ledger and
 # publishes it to the status line, so for any session that is open the number
@@ -147,7 +182,9 @@
 #     default: ask    # when nothing matches; `ask` opens the dialog
 #
 # A profile may also carry `command:` (the binary or wrapper to run), its own
-# `args:`, and an `env:` map of extra variables. See config.example.yaml.
+# `args:`, an `env:` map of extra variables, and `badge:` — the one or two
+# characters the row column above shows for it, which defaults to the first
+# character of the profile name. See config.example.yaml.
 #
 # `profile: ask` — and the default `ask` — open a small fzf over the profiles
 # instead of guessing. ctrl-p opens it unconditionally, so an account can always
@@ -266,6 +303,21 @@
 #   ctrl-v             show the text preview (hidden while docking, where the
 #                      docked pane is the live thing itself)
 #   ctrl-l             refresh now
+#   ctrl-w             show or hide columns — see above. Like ? it is a key
+#                      taken off fzf: ctrl-w was delete-the-word-before-the-
+#                      cursor in the filter query, which is the second and last
+#                      thing spent here. The query is a project name long, so
+#                      backspace covers it
+#   ?                  every key of this list, in a window of its own, and enter
+#                      RUNS the one you pick, on the row the cursor was on. That
+#                      is what makes it worth having over a printed list, and it
+#                      is why the header above the list is one line now instead
+#                      of four rows of a sidebar that has forty. The direct keys
+#                      all still work; this is a second way in, not a
+#                      replacement. The cost is that ? is a printable character,
+#                      so binding it means it can no longer be typed into the
+#                      filter query — the one key that is spent, deliberately.
+#                      keys_table() is where a new key gets its row
 #   ctrl-q             quit (only way out of the dedicated session — Esc and
 #                      ctrl-c are absorbed there so the dashboard cannot be
 #                      closed by accident; in the popup Esc closes it normally)
@@ -823,15 +875,25 @@ resume_profile() {  # <recorded cfg dir> <hascfg> <dir> <session> -> profile/ask
   profile_for "$dir" "$sess" || return 0
 }
 
-# The profile table list() renders the account column from, joined with $RS
-# because awk -v cannot take a newline. Empty second field = the default account.
+# The profile table list() renders the account and badge columns from, joined
+# with $RS because awk -v cannot take a newline. Empty second field = the
+# default account.
+#
+# The badge is the one- or two-character stand-in for that account — the whole
+# of the acct column, on a row narrow enough that the acct column is not there.
+# It defaults to the profile's first character, so `personal` and `work` render
+# as p and w with nothing configured at all, and `badge:` is only for the day
+# two profiles start with the same letter. Keys are ASCII by the parser's own
+# character class, so the first byte is the first character.
 prof_pairs() {
-  local p pd
+  local p pd bd
   cfg_load
   for p in $(cfg_children claude.profiles); do
     if pd=$(cfg_get "claude.profiles.$p.config_dir"); then pd=$(cfg_expand_dir "$pd")
     else pd=""; fi
-    printf '%s%s%s%s' "$p" "$US" "$pd" "$RS"
+    bd=$(cfg_get "claude.profiles.$p.badge") || bd=""
+    [ -n "$bd" ] || bd=${p%"${p#?}"}
+    printf '%s%s%s%s%s%s' "$p" "$US" "$pd" "$US" "$bd" "$RS"
   done
 }
 
@@ -1155,14 +1217,137 @@ toggle_group() {
   if [ -e "$STATE_DIR/.flat" ]; then rm -f "$STATE_DIR/.flat"; else : >"$STATE_DIR/.flat"; fi
 }
 
+# Telling the list that runs this picker to redraw. fzf takes actions on its
+# --listen port, and FZF_PORT is exported to the children of its own bindings —
+# but a tmux popup is spawned by the SERVER and inherits nothing of that, so the
+# port travels as an argument, like the row fields do. No port (a bare --list
+# from a script, or a test) is not an error: the toggle still happens, it is
+# just not seen until the next refresher tick.
+post_fzf() {  # <port> <fzf action>
+  [ -n "${1:-}" ] || return 0
+  curl -s -XPOST "http://127.0.0.1:$1" -d "$2" >/dev/null 2>&1
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# columns: which of them are on screen
+#
+# The money is what this exists for — a dollar figure on every row is a
+# distraction when you are not currently spending against a limit — but any
+# column that does not answer "which agent and how urgent" can go the same way.
+# One hidden key per line in $STATE_DIR/cols, the same idiom as .flat, so the
+# choice survives a restart. TA_HIDE_COLS (comma separated) OVERRIDES the file
+# rather than adding to it: it is a one-off for a test or a single run, not a
+# second place the state lives, so a toggle made while it is set is written down
+# and not seen.
+#
+# Hiding never reorders anything. fitcols() zeroes the column's width before it
+# adds up what the row costs, so the freed width flows into the detail column
+# exactly as it does when the pane itself is narrow.
+# ---------------------------------------------------------------------------
+COLS_FILE="$STATE_DIR/cols"
+# key<TAB>what hiding it takes away. The picker rows are built from this, and it
+# is the only place a toggleable column is named.
+COLS_TABLE="badge${TAB}the account indicator before the name
+ctx${TAB}the live context size
+cost${TAB}every figure in dollars — the column, the ⑂ share, the /5h total
+model${TAB}which model the session is set to
+acct${TAB}the account name, on the widest lists
+loc${TAB}which pane the agent is in"
+
+col_keys() { printf '%s\n' "$COLS_TABLE" | cut -f1; }
+
+hidden_cols() {  # the effective hidden set, one key per line
+  if [ -n "${TA_HIDE_COLS:-}" ]; then
+    printf '%s' "$TA_HIDE_COLS" | tr ',' '\n' | awk 'NF { print $1 }'
+    return 0
+  fi
+  [ -e "$COLS_FILE" ] || return 0
+  awk 'NF { print $1 }' "$COLS_FILE" 2>/dev/null
+}
+
+# NOT `... | grep -q`: this script runs under pipefail and -q closes the pipe on
+# the first match, so the producer dies of SIGPIPE and the pipeline fails on
+# exactly the runs that FOUND the key (see is_agent_pane).
+toggle_col() {  # <key> [fzf port of the list behind the picker]
+  local key=${1:-} port=${2:-} known now tmpf
+  # -F as well as -x: without it the key is a REGULAR EXPRESSION, so `co.t`
+  # matched `cost`, passed this guard as a real column and was written into the
+  # state file as a hidden column nothing renders and the picker cannot offer
+  # back. The key comes from the picker's own {1} today; --toggle-col takes one
+  # from a human, and that is the entry point the header advertises.
+  known=$(col_keys | grep -xF -- "$key")
+  [ -n "$known" ] || return 0
+  now=$(hidden_cols | grep -xF -- "$key")
+  mkdir -p "$STATE_DIR" 2>/dev/null
+  tmpf="$STATE_DIR/.cols.$$"
+  { [ -e "$COLS_FILE" ] && awk -v k="$key" 'NF && $1 != k { print $1 }' "$COLS_FILE"; } \
+    >"$tmpf" 2>/dev/null
+  [ -n "$now" ] || printf '%s\n' "$key" >>"$tmpf"
+  mv -f "$tmpf" "$COLS_FILE" 2>/dev/null || rm -f "$tmpf"
+  post_fzf "$port" "reload-sync($SELF --list)"
+  return 0
+}
+
+# The picker's own rows, reloaded after every toggle so the checkmark flips
+# under the cursor. [x] is a column you can see; membership is tested with a
+# case over a padded string rather than a pipe into grep, for the SIGPIPE reason
+# above.
+col_rows() {  # key<TAB>the row as it is read
+  local hidden key desc mark
+  hidden=" $(hidden_cols | tr '\n' ' ')"
+  printf '%s\n' "$COLS_TABLE" | while IFS="$TAB" read -r key desc; do
+    [ -n "$key" ] || continue
+    case $hidden in *" $key "*) mark=' ' ;; *) mark=x ;; esac
+    printf '%s\t[%s] %-5s  %s\n' "$key" "$mark" "$key" "$desc"
+  done
+}
+
+# THE COLUMN PICKER — ctrl-w, normally the body of a popup and inline when there
+# is no popup to be had (including inside one; see prompt()). Enter toggles the
+# row under the cursor and the picker STAYS OPEN: fzf runs the toggle as a child
+# and then reloads its own rows, so the checkmark flips where you are looking
+# and the list behind reloads through its listen port. There is nothing to
+# confirm, so esc is the only way out and it is not a cancel.
+ask_columns() {  # <fzf port of the list, empty when there is none>
+  local port=${1:-} rows pick
+  rows=$(col_rows)
+  [ -n "$rows" ] || return 0
+  # Not piped into `cut`: under pipefail an esc (fzf exits 130) would take the
+  # whole pipeline down with it, and esc is the ordinary way out of here.
+  pick=$(printf '%s\n' "$rows" | fzf --delimiter="$TAB" --with-nth=2 \
+           --layout=reverse --height=100% --no-info --prompt='columns> ' \
+           --header="show or hide a column
+enter toggles it · esc closes" \
+           --bind="enter:execute-silent($SELF --toggle-col {1} $port)+reload($SELF --col-rows)" \
+           2>/dev/null)
+  # Interactively nothing ever arrives here — the binding above is what enter
+  # does, and it keeps the picker up. A --filter run has no bindings at all,
+  # which is how this is driven from a test, and is the only way this is reached.
+  pick=${pick%%$TAB*}
+  [ -n "$pick" ] && toggle_col "$pick" "$port"
+  return 0
+}
+
+# Tall enough for the columns plus the two header lines, the prompt and a little
+# air, the same arithmetic ask_height does for the profiles.
+col_height() {
+  local n
+  n=$(col_keys | wc -l | tr -d ' ')
+  printf '%s' "$(( ${n:-0} + 6 ))"
+}
+
 list() {
   # Nothing is excluded. There used to be a "skip my own pane" rule that fell
   # back to #{pane_id} when $TMUX_PANE was unset — which resolves through the
   # *attached client*, so it silently hid whichever agent you happened to be
   # looking at. The dashboard pane runs fzf, never Claude, so it can never show
   # up here anyway and needs no special case.
-  local grp=1 cols dp seat curseat="" dockedset=""
+  local grp=1 cols dp seat curseat="" dockedset="" hidecols
   grouped || grp=0
+  # Joined with $RS, never newlines: awk -v refuses a value with a newline in it
+  # (BWK awk, and silently enough to look like "nothing is hidden").
+  hidecols=$(hidden_cols | awk -v rs="$RS" '{ printf "%s%s", $1, rs }')
 
   # HOW WIDE IS THE ROW. fzf exports FZF_COLUMNS to the children of its execute
   # and reload bindings, which is exactly how --list is re-run, so that is the
@@ -1203,7 +1388,8 @@ list() {
   collect | awk -F"$TAB" -v now="$(date +%s)" -v ttl="$SUB_TTL" \
                 -v grp="$grp" -v home="$HOME" -v deadttl="$DEAD_TTL" -v cols="$cols" \
                 -v host="$(hostname -s 2>/dev/null)" \
-                -v profs="$(prof_pairs)" -v USC="$US" -v RSC="$RS" '
+                -v profs="$(prof_pairs)" -v USC="$US" -v RSC="$RS" \
+                -v hidecols="$hidecols" '
     # macOS awk counts bytes, so substr and %-Ns cut Cyrillic mid-character and
     # pad it to half width. Count characters instead, and never split one.
     function uclen(s,   i, n, c) {
@@ -1306,6 +1492,31 @@ list() {
       sub(/^\./, "", ai)
       return ai
     }
+    # THE SAME ANSWER IN ONE CHARACTER, and that is the entire point of it: the
+    # acct column is 8 wide and only exists on the two widest lists, while "which
+    # login is this" is a question worth answering on every row of a 45% sidebar.
+    # Resolved the way acctname resolves, spelled differently: the badge of the
+    # profile that claims the dir, "·" for the
+    # default account when no single profile claims it, "?" for a config dir no
+    # profile knows about, and a SPACE for a record written before the account
+    # was recorded — saying nothing, in the column width, rather than guessing.
+    # Scratch names prefixed rather than trusted to be free: bn is a live global
+    # a few lines further down, and in a program this long the next collision is
+    # a matter of time (BWK awk kills the whole program over one).
+    function badgeof(cv, hv,   bgi, bgn, bgc) {
+      if (hv != 1) return " "
+      # Trailing slash off, for the reason acctname gives: the hook records what
+      # CLAUDE_CONFIG_DIR held and the profile side has already been stripped.
+      while (length(cv) > 1 && substr(cv, length(cv), 1) == "/")
+        cv = substr(cv, 1, length(cv) - 1)
+      bgn = ""; bgc = 0
+      for (bgi = 1; bgi <= npf; bgi++) {
+        if (pdir[bgi] == "") { bgn = pbdg[bgi]; bgc++; continue }
+        if (cv != "" && pdir[bgi] == cv) return pbdg[bgi]
+      }
+      if (cv == "") return (bgc == 1) ? bgn : "·"
+      return "?"
+    }
     # RESPONSIVE COLUMNS. A row that does not fit is not merely ugly: fzf hard
     # -truncates it, so in a narrow sidebar the detail, then the location, then
     # the cost silently vanished with nothing to say they had. Columns are now
@@ -1337,8 +1548,31 @@ list() {
       else if (avail >=  50) { lw=0; namew=18; ctxw=5; burnw=0; mdlw=0; acctw=0; locw=0  }
       else if (avail >=  38) { lw=0; namew=14; ctxw=5; burnw=0; mdlw=0; acctw=0; locw=0  }
       else                   { lw=0; namew=12; ctxw=0; burnw=0; mdlw=0; acctw=0; locw=0  }
-      # 2 icon, lw + its space, 6 age + 2, name + 1, then whatever is left
-      fixed = 2 + (lw ? lw + 1 : 0) + 8 + namew + 1 \
+      # The badge is at EVERY breakpoint — two columns for the answer the 8-wide
+      # acct column gives only on the widest lists, which is what it is for. It
+      # is zero when nothing is configured, so a user with no config file gets
+      # byte for byte the rows this printed before it existed.
+      bdgw = badgew
+      # THE PROJECT COLUMN OF A FLAT ROW IS NOT THE LOCATION COLUMN. Flat mode
+      # has no group headers, so this 14-wide column is the only thing on the
+      # row that says which project the agent belongs to — and it was drawn
+      # under locw, which meant hiding `loc` ("which pane the agent is in")
+      # silently took the project away as well. Its own width, taken from the
+      # breakpoint before anything is hidden, so it still goes when the pane is
+      # genuinely too narrow for it and stays when a column is turned off.
+      projw = (!grp && locw) ? 14 : 0
+      # A hidden column is zeroed HERE, before the arithmetic below, so its width
+      # goes to the detail column exactly as a narrow pane would give it there.
+      # Nothing moves: the order the columns are drawn in never changes.
+      if ("badge" in hid) bdgw = 0
+      if ("ctx"   in hid) ctxw = 0
+      if ("cost"  in hid) burnw = 0
+      if ("model" in hid) mdlw = 0
+      if ("acct"  in hid) acctw = 0
+      if ("loc"   in hid) locw = 0
+      # 2 icon, lw + its space, 6 age + 2, badge + 1, name + 1, then what is left
+      fixed = 2 + (lw ? lw + 1 : 0) + 8 + (bdgw ? bdgw + 1 : 0) + namew + 1 \
+              + (projw ? projw + 1 : 0) \
               + (ctxw ? ctxw + 1 : 0) + (burnw ? burnw + 1 : 0) \
               + (mdlw ? mdlw + 1 : 0) + (acctw ? acctw + 1 : 0) \
               + (locw ? locw + 1 : 0)
@@ -1359,10 +1593,9 @@ list() {
       return n
     }
     BEGIN {
-      fitcols()
-      # name<US>expanded config_dir, joined with RS rather than newlines: awk -v
-      # rejects a value containing one (see live_panes).
-      npf = 0
+      # name<US>expanded config_dir<US>badge, joined with RS rather than
+      # newlines: awk -v rejects a value containing one (see live_panes).
+      npf = 0; badgew = 0
       npa = split(profs, pfa, RSC)
       for (pfi = 1; pfi <= npa; pfi++) {
         if (pfa[pfi] == "") continue
@@ -1370,8 +1603,27 @@ list() {
         if (pfk == 0) continue
         npf++
         pnm[npf] = substr(pfa[pfi], 1, pfk - 1)
-        pdir[npf] = substr(pfa[pfi], pfk + 1)
+        pfrest = substr(pfa[pfi], pfk + 1)
+        pfk = index(pfrest, USC)
+        if (pfk == 0) { pdir[npf] = pfrest; pbdg[npf] = "" }
+        else { pdir[npf] = substr(pfrest, 1, pfk - 1); pbdg[npf] = substr(pfrest, pfk + 1) }
+        # Two characters is the whole promise of this column, and a badge that
+        # ignores it is not merely ugly: badgew is applied at EVERY breakpoint,
+        # so `badge: personal!` widened every row by eight columns and took the
+        # detail column with it on a 45-column sidebar. Clipped rather than
+        # refused — a config nobody reads an error from still names its account.
+        # uclip, not substr: a badge may be one multi-byte glyph, and cutting it
+        # by bytes would leave half a character in the column.
+        if (uclen(pbdg[npf]) > 2) pbdg[npf] = uclip(pbdg[npf], 2)
+        # The column is as wide as the widest badge anyone configured — 1 unless
+        # somebody writes two characters — and it is measured in characters,
+        # since a badge may perfectly well be one multi-byte glyph.
+        if (uclen(pbdg[npf]) > badgew) badgew = uclen(pbdg[npf])
       }
+      nhc = split(hidecols, hca, RSC)
+      for (hci = 1; hci <= nhc; hci++) if (hca[hci] != "") hid[hca[hci]] = 1
+      # After the two tables above, not before: it reads both of them.
+      fitcols()
       R = "\033[0m"; DIM = "\033[90m"; BOLD = "\033[1m"
       # BLOCKED is reserved for an agent that has actually asked you something
       # and cannot go on until you answer. A turn that simply ended is IDLE —
@@ -1478,8 +1730,16 @@ list() {
         # exist at all depends on the width, and a %-Ns of a field that was
         # dropped still costs its N spaces.
         row = sprintf("%s%s%s%s", col[s], icon[s], (lw ? sprintf(" %-*s", lw, lbl[s]) : ""), R)
-        row = row sprintf(" %6s  %s", agetxt, ufit(nm, namew))
-        if (!grp && locw) row = row sprintf(" %s%-14.14s%s", DIM, base(grpkey), R)
+        row = row sprintf(" %6s  ", agetxt)
+        # Immediately before the name, where the eye is already going. Padded
+        # with ufit rather than %-*s: "·" is three bytes and %-*s pads by them.
+        if (bdgw)
+          row = row sprintf("%s%s%s ", DIM,
+                            ufit(badgeof((p in cfgd) ? cfgd[p] : "",
+                                         (p in hascfg) ? hascfg[p] : 0), bdgw), R)
+        row = row ufit(nm, namew)
+        # Flat mode only: in the tree the group header above the row says this.
+        if (projw) row = row sprintf(" %s%-*.*s%s", DIM, projw, projw, base(grpkey), R)
         if (ctxw)  row = row sprintf(" %s%*s%s", ctxcol(cx), ctxw, tok(cx), R)
         # What this session has cost, priced per request at the model that ran
         # it. A trailing ? means some of it ran on a model with no published
@@ -1536,9 +1796,16 @@ list() {
           # The full path is the first thing to drop: the basename already says
           # which project it is, and the header must never be the widest line.
           gpath = (cols >= 92) ? sprintf("  %s%s%s", DIM, tilde(g), R) : ""
+          # The five-hour total is money like any other, so it goes when the cost
+          # column goes: hiding the dollars on the rows and leaving them on the
+          # header would be hiding nothing at all. Built before the sprintf
+          # rather than as a third ternary in it — BWK awk will not take a
+          # newline after the "?" of one.
+          gbt = ""
+          if (gburn[g] > 0 && cols >= 60 && !("cost" in hid))
+            gbt = sprintf("%s%s/5h%s", DIM, money(gburn[g]), R)
           hdr = sprintf("%s▾ %s%s%s  %s%s",
-                        (gmin[g] < prio["dead"] ? BOLD : DIM), dirname(g), R, gpath, badge,
-                        (gburn[g] > 0 && cols >= 60 ? sprintf("%s%s/5h%s", DIM, money(gburn[g]), R) : ""))
+                        (gmin[g] < prio["dead"] ? BOLD : DIM), dirname(g), R, gpath, badge, gbt)
           printf "%d\t%s\t0\t0\t0\t%s\t%s\t%s\t%s\t%s\n",
                  gmin[g], g, gfirst[g], hdr, gstate[g], gsid[g], gdir[g]
         }
@@ -2930,6 +3197,10 @@ act() {
       # instead.
       undock || give_back "$pane" "${TA_HOME:-}" ;;
     kill)   kill_agent "$pane" "$sid" ;;
+    # The two windows about the dashboard itself rather than about an agent.
+    # They run here, in fzf own child, because this is where FZF_PORT is.
+    keys)    keys_window "$pane" "$state" "$sid" "$dir" ;;
+    columns) columns_window ;;
   esac
 }
 
@@ -3251,6 +3522,152 @@ keyhdr() {  # <cols> <item>... -> the header, one item per line at worst
     }'
 }
 
+# EVERY KEY IN ONE PLACE, and the place a new one is added. The fzf --bind
+# strings themselves stay hand-written down in dash() — several of them carry
+# suffixes (+reload-sync, +abort) and quoting that a table would have to encode
+# to say nothing new — but the help window is generated from here, so a key that
+# exists in one and not the other is a key that is either undiscoverable or a
+# lie. tests/ui.sh greps both and refuses to let them drift.
+#
+# Column 2 is what enter on that row does: an act() verb, or a name starting
+# with ":" for the things fzf does to itself. ":quit" is the pair that can only
+# be LISTED here — quitting the list from a child popup cannot go through
+# --expect — so they are shown dim and selecting one just closes the help.
+#
+# Each line says its own verb in words, and that is not decoration: the picker
+# searches what it shows, so somebody who remembers "undock" but not ctrl-u can
+# type the word and get the key.
+keys_table() {  # key<TAB>verb<TAB>what it does
+  printf '%s\n' \
+"enter${TAB}open${TAB}open it in the sidebar and put the cursor in it" \
+"ctrl-s${TAB}beside${TAB}open it beside the current seat — two chats at once" \
+"ctrl-n${TAB}new${TAB}start a new agent in this project" \
+"ctrl-p${TAB}pick${TAB}the same, picking the account it starts on" \
+"ctrl-g${TAB}goto${TAB}go to the agent where it lives" \
+"ctrl-o${TAB}borrow${TAB}borrow its whole window into this session" \
+"ctrl-e${TAB}send${TAB}send a line straight into it" \
+"$RENAME_KEY${TAB}rename${TAB}rename this agent — an empty name restores its title" \
+"ctrl-u${TAB}undock${TAB}undock the current seat and close it behind the chat" \
+"ctrl-x${TAB}kill${TAB}kill this agent, asking first; a closed row is forgotten" \
+"ctrl-t${TAB}:tree${TAB}tree or flat" \
+"ctrl-v${TAB}:preview${TAB}show or hide the text preview" \
+"ctrl-l${TAB}:refresh${TAB}refresh now" \
+"ctrl-w${TAB}:columns${TAB}show or hide columns" \
+"?${TAB}:none${TAB}this window" \
+"ctrl-q${TAB}:quit${TAB}quit the dashboard — from the list itself, not from here" \
+"esc${TAB}:quit${TAB}in the popup, close it — from the list itself, not from here"
+}
+
+# ? — THE KEYS, AND ENTER RUNS THE ONE YOU PICK. Four rows of header for keys
+# nobody reads is width taken off every row of the list, so the header keeps
+# only the two keys that cannot be discovered any other way and everything else
+# moved in here, tmux prefix+? style.
+#
+# It acts on the row the cursor was on, which is why the row fields travel here
+# exactly as they do for every direct binding ({1} {3} {4} {5}).
+ask_keys() {  # <port> <pane> <state> <sid> <dir>
+  local port=${1:-} pane=${2:-} state=${3:-} sid=${4:-} dir=${5:-}
+  local key verb desc w=0 rows="" dim reset pick nl
+  nl='
+'
+  dim=$(printf '\033[90m'); reset=$(printf '\033[0m')
+  while IFS="$TAB" read -r key verb desc; do
+    [ ${#key} -gt "$w" ] && w=${#key}
+  done <<EOF
+$(keys_table)
+EOF
+  while IFS="$TAB" read -r key verb desc; do
+    [ -n "$key" ] || continue
+    desc="$(printf '%-*s' "$w" "$key")  $desc"
+    [ "$verb" = :quit ] && desc="$dim$desc$reset"
+    rows="$rows$key$TAB$verb$TAB$desc$nl"
+  done <<EOF
+$(keys_table)
+EOF
+  # Not piped into `cut`: under pipefail an esc (fzf exits 130) would take the
+  # whole pipeline down with it, and esc is the ordinary way out of here.
+  pick=$(printf '%s' "$rows" | fzf --ansi --delimiter="$TAB" --with-nth=3 \
+           --layout=reverse --height=100% --no-info --prompt='keys> ' \
+           --header="every key — enter runs the one you pick
+on the row the cursor was on · esc closes" 2>/dev/null)
+  # A --filter run prints every match rather than the one under a cursor; the
+  # first is the one that was asked for.
+  pick=${pick%%$nl*}
+  [ -n "$pick" ] || return 0
+  verb=${pick#*$TAB}; verb=${verb%%$TAB*}
+  # TA_HOME is fzf's own environment, and a popup is spawned by the tmux server
+  # with none of it. borrow and undock both need it, so it is answered the same
+  # way dash() answers it — the session of the client that opened this.
+  [ -n "${TA_HOME:-}" ] || TA_HOME=$(tmux display -p '#S' 2>/dev/null)
+  export TA_HOME
+  # THIS BODY IS ALREADY A POPUP, and the acts below are the ones that ask a
+  # question. prompt() answers a question with a display-popup, and a popup
+  # issued from inside a popup returns rc=0 and silently does nothing — so
+  # picking rename, send, kill, ctrl-p, or enter on a closed row whose account
+  # nobody recorded, did precisely nothing: prompt returned 0, the caller
+  # believed it had asked, and the key was a no-op. It is the same answer
+  # prompt() already gives the popup list, and it is right on the inline path
+  # too — there prompt() would refuse anyway, so this only ever agrees with it.
+  TA_MODE=popup
+  export TA_MODE
+  case $verb in
+    :quit|:none) return 0 ;;
+    :tree)       toggle_group; post_fzf "$port" "reload-sync($SELF --list)" ;;
+    :preview)    post_fzf "$port" "toggle-preview" ;;
+    :refresh)    post_fzf "$port" "reload-sync($SELF --list)" ;;
+    # Straight into ask_columns rather than through prompt(): this is already a
+    # terminal of its own — a popup, or an inline body that has the screen — and
+    # a popup cannot open a second popup at all.
+    :columns)    ask_columns "$port" ;;
+    *)           "$SELF" --act "$verb" "$pane" "$state" "$sid" "$dir"
+                 post_fzf "$port" "reload-sync($SELF --list)" ;;
+  esac
+  return 0
+}
+
+# Tall enough for every key plus the two header lines, the prompt and some air.
+keys_height() {
+  local n
+  n=$(keys_table | wc -l | tr -d ' ')
+  printf '%s' "$(( ${n:-0} + 6 ))"
+}
+
+# THE PORT IS READ IN THE CHILD FZF RUNS, which is the only process that has it:
+# fzf exports FZF_PORT to the children of its own bindings, and a tmux popup is
+# spawned by the server and inherits nothing from fzf. So it is passed on as an
+# argument, exactly as the row fields are.
+keys_window() {  # <pane> <state> <sid> <dir> — the ? key
+  local pane=${1:-} state=${2:-} sid=${3:-} dir=${4:-} port=${FZF_PORT:-}
+  prompt "$(keys_height)" --ask-keys "$port" "$pane" "$state" "$sid" "$dir" && return 0
+  ask_keys "$port" "$pane" "$state" "$sid" "$dir"
+}
+
+# ctrl-w, and the one key whose binding does NOT carry the popup mode +abort:
+# every other key acts on an agent and a popup list closes once it has acted,
+# while this one changes what the list looks like, and closing the list you just
+# changed is the opposite of what was asked. The ? window keeps the +abort,
+# since what it runs is those other keys.
+columns_window() {
+  local port=${FZF_PORT:-}
+  prompt "$(col_height)" --ask-columns "$port" && return 0
+  ask_columns "$port"
+}
+
+# The one line the dashboard now spends on keys, and the reason keyhdr still
+# packs it: at 34 columns even three items need two rows. Everything else moved
+# into the ? window, so what is left is the key you cannot guess (enter, whose
+# label depends on where the list is running), the key that shows the rest, and
+# the way out.
+dash_header() {  # <cols> <enter label> [quit item]
+  keyhdr "${1:-80}" "enter ${2:-open in sidebar}" "? keys" ${3:+"$3"}
+}
+
+# A NEW KEY IS TWO EDITS, AND THE SECOND IS NOT OPTIONAL: the --bind below, and
+# a row in keys_table(). The bindings are written out by hand because several of
+# them carry suffixes the table could only encode verbatim (+reload-sync, the
+# popup mode +abort, the execute/execute-silent choice), but the ? window is
+# generated from the table alone — so a key bound and not listed is a key nobody
+# can find, and a key listed and not bound is a lie. tests/ui.sh fails on either.
 dash() {
   local home=${TA_HOME:-} mode=${TA_MODE:-dash} out key rows
   local rc started fails=0 esc_bind='esc:ignore' quit='ctrl-q quit'
@@ -3312,11 +3729,7 @@ dash() {
     rows=$(list)
     [ -z "$rows" ] && rows="-${TAB}$(printf '\033[90m')no claude sessions running$(printf '\033[0m')${TAB}none"
     started=$SECONDS
-    header=$(keyhdr "${TA_COLS:-80}" \
-      "enter $enter_lbl" "ctrl-s beside" "ctrl-n new" "ctrl-p new as…" "ctrl-g goto" \
-      "ctrl-o borrow" "ctrl-e send" \
-      "$RENAME_KEY name" "ctrl-u undock" "ctrl-x kill" "ctrl-t tree" \
-      "ctrl-l refresh" ${quit:+"$quit"})
+    header=$(dash_header "${TA_COLS:-80}" "$enter_lbl" "$quit")
     out=$(printf '%s\n' "$rows" | fzf \
       --ansi --no-sort --delimiter="$TAB" --with-nth=2 \
       --listen --height=100% --layout=reverse --info=inline \
@@ -3336,6 +3749,8 @@ dash() {
       --bind="ctrl-x:$ask($SELF --act kill {1} {3} {4})" \
       --bind="ctrl-n:$ask($SELF --act new {1} {3} {4} {5})$after" \
       --bind="ctrl-p:$ask($SELF --act pick {1} {3} {4} {5})$after" \
+      --bind="ctrl-w:$ask($SELF --act columns)" \
+      --bind="?:$ask($SELF --act keys {1} {3} {4} {5})$after" \
       --bind="$esc_bind" \
       --bind='ctrl-v:toggle-preview' \
       --bind='ctrl-t:execute-silent('"$SELF"' --toggle-group)+reload-sync('"$SELF"' --list)' \
@@ -3378,6 +3793,18 @@ case "${1:-}" in
   --ask-send)     ask_send "${2:-}" ;;
   --ask-kill)     ask_kill "${2:-}" "${3:-}" ;;
   --ask-profile)  shift; ask_profile "$@" ;;
+  # The two pickers ctrl-w and ? open, and the pieces they are built from: the
+  # picker rows (which fzf reloads after every toggle), one toggle, and the key
+  # table both the help window and tests/ui.sh read.
+  --ask-columns)  ask_columns "${2:-}" ;;
+  --col-rows)     col_rows ;;
+  --toggle-col)   toggle_col "${2:-}" "${3:-}" ;;
+  --hidden-cols)  hidden_cols ;;
+  --ask-keys)     shift; ask_keys "$@" ;;
+  --keys)         keys_table ;;
+  # ${4-...}, not ${4:-...}: an EMPTY quit item is how popup mode asks for a
+  # header without one, and defaulting that back would test the wrong header.
+  --header)       dash_header "${2:-80}" "${3:-open in sidebar}" "${4-ctrl-q quit}" ;;
   --act)          shift; act "$@" ;;
   # Starting an agent from outside the list: a tmux binding, a shell, a script.
   --new)          shift; new_agent "${1:-}" "${2:-}" ;;

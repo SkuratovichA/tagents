@@ -7,18 +7,23 @@ it without leaving.
 
 ```
 ▾ storefront   ~/git/storefront          ⚠1 ✓1 ●1   $31.4/5h
-  ├─ ⚠ BLOCKED   2:14  api      142k  $38.3  opus5    work      %31
-  ├─ ● working   0:08  web       38k   $9.1  sonnet5  work      %44  ⑂2
-  └─ ✓ IDLE     17:02  worker    12k   $2.7  haiku4.5 work      %12
+  ├─ ⚠ BLOCKED   2:14  w api       142k  $38.3  opus5    work      %31
+  ├─ ● working   0:08  w web        38k   $9.1  sonnet5  work      %44  ⑂2
+  └─ ✓ IDLE     17:02  w worker     12k   $2.7  haiku4.5 work      %12
 ▾ .dotfiles    ~/git/.dotfiles           ●1
-  └─ ● working   0:31  dotfiles  71k  $44.0  opus5    personal  %3
+  └─ ● working   0:31  p dotfiles   71k  $44.0  opus5    personal  %3
 ```
 
-state · age · name · context · cost · model · **account** · pane. The account
-column is the Claude login the session is on, named after the profile in
-`config.yaml` that claims its `CLAUDE_CONFIG_DIR` — see
-[Configuration](#configuration). It appears on wide lists only, and stays blank
-for a session whose state record predates it rather than guessing.
+state · age · **badge** · name · context · cost · model · **account** · pane.
+Both bold columns say which Claude login the session is on, named after the
+profile in `config.yaml` that claims its `CLAUDE_CONFIG_DIR` — see
+[Configuration](#configuration). The account name appears on wide lists only;
+the badge is one or two characters and is on every row at every width — `p`,
+`w`, the first letter of the profile name unless `badge:` says otherwise (more
+than two is clipped to two, since the column is as wide as the widest of them).
+Both stay blank for a session whose state record predates them rather than
+guessing, and with no profiles configured the badge column does not exist at
+all.
 
 ## What is in here
 
@@ -93,10 +98,37 @@ Keys inside the dashboard:
 | `ctrl-x` | kill this agent — hang up its Claude and close its pane (asks first). On a row that is already closed, forget it instead |
 | `ctrl-t` | toggle tree / flat |
 | `ctrl-l` | refresh now |
+| `ctrl-w` | show or hide columns — see [Hiding columns](#hiding-columns) |
+| `?` | every key in a window of its own, and `enter` runs the one you pick |
 | `ctrl-q` | quit |
+
+The header above the list is one line: `enter · ? keys · ctrl-q quit`.
+Everything else is behind `?`, which acts on the row the cursor was on — so it
+is a way to *use* a key you half-remember, not a printed list. The direct keys
+above all still work. `?` is a printable character, so one thing it costs is
+typing a `?` into the filter query; `ctrl-w` costs the other — that was fzf's
+delete-the-word-before-the-cursor in the query. Those two keys are the whole
+bill, and the query is a project name long.
 
 `tagents --help` is the real documentation — the script's header explains the
 model, and every non-obvious decision in it is commented with the reason.
+
+## Hiding columns
+
+`ctrl-w` opens a small window with a checkmark per column — `badge`, `ctx`,
+`cost`, `model`, `acct`, `loc`. `enter` toggles the one under the cursor and the
+list behind reloads immediately; the picker stays open, `esc` closes it.
+
+Hiding `cost` takes **every** figure in dollars with it: the column, the `⑂`
+subagent share and the project header's `/5h` total — money you are not
+currently spending against a limit is the distraction this exists for. (`⑂2`,
+the subagent *count*, is not money and stays.) Nothing is ever reordered: the
+freed width goes to the detail column, exactly as it does when the pane itself
+is narrow.
+
+What is hidden lives one key per line in `$STATE_DIR/cols`, so it survives a
+restart. `TA_HIDE_COLS=cost,model tagents` overrides that file for a single run,
+and `tagents --hidden-cols` prints what is in force.
 
 ## Several chats side by side
 
@@ -178,6 +210,9 @@ claude:
   profiles:
     personal:
       config_dir: ~/.claude-personal
+      # badge: p    # the row column before the agent name. Defaults to the
+      #             # first character of the profile name, so personal and work
+      #             # are p and w already; set it when two accounts collide.
     work:
       # config_dir omitted: CLAUDE_CONFIG_DIR is UNSET for this one. Omit it,
       # do not write ~/.claude — set and unset are different keychain items.
@@ -328,8 +363,9 @@ exited are listed as closed and `enter` resumes them, on the account they ran
 on.
 
 `tests/config.sh` covers the config parser, the rules and the command builder
-with no tmux involved; `tests/launch.sh` starts and resumes real agents, and
-`tests/panes.sh` docks, undocks and kills them across seats — both against a
-throwaway tmux server of their own (`tmux -L tatest-$$`), never the default
-socket. All three are bash 3.2, run every check, and exit non-zero when any of
-them fails.
+with no tmux involved; `tests/launch.sh` starts and resumes real agents,
+`tests/panes.sh` docks, undocks and kills them across seats, and `tests/ui.sh`
+covers what the row looks like — the badge column, the hidden ones, the `?`
+window running a real key and the one-line header — each against a throwaway
+tmux server of its own (`tmux -L tatest-$$`), never the default socket. All four
+are bash 3.2, run every check, and exit non-zero when any of them fails.
