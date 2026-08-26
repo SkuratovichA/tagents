@@ -29,13 +29,18 @@ command -v tmux >/dev/null 2>&1 || { echo "ui.sh: no tmux"; exit 1; }
 command -v fzf  >/dev/null 2>&1 || { echo "ui.sh: no fzf"; exit 1; }
 
 S=tatest-$$
+SOCK=""
 ROOT=$(mktemp -d "${TMPDIR:-/tmp}/tagents-ui.XXXXXX") || exit 1
 ROOT=$(cd "$ROOT" && pwd -P) || exit 1
 # The keeper sleep is reaped by pid: `script` and the attach both die with the
 # server, but a `sleep` feeding the pipe never writes to it, so it never takes
 # SIGPIPE and would sit there for its full five minutes after the run.
+# The socket FILE goes too: kill-server takes the server down and leaves the
+# socket behind, and a directory of dead tatest-<pid> sockets is what every run
+# of these suites used to add to.
 trap 'tmux -L "$S" kill-server >/dev/null 2>&1
       [ -s "$ROOT/keeper.pid" ] && kill "$(cat "$ROOT/keeper.pid")" 2>/dev/null
+      [ -n "$SOCK" ] && rm -f "$SOCK"
       rm -rf "$ROOT"' EXIT INT TERM
 
 pass=0; fail=0
@@ -446,6 +451,140 @@ has "--toggle-col is documented" "--toggle-col" "$HELP"
 # ...and a key taken off fzf says what it cost, the way ? already does.
 has "the ctrl-w entry says what it takes from the filter query" \
     "delete-the-word" "$HELP"
+has "--preview-popup is documented"  "--preview-popup" "$HELP"
+has "--sync-names is documented"     "--sync-names"    "$HELP"
+
+# ---------------------------------------------------------------------------
+t "6. ctrl-v is a modal, not a column off the list"
+# ---------------------------------------------------------------------------
+# THE BODY. Driven with a pipe, which is what a test has instead of the popup
+# tty: less renders to a pipe the way cat does, so what comes out is exactly
+# what the popup would have shown.
+PV=$(env TMUX="$TMUXV" bash "$TA" --ask-preview %8001 done </dev/null 2>/dev/null | strip)
+has "the modal renders the preview"        "session sid-p" "$PV"
+has "...the state and the detail with it"  "waiting"       "$PV"
+has "...names the agent on the first line" "repo"          "$PV"
+has "...and says how to close it"          "q closes"      "$PV"
+
+# AND WITHOUT A PAGER. `less` is what makes the tusage table and the transcript
+# tail scrollable, and it is also what a stripped-down machine has not got — so
+# the text is printed and any key closes it instead. The PATH here is built by
+# hand rather than emptied: everything the body reaches for is on it except the
+# one thing being taken away.
+NOLESS="$ROOT/noless"; mkdir -p "$NOLESS"
+# bash is on it because `env PATH=… bash` looks the interpreter up in the NEW
+# PATH, so leaving it out is a test that runs nothing and reports no output.
+for b in awk bash basename cat cut date dirname find grep head hostname jq \
+         mkdir rm sed sort tail tmux tr wc; do
+  bp=$(command -v "$b" 2>/dev/null) && ln -sf "$bp" "$NOLESS/$b"
+done
+PVNL=$(env TMUX="$TMUXV" PATH="$BIN:$NOLESS" bash "$TA" --ask-preview %8001 done \
+         </dev/null 2>/dev/null | strip)
+has "with no less on PATH the same text is printed" "session sid-p" "$PVNL"
+has "...and the hint says what closes it now"       "any key closes" "$PVNL"
+
+# THE HEADING IS THE AGENT'S NAME — ALL OF IT. The checks above reach the
+# basename fallback (%8001 is a pane that does not exist), so no title was ever
+# resolved by them: what the heading used to do to a real one was drop the first
+# WORD, `Data service architecture` announced as `service architecture`, while
+# the row and the window name for the same agent kept all three. Only a leading
+# glyph comes off, which is the rule the list and the sweep both apply.
+heading() {  # <pane> -> the modal's first line, without the hint after it
+  env TMUX="$TMUXV" bash "$TA" --ask-preview "${1:-}" working </dev/null 2>/dev/null |
+    strip | sed -n '1s/  q closes$//p'
+}
+tm select-pane -T 'Data service architecture' -t "$A"
+ok "the heading names the agent, whole" "Data service architecture" "$(heading "$A")"
+tm select-pane -T '✳ Data service architecture' -t "$A"
+ok "...with Claude's spinner glyph off it" "Data service architecture" "$(heading "$A")"
+# ...and it agrees with the two other places the same agent is named.
+tm select-pane -T 'Data service architecture' -t "$A"
+run --sync-names >/dev/null 2>&1
+ok "...and with the name its window gets" "$(heading "$A")" \
+   "$(tm display -p -t "$A" '#{window_name}')"
+
+# THE ? WINDOW'S OWN ROUTE TO IT. In the popup list ctrl-v is still fzf's own
+# toggle, so :preview POSTs it — captured with a curl of our own, since what is
+# being checked is the request and not what fzf does with it.
+CURLBIN="$ROOT/curlbin"; mkdir -p "$CURLBIN"
+cat >"$CURLBIN/curl" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >>"$ROOT/curl.log"
+EOF
+chmod +x "$CURLBIN/curl"
+: >"$ROOT/curl.log"
+env TMUX="$TMUXV" PATH="$CURLBIN:$PATH" TA_MODE=popup FZF_DEFAULT_OPTS=--filter=preview \
+  bash "$TA" --ask-keys 4242 "$A" working sid-live "$REPO" >/dev/null 2>&1
+has "in the popup list :preview posts fzf's own toggle" \
+    "toggle-preview" "$(cat "$ROOT/curl.log" 2>/dev/null)"
+
+# ...while in a sidebar the ? window is itself a popup, and a popup cannot open
+# a second one. It asks the tmux server to open the modal instead, once this
+# popup has closed — so nothing is posted and a preview body turns up shortly
+# after. The state is a token of this run so the process it is looked for by
+# cannot be anybody else's.
+PVSTATE="zzpv$$"
+: >"$ROOT/curl.log"
+env TMUX="$TMUXV" PATH="$CURLBIN:$PATH" FZF_DEFAULT_OPTS=--filter=preview \
+  bash "$TA" --ask-keys 4242 "$A" "$PVSTATE" sid-live "$REPO" >/dev/null 2>&1
+ok "in a sidebar :preview posts nothing at all" "" "$(cat "$ROOT/curl.log" 2>/dev/null)"
+PVPID=""
+i=0
+while [ "$i" -lt 24 ]; do
+  PVPID=$(ps -eo pid=,args= 2>/dev/null |
+            awk -v k="--ask-preview $A $PVSTATE" 'index($0, k) > 0 { print $1; exit }')
+  [ -n "$PVPID" ] && break
+  i=$((i + 1)); sleep 0.25
+done
+ok "...and opens the modal through the tmux server instead" \
+   yes "$([ -n "$PVPID" ] && echo yes || echo no)"
+tm display-popup -C >/dev/null 2>&1
+[ -n "$PVPID" ] && kill "$PVPID" 2>/dev/null
+sleep 0.3
+
+# THE FZF COMMAND LINE ITSELF, from a real run: a fake fzf that writes its
+# arguments down and then sits there, because dash() restarts fzf every time it
+# exits and a fake that returned would respawn itself for ever. The list is
+# started in a window of the throwaway server, which is the only way it gets a
+# TMUX_PANE to claim and a tty to measure — this is the last section for that
+# reason, since claiming makes it the sidebar in place of the real list above.
+FZFBIN="$ROOT/fzfbin"; mkdir -p "$FZFBIN"
+cat >"$FZFBIN/fzf" <<'EOF'
+#!/bin/sh
+for a in "$@"; do printf '%s\n' "$a"; done >"$FZFDUMP"
+exec sleep 300
+EOF
+chmod +x "$FZFBIN/fzf"
+
+dumpargs() {  # <dump file> <extra env for the list> -> the argv, one per line
+  local out=$1 envs=$2 w
+  rm -f "$out"
+  w=$(tm new-window -d -t tatest-dash: -P -F '#{window_id}' \
+        "PATH='$FZFBIN':\$PATH FZFDUMP='$out' $envs exec '$TA'" 2>/dev/null)
+  i=0
+  while [ "$i" -lt 40 ]; do
+    [ -s "$out" ] && break
+    i=$((i + 1)); sleep 0.25
+  done
+  tm kill-window -t "$w" >/dev/null 2>&1
+  cat "$out" 2>/dev/null
+}
+
+# $SELF is the path tagents resolves for itself, which is the one written into
+# every binding — never the $HERE/../tagents this suite calls it by.
+SELF=$(cd "$(dirname "$TA")" && pwd)/$(basename "$TA")
+
+SIDEBAR=$(dumpargs "$ROOT/fzf-sidebar" '')
+ok "the sidebar list asks fzf for no preview at all" 0 \
+   "$(printf '%s\n' "$SIDEBAR" | grep -c -e '^--preview=' -e '^--preview-window=' | tr -d ' ')"
+has "...and ctrl-v opens the modal instead" \
+    "--bind=ctrl-v:execute-silent($SELF --act preview {1} {3})" "$SIDEBAR"
+
+POPUP=$(dumpargs "$ROOT/fzf-popup" 'TA_MODE=popup')
+ok "the popup list still gets its preview" 1 \
+   "$(printf '%s\n' "$POPUP" | grep -c '^--preview=' | tr -d ' ')"
+has "...beside the list, as before"        "--preview-window=right,55%,border-left,wrap" "$POPUP"
+has "...where ctrl-v is fzf's own toggle"  "--bind=ctrl-v:toggle-preview" "$POPUP"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

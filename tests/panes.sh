@@ -25,13 +25,18 @@ command -v tmux >/dev/null 2>&1 || { echo "panes.sh: no tmux"; exit 1; }
 command -v fzf  >/dev/null 2>&1 || { echo "panes.sh: no fzf"; exit 1; }
 
 S=tatest-$$
+SOCK=""
 ROOT=$(mktemp -d "${TMPDIR:-/tmp}/tagents-panes.XXXXXX") || exit 1
 ROOT=$(cd "$ROOT" && pwd -P) || exit 1
 # The keeper sleep is reaped by pid: `script` and the attach both die with the
 # server, but a `sleep` feeding the pipe never writes to it, so it never takes
 # SIGPIPE and would sit there for its full five minutes after the run.
+# The socket FILE goes too: kill-server takes the server down and leaves the
+# socket behind, and a directory of dead tatest-<pid> sockets is what every run
+# of these suites used to add to.
 trap 'tmux -L "$S" kill-server >/dev/null 2>&1
       [ -s "$ROOT/keeper.pid" ] && kill "$(cat "$ROOT/keeper.pid")" 2>/dev/null
+      [ -n "$SOCK" ] && rm -f "$SOCK"
       rm -rf "$ROOT"' EXIT INT TERM
 
 pass=0; fail=0

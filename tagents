@@ -24,6 +24,15 @@
 #                           pane id), an empty NAME clears it back to the title
 #   tagents --counts        compact summary, for the tmux status bar
 #   tagents --preview PANE  live view of a pane, for the fzf preview window
+#   tagents --preview-popup PANE [STATE]
+#                           the same view as a modal popup, which is what ctrl-v
+#                           opens. This entry point is the detour the ? window
+#                           takes to reach it: it is itself a popup, and a popup
+#                           cannot open a second one, so it asks tmux to run
+#                           this detached instead
+#   tagents --sync-names    name every window after the agent living in it, once
+#                           (see WINDOW NAMES). The refresher and the status bar
+#                           both run this; it is here to be run by hand
 #   tagents --keys          every shortcut the dashboard binds, one
 #                           key<TAB>verb<TAB>what it does line each. This table
 #                           is what the ? window is built from, so it is also
@@ -79,8 +88,26 @@
 # Claude sessions have no names of their own, so each row shows that session's
 # terminal title (what /rename sets) until you name it with ctrl-r. Names are
 # keyed by session id, so they survive docking, resuming and the pane being
-# moved; when the agent has its tmux window to itself the window is renamed to
-# match, which is what makes the status bar and prefix+w findable too.
+# moved.
+#
+# WINDOW NAMES. The dashboard is one way to find an agent; prefix+w, the status
+# bar and `tmux ls` are the other, and they are the ones that work when the
+# dashboard is not on screen. So the tmux window an agent lives in is named
+# after that agent — the name the list shows, which is its label when it has one
+# and its terminal title otherwise, never the directory (tmux automatic-rename
+# already names a window after what is running in it, and that name is right).
+# It follows a /rename or a ctrl-r within about ten seconds while the dashboard
+# is up, and within thirty when it is not: the status bar runs the same pass,
+# throttled, so this works with no dashboard at all. A window several agents
+# share is named after the one with the newest activity — the agent you are
+# actually working with names the window.
+#
+# A NAME YOU TYPED IS NEVER OVERWRITTEN. A window is only ever renamed when its
+# current name is tmux own automatic one, or the name tagents itself gave it
+# last time (recorded in the window option @tagents_name). Rename a window by
+# hand — in tmux, not in here — and nothing above touches it again, until the
+# day its name coincides with one of those two. The dashboard window, any window
+# a list is running in, and chats docked into a sidebar are all left out of it.
 #
 # Each row carries three columns joined on the session id via `tusage`: the live
 # context size (yellow past 200k, red past 600k — that is where every request
@@ -300,8 +327,18 @@
 #                      nothing to kill and this forgets the record instead,
 #                      taking the row off the list
 #   ctrl-t             toggle tree / flat
-#   ctrl-v             show the text preview (hidden while docking, where the
-#                      docked pane is the live thing itself)
+#   ctrl-v             the preview in a window of its own: a popup 80% by 85%,
+#                      the size prefix+C-f, tsess and tneww all open at, with
+#                      the per-subagent cost breakdown and the tail of the
+#                      transcript in a pager so both can be scrolled. `q` closes
+#                      it. It is a snapshot — the live view of an agent is the
+#                      agent's own pane, one enter away.
+#                      In the prefix+a popup, and on a tmux with no popups at
+#                      all, it stays fzf's own preview beside the list instead:
+#                      a popup cannot open a second popup, and where the modal
+#                      cannot exist the old behaviour is the fallback. Those are
+#                      also the only two cases where the list asks fzf for a
+#                      --preview at all
 #   ctrl-l             refresh now
 #   ctrl-w             show or hide columns — see above. Like ? it is a key
 #                      taken off fzf: ctrl-w was delete-the-word-before-the-
@@ -1102,6 +1139,31 @@ label_of() {
   awk -F"$TAB" -v k="$keyv" '$1 == k { print $2; exit }' "$LABELS"
 }
 
+# THE NAME A TITLE GIVES, in shell — the same rule untitle() applies in list()
+# and in sync_window_names, and it has to stay the same rule: the row, the window
+# name, the kill dialog and the preview heading are all naming one agent, and a
+# heading that says something else reads as the wrong agent entirely.
+#
+# What the dialogs used to do was `${nm#* }`, which is not "strip the glyph" but
+# "drop the first WORD": `Data service architecture` was announced as `service
+# architecture` while the row and the window name kept all three. A glyph is one
+# character and no letter or digit; anything else is left alone.
+untitle_of() {  # <pane title>
+  printf '%s\n' "${1:-}" | awk '
+    function untitle(t,   utp, uti, utn, utf) {
+      utp = index(t, " ")
+      if (utp < 2) return t
+      utf = substr(t, 1, utp - 1)
+      utn = 0
+      for (uti = 1; uti <= length(utf); uti++)
+        if (substr(utf, uti, 1) < "\200" || substr(utf, uti, 1) > "\277") utn++
+      if (utn != 1 || utf ~ /^[0-9A-Za-z]$/) return t
+      sub(/^[^ ]+ +/, "", t)
+      return t
+    }
+    { print untitle($0) }'
+}
+
 pane_for_sid() {
   local sid=$1 f b
   state_files | while IFS= read -r f; do
@@ -1127,27 +1189,248 @@ label_cmd() {
 
 # The dashboard is one way to find an agent; the tmux status bar is the other,
 # and it is the one that works when you are not looking at the dashboard. So a
-# named agent names its window too — but only when the window is its alone,
-# since a name that describes the pane next door is worse than no name.
+# named agent names its window too.
+#
+# IT NO LONGER REFUSES A SHARED WINDOW. This used to rename only a window the
+# agent had to itself, on the grounds that a name describing the pane next door
+# is worse than no name — but the only way here is a person typing a name at a
+# prompt, about the agent they are looking at, and quietly doing nothing with it
+# is worse than either. Which of several agents in one window names it is
+# sync_window_names decision; an explicit rename simply wins, until the next
+# agent in there is renamed by hand as well.
+#
+# @tagents_name IS WHAT THE SYNC READS BACK. It is how "tagents named this
+# window" is told from "a person did", and only the first of those may ever be
+# renamed over. So every rename here records it, and clearing the name clears it
+# — the window goes back to tmux automatic name and to the sync decision.
+#
+# THE ONE PLACE A WINDOW IS RENAMED, because a name does not always come out of
+# tmux the way it went in, and both ways it can change are silent.
+#
+# A `#` IN A NAME IS A FORMAT. rename-window expands what it is handed, so an
+# agent titled `Deploy #Staging` named its window `Deploy worktaging` (#S is the
+# session name) and `#H` put the host name in — a ticket number in a title is
+# enough to trigger it. `##` is the literal one and round-trips exactly.
+#
+# A NAME STARTING WITH `-` IS A FLAG. `rename-window -t @1 '-wip refactor'` fails
+# with "unknown flag -w", hence the `--`.
+#
+# AND THE STAMP IS WHAT TMUX ENDED UP WITH, never what was asked for.
+# @tagents_name is compared against #{window_name} on the next pass to tell our
+# own name from a person's, so recording the unescaped request would make the
+# window read as one somebody typed — and freeze it at that name for ever. A
+# rename that failed records nothing at all, for exactly the same reason.
+rename_win() {  # <window id> <name>
+  local wid=${1:-} nm=${2:-} esc
+  { [ -n "$wid" ] && [ -n "$nm" ]; } || return 1
+  esc=$(printf '%s' "$nm" | sed 's/#/##/g')
+  tmux rename-window -t "$wid" -- "$esc" 2>/dev/null || return 1
+  tmux set -w -t "$wid" @tagents_name \
+       "$(tmux display -p -t "$wid" '#{window_name}' 2>/dev/null)" 2>/dev/null
+  return 0
+}
+
 name_window() {
-  local pane=$1 name=$2 win agents
+  local pane=$1 name=$2 win
   case "$pane" in %[0-9]*) ;; *) return 0 ;; esac
   win=$(tmux display -p -t "$pane" '#{window_id}' 2>/dev/null)
   [ -n "$win" ] || return 0
   # A docked agent physically sits in the dashboard window; renaming that would
   # rename the dashboard, not the agent.
   [ "$win" = "$(dash_window)" ] && return 0
-  agents=$({ tmux list-panes -t "$win" -F 'W #{pane_id}' 2>/dev/null
-             live_panes | sort -u; } |
-           awk '$1 == "W" { w[$2] = 1; next } ($1 in w) { n++ } END { print n + 0 }')
-  [ "${agents:-0}" -gt 1 ] && return 0
   if [ -n "$name" ]; then
-    tmux rename-window -t "$win" "$name" 2>/dev/null
+    # rename-window turns automatic-rename off for that window by itself, which
+    # is what is wanted here: the name is ours now, and @tagents_name is what
+    # says so on the next pass. Through rename_win for the escaping and for the
+    # stamp — a label with a `#` in it is a name like any other.
+    rename_win "$win" "$name"
   else
-    # Renaming a window turns automatic-rename off for it; clearing the name
-    # unsets the window-local option so tmux takes the window back.
+    # Clearing the name unsets the window-local option so tmux takes the window
+    # back, and drops our claim on it with it.
     tmux setw -t "$win" -u automatic-rename 2>/dev/null
+    tmux set -uw -t "$win" @tagents_name 2>/dev/null
   fi
+}
+
+# ---------------------------------------------------------------------------
+# WINDOWS NAMED AFTER THEIR AGENTS
+#
+# One pass, safe to run at any time, and run from two places so it works with
+# and without a dashboard on screen: the refresher every ~10s while a list is
+# up, and counts() — which the tmux status bar calls whether or not it is —
+# throttled to one pass every 30s and always in the background.
+#
+# WHICH AGENT NAMES A WINDOW THEY SHARE: the one with the newest state
+# timestamp, tie broken by the lowest pane index. The agent you are actually
+# working with names the window. Panes with no name to give are not candidates,
+# so a shell split off beside an agent never wins by being newer — its title is
+# the host name, which names nothing.
+#
+# WHAT IS LEFT OUT: the dashboard window and any window a list is running in
+# (their name is the dashboard, not an agent), and docked chats — those sit in a
+# sidebar window that is skipped anyway, but the marker is the reason, not the
+# geography.
+#
+# AND A NAME A PERSON TYPED IS NEVER OVERWRITTEN. A window is renamed only when
+# its current name is tmux automatic one, or the name this function gave it last
+# time — recorded in @tagents_name at every rename here and in name_window.
+# Anything else was typed by somebody and is left alone, until the day its name
+# coincides with one of those two again.
+# ---------------------------------------------------------------------------
+sync_window_names() {
+  local plan line wid nm cur b f
+  plan=$({
+    # One list-panes for the lot: window options resolve in a pane format, so
+    # the window name, its automatic-rename and both markers come back per pane.
+    # A literal tab must never go into a tmux format (outside a UTF-8 locale it
+    # renders as "_" and every field merges into one), and the title goes last
+    # because it is the one field that carries arbitrary text — the same rule
+    # collect() follows, for the same reason.
+    tmux list-panes -a -F "P|@|#{pane_id}|@|#{window_id}|@|#{pane_index}|@|#{window_name}|@|#{automatic-rename}|@|#{@tagents}|@|#{@tagents_docked}|@|#{@tagents_name}|@|#{pane_title}" 2>/dev/null
+    live_panes | sort -u | sed 's/^/L|@|/'
+    # The pid in @tagents_list is what tells a list that is running from a
+    # marker left behind by one that is gone, so this is asked in shell.
+    list_windows | sort -u | sed 's/^/X|@|/'
+    [ -e "$LABELS" ] && awk -F"$TAB" '{ print "N|@|" $1 "|@|" $2 }' "$LABELS"
+    state_files | while IFS= read -r f; do
+      b=${f##*/}; b=${b%.tsv}
+      awk -F"$TAB" -v k="%$b" 'NR == 1 { print "S|@|" k "|@|" $1 "|@|" $3; exit }' "$f"
+    done
+  } | awk -v host="$(hostname -s 2>/dev/null)" -v OFS="$TAB" '
+    # Claude prefixes the terminal title with a spinner glyph; the rest is the
+    # session title it maintains itself. Same rule as the list — and the same
+    # rule untitle_of applies in shell, because the row, this window name and the
+    # modal heading are all about one agent.
+    #
+    # THE GLYPH IS ONE CHARACTER, and that is the whole of the test. This used to
+    # strip a leading run of "not alphanumeric" BYTES, and macOS awk counts
+    # bytes: every byte of a Cyrillic or CJK word is outside [:alnum:], so
+    # "два слова" came back as "слова" — the first word of any non-ASCII title
+    # eaten, and here that is written into a window name and into @tagents_name,
+    # where it sticks. A leading token is a glyph when it is a single character
+    # and not a letter or a digit; anything longer is a word, in whatever
+    # alphabet it happens to be written.
+    function untitle(t,   utp, uti, utn, utf) {
+      utp = index(t, " ")
+      if (utp < 2) return t
+      utf = substr(t, 1, utp - 1)
+      utn = 0
+      for (uti = 1; uti <= length(utf); uti++)
+        if (substr(utf, uti, 1) < "\200" || substr(utf, uti, 1) > "\277") utn++
+      if (utn != 1 || utf ~ /^[0-9A-Za-z]$/) return t
+      sub(/^[^ ]+ +/, "", t)
+      return t
+    }
+    # THE DISPLAY NAME, exactly as the list resolves it: the label, by session id
+    # first and pane second, else the cleaned pane title, and nothing at all when
+    # that is empty or the host name (tmux default title, which names nothing).
+    # Never the directory basename the list falls back to — tmux own
+    # automatic-rename already names a window after what is running in it, and
+    # renaming it after its own project would be a rename fought every pass.
+    function disp(dp,   dn) {
+      dn = ""
+      if ((dp in psid) && psid[dp] != "" && (psid[dp] in lab)) dn = lab[psid[dp]]
+      else if (dp in lab) dn = lab[dp]
+      else dn = untitle(ptitle[dp])
+      return (dn == host) ? "" : dn
+    }
+    { nf = split($0, a, "\\|@\\|"); kd = a[1] }
+    kd == "P" {
+      pw[a[2]] = a[3]; pidx[a[2]] = a[4] + 0
+      wname[a[3]] = a[5]
+      # tmux spells this option 1/0 in a format and on/off in show-options; both
+      # are read, and anything else is taken as off — refusing to rename is the
+      # safe half of a guess about whose name it is.
+      wauto[a[3]] = (a[6] == "1" || a[6] == "on") ? 1 : 0
+      if (a[7] != "") skip[a[3]] = 1     # the dashboard window
+      if (a[8] != "") pdock[a[2]] = 1    # a chat docked into some sidebar
+      wrec[a[3]] = a[9]
+      t = a[10]; for (i = 11; i <= nf; i++) t = t "|@|" a[i]
+      ptitle[a[2]] = t
+      next
+    }
+    kd == "L" { plive[a[2]] = 1; next }
+    kd == "X" { skip[a[2]] = 1; next }   # a window a list is running in
+    kd == "N" { lab[a[2]] = a[3]; next }
+    kd == "S" { pts[a[2]] = a[3] + 0; psid[a[2]] = a[4]; next }
+    END {
+      for (p in plive) {
+        if (!(p in pw) || (p in pdock)) continue
+        wi = pw[p]
+        if (wi in skip) continue
+        nm = disp(p)
+        if (nm == "") continue
+        # A pane with no state record has no activity to compare, so it sorts
+        # BELOW every pane that has one rather than above them all as a 0 would.
+        ts = (p in pts) ? pts[p] : -1
+        if (!(wi in bn) || ts > bts[wi] || (ts == bts[wi] && pidx[p] < bix[wi])) {
+          bn[wi] = nm; bts[wi] = ts; bix[wi] = pidx[p]
+        }
+      }
+      for (wi in bn) {
+        if (bn[wi] == wname[wi]) continue          # already says it
+        if (!wauto[wi] && wrec[wi] != wname[wi]) continue   # somebody named it
+        print wi, bn[wi]
+      }
+    }')
+  [ -n "$plan" ] || return 0
+  # Not IFS="$TAB" read: tab is IFS whitespace, so a name with a leading space
+  # would come back trimmed and a rename would never settle.
+  while IFS= read -r line; do
+    wid=${line%%"$TAB"*}
+    nm=${line#*"$TAB"}
+    { [ -n "$wid" ] && [ -n "$nm" ] && [ "$wid" != "$nm" ]; } || continue
+    # THE PLAN IS A FIFTH OF A SECOND OLD by the time it is applied — one
+    # list-panes over every pane of every window, a ps walk and a file per agent
+    # — and "a name you typed is never overwritten" has to hold across that gap
+    # too. A hand rename landing inside it was clobbered AND stamped as ours,
+    # which hands the window over permanently; the sweep runs every ten seconds,
+    # so the gap is live a couple of percent of the time. So the three facts the
+    # decision rests on are asked again, one round trip before the rename: at
+    # most a handful of windows are ever in the plan.
+    # The two booleans are answered by tmux itself (a format compares strings
+    # perfectly well) and go FIRST, so the window name — the one free-text field
+    # — can be read off the end without a separator having to survive it.
+    cur=$(tmux display -p -t "$wid" \
+            '#{?automatic-rename,1,0}#{?#{==:#{@tagents_name},#{window_name}},1,0}|@|#{window_name}' \
+            2>/dev/null)
+    [ -n "$cur" ] || continue
+    # The first two characters, not everything up to the separator: a tmux too
+    # old for #{==:} renders that comparison literally, and reading the answer
+    # positionally leaves the automatic-rename half of the guard working — which
+    # is the safe half — instead of skipping every window for ever.
+    case ${cur:0:2} in
+      1?|?1) ;;                      # tmux own name, or still the one we gave it
+      *) continue ;;                 # somebody named it since the plan was made
+    esac
+    [ "${cur#*"|@|"}" = "$nm" ] && continue      # already says it
+    rename_win "$wid" "$nm"
+  done <<EOF
+$plan
+EOF
+  return 0
+}
+
+# HOW OFTEN THE SWEEP RUNS WITH NO DASHBOARD OPEN. counts() is called by the
+# status bar of every attached client on every status interval, so the sweep is
+# throttled through a stamp file to one pass every 30 seconds — and it still
+# runs in the background, because a status bar that waits on a walk over every
+# pane of every window is a status bar that stutters.
+NAMES_STAMP="$STATE_DIR/.names.ts"
+NAMES_EVERY=${TA_NAMES_EVERY:-30}
+
+sync_names_due() {  # 0 at most once every NAMES_EVERY seconds, and stamps it
+  local now last
+  now=$(date +%s)
+  last=$(cat "$NAMES_STAMP" 2>/dev/null)
+  case ${last:-x} in ''|*[!0-9]*) last=0 ;; esac
+  [ "$(( now - last ))" -ge "$NAMES_EVERY" ] || return 1
+  mkdir -p "$STATE_DIR" 2>/dev/null
+  # Stamped before the work, not after: several clients redraw at the same
+  # instant, and a stamp written at the end would let every one of them start a
+  # sweep of its own first.
+  printf '%s\n' "$now" >"$NAMES_STAMP" 2>/dev/null
+  return 0
 }
 
 # Prompts run in a tmux popup, not in the dashboard pane. fzf's `execute` hands
@@ -1165,6 +1448,17 @@ has_popup() { tmux list-commands display-popup >/dev/null 2>&1; }
 prompt() {  # <height> <args for $SELF...>
   local h=$1
   shift
+  # 60% wide is the width of a question: one line to read and one to type into.
+  prompt_at 60% "$h" "$@"
+}
+
+# The same popup at a size given by the caller, for the one body that is not a
+# question but a page — the ctrl-v preview, which wants the room prefix+C-f,
+# tsess and tneww all open at. Kept as a second entry point rather than a third
+# argument on prompt() so no existing dialog can change size by accident.
+prompt_at() {  # <width> <height> <args for $SELF...>
+  local w=$1 h=$2
+  shift 2
   # A display-popup issued from INSIDE a popup returns rc=0 and silently does
   # nothing, so in prefix+a mode every prompt here was dead: the key appeared to
   # work, the popup closed, and nothing had been asked. There is no second popup
@@ -1176,9 +1470,9 @@ prompt() {  # <height> <args for $SELF...>
   # No `--` before the command: tmux 3.4 does not take one there and fails
   # silently. Every argument is ours, so nothing needs quoting anyway.
   if [ -n "${TMUX_PANE:-}" ]; then
-    tmux display-popup -E -w 60% -h "$h" -t "$TMUX_PANE" "$SELF" "$@" 2>/dev/null
+    tmux display-popup -E -w "$w" -h "$h" -t "$TMUX_PANE" "$SELF" "$@" 2>/dev/null
   else
-    tmux display-popup -E -w 60% -h "$h" "$SELF" "$@" 2>/dev/null
+    tmux display-popup -E -w "$w" -h "$h" "$SELF" "$@" 2>/dev/null
   fi || tmux display-message "tagents: no client here to prompt on" 2>/dev/null
   return 0
 }
@@ -1427,8 +1721,23 @@ list() {
     function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
     function dirname(p) { return (p == home) ? "~" : base(p) }
     # Claude prefixes the terminal title with a spinner glyph; the rest is the
-    # session title it maintains itself, which makes a good default name.
-    function untitle(t) { sub(/^[^ [:alnum:]]+ +/, "", t); return t }
+    # session title it maintains itself, which makes a good default name. The
+    # twin of the one in sync_window_names, and of untitle_of in shell: one
+    # character that is neither letter nor digit is a glyph, anything longer is a
+    # word. Counting "not alphanumeric" BYTES instead — which is what this was —
+    # ate the first word of every Cyrillic and CJK title, macOS awk having no
+    # opinion about characters at all.
+    function untitle(t,   utp, uti, utn, utf) {
+      utp = index(t, " ")
+      if (utp < 2) return t
+      utf = substr(t, 1, utp - 1)
+      utn = 0
+      for (uti = 1; uti <= length(utf); uti++)
+        if (substr(utf, uti, 1) < "\200" || substr(utf, uti, 1) > "\277") utn++
+      if (utn != 1 || utf ~ /^[0-9A-Za-z]$/) return t
+      sub(/^[^ ]+ +/, "", t)
+      return t
+    }
     function tok(v) {
       if (v <= 0)   return ""
       if (v >= 1e6) return sprintf("%.1fM", v/1e6)
@@ -1994,6 +2303,13 @@ timeline() {
 }
 
 counts() {
+  # The window names are swept from here as well as from the refresher, so they
+  # keep up for somebody who never opens the dashboard at all: the status bar is
+  # the one thing that runs either way. Backgrounded and throttled — see
+  # sync_names_due — and started before the counting so the two overlap.
+  if sync_names_due; then
+    sync_window_names >/dev/null 2>&1 &
+  fi
   # TA_MARKS=0: the status bar wants field 3 of every row and nothing else, so
   # the seat marks would be computed and thrown away — see list().
   TA_MARKS=0 list | awk -F"$TAB" '
@@ -2063,6 +2379,93 @@ preview() {
     return 0
   fi
   tmux capture-pane -e -p -t "$pane" 2>/dev/null | tail -n 60
+}
+
+# ---------------------------------------------------------------------------
+# ctrl-v: THE PREVIEW AS A WINDOW OF ITS OWN
+#
+# It used to be fzf's own preview pane, and in the sidebar that is the wrong
+# shape: the list is already only 45% of a window, and taking 55% of THAT for a
+# preview left a column too narrow to read either half in. So ctrl-v opens a
+# popup at the size prefix+C-f, tsess and tneww open at — 80% by 85% — and the
+# list is not disturbed at all.
+#
+# It is a snapshot, deliberately. The live view of an agent is the agent's own
+# pane docked beside the list, one enter away; what this is for is the part of
+# the preview that does not fit on one screen — the per-subagent cost breakdown
+# and the tail of the transcript — so it goes through a pager and can be
+# scrolled, and refreshing it matters less than that.
+# ---------------------------------------------------------------------------
+
+# The heading of that page: the name the row shows for the agent, resolved the
+# way ask_kill resolves it — the label first, then the pane title with Claude
+# leading glyph off it, then the project. Deliberately NOT the way
+# sync_window_names resolves it: a heading falling back to the project is
+# better than a heading with a bare pane id in it, while a WINDOW named after
+# its own directory is a rename tmux automatic-rename would only undo.
+preview_name() {  # <pane>
+  local pane=${1:-} sid dir nm
+  IFS="$US" read -r sid dir < <(
+    awk -F"$TAB" -v OFS="$US" 'NR==1 { print $3, $4; exit }' \
+        "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)
+  nm=$(label_of "${sid:-$pane}")
+  if [ -z "$nm" ]; then
+    nm=$(untitle_of "$(tmux display -p -t "$pane" '#{pane_title}' 2>/dev/null)")
+    # tmux default pane title is the host name, which names nothing.
+    [ "$nm" = "$(hostname -s 2>/dev/null)" ] && nm=""
+  fi
+  [ -n "$nm" ] || nm=$(basename "${dir:-$pane}")
+  printf '%s' "$nm"
+}
+
+preview_window() {  # <pane> <state> — what ctrl-v runs
+  local pane=${1:-} state=${2:-}
+  [ -n "$pane" ] && [ "$pane" != "-" ] || return 0
+  prompt_at 80% 85% --ask-preview "$pane" "$state" && return 0
+  # dash() binds ctrl-v to fzf own toggle-preview wherever a popup cannot be
+  # had, so this is only reached when popups went away underneath a running
+  # list. Say so rather than printing a screenful into a pane fzf is drawing
+  # over — that is the invisible freeze the popups exist to avoid.
+  tmux display-message "tagents: no popup here to show the preview in" 2>/dev/null
+  return 0
+}
+
+ask_preview() {  # <pane> <state> — the body of that popup
+  local pane=${1:-} state=${2:-} nm ans
+  [ -n "$pane" ] && [ "$pane" != "-" ] || return 0
+  nm=$(preview_name "$pane")
+  # less takes the scrolling and gives back a q that closes the popup with it
+  # (the body exits, so the popup does). Without it the text is simply printed
+  # and any key closes it — no scrollback, but the popup is still readable and
+  # still closes.
+  if command -v less >/dev/null 2>&1; then
+    { printf '\033[1m%s\033[0m  \033[90mq closes\033[0m\n' "${nm:-$pane}"
+      preview "$pane" "$state"; } | less -R
+    return 0
+  fi
+  printf '\033[1m%s\033[0m  \033[90many key closes\033[0m\n' "${nm:-$pane}"
+  preview "$pane" "$state"
+  # Bounded, like every other read here: this owns the popup tty, and a read
+  # that never returns is a popup with no way out but killing it.
+  IFS= read -r -t 300 -n 1 ans 2>/dev/null
+  return 0
+}
+
+# THE ? WINDOW CANNOT OPEN THIS ITSELF. That window is a popup, and a
+# display-popup issued from inside a popup returns rc=0 and does nothing at all
+# — so :preview hands the job to `run-shell -b`, a detached child of the tmux
+# SERVER, which is outside the popup. But that child starts while the ? popup is
+# still on screen, and the same rule would bite it there. Hence the sleep: it is
+# a race against ask_keys returning and tmux tearing its popup down, and tmux
+# offers nothing to wait on for it. 0.3s is comfortably longer than that takes
+# and short enough not to read as a delay; losing the race costs one keypress,
+# and nothing is left behind by it.
+preview_popup() {  # <pane> <state>
+  sleep 0.3
+  # A server child has none of the popup environment, TA_MODE included, so
+  # prompt_at opens the popup here instead of refusing the way it does inside
+  # one.
+  preview_window "$@"
 }
 
 # ---------------------------------------------------------------------------
@@ -2188,8 +2591,7 @@ ask_kill() {  # the confirmation itself — normally the body of the popup
   if [ "$alive" = 1 ]; then
     [ -z "$dir" ] && dir=$(tmux display -p -t "$pane" '#{pane_current_path}' 2>/dev/null)
     if [ -z "$nm" ]; then
-      nm=$(tmux display -p -t "$pane" '#{pane_title}' 2>/dev/null)
-      nm=${nm#* }
+      nm=$(untitle_of "$(tmux display -p -t "$pane" '#{pane_title}' 2>/dev/null)")
       [ "$nm" = "$(hostname -s 2>/dev/null)" ] && nm=""
     fi
     [ -z "$nm" ] && nm=$(basename "${dir:-?}")
@@ -2256,6 +2658,10 @@ refresher() {
     tick=$(( (tick + 1) % 5 ))
     if [ "$tick" = 0 ]; then
       command -v tusage >/dev/null 2>&1 && tusage --update >/dev/null 2>&1
+      # Windows named after their agents. Unthrottled here — this is already the
+      # every-5th-tick branch, and there is one refresher per list — while the
+      # status bar path throttles itself, since it has no tick of its own.
+      sync_window_names >/dev/null 2>&1
       # Self-heal the sidebar. When a docked agent's Claude exits, its pane dies
       # inside the dashboard window and that seat is simply gone until something
       # docks again. Put it back rather than making the user notice and work out
@@ -3189,6 +3595,8 @@ act() {
     goto)   goto "$pane" ;;
     send)   send_line "$pane" ;;
     rename) rename_agent "$pane" "$sid" ;;
+    # ctrl-v in the sidebar: a modal, not a column taken off the list.
+    preview) preview_window "$pane" "$state" ;;
     new)    new_agent "$dir" ;;
     pick)   new_agent_pick "$dir" ;;
     undock)
@@ -3550,7 +3958,7 @@ keys_table() {  # key<TAB>verb<TAB>what it does
 "ctrl-u${TAB}undock${TAB}undock the current seat and close it behind the chat" \
 "ctrl-x${TAB}kill${TAB}kill this agent, asking first; a closed row is forgotten" \
 "ctrl-t${TAB}:tree${TAB}tree or flat" \
-"ctrl-v${TAB}:preview${TAB}show or hide the text preview" \
+"ctrl-v${TAB}:preview${TAB}the preview in a window of its own — in the prefix+a popup, fzf's toggle beside the list" \
 "ctrl-l${TAB}:refresh${TAB}refresh now" \
 "ctrl-w${TAB}:columns${TAB}show or hide columns" \
 "?${TAB}:none${TAB}this window" \
@@ -3568,6 +3976,12 @@ keys_table() {  # key<TAB>verb<TAB>what it does
 ask_keys() {  # <port> <pane> <state> <sid> <dir>
   local port=${1:-} pane=${2:-} state=${3:-} sid=${4:-} dir=${5:-}
   local key verb desc w=0 rows="" dim reset pick nl
+  # WHICH KIND OF LIST OPENED THIS, read before the TA_MODE below overwrites it.
+  # A popup list runs this body inline and hands its own environment down, so
+  # TA_MODE is popup here; a sidebar list opens it as a popup of its own, and a
+  # popup is a child of the tmux server, which has none of that environment. So
+  # an empty mode means "the list is a sidebar", which is what :preview needs.
+  local mode=${TA_MODE:-}
   nl='
 '
   dim=$(printf '\033[90m'); reset=$(printf '\033[0m')
@@ -3613,7 +4027,17 @@ on the row the cursor was on · esc closes" 2>/dev/null)
   case $verb in
     :quit|:none) return 0 ;;
     :tree)       toggle_group; post_fzf "$port" "reload-sync($SELF --list)" ;;
-    :preview)    post_fzf "$port" "toggle-preview" ;;
+    # In the popup list the text preview IS the live view and fzf own toggle is
+    # the whole of it. In a sidebar the preview is a popup, and this body is
+    # already one — see preview_popup for why that has to go the long way round.
+    # The condition is dash() own: wherever the modal cannot exist, ctrl-v is
+    # still bound to fzf toggle, and posting it is exactly what the key does.
+    :preview)
+      if [ "$mode" = popup ] || ! has_popup; then
+        post_fzf "$port" "toggle-preview"
+      else
+        tmux run-shell -b "'$SELF' --preview-popup '$pane' '$state'" 2>/dev/null
+      fi ;;
     :refresh)    post_fzf "$port" "reload-sync($SELF --list)" ;;
     # Straight into ask_columns rather than through prompt(): this is already a
     # terminal of its own — a popup, or an inline body that has the screen — and
@@ -3672,7 +4096,11 @@ dash() {
   local home=${TA_HOME:-} mode=${TA_MODE:-dash} out key rows
   local rc started fails=0 esc_bind='esc:ignore' quit='ctrl-q quit'
   local header
-  local enter_lbl='open in sidebar' preview_win after=''
+  local enter_lbl='open in sidebar' preview_win='' sidebar=0 after='' vbind
+  # The --preview pair, present only where ctrl-v still toggles one. An empty
+  # array cannot be expanded under `set -u` in bash 3.2 without the
+  # ${x[@]+"${x[@]}"} guard below, and empty is the ordinary case now.
+  local pv=()
   # A prompt that opens a popup returns at once, so fzf never has to give up the
   # screen for it — that is what keeps rename and send from flashing the list.
   # Without popups the prompt has to happen in this pane, which needs `execute`.
@@ -3705,9 +4133,29 @@ dash() {
   if [ "$mode" != popup ] && [ -n "${TMUX_PANE:-}" ] && claim_dash; then
     trap release_dash EXIT INT TERM
     enter_lbl='open here'
-    preview_win='hidden'
-  else
-    preview_win='right,55%,border-left,wrap'
+    sidebar=1
+  fi
+
+  # CTRL-V IS A MODAL WHEREVER ONE CAN BE HAD, and fzf own preview is then not
+  # built at all: a --preview that is only ever hidden is a preview process
+  # waiting to be spawned by a key nobody binds to it any more.
+  #
+  # The two cases that keep the old behaviour are the two where the modal cannot
+  # exist, and they are the same condition $ask was derived from a few lines up:
+  # a popup cannot open a second popup, and a tmux without display-popup cannot
+  # open the first. There ctrl-v stays fzf toggle-preview — and the preview it
+  # toggles has to exist, so the pair goes back in.
+  vbind="--bind=ctrl-v:$ask($SELF --act preview {1} {3})"
+  if [ "$ask" != execute-silent ]; then
+    vbind='--bind=ctrl-v:toggle-preview'
+    # Worked out HERE, where the pair is built, and nowhere else: on the modal
+    # path there is no --preview at all and a preview_window computed for it
+    # would be a line describing a flag nobody passes. Beside the list in a
+    # popup, which has the room and cannot open a modal; hidden until ctrl-v in a
+    # sidebar that has none — 55% of a 45% column reads neither half.
+    if [ "$sidebar" = 1 ]; then preview_win=hidden
+    else preview_win='right,55%,border-left,wrap'; fi
+    pv=(--preview="$SELF --preview {1} {3}" --preview-window="$preview_win")
   fi
   export TA_HOME="$home"
 
@@ -3735,8 +4183,7 @@ dash() {
       --listen --height=100% --layout=reverse --info=inline \
       --prompt='agents> ' \
       --header="$header" \
-      --preview="$SELF --preview {1} {3}" \
-      --preview-window="$preview_win" \
+      ${pv[@]+"${pv[@]}"} \
       --bind="enter:execute-silent($SELF --act open {1} {3} {4} {5})$after" \
       --bind="double-click:execute-silent($SELF --act open {1} {3} {4} {5})$after" \
       --bind="ctrl-g:execute-silent($SELF --act goto {1})$after" \
@@ -3752,7 +4199,7 @@ dash() {
       --bind="ctrl-w:$ask($SELF --act columns)" \
       --bind="?:$ask($SELF --act keys {1} {3} {4} {5})$after" \
       --bind="$esc_bind" \
-      --bind='ctrl-v:toggle-preview' \
+      "$vbind" \
       --bind='ctrl-t:execute-silent('"$SELF"' --toggle-group)+reload-sync('"$SELF"' --list)' \
       --bind='ctrl-l:reload-sync('"$SELF"' --list)' \
       --bind="start:execute-silent(TA_PORT=\$FZF_PORT nohup $SELF --refresher >/dev/null 2>&1 &)" \
@@ -3816,6 +4263,10 @@ case "${1:-}" in
   --agent-cmd)    agent_cmd "${2:-}" "${3:-new}" "${4:-}" && echo ;;
   --counts)       counts ;;
   --preview)      preview "${2:-}" "${3:-}" ;;
+  # ctrl-v: the body of the modal, and the detour the ? window takes to open it
+  # (a popup cannot open a popup — see preview_popup).
+  --ask-preview)   ask_preview "${2:-}" "${3:-}" ;;
+  --preview-popup) preview_popup "${2:-}" "${3:-}" ;;
   --slot)         slot ;;
   --unpark)       unpark "${2:-}" ;;
   # What a kill binding asks before it kills anything, so closing a pane or a
@@ -3831,6 +4282,9 @@ case "${1:-}" in
   --seats)         seats "${2:-$(dash_pane)}" ;;
   --current-seat)  current_seat "${2:-$(dash_pane)}" && echo ;;
   --ensure-seat)   ensure_seat "${2:-$(dash_pane)}" && echo ;;
+  # One naming pass, on demand: the same one the refresher and the status bar
+  # run. A debugging aid, and what tests/names.sh asserts on.
+  --sync-names)   sync_window_names ;;
   --refresher)    refresher ;;
   --ensure-dash)  ensure_dash ;;
   --goto)         goto "${2:-}" ;;
