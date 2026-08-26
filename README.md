@@ -97,6 +97,7 @@ Keys inside the dashboard:
 | `ctrl-u` | undock — send the chat in the current seat home and close the seat behind it |
 | `ctrl-x` | kill this agent — hang up its Claude and close its pane (asks first). On a row that is already closed, forget it instead |
 | `ctrl-t` | toggle tree / flat |
+| `ctrl-v` | the preview — cost per subagent, the tail of the transcript — in a modal window of its own, scrollable, `q` closes it (with no `less` on `$PATH` it is printed instead and any key closes it). In the `prefix+a` popup, and on a tmux with no popups at all, it stays fzf's own preview beside the list: a popup cannot open a second popup |
 | `ctrl-l` | refresh now |
 | `ctrl-w` | show or hide columns — see [Hiding columns](#hiding-columns) |
 | `?` | every key in a window of its own, and `enter` runs the one you pick |
@@ -173,6 +174,35 @@ bind-key & run-shell "tagents --undock-window '#{window_id}'" \; kill-window
 list, a placeholder, your own terminal — it does nothing and exits 1, so the
 binding stays a plain `kill-pane` everywhere else. `--undock-window` does the
 same for every chat docked in a window and always exits 0.
+
+## Windows are named after their agents
+
+The dashboard is one way to find an agent. `prefix+w`, the status bar and `tmux
+ls` are the other, and they are the ones that work when the dashboard is not on
+screen — so the tmux window an agent lives in is named after that agent.
+
+The name is the one the list shows: the label you gave it with `ctrl-r`, or the
+session's terminal title (what Claude's `/rename` sets) when you have not. Never
+the directory — tmux's own `automatic-rename` already names a window after what
+is running in it, and that name is right. A window renames itself within about
+ten seconds of the name changing while the dashboard is up, and within thirty
+when it is not: the status bar runs the same pass, throttled, so this works with
+no dashboard open at all.
+
+**A window several agents share is named after the one with the newest
+activity** — the agent you are actually working with names the window. Panes
+with no name to give are not candidates, so a shell split off beside an agent
+never takes the window's name.
+
+**A name you typed is never overwritten.** A window is only ever renamed when
+its current name is tmux's automatic one, or the name `tagents` itself gave it
+last time (recorded in the window option `@tagents_name`). Rename a window by
+hand in tmux and nothing here touches it again, until the day its name coincides
+with one of those two. The dashboard window, any window a list is running in and
+chats docked into a sidebar are all left out of it.
+
+`tagents --sync-names` runs one pass by hand, which is the way to see what it
+would do.
 
 ## Configuration
 
@@ -364,8 +394,10 @@ on.
 
 `tests/config.sh` covers the config parser, the rules and the command builder
 with no tmux involved; `tests/launch.sh` starts and resumes real agents,
-`tests/panes.sh` docks, undocks and kills them across seats, and `tests/ui.sh`
+`tests/panes.sh` docks, undocks and kills them across seats, `tests/ui.sh`
 covers what the row looks like — the badge column, the hidden ones, the `?`
-window running a real key and the one-line header — each against a throwaway
-tmux server of its own (`tmux -L tatest-$$`), never the default socket. All four
-are bash 3.2, run every check, and exit non-zero when any of them fails.
+window running a real key, the one-line header and the `ctrl-v` modal — and
+`tests/names.sh` covers the window naming above, including the refusal to
+overwrite a name you typed. Each runs against a throwaway tmux server of its own
+(`tmux -L tatest-$$`), never the default socket. All five are bash 3.2, run
+every check, and exit non-zero when any of them fails.
