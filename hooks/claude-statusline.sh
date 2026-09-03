@@ -16,8 +16,8 @@
 # back on the session id.
 #
 # The money is emphatically NOT computed from this. What a session cost is the
-# sum of its requests priced at the model that served each one; the model shown
-# here is only "what the next request will be billed at".
+# sum of its requests priced at the model that served each one; the model
+# recorded here is only "what the next request will be billed at".
 #
 # One jq and one write: this runs far more often than a hook does.
 
@@ -71,17 +71,18 @@ if [ -n "${sid:-}" ] && [ -n "${mid:-}" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# What the line itself says. Deliberately short: it sits under the prompt in
-# every session, and the dashboard is where the detail belongs.
+# What the line itself says: context used, and nothing else. The model and the
+# session cost are deliberately NOT printed — tagents and the tmux status bar
+# already show both, and /model answers "which model" on demand — so under the
+# prompt they were only a duplicate. Everything above still runs regardless:
+# the model file is what tagents reads, the printed line is not.
 # ---------------------------------------------------------------------------
 DIM=$(printf '\033[90m'); R=$(printf '\033[0m')
 ctxcol=$DIM
 [ "${ctx:-0}" -ge 60 ] 2>/dev/null && ctxcol=$(printf '\033[33m')
 [ "${ctx:-0}" -ge 85 ] 2>/dev/null && ctxcol=$(printf '\033[1;31m')
 
-name=${mname:-$mid}
-[ -n "$name" ] || exit 0
-[ "${fast:-false}" = true ] && name="$name ⚡"
+fastmark=
+[ "${fast:-false}" = true ] && fastmark=' ⚡'
 
-printf '%s%s · %s%s%%%s ctx · $%.2f%s\n' \
-  "$name" "$DIM" "$ctxcol" "${ctx:-0}" "$DIM" "${cost:-0}" "$R"
+printf '%s%s%%%s ctx%s%s\n' "$ctxcol" "${ctx:-0}" "$DIM" "$fastmark" "$R"
