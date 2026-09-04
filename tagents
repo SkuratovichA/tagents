@@ -3842,20 +3842,25 @@ start_agent() {  # <root> <session> <profile>
   cmd=$(agent_cmd "$prof" new) || {
     tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
     return 1; }
-  # -d so the new window does not steal the current session's view before it is
-  # docked; open_agent puts the cursor in it deliberately, a moment later.
+  # -d so the window is not selected as a side effect of being created, half
+  # built and before its pane id is even known. The client is moved into it
+  # once, deliberately, by the goto below.
   newpane=$(tmux new-window -d -t "$sess:" -P -F '#{pane_id}' \
               -c "$root" "$cmd" 2>/dev/null) || {
     tmux display-message "tagents: could not open a window in $sess" 2>/dev/null; return 1; }
 
-  # IT STAYS WHERE IT WAS BORN, and so do you. Docking it would swap the pane out
-  # of the session it was just created in and into the dashboard window, then
-  # switch the client there — which is how this lost the sidebar: the new agent
-  # turned up in a window the list was not in, and the list was not on screen any
-  # more either. A brand-new chat has nothing to read yet, so there is nothing
-  # worth being moved for; it appears in the tree on the next refresh and enter
-  # opens it like any other agent.
+  # IT STAYS WHERE IT WAS BORN — but you go to it. Docking would swap the pane
+  # out of the session it was just created in and into the dashboard window,
+  # which is how this lost the sidebar: the new agent turned up in a window the
+  # list was not in, and the list was not on screen any more either. So the
+  # window keeps its own place in its own session and nothing is docked. Moving
+  # the CLIENT there costs none of that, and asking for an agent and being left
+  # in the list, with a toast naming a window you then have to go and find, was
+  # never what the key meant. goto and nothing else: no seat is claimed, so the
+  # dashboard's own idea of what is docked is untouched, and ctrl-n and ctrl-p
+  # both land here and both behave the same.
   idx=$(tmux display -p -t "$newpane" '#{window_index}' 2>/dev/null)
+  goto "$newpane"
   tmux display-message \
     "tagents: new agent in $(basename "$root") ($sess:$idx)${prof:+ as $prof}" 2>/dev/null
   return 0
