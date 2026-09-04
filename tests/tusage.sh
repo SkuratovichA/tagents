@@ -161,7 +161,7 @@ t "5. a changed spec is a stale map"
 # ---------------------------------------------------------------------------
 
 # Same histories, new names: the cached map must not answer with the old ones.
-names=$(TU_ACCOUNTS="alpha=$ROOT/acct/work;beta=$ROOT/acct/personal" tu --daily --since 30d | cut -f2 | sort -u | tr '\n' ' ')
+names=$(TU_ACCOUNTS="alpha=$ROOT/acct/work;beta=$ROOT/acct/personal" TU_ACCOUNT_RULES="$ROOT/git/work=alpha;$ROOT/git/personal=beta" tu --daily --since 30d | cut -f2 | sort -u | tr '\n' ' ')
 contains "alpha is there"          "alpha" "$names"
 contains "beta is there"           "beta"  "$names"
 ok "the old names are gone"        ""      "$(printf '%s' "$names" | grep -o -E 'work|personal' | head -1)"
