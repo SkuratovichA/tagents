@@ -156,5 +156,18 @@ ok "still 14 fields" 14 "$(printf '%s\n' "$line" | awk -F"$TAB" '{ print NF }')"
 # A 5.00 + C 25.00, priced per row at each row's own model.
 ok "still the same dollars" "30.000000" "$(printf '%s\n' "$line" | cut -f11)"
 
+# ---------------------------------------------------------------------------
+t "5. a changed spec is a stale map"
+# ---------------------------------------------------------------------------
+
+# Same histories, new names: the cached map must not answer with the old ones.
+names=$(TU_ACCOUNTS="alpha=$ROOT/acct/work;beta=$ROOT/acct/personal" tu --daily --since 30d | cut -f2 | sort -u | tr '\n' ' ')
+contains "alpha is there"          "alpha" "$names"
+contains "beta is there"           "beta"  "$names"
+ok "the old names are gone"        ""      "$(printf '%s' "$names" | grep -o -E 'work|personal' | head -1)"
+# And back again, because the spec file — not a timestamp — decides.
+names=$(tu --daily --since 30d | cut -f2 | sort -u | tr '\n' ' ')
+contains "work is back"            "work"  "$names"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
