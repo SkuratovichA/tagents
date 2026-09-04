@@ -13,6 +13,17 @@
 #   tusage --update             refresh the index and exit
 #   tusage --rebuild            throw the index away and rescan everything
 #   tusage --json               emit the current window as JSON
+#   tusage --daily              day<TAB>account<TAB>usd<TAB>reqs<TAB>unpriced
+#
+# ACCOUNTS. --daily splits the bill by login. TU_ACCOUNTS is "name=dir;name=dir"
+# (an empty dir means ~/.claude); unset, it is the default config dir plus every
+# ~/.claude-* that keeps a history. TU_ACCOUNT_RULES is "dir=name;dir=name" and
+# places the sessions no history.jsonl lists — headless -p runs write none — by
+# the directory they were launched in. Anything still unplaced prints as "?".
+#
+# THE DOLLARS ARE AN ESTIMATE, NOT A BILL: roughly 3% under Claude Code's own
+# ledger on a large session and more on small ones, because retries, titles and
+# away summaries never reach a transcript and so are never counted.
 #
 # WHY AN INDEX. 800 MB of transcripts across ~1300 files: a full scan costs a
 # second and a half, which is fine once and far too slow for a dashboard that
@@ -491,7 +502,9 @@ account_dirs() {
       spec="$spec;$n=${d%/}"
     done
   fi
-  printf '%s' "$spec" | tr ';' '\n' | while IFS= read -r ent; do
+  # The trailing newline is not decoration: `read` drops a final line that has
+  # none, which silently loses the last account in the list.
+  printf '%s\n' "$spec" | tr ';' '\n' | while IFS= read -r ent; do
     [ -n "$ent" ] || continue
     n=${ent%%=*}; d=${ent#*=}
     [ -n "$d" ] || d="$HOME/.claude"
@@ -621,34 +634,42 @@ AWK_FMT='
   }
 '
 
+# Local-day arithmetic, shared by every report that has a day axis. The offset
+# comes from a -v tz="$(date +%z)" the caller passes, and is decoded on first
+# use rather than in a BEGIN block so a caller only has to supply the variable.
+AWK_DAY='
+  function tzinit(  zh, zm) {
+    zh = substr(tz,2,2) + 0; zm = substr(tz,4,2) + 0
+    OFFS = zh*3600 + zm*60; if (substr(tz,1,1) == "-") OFFS = -OFFS
+    TZI = 1
+  }
+  function daykey(t)  { if (!TZI) tzinit(); return int((t + OFFS)/86400) }
+  function hourkey(t) { if (!TZI) tzinit(); return int((t + OFFS)/3600) }
+  function daystr(d,   z, y, m, dd, e, doe, yoe, doy, mp) {
+    # civil-from-days, so no shelling out to date per row
+    z = d + 719468
+    e = (z >= 0 ? z : z - 146096) / 146097; e = int(e)
+    doe = z - e*146097
+    yoe = int((doe - int(doe/1460) + int(doe/36524) - int(doe/146096)) / 365)
+    y = yoe + e*400
+    doy = doe - (365*yoe + int(yoe/4) - int(yoe/100))
+    mp = int((5*doy + 2)/153)
+    dd = doy - int((153*mp+2)/5) + 1
+    m = mp + (mp < 10 ? 3 : -9)
+    y += (m <= 2)
+    return sprintf("%04d-%02d-%02d", y, m, dd)
+  }
+'
+
 report_by() {
   local dim=$1 since=$2 cut
   cut=$(( $(date +%s) - $(since_secs "$since") ))
   [ -s "$FACTS" ] || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
 
   { slug_map | sed 's/^/P\t/'; cat "$FACTS"; } |
-  awk -F"$TAB" -v cut="$cut" -v dim="$dim" -v tz="$(date +%z)" -v home="$HOME" "$AWK_FMT"'
-    BEGIN {
-      zh = substr(tz,2,2) + 0; zm = substr(tz,4,2) + 0
-      off = zh*3600 + zm*60; if (substr(tz,1,1) == "-") off = -off
-      R = "\033[0m"; DIM = "\033[90m"; B = "\033[1m"
-    }
-    function daykey(t,   lt) { lt = t + off; return int(lt/86400) }
-    function hourkey(t,  lt) { lt = t + off; return int(lt/3600) }
-    function daystr(d,   z, y, m, dd, e) {
-      # civil-from-days, so no shelling out to date per row
-      z = d + 719468
-      e = (z >= 0 ? z : z - 146096) / 146097; e = int(e)
-      doe = z - e*146097
-      yoe = int((doe - int(doe/1460) + int(doe/36524) - int(doe/146096)) / 365)
-      y = yoe + e*400
-      doy = doe - (365*yoe + int(yoe/4) - int(yoe/100))
-      mp = int((5*doy + 2)/153)
-      dd = doy - int((153*mp+2)/5) + 1
-      m = mp + (mp < 10 ? 3 : -9)
-      y += (m <= 2)
-      return sprintf("%04d-%02d-%02d", y, m, dd)
-    }
+  awk -F"$TAB" -v cut="$cut" -v dim="$dim" -v tz="$(date +%z)" -v home="$HOME" \
+      "$AWK_FMT$AWK_DAY"'
+    BEGIN { R = "\033[0m"; DIM = "\033[90m"; B = "\033[1m" }
     function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
     $1 == "P" { pdir[$2] = $3; next }
     $1 + 0 < cut { next }
@@ -736,6 +757,37 @@ sessions() {
               int(SUB[s]), k, int(C5H[s]),
               MDL[s], sprintf("%.6f", D[s]), sprintf("%.6f", D5H[s]),
               sprintf("%.6f", DSUB[s]), UNP[s] + 0 } }' "$FACTS"
+}
+
+# day<TAB>account<TAB>usd<TAB>reqs<TAB>unpriced — one row per local day per
+# login, no header, sorted by day then account, for a spend chart or a monthly
+# reckoning. Machine-readable on purpose: report_by's table prints cost units
+# and a bar, which is the wrong shape for money someone is going to add up.
+#
+# Sessions the account map cannot place print as "?" rather than falling into a
+# default, because a wrong login is worse than a visible hole.
+daily() {
+  [ -s "$FACTS" ] || return 0
+  local cut; cut=$(( $(date +%s) - $(since_secs "${1:-7d}") ))
+  { account_map | sed 's/^/A\t/'; cat "$FACTS"; } |
+  awk -F"$TAB" -v OFS="$TAB" -v cut="$cut" -v tz="$(date +%z)" \
+      -v prices="$(prices_arg)" "$AWK_PRICE$AWK_DAY"'
+    $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
+    $1 + 0 < cut { next }
+    {
+      k = daystr(daykey($1)) SUBSEP (($3 in ACC) ? ACC[$3] : "?")
+      d = usd($7, $1 + 0, $9,$10,$11,$12,$13)
+      c = $9 + 1.25*$10 + 2.0*$11 + 0.1*$12 + 5*$13
+      # Same rule as --sessions: a zero-token row on an unknown model is the
+      # "<synthetic>" placeholder, not a hole in the bill.
+      if (d < 0) { d = 0; if (c > 0) UNP[k]++ }
+      USD[k] += d; RQ[k] += $8; SEEN[k] = 1
+    }
+    END {
+      for (k in SEEN) { split(k, p, SUBSEP)
+        printf "%s\t%s\t%.4f\t%d\t%d\n", p[1], p[2], USD[k], RQ[k], UNP[k] + 0 }
+    }' |
+  sort -t"$TAB" -k1,1 -k2,2
 }
 
 burn() {   # what the last 5h cost, for the tmux status bar
@@ -902,6 +954,7 @@ while [ $# -gt 0 ]; do
     --by)       DIM=${2:-project}; shift 2 ;;
     --since)    SINCE=${2:-7d}; shift 2 ;;
     --sessions) DIM=__sessions; shift ;;
+    --daily)    DIM=__daily; shift ;;
     --session)  DIM=__detail; SID=${2:-}; shift 2 ;;
     --burn)     DIM=__burn; shift ;;
     --json)     DIM=__json; shift ;;
@@ -920,6 +973,7 @@ done
 case "$DIM" in
   "")          summary ;;
   __sessions)  sessions "$SINCE" ;;
+  __daily)     daily "$SINCE" ;;
   __detail)    session_detail "${SID:-}" ;;
   __burn)      burn ;;
   __json)      json "$SINCE" ;;
