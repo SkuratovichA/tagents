@@ -1,0 +1,375 @@
+#!/usr/bin/env bash
+#
+# tnotes — a neovim pane beside a Claude pane, hidden and restored per session.
+#
+#   tnotes toggle <pane>        open the notes editor beside a Claude pane,
+#                               or hide it again when it is already there
+#   tnotes sync [pane]          park every editor whose chat you are not looking
+#                               at, bring back the one belonging to <pane>
+#   tnotes send <chat> <dir>    commit the notes and paste prompt.md into <chat>
+#   tnotes close <editor>       ask the editor to write and quit, then make sure
+#   tnotes editor <chat> <dir>  the program the editor pane runs (not for you)
+#
+# WHAT THIS IS FOR. A one-line `read` is the wrong place to write a prompt worth
+# writing. This gives every Claude pane a real editor next to it, on a file that
+# lives with the project (<repo>/.claude/notes/prompt.md) and is committed to a
+# little repo of its own, so nothing you drafted is ever lost to a closed pane.
+#
+# WHY A SEPARATE SCRIPT AND NOT A tagents SUBCOMMAND. The editor pane runs this
+# program for as long as nvim is open — hours. `tagents` is read lazily by bash
+# while it runs, so a long-lived tagents process is a process that breaks the
+# moment the file is edited. This one is short and stays short.
+#
+# WHY NO @tagents_* MARKER EVER. tagents decides what belongs to it by markers
+# and never by position: a pane carrying @tagents_docked or @tagents_slot is a
+# SEAT and may be swapped, broken out or killed by the seat logic. An editor
+# pane carrying neither is invisible to all of it, which is exactly the contract
+# we want — the seat machinery leaves us alone and we leave it alone.
+#
+# WHERE A HIDDEN EDITOR GOES. Into a detached session called `ta-notes`, one
+# window per editor. tmux has no off-screen parking lot, and `break-pane -d`
+# alone would litter the window list of the session you are working in. A
+# session of its own is out of sight, survives the last editor leaving (a
+# holder window keeps it alive), and pane ids survive both moves, so the chat
+# pane's @ta_notes still names the same editor afterwards.
+#
+# WHY HIDE ON ARRIVAL RATHER THAN ON LEAVING. tmux has no "window deactivated"
+# hook. So `sync` is written the other way round — arriving anywhere parks the
+# editors of every window that is not this one — which is the same shape the
+# dashboard's unpark hook already has, with the same backstop: a poll, because
+# a hook alone is not trusted.
+
+set -uo pipefail
+
+SELF=$0
+case "$SELF" in
+  /*) ;;
+  *)  SELF=$(cd "$(dirname "$SELF")" 2>/dev/null && pwd)/$(basename "$SELF") ;;
+esac
+
+NOTES_SESSION=ta-notes
+NOTES_WIDTH=45          # percent of the chat's window the editor takes
+STATE_DIR=${TA_STATE_DIR:-$HOME/.claude/agent-state}
+
+die() {  # <message> — say it where the user is looking, then fail
+  tmux display-message "tnotes: $1" 2>/dev/null || printf 'tnotes: %s\n' "$1" >&2
+  exit 1
+}
+
+pane_ok() { tmux display -p -t "${1:-}" '#{pane_id}' >/dev/null 2>&1; }
+opt_of()  { tmux display -p -t "${2:-}" "#{${1}}" 2>/dev/null; }
+
+# A pane is a Claude pane when it says so itself. `claude` as the running command
+# is the cheap answer; a state record is the answer for the moment Claude has
+# handed the terminal to a child (a pager, an editor of its own) and ps no longer
+# says "claude" — the record is written by the state hook and outlives that.
+is_claude_pane() {
+  local pane=$1 cmd
+  cmd=$(opt_of pane_current_command "$pane")
+  case "$cmd" in claude*) return 0 ;; esac
+  [ -f "$STATE_DIR/${pane#%}.tsv" ]
+}
+
+# ---------------------------------------------------------------------------
+# the notes directory
+# ---------------------------------------------------------------------------
+
+# IT LIVES WITH THE PROJECT, NOT WITH THE PANE. A prompt you drafted is about the
+# repository you drafted it in, so it belongs at the repository root and is worth
+# finding again from any pane opened there later. Outside a repository the pane's
+# own directory is the best answer available.
+notes_dir() {  # <chat pane> -> <root>/.claude/notes
+  local pane=$1 cwd root
+  cwd=$(opt_of pane_current_path "$pane")
+  [ -n "$cwd" ] || return 1
+  root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)
+  [ -n "$root" ] || root=$cwd
+  printf '%s/.claude/notes' "$root"
+}
+
+ensure_notes() {  # <dir>
+  local dir=$1
+  mkdir -p "$dir" 2>/dev/null || return 1
+  [ -d "$dir/.git" ] || git -C "$dir" init -q >/dev/null 2>&1
+  [ -f "$dir/prompt.md" ] || : >"$dir/prompt.md"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# moving the editor pane in and out
+# ---------------------------------------------------------------------------
+
+ensure_park() {
+  tmux has-session -t "$NOTES_SESSION" 2>/dev/null && return 0
+  # The holder window is what keeps the session alive when the last editor is
+  # joined back; without it tmux destroys the session and the next hide has to
+  # race to recreate it.
+  tmux new-session -d -s "$NOTES_SESSION" -n hold 'sleep 2147483647' 2>/dev/null
+}
+
+hide_editor() {  # <editor> <chat>
+  local ed=$1 chat=$2
+  ensure_park || return 1
+  tmux break-pane -d -s "$ed" -t "$NOTES_SESSION:" -n "$chat" 2>/dev/null || return 1
+  # Markers are re-stamped after every move: the pane id survives break-pane and
+  # join-pane, but nothing promises the same of a pane option, and a marker lost
+  # here would leave an editor nothing can ever find again.
+  tmux set -p -t "$ed" @ta_notes_for "$chat" 2>/dev/null
+  tmux set -p -t "$chat" @ta_notes "$ed" 2>/dev/null
+  return 0
+}
+
+show_editor() {  # <editor> <chat>
+  local ed=$1 chat=$2
+  tmux join-pane -h -d -s "$ed" -t "$chat" -l "$NOTES_WIDTH%" 2>/dev/null || return 1
+  tmux set -p -t "$ed" @ta_notes_for "$chat" 2>/dev/null
+  tmux set -p -t "$chat" @ta_notes "$ed" 2>/dev/null
+  return 0
+}
+
+create_editor() {  # <chat> -> makes the pane, stamps the markers
+  local chat=$1 dir ed
+  dir=$(notes_dir "$chat") || return 1
+  ensure_notes "$dir" || return 1
+  ed=$(tmux split-window -h -d -P -F '#{pane_id}' -l "$NOTES_WIDTH%" -c "$dir" \
+         -t "$chat" "exec '$SELF' editor '$chat' '$dir'" 2>/dev/null) || return 1
+  [ -n "$ed" ] || return 1
+  tmux set -p -t "$chat" @ta_notes "$ed" 2>/dev/null
+  tmux set -p -t "$ed" @ta_notes_for "$chat" 2>/dev/null
+  tmux set -p -t "$ed" @ta_notes_open 1 2>/dev/null
+  # One global flag so the focus hooks can decide with a tmux format instead of
+  # starting a bash on every pane switch — the same guard tagents puts in front
+  # of its own unpark hook, for the same reason.
+  tmux set -g @ta_notes_any 1 2>/dev/null
+  # tagents installs the focus hooks lazily, the first time anything is docked.
+  # A user who only ever takes notes never docks, so ask for them here.
+  command -v tagents >/dev/null 2>&1 && tagents --focus-hooks >/dev/null 2>&1
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# tnotes toggle
+# ---------------------------------------------------------------------------
+
+cmd_toggle() {
+  local pane=${1:-} chat ed ewin cwin
+  [ -n "$pane" ] || die "toggle needs a pane"
+  chat=$(tmux display -p -t "$pane" '#{pane_id}' 2>/dev/null) ||
+    die "$pane is gone"
+  is_claude_pane "$chat" || die "not a Claude pane"
+
+  ed=$(opt_of @ta_notes "$chat")
+  if [ -n "$ed" ] && pane_ok "$ed"; then
+    ewin=$(opt_of window_id "$ed")
+    cwin=$(opt_of window_id "$chat")
+    if [ "$ewin" = "$cwin" ]; then
+      hide_editor "$ed" "$chat" || die "cannot park the editor"
+      tmux set -p -t "$ed" @ta_notes_open 0 2>/dev/null
+      return 0
+    fi
+    show_editor "$ed" "$chat" || die "cannot bring the editor back"
+    tmux set -p -t "$ed" @ta_notes_open 1 2>/dev/null
+    # The only place the cursor is moved: you asked for the editor, so you get it.
+    tmux select-pane -t "$ed" 2>/dev/null
+    return 0
+  fi
+
+  create_editor "$chat" || die "cannot open an editor beside $chat"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# tnotes editor — what the editor pane runs
+# ---------------------------------------------------------------------------
+
+cmd_editor() {
+  local chat=${1:-} dir=${2:-}
+  [ -n "$chat" ] && [ -n "$dir" ] || { printf 'tnotes: editor <chat> <dir>\n' >&2; exit 2; }
+  cd "$dir" 2>/dev/null || {
+    printf 'tnotes: %s is gone\n' "$dir" >&2
+    sleep 5
+    exit 1
+  }
+  if command -v nvim >/dev/null 2>&1; then
+    # autowriteall plus the FocusLost/BufLeave autocmd so the draft is on disk
+    # the instant you look away — `tnotes send` reads the FILE, not the buffer.
+    nvim -c 'set autowriteall' -c 'autocmd FocusLost,BufLeave * silent! wa' prompt.md
+    "$SELF" send "$chat" "$dir"
+  else
+    printf 'tnotes: nvim is not on PATH — install it, or put it there.\n' >&2
+    sleep 5
+  fi
+  # The pane dies with this process, so the chat's pointer has to go first.
+  tmux set -p -t "$chat" -u @ta_notes 2>/dev/null
+  exit 0
+}
+
+# ---------------------------------------------------------------------------
+# tnotes send
+# ---------------------------------------------------------------------------
+
+commit_notes() {  # <dir> — every draft is kept, whether or not it was sent
+  local dir=$1 subj
+  [ -d "$dir/.git" ] || return 0
+  git -C "$dir" add -A >/dev/null 2>&1
+  git -C "$dir" diff --cached --quiet 2>/dev/null && return 0
+  subj=$(awk 'NF { sub(/^[ \t]+/, ""); print substr($0, 1, 72); exit }' \
+           "$dir/prompt.md" 2>/dev/null)
+  [ -n "$subj" ] || subj='notes: edits'
+  git -C "$dir" commit -q -m "$subj" >/dev/null 2>&1 && return 0
+  # A notes repository is never pushed and never shared, so an unconfigured
+  # identity must not be the reason a draft is lost. Only ever as a fallback:
+  # the user's own name is used when they have one.
+  git -C "$dir" -c user.name=tnotes -c user.email=tnotes@localhost \
+      commit -q -m "$subj" >/dev/null 2>&1
+}
+
+cmd_send() {
+  local chat=${1:-} dir=${2:-} cmd
+  [ -n "$chat" ] && [ -n "$dir" ] || { printf 'tnotes: send <chat> <dir>\n' >&2; exit 2; }
+  commit_notes "$dir"
+  grep -q '[^[:space:]]' "$dir/prompt.md" 2>/dev/null || exit 0
+
+  cmd=$(opt_of pane_current_command "$chat")
+  case "$cmd" in
+    claude*) ;;
+    # THE DRAFT IS KEPT, ALWAYS. Typing a prompt into whatever shell happens to
+    # be sitting in that pane is worse than not sending it: prompt.md stays as
+    # it is and the next send delivers it.
+    *) tmux display-message "tnotes: $chat is not running claude — prompt kept" 2>/dev/null
+       exit 1 ;;
+  esac
+
+  # A buffer and a bracketed paste, not send-keys -l: the draft is multi-line by
+  # design, and typed newlines would submit it one line at a time. -p brackets it
+  # so Claude's TUI takes the whole thing as one paste; -d drops the buffer after.
+  tmux load-buffer -b ta-notes "$dir/prompt.md" 2>/dev/null || exit 1
+  tmux paste-buffer -p -d -b ta-notes -t "$chat" 2>/dev/null || exit 1
+  sleep 0.3   # let the TUI settle before the newline, or it swallows it
+  tmux send-keys -t "$chat" Enter 2>/dev/null
+  : >"$dir/prompt.md"
+  exit 0
+}
+
+# ---------------------------------------------------------------------------
+# tnotes sync
+# ---------------------------------------------------------------------------
+
+PANES=""
+# Field lookup over the one pane listing this command takes. No subprocess and
+# no second tmux call: sync runs on every pane switch in the server, and a shell
+# per pane there is a tax on simply moving around tmux.
+field_of() {  # <pane id> <field number, 1-based in the row> -> value, or fail
+  local want=$1 n=$2 id w s c o
+  while read -r id w s c o; do
+    [ "$id" = "$want" ] || continue
+    case "$n" in
+      2) printf '%s' "$w" ;;
+      3) printf '%s' "$s" ;;
+      4) printf '%s' "$c" ;;
+      5) printf '%s' "$o" ;;
+    esac
+    return 0
+  done <<EOF
+$PANES
+EOF
+  return 1
+}
+
+cmd_sync() {
+  local arriving=${1:-} id ewin esess chat open cwin awin="" left=0 ed eopen
+  # Conditional formats, not bare #{@opt}: an unset option renders empty and the
+  # row loses a field, which is how a reader ends up believing a pane belongs to
+  # somebody it does not.
+  PANES=$(tmux list-panes -a -F \
+    '#{pane_id} #{window_id} #{session_name} #{?@ta_notes_for,#{@ta_notes_for},-} #{?@ta_notes_open,#{@ta_notes_open},-}' \
+    2>/dev/null) || return 0
+  [ -n "$PANES" ] || return 0
+  [ -n "$arriving" ] && awin=$(field_of "$arriving" 2)
+
+  while read -r id ewin esess chat open; do
+    [ -n "$id" ] || continue
+    [ "$chat" = "-" ] && continue
+    if ! cwin=$(field_of "$chat" 2); then
+      # The Claude pane is gone. The editor has nothing left to be beside, and
+      # nothing else will ever clean it up.
+      cmd_close "$id"
+      continue
+    fi
+    left=$((left + 1))
+    [ "$esess" = "$NOTES_SESSION" ] && continue     # already parked
+    # Two ways an editor stops being wanted where it is. Either it is stranded —
+    # its chat was docked away and left it behind in a window it has nothing to
+    # do with — or you have just arrived somewhere else, which is the only shape
+    # "hide when you leave" can take: tmux has no window-deactivated hook, so
+    # leaving is only ever observed as arriving somewhere.
+    #
+    # The arrival clause needs an arriving pane and gets one only from the focus
+    # hooks. `tnotes sync` with no argument is the refresher's backstop and must
+    # do cleanup only — hiding every editor once every ten seconds is not a
+    # backstop, it is the feature firing at random.
+    #
+    # @ta_notes_open is left alone throughout: parking is not the user's
+    # decision, and the editor has to come back when its chat is looked at again.
+    if [ "$ewin" != "$cwin" ]; then
+      hide_editor "$id" "$chat"
+    elif [ -n "$awin" ] && [ "$awin" != "$ewin" ]; then
+      hide_editor "$id" "$chat"
+    fi
+  done <<EOF
+$PANES
+EOF
+
+  if [ -n "$arriving" ]; then
+    ed=$(opt_of @ta_notes "$arriving")
+    if [ -n "$ed" ] && pane_ok "$ed"; then
+      eopen=$(opt_of @ta_notes_open "$ed")
+      if [ "$(opt_of session_name "$ed")" = "$NOTES_SESSION" ] && [ "$eopen" = 1 ]; then
+        # No select-pane. You switched to a chat, not to its notes.
+        show_editor "$ed" "$arriving"
+      fi
+    fi
+  fi
+
+  [ "$left" = 0 ] && tmux set -gu @ta_notes_any 2>/dev/null
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# tnotes close
+# ---------------------------------------------------------------------------
+
+cmd_close() {
+  local ed=${1:-} chat i=0
+  [ -n "$ed" ] || return 0
+  chat=$(opt_of @ta_notes_for "$ed")
+  # Ask first. :wqa writes the draft the way the user's own quit would, so a
+  # buffer that never reached the disk is not lost to a kill-pane.
+  tmux send-keys -t "$ed" Escape ':wqa' Enter 2>/dev/null
+  while [ "$i" -lt 20 ]; do
+    pane_ok "$ed" || break
+    sleep 0.1
+    i=$((i + 1))
+  done
+  pane_ok "$ed" && tmux kill-pane -t "$ed" 2>/dev/null
+  if [ -n "$chat" ] && pane_ok "$chat"; then
+    tmux set -p -t "$chat" -u @ta_notes 2>/dev/null
+  fi
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+
+case "${1:-}" in
+  toggle)     shift; cmd_toggle "${1:-}" ;;
+  sync)       shift; cmd_sync "${1:-}" ;;
+  send)       shift; cmd_send "${1:-}" "${2:-}" ;;
+  close)      shift; cmd_close "${1:-}" ;;
+  editor)     shift; cmd_editor "${1:-}" "${2:-}" ;;
+  # Print the header block up to the first line that is not a comment, rather
+  # than a fixed line range: the block keeps growing and a stale range silently
+  # cuts the help in half.
+  -h|--help)  awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$SELF" ;;
+  "")         awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$SELF" ;;
+  *)          echo "tnotes: unknown command $1" >&2; exit 2 ;;
+esac
