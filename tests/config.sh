@@ -56,6 +56,8 @@ claude.rules.2.session	personal
 claude.rules.2.profile	personal
 claude.rules.3.session	work
 claude.rules.3.profile	work
+usage.monthly_limit_usd	850
+usage.safety_margin_pct	5
 EOF
 )
 got=$(TA_CONFIG="$HERE/../config.example.yaml" bash "$TA" --config 2>&1)

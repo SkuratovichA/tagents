@@ -52,3 +52,18 @@ claude:
   # When no rule matches. The default is `ask` — a small picker over the
   # profiles above. Any profile name works here instead.
   # default: ask
+
+# What the month is allowed to cost, and who is spending it. The cap is in no
+# transcript — it comes off the plan — so it is written here by hand and changed
+# by hand when the plan does. `tagents --keys` lists $ for the day-by-day table.
+usage:
+  # The profile whose spend is tracked. With this omitted every usage surface is
+  # off: no figure in the status bar, no footer under the list, no $ window.
+  # watch: work
+
+  # The monthly cap, from the account's own billing page.
+  monthly_limit_usd: 850
+
+  # The estimate is priced from transcripts and reads a few percent under the
+  # bill, so the daily allowance is budgeted against limit×(1−margin) — 5% here.
+  safety_margin_pct: 5
