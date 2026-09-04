@@ -278,6 +278,38 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+t "1b. a pane wider than the table"
+# ---------------------------------------------------------------------------
+# A record of its own, with a label far longer than the 24 columns the width
+# table used to stop at, torn down again at the end of the section so nothing
+# after it sees an extra agent in the tree.
+LONG=abcdefghij-klmnopqrst-uvwxyz-0123456789
+mkrec 8009 sid-wide ""
+printf 'sid-wide\t%s\n' "$LONG" >>"$STATE/labels.tsv"
+
+WIDE=$(rows_at 230)
+hasnt "at 140 columns the long name is still cut" "$LONG" "$(row_of %8009 "$(rows_at 140)")"
+has   "...and at 230 it is spelled out in full"   "$LONG" "$(row_of %8009 "$WIDE")"
+
+# The rows have to grow into the pane, not past it: fzf wraps anything wider and
+# a wrapped row is two rows.  Counted in characters, not bytes — the tree and the
+# badges are multibyte.
+WIDEST=$(printf '%s\n' "$WIDE" | cut -f2 |
+           while IFS= read -r l; do
+             printf '%s' "$l" | LC_ALL=en_US.UTF-8 wc -m
+           done | sort -n | tail -1 | tr -d ' ')
+ok "...and no row overflows the pane it was built for" \
+   yes "$([ "${WIDEST:-999}" -le 228 ] && echo yes || echo no)"
+
+# The other half of the same bargain: a column is dropped because the detail
+# needs the room, so where the detail does not need it the column stays.
+has "87 columns still have room for the model" "opus5" "$(row_of %8001 "$(rows_at 87)")"
+
+rm -f "$STATE/8009.tsv"
+grep -v '^sid-wide	' "$STATE/labels.tsv" >"$STATE/labels.new" 2>/dev/null
+mv "$STATE/labels.new" "$STATE/labels.tsv" 2>/dev/null
+
+# ---------------------------------------------------------------------------
 t "2. hiding columns"
 # ---------------------------------------------------------------------------
 # The money first: hiding cost has to take every dollar figure with it, and
@@ -374,7 +406,7 @@ TABLE=$(run --keys | cut -f1 | sort)
 BOUND=$(awk '/^dash\(\) \{/, /^\}$/' "$TA" |
           sed -n "s/.*--bind=['\"]\{0,1\}\([^:'\"]*\):.*/\1/p" |
           sed "s/\\\$RENAME_KEY/ctrl-r/" |
-          grep -v -e '^start$' -e '^double-click$' -e '^f2$' | sort -u)
+          grep -v -e '^start$' -e '^resize$' -e '^double-click$' -e '^f2$' | sort -u)
 for k in $BOUND; do
   case "$TABLE" in *"$k"*) pass=$((pass+1)); printf '  ok   %s is bound and listed\n' "$k" ;;
     *) fail=$((fail+1)); printf '  FAIL %s is bound by dash() and has no row in keys_table\n' "$k" ;;
