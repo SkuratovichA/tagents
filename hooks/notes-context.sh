@@ -29,11 +29,11 @@ payload=$(cat 2>/dev/null) || exit 0
 # would collapse and shift the next field into its slot.
 us=$(printf '\037')
 line=$(printf '%s' "$payload" | jq -r --arg us "$us" '
-  [ (.hook_event_name // ""), (.cwd // "") ] | join($us)
+  [ (.hook_event_name // ""), (.cwd // ""), (.session_id // "") ] | join($us)
 ' 2>/dev/null) || exit 0
 [ -n "$line" ] || exit 0
 
-IFS="$us" read -r event cwd <<EOF
+IFS="$us" read -r event cwd sid <<EOF
 $line
 EOF
 
@@ -65,12 +65,39 @@ fi
 
 [ "$event" = "UserPromptSubmit" ] || exit 0
 
+# A SESSION THAT STARTED BEFORE THE FOLDER DID NEVER HEARD OF IT. `SessionStart`
+# fires once, and it fires early: the folder is often created later in the same
+# session, and from then on the only thing that would mention it is a diff — so a
+# quiet folder means the session never learns where documents go and writes them
+# somewhere else entirely. The prompt path therefore says the standing paragraph
+# once per session on its own. Who was told lives in `.git/ta-seen-sessions`,
+# beside the marker and inside `.git`, so it is never tracked and never turns up
+# in the diff it helps produce.
+seen_file="$dir/.git/ta-seen-sessions"
+told=1
+if [ -n "${sid:-}" ] && ! grep -qxF "$sid" "$seen_file" 2>/dev/null; then told=0; fi
+
+remember() {
+  [ "$told" = 0 ] || return 0
+  told=1
+  { cat "$seen_file" 2>/dev/null; printf '%s\n' "$sid"; } | tail -n 200 \
+    >"$seen_file.tmp" 2>/dev/null && mv -f "$seen_file.tmp" "$seen_file" 2>/dev/null
+  return 0
+}
+
+# The paragraph on its own, for a turn that has no diff to carry it.
+nudge() {
+  [ "$told" = 0 ] || return 0
+  emit "$standing"
+  remember
+}
+
 head=$(git -C "$dir" rev-parse HEAD 2>/dev/null) || head=
-[ -n "$head" ] || exit 0            # a folder with no commits yet has nothing to say
+[ -n "$head" ] || { nudge; exit 0; }   # no commits yet: nothing to diff, still worth naming
 
 marker="$dir/.git/ta-last-seen"
 seen=$(cat "$marker" 2>/dev/null) || seen=
-if [ "$head" = "$seen" ]; then exit 0; fi
+if [ "$head" = "$seen" ]; then nudge; exit 0; fi
 
 # A marker naming a commit that no longer exists (amend, rebase, a folder that
 # was re-created) must not turn every later turn into a git error: fall back to
@@ -98,6 +125,7 @@ stat=$(git -C "$dir" diff --stat "$base" HEAD -- . ':!prompt.md' 2>/dev/null)
 # Nothing outside prompt.md moved: the commits are accounted for, so bank them
 # and stay quiet rather than injecting an empty section.
 if [ -z "$stat" ]; then
+  nudge
   printf '%s\n' "$head" >"$marker" 2>/dev/null
   exit 0
 fi
@@ -124,5 +152,6 @@ $stat
 $body"
 
 emit "$ctx"
+remember
 printf '%s\n' "$head" >"$marker" 2>/dev/null
 exit 0
