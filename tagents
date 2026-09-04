@@ -1483,20 +1483,41 @@ rename_agent() {
   # Prefer the session id; a session that has not emitted an event yet has none,
   # so fall back to the pane, which is at least stable while it lives.
   keyv=${sid:-$pane}
-  prompt 9 --ask-rename "$keyv" "$pane" && return 0
+  prompt 10 --ask-rename "$keyv" "$pane" && return 0
   ask_rename "$keyv" "$pane"
 }
 
 ask_rename() {  # the prompt itself — normally the body of the popup
-  local keyv=$1 pane=${2:-} cur name
+  local keyv=$1 pane=${2:-} cur name rc
+  # THE NAME YOU ARE CHANGING IS THE ONE YOU START FROM. A rename is almost
+  # always a small edit of the name already there, and retyping it from nothing
+  # is how a rename turns into a typo. bash 3.2 has no `read -i` to seed a line
+  # with; fzf has --query, and --print-query hands it straight back, so the
+  # dialog opens on the current name with the cursor at the end of it. Its list
+  # is empty on purpose — there is nothing to pick here, only a line to type.
   cur=$(label_of "$keyv")
-  printf '\033[1mname this agent\033[0m\n'
-  printf '\033[90m%s\033[0m\n' "$keyv"
-  [ -n "$cur" ] && printf '\033[90mnow: %s\033[0m\n' "$cur"
-  printf '\033[90mempty clears it · ctrl-c cancels\033[0m\n> '
-  # Bounded: this may be running inline (no popup), where fzf has handed over
-  # the terminal and a read that never returns takes the dashboard with it.
-  IFS= read -r -t 300 name || return 0
+  [ -n "$cur" ] || cur=$(preview_name "$pane")
+  if [ -t 0 ]; then
+    name=$(fzf --print-query --query "$cur" --layout=reverse --height=100% \
+             --no-info --prompt='name> ' \
+             --header="name this agent
+empty clears it · esc cancels" </dev/null 2>/dev/null)
+    rc=$?
+    # Esc (130) leaves the label exactly as it was. Every Enter here exits 1 —
+    # nothing in the list to accept — and prints the query as its only line.
+    [ "$rc" = 130 ] && return 0
+    name=${name%%$'\n'*}
+  else
+    # NO TERMINAL, NO DIALOG: fzf has nothing to draw on when this is driven
+    # from a pipe rather than typed into, which is how a scripted rename and the
+    # tests reach it. Bounded, because inline (no popup) fzf has handed the
+    # terminal over and a read that never returns takes the dashboard with it.
+    printf '\033[1mname this agent\033[0m\n'
+    printf '\033[90m%s\033[0m\n' "$keyv"
+    [ -n "$cur" ] && printf '\033[90mnow: %s\033[0m\n' "$cur"
+    printf '\033[90mempty clears it · ctrl-c cancels\033[0m\n> '
+    IFS= read -r -t 300 name || return 0
+  fi
   set_label "$keyv" "$name"
   name_window "$pane" "$name"
 }

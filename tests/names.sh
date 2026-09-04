@@ -485,5 +485,61 @@ case "$COUNTS" in
   *) fail=$((fail+1)); printf '  FAIL %s\n       actual: [%s]\n' "--counts still counts the live agents" "$COUNTS" ;;
 esac
 
+# ---------------------------------------------------------------------------
+t "the rename dialog opens on the name that is there"
+# ---------------------------------------------------------------------------
+# A fake fzf that writes its argv down and answers with the --query it was
+# handed, so what the dialog was seeded with can be read back afterwards, and
+# exits 130 on demand for the esc case.
+FZFBIN="$ROOT/fzfbin"; mkdir -p "$FZFBIN"
+cat >"$FZFBIN/fzf" <<'FZFEOF'
+#!/bin/sh
+for a in "$@"; do printf '%s\n' "$a"; done >"$FZFDUMP"
+q=""
+while [ $# -gt 0 ]; do
+  [ "$1" = --query ] && q=$2
+  shift
+done
+[ -n "${FZFRC:-}" ] && exit "$FZFRC"
+printf '%s\n' "$q"
+FZFEOF
+chmod +x "$FZFBIN/fzf"
+
+qof() { awk '$0 == "--query" { getline; print; exit }' "${1:-}" 2>/dev/null; }
+askrename() {  # <dump> <sid> [env assignments] -> the dialog's argv in <dump>
+  local dump=$1 sid=$2 envs=${3:-} i=0
+  rm -f "$dump"
+  # In a window of the throwaway server, which is where a real pty is: the
+  # dialog only opens where fzf has a terminal to draw on. TA_MODE=popup keeps
+  # the prompt inline — a popup cannot open a popup, and this is the shape
+  # prefix+a runs in anyway.
+  tm new-window -d -t tatest-work: \
+    "PATH='$FZFBIN':\$PATH FZFDUMP='$dump' TA_MODE=popup $envs exec bash '$TA' --act rename '$RP' live '$sid'" \
+    >/dev/null 2>&1
+  while [ "$i" -lt 40 ]; do
+    [ -f "$dump" ] && { sleep 0.5; return 0; }
+    i=$((i + 1)); sleep 0.25
+  done
+  return 1
+}
+
+RP=$(newagent tatest-work 'renamed agent' sid-pre)
+printf 'sid-pre\tcurrent name\n' >>"$STATE/labels.tsv"
+askrename "$ROOT/pre.args" sid-pre
+ok "the dialog is seeded with the current label" "current name" "$(qof "$ROOT/pre.args")"
+
+printf 'sid-esc\tkeep me\n' >>"$STATE/labels.tsv"
+askrename "$ROOT/esc.args" sid-esc FZFRC=130
+ok "esc keeps the label it opened with" "keep me" \
+   "$(awk -F'\t' '$1 == "sid-esc" { print $2; exit }' "$STATE/labels.tsv" 2>/dev/null)"
+
+# No label yet: the name on screen is the next best thing to start from, and an
+# empty box would be a rename that begins by throwing the name away.
+askrename "$ROOT/none.args" sid-nolabel
+case "$(qof "$ROOT/none.args")" in
+  "") fail=$((fail+1)); printf '  FAIL %s\n' "an unlabelled agent is seeded with its displayed name" ;;
+  *)  pass=$((pass+1)); printf '  ok   %s\n' "an unlabelled agent is seeded with its displayed name" ;;
+esac
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
