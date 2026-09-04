@@ -518,12 +518,19 @@ account_dirs() {
 # against ourselves, and the jq passes are the expensive part anyway, so they
 # happen before the lock in either case and only the rename is protected.
 account_map() {
-  local locked=0 fresh=1 n d tmp rules
+  local locked=0 fresh=1 n d tmp rules spec
   [ "${1:-}" = "--locked" ] && locked=1
   mkdir -p "$STATE" 2>/dev/null || return 1
 
+  # THE MAP IS ONLY AS GOOD AS THE SPEC IT WAS BUILT FROM. Rename an account or
+  # change a rule and every sid keeps the names of the old spec until a history
+  # file happens to move — which is how a status bar came to say $0 for an
+  # account that had just been named under it. The spec is kept beside the map
+  # and a different spec is a stale map, whatever the timestamps say.
+  spec="${TU_ACCOUNTS:-}|${TU_ACCOUNT_RULES:-}"
   [ -s "$ACCOUNTS" ] || fresh=0
   [ -n "${TU_REFRESH_ACCOUNTS:-}" ] && fresh=0
+  [ "$(cat "$ACCOUNTS.spec" 2>/dev/null)" = "$spec" ] || fresh=0
   if [ "$fresh" = 1 ]; then
     [ -e "$META" ] && [ "$META" -nt "$ACCOUNTS" ] && fresh=0
     while IFS="$TAB" read -r n d; do
@@ -589,13 +596,14 @@ EOF
   # A reader must never see a half-written map, so the file appears whole or not
   # at all. Losing the lock is not an error: the old map is still valid, just a
   # session or two behind, and the next tick rewrites it.
+  printf '%s\n' "$spec" >"$tmp.spec" 2>/dev/null
   if [ "$locked" = 1 ]; then
-    mv -f "$tmp.out" "$ACCOUNTS" 2>/dev/null
+    mv -f "$tmp.out" "$ACCOUNTS" 2>/dev/null && mv -f "$tmp.spec" "$ACCOUNTS.spec" 2>/dev/null
   elif mkdir "$LOCK" 2>/dev/null; then
-    mv -f "$tmp.out" "$ACCOUNTS" 2>/dev/null
+    mv -f "$tmp.out" "$ACCOUNTS" 2>/dev/null && mv -f "$tmp.spec" "$ACCOUNTS.spec" 2>/dev/null
     rm -rf "$LOCK" 2>/dev/null
   fi
-  rm -f "$tmp.in" "$tmp.out" 2>/dev/null
+  rm -f "$tmp.in" "$tmp.out" "$tmp.spec" 2>/dev/null
   cat "$ACCOUNTS" 2>/dev/null
   return 0
 }
