@@ -395,6 +395,11 @@ update() {
     mv -f "$tmp/meta.final" "$META" 2>/dev/null
   fi
 
+  # The account map is refreshed on the updater's tick, never on a render: the
+  # jq passes over the histories are exactly the kind of parsing the index
+  # exists to keep off the two-second path.
+  account_map --locked >/dev/null 2>&1
+
   # keep facts bounded
   if [ -s "$FACTS" ]; then
     awk -F"$TAB" -v cut="$(( $(date +%s) - KEEP_DAYS * 86400 ))" '$1 + 0 >= cut' \
@@ -454,6 +459,132 @@ slug_map() {
   done
   mv -f "$SLUGMAP.tmp" "$SLUGMAP" 2>/dev/null
   cat "$SLUGMAP"
+}
+
+# sid -> which login paid for it.
+#
+# THE ACCOUNT IS A JOIN, NOT A COLUMN. Every config dir shares one transcript
+# pool (~/.claude-d/projects is a symlink into ~/.claude/projects), so no facts
+# row can tell which login was billed, and facts.tsv is append-only — a 15th
+# field would be blank for every row already written and could never be
+# back-filled without a --rebuild that only recovers what the transcripts still
+# hold. A side table can be thrown away and rebuilt from scratch at any time.
+#
+# What does know the answer is each config dir's own history.jsonl: it lists the
+# sessions started under that login. Headless `-p` runs write no history line,
+# so a second pass classifies whatever is left by the directory it was launched
+# in — the same rules tagents already uses to pick a profile.
+ACCOUNTS="$STATE/accounts.tsv"
+
+# TU_ACCOUNTS is "name=dir;name=dir"; an empty dir means $HOME/.claude, the
+# default config dir. Unset, the accounts are discovered: the default one plus
+# every ~/.claude-* directory that keeps a history. Dirs are deduped by their
+# real path because ~/.claude-personal is a symlink to ~/.claude-d, and reading
+# both would double-count every personal session.
+account_dirs() {
+  local spec=${TU_ACCOUNTS:-} d n ent
+  if [ -z "$spec" ]; then
+    spec="default="
+    for d in "$HOME"/.claude-*/; do
+      [ -f "${d}history.jsonl" ] || continue
+      n=$(basename "${d%/}"); n=${n#.claude-}
+      spec="$spec;$n=${d%/}"
+    done
+  fi
+  printf '%s' "$spec" | tr ';' '\n' | while IFS= read -r ent; do
+    [ -n "$ent" ] || continue
+    n=${ent%%=*}; d=${ent#*=}
+    [ -n "$d" ] || d="$HOME/.claude"
+    d=$(cd "$d" 2>/dev/null && pwd -P) || continue
+    printf '%s\t%s\n' "$n" "$d"
+  done | awk -F"$TAB" '!seen[$2]++'
+}
+
+# Writes $ACCOUNTS (sid<TAB>account) and prints it. Called with --locked from
+# inside update(), which already holds the lock: taking it again would deadlock
+# against ourselves, and the jq passes are the expensive part anyway, so they
+# happen before the lock in either case and only the rename is protected.
+account_map() {
+  local locked=0 fresh=1 n d tmp rules
+  [ "${1:-}" = "--locked" ] && locked=1
+  mkdir -p "$STATE" 2>/dev/null || return 1
+
+  [ -s "$ACCOUNTS" ] || fresh=0
+  [ -n "${TU_REFRESH_ACCOUNTS:-}" ] && fresh=0
+  if [ "$fresh" = 1 ]; then
+    [ -e "$META" ] && [ "$META" -nt "$ACCOUNTS" ] && fresh=0
+    while IFS="$TAB" read -r n d; do
+      [ -f "$d/history.jsonl" ] && [ "$d/history.jsonl" -nt "$ACCOUNTS" ] && fresh=0
+    done <<EOF
+$(account_dirs)
+EOF
+  fi
+  [ "$fresh" = 1 ] && { cat "$ACCOUNTS"; return 0; }
+
+  tmp="$ACCOUNTS.tmp.$$"
+  : >"$tmp.in"
+  while IFS="$TAB" read -r n d; do
+    [ -f "$d/history.jsonl" ] || continue
+    jq -r --arg a "$n" 'select(.sessionId)|["H",.sessionId,(.timestamp//0),$a]|@tsv' \
+      "$d/history.jsonl" 2>/dev/null >>"$tmp.in"
+  done <<EOF
+$(account_dirs)
+EOF
+  slug_map | sed 's/^/P\t/' >>"$tmp.in" 2>/dev/null
+  [ -s "$META" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "S", $1, $2 }' "$META" >>"$tmp.in"
+
+  rules=${TU_ACCOUNT_RULES:-}
+  awk -F"$TAB" -v OFS="$TAB" -v rules="$rules" -v home="$HOME" '
+    BEGIN {
+      n = split(rules, rr, ";")
+      for (i = 1; i <= n; i++) {
+        if (rr[i] ~ /^[ \t]*$/) continue
+        if (!match(rr[i], /=[^=]*$/)) continue
+        k = substr(rr[i], 1, RSTART - 1); v = substr(rr[i], RSTART + 1)
+        if (substr(k, 1, 2) == "~/") k = home substr(k, 2)
+        sub(/\/+$/, "", k)
+        if (k == "" || v == "") continue
+        NRULE++; RD[NRULE] = k; RN[NRULE] = v
+      }
+    }
+    # Longest prefix wins, and only on a path-component boundary: ~/git/personalx
+    # is not inside ~/git/personal, however much it looks like it.
+    function ruleacct(dir,   i, k, best, bn) {
+      best = ""; bn = "?"
+      for (i = 1; i <= NRULE; i++) {
+        k = RD[i]
+        if (dir != k && !(index(dir, k) == 1 && substr(dir, length(k) + 1, 1) == "/")) continue
+        if (length(k) > length(best)) { best = k; bn = RN[i] }
+      }
+      return bn
+    }
+    # One sid can appear in two histories (a session resumed under the other
+    # login). The newest line wins, so the join stays single-valued instead of
+    # emitting the session twice and double-counting its dollars.
+    $1 == "H" { if (!($2 in HT) || $3 + 0 > HT[$2]) { HT[$2] = $3 + 0; HA[$2] = $4 } ; next }
+    $1 == "P" { PD[$2] = $3; next }
+    $1 == "S" { SL[$2] = $3; next }
+    END {
+      for (s in HA) print s, HA[s]
+      for (s in SL) {
+        if (s in HA) continue
+        d = (SL[s] in PD) ? PD[SL[s]] : ""
+        print s, (d == "" ? "?" : ruleacct(d))
+      }
+    }' "$tmp.in" | sort -u >"$tmp.out" 2>/dev/null
+
+  # A reader must never see a half-written map, so the file appears whole or not
+  # at all. Losing the lock is not an error: the old map is still valid, just a
+  # session or two behind, and the next tick rewrites it.
+  if [ "$locked" = 1 ]; then
+    mv -f "$tmp.out" "$ACCOUNTS" 2>/dev/null
+  elif mkdir "$LOCK" 2>/dev/null; then
+    mv -f "$tmp.out" "$ACCOUNTS" 2>/dev/null
+    rm -rf "$LOCK" 2>/dev/null
+  fi
+  rm -f "$tmp.in" "$tmp.out" 2>/dev/null
+  cat "$ACCOUNTS" 2>/dev/null
+  return 0
 }
 
 # sid -> the directory the session was launched in. The hook's cwd follows the
