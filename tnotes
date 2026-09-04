@@ -6,7 +6,7 @@
 #                               or hide it again when it is already there
 #   tnotes sync [pane]          park every editor whose chat you are not looking
 #                               at, bring back the one belonging to <pane>
-#   tnotes send <chat> <dir>    commit the notes and paste prompt.md into <chat>
+#   tnotes send <chat> <dir>    commit the notes and hand prompt.md to <chat>
 #   tnotes close <editor>       ask the editor to write and quit, then make sure
 #   tnotes editor <chat> <dir>  the program the editor pane runs (not for you)
 #
@@ -14,6 +14,13 @@
 # writing. This gives every Claude pane a real editor next to it, on a file that
 # lives with the project (<repo>/.claude/notes/prompt.md) and is committed to a
 # little repo of its own, so nothing you drafted is ever lost to a closed pane.
+#
+# WHAT :q ACTUALLY SENDS. A reference, not the text. tnotes types
+# `@<notes>/prompt.md ` into the chat and stops: the CLI reads the file when the
+# user presses Enter, so the draft can be reopened and rewritten right up to
+# that moment, and nothing is ever truncated behind their back. `notes.send` in
+# the tagents config picks another shape for anyone who wants the old one —
+# `paste` puts the text in the input, `submit` pastes it and presses Enter.
 #
 # WHY A SEPARATE SCRIPT AND NOT A tagents SUBCOMMAND. The editor pane runs this
 # program for as long as nvim is open — hours. `tagents` is read lazily by bash
@@ -196,13 +203,24 @@ cmd_toggle() {
 # ---------------------------------------------------------------------------
 
 cmd_editor() {
-  local chat=${1:-} dir=${2:-}
+  local chat=${1:-} dir=${2:-} sent
   [ -n "$chat" ] && [ -n "$dir" ] || { printf 'tnotes: editor <chat> <dir>\n' >&2; exit 2; }
   cd "$dir" 2>/dev/null || {
     printf 'tnotes: %s is gone\n' "$dir" >&2
     sleep 5
     exit 1
   }
+  # A DRAFT THAT WAS SENT IS NOT A DRAFT ANY MORE. The hook writes the sha it
+  # committed at submit time into .git/ta-sent; if the file on disk is still
+  # byte-for-byte that commit, the user has seen it answered and wants an empty
+  # page. Anything else — an edit made after the send, or a draft never sent at
+  # all — is theirs and survives.
+  sent=$(cat "$dir/.git/ta-sent" 2>/dev/null)
+  if [ -n "$sent" ] &&
+     git -C "$dir" show "$sent:prompt.md" 2>/dev/null | cmp -s - "$dir/prompt.md"; then
+    : >"$dir/prompt.md"
+  fi
+
   if command -v nvim >/dev/null 2>&1; then
     # autowriteall plus the FocusLost/BufLeave autocmd so the draft is on disk
     # the instant you look away — `tnotes send` reads the FILE, not the buffer.
@@ -237,8 +255,37 @@ commit_notes() {  # <dir> — every draft is kept, whether or not it was sent
       commit -q -m "$subj" >/dev/null 2>&1
 }
 
+# tnotes has no YAML parser and is not getting one: tagents already reads the
+# config and `--config` prints it flattened, one path<TAB>value line per leaf.
+# It lives beside this script in both places tnotes is ever installed.
+send_mode() {  # -> reference | paste | submit
+  local m
+  m=$("${SELF%/*}/tagents" --config 2>/dev/null |
+        awk -F'\t' '$1 == "notes.send" { print $2; exit }')
+  case "$m" in
+    paste|submit|reference) printf '%s' "$m" ;;
+    *)                      printf 'reference' ;;
+  esac
+}
+
+# THE SHORTEST PATH THE CLI WILL RESOLVE. An @-mention is read relative to the
+# pane's own directory, so `.claude/notes/prompt.md` is both what the user would
+# have typed and what they can read back in the input line; the absolute path is
+# the fallback for a notes folder that is not under the pane at all.
+ref_path() {  # <chat pane> <dir> -> the path to put after the @
+  local chat=$1 dir=$2 cwd
+  cwd=$(opt_of pane_current_path "$chat")
+  cwd=${cwd%/}
+  if [ -n "$cwd" ]; then
+    case "$dir/" in
+      "$cwd"/*) printf '%s/prompt.md' "${dir#"$cwd"/}"; return 0 ;;
+    esac
+  fi
+  printf '%s/prompt.md' "$dir"
+}
+
 cmd_send() {
-  local chat=${1:-} dir=${2:-} cmd
+  local chat=${1:-} dir=${2:-} cmd mode
   [ -n "$chat" ] && [ -n "$dir" ] || { printf 'tnotes: send <chat> <dir>\n' >&2; exit 2; }
   commit_notes "$dir"
   grep -q '[^[:space:]]' "$dir/prompt.md" 2>/dev/null || exit 0
@@ -254,11 +301,25 @@ cmd_send() {
     exit 1
   fi
 
+  mode=$(send_mode)
+
+  # THE DEFAULT SENDS A REFERENCE AND STOPS THERE. The file is read by the CLI
+  # at submit time, not now, so leaving `@…/prompt.md ` in the input costs the
+  # user nothing and buys them everything: they can reopen the editor, rewrite
+  # the draft, and the Enter they press later sends what the file says THEN.
+  # Nothing is truncated here either — the hook that sees the submit is the one
+  # that knows the draft was actually sent.
+  if [ "$mode" = reference ]; then
+    tmux send-keys -t "$chat" -l "@$(ref_path "$chat" "$dir") " 2>/dev/null || exit 1
+    exit 0
+  fi
+
   # A buffer and a bracketed paste, not send-keys -l: the draft is multi-line by
   # design, and typed newlines would submit it one line at a time. -p brackets it
   # so Claude's TUI takes the whole thing as one paste; -d drops the buffer after.
   tmux load-buffer -b ta-notes "$dir/prompt.md" 2>/dev/null || exit 1
   tmux paste-buffer -p -d -b ta-notes -t "$chat" 2>/dev/null || exit 1
+  [ "$mode" = submit ] || exit 0
   sleep 0.3   # let the TUI settle before the newline, or it swallows it
   tmux send-keys -t "$chat" Enter 2>/dev/null
   : >"$dir/prompt.md"

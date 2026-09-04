@@ -67,3 +67,16 @@ usage:
   # The estimate is priced from transcripts and reads a few percent under the
   # bill, so the daily allowance is budgeted against limit×(1−margin) — 5% here.
   safety_margin_pct: 5
+
+# The notes workspace (`tnotes`, prefix + C-t).
+notes:
+  # What `:q` does with the draft in prompt.md. The draft is always committed
+  # first, whichever this is.
+  #
+  #   reference  type `@.claude/notes/prompt.md ` into the chat and stop. The
+  #              CLI reads the file when you press Enter, so the draft can be
+  #              reopened and rewritten until then, and it is cleared for you
+  #              the next time the editor opens after it was actually sent.
+  #   paste      put the text itself in the input, without pressing Enter.
+  #   submit     paste the text and press Enter; the draft is cleared at once.
+  send: reference
