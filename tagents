@@ -1657,6 +1657,12 @@ list() {
   fi
   [ -z "$cols" ] && cols=$(tput cols 2>/dev/null)
   case ${cols:-x} in ''|*[!0-9]*) cols=100 ;; esac
+  # A POPUP LIST IS NOT AS WIDE AS THE POPUP. FZF_COLUMNS is the whole window,
+  # but in popup mode the preview sits beside the list and takes 55% of it, so
+  # the rows have the other 45% to live in and every one of them was being built
+  # for more than twice the width it got. Measured anywhere else the number
+  # already is the list's own width and stands as it is.
+  [ "${TA_MODE:-}" = popup ] && cols=$(( cols * 45 / 100 ))
   [ "$cols" -lt 34 ] && cols=34
 
   # WHICH CHATS ARE IN THE SIDEBAR, and which of them the cursor is in. With two
@@ -1832,7 +1838,7 @@ list() {
     # dropped in a deliberate order instead — the ones that answer "which agent
     # and how urgent" survive to the very last, and the state word goes early
     # because its icon already carries the same information in colour.
-    function fitcols(   avail) {
+    function fitcols(   avail, n) {
       # The tree prefix, or in flat mode the two columns the docked marker is
       # drawn in, are both added after this and both have to be paid for here.
       # The tree gets its mark for nothing — it is drawn where the tee was
@@ -1857,6 +1863,20 @@ list() {
       else if (avail >=  50) { lw=0; namew=18; ctxw=5; burnw=0; mdlw=0; acctw=0; locw=0  }
       else if (avail >=  38) { lw=0; namew=14; ctxw=5; burnw=0; mdlw=0; acctw=0; locw=0  }
       else                   { lw=0; namew=12; ctxw=0; burnw=0; mdlw=0; acctw=0; locw=0  }
+      # ROOM TO SPARE IS ROOM FOR THE NAME. The table stops at 128 because that
+      # is where every column fits at its full width — but a 230-column pane was
+      # then laid out exactly like a 133-column one, with the whole surplus going
+      # to the detail and names still cut at 24. A third of the surplus goes to
+      # the name and a ninth of it to the location, capped so a very wide pane
+      # does not turn the list into a field of padding. It starts above 140
+      # rather than 128 so every width the tests pin renders byte for byte what
+      # it always did.
+      if (avail > 140) {
+        n = int((avail - 140) / 3)
+        if (n > 24) n = 24
+        namew += n
+        locw += int(n / 3)
+      }
       # The badge is at EVERY breakpoint — two columns for the answer the 8-wide
       # acct column gives only on the widest lists, which is what it is for. It
       # is zero when nothing is configured, so a user with no config file gets
@@ -1879,14 +1899,31 @@ list() {
       if ("model" in hid) mdlw = 0
       if ("acct"  in hid) acctw = 0
       if ("loc"   in hid) locw = 0
-      # 2 icon, lw + its space, 6 age + 2, badge + 1, name + 1, then what is left
-      fixed = 2 + (lw ? lw + 1 : 0) + 8 + (bdgw ? bdgw + 1 : 0) + namew + 1 \
-              + (projw ? projw + 1 : 0) \
-              + (ctxw ? ctxw + 1 : 0) + (burnw ? burnw + 1 : 0) \
-              + (mdlw ? mdlw + 1 : 0) + (acctw ? acctw + 1 : 0) \
-              + (locw ? locw + 1 : 0)
+      # A COLUMN IS ONLY WORTH DROPPING IF THE DETAIL NEEDS THE ROOM. Between 80
+      # and 112 columns the table drops the model and the account outright and
+      # hands their width to a detail line that is usually far shorter than the
+      # space it is handed. Put them back while the detail still has twelve
+      # columns left to say something in, model first — the reverse of the order
+      # they were dropped in, so the one that went last comes back first. A
+      # column the user has hidden stays hidden: this restores widths, not
+      # decisions.
+      if (avail >= 80 && avail < 112) {
+        if (!mdlw  && !("model" in hid) && avail - (fixedw() + 9) - 1 >= 12) mdlw  = 8
+        if (!acctw && !("acct"  in hid) && avail - (fixedw() + 9) - 1 >= 12) acctw = 8
+      }
+      fixed = fixedw()
       detw = avail - fixed - 1
       if (detw < 6) detw = 0
+    }
+    # What every column but the detail costs, at the widths fitcols has settled
+    # on so far — asked while it is still deciding, and once more when it has.
+    function fixedw() {
+      # 2 icon, lw + its space, 6 age + 2, badge + 1, name + 1, then what is left
+      return 2 + (lw ? lw + 1 : 0) + 8 + (bdgw ? bdgw + 1 : 0) + namew + 1 \
+             + (projw ? projw + 1 : 0) \
+             + (ctxw ? ctxw + 1 : 0) + (burnw ? burnw + 1 : 0) \
+             + (mdlw ? mdlw + 1 : 0) + (acctw ? acctw + 1 : 0) \
+             + (locw ? locw + 1 : 0)
     }
     # Context is the number that decides whether to keep going or /compact: at
     # 200k the long-context premium starts, and everything past it is re-read
@@ -2649,7 +2686,7 @@ forget_agent() {  # <pane-key> — drop a closed session's record from the list
 }
 
 refresher() {
-  local port=${TA_PORT:-} tick=0 dp seat last="" n
+  local port=${TA_PORT:-} tick=0 dp seat last="" n fails=0
   [ -z "$port" ] && return 0
   while sleep 2; do
     # Advance the token index out here, not in list(): parsing the tail of every
@@ -2673,8 +2710,19 @@ refresher() {
         ensure_seat "$dp" >/dev/null 2>&1
       fi
     fi
-    curl -s -XPOST "http://127.0.0.1:$port" -d "reload-sync($SELF --list)" \
-      >/dev/null 2>&1 || break
+    # ONE FAILED POST IS NOT A DEAD LIST. curl comes back non-zero for a refused
+    # connection, and fzf refuses one whenever it is between reloads or busy with
+    # a child of its own — so breaking on the first failure left a live dashboard
+    # with no refresher behind it and nothing to say why. Five in a row is ten
+    # seconds of a list that never answers, which is a list that has really gone;
+    # anything short of that resets the count.
+    if ! curl -s -XPOST "http://127.0.0.1:$port" -d "reload-sync($SELF --list)" \
+           >/dev/null 2>&1; then
+      fails=$((fails + 1))
+      [ "$fails" -ge 5 ] && break
+      continue
+    fi
+    fails=0
 
     # THE CURSOR FOLLOWS THE SEAT. With two chats side by side, clicking into the
     # other one leaves the list still pointing at the row you left — and that row
@@ -4202,6 +4250,7 @@ dash() {
       "$vbind" \
       --bind='ctrl-t:execute-silent('"$SELF"' --toggle-group)+reload-sync('"$SELF"' --list)' \
       --bind='ctrl-l:reload-sync('"$SELF"' --list)' \
+      --bind='resize:reload-sync('"$SELF"' --list)' \
       --bind="start:execute-silent(TA_PORT=\$FZF_PORT nohup $SELF --refresher >/dev/null 2>&1 &)" \
       --expect=ctrl-q)
     rc=$?
