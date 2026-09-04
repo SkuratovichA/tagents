@@ -285,7 +285,7 @@ ref_path() {  # <chat pane> <dir> -> the path to put after the @
 }
 
 cmd_send() {
-  local chat=${1:-} dir=${2:-} cmd mode
+  local chat=${1:-} dir=${2:-} cmd mode ref row
   [ -n "$chat" ] && [ -n "$dir" ] || { printf 'tnotes: send <chat> <dir>\n' >&2; exit 2; }
   commit_notes "$dir"
   grep -q '[^[:space:]]' "$dir/prompt.md" 2>/dev/null || exit 0
@@ -310,7 +310,22 @@ cmd_send() {
   # Nothing is truncated here either — the hook that sees the submit is the one
   # that knows the draft was actually sent.
   if [ "$mode" = reference ]; then
-    tmux send-keys -t "$chat" -l "@$(ref_path "$chat" "$dir") " 2>/dev/null || exit 1
+    ref="@$(ref_path "$chat" "$dir")"
+    # A SECOND :q MUST NOT LEAVE A SECOND MENTION. Reopening the editor to
+    # change one's mind before pressing Enter is the whole point of this mode,
+    # and the reference the first :q typed is still sitting there unsubmitted.
+    # The cursor's row IS the input line — the CLI's history is all above it —
+    # so the pane is asked what the user is looking at rather than remembered.
+    row=$(tmux display -p -t "$chat" '#{cursor_y}' 2>/dev/null)
+    case "${row:-x}" in
+      *[!0-9]*) row= ;;
+    esac
+    if [ -n "$row" ]; then
+      case "$(tmux capture-pane -p -t "$chat" -S "$row" -E "$row" 2>/dev/null)" in
+        *"$ref"*) exit 0 ;;
+      esac
+    fi
+    tmux send-keys -t "$chat" -l "$ref " 2>/dev/null || exit 1
     exit 0
   fi
 

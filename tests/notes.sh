@@ -276,6 +276,14 @@ sleep 0.5
 has "an unknown value falls back to a reference" "@.claude/notes/prompt.md" \
     "$(tm capture-pane -p -t "$MCHAT" 2>/dev/null)"
 ok "...and keeps the draft" "sideways draft" "$(cat "$NOTES/prompt.md")"
+
+# The second :q of a draft nobody has submitted yet: the reference is already in
+# the input and typing it again would mention the same file twice.
+run_cfg "$CFG_X" send "$MCHAT" "$NOTES" >/dev/null 2>&1
+ok "a second send exits 0" 0 "$?"
+sleep 0.5
+ok "...and leaves exactly one reference" 1 \
+   "$(tm capture-pane -p -t "$MCHAT" 2>/dev/null | grep -o '@\.claude/notes/prompt\.md' | wc -l | tr -d ' ')"
 tm send-keys -t "$MCHAT" C-u >/dev/null 2>&1
 
 : >"$ROOT/pasted3.txt"
