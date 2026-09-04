@@ -28,14 +28,19 @@ payload=$(cat 2>/dev/null) || exit 0
 # Unit separator, as in the state hook: tab is IFS whitespace, so an empty cwd
 # would collapse and shift the next field into its slot.
 us=$(printf '\037')
+# The prompt rides along flattened: it is only ever scanned for an @-token, and
+# a newline in it would end the one line this read is built on.
 line=$(printf '%s' "$payload" | jq -r --arg us "$us" '
-  [ (.hook_event_name // ""), (.cwd // ""), (.session_id // "") ] | join($us)
+  [ (.hook_event_name // ""), (.cwd // ""), (.session_id // ""),
+    ((.prompt // "") | split("\n") | join(" ") | split("\r") | join(" ")) ]
+  | join($us)
 ' 2>/dev/null) || exit 0
 [ -n "$line" ] || exit 0
 
-IFS="$us" read -r event cwd sid <<EOF
+IFS="$us" read -r event cwd sid prompt <<EOF
 $line
 EOF
+sent_ctx=
 
 [ -n "${cwd:-}" ] || exit 0
 
@@ -56,6 +61,18 @@ standing="Workspace: $dir is a git-versioned notes folder. Documents you produce
 emit() {  # <text>
   printf '%s' "$1" | jq -Rs --arg ev "$event" \
     '{hookSpecificOutput:{hookEventName:$ev,additionalContext:.}}' 2>/dev/null
+}
+
+# One hook call is one JSON object, so everything this turn has to say is said
+# together or not at all.
+say() {  # <text> — the turn's context, plus the sent line when there is one
+  if [ -n "$sent_ctx" ]; then
+    emit "$1
+
+$sent_ctx"
+  else
+    emit "$1"
+  fi
 }
 
 # A SESSION THAT STARTED BEFORE THE FOLDER DID NEVER HEARD OF IT. `SessionStart`
@@ -80,9 +97,13 @@ remember() {
 
 # The paragraph on its own, for a turn that has no diff to carry it.
 nudge() {
-  [ "$told" = 0 ] || return 0
-  emit "$standing"
-  remember
+  if [ "$told" = 0 ]; then
+    say "$standing"
+    remember
+  elif [ -n "$sent_ctx" ]; then
+    emit "$sent_ctx"
+  fi
+  return 0
 }
 
 if [ "$event" = "SessionStart" ]; then
@@ -94,6 +115,51 @@ if [ "$event" = "SessionStart" ]; then
 fi
 
 [ "$event" = "UserPromptSubmit" ] || exit 0
+
+# THE SUBMIT IS THE ONLY PLACE A SEND IS VISIBLE. tnotes types
+# `@<notes>/prompt.md ` into the input and stops; whether the user then pressed
+# Enter, or reopened the editor and rewrote the draft first, is knowable only
+# here. So this is where the draft is recorded as sent: a `user:` commit and the
+# sha in .git/ta-sent, which is what tells the editor it may start on a blank
+# page next time. The file itself is NEVER touched — the CLI reads it after this
+# hook returns, and an emptied prompt.md would arrive as an empty attachment.
+case "$prompt" in
+  *@*/prompt.md*)
+    dir_real=$(cd "$dir" 2>/dev/null && pwd -P) || dir_real=$dir
+    root=${dir%/.claude/notes}
+    for cand in $(printf '%s' "$prompt" | grep -o '@[^[:space:]]*/prompt\.md' 2>/dev/null); do
+      cand=${cand#@}
+      # A relative mention is resolved the way the CLI resolves it — against the
+      # cwd it was typed in — and then against the repo root, which is where the
+      # `.claude/notes/…` form the editor suggests actually points from a
+      # subdirectory.
+      case "$cand" in
+        /*) f=$cand ;;
+        *)  f=$cwd/$cand; [ -f "$f" ] || f=$root/$cand ;;
+      esac
+      [ -f "$f" ] || continue
+      fd=$(cd "$(dirname "$f")" 2>/dev/null && pwd -P) || continue
+      [ "$fd" = "$dir_real" ] || continue
+      grep -q '[^[:space:]]' "$dir/prompt.md" 2>/dev/null || continue
+
+      subj=$(awk 'NF { sub(/^[ \t]+/, ""); print substr($0, 1, 72); exit }' \
+               "$dir/prompt.md" 2>/dev/null)
+      [ -n "$subj" ] || subj='sent'
+      git -C "$dir" add prompt.md >/dev/null 2>&1
+      if ! git -C "$dir" diff --cached --quiet -- prompt.md 2>/dev/null; then
+        # The same fallback the autocommit hook has: a notes repo is never
+        # pushed, and a missing global identity must not be why a sent prompt
+        # goes unrecorded.
+        git -C "$dir" commit -q -m "user: $subj" -- prompt.md >/dev/null 2>&1 ||
+          git -C "$dir" -c user.name=tnotes -c user.email=tnotes@localhost \
+              commit -q -m "user: $subj" -- prompt.md >/dev/null 2>&1
+      fi
+      git -C "$dir" rev-parse HEAD >"$dir/.git/ta-sent" 2>/dev/null
+      sent_ctx="The attached prompt.md is the user's message for this turn — follow it as the instruction."
+      break
+    done
+    ;;
+esac
 
 head=$(git -C "$dir" rev-parse HEAD 2>/dev/null) || head=
 [ -n "$head" ] || { nudge; exit 0; }   # no commits yet: nothing to diff, still worth naming
@@ -154,7 +220,7 @@ $stat
 
 $body"
 
-emit "$ctx"
+say "$ctx"
 remember
 printf '%s\n' "$head" >"$marker" 2>/dev/null
 exit 0
