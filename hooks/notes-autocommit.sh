@@ -73,7 +73,14 @@ if git -C "$dir" diff --cached --quiet 2>/dev/null; then
   exit 0
 fi
 
-git -C "$dir" commit -q -m "claude: $rel" >/dev/null 2>&1 || exit 0
+# THE SAME IDENTITY FALLBACK `tnotes` COMMITS WITH. A machine whose git has no
+# global user.name is not a reason to drop Claude's write on the floor: this
+# repository is never pushed and never shared, so a placeholder identity is
+# harmless, and without the fallback the commit fails silently, the marker never
+# advances, and every later diff is computed from the wrong base.
+git -C "$dir" commit -q -m "claude: $rel" >/dev/null 2>&1 ||
+  git -C "$dir" -c user.name=tnotes -c user.email=tnotes@localhost \
+      commit -q -m "claude: $rel" >/dev/null 2>&1 || exit 0
 
 head=$(git -C "$dir" rev-parse HEAD 2>/dev/null) || exit 0
 [ -n "$head" ] && printf '%s\n' "$head" >"$dir/.git/ta-last-seen" 2>/dev/null
