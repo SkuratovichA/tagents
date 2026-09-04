@@ -69,15 +69,15 @@ marker()  { cat "$MARKER" 2>/dev/null; }
 
 # The prompt is always submitted from the SUBDIRECTORY, which is what proves the
 # folder is resolved from the repo root and not from the cwd.
-submit() {  # [cwd] -> additionalContext, or empty
-  local c=${1:-$SUB}
-  printf '{"hook_event_name":"UserPromptSubmit","cwd":"%s","session_id":"t","prompt":"x"}' "$c" \
+submit() {  # [cwd] [session id] -> additionalContext, or empty
+  local c=${1:-$SUB} s=${2:-t}
+  printf '{"hook_event_name":"UserPromptSubmit","cwd":"%s","session_id":"%s","prompt":"x"}' "$c" "$s" \
     | sh "$HOOKS/notes-context.sh" 2>&1 | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null
 }
 
-raw_submit() {  # [cwd] -> the hook's literal stdout
-  local c=${1:-$SUB}
-  printf '{"hook_event_name":"UserPromptSubmit","cwd":"%s","session_id":"t","prompt":"x"}' "$c" \
+raw_submit() {  # [cwd] [session id] -> the hook's literal stdout
+  local c=${1:-$SUB} s=${2:-t}
+  printf '{"hook_event_name":"UserPromptSubmit","cwd":"%s","session_id":"%s","prompt":"x"}' "$c" "$s" \
     | sh "$HOOKS/notes-context.sh" 2>&1
 }
 
@@ -176,7 +176,51 @@ contains "...and says why the body is missing" "diff over 60 KB" "$out"
 lacks    "the body itself stays out" "ZZQQUNIQUE 4999" "$out"
 
 # ---------------------------------------------------------------------------
-t "8. garbage in, silence out"
+t "8. autocommit commits where git has no identity to commit with"
+# ---------------------------------------------------------------------------
+# This machine sets user.name per repository, so a freshly created notes folder
+# has none: with the global config out of reach too, the commit used to fail
+# silently, the marker never moved, and every later diff was measured from the
+# wrong base while the model's document sat there uncommitted.
+NOID="$ROOT/noid"; NOIDN="$NOID/.claude/notes"
+mkdir -p "$NOIDN" "$ROOT/nohome"
+git -C "$NOID" init -q
+git -C "$NOIDN" init -q
+: >"$NOIDN/prompt.md"
+git -C "$NOIDN" add -A && git -C "$NOIDN" commit -q -m init
+
+# The suite exports an identity so its own fixtures can commit; the hook has to
+# run without one, which means the env vars go too, not just the config files.
+noid_wrote() {  # <file_path>
+  printf '{"hook_event_name":"PostToolUse","cwd":"%s","session_id":"t","tool_name":"Write","tool_input":{"file_path":"%s"}}' \
+    "$NOID" "$1" \
+    | env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL \
+          HOME="$ROOT/nohome" GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+          sh "$HOOKS/notes-autocommit.sh" 2>&1
+}
+
+printf 'an old silent pond\n' >"$NOIDN/haiku.md"
+ok "the hook is still silent"     "" "$(noid_wrote "$NOIDN/haiku.md")"
+ok "the write became a commit"    "claude: haiku.md" "$(git -C "$NOIDN" log -1 --format='%s' 2>/dev/null)"
+ok "...and the marker advanced"   "$(git -C "$NOIDN" rev-parse HEAD 2>/dev/null)" \
+   "$(cat "$NOIDN/.git/ta-last-seen" 2>/dev/null)"
+
+# ---------------------------------------------------------------------------
+t "9. a session that never heard about the folder is told once"
+# ---------------------------------------------------------------------------
+SEEN="$NOTES/.git/ta-seen-sessions"
+ok "the marker is level with HEAD" "$(nhead)" "$(marker)"
+out=$(raw_submit "$SUB" s-one)
+contains "a session nobody told gets the standing line" "$STANDING" \
+         "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext // ""')"
+lacks    "...and nothing else"     "changed since your last turn" "$out"
+ok "the same session is not told twice" "" "$(raw_submit "$SUB" s-one)"
+contains "a second session is told too" "$STANDING" "$(submit "$SUB" s-two)"
+ok "both ids are remembered" "s-one s-two" \
+   "$(grep -x -e s-one -e s-two "$SEEN" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
+
+# ---------------------------------------------------------------------------
+t "10. garbage in, silence out"
 # ---------------------------------------------------------------------------
 out=$(printf 'not json at all' | sh "$HOOKS/notes-context.sh" 2>&1); rc=$?
 ok "invalid JSON exits 0" 0 "$rc"
@@ -186,7 +230,7 @@ ok "the autocommit too"   0 "$rc"
 ok "...silently"          "" "$out"
 
 # ---------------------------------------------------------------------------
-t "9. the dotfiles template registers both hooks"
+t "11. the dotfiles template registers both hooks"
 # ---------------------------------------------------------------------------
 S="$DOTFILES/claude/settings.json"
 if [ -f "$S" ] && command -v jq >/dev/null 2>&1; then

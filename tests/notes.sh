@@ -62,6 +62,18 @@ codesign -f -s - "$BIN/claude" >/dev/null 2>&1
 printf 'x\n' | "$BIN/claude" >/dev/null 2>&1 ||
   { echo "notes.sh: cannot build a stub agent (codesign?)"; exit 1; }
 
+# THE LIVE CLI IS NOT NAMED `claude`. It runs out of
+# ~/.local/share/claude/versions/<version>, so #{pane_current_command} on a real
+# chat pane reads `2.1.261`. A second stub under that name — the same re-signed
+# cat, so it pastes back the same way — is what keeps the version-number branch
+# of tnotes' is_claude_cmd honest.
+VCMD=2.1.261
+cp "$BIN/claude" "$BIN/$VCMD" || exit 1
+codesign --remove-signature "$BIN/$VCMD" >/dev/null 2>&1
+codesign -f -s - "$BIN/$VCMD" >/dev/null 2>&1
+printf 'x\n' | "$BIN/$VCMD" >/dev/null 2>&1 ||
+  { echo "notes.sh: cannot build a version-named stub agent (codesign?)"; exit 1; }
+
 cat >"$BIN/nvim" <<'STUB'
 #!/bin/sh
 printf '%s\n' "$*" >>"$TN_ROOT/nvim.log"
@@ -73,7 +85,7 @@ cat >"$BIN/tagents" <<STUB
 #!/bin/sh
 exec bash "$TA" "\$@"
 STUB
-chmod +x "$BIN/claude" "$BIN/nvim" "$BIN/tagents"
+chmod +x "$BIN/claude" "$BIN/$VCMD" "$BIN/nvim" "$BIN/tagents"
 
 # EXPORTED BEFORE THE SERVER EXISTS. A tmux server keeps the environment it was
 # started with and hands it to every command it runs, so the stubs' own
@@ -233,7 +245,31 @@ ok "the orphan is gone" no "$(lives "$ED2")"
 ok "and the global flag with it" "" "$(tm show -gv @ta_notes_any 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
-t "9. everything else in the server was left alone"
+t "9. a chat whose command is a version number is still a chat"
+# ---------------------------------------------------------------------------
+VCHAT=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" \
+          "exec $VCMD >'$ROOT/pasted2.txt'" 2>/dev/null)
+VWIN=$(where "$VCHAT")
+sleep 0.6
+ok "the pane reports the version, not claude" "$VCMD" \
+   "$(tm display -p -t "$VCHAT" '#{pane_current_command}')"
+ok "and there is no state record to fall back on" no \
+   "$([ -f "$STATE/${VCHAT#%}.tsv" ] && echo yes || echo no)"
+: >"$ROOT/pasted2.txt"
+printf 'third draft\n' >"$NOTES/prompt.md"
+run send "$VCHAT" "$NOTES" >/dev/null 2>&1
+ok "send exits 0" 0 "$?"
+i=0; while [ "$i" -lt 40 ] && [ ! -s "$ROOT/pasted2.txt" ]; do sleep 0.1; i=$((i+1)); done
+ok "the draft was typed into it" "third draft" "$(cat "$ROOT/pasted2.txt" 2>/dev/null)"
+ok "and the outbox was cleared" 0 "$(wc -c <"$NOTES/prompt.md" | tr -d ' ')"
+run toggle "$VCHAT" >/dev/null 2>&1
+ok "toggle exits 0" 0 "$?"
+VED=$(notes_of "$VCHAT")
+ok "an editor opened beside it" yes "$([ -n "$VED" ] && echo yes || echo no)"
+ok "...in its own window" "$VWIN" "$(where "$VED")"
+
+# ---------------------------------------------------------------------------
+t "10. everything else in the server was left alone"
 # ---------------------------------------------------------------------------
 ok "the user terminal is untouched" "yes $TWIN" "$(lives "$TERM1") $(where "$TERM1")"
 ok "the pane that was never a chat is untouched" "yes $SWIN" "$(lives "$SHELLP") $(where "$SHELLP")"
