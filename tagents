@@ -2927,6 +2927,10 @@ refresher() {
       if [ -n "$dp" ] && [ -z "$(seats "$dp")" ]; then
         ensure_seat "$dp" >/dev/null 2>&1
       fi
+      # The notes editors, for the same reason the seats are repaired here: the
+      # focus hooks all fire on ARRIVAL, so nothing at all notices a chat pane
+      # that simply died with its editor still parked beside it.
+      command -v tnotes >/dev/null 2>&1 && tnotes sync >/dev/null 2>&1 &
     fi
     # ONE FAILED POST IS NOT A DEAD LIST. curl comes back non-zero for a refused
     # connection, and fzf refuses one whenever it is between reloads or busy with
@@ -3315,18 +3319,24 @@ install_focus_hooks() {
   # instead. Those two say nothing once you have walked from the seat to a
   # terminal and on to the list, which is the ordinary way to reach enter.)
   # Appended with -ga rather than replacing: the unpark hook above has to stay.
-  # Two commands per event and no more however often this runs — the first
-  # set-hook resets the event, the second appends to it.
-  local ev cmd cur
+  # Three commands per event and no more however often this runs — the first
+  # set-hook resets the event, the other two append to it.
+  local ev cmd cur nts
   cmd="if-shell -F '#{@tagents_slot}' \"run-shell -b \\\"'$SELF' --unpark '#{pane_id}'\\\"\""
   # Single quotes around the inner command so tmux stores it rather than
   # expanding it now; the "#{pane_id}" inside is expanded when the hook fires,
   # against the pane it fired for.
   cur="if-shell -F '#{||:#{@tagents_docked},#{@tagents_slot}}'"
   cur="$cur 'set -Fw @tagents_cur \"#{pane_id}\"'"
+  # And the notes editors, behind their own format guard for the same reason
+  # the unpark hook has one: a pane switch must not cost a bash start-up just
+  # because tnotes is installed. @ta_notes_any is set only while an editor pane
+  # exists anywhere, and unset again by `tnotes sync` when the last one goes.
+  nts="if-shell -F '#{@ta_notes_any}' \"run-shell -b \\\"tnotes sync '#{pane_id}'\\\"\""
   for ev in pane-focus-in after-select-pane after-select-window client-session-changed; do
     tmux set-hook -g "$ev" "$cmd" 2>/dev/null
     tmux set-hook -ga "$ev" "$cur" 2>/dev/null
+    tmux set-hook -ga "$ev" "$nts" 2>/dev/null
   done
 }
 
@@ -4555,6 +4565,10 @@ case "${1:-}" in
   # (a popup cannot open a popup — see preview_popup).
   --ask-preview)   ask_preview "${2:-}" "${3:-}" ;;
   --preview-popup) preview_popup "${2:-}" "${3:-}" ;;
+  # tnotes asks for the focus hooks when it opens its first editor: tagents
+  # installs them lazily on the first dock, and a user who only takes notes
+  # never docks anything.
+  --focus-hooks)  install_focus_hooks ;;
   --slot)         slot ;;
   --unpark)       unpark "${2:-}" ;;
   # What a kill binding asks before it kills anything, so closing a pane or a
