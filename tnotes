@@ -63,10 +63,23 @@ opt_of()  { tmux display -p -t "${2:-}" "#{${1}}" 2>/dev/null; }
 # is the cheap answer; a state record is the answer for the moment Claude has
 # handed the terminal to a child (a pager, an editor of its own) and ps no longer
 # says "claude" — the record is written by the state hook and outlives that.
+# THE COMMAND IS A VERSION NUMBER, NOT "claude". The CLI lives at
+# ~/.local/share/claude/versions/<version>, so a pane running a real chat
+# reports `2.1.261` and a `claude*` prefix match sees a shell where a chat is.
+# The same signal `tagents live_panes` matches on (tagents:1169); a shell name
+# still fails it, which is what keeps `send` from typing a draft into a prompt.
+is_claude_cmd() {  # <pane_current_command>
+  case "$1" in
+    claude*)              return 0 ;;
+    [0-9]*.[0-9]*.[0-9]*) return 0 ;;
+  esac
+  return 1
+}
+
 is_claude_pane() {
   local pane=$1 cmd
   cmd=$(opt_of pane_current_command "$pane")
-  case "$cmd" in claude*) return 0 ;; esac
+  is_claude_cmd "$cmd" && return 0
   [ -f "$STATE_DIR/${pane#%}.tsv" ]
 }
 
@@ -231,14 +244,15 @@ cmd_send() {
   grep -q '[^[:space:]]' "$dir/prompt.md" 2>/dev/null || exit 0
 
   cmd=$(opt_of pane_current_command "$chat")
-  case "$cmd" in
-    claude*) ;;
-    # THE DRAFT IS KEPT, ALWAYS. Typing a prompt into whatever shell happens to
-    # be sitting in that pane is worse than not sending it: prompt.md stays as
-    # it is and the next send delivers it.
-    *) tmux display-message "tnotes: $chat is not running claude — prompt kept" 2>/dev/null
-       exit 1 ;;
-  esac
+  # THE DRAFT IS KEPT, ALWAYS. Typing a prompt into whatever shell happens to
+  # be sitting in that pane is worse than not sending it: prompt.md stays as it
+  # is and the next send delivers it. The pane's own command decides here and a
+  # state record does not: a record outlives a Claude that exited, and pasting
+  # into the shell it left behind is precisely what this guard exists to stop.
+  if ! is_claude_cmd "$cmd"; then
+    tmux display-message "tnotes: $chat is not running claude — prompt kept" 2>/dev/null
+    exit 1
+  fi
 
   # A buffer and a bracketed paste, not send-keys -l: the draft is multi-line by
   # design, and typed newlines would submit it one line at a time. -p brackets it
