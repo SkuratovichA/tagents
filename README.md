@@ -391,12 +391,24 @@ what you type back reaches the session on your next prompt. Chat replies stay in
 chat; only documents go to the folder.
 
 `prefix + C-t` toggles it ("text"): the editor opens beside the Claude pane it
-was called from, on the notes folder of that pane's project. `:q` sends —
-whatever is in `prompt.md` is delivered to that session and the file is cleared,
-so the editor doubles as the place to write a long prompt without fighting the
-terminal's line editing. The editor itself lives in a hidden `ta-notes` tmux
-session and is only ever *linked* into the window you are looking at, which is
-why toggling it does not disturb the layout you had.
+was called from, on the notes folder of that pane's project, so it doubles as
+the place to write a long prompt without fighting the terminal's line editing.
+The editor itself lives in a hidden `ta-notes` tmux session and is only ever
+*linked* into the window you are looking at, which is why toggling it does not
+disturb the layout you had.
+
+`:q` commits the draft and leaves `@.claude/notes/prompt.md ` in the chat's
+input. **You** press Enter, and the CLI reads the file at that moment — so
+until you do, `prefix + C-t` reopens the draft and whatever you change is what
+gets sent. Nothing is truncated on the way out; the file is cleared for you the
+next time the editor opens *after* it was actually sent (the submit hook
+commits it as `user: <first line>` and records the sha in `.git/ta-sent`, and
+the editor starts blank only when the file still matches that commit).
+
+The `notes.send` leaf in the tagents config picks a different shape if you want
+one: `paste` puts the text itself in the input without pressing Enter, and
+`submit` is the original behaviour — paste, Enter, and clear the file at once.
+Absent or unrecognised means `reference`.
 
 The folder is a git repo of its own, and that is the whole mechanism:
 
@@ -420,7 +432,8 @@ binding runs; run `tnotes` with no arguments for the rest:
   when it is already there.
 - `tnotes sync [pane]` — park every editor whose chat you are not looking at, and
   bring back the one belonging to `<pane>`.
-- `tnotes send <chat> <dir>` — commit the notes and paste `prompt.md` into `<chat>`.
+- `tnotes send <chat> <dir>` — commit the notes and hand `prompt.md` to `<chat>`,
+  as a reference, a paste or a submitted paste (see `notes.send`).
 - `tnotes close <editor>` — ask the editor to write and quit, then make sure it did.
 - `tnotes editor <chat> <dir>` — the program the editor pane runs; not for you.
 
@@ -428,7 +441,7 @@ The folder is ignored globally (`**/.claude/notes/` in `.gitignore_global`), so
 notes never land in the project's own history.
 
 To point the session at one document in particular, reference it from
-`prompt.md` as `@.claude/notes/<file>`: the pasted mention attaches the file, no
+`prompt.md` as `@.claude/notes/<file>`: the mention attaches the file, no
 completion needed — `@`-completion does not offer paths inside a dot-directory,
 and does not have to. Usually you do not need it at all, since the diff already
 carries what changed.
