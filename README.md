@@ -414,14 +414,24 @@ The folder is a git repo of its own, and that is the whole mechanism:
   the files.
 
 `tnotes` is the command behind the key — `tnotes toggle <pane-id>` is what the
-binding runs; run `tnotes` with no arguments for the rest. The folder is ignored
-globally (`**/.claude/notes/` in `.gitignore_global`), so notes never land in
-the project's own history.
+binding runs; run `tnotes` with no arguments for the rest:
 
-One caveat while the loop is young: `@`-completion does not offer paths inside
-`.claude/notes/` (a dot-directory the global ignore also covers), so a file
-there has to be named in full if you want to point at it explicitly — usually
-you do not, since the diff already carries it.
+- `tnotes toggle <pane>` — open the editor beside a Claude pane, or hide it again
+  when it is already there.
+- `tnotes sync [pane]` — park every editor whose chat you are not looking at, and
+  bring back the one belonging to `<pane>`.
+- `tnotes send <chat> <dir>` — commit the notes and paste `prompt.md` into `<chat>`.
+- `tnotes close <editor>` — ask the editor to write and quit, then make sure it did.
+- `tnotes editor <chat> <dir>` — the program the editor pane runs; not for you.
+
+The folder is ignored globally (`**/.claude/notes/` in `.gitignore_global`), so
+notes never land in the project's own history.
+
+To point the session at one document in particular, reference it from
+`prompt.md` as `@.claude/notes/<file>`: the pasted mention attaches the file, no
+completion needed — `@`-completion does not offer paths inside a dot-directory,
+and does not have to. Usually you do not need it at all, since the diff already
+carries what changed.
 
 ## Notes
 
