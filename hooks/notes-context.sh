@@ -58,13 +58,6 @@ emit() {  # <text>
     '{hookSpecificOutput:{hookEventName:$ev,additionalContext:.}}' 2>/dev/null
 }
 
-if [ "$event" = "SessionStart" ]; then
-  emit "$standing"
-  exit 0
-fi
-
-[ "$event" = "UserPromptSubmit" ] || exit 0
-
 # A SESSION THAT STARTED BEFORE THE FOLDER DID NEVER HEARD OF IT. `SessionStart`
 # fires once, and it fires early: the folder is often created later in the same
 # session, and from then on the only thing that would mention it is a diff — so a
@@ -91,6 +84,16 @@ nudge() {
   emit "$standing"
   remember
 }
+
+if [ "$event" = "SessionStart" ]; then
+  emit "$standing"
+  # Banked here as well: a session told at startup must not hear it again on
+  # its first prompt.
+  remember
+  exit 0
+fi
+
+[ "$event" = "UserPromptSubmit" ] || exit 0
 
 head=$(git -C "$dir" rev-parse HEAD 2>/dev/null) || head=
 [ -n "$head" ] || { nudge; exit 0; }   # no commits yet: nothing to diff, still worth naming
