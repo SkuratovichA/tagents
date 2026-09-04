@@ -33,6 +33,8 @@ all.
 | `tusage`  | per-session cost, dollars and context accounting, read from the transcripts |
 | `hooks/tmux-agent-state.sh` | the Claude Code hook that publishes session state |
 | `hooks/claude-statusline.sh` | the Claude Code status line — and the only source for which model a session is *set* to |
+| `hooks/notes-context.sh` | the Claude Code hook that carries the notes folder's diff into the prompt |
+| `hooks/notes-autocommit.sh` | the Claude Code hook that commits what Claude writes into the notes folder |
 | `config.example.yaml` | a commented example of the optional per-directory account config |
 
 They are one system. The hook writes a record per session into
@@ -379,6 +381,47 @@ without editing the file via `TU_PRICES`:
 ```sh
 TU_PRICES='claude-opus-5 5 25;claude-fable-5 10 50' tagents
 ```
+
+## Notes workspace
+
+A chat is a bad place to review a document. `.claude/notes/` — one per project,
+next to `.claude/settings.local.json` — is where the long-form output goes
+instead: Claude writes `<name>.md` files there, you open them in neovim, and
+what you type back reaches the session on your next prompt. Chat replies stay in
+chat; only documents go to the folder.
+
+`prefix + C-t` toggles it ("text"): the editor opens beside the Claude pane it
+was called from, on the notes folder of that pane's project. `:q` sends —
+whatever is in `prompt.md` is delivered to that session and the file is cleared,
+so the editor doubles as the place to write a long prompt without fighting the
+terminal's line editing. The editor itself lives in a hidden `ta-notes` tmux
+session and is only ever *linked* into the window you are looking at, which is
+why toggling it does not disturb the layout you had.
+
+The folder is a git repo of its own, and that is the whole mechanism:
+
+- **Claude's writes are committed for it** (`notes-autocommit.sh`, on
+  `PostToolUse`) as `claude: <file>`, and the marker `.git/ta-last-seen` moves
+  with them.
+- **Your edits are not**, until you commit them or `tnotes` does. On the next
+  prompt `notes-context.sh` injects everything since the marker: the commit
+  log, the diffstat, and the unified diff of the text files. Lines you added
+  arrive as `+` lines and are read as your comments — so `> is this right?` on
+  the line under a paragraph is a review remark, in place, with no quoting and
+  no re-reading of the file.
+- `prompt.md` is excluded from all of it (it was already delivered as a
+  prompt), and a diff over 60 KB is replaced by its stat with a note to open
+  the files.
+
+`tnotes` is the command behind the key — `tnotes toggle <pane-id>` is what the
+binding runs; run `tnotes` with no arguments for the rest. The folder is ignored
+globally (`**/.claude/notes/` in `.gitignore_global`), so notes never land in
+the project's own history.
+
+One caveat while the loop is young: `@`-completion does not offer paths inside
+`.claude/notes/` (a dot-directory the global ignore also covers), so a file
+there has to be named in full if you want to point at it explicitly — usually
+you do not, since the diff already carries it.
 
 ## Notes
 
