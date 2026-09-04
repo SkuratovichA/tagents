@@ -2930,7 +2930,7 @@ refresher() {
       # The notes editors, for the same reason the seats are repaired here: the
       # focus hooks all fire on ARRIVAL, so nothing at all notices a chat pane
       # that simply died with its editor still parked beside it.
-      command -v tnotes >/dev/null 2>&1 && tnotes sync >/dev/null 2>&1 &
+      [ -x "${SELF%/*}/tnotes" ] && "${SELF%/*}/tnotes" sync >/dev/null 2>&1 &
     fi
     # ONE FAILED POST IS NOT A DEAD LIST. curl comes back non-zero for a refused
     # connection, and fzf refuses one whenever it is between reloads or busy with
@@ -3332,7 +3332,7 @@ install_focus_hooks() {
   # the unpark hook has one: a pane switch must not cost a bash start-up just
   # because tnotes is installed. @ta_notes_any is set only while an editor pane
   # exists anywhere, and unset again by `tnotes sync` when the last one goes.
-  nts="if-shell -F '#{@ta_notes_any}' \"run-shell -b \\\"tnotes sync '#{pane_id}'\\\"\""
+  nts="if-shell -F '#{@ta_notes_any}' \"run-shell -b \\\"'${SELF%/*}/tnotes' sync '#{pane_id}'\\\"\""
   for ev in pane-focus-in after-select-pane after-select-window client-session-changed; do
     tmux set-hook -g "$ev" "$cmd" 2>/dev/null
     tmux set-hook -ga "$ev" "$cur" 2>/dev/null
