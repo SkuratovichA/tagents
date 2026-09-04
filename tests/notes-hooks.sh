@@ -272,6 +272,15 @@ contains "the turn is told the attachment is the message" \
          "attached prompt.md is the user's message" "$(ctx_of "$out")"
 ok "the file is left for the CLI to read" "do the thing" "$(cat "$NOTES/prompt.md")"
 
+# THE COMMIT RECORDS THE SEND, NOT THE TEXT. tnotes committed this draft when
+# the editor quit, so there is nothing new in it — and sending it is still an
+# event the log should carry, which is what makes the empty commit the point.
+before=$(ncommit)
+out=$(submit_ref "$REF")
+ok "sending it again is recorded again" "$((before + 1))" "$(ncommit)"
+ok "...under the same subject"          "user: do the thing" "$(git -C "$NOTES" log -1 --format='%s')"
+ok "...and the marker follows"          "$(nhead)" "$(cat "$SENT" 2>/dev/null)"
+
 # A reference that resolves nowhere is somebody else's @-mention.
 before=$(ncommit); prev=$(cat "$SENT" 2>/dev/null)
 printf 'a second thought\n' >"$NOTES/prompt.md"
