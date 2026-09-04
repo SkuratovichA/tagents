@@ -12,8 +12,11 @@
 # once: #{pane_current_command} says "claude", so tnotes takes the pane for a
 # chat, and everything pasted into that pane comes back out on its stdout — the
 # chat pane runs `claude > pasted.txt`, so the paste path is asserted on bytes
-# rather than on tmux having been called. `nvim` is a script that records its
-# argv, writes $NVIM_WRITE into prompt.md and then sits until $TN_ROOT/nvim.quit
+# rather than on tmux having been called. Anything typed rather than pasted is
+# asserted on the SCREEN instead: the tty echoes it, and cat sees nothing until
+# a newline arrives, which is exactly the difference the reference mode makes.
+# `nvim` is a script that records its argv and the size prompt.md had when it
+# opened, writes $NVIM_WRITE into prompt.md and then sits until $TN_ROOT/nvim.quit
 # appears, which is how the test says "now the user quits the editor". `tnotes`
 # itself is deliberately NOT on the server's PATH: the focus hooks tagents
 # installs would otherwise fire a background sync on every select-pane here and
@@ -77,6 +80,7 @@ printf 'x\n' | "$BIN/$VCMD" >/dev/null 2>&1 ||
 cat >"$BIN/nvim" <<'STUB'
 #!/bin/sh
 printf '%s\n' "$*" >>"$TN_ROOT/nvim.log"
+wc -c <prompt.md | tr -d ' ' >>"$TN_ROOT/nvim.size"
 [ -n "${NVIM_WRITE:-}" ] && printf '%b' "$NVIM_WRITE" >prompt.md
 while [ ! -f "$TN_ROOT/nvim.quit" ]; do sleep 0.2; done
 exit 0
@@ -113,6 +117,14 @@ SOCK=$(tm display -p '#{socket_path}' 2>/dev/null)
 sleep 0.5
 
 run() { env TMUX="$SOCK,0,0" bash "$TN" "$@"; }
+
+# A config of its own per mode: tnotes reads notes.send through `tagents
+# --config`, which is the only YAML reader in play.
+run_cfg() { local c=$1; shift; env TMUX="$SOCK,0,0" TA_CONFIG="$c" bash "$TN" "$@"; }
+
+# Without NVIM_WRITE the stub leaves prompt.md exactly as it found it, which is
+# what the clear-if-sent checks are about.
+run_editor() { env -u NVIM_WRITE TMUX="$SOCK,0,0" bash "$TN" editor "$@"; }
 
 where()  { tm display -p -t "${1:-}" '#{window_id}' 2>/dev/null; }
 sess()   { tm display -p -t "${1:-}" '#{session_name}' 2>/dev/null; }
@@ -207,15 +219,18 @@ ok "toggle brings it back" "$CWIN" "$(where "$ED")"
 ok "open again" 1 "$(popt @ta_notes_open "$ED")"
 
 # ---------------------------------------------------------------------------
-t "6. quitting nvim commits the draft and pastes it into the chat"
+t "6. quitting nvim commits the draft and leaves a reference in the chat"
 # ---------------------------------------------------------------------------
 : >"$ROOT/pasted.txt"
 touch "$ROOT/nvim.quit"
 wait_gone "$ED"
 sleep 0.5
 ok "the editor pane is gone" no "$(lives "$ED")"
-ok "the whole draft arrived, newlines and all" "$(printf 'hello\n\nworld')" "$(cat "$ROOT/pasted.txt" 2>/dev/null)"
-ok "prompt.md was emptied" 0 "$(wc -c <"$NOTES/prompt.md" | tr -d ' ')"
+has "the reference is in the input" "@.claude/notes/prompt.md" \
+    "$(tm capture-pane -p -t "$CHAT" 2>/dev/null)"
+ok "nothing was submitted" 0 "$(wc -c <"$ROOT/pasted.txt" | tr -d ' ')"
+ok "the draft is still on disk for the CLI to read" "$(printf 'hello\n\nworld')" \
+   "$(cat "$NOTES/prompt.md")"
 ok "one commit" 1 "$(git -C "$NOTES" log --oneline 2>/dev/null | wc -l | tr -d ' ')"
 ok "named after the first line" hello "$(git -C "$NOTES" log -1 --format=%s 2>/dev/null)"
 ok "the chat's marker was cleared" "" "$(notes_of "$CHAT")"
@@ -232,7 +247,71 @@ ok "but it was committed" 2 "$(git -C "$NOTES" log --oneline 2>/dev/null | wc -l
 ok "under its own first line" "second draft" "$(git -C "$NOTES" log -1 --format=%s 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
-t "8. an editor whose chat is gone is closed by sync"
+t "8. notes.send decides what the draft does with the chat"
+# ---------------------------------------------------------------------------
+CFG_P="$ROOT/paste.yaml";  printf 'notes:\n  send: paste\n' >"$CFG_P"
+CFG_S="$ROOT/submit.yaml"; printf 'notes:\n  send: submit\n' >"$CFG_S"
+CFG_X="$ROOT/junk.yaml";   printf 'notes:\n  send: sideways\n' >"$CFG_X"
+
+MCHAT=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" \
+          "exec claude >'$ROOT/pasted3.txt'" 2>/dev/null)
+sleep 0.6
+: >"$ROOT/pasted3.txt"
+
+# No trailing newline: a pasted newline is a line the tty hands straight to cat,
+# and this mode is meant to hand it nothing.
+printf 'paste me' >"$NOTES/prompt.md"
+run_cfg "$CFG_P" send "$MCHAT" "$NOTES" >/dev/null 2>&1
+ok "paste: send exits 0" 0 "$?"
+sleep 0.5
+has "paste: the text itself is in the input" "paste me" \
+    "$(tm capture-pane -p -t "$MCHAT" 2>/dev/null)"
+ok "paste: but nothing was submitted" 0 "$(wc -c <"$ROOT/pasted3.txt" | tr -d ' ')"
+ok "paste: and the draft is kept" "paste me" "$(cat "$NOTES/prompt.md")"
+tm send-keys -t "$MCHAT" C-u >/dev/null 2>&1
+
+printf 'sideways draft' >"$NOTES/prompt.md"
+run_cfg "$CFG_X" send "$MCHAT" "$NOTES" >/dev/null 2>&1
+sleep 0.5
+has "an unknown value falls back to a reference" "@.claude/notes/prompt.md" \
+    "$(tm capture-pane -p -t "$MCHAT" 2>/dev/null)"
+ok "...and keeps the draft" "sideways draft" "$(cat "$NOTES/prompt.md")"
+tm send-keys -t "$MCHAT" C-u >/dev/null 2>&1
+
+: >"$ROOT/pasted3.txt"
+printf 'submit me\n' >"$NOTES/prompt.md"
+run_cfg "$CFG_S" send "$MCHAT" "$NOTES" >/dev/null 2>&1
+ok "submit: send exits 0" 0 "$?"
+i=0; while [ "$i" -lt 40 ] && [ ! -s "$ROOT/pasted3.txt" ]; do sleep 0.1; i=$((i+1)); done
+ok "submit: the draft arrived" "submit me" "$(cat "$ROOT/pasted3.txt" 2>/dev/null)"
+ok "submit: and the outbox was cleared" 0 "$(wc -c <"$NOTES/prompt.md" | tr -d ' ')"
+
+# ---------------------------------------------------------------------------
+t "9. a draft that was sent is cleared the next time the editor opens"
+# ---------------------------------------------------------------------------
+# .git/ta-sent is written by the submit hook, not by tnotes, so the fixture is
+# the hook's output: a commit of prompt.md and its sha in the file.
+SENT="$ROOT/sent"; mkdir -p "$SENT"
+git -C "$SENT" init -q
+printf 'already sent\n' >"$SENT/prompt.md"
+git -C "$SENT" add -A >/dev/null 2>&1
+git -C "$SENT" -c user.name=t -c user.email=t@t commit -q -m "user: already sent"
+git -C "$SENT" rev-parse HEAD >"$SENT/.git/ta-sent"
+
+touch "$ROOT/nvim.quit"
+: >"$ROOT/nvim.size"
+run_editor "$SHELLP" "$SENT" >/dev/null 2>&1
+ok "nvim opened on an empty page" 0 "$(tail -1 "$ROOT/nvim.size")"
+ok "...and the file on disk is empty too" 0 "$(wc -c <"$SENT/prompt.md" | tr -d ' ')"
+
+printf 'a new draft\n' >"$SENT/prompt.md"
+: >"$ROOT/nvim.size"
+run_editor "$SHELLP" "$SENT" >/dev/null 2>&1
+ok "an unsent draft is left alone" 12 "$(tail -1 "$ROOT/nvim.size")"
+ok "...and is still there" "a new draft" "$(cat "$SENT/prompt.md")"
+
+# ---------------------------------------------------------------------------
+t "10. an editor whose chat is gone is closed by sync"
 # ---------------------------------------------------------------------------
 rm -f "$ROOT/nvim.quit"
 run toggle "$CHAT" >/dev/null 2>&1
@@ -245,7 +324,7 @@ ok "the orphan is gone" no "$(lives "$ED2")"
 ok "and the global flag with it" "" "$(tm show -gv @ta_notes_any 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
-t "9. a chat whose command is a version number is still a chat"
+t "11. a chat whose command is a version number is still a chat"
 # ---------------------------------------------------------------------------
 VCHAT=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" \
           "exec $VCMD >'$ROOT/pasted2.txt'" 2>/dev/null)
@@ -257,7 +336,7 @@ ok "and there is no state record to fall back on" no \
    "$([ -f "$STATE/${VCHAT#%}.tsv" ] && echo yes || echo no)"
 : >"$ROOT/pasted2.txt"
 printf 'third draft\n' >"$NOTES/prompt.md"
-run send "$VCHAT" "$NOTES" >/dev/null 2>&1
+run_cfg "$CFG_S" send "$VCHAT" "$NOTES" >/dev/null 2>&1
 ok "send exits 0" 0 "$?"
 i=0; while [ "$i" -lt 40 ] && [ ! -s "$ROOT/pasted2.txt" ]; do sleep 0.1; i=$((i+1)); done
 ok "the draft was typed into it" "third draft" "$(cat "$ROOT/pasted2.txt" 2>/dev/null)"
@@ -269,7 +348,7 @@ ok "an editor opened beside it" yes "$([ -n "$VED" ] && echo yes || echo no)"
 ok "...in its own window" "$VWIN" "$(where "$VED")"
 
 # ---------------------------------------------------------------------------
-t "10. everything else in the server was left alone"
+t "12. everything else in the server was left alone"
 # ---------------------------------------------------------------------------
 ok "the user terminal is untouched" "yes $TWIN" "$(lives "$TERM1") $(where "$TERM1")"
 ok "the pane that was never a chat is untouched" "yes $SWIN" "$(lives "$SHELLP") $(where "$SHELLP")"

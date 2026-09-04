@@ -81,6 +81,14 @@ raw_submit() {  # [cwd] [session id] -> the hook's literal stdout
     | sh "$HOOKS/notes-context.sh" 2>&1
 }
 
+submit_ref() {  # <prompt> [cwd] -> the hook's literal stdout
+  local p=$1 c=${2:-$SUB}
+  printf '{"hook_event_name":"UserPromptSubmit","cwd":"%s","session_id":"t","prompt":"%s"}' "$c" "$p" \
+    | sh "$HOOKS/notes-context.sh" 2>&1
+}
+
+ctx_of() { printf '%s' "$1" | jq -r '.hookSpecificOutput.additionalContext // ""' 2>/dev/null; }
+
 session_start() {  # <cwd>
   printf '{"hook_event_name":"SessionStart","cwd":"%s","session_id":"t","source":"startup"}' "$1" \
     | sh "$HOOKS/notes-context.sh" 2>&1
@@ -248,6 +256,56 @@ if [ -f "$S" ] && command -v jq >/dev/null 2>&1; then
 else
   printf '  skip settings.json (%s not found)\n' "$S"
 fi
+
+# ---------------------------------------------------------------------------
+t "12. the submit is where a draft becomes a sent message"
+# ---------------------------------------------------------------------------
+SENT="$NOTES/.git/ta-sent"
+REF='@.claude/notes/prompt.md '
+printf 'do the thing\n' >"$NOTES/prompt.md"
+before=$(ncommit)
+out=$(submit_ref "$REF")
+ok "the draft was committed"            "$((before + 1))" "$(ncommit)"
+ok "...under its own first line"        "user: do the thing" "$(git -C "$NOTES" log -1 --format='%s')"
+ok "...and the sent marker is HEAD"     "$(nhead)" "$(cat "$SENT" 2>/dev/null)"
+contains "the turn is told the attachment is the message" \
+         "attached prompt.md is the user's message" "$(ctx_of "$out")"
+ok "the file is left for the CLI to read" "do the thing" "$(cat "$NOTES/prompt.md")"
+
+# A reference that resolves nowhere is somebody else's @-mention.
+before=$(ncommit); prev=$(cat "$SENT" 2>/dev/null)
+printf 'a second thought\n' >"$NOTES/prompt.md"
+out=$(submit_ref '@docs/prompt.md ')
+ok "a mention of another file is not a send" "$before" "$(ncommit)"
+lacks "...and the turn is not told otherwise" "attached prompt.md" "$out"
+
+# ---------------------------------------------------------------------------
+t "13. an empty outbox is not a message, and a plain prompt is not a send"
+# ---------------------------------------------------------------------------
+: >"$NOTES/prompt.md"
+git -C "$NOTES" add -A >/dev/null 2>&1
+git -C "$NOTES" commit -q -m "user: outbox cleared" >/dev/null 2>&1
+before=$(ncommit); prev=$(cat "$SENT" 2>/dev/null)
+out=$(submit_ref "$REF")
+ok "a blank outbox commits nothing"  "$before" "$(ncommit)"
+ok "...and does not move the marker" "$prev"   "$(cat "$SENT" 2>/dev/null)"
+lacks "...and says nothing"          "attached prompt.md" "$out"
+
+printf 'still a draft\n' >"$NOTES/prompt.md"
+before=$(ncommit)
+out=$(raw_submit)
+ok "a prompt with no reference commits nothing" "$before" "$(ncommit)"
+lacks "...and mentions no attachment"           "attached prompt.md" "$out"
+ok "...and the draft is untouched" "still a draft" "$(cat "$NOTES/prompt.md")"
+
+# THE MENTION IS RESOLVED, NOT PATTERN-MATCHED. The prompt is submitted from a
+# subdirectory, so an absolute path is the only form that needs no repo root.
+before=$(ncommit)
+out=$(submit_ref "@$NOTES/prompt.md " "$SUB")
+ok "an absolute reference is a send too" "$((before + 1))" "$(ncommit)"
+ok "...named after the draft"            "user: still a draft" "$(git -C "$NOTES" log -1 --format='%s')"
+ok "...and marks it sent"                "$(nhead)" "$(cat "$SENT" 2>/dev/null)"
+contains "...and tells the turn" "attached prompt.md is the user's message" "$(ctx_of "$out")"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
