@@ -331,5 +331,23 @@ printf 'newname\n' | TA_MODE=popup run --act rename "%$PN" dead sid-rename >/dev
 ok "rename reads its answer inline" "newname" \
    "$(awk -F'\t' '$1 == "sid-rename" { print $2; exit }' "$STATE/labels.tsv" 2>/dev/null)"
 
+# ---------------------------------------------------------------------------
+t "9. a new agent gets the cursor"
+# ---------------------------------------------------------------------------
+# The window is still opened with -d — nothing is docked and the agent stays in
+# the session it was born in — but the client is then moved into it deliberately,
+# so ctrl-n leaves you looking at the agent you just asked for instead of at a
+# toast naming a window you have to go and find.
+clear_out
+run --act new "%$PN" dead sid-focus "$PERS"
+f=$(waitout) || { echo "  FAIL nothing started"; fail=$((fail+1)); f=/dev/null; }
+sleep 0.5
+n=${f##*/}; n=${n%.out}
+want=$(tm list-panes -a -F '#{pane_id} #{window_id}' 2>/dev/null |
+         awk -v p="%$n" '$1 == p { print $2; exit }')
+csess=$(tm list-clients -F '#{client_session}' 2>/dev/null | head -1)
+ok "the client ends up in the window the agent was started in" \
+   "$want" "$(tm display -p -t "$csess:" '#{window_id}' 2>/dev/null)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
