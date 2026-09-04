@@ -6,7 +6,7 @@
 #
 #   tusage                      summary: last 5h window, today, last 7 days
 #   tusage --by day|project|session|agent|model|hour
-#   tusage --since 5h|3d        window for --by (default 7d)
+#   tusage --since 5h|3d|month  window for --by (default 7d; month = since the 1st)
 #   tusage --sessions           machine-readable per-session totals (for tagents)
 #   tusage --session <sid>      one session in detail
 #   tusage --burn               one-line status-bar string
@@ -70,7 +70,12 @@ FACTS="$STATE/facts.tsv"
 META="$STATE/sessions.tsv"
 STAMP="$STATE/.stamp"
 BUCKET=300                          # facts are aggregated into 5-minute buckets
-KEEP_DAYS=${TU_KEEP_DAYS:-30}
+# A CALENDAR MONTH IS THE UNIT A BILL IS WRITTEN IN. 30 days of facts cannot
+# answer "what did this month cost" on the 31st, and cannot answer "how does it
+# compare with last month" on any day at all. 62 days covers the longest month
+# plus the one before it, which is the shortest retention that makes both
+# questions answerable; the index costs ~2 MB a month, so the space is noise.
+KEEP_DAYS=${TU_KEEP_DAYS:-62}
 TAB=$'\t'
 
 W_IN=1; W_CW5=1.25; W_CW1H=2.0; W_CR=0.1; W_OUT=5
@@ -405,8 +410,20 @@ update() {
 # facts columns: 1 bucket 2 slug 3 sid 4 agentid 5 agenttype 6 kind 7 model
 #                8 reqs 9 in 10 cw5 11 cw1h 12 cr 13 out
 
+# Local 00:00 of the 1st of the current month. BSD date wants the format spelt
+# out, GNU date parses the bare date; try each in that order.
+month_start() {
+  local first; first=$(date +%Y-%m-01)
+  date -j -f '%Y-%m-%d %H:%M:%S' "$first 00:00:00" +%s 2>/dev/null ||
+    date -d "$first" +%s 2>/dev/null
+}
+
+# `month` is spelt out because the suffix space is taken: *m already means
+# minutes, and silently re-reading "1m" as a month would change what every
+# existing caller asks for.
 since_secs() {
   case "$1" in
+    month) printf '%s' "$(( $(date +%s) - $(month_start) ))" ;;
     *h) printf '%s' "$(( ${1%h} * 3600 ))" ;;
     *d) printf '%s' "$(( ${1%d} * 86400 ))" ;;
     *m) printf '%s' "$(( ${1%m} * 60 ))" ;;
