@@ -145,15 +145,18 @@ case "$prompt" in
       subj=$(awk 'NF { sub(/^[ \t]+/, ""); print substr($0, 1, 72); exit }' \
                "$dir/prompt.md" 2>/dev/null)
       [ -n "$subj" ] || subj='sent'
+      # --allow-empty, and on purpose: tnotes already committed this text when
+      # the editor quit, so there is usually nothing new in it. The commit being
+      # recorded here is not the text, it is the SEND — `user: …` in the log is
+      # how a draft that was actually submitted is told apart from one that was
+      # merely saved, and it is the commit .git/ta-sent then points at. The
+      # pathspec keeps anything else in the index out of it.
       git -C "$dir" add prompt.md >/dev/null 2>&1
-      if ! git -C "$dir" diff --cached --quiet -- prompt.md 2>/dev/null; then
-        # The same fallback the autocommit hook has: a notes repo is never
-        # pushed, and a missing global identity must not be why a sent prompt
-        # goes unrecorded.
-        git -C "$dir" commit -q -m "user: $subj" -- prompt.md >/dev/null 2>&1 ||
-          git -C "$dir" -c user.name=tnotes -c user.email=tnotes@localhost \
-              commit -q -m "user: $subj" -- prompt.md >/dev/null 2>&1
-      fi
+      # The same fallback the autocommit hook has: a notes repo is never pushed,
+      # and a missing global identity must not be why a send goes unrecorded.
+      git -C "$dir" commit -q --allow-empty -m "user: $subj" -- prompt.md >/dev/null 2>&1 ||
+        git -C "$dir" -c user.name=tnotes -c user.email=tnotes@localhost \
+            commit -q --allow-empty -m "user: $subj" -- prompt.md >/dev/null 2>&1
       git -C "$dir" rev-parse HEAD >"$dir/.git/ta-sent" 2>/dev/null
       sent_ctx="The attached prompt.md is the user's message for this turn — follow it as the instruction."
       break
