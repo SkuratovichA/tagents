@@ -128,8 +128,19 @@ ensure_park() {
 }
 
 hide_editor() {  # <editor> <chat>
-  local ed=$1 chat=$2
+  local ed=$1 chat=$2 ew cw pct
   ensure_park || return 1
+  # THE SPLIT YOU MADE IS THE SPLIT YOU GET BACK. A parked editor loses its
+  # geometry — tmux gives the chat the whole width — so the share it had is
+  # written on the pane before it goes, as a percentage of the pair rather than
+  # a column count: the window may be a different size when it comes back.
+  ew=$(opt_of pane_width "$ed"); cw=$(opt_of pane_width "$chat")
+  case "${ew:-x}${cw:-x}" in *[!0-9]*) ;; *)
+    if [ "$((ew + cw))" -gt 0 ]; then
+      pct=$(( ew * 100 / (ew + cw) ))
+      [ "$pct" -ge 10 ] && [ "$pct" -le 90 ] && tmux set -p -t "$ed" @ta_notes_pct "$pct" 2>/dev/null
+    fi ;;
+  esac
   tmux break-pane -d -s "$ed" -t "$NOTES_SESSION:" -n "$chat" 2>/dev/null || return 1
   # Markers are re-stamped after every move: the pane id survives break-pane and
   # join-pane, but nothing promises the same of a pane option, and a marker lost
@@ -140,8 +151,11 @@ hide_editor() {  # <editor> <chat>
 }
 
 show_editor() {  # <editor> <chat>
-  local ed=$1 chat=$2
-  tmux join-pane -h -d -s "$ed" -t "$chat" -l "$NOTES_WIDTH%" 2>/dev/null || return 1
+  local ed=$1 chat=$2 pct
+  pct=$(opt_of @ta_notes_pct "$ed")
+  case "${pct:-x}" in *[!0-9]*|'') pct=$NOTES_WIDTH ;; esac
+  [ "$pct" -ge 10 ] && [ "$pct" -le 90 ] || pct=$NOTES_WIDTH
+  tmux join-pane -h -d -s "$ed" -t "$chat" -l "$pct%" 2>/dev/null || return 1
   tmux set -p -t "$ed" @ta_notes_for "$chat" 2>/dev/null
   tmux set -p -t "$chat" @ta_notes "$ed" 2>/dev/null
   return 0

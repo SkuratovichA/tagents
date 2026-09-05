@@ -194,6 +194,10 @@ ok "twice is the same as once" "$CWIN" "$(where "$ED")"
 t "4. arriving in another window parks it; coming back brings it home"
 # ---------------------------------------------------------------------------
 OTHER=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" "exec sleep 600")
+# The user's own split is not the default one: narrow the editor first, so the
+# round trip has a ratio to lose.
+tm resize-pane -t "$ED" -x 30 >/dev/null 2>&1; sleep 0.3
+EDW=$(tm display -p -t "$ED" '#{pane_width}')
 tm select-window -t "$(where "$OTHER")" >/dev/null 2>&1
 run sync "$OTHER" >/dev/null 2>&1
 ok "the editor went to the parking session" ta-notes "$(sess "$ED")"
@@ -205,6 +209,8 @@ tm select-window -t "$CWIN" >/dev/null 2>&1
 run sync "$CHAT" >/dev/null 2>&1
 ok "arriving at the chat brings it back" "$CWIN" "$(where "$ED")"
 ok "two panes there again" 2 "$(npanes "$CWIN")"
+EDW2=$(tm display -p -t "$ED" '#{pane_width}'); d=$(( EDW2 - EDW )); [ "$d" -lt 0 ] && d=$(( -d ))
+ok "with the width it had before parking (±2)" yes "$([ "$d" -le 2 ] && echo yes || echo "no: $EDW -> $EDW2")"
 
 # ---------------------------------------------------------------------------
 t "5. toggling it away is a decision sync does not overrule"
