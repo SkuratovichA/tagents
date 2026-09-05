@@ -4072,24 +4072,23 @@ start_agent() {  # <root> <session> <profile>
     tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
     return 1; }
   # -d so the window is not selected as a side effect of being created, half
-  # built and before its pane id is even known. The client is moved into it
-  # once, deliberately, by the goto below.
+  # built and before its pane id is even known; the cursor reaches the pane
+  # once, deliberately, through open_agent below.
   newpane=$(tmux new-window -d -t "$sess:" -P -F '#{pane_id}' \
               -c "$root" "$cmd" 2>/dev/null) || {
     tmux display-message "tagents: could not open a window in $sess" 2>/dev/null; return 1; }
 
-  # IT STAYS WHERE IT WAS BORN — but you go to it. Docking would swap the pane
-  # out of the session it was just created in and into the dashboard window,
-  # which is how this lost the sidebar: the new agent turned up in a window the
-  # list was not in, and the list was not on screen any more either. So the
-  # window keeps its own place in its own session and nothing is docked. Moving
-  # the CLIENT there costs none of that, and asking for an agent and being left
-  # in the list, with a toast naming a window you then have to go and find, was
-  # never what the key meant. goto and nothing else: no seat is claimed, so the
-  # dashboard's own idea of what is docked is untouched, and ctrl-n and ctrl-p
-  # both land here and both behave the same.
+  # IT IS OPENED LIKE ANY OTHER AGENT. The home window is still created with -d
+  # in the project's own session — that is where the chat lives and where it
+  # goes back to on ctrl-u — but the pane is then docked into the seat you are
+  # looking at and the cursor put in it, exactly what enter on its row would do
+  # a moment later, and exactly what resume_with already does for a dead row.
+  # Asking for an agent from the sidebar and being left looking at the previous
+  # one (or, worse, taken to a bare window in another session) was never what
+  # the key meant. With no sidebar to dock into, the cursor is moved to the new
+  # window instead. ctrl-n and ctrl-p both land here and both behave the same.
   idx=$(tmux display -p -t "$newpane" '#{window_index}' 2>/dev/null)
-  goto "$newpane"
+  open_agent "$newpane" || goto "$newpane"
   tmux display-message \
     "tagents: new agent in $(basename "$root") ($sess:$idx)${prof:+ as $prof}" 2>/dev/null
   return 0
