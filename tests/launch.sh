@@ -149,6 +149,19 @@ sess_of_out() {  # which tmux session the pane that wrote this file is in
     awk -v p="%$n" '$1 == p { print $2; exit }'
 }
 
+# Where an agent LIVES, docked or not: a docked chat sits in the sidebar, but the
+# placeholder keeping its seat warm (@tagents_parked names the chat) is in the
+# home window, and that window's session is the answer. An undocked chat is its
+# own answer.
+home_sess_of() {  # <stub .out file> -> session name of the agent's home window
+  local n=${1##*/} home
+  n=${n%.out}
+  home=$(tm list-panes -a -F '#{session_name} #{?@tagents_parked,#{@tagents_parked},-}' 2>/dev/null |
+           awk -v p="%$n" '$2 == p { print $1; exit }')
+  [ -n "$home" ] && { printf '%s' "$home"; return 0; }
+  sess_of_out "$1"
+}
+
 # ---------------------------------------------------------------------------
 t "1. --new with an explicit profile"
 # ---------------------------------------------------------------------------
@@ -158,7 +171,7 @@ f=$(waitout) || { echo "  FAIL nothing started"; fail=$((fail+1)); f=/dev/null; 
 ok "the account is the profile's config dir" "$HOME/.claude-personal" "$(field CFG "$f")"
 ok "the arguments are the configured ones" "--dangerously-skip-permissions" "$(field ARGS "$f")"
 ok "it starts in the project directory" "$PERS" "$(field PWD "$f")"
-ok "the window joins the session that owns the project" tatest-proj "$(sess_of_out "$f")"
+ok "the agent's home is the session that owns the project" tatest-proj "$(home_sess_of "$f")"
 
 # ---------------------------------------------------------------------------
 t "2. a profile with no config_dir unsets an inherited one"
@@ -334,20 +347,21 @@ ok "rename reads its answer inline" "newname" \
 # ---------------------------------------------------------------------------
 t "9. a new agent gets the cursor"
 # ---------------------------------------------------------------------------
-# The window is still opened with -d — nothing is docked and the agent stays in
-# the session it was born in — but the client is then moved into it deliberately,
-# so ctrl-n leaves you looking at the agent you just asked for instead of at a
-# toast naming a window you have to go and find.
+# The window is still opened with -d in the project's session, but the new pane
+# is then docked into the seat like enter would do, and the cursor lands in it:
+# ctrl-n leaves you looking at the agent you just asked for. The pane id is what
+# survives the dock swap, so that is what the client's current pane is checked
+# against — whichever window it now sits in.
 clear_out
 run --act new "%$PN" dead sid-focus "$PERS"
 f=$(waitout) || { echo "  FAIL nothing started"; fail=$((fail+1)); f=/dev/null; }
-sleep 0.5
+sleep 0.8
 n=${f##*/}; n=${n%.out}
-want=$(tm list-panes -a -F '#{pane_id} #{window_id}' 2>/dev/null |
-         awk -v p="%$n" '$1 == p { print $2; exit }')
 csess=$(tm list-clients -F '#{client_session}' 2>/dev/null | head -1)
-ok "the client ends up in the window the agent was started in" \
-   "$want" "$(tm display -p -t "$csess:" '#{window_id}' 2>/dev/null)"
+ok "the client's current pane is the agent it just started" \
+   "%$n" "$(tm display -p -t "$csess:" '#{pane_id}' 2>/dev/null)"
+ok "and that pane is docked in a sidebar seat" \
+   yes "$([ -n "$(tm display -p -t "%$n" '#{@tagents_docked}' 2>/dev/null)" ] && echo yes || echo no)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
