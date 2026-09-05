@@ -128,8 +128,21 @@ ensure_park() {
 }
 
 hide_editor() {  # <editor> <chat>
-  local ed=$1 chat=$2 ew cw pct
+  local ed=$1 chat=$2 ew cw pct= ewin cwin
   ensure_park || return 1
+  # IDEMPOTENT, BECAUSE IT RUNS IN PARALLEL WITH ITSELF. One window switch fires
+  # several focus hooks, each of which starts a sync, so two hides race for the
+  # same editor: the second one used to measure a pane that was already parked
+  # and record that as the split. An editor that is not beside its chat is left
+  # exactly where it is — parked already, or stranded and handled by the caller.
+  ewin=$(opt_of window_id "$ed"); cwin=$(opt_of window_id "$chat")
+  [ -n "$ewin" ] && [ "$ewin" = "$cwin" ] || {
+    [ "$(opt_of session_name "$ed")" = "$NOTES_SESSION" ] && return 0
+    tmux break-pane -d -s "$ed" -t "$NOTES_SESSION:" -n "$chat" 2>/dev/null || return 1
+    tmux set -p -t "$ed" @ta_notes_for "$chat" 2>/dev/null
+    tmux set -p -t "$chat" @ta_notes "$ed" 2>/dev/null
+    return 0
+  }
   # THE SPLIT YOU MADE IS THE SPLIT YOU GET BACK. A parked editor loses its
   # geometry — tmux gives the chat the whole width — so the share it had is
   # written on the pane before it goes, as a percentage of the pair rather than
@@ -151,11 +164,24 @@ hide_editor() {  # <editor> <chat>
 }
 
 show_editor() {  # <editor> <chat>
-  local ed=$1 chat=$2 pct
+  local ed=$1 chat=$2 pct cw cols
+  # Same race as hide_editor, other direction: a second show finds the editor
+  # already home and must not touch the layout.
+  [ "$(opt_of window_id "$ed")" = "$(opt_of window_id "$chat")" ] && return 0
   pct=$(opt_of @ta_notes_pct "$ed")
   case "${pct:-x}" in *[!0-9]*|'') pct=$NOTES_WIDTH ;; esac
   [ "$pct" -ge 10 ] && [ "$pct" -le 90 ] || pct=$NOTES_WIDTH
-  tmux join-pane -h -d -s "$ed" -t "$chat" -l "$pct%" 2>/dev/null || return 1
+  # COLUMNS, NOT A PERCENTAGE. join-pane's `-l N%` was seen sizing the target
+  # pane in one window and the joined pane in another; an absolute width read
+  # off the chat right now means the same thing everywhere.
+  cw=$(opt_of pane_width "$chat")
+  case "${cw:-x}" in *[!0-9]*) cw= ;; esac
+  if [ -n "$cw" ] && [ "$cw" -gt 20 ]; then
+    cols=$(( cw * pct / 100 )); [ "$cols" -lt 10 ] && cols=10
+    tmux join-pane -h -d -s "$ed" -t "$chat" -l "$cols" 2>/dev/null || return 1
+  else
+    tmux join-pane -h -d -s "$ed" -t "$chat" -l "$pct%" 2>/dev/null || return 1
+  fi
   tmux set -p -t "$ed" @ta_notes_for "$chat" 2>/dev/null
   tmux set -p -t "$chat" @ta_notes "$ed" 2>/dev/null
   return 0
@@ -181,6 +207,26 @@ create_editor() {  # <chat> -> makes the pane, stamps the markers
   return 0
 }
 
+# ONE MOVE AT A TIME. A single window switch fires several focus hooks and each
+# starts a sync; the refresher ticks too; toggle is a hand on the same panes. Two
+# of them interleaving break-pane and join-pane on one editor produce layouts
+# nobody asked for. mkdir is the atomic primitive (macOS has no flock), the wait
+# is short because every holder is, and a lock older than five seconds belongs
+# to a process that died holding it.
+LOCK="$STATE_DIR/.tnotes.lock"
+take_lock() {
+  local i=0 age
+  mkdir -p "$STATE_DIR" 2>/dev/null
+  while ! mkdir "$LOCK" 2>/dev/null; do
+    age=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || echo 0) ))
+    [ "$age" -gt 5 ] && rm -rf "$LOCK" 2>/dev/null && continue
+    i=$((i + 1)); [ "$i" -ge 30 ] && return 1
+    sleep 0.1
+  done
+  trap 'rm -rf "$LOCK"' EXIT
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # tnotes toggle
 # ---------------------------------------------------------------------------
@@ -188,6 +234,7 @@ create_editor() {  # <chat> -> makes the pane, stamps the markers
 cmd_toggle() {
   local pane=${1:-} chat ed ewin cwin
   [ -n "$pane" ] || die "toggle needs a pane"
+  take_lock || die "another tnotes is moving panes; try again"
   chat=$(tmux display -p -t "$pane" '#{pane_id}' 2>/dev/null) ||
     die "$pane is gone"
   is_claude_pane "$chat" || die "not a Claude pane"
@@ -392,6 +439,7 @@ EOF
 
 cmd_sync() {
   local arriving=${1:-} id ewin esess chat open cwin awin="" left=0 ed eopen
+  take_lock || return 0
   # Conditional formats, not bare #{@opt}: an unset option renders empty and the
   # row loses a field, which is how a reader ends up believing a pane belongs to
   # somebody it does not.
