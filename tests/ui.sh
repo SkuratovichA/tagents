@@ -288,7 +288,15 @@ mkrec 8009 sid-wide ""
 printf 'sid-wide\t%s\n' "$LONG" >>"$STATE/labels.tsv"
 
 WIDE=$(rows_at 230)
-hasnt "at 140 columns the long name is still cut" "$LONG" "$(row_of %8009 "$(rows_at 140)")"
+# THE NAME COLUMN GROWS INTO WHATEVER THE DETAIL DOES NOT NEED. With every
+# column shown, 110 columns leave the name no room and it is cut; hide the
+# columns and the same 110 spell it out — the freed width goes to the name
+# before it goes to the detail. At 140 the detail already has spare columns,
+# and at 230 there is room for anything.
+hasnt "at 110 columns with every column shown the long name is cut" "$LONG" "$(row_of %8009 "$(rows_at 110)")"
+has   "...but with the columns hidden it is spelled out" "$LONG" \
+      "$(row_of %8009 "$(rows_at 110 TA_HIDE_COLS=ctx,cost,model,acct,loc)")"
+has   "at 140 columns the detail has spare room, so it is spelled out too" "$LONG" "$(row_of %8009 "$(rows_at 140)")"
 has   "...and at 230 it is spelled out in full"   "$LONG" "$(row_of %8009 "$WIDE")"
 
 # The rows have to grow into the pane, not past it: fzf wraps anything wider and
