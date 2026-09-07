@@ -539,5 +539,68 @@ tm kill-window -t "$W2" 2>/dev/null; sleep 0.3
 tm set -p -t "$LIST" @tagents_dash 1 >/dev/null 2>&1
 tm set -w -t "$DWIN" @tagents 1 >/dev/null 2>&1
 
+# ---------------------------------------------------------------------------
+t "18. a switch between seats repaints the list at once"
+# ---------------------------------------------------------------------------
+# THE REFRESHER USED TO BE THE ONLY THING THAT REDREW THE LIST, so the ▶ marker
+# arrived up to a tick after the switch that moved it — the seat was stamped
+# instantly and the row saying so was two seconds old. --poke is that same
+# reload, posted by the focus hook that does the stamping.
+run --undock-window "$DWIN" >/dev/null 2>&1; sleep 0.4
+run --act open   "$A" live sid-A "$REPO"; sleep 0.4
+run --act beside "$C" live sid-C "$REPO"; sleep 0.4
+ok "two chats to switch between" "$A:docked $C:docked" "$(kinds)"
+
+# ORDER MATTERS. The reload has to find the seat already written down, or the
+# list redraws the marker it had and the switch is lost for a tick after all.
+HK=$(tm show-hooks -g -w 2>/dev/null | grep '^pane-focus-in')
+CURI=$(printf '%s\n' "$HK" | grep -n 'tagents_cur' | head -1 | cut -d: -f1)
+PKI=$(printf '%s\n' "$HK" | grep -n -- '--poke' | head -1 | cut -d: -f1)
+ok "the poke hook is installed after the seat stamp" yes \
+   "$(if [ -n "$CURI" ] && [ -n "$PKI" ] && [ "$PKI" -gt "$CURI" ]; then
+        echo yes; else echo no; fi)"
+
+# The refresher publishes the port it was handed on the pane it draws in, since
+# that is the only place a hook in another window can read it from. Nothing is
+# listening on it here and nothing needs to be: a refused POST is a no-op.
+PORT=$(tm display -p -t "$LIST" '#{@tagents_port}' 2>/dev/null)
+ok "the list pane carries the port while it runs" yes \
+   "$(if [ -n "$PORT" ]; then echo yes; else echo no; fi)"
+[ -n "$PORT" ] || tm set -p -t "$LIST" @tagents_port 65001 >/dev/null 2>&1
+
+# The hook end of it, witnessed by the stamp file: poke writes down the seat it
+# repainted for, and only when a live list took the reload.
+rm -f "$STATE/.poke"
+tm select-pane -t "$A" 2>/dev/null; sleep 0.6
+ok "focusing a seat pokes the list at once" "$LIST $A" \
+   "$(cat "$STATE/.poke" 2>/dev/null)"
+tm select-pane -t "$C" 2>/dev/null; sleep 0.6
+ok "...and the switch back the other way"   "$LIST $C" \
+   "$(cat "$STATE/.poke" 2>/dev/null)"
+
+# WHAT ACTUALLY REACHES FZF, with a curl of our own. The hook's poke cannot be
+# watched this way — it is spawned by the tmux server, which has the PATH it
+# started with — so the pair below is driven by hand instead.
+CURLB="$ROOT/curlbin"; mkdir -p "$CURLB"
+cat >"$CURLB/curl" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >>"$ROOT/curl.log"
+EOF
+chmod +x "$CURLB/curl"
+: >"$ROOT/curl.log"
+rm -f "$STATE/.poke"
+poke() { env TMUX="$SOCK,0,0" PATH="$CURLB:$PATH" bash "$TA" --poke "${1:-}" \
+           >/dev/null 2>&1; }
+poke "$C"
+POSTS=$(cat "$ROOT/curl.log" 2>/dev/null)
+has "--poke reloads the list"  "reload-sync" "$POSTS"
+has "...and moves the cursor"  "pos("        "$POSTS"
+# One select-pane fires two hooks and arriving from another window fires three;
+# the seat they all report is the same one, and one repaint is what that is.
+poke "$C"
+ok "the same seat is not poked twice" 1 \
+   "$(grep -c 'reload-sync' "$ROOT/curl.log" 2>/dev/null | tr -d ' ')"
+term_ok 18
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
