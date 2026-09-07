@@ -297,6 +297,10 @@ hasnt "at 110 columns with every column shown the long name is cut" "$LONG" "$(r
 has   "...but with the columns hidden it is spelled out" "$LONG" \
       "$(row_of %8009 "$(rows_at 110 TA_HIDE_COLS=ctx,cost,model,acct,loc)")"
 has   "at 140 columns the detail has spare room, so it is spelled out too" "$LONG" "$(row_of %8009 "$(rows_at 140)")"
+# A 61-column sidebar with the columns hidden: the tier would give the name 18;
+# the names get everything but ten columns of detail.
+has   "on a 61-column sidebar with the columns hidden the name gets the width" "${LONG:0:30}" \
+      "$(row_of %8009 "$(rows_at 61 TA_HIDE_COLS=ctx,cost,model,acct,loc)")"
 has   "...and at 230 it is spelled out in full"   "$LONG" "$(row_of %8009 "$WIDE")"
 
 # The rows have to grow into the pane, not past it: fzf wraps anything wider and

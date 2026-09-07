@@ -2125,11 +2125,14 @@ list() {
       # width to the detail on the right — a list with everything hidden was
       # cutting names at 22 characters beside sixty columns of nothing. Once the
       # rows are in (END measures them and calls this again), the column grows
-      # to the longest name present, as long as the detail keeps 24 columns to
-      # say what the agent is doing. The cap keeps a pathological title from
-      # eating the row. maxnm is 0 on the first call, so BEGIN is unchanged.
+      # to the longest name present. The detail keeps ten columns and no more:
+      # it is the last tool line, worth having, but somebody who hid the other
+      # columns to see names on a 61-column sidebar wants the names — on that
+      # pane a 24-column floor was exactly all the slack there was. The cap
+      # keeps a pathological title from eating the row. maxnm is 0 on the first
+      # call, so BEGIN is unchanged.
       if (maxnm > namew) {
-        slack = avail - fixedw() - 1 - 24
+        slack = avail - fixedw() - 1 - 10
         grow = maxnm - namew
         if (grow > slack) grow = slack
         if (namew + grow > 64) grow = 64 - namew
