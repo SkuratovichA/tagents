@@ -2120,6 +2120,21 @@ list() {
         if (!mdlw  && !("model" in hid) && avail - (fixedw() + 9) - 1 >= 12) mdlw  = 8
         if (!acctw && !("acct"  in hid) && avail - (fixedw() + 9) - 1 >= 12) acctw = 8
       }
+      # THE NAME COLUMN FITS THE NAMES. The tiers above guess a width before a
+      # single row is known, and every column hidden with ctrl-w hands its
+      # width to the detail on the right — a list with everything hidden was
+      # cutting names at 22 characters beside sixty columns of nothing. Once the
+      # rows are in (END measures them and calls this again), the column grows
+      # to the longest name present, as long as the detail keeps 24 columns to
+      # say what the agent is doing. The cap keeps a pathological title from
+      # eating the row. maxnm is 0 on the first call, so BEGIN is unchanged.
+      if (maxnm > namew) {
+        slack = avail - fixedw() - 1 - 24
+        grow = maxnm - namew
+        if (grow > slack) grow = slack
+        if (namew + grow > 64) grow = 64 - namew
+        if (grow > 0) namew += grow
+      }
       fixed = fixedw()
       detw = avail - fixed - 1
       if (detw < 6) detw = 0
@@ -2226,6 +2241,25 @@ list() {
 
       for (p in alive) seen[p] = 1
       for (p in st)    seen[p] = 1
+
+      # The row names, measured before any row is drawn — the same selection
+      # the loop below makes, so a record it would skip cannot widen the column.
+      maxnm = 0
+      for (p in seen) {
+        isalive = (p in alive); islive = isalive && (p in live)
+        if (islive) {
+          dir = (p in st && cwd[p] != "") ? cwd[p] : path[p]
+        } else {
+          if (!(p in st)) continue
+          if (now - ts[p] > deadttl) continue
+          if (sid[p] != "" && (sid[p] in livesid)) continue
+          dir = (cwd[p] != "") ? cwd[p] : path[p]
+        }
+        if (dir == "") dir = "(unknown)"
+        l = uclen(nameof(p, (p in sid) ? sid[p] : "", dir))
+        if (l > maxnm) maxnm = l
+      }
+      fitcols()
 
       n = 0
       for (p in seen) {
