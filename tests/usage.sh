@@ -55,6 +55,16 @@ TODAY=$(date +%F)
 D=$(date +%d); D=$((10#$D))
 DIM=$(date -v1d -v+1m -v-1d +%d 2>/dev/null); DIM=$((10#${DIM:-30}))
 LEFT=$((DIM - D + 1))
+# The working-day counts the allowance and the pace now use (Mon–Fri), computed
+# with date so the test does not share the arithmetic it is checking.
+WD_LEFT=0; WD_DONE=0
+i=1; while [ "$i" -le "$DIM" ]; do
+  k=$(date -v"${i}d" +%u 2>/dev/null || echo 1)
+  if [ "$k" -le 5 ]; then [ "$i" -ge "$D" ] && WD_LEFT=$((WD_LEFT + 1)); [ "$i" -le "$D" ] && WD_DONE=$((WD_DONE + 1)); fi
+  i=$((i + 1))
+done
+[ "$WD_LEFT" -gt 0 ] || WD_LEFT=$LEFT
+[ "$WD_DONE" -gt 0 ] || WD_DONE=$D
 
 # tusage. --daily prints whatever the current fixture wrote; --sessions is the
 # one row list() needs to render something; every call records the account
@@ -113,6 +123,12 @@ mkcfg "$CFG" "usage:
   watch: work
   monthly_limit_usd: 850
   safety_margin_pct: 5"
+CALCFG="$ROOT/config-calendar.yaml"
+mkcfg "$CALCFG" "usage:
+  watch: work
+  monthly_limit_usd: 850
+  safety_margin_pct: 5
+  workdays: false"
 NOWATCH="$ROOT/config-nowatch.yaml"
 mkcfg "$NOWATCH" "usage:
   monthly_limit_usd: 850
@@ -141,7 +157,7 @@ t "1. the status bar figure"
 # Under budget AND under pace, which on the 2nd of the month is a small number:
 # the dim case is the one with nothing wrong with it, so it has to satisfy both
 # tests at once, and what "under pace" allows depends on how far in we are.
-CALM=$(awk -v d="$D" -v dim="$DIM" 'BEGIN { printf "%d", int(807.5 * d / (dim + 1) * 0.5) }')
+CALM=$(awk -v d="$WD_DONE" -v l="$WD_LEFT" 'BEGIN { printf "%d", int(807.5 * d / (d + l) * 0.5) }')
 mkrows "$CALM"
 C=$(run "$CFG" --counts)
 has "the watched account's month is in the status bar" "w \$$CALM/850" "$C"
@@ -160,11 +176,19 @@ has "...and rounds to dollars" "w \$808/850" "$C"
 # the month no such fixture exists — with two days left, 35% of the limit IS
 # more than a day's allowance — so the case is asserted only where it is real.
 mkrows 552.5
-if awk -v m=552.5 -v d="$D" -v l="$LEFT" 'BEGIN { exit !(m / d > (807.5 - m) / l) }'; then
+if awk -v m=552.5 -v d="$WD_DONE" -v l="$WD_LEFT" 'BEGIN { exit !(m / d > (807.5 - m) / l) }'; then
   has "spending faster than the month allows warns too" "#[fg=yellow]" "$(run "$CFG" --counts)"
 else
   printf '  --   too late in the month for a pace-only fixture, skipping\n'
 fi
+
+# WORKING DAYS, NOT CALENDAR DAYS. The footer says which it counted, and the
+# allowance over fewer days is the larger number.
+mkrows 400
+F=$(run "$CFG" --ask-usage </dev/null | strip)
+has "the footer counts working days by default" "/day left ($WD_LEFT""wd)" "$F"
+F2=$(run "$CALCFG" --ask-usage </dev/null | strip)
+has "...and calendar days when asked" "/day left ($LEFT""d)" "$F2"
 
 # ---------------------------------------------------------------------------
 t "2. no watched account, no feature"
