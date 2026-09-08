@@ -567,6 +567,15 @@ PORT=$(tm display -p -t "$LIST" '#{@tagents_port}' 2>/dev/null)
 ok "the list pane carries the port while it runs" yes \
    "$(if [ -n "$PORT" ]; then echo yes; else echo no; fi)"
 [ -n "$PORT" ] || tm set -p -t "$LIST" @tagents_port 65001 >/dev/null 2>&1
+# THE CLAIM IS KEPT, NOT LEFT: a stale refresher's cleanup (or anything else)
+# taking the option away is undone on the next tick by the one that owns it.
+if [ -n "$PORT" ]; then
+  tm set -p -t "$LIST" @tagents_port 1 >/dev/null 2>&1; sleep 2.8
+  ok "an overwritten port is reclaimed on the next tick" "$PORT" \
+     "$(tm display -p -t "$LIST" '#{@tagents_port}' 2>/dev/null)"
+else
+  printf '  --   no live refresher port here, reclaim not checked\n'
+fi
 
 # The hook end of it, witnessed by the stamp file: poke writes down the seat it
 # repainted for, and only when a live list took the reload.
