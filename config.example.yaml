@@ -68,6 +68,10 @@ usage:
   # bill, so the daily allowance is budgeted against limit×(1−margin) — 5% here.
   safety_margin_pct: 5
 
+  # Spread the allowance over Monday–Friday only, and measure the pace the same
+  # way: a weekend does not spend. `false` counts every calendar day.
+  workdays: true
+
 # The notes workspace (`tnotes`, prefix + C-t).
 notes:
   # What `:q` does with the draft in prompt.md. The draft is always committed

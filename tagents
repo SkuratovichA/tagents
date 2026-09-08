@@ -1023,10 +1023,18 @@ usage_line() {  # <status|footer|summary>
   margin=$(cfg_get usage.safety_margin_pct) || margin=""
   badge=$(cfg_get "claude.profiles.$watch.badge") || badge=""
   [ -n "$badge" ] || badge=${watch%"${watch#?}"}
+  # THE MONTH HAS FIVE WORKING DAYS A WEEK, NOT SEVEN. An allowance spread over
+  # every calendar day is money a Saturday will never spend, handed to no one:
+  # on the working days that actually cost, the figure reads a third too low,
+  # and the pace it is compared with reads a third too high. Unless
+  # usage.workdays says otherwise, both are counted over Monday to Friday.
+  workdays=$(cfg_get usage.workdays) || workdays=""
+  case "$workdays" in false|no|0|off) workdays=0 ;; *) workdays=1 ;; esac
   usage_days | awk -F"$TAB" \
     -v mode="$mode" -v watch="$watch" -v badge="$badge" \
-    -v limit="${limit:-0}" -v margin="${margin:-0}" \
+    -v limit="${limit:-0}" -v margin="${margin:-0}" -v workdays="$workdays" \
     -v y="$(date +%Y)" -v mo="$(date +%m)" -v dy="$(date +%d)" -v mon="$(date +%b)" \
+    -v wd="$(date +%u)" \
     -v esc="$(printf '\033')" -v bars='▁ ▂ ▃ ▄ ▅ ▆ ▇ █' '
     # $459, not $458.7392: this is a number read out of the corner of an eye.
     # Under ten dollars the cents are the whole of the information, so they stay.
@@ -1053,11 +1061,28 @@ usage_line() {  # <status|footer|summary>
       }
       dim = mdays(y, mo)
       left = dim - dy + 1
+      done = dy
+      unit = "d"
+      if (workdays) {
+        # Weekday of day i, from the weekday of today (1 = Monday), counted in both
+        # directions; a weekend today has no working day of its own to spend on.
+        wleft = 0; wdone = 0
+        for (i = 1; i <= dim; i++) {
+          k = ((wd - 1 + (i - dy)) % 7 + 7) % 7 + 1
+          if (k > 5) continue
+          if (i >= dy) wleft++
+          if (i <= dy) wdone++
+        }
+        # A month whose last days are a weekend: nothing left to budget over,
+        # so fall back to the calendar rather than divide by nothing.
+        if (wleft > 0) { left = wleft; unit = "wd" }
+        if (wdone > 0) done = wdone
+      }
       budget = limit * (1 - margin / 100)
       rem = budget - mtd
       if (rem < 0) rem = 0
       allowed = (left > 0 ? rem / left : 0)
-      pace = (dy > 0 ? mtd / dy : 0)
+      pace = (done > 0 ? mtd / done : 0)
       frac = (limit > 0 ? mtd / limit : 0)
       # Yellow is "the month ends over budget at this rate", which is a warning
       # long before the total itself looks alarming — that is the whole point of
@@ -1084,8 +1109,8 @@ usage_line() {  # <status|footer|summary>
         }
         spark = " · " spark
       }
-      printf "%s%s · %s $%s of $%s · today $%s · $%s/day left (%dd)%s%s\n",
-             esc ac, watch, mon, m(mtd), m(limit), m(per[dy] + 0), m(allowed), left,
+      printf "%s%s · %s $%s of $%s · today $%s · $%s/day left (%d%s)%s%s\n",
+             esc ac, watch, mon, m(mtd), m(limit), m(per[dy] + 0), m(allowed), left, unit,
              spark, esc "[0m"
     }'
 }
