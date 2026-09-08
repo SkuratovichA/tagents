@@ -2981,7 +2981,7 @@ refresher() {
   # is the one process that knows when the list has really gone, which makes the
   # option a live claim rather than a leftover pointing at a dead port.
   dp=$(dash_pane)
-  [ -n "$dp" ] && tmux set -p -t "$dp" @tagents_port "$port" 2>/dev/null && pub=$dp
+  claim_port
   while sleep 2; do
     # Advance the token index out here, not in list(): parsing the tail of every
     # transcript costs a few hundred milliseconds, and a keystroke must never
@@ -3040,14 +3040,34 @@ refresher() {
       last=$seat
       [ -n "$seat" ] && follow_cursor "$port" "$dp"
     fi
-    # The pane the list is drawn in can be replaced under us — a sidebar rebuilt,
-    # a list restarted in another pane — so the claim is re-made when it moves.
-    if [ -n "$dp" ] && [ "$dp" != "$pub" ]; then
-      [ -n "$pub" ] && tmux set -up -t "$pub" @tagents_port 2>/dev/null
-      tmux set -p -t "$dp" @tagents_port "$port" 2>/dev/null && pub=$dp
-    fi
+    # Re-made every tick, not only when the pane moves: see claim_port.
+    claim_port
   done
-  [ -n "$pub" ] && tmux set -up -t "$pub" @tagents_port 2>/dev/null
+  # Only ever taken down by its owner. A refresher outlived by its fzf — the
+  # list respawned, five posts refused — must not wipe the claim the NEXT
+  # refresher has already made on the same pane: that is how a live dashboard
+  # ended up with no port and a marker that waited for the tick again.
+  [ -n "$pub" ] && [ "$(tmux show -pv -t "$pub" @tagents_port 2>/dev/null)" = "$port" ] &&
+    tmux set -up -t "$pub" @tagents_port 2>/dev/null
+  return 0
+}
+
+# THE PORT IS A CLAIM THAT HAS TO BE KEPT, not a note left once. The list pane
+# can be replaced under the refresher (a sidebar rebuilt, a list restarted), and
+# the option itself can be overwritten or removed by another refresher on its way
+# out — the one whose fzf just died and whose cleanup ran a beat after the new
+# one published. So every tick asks whether the pane still says OUR port and
+# writes it again when it does not; a `tmux show` is a cheap question. Uses the
+# caller's dp, port and pub.
+claim_port() {
+  [ -n "$dp" ] || return 0
+  if [ "$(tmux show -pv -t "$dp" @tagents_port 2>/dev/null)" = "$port" ]; then
+    pub=$dp; return 0
+  fi
+  [ -n "$pub" ] && [ "$pub" != "$dp" ] &&
+    [ "$(tmux show -pv -t "$pub" @tagents_port 2>/dev/null)" = "$port" ] &&
+    tmux set -up -t "$pub" @tagents_port 2>/dev/null
+  tmux set -p -t "$dp" @tagents_port "$port" 2>/dev/null && pub=$dp
   return 0
 }
 
