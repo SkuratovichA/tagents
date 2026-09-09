@@ -243,6 +243,29 @@ ok "the chat's marker was cleared" "" "$(notes_of "$CHAT")"
 ok "the chat's window is back to one pane" 1 "$(npanes "$CWIN")"
 
 # ---------------------------------------------------------------------------
+t "6b. the documents you touched are mentioned beside the draft"
+# ---------------------------------------------------------------------------
+# old.md is what the model last saw (the marker points past it); haiku.md is
+# changed after that, so it is the one that comes along.
+printf 'old\n' >"$NOTES/old.md"; git -C "$NOTES" add -A >/dev/null 2>&1
+git -C "$NOTES" -c user.name=t -c user.email=t@t commit -qm "seen" >/dev/null 2>&1
+git -C "$NOTES" rev-parse HEAD >"$NOTES/.git/ta-last-seen"
+printf 'five seven five\n' >"$NOTES/haiku.md"
+: >"$NOTES/prompt.md"
+run send "$CHAT" "$NOTES" >/dev/null 2>&1
+ROWT=$(tm capture-pane -p -t "$CHAT" 2>/dev/null)
+has   "with no draft the changed document is mentioned on its own" "@.claude/notes/haiku.md" "$ROWT"
+hasnt "...and a document the model already saw is not"             "old.md"                 "$ROWT"
+hasnt "...nor the empty draft"                                      "@.claude/notes/prompt.md" "$ROWT"
+printf 'see the haiku\n' >"$NOTES/prompt.md"
+run send "$CHAT" "$NOTES" >/dev/null 2>&1
+ROWT=$(tm capture-pane -p -t "$CHAT" 2>/dev/null)
+has "a draft adds its own reference"                     "@.claude/notes/prompt.md" "$ROWT"
+ok  "...without mentioning the document a second time" 1 "$(printf '%s' "$ROWT" | grep -o 'notes/haiku.md' | wc -l | tr -d ' ')"
+# Send the row away so the sections below start from a clean input line.
+tm send-keys -t "$CHAT" Enter; sleep 0.3; : >"$ROOT/pasted.txt"
+
+# ---------------------------------------------------------------------------
 t "7. a draft is never typed into something that is not claude"
 # ---------------------------------------------------------------------------
 BEFORE=$(git -C "$NOTES" log --oneline 2>/dev/null | wc -l | tr -d ' ')

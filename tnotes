@@ -355,11 +355,34 @@ ref_path() {  # <chat pane> <dir> -> the path to put after the @
   printf '%s/prompt.md' "$dir"
 }
 
+# THE ARTIFACTS YOU TOUCHED COME ALONG. The diff the prompt hook injects says
+# what changed; an @-mention hands the model the file as it is now, which is
+# what it needs to act on a comment left in the middle of a document. So every
+# file with a commit after the one the model last saw (.git/ta-last-seen, moved
+# by the hooks) is referenced next to the prompt — and with no draft at all the
+# references go alone, so closing the editor after only editing a document still
+# tells the chat which one. Capped: a folder-wide rewrite is a diff to read, not
+# eight attachments. A path with whitespace cannot be mentioned and is skipped.
+changed_artifacts() {  # <dir> -> paths relative to the folder, one per line
+  local dir=$1 seen
+  [ -d "$dir/.git" ] || return 0
+  seen=$(cat "$dir/.git/ta-last-seen" 2>/dev/null)
+  if [ -n "$seen" ] && git -C "$dir" cat-file -e "${seen}^{commit}" 2>/dev/null; then
+    git -C "$dir" diff --name-only "$seen" HEAD -- . ':!prompt.md' 2>/dev/null
+  else
+    git -C "$dir" ls-files -- . ':!prompt.md' 2>/dev/null
+  fi | grep -v '[[:space:]]' | head -8
+}
+
 cmd_send() {
-  local chat=${1:-} dir=${2:-} cmd mode ref row
+  local chat=${1:-} dir=${2:-} cmd mode ref row base refs r typed rowtext hasprompt=0
   [ -n "$chat" ] && [ -n "$dir" ] || { printf 'tnotes: send <chat> <dir>\n' >&2; exit 2; }
   commit_notes "$dir"
-  grep -q '[^[:space:]]' "$dir/prompt.md" 2>/dev/null || exit 0
+  grep -q '[^[:space:]]' "$dir/prompt.md" 2>/dev/null && hasprompt=1
+  mode=$(send_mode)
+  # Text modes have nothing to say without a draft; the reference mode may still
+  # have a document to point at.
+  [ "$hasprompt" = 1 ] || [ "$mode" = reference ] || exit 0
 
   cmd=$(opt_of pane_current_command "$chat")
   # THE DRAFT IS KEPT, ALWAYS. Typing a prompt into whatever shell happens to
@@ -372,8 +395,6 @@ cmd_send() {
     exit 1
   fi
 
-  mode=$(send_mode)
-
   # THE DEFAULT SENDS A REFERENCE AND STOPS THERE. The file is read by the CLI
   # at submit time, not now, so leaving `@…/prompt.md ` in the input costs the
   # user nothing and buys them everything: they can reopen the editor, rewrite
@@ -381,22 +402,29 @@ cmd_send() {
   # Nothing is truncated here either — the hook that sees the submit is the one
   # that knows the draft was actually sent.
   if [ "$mode" = reference ]; then
-    ref="@$(ref_path "$chat" "$dir")"
+    base=$(ref_path "$chat" "$dir"); base=${base%/prompt.md}
+    refs=""
+    [ "$hasprompt" = 1 ] && refs="@$base/prompt.md"
+    for r in $(changed_artifacts "$dir"); do refs="$refs${refs:+ }@$base/$r"; done
+    [ -n "$refs" ] || exit 0
     # A SECOND :q MUST NOT LEAVE A SECOND MENTION. Reopening the editor to
     # change one's mind before pressing Enter is the whole point of this mode,
-    # and the reference the first :q typed is still sitting there unsubmitted.
+    # and the references the first :q typed are still sitting there unsubmitted.
     # The cursor's row IS the input line — the CLI's history is all above it —
-    # so the pane is asked what the user is looking at rather than remembered.
+    # so the pane is asked what the user is looking at rather than remembered,
+    # and each mention is typed only if that row does not already carry it.
     row=$(tmux display -p -t "$chat" '#{cursor_y}' 2>/dev/null)
     case "${row:-x}" in
       *[!0-9]*) row= ;;
     esac
-    if [ -n "$row" ]; then
-      case "$(tmux capture-pane -p -t "$chat" -S "$row" -E "$row" 2>/dev/null)" in
-        *"$ref"*) exit 0 ;;
-      esac
-    fi
-    tmux send-keys -t "$chat" -l "$ref " 2>/dev/null || exit 1
+    rowtext=""
+    [ -n "$row" ] && rowtext=$(tmux capture-pane -p -t "$chat" -S "$row" -E "$row" 2>/dev/null)
+    typed=""
+    for r in $refs; do
+      case "$rowtext" in *"$r"*) ;; *) typed="$typed$r " ;; esac
+    done
+    [ -n "$typed" ] || exit 0
+    tmux send-keys -t "$chat" -l "$typed" 2>/dev/null || exit 1
     exit 0
   fi
 
