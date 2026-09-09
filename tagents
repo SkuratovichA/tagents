@@ -44,7 +44,7 @@
 #   tagents --closed-rows   every closed session, one TAB-separated line each:
 #                           sid, last activity, first seen, account, badge,
 #                           name, directory, and which files it was found in.
-#                           This is what ctrl-b's picker is built from
+#                           This is what ctrl-y's picker is built from
 #   tagents --hidden-cols   which columns are hidden right now (see ctrl-w)
 #   tagents --col-rows      the picker's rows as the picker itself reads them,
 #                           key<TAB>the checkmark line — what ctrl-w shows you
@@ -354,7 +354,7 @@
 #                      cursor in the filter query, which is the second and last
 #                      thing spent here. The query is a project name long, so
 #                      backspace covers it
-#   ctrl-b             every session that is NOT running, however long ago it
+#   ctrl-y             every session that is NOT running, however long ago it
 #                      was closed, under the name this dashboard knows it by —
 #                      the one you typed, else the one $TA_LABEL announced, else
 #                      its first prompt. Enter resumes the one you pick, on the
@@ -4370,7 +4370,7 @@ ask_closed() {  # <port> — the picker itself, normally the body of the popup
   post_fzf "$port" "reload-sync($SELF --list)"
 }
 
-closed_window() {  # ctrl-b — the modal, or the same body inline where a popup cannot open
+closed_window() {  # ctrl-y — the modal, or the same body inline where a popup cannot open
   local port=${FZF_PORT:-}
   prompt_at 90% 85% --ask-closed "$port" && return 0
   ask_closed "$port"
@@ -4643,6 +4643,9 @@ keyhdr() {  # <cols> <item>... -> the header, one item per line at worst
 # so two verbs configured onto one key is a verb that silently stopped existing.
 # The order here is the order of keys_table, and it is also the order of
 # precedence — an earlier verb keeps a key a later one asks for.
+#
+# closed is ctrl-y and not the ctrl-b it was born with: ctrl-b is the tmux
+# prefix on a default install, so it never reached the list at all.
 KEY_DEFAULTS="open enter K_OPEN
 beside ctrl-s K_BESIDE
 new ctrl-n K_NEW
@@ -4658,7 +4661,7 @@ preview ctrl-v K_PREVIEW
 refresh ctrl-l K_REFRESH
 columns ctrl-w K_COLUMNS
 usage \$ K_USAGE
-closed ctrl-b K_CLOSED
+closed ctrl-y K_CLOSED
 keys ? K_KEYS
 quit ctrl-q K_QUIT"
 KEYS_RESOLVED=''
@@ -5126,7 +5129,7 @@ case "${1:-}" in
   --ask-keys)     shift; ask_keys "$@" ;;
   # $: the month against its limit, a day per row.
   --ask-usage)    ask_usage ;;
-  # ctrl-b: every session that is not running, and the two pieces the picker is
+  # ctrl-y: every session that is not running, and the two pieces the picker is
   # built from. --closed-rows is machine-readable on purpose — it is what the
   # tests assert on and what any other surface would read.
   --closed-rows)    closed_rows ;;

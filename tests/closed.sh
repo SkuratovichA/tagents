@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# tests/closed.sh — ctrl-b: every session that is not running, under the name
+# tests/closed.sh — ctrl-y: every session that is not running, under the name
 # the dashboard knows it by, and resuming one of them.
 #
 # Same shape as tests/launch.sh: a tmux server of its own (`tmux -L tatest-$$ -f
@@ -241,7 +241,7 @@ ok  "...from $HOME instead"     "$HOMED"          "$(field PWD "$f")"
 # ---------------------------------------------------------------------------
 t "5. the key is listed"
 # ---------------------------------------------------------------------------
-has "ctrl-b has a row in the key table" "ctrl-b" "$(run --keys | cut -f1)"
+has "ctrl-y has a row in the key table" "ctrl-y" "$(run --keys | cut -f1)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
