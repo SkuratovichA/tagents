@@ -36,7 +36,11 @@
 #   tagents --keys          every shortcut the dashboard binds, one
 #                           key<TAB>verb<TAB>what it does line each. This table
 #                           is what the ? window is built from, so it is also
-#                           the one place a new key has to be named
+#                           the one place a new key has to be named. Every key
+#                           in it can be moved with a `keys:` block in the
+#                           config (see config.example.yaml), and this is what
+#                           prints where yours ended up — including a `# ` note
+#                           for any that could not be honoured
 #   tagents --closed-rows   every closed session, one TAB-separated line each:
 #                           sid, last activity, first seen, account, badge,
 #                           name, directory, and which files it was found in.
@@ -318,7 +322,8 @@
 #                      still move the cursor
 #   ctrl-r             name this agent; an empty name goes back to its title
 #                      (F2 does the same, for keyboards that have an F-row;
-#                      set TA_RENAME_KEY to move it somewhere else)
+#                      set TA_RENAME_KEY to move it somewhere else — or
+#                      keys.rename in the config, like any other key here)
 #   ctrl-u             undock — send the chat in the current seat home and close
 #                      the seat behind it, unless it was the last one. With
 #                      nothing docked, give a borrowed window back instead
@@ -398,8 +403,9 @@ NEW_CMD=${TA_NEW_CMD:-claude --dangerously-skip-permissions}
 # reach a key you use constantly. ctrl-r costs fzf nothing it does not already
 # have another key for, and F2 stays as an alias. It used to be ctrl-n, which
 # ctrl-n now needs for "new agent here"; refresh moved off ctrl-r to ctrl-l, the
-# terminal's own redraw key, to make room.
-RENAME_KEY=${TA_RENAME_KEY:-ctrl-r}
+# terminal's own redraw key, to make room. The default itself lives in
+# KEY_DEFAULTS below with every other key; TA_RENAME_KEY still overrides it, and
+# so does keys.rename in the config.
 TAB=$'\t'
 US=$'\037'   # unit separator: unlike tab it is not IFS whitespace, so `read`
              # keeps empty fields instead of silently shifting the rest left
@@ -4628,6 +4634,129 @@ keyhdr() {  # <cols> <item>... -> the header, one item per line at worst
     }'
 }
 
+# ---------------------------------------------------------------------------
+# keys: every one of them, and where each one comes from
+# ---------------------------------------------------------------------------
+# EVERY KEY, ITS DEFAULT, AND THE VARIABLE THE REST OF THE FILE READS IT FROM.
+# One table for the lot, because a collision is only visible from the whole set:
+# fzf keeps the LAST --bind for a key and drops the earlier one without a word,
+# so two verbs configured onto one key is a verb that silently stopped existing.
+# The order here is the order of keys_table, and it is also the order of
+# precedence — an earlier verb keeps a key a later one asks for.
+KEY_DEFAULTS="open enter K_OPEN
+beside ctrl-s K_BESIDE
+new ctrl-n K_NEW
+pick ctrl-p K_PICK
+goto ctrl-g K_GOTO
+borrow ctrl-o K_BORROW
+send ctrl-e K_SEND
+rename ctrl-r K_RENAME
+undock ctrl-u K_UNDOCK
+kill ctrl-x K_KILL
+tree ctrl-t K_TREE
+preview ctrl-v K_PREVIEW
+refresh ctrl-l K_REFRESH
+columns ctrl-w K_COLUMNS
+usage \$ K_USAGE
+closed ctrl-b K_CLOSED
+keys ? K_KEYS
+quit ctrl-q K_QUIT"
+KEYS_RESOLVED=''
+KEY_NOTES=''
+KEY_TAKEN=' '
+KEY_NL='
+'
+
+# WHAT FZF WILL ACCEPT, CHECKED BEFORE IT IS HANDED OVER. A --bind fzf cannot
+# parse makes it refuse to start, and fzf refusing to start IS the dashboard not
+# starting — so a typo in the config has to be caught here rather than found out
+# there. The names are fzf's own (0.74); anything else is a key only if it is a
+# single character, which is how $ and ? got in.
+key_valid() {  # <key>
+  case $1 in
+    ctrl-[a-z]|alt-[a-z]|alt-[0-9]|f[1-9]|f1[0-2]) return 0 ;;
+    enter|tab|btab|space|bspace|del|esc) return 0 ;;
+    up|down|left|right|home|end|pgup|pgdn) return 0 ;;
+    ?) ;;
+    *) return 1 ;;
+  esac
+  # Not the quoting characters: the binding is a shell string first and an fzf
+  # argument second, and either of them ends it early. Not whitespace either —
+  # fzf has names of its own for those, listed above.
+  case $1 in ' '|"$TAB"|'\'|'"'|"'") return 1 ;; esac
+  return 0
+}
+
+key_note()  { KEY_NOTES="$KEY_NOTES${KEY_NOTES:+$KEY_NL}$1"; }
+key_taken() { case $KEY_TAKEN in *" $1 "*) return 0 ;; esac; return 1; }
+
+# Resolved once per process and then remembered, the way the config is: dash()
+# rebuilds its header on every frame and would otherwise pay for the lookup
+# again each time — and a complaint about a key belongs on screen once, not once
+# a second.
+resolve_keys() {
+  local verb def var val
+  [ -n "$KEYS_RESOLVED" ] && return 0
+  KEYS_RESOLVED=1
+  KEY_NOTES=''
+  KEY_TAKEN=' '
+  while read -r verb def var; do
+    [ -n "$verb" ] || continue
+    val=$(cfg_get "keys.$verb") || val=''
+    [ -n "$val" ] || { [ "$verb" = rename ] && val=${TA_RENAME_KEY:-}; }
+    [ -n "$val" ] || val=$def
+    if ! key_valid "$val"; then
+      key_note "keys.$verb: '$val' is not a key fzf knows — using $def"
+      val=$def
+    fi
+    if key_taken "$val"; then
+      # Its default is the second chance and the last one. Left unbound rather
+      # than bound over the top of somebody else: a verb that is missing can be
+      # looked for, a verb that quietly stole another key cannot.
+      if [ "$val" != "$def" ] && ! key_taken "$def"; then
+        key_note "keys.$verb: $val is taken already — using $def"
+        val=$def
+      else
+        key_note "keys.$verb: $val is taken already — $verb is unbound"
+        val=''
+      fi
+    fi
+    [ -n "$val" ] && KEY_TAKEN="$KEY_TAKEN$val "
+    eval "$var=\$val"
+  done <<EOF
+$KEY_DEFAULTS
+EOF
+  return 0
+}
+
+# THE ONE PLACE A REJECTED KEY IS REPORTED. The dashboard has no stderr anybody
+# reads — fzf owns the screen from the moment it starts — so the message goes
+# where tmux puts its own; and `tagents --keys`, which is where somebody looks
+# to find out what their config actually did, prints the same lines as comments.
+key_warn() {  # [prefix] — no prefix means tmux display-message
+  local n pre=${1:-}
+  [ -n "$KEY_NOTES" ] || return 0
+  while IFS= read -r n; do
+    [ -n "$n" ] || continue
+    if [ -n "$pre" ]; then printf '%s%s\n' "$pre" "$n"
+    else tmux display-message "tagents: $n" 2>/dev/null || true
+    fi
+  done <<EOF
+$KEY_NOTES
+EOF
+  return 0
+}
+
+# A verb whose key was configured onto somebody else's has no key at all, and
+# "--bind=:execute-silent(...)" is exactly the argument fzf refuses to start on
+# — so an unbound verb contributes nothing here rather than an empty binding.
+BINDS=()
+kb() {  # <key> <action>
+  [ -n "$1" ] || return 0
+  BINDS[${#BINDS[@]}]="--bind=$1:$2"
+  return 0
+}
+
 # EVERY KEY IN ONE PLACE, and the place a new one is added. The fzf --bind
 # strings themselves stay hand-written down in dash() — several of them carry
 # suffixes (+reload-sync, +abort) and quoting that a table would have to encode
@@ -4644,26 +4773,31 @@ keyhdr() {  # <cols> <item>... -> the header, one item per line at worst
 # searches what it shows, so somebody who remembers "undock" but not ctrl-u can
 # type the word and get the key.
 keys_table() {  # key<TAB>verb<TAB>what it does
+  resolve_keys
+  # The awk drops any verb left without a key. A row with an empty first column
+  # is a lie in both directions: nothing is bound to it, and the ? window would
+  # offer it anyway.
   printf '%s\n' \
-"enter${TAB}open${TAB}open it in the sidebar and put the cursor in it" \
-"ctrl-s${TAB}beside${TAB}open it beside the current seat — two chats at once" \
-"ctrl-n${TAB}new${TAB}start a new agent in this project" \
-"ctrl-p${TAB}pick${TAB}the same, picking the account it starts on" \
-"ctrl-g${TAB}goto${TAB}go to the agent where it lives" \
-"ctrl-o${TAB}borrow${TAB}borrow its whole window into this session" \
-"ctrl-e${TAB}send${TAB}send a line straight into it" \
-"$RENAME_KEY${TAB}rename${TAB}rename this agent — an empty name restores its title" \
-"ctrl-u${TAB}undock${TAB}undock the current seat and close it behind the chat" \
-"ctrl-x${TAB}kill${TAB}kill this agent, asking first; a closed row is forgotten" \
-"ctrl-t${TAB}:tree${TAB}tree or flat" \
-"ctrl-v${TAB}:preview${TAB}the preview in a window of its own — in the prefix+a popup, fzf's toggle beside the list" \
-"ctrl-l${TAB}:refresh${TAB}refresh now" \
-"ctrl-w${TAB}:columns${TAB}show or hide columns" \
-"\$${TAB}:usage${TAB}usage this month, per day" \
-"ctrl-b${TAB}:closed${TAB}closed sessions — pick one to resume" \
-"?${TAB}:none${TAB}this window" \
-"ctrl-q${TAB}:quit${TAB}quit the dashboard — from the list itself, not from here" \
-"esc${TAB}:quit${TAB}in the popup, close it — from the list itself, not from here"
+"$K_OPEN${TAB}open${TAB}open it in the sidebar and put the cursor in it" \
+"$K_BESIDE${TAB}beside${TAB}open it beside the current seat — two chats at once" \
+"$K_NEW${TAB}new${TAB}start a new agent in this project" \
+"$K_PICK${TAB}pick${TAB}the same, picking the account it starts on" \
+"$K_GOTO${TAB}goto${TAB}go to the agent where it lives" \
+"$K_BORROW${TAB}borrow${TAB}borrow its whole window into this session" \
+"$K_SEND${TAB}send${TAB}send a line straight into it" \
+"$K_RENAME${TAB}rename${TAB}rename this agent — an empty name restores its title" \
+"$K_UNDOCK${TAB}undock${TAB}undock the current seat and close it behind the chat" \
+"$K_KILL${TAB}kill${TAB}kill this agent, asking first; a closed row is forgotten" \
+"$K_TREE${TAB}:tree${TAB}tree or flat" \
+"$K_PREVIEW${TAB}:preview${TAB}the preview in a window of its own — in the prefix+a popup, fzf's toggle beside the list" \
+"$K_REFRESH${TAB}:refresh${TAB}refresh now" \
+"$K_COLUMNS${TAB}:columns${TAB}show or hide columns" \
+"$K_USAGE${TAB}:usage${TAB}usage this month, per day" \
+"$K_CLOSED${TAB}:closed${TAB}closed sessions — pick one to resume" \
+"$K_KEYS${TAB}:none${TAB}this window" \
+"$K_QUIT${TAB}:quit${TAB}quit the dashboard — from the list itself, not from here" \
+"esc${TAB}:quit${TAB}in the popup, close it — from the list itself, not from here" |
+    awk -F"$TAB" 'length($1) > 0'
 }
 
 # ? — THE KEYS, AND ENTER RUNS THE ONE YOU PICK. Four rows of header for keys
@@ -4789,7 +4923,12 @@ columns_window() {
 # label depends on where the list is running), the key that shows the rest, and
 # the way out.
 dash_header() {  # <cols> <enter label> [quit item]
-  keyhdr "${1:-80}" "enter ${2:-open in sidebar}" "? keys" ${3:+"$3"}
+  local items=()
+  resolve_keys
+  [ -n "$K_OPEN" ] && items[${#items[@]}]="$K_OPEN ${2:-open in sidebar}"
+  [ -n "$K_KEYS" ] && items[${#items[@]}]="$K_KEYS keys"
+  [ -n "${3:-}" ] && items[${#items[@]}]=$3
+  keyhdr "${1:-80}" ${items[@]+"${items[@]}"}
 }
 
 # A NEW KEY IS TWO EDITS, AND THE SECOND IS NOT OPTIONAL: the --bind below, and
@@ -4800,13 +4939,13 @@ dash_header() {  # <cols> <enter label> [quit item]
 # can find, and a key listed and not bound is a lie. tests/ui.sh fails on either.
 dash() {
   local home=${TA_HOME:-} mode=${TA_MODE:-dash} out key rows
-  local rc started fails=0 esc_bind='esc:ignore' quit='ctrl-q quit' fl ft
+  local rc started fails=0 esc_act=ignore quit fl ft
   local header
-  local enter_lbl='open in sidebar' preview_win='' sidebar=0 after='' vbind
+  local enter_lbl='open in sidebar' preview_win='' sidebar=0 after='' vact
   # The --preview pair, present only where ctrl-v still toggles one. An empty
   # array cannot be expanded under `set -u` in bash 3.2 without the
   # ${x[@]+"${x[@]}"} guard below, and empty is the ordinary case now.
-  local pv=()
+  local pv=() xp=()
   # A prompt that opens a popup returns at once, so fzf never has to give up the
   # screen for it — that is what keeps rename and send from flashing the list.
   # Without popups the prompt has to happen in this pane, which needs `execute`.
@@ -4824,7 +4963,13 @@ dash() {
   # dashboard session it must not close anything: the window is the session's
   # reason to exist, and losing it leaves you staring at whatever else is there.
   # A popup also closes once it has done what you asked; the sidebar stays.
-  if [ "$mode" = popup ]; then esc_bind='esc:abort'; quit=''; after='+abort'; fi
+  # Resolved before the header is built and before a single bind is made,
+  # because every one of them now reads the answer out of these variables.
+  resolve_keys
+  key_warn
+  quit=''
+  [ -n "$K_QUIT" ] && quit="$K_QUIT quit"
+  if [ "$mode" = popup ]; then esc_act=abort; quit=''; after='+abort'; fi
 
   # A LIST RUNNING IN A PANE IS THE SIDEBAR. Not "is it running in the pane some
   # marker points at" — it claims the pane, so enter docks the chat into the right
@@ -4851,9 +4996,9 @@ dash() {
   # a popup cannot open a second popup, and a tmux without display-popup cannot
   # open the first. There ctrl-v stays fzf toggle-preview — and the preview it
   # toggles has to exist, so the pair goes back in.
-  vbind="--bind=ctrl-v:$ask($SELF --act preview {1} {3})"
+  vact="$ask($SELF --act preview {1} {3})"
   if [ "$ask" != execute-silent ]; then
-    vbind='--bind=ctrl-v:toggle-preview'
+    vact=toggle-preview
     # Worked out HERE, where the pair is built, and nowhere else: on the modal
     # path there is no --preview at all and a preview_window computed for it
     # would be a line describing a flag nobody passes. Beside the list in a
@@ -4863,6 +5008,41 @@ dash() {
     else preview_win='right,55%,border-left,wrap'; fi
     pv=(--preview="$SELF --preview {1} {3}" --preview-window="$preview_win")
   fi
+  # THE BINDINGS, ASSEMBLED RATHER THAN WRITTEN OUT ON THE fzf LINE — because a
+  # key can now be configured away, and an unbound verb has to leave no argument
+  # behind at all. The action strings are still one per verb and still by hand:
+  # several carry suffixes (+reload-sync, the popup +abort, the execute against
+  # execute-silent choice) that a loop over keys_table could only encode
+  # verbatim. Aliases nobody needs a row in the table for follow the verb they
+  # alias: double-click is enter, f2 is the rename key.
+  BINDS=()
+  kb "$K_OPEN"    "execute-silent($SELF --act open {1} {3} {4} {5})$after"
+  kb double-click "execute-silent($SELF --act open {1} {3} {4} {5})$after"
+  kb "$K_GOTO"    "execute-silent($SELF --act goto {1})$after"
+  kb "$K_BORROW"  "execute-silent($SELF --act borrow {1})$after"
+  kb "$K_SEND"    "$ask($SELF --act send {1})$after"
+  kb "$K_BESIDE"  "execute-silent($SELF --act beside {1} {3} {4} {5})$after"
+  kb "$K_RENAME"  "$ask($SELF --act rename {1} {3} {4})"
+  kb f2           "$ask($SELF --act rename {1} {3} {4})"
+  kb "$K_UNDOCK"  "execute-silent($SELF --act undock {1})+reload-sync($SELF --list)"
+  kb "$K_KILL"    "$ask($SELF --act kill {1} {3} {4})"
+  kb "$K_NEW"     "$ask($SELF --act new {1} {3} {4} {5})$after"
+  kb "$K_PICK"    "$ask($SELF --act pick {1} {3} {4} {5})$after"
+  kb "$K_COLUMNS" "$ask($SELF --act columns)"
+  kb "$K_USAGE"   "$ask($SELF --act usage)"
+  kb "$K_CLOSED"  "$ask($SELF --act closed)$after"
+  kb "$K_KEYS"    "$ask($SELF --act keys {1} {3} {4} {5})$after"
+  kb esc          "$esc_act"
+  kb "$K_PREVIEW" "$vact"
+  kb "$K_TREE"    "execute-silent($SELF --toggle-group)+reload-sync($SELF --list)"
+  kb "$K_REFRESH" "reload-sync($SELF --list)"
+  kb resize       "reload-sync($SELF --list)"
+  kb start        "execute-silent(TA_PORT=\$FZF_PORT nohup $SELF --refresher >/dev/null 2>&1 &)"
+  # --expect is the one route quit has, and it is a flag rather than a bind, so
+  # it needs the same "not there at all" shape the array gives everything else.
+  xp=()
+  [ -n "$K_QUIT" ] && xp=(--expect="$K_QUIT")
+
   export TA_HOME="$home"
 
   # First frame only: fzf hands every later reload an authoritative FZF_COLUMNS,
@@ -4898,29 +5078,8 @@ dash() {
       --header="$header" \
       ${pv[@]+"${pv[@]}"} \
       ${ft[@]+"${ft[@]}"} \
-      --bind="enter:execute-silent($SELF --act open {1} {3} {4} {5})$after" \
-      --bind="double-click:execute-silent($SELF --act open {1} {3} {4} {5})$after" \
-      --bind="ctrl-g:execute-silent($SELF --act goto {1})$after" \
-      --bind="ctrl-o:execute-silent($SELF --act borrow {1})$after" \
-      --bind="ctrl-e:$ask($SELF --act send {1})$after" \
-      --bind="ctrl-s:execute-silent($SELF --act beside {1} {3} {4} {5})$after" \
-      --bind="$RENAME_KEY:$ask($SELF --act rename {1} {3} {4})" \
-      --bind="f2:$ask($SELF --act rename {1} {3} {4})" \
-      --bind="ctrl-u:execute-silent($SELF --act undock {1})+reload-sync($SELF --list)" \
-      --bind="ctrl-x:$ask($SELF --act kill {1} {3} {4})" \
-      --bind="ctrl-n:$ask($SELF --act new {1} {3} {4} {5})$after" \
-      --bind="ctrl-p:$ask($SELF --act pick {1} {3} {4} {5})$after" \
-      --bind="ctrl-w:$ask($SELF --act columns)" \
-      --bind="$:$ask($SELF --act usage)" \
-      --bind="ctrl-b:$ask($SELF --act closed)$after" \
-      --bind="?:$ask($SELF --act keys {1} {3} {4} {5})$after" \
-      --bind="$esc_bind" \
-      "$vbind" \
-      --bind='ctrl-t:execute-silent('"$SELF"' --toggle-group)+reload-sync('"$SELF"' --list)' \
-      --bind='ctrl-l:reload-sync('"$SELF"' --list)' \
-      --bind='resize:reload-sync('"$SELF"' --list)' \
-      --bind="start:execute-silent(TA_PORT=\$FZF_PORT nohup $SELF --refresher >/dev/null 2>&1 &)" \
-      --expect=ctrl-q)
+      ${BINDS[@]+"${BINDS[@]}"} \
+      ${xp[@]+"${xp[@]}"})
     rc=$?
 
     if [ $rc -ne 0 ]; then
@@ -4973,10 +5132,12 @@ case "${1:-}" in
   --closed-rows)    closed_rows ;;
   --closed-preview) shift; closed_preview "$@" ;;
   --ask-closed)     ask_closed "${2:-}" ;;
-  --keys)         keys_table ;;
+  --keys)         keys_table; key_warn '# ' ;;
   # ${4-...}, not ${4:-...}: an EMPTY quit item is how popup mode asks for a
   # header without one, and defaulting that back would test the wrong header.
-  --header)       dash_header "${2:-80}" "${3:-open in sidebar}" "${4-ctrl-q quit}" ;;
+  --header)       resolve_keys
+                  dash_header "${2:-80}" "${3:-open in sidebar}" \
+                              "${4-${K_QUIT:+$K_QUIT quit}}" ;;
   --act)          shift; act "$@" ;;
   # Starting an agent from outside the list: a tmux binding, a shell, a script.
   --new)          shift; new_agent "${1:-}" "${2:-}" ;;
