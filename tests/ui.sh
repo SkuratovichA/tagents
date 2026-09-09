@@ -409,27 +409,10 @@ ok  "esc closes the picker" no "$(lives "$PICK")"
 # ---------------------------------------------------------------------------
 t "3. the ? window"
 # ---------------------------------------------------------------------------
-# THE TABLE AND THE BINDINGS CANNOT DRIFT. Every key dash() binds has to have a
-# row in keys_table, and every row has to be a key that is really bound — except
-# the two that are listed and cannot be run from here (ctrl-q comes through
-# --expect, esc through the abort binding), and the aliases nobody needs a row
-# for: start is fzf's own boot hook, double-click is enter, f2 is the rename key.
+# The table against the bindings is checked at the bottom of this file, against
+# the argv fzf was really handed — the keys are configurable now, so the source
+# of dash() is no longer an answer to "what is bound".
 TABLE=$(run --keys | cut -f1 | sort)
-BOUND=$(awk '/^dash\(\) \{/, /^\}$/' "$TA" |
-          sed -n "s/.*--bind=['\"]\{0,1\}\([^:'\"]*\):.*/\1/p" |
-          sed "s/\\\$RENAME_KEY/ctrl-r/" |
-          grep -v -e '^start$' -e '^resize$' -e '^double-click$' -e '^f2$' | sort -u)
-for k in $BOUND; do
-  case "$TABLE" in *"$k"*) pass=$((pass+1)); printf '  ok   %s is bound and listed\n' "$k" ;;
-    *) fail=$((fail+1)); printf '  FAIL %s is bound by dash() and has no row in keys_table\n' "$k" ;;
-  esac
-done
-for k in $TABLE; do
-  case "$k" in ctrl-q|esc) continue ;; esac
-  case "$BOUND" in *"$k"*) pass=$((pass+1)); printf '  ok   %s is listed and bound\n' "$k" ;;
-    *) fail=$((fail+1)); printf '  FAIL %s has a row in keys_table and dash() binds nothing to it\n' "$k" ;;
-  esac
-done
 has "the two that cannot be run from here are still listed" "ctrl-q" "$TABLE"
 has "...both of them"                                       "esc"    "$TABLE"
 
@@ -617,6 +600,7 @@ dumpargs() {  # <dump file> <extra env for the list> -> the argv, one per line
 # $SELF is the path tagents resolves for itself, which is the one written into
 # every binding — never the $HERE/../tagents this suite calls it by.
 SELF=$(cd "$(dirname "$TA")" && pwd)/$(basename "$TA")
+TAB=$'\t'
 
 SIDEBAR=$(dumpargs "$ROOT/fzf-sidebar" '')
 ok "the sidebar list asks fzf for no preview at all" 0 \
@@ -629,6 +613,91 @@ ok "the popup list still gets its preview" 1 \
    "$(printf '%s\n' "$POPUP" | grep -c '^--preview=' | tr -d ' ')"
 has "...beside the list, as before"        "--preview-window=right,55%,border-left,wrap" "$POPUP"
 has "...where ctrl-v is fzf's own toggle"  "--bind=ctrl-v:toggle-preview" "$POPUP"
+
+# THE TABLE AND THE BINDINGS CANNOT DRIFT, and this is the only honest place to
+# say so: every key comes out of the config now, so what is bound is whatever
+# fzf was handed above — never what the source of dash() looks like. Both shapes
+# are checked, because the popup builds its own set. The exceptions are the ones
+# they always were: the two that are listed and cannot be run from the ? window
+# (ctrl-q arrives through --expect, esc through the abort binding), and the
+# aliases nobody needs a row for — start and resize are fzf hooks rather than
+# keys, double-click is enter, f2 is the rename key.
+binds_of() {  # <argv dump> -> the key of every --bind, one per line
+  printf '%s\n' "$1" | sed -n 's/^--bind=\([^:]*\):.*/\1/p' |
+    grep -v -e '^start$' -e '^resize$' -e '^double-click$' -e '^f2$' | sort -u
+}
+# read, not `for k in $BOUND`: two of these keys are $ and ?, and an unquoted ?
+# is a glob that would match any one-character file next to the suite.
+drift() {  # <where> <bound keys>
+  local where=$1 bound=$2 k
+  while IFS= read -r k; do
+    [ -n "$k" ] || continue
+    case "$TABLE" in *"$k"*) pass=$((pass+1)); printf '  ok   %s: %s is bound and listed\n' "$where" "$k" ;;
+      *) fail=$((fail+1)); printf '  FAIL %s: %s is bound and has no row in keys_table\n' "$where" "$k" ;;
+    esac
+  done <<EOF
+$bound
+EOF
+  while IFS= read -r k; do
+    case $k in ''|ctrl-q|esc) continue ;; esac
+    case "$bound" in *"$k"*) pass=$((pass+1)); printf '  ok   %s: %s is listed and bound\n' "$where" "$k" ;;
+      *) fail=$((fail+1)); printf '  FAIL %s: %s has a row in keys_table and nothing is bound to it\n' "$where" "$k" ;;
+    esac
+  done <<EOF
+$TABLE
+EOF
+}
+drift sidebar "$(binds_of "$SIDEBAR")"
+drift popup   "$(binds_of "$POPUP")"
+
+# ---------------------------------------------------------------------------
+t "7. every key comes out of the config"
+# ---------------------------------------------------------------------------
+# A key moved in the config is the key fzf is handed and the key the ? window
+# lists — one answer, arrived at once, in both places.
+KCFG="$ROOT/keys-good.yaml"
+cat >"$KCFG" <<'YEOF'
+keys:
+  closed: ctrl-o
+  borrow: ctrl-y
+YEOF
+KDUMP=$(dumpargs "$ROOT/fzf-keys" "TA_CONFIG='$KCFG'")
+has "a configured key is the one fzf binds" \
+    "--bind=ctrl-o:execute-silent($SELF --act closed)" "$KDUMP"
+has "...and the key it displaced moves with it" \
+    "--bind=ctrl-y:execute-silent($SELF --act borrow {1})" "$KDUMP"
+KT=$(env TMUX="$TMUXV" TA_CONFIG="$KCFG" bash "$TA" --keys)
+has "...and --keys says the same"     "ctrl-o${TAB}:closed" "$KT"
+has "...for both of them"             "ctrl-y${TAB}borrow"  "$KT"
+
+# A KEY FZF DOES NOT KNOW WOULD STOP IT STARTING, so it never reaches fzf: the
+# default is kept and the reason is said out loud.
+BCFG="$ROOT/keys-bogus.yaml"
+printf 'keys:\n  closed: bogus\n' >"$BCFG"
+BDUMP=$(dumpargs "$ROOT/fzf-bogus" "TA_CONFIG='$BCFG'")
+has "an unusable key falls back to the default" \
+    "--bind=ctrl-y:execute-silent($SELF --act closed)" "$BDUMP"
+ok  "...and nothing is bound to the name itself" 0 \
+    "$(printf '%s\n' "$BDUMP" | grep -c '^--bind=bogus:' | tr -d ' ')"
+has "...and --keys says why" \
+    "# keys.closed: 'bogus' is not a key fzf knows — using ctrl-y" \
+    "$(env TMUX="$TMUXV" TA_CONFIG="$BCFG" bash "$TA" --keys)"
+
+# TWO VERBS ON ONE KEY IS ONE VERB GONE — fzf keeps the last --bind silently, so
+# the collision is settled here instead: the verb that owns the key by the
+# table's order keeps it, and the late one goes back to its own default.
+CCFG="$ROOT/keys-clash.yaml"
+printf 'keys:\n  send: ctrl-g\n' >"$CCFG"
+CDUMP=$(dumpargs "$ROOT/fzf-clash" "TA_CONFIG='$CCFG'")
+has "the verb that had the key keeps it" \
+    "--bind=ctrl-g:execute-silent($SELF --act goto {1})" "$CDUMP"
+has "...and the one that asked for it stays on its default" \
+    "--bind=ctrl-e:execute-silent($SELF --act send {1})" "$CDUMP"
+ok  "...so the key is bound exactly once" 1 \
+    "$(printf '%s\n' "$CDUMP" | grep -c '^--bind=ctrl-g:' | tr -d ' ')"
+has "...and --keys says which" \
+    "# keys.send: ctrl-g is taken already — using ctrl-e" \
+    "$(env TMUX="$TMUXV" TA_CONFIG="$CCFG" bash "$TA" --keys)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
