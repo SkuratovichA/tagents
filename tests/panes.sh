@@ -573,6 +573,15 @@ if [ -n "$PORT" ]; then
   tm set -p -t "$LIST" @tagents_port 1 >/dev/null 2>&1; sleep 2.8
   ok "an overwritten port is reclaimed on the next tick" "$PORT" \
      "$(tm display -p -t "$LIST" '#{@tagents_port}' 2>/dev/null)"
+  # A REFRESHER WHOSE LIST IS GONE MAKES NO CLAIM: one started against a port
+  # nobody listens on must never take the live list's port, however many ticks
+  # it survives before giving up.
+  env TMUX="$SOCK,0,0" TA_PORT=1 bash "$TA" --refresher >/dev/null 2>&1 &
+  STALEPID=$!
+  sleep 4.5
+  ok "a refresher whose posts are refused never claims the port" "$PORT" \
+     "$(tm display -p -t "$LIST" '#{@tagents_port}' 2>/dev/null)"
+  kill "$STALEPID" 2>/dev/null; wait "$STALEPID" 2>/dev/null
 else
   printf '  --   no live refresher port here, reclaim not checked\n'
 fi
