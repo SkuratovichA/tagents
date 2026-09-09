@@ -113,12 +113,23 @@ typing a `?` into the filter query; `ctrl-w` costs the other — that was fzf's
 delete-the-word-before-the-cursor in the query. Those two keys are the whole
 bill, and the query is a project name long.
 
+Every one of those keys can be moved. A `keys:` block in
+`~/.config/tagents/config.yaml` maps a verb to a key — `closed: ctrl-y`,
+`send: alt-s` — and anything not named there keeps its default;
+`config.example.yaml` lists the lot with theirs. fzf's key names are what count
+(`ctrl-a`…`ctrl-z`, `alt-a`…`alt-z`, `alt-0`…`alt-9`, `f1`…`f12`, `enter`,
+`tab`, `btab`, `space`, `bspace`, `del`, the arrows, `home`, `end`, `pgup`,
+`pgdn`, `esc`, or any single printable character); a name fzf does not know
+would stop it starting, so it is refused with a message and the default kept,
+and so is a key another verb already has. `tagents --keys` prints where each one
+ended up, and the `?` window in the list shows the same thing live.
+
 `tagents --help` is the real documentation — the script's header explains the
 model, and every non-obvious decision in it is commented with the reason.
 
 ## Closed sessions
 
-`ctrl-b` opens every session that is **not** running, newest activity first,
+`ctrl-y` opens every session that is **not** running, newest activity first,
 under the name this dashboard knows it by — the one you typed on `ctrl-r`, else
 the one `$TA_LABEL` announced at launch, else the session's first prompt, else
 its bare id. The preview beside it is the last ten prompts of that conversation,

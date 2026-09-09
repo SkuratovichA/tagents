@@ -84,3 +84,32 @@ notes:
   #   paste      put the text itself in the input, without pressing Enter.
   #   submit     paste the text and press Enter; the draft is cleared at once.
   send: reference
+
+# Every key of the dashboard, and what it is bound to. Only the ones you write
+# here move; the rest keep the defaults commented beside them. `tagents --keys`
+# prints where each one actually ended up.
+#
+# fzf's own names: ctrl-a…ctrl-z, alt-a…alt-z, alt-0…alt-9, f1…f12, enter, tab,
+# btab, space, bspace, del, up, down, left, right, home, end, pgup, pgdn, esc —
+# or any single printable character. Anything else, and any key another verb
+# already has, is refused with a message and the default is kept.
+keys:
+  # closed: ctrl-y   # closed sessions — pick one to resume
+  closed: ctrl-y
+  # open: enter      # open it in the sidebar
+  # beside: ctrl-s   # open it beside the current seat
+  # new: ctrl-n      # start a new agent in this project
+  # pick: ctrl-p     # the same, picking the account
+  # goto: ctrl-g     # go to the agent where it lives
+  # borrow: ctrl-o   # borrow its whole window into this session
+  # send: ctrl-e     # send a line straight into it
+  # rename: ctrl-r   # name this agent (f2 stays an alias either way)
+  # undock: ctrl-u   # undock the current seat
+  # kill: ctrl-x     # kill this agent, asking first
+  # tree: ctrl-t     # tree or flat
+  # preview: ctrl-v  # the preview in a window of its own
+  # refresh: ctrl-l  # refresh now
+  # columns: ctrl-w  # show or hide columns
+  # usage: $         # usage this month, per day
+  # keys: ?          # the key list itself
+  # quit: ctrl-q     # quit the dashboard
