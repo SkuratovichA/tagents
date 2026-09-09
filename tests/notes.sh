@@ -245,11 +245,12 @@ ok "the chat's window is back to one pane" 1 "$(npanes "$CWIN")"
 # ---------------------------------------------------------------------------
 t "7. a draft is never typed into something that is not claude"
 # ---------------------------------------------------------------------------
+BEFORE=$(git -C "$NOTES" log --oneline 2>/dev/null | wc -l | tr -d ' ')
 printf 'second draft\nmore\n' >"$NOTES/prompt.md"
 run send "$SHELLP" "$NOTES" >/dev/null 2>&1
 ok "send exits 1" 1 "$?"
 ok "the draft is kept" "$(printf 'second draft\nmore')" "$(cat "$NOTES/prompt.md")"
-ok "but it was committed" 2 "$(git -C "$NOTES" log --oneline 2>/dev/null | wc -l | tr -d ' ')"
+ok "but it was committed" "$((BEFORE + 1))" "$(git -C "$NOTES" log --oneline 2>/dev/null | wc -l | tr -d ' ')"
 ok "under its own first line" "second draft" "$(git -C "$NOTES" log -1 --format=%s 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
