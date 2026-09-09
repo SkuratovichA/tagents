@@ -60,6 +60,7 @@ usage.monthly_limit_usd	850
 usage.safety_margin_pct	5
 usage.workdays	true
 notes.send	reference
+keys.closed	ctrl-y
 EOF
 )
 got=$(TA_CONFIG="$HERE/../config.example.yaml" bash "$TA" --config 2>&1)
