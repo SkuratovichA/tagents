@@ -2987,7 +2987,8 @@ refresher() {
   # is the one process that knows when the list has really gone, which makes the
   # option a live claim rather than a leftover pointing at a dead port.
   dp=$(dash_pane)
-  claim_port
+  # No claim before the first post has been answered: a port is only worth
+  # publishing once the list behind it is known to be listening — see below.
   while sleep 2; do
     # Advance the token index out here, not in list(): parsing the tail of every
     # transcript costs a few hundred milliseconds, and a keystroke must never
@@ -3028,6 +3029,18 @@ refresher() {
     if ! curl -s -XPOST "http://127.0.0.1:$port" -d "reload-sync($SELF --list)" \
            >/dev/null 2>&1; then
       fails=$((fails + 1))
+      # A LIST THAT DOES NOT ANSWER HAS NO CLAIM TO MAKE. The five-strike grace
+      # keeps the loop alive through a busy fzf, but a refresher whose fzf is
+      # already gone was re-publishing its dead port on the pane the NEXT list
+      # had claimed, every tick until it quit — the two fought over the option
+      # and the poke posted into a closed port. So a refused post gives the claim
+      # up at once (if it is still ours) and the claim is only ever re-made below,
+      # after a post that was answered.
+      if [ -n "$pub" ] &&
+         [ "$(tmux show -pv -t "$pub" @tagents_port 2>/dev/null)" = "$port" ]; then
+        tmux set -up -t "$pub" @tagents_port 2>/dev/null
+      fi
+      pub=""
       [ "$fails" -ge 5 ] && break
       continue
     fi
