@@ -548,6 +548,8 @@ t "18. a switch between seats repaints the list at once"
 # reload, posted by the focus hook that does the stamping.
 run --undock-window "$DWIN" >/dev/null 2>&1; sleep 0.4
 run --act open   "$A" live sid-A "$REPO"; sleep 0.4
+ok "a docked chat turns the sidebar's title bar on" top \
+   "$(tm show -wv -t "$DWIN" pane-border-status 2>/dev/null)"
 run --act beside "$C" live sid-C "$REPO"; sleep 0.4
 ok "two chats to switch between" "$A:docked $C:docked" "$(kinds)"
 
@@ -619,6 +621,12 @@ poke "$C"
 ok "the same seat is not poked twice" 1 \
    "$(grep -c 'reload-sync' "$ROOT/curl.log" 2>/dev/null | tr -d ' ')"
 term_ok 18
+
+# And off again once nothing is docked: the option is the window's, so the
+# rest of tmux never sees a title bar it did not ask for.
+run --undock-window "$DWIN" >/dev/null 2>&1; sleep 0.5
+ok "undocking the last chat takes the title bar off" "" \
+   "$(tm show -wv -t "$DWIN" pane-border-status 2>/dev/null)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -3052,6 +3052,7 @@ refresher() {
     # under somebody who is scrolling the list is an interruption, and once is a
     # very different thing from twice a second.
     dp=$(dash_pane)
+    seat_border "$dp"   # the backstop for the paths that move seats without asking
     seat=""
     [ -n "$dp" ] && seat=$(current_seat "$dp")
     is_docked "$seat" || seat=""
@@ -3810,6 +3811,7 @@ undock_pane() {  # <pane>
   win=$(tmux display -p -t "$pane" '#{window_id}' 2>/dev/null)
   sp=$(send_home "$pane") || { break_home "$pane"; sp=""; }
   [ -n "$sp" ] && collapse_seat "$sp"
+  seat_border_win "$win"
   # @tagents_cur is the one docking marker nothing else ever clears, and a marker
   # that outlives the thing it describes is how every earlier bug in here began.
   # The chat has gone home and the placeholder that took its place may have been
@@ -3865,6 +3867,32 @@ focus_seat() {  # <seat pane>
   return 0
 }
 
+# A TITLE BAR ONLY WHERE THERE IS SOMETHING TO CLOSE. tmux draws a per-pane
+# title bar with clickable controls at its right edge when pane-border-status is
+# on, and the .tmux.conf format puts "✕ undock" there for a docked chat — the one
+# pane a person cannot otherwise close without killing. It is a window option,
+# so it is switched on for the sidebar window while any chat is docked in it and
+# taken off again when the last one leaves; every other window stays as it was.
+seat_border_win() {  # <sidebar window id>
+  local win=${1:-} want have
+  [ -n "$win" ] || return 0
+  if [ -n "$(tmux list-panes -t "$win" -F '#{@tagents_docked}' 2>/dev/null | grep -v '^$')" ]
+  then want=top; else want=off; fi
+  have=$(tmux show -wv -t "$win" pane-border-status 2>/dev/null)
+  if [ "$want" = top ]; then
+    [ "$have" = top ] || tmux setw -t "$win" pane-border-status top 2>/dev/null
+  else
+    [ -z "$have" ] || tmux setw -t "$win" -u pane-border-status 2>/dev/null
+  fi
+  return 0
+}
+seat_border() {  # <list pane>
+  local dp=${1:-} win
+  [ -n "$dp" ] || return 0
+  win=$(tmux display -p -t "$dp" '#{window_id}' 2>/dev/null)
+  seat_border_win "$win"
+}
+
 dock() {  # <pane> — into the current seat, replacing whatever is in it
   local pane=$1 dp win seat sp
   [ "$pane" = "-" ] && return 0
@@ -3913,6 +3941,7 @@ dock() {  # <pane> — into the current seat, replacing whatever is in it
     return 1
   }
   tmux set -p -t "$pane" @tagents_docked "$win" 2>/dev/null
+  seat_border_win "$win"
   install_focus_hooks
   focus_seat "$pane"
 }
@@ -3972,6 +4001,7 @@ dock_beside() {  # <pane>
     return 1
   }
   tmux set -p -t "$pane" @tagents_docked "$win" 2>/dev/null
+  seat_border_win "$win"
   install_focus_hooks
   focus_seat "$pane"
 }
