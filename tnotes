@@ -73,7 +73,7 @@ opt_of()  { tmux display -p -t "${2:-}" "#{${1}}" 2>/dev/null; }
 # THE COMMAND IS A VERSION NUMBER, NOT "claude". The CLI lives at
 # ~/.local/share/claude/versions/<version>, so a pane running a real chat
 # reports `2.1.261` and a `claude*` prefix match sees a shell where a chat is.
-# The same signal `tagents live_panes` matches on (tagents:1169); a shell name
+# The same signal `tagents live_panes` matches on (lib/tagents/state.sh); a shell name
 # still fails it, which is what keeps `send` from typing a draft into a prompt.
 is_claude_cmd() {  # <pane_current_command>
   case "$1" in
