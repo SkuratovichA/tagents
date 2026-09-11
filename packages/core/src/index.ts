@@ -104,6 +104,14 @@ export {
 } from './host.ts';
 export type { LoadResult, LoadedPlugin, PluginEntry, PluginError, PluginListing } from './host.ts';
 
+export {
+  addPluginEntry,
+  defaultPluginName,
+  removePluginEntry,
+  resolvePluginPackage,
+} from './plugin-config.ts';
+export type { AddOutcome, PackageProblem, PluginPackage, RemoveOutcome, ResolveResult } from './plugin-config.ts';
+
 export { DEFAULT_LOCALE, createI18n, createT, isLocale, resources } from './i18n/index.ts';
 export type { CoreResource, Locale } from './i18n/index.ts';
 
