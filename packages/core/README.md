@@ -149,6 +149,7 @@ on stdout and nothing else; text verbs print what `sessions.mjs` printed.
 | `plugin remove <name>` | take one entry back out |
 | `plugin new <name> [--dir D]` | scaffold a package that is already a plugin |
 | `doctor` | node, state dir, config file, `claude` on PATH |
+| `<plugin> <command> [args]` | whatever that plugin's own verb prints — `plugin list` names them |
 
 Exit codes: **0** ok · **1** error · **2** usage · **3** refused · **4** timeout.
 
@@ -203,6 +204,33 @@ hand-aligned value in the file comes back byte for byte.
 Exit codes do the talking: **1** nothing resolved, **3** refused — something is
 there and it is not a plugin, or that name is already listed, and in both cases
 nothing was written.
+
+### Running what one offers
+
+A plugin's `commands` are verbs of this CLI:
+
+```sh
+tagents-core telegram status       # the `status` CliCommand of the plugin `telegram`
+tagents-core telegram              # …or, with no command, what it offers (exit 2)
+```
+
+The plugin is named by its key in `config.yaml` or by the name its definition
+gives itself, whichever the caller has in front of them. **The core verbs are
+matched first and always win**: `session`, `sessions`, `plugin`, `doctor` and
+`help` mean the same thing on every machine, so a plugin that takes one of those
+names is simply not reachable as a verb (it still loads, and its services and
+tools are unaffected).
+
+Arguments are parsed without any knowledge of the command — `--key value`,
+`--key=value`, `--flag` → `true`, `--` ends the options — and the command's own
+zod `args` schema does all the deciding, including coercing `--times 3` to a
+number. Positionals go to `_` when the schema declares that key and are refused
+when it does not, because an argument nobody reads is one the caller thinks was
+understood. A schema that rejects its input prints one line per issue and exits
+**2**; the command's return value is the process exit code; a throw is one line
+on stderr and exit **1**; a plugin that fails to load says so and exits **1**.
+Anything the command itself prints through `ctx.log` goes to stderr — stdout
+belongs to the JSON verbs.
 
 ### Running one service, without a config file
 
