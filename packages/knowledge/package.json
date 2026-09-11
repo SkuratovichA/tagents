@@ -1,0 +1,38 @@
+{
+  "name": "@tagents/knowledge",
+  "version": "0.1.0",
+  "description": "The owner's operational knowledge as small markdown documents: a frontmatter format, a SQLite FTS5 index, a CLI and an MCP server any client can register",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "tagents-knowledge": "./dist/cli/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "pnpm build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@tagents/core": "workspace:*",
+    "yaml": "^2.8",
+    "zod": "^4.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "5.9.3"
+  }
+}
