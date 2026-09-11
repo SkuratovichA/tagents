@@ -37,6 +37,7 @@ all.
 | `hooks/notes-autocommit.sh` | the Claude Code hook that commits what Claude writes into the notes folder |
 | `config.example.yaml` | a commented example of the optional per-directory account config |
 | `packages/core/` | `@tagents/core`, the TypeScript package for **headless** sessions |
+| `packages/knowledge/` | [`@tagents/knowledge`](packages/knowledge/README.md), the owner's notes as markdown documents with an FTS5 index, a `tagents-knowledge` CLI and an MCP server |
 
 They are one system. The hook writes a record per session into
 `~/.claude/agent-state/`; `tagents` joins that with the live tmux pane list and
