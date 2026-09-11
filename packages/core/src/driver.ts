@@ -80,6 +80,15 @@ export interface PromptOptions {
   readonly pipeDrainMs?: number;
   /** Must not throw: it is called from the stream reader. */
   readonly onEvent?: (e: StreamEvent) => void;
+  /**
+   * Where THIS turn's diagnostics go — the kill, abort and long-turn warning
+   * lines the driver writes while the turn runs. Without it they go to the
+   * driver's own `log`, which a process running turns in parallel has to share
+   * between all of them; with it every turn can hand over its own sink (a
+   * per-job log file, a request logger) and one driver serves the whole
+   * process. Must not throw.
+   */
+  readonly log?: (line: string) => void;
   readonly signal?: AbortSignal;
 }
 

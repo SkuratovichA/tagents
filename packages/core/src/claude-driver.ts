@@ -153,6 +153,9 @@ export class ClaudeHeadlessDriver implements SessionDriver {
     const exitGraceMs = o.exitGraceMs ?? RESULT_EXIT_GRACE_MS;
     const pipeDrainMs = o.pipeDrainMs ?? PIPE_DRAIN_MS;
     const resume = ref.claudeSessionId ?? this.learned.get(ref.id) ?? null;
+    // This turn's diagnostics sink. A driver serves one process; a turn serves
+    // one job, and the job is what has a log to write into — so o.log wins.
+    const turnLog = o.log ?? ((line: string): void => this.log(line));
 
     return new Promise<TurnOutcome>((resolve) => {
       const startedAt = Date.now();
@@ -188,7 +191,7 @@ export class ClaudeHeadlessDriver implements SessionDriver {
         return t;
       };
       const kill = (why: string): void => {
-        this.log(why);
+        turnLog(why);
         try {
           child.kill('SIGKILL');
         } catch {
@@ -204,11 +207,11 @@ export class ClaudeHeadlessDriver implements SessionDriver {
       if (o.onWarn && timeoutMs > warnBeforeMs)
         later(() => {
           if (resultAt || exit) return;
-          this.log(`claude running ${Math.round((Date.now() - startedAt) / 60000)} min — warning the caller`);
+          turnLog(`claude running ${Math.round((Date.now() - startedAt) / 60000)} min — warning the caller`);
           try {
             o.onWarn?.({ elapsedMs: Date.now() - startedAt, leftMs: warnBeforeMs });
           } catch (e) {
-            this.log(`timeout warning failed: ${(e as Error).message}`);
+            turnLog(`timeout warning failed: ${(e as Error).message}`);
           }
         }, timeoutMs - warnBeforeMs);
 
