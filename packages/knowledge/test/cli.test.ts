@@ -200,3 +200,17 @@ test('a broken document is named on stderr and the rest still answers', () => {
     cleanup();
   }
 });
+
+test('nothing prints Node’s experimental SQLite notice', () => {
+  const { env, cleanup } = corpus('cli-quiet');
+  try {
+    // The notice is queued when node:sqlite is imported, so a verb that never
+    // opens the index is the one that used to leak it.
+    for (const args of [['lint'], ['help'], ['list'], ['search', 'rollback']]) {
+      const r = runCli(args, env);
+      assert.ok(!r.stderr.includes('ExperimentalWarning'), `${args.join(' ')} printed: ${r.stderr}`);
+    }
+  } finally {
+    cleanup();
+  }
+});
