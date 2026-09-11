@@ -50,7 +50,10 @@ t() { printf '\n%s\n' "$1"; }
 dayof() { date -r "$1" +%Y-%m-%d 2>/dev/null || date -d "@$1" +%Y-%m-%d; }
 
 NOW=$(date +%s)
-T2=$(( NOW / 300 * 300 ))          # a bucket in this month, so --since month sees it
+# Ten minutes back, not the bucket that holds now: a row in the current bucket
+# lands inside a one-minute window when the clock is near the bucket edge, and
+# the "1m is still one minute" check then sees it. Still this month for --since.
+T2=$(( (NOW - 600) / 300 * 300 ))
 T1=$(( T2 - 172800 ))              # two days back: a different local day under any tz
 D1=$(dayof "$T1"); D2=$(dayof "$T2")
 
