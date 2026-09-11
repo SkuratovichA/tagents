@@ -35,11 +35,9 @@ export function createI18n(locale: string | undefined = process.env['TAGENTS_LOC
     ns: ['core'],
     resources,
     interpolation: { escapeValue: false },
-    initImmediate: false,
     // i18next prints a sponsor line through console.info on the first init.
     // stdout here is a contract (one JSON document, or bytes an oracle pins),
     // so a library writing to it uninvited would break every JSON verb.
-    showSupportNotice: false,
   });
   return i18n;
 }
