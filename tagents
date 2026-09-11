@@ -181,6 +181,23 @@
 # exited are listed as closed, dimmed and sorted below everything live, and
 # enter restarts them with `claude --resume <id>` (see RESUME_CMD).
 #
+# HEADLESS SESSIONS. A `claude -p` started by a daemon, a launchd job or a
+# `nohup` has no tmux pane anywhere in its ancestry, and used to be invisible
+# here — the state hook gave up at its pane check, so the busiest agents on the
+# machine were the ones you could not see. They are now recorded under their
+# session id (`s-<id>.tsv`) and listed in the group of the directory they were
+# launched in, exactly like everybody else, with "headless" where the location
+# column would name a pane. Liveness is the pid of their claude process, which
+# the hook writes into the record, so the row shows the real state — ● working,
+# ✓ IDLE, ⚠ BLOCKED — while that process lives and sinks to a dimmed ✗ closed
+# when it does not; a closed one is never offered for resume, having no pane to
+# come back into. Nothing that acts on a pane can act on such a row, so enter,
+# ctrl-s, ctrl-e, ctrl-o and ctrl-r refuse with one line. ctrl-v is the
+# exception and the point: it follows $TA_LOG, the log the thing that started
+# the session sent it to, which is that agent's only window on itself. Export
+# TA_LABEL (the name to show) and TA_LOG before starting one; `tagents --label
+# <session id> NAME` names one from outside afterwards.
+#
 # CONFIG — WHICH ACCOUNT AN AGENT IS STARTED ON.
 # ~/.config/tagents/config.yaml (or $TA_CONFIG). With no such file nothing below
 # happens and every agent is started exactly as it always was: a plain
@@ -1286,6 +1303,33 @@ state_files() {
   done
 }
 
+# THE ONLY LIVENESS SIGNAL A PANE-LESS SESSION HAS. A headless `claude -p` — one
+# started by a daemon or a launchd job — sits in no pane at all, so live_panes
+# can say nothing whatever about it. The hook writes down the pid of its claude
+# process as field 8 of the s-*.tsv record, and this asks the kernel whether that
+# process is still there. kill -0 rather than `ps -p`: no fork, no pipeline, and
+# this is asked once per headless row on every repaint.
+headless_alive() {  # <state file>
+  local pid
+  pid=$(awk -F"$TAB" 'NR==1 { print $8; exit }' "${1:-}" 2>/dev/null)
+  # 0 is rejected with the rest: `kill -0 0` asks about this whole process
+  # group, which is always alive, and a record that could not name a pid must
+  # not be the one row that can never go closed.
+  case ${pid:-} in ''|0|*[!0-9]*) return 1 ;; esac
+  kill -0 "$pid" 2>/dev/null
+}
+
+# WHERE THE OUTPUT OF A PANE-LESS SESSION WENT — $TA_LOG as the hook saw it
+# and only while the file is still readable. With no pane there is nothing to
+# capture-pane, so this log is the whole of what a preview can show.
+headless_log() {  # <pane key %s-<sid>>
+  local log
+  log=$(awk -F"$TAB" 'NR==1 { print $9; exit }' \
+          "$STATE_DIR/${1#%}.tsv" 2>/dev/null)
+  [ -n "$log" ] && [ -r "$log" ] || return 1
+  printf '%s' "$log"
+}
+
 # WHERE AN AGENT LIVES is where it was launched — and the hook cannot tell us
 # that. Its payload carries the *live* cwd, which follows the Bash tool's `cd`:
 # one session was observed under five different directories inside a single turn
@@ -1343,7 +1387,7 @@ collect() {
   dir_roots
   [ -e "$LABELS" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "N", $1, $2 }' "$LABELS"
 
-  local f key ts st sid cwd tr det cfgd hascfg orig
+  local f key ts st sid cwd tr det cfgd hascfg orig hlbl hl
   state_files | while IFS= read -r f; do
     key=${f##*/}; key=${key%.tsv}
     # Not IFS=TAB: tab is IFS whitespace, so the (often empty) session id would
@@ -1351,13 +1395,23 @@ collect() {
     # The 7th field is the account. A record written by an older hook has six
     # fields and no opinion at all, which is a different answer from "unset, so
     # the default account" — hence the flag alongside it.
-    IFS="$US" read -r ts st sid cwd tr det cfgd hascfg < <(
+    IFS="$US" read -r ts st sid cwd tr det cfgd hascfg hlbl < <(
       awk -F"$TAB" -v OFS="$US" \
-          'NR==1 { print $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0); exit }' "$f" 2>/dev/null)
+          'NR==1 { print $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0), $10; exit }' "$f" 2>/dev/null)
     orig=$(origin_of "${sid:-}" "${tr:-}")
     printf 'S\t%%%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$key" "${ts:-0}" "${st:-}" "${sid:-}" "${orig:-${cwd:-}}" "${tr:-}" "${det:-}" \
       "${cfgd:-}" "${hascfg:-0}"
+    # A PANE-LESS SESSION NEEDS ITS OWN LINE, because the two things the renderer
+    # reads off a pane it cannot read here: whether the agent is running (the
+    # recorded pid, which only the shell can kill -0) and what to call it (there
+    # is no pane title, so $TA_LABEL is the name). The log is not in it — only
+    # the preview wants that, and it reads the record itself (headless_log).
+    case $key in
+      s-?*)
+        hl=0; headless_alive "$f" && hl=1
+        printf 'H\t%%%s\t%s\t%s\n' "$key" "$hl" "${hlbl:-}" ;;
+    esac
   done
 
   for f in "$STATE_DIR"/sub/*; do
@@ -2243,6 +2297,10 @@ list() {
     }
     function nameof(p, s, dir,   n) {
       n = (s != "" && (s in lab)) ? lab[s] : ((p in lab) ? lab[p] : untitle(title[p]))
+      # A headless session keeps no terminal title, so the title half above is
+      # always empty for one. $TA_LABEL is what whatever started it called it —
+      # "ticket-agent" says far more than the basename of a directory.
+      if (n == "" && (p in hlbl)) n = hlbl[p]
       if (n == "" || n == host) n = base(dir)
       return n
     }
@@ -2295,6 +2353,10 @@ list() {
     $1=="L" { live[$2]=1; next }
     $1=="R" { root[$2]=$3; next }
     $1=="N" { lab[$2]=$3; next }
+    # A SESSION WITH NO PANE. hlive is the kill -0 the shell made of the pid the
+    # hook recorded (awk cannot ask) and hlbl is its $TA_LABEL — the two answers
+    # a pane would have given for anybody else.
+    $1=="H" { hless[$2]=1; hlive[$2]=$3+0; hlbl[$2]=$4; next }
     # "idle" was what SessionStart used to write, before that state was renamed
     # to "new" and "idle" became the label of a finished turn. A session that
     # started under the old hook and has not fired an event since would show as
@@ -2322,6 +2384,9 @@ list() {
       # closed one: resuming re-registers under a new pane, and the old record
       # lingers until its file is cleaned up.
       for (p in alive) if ((p in live) && (p in sid)) livesid[sid[p]] = 1
+      # Same rule for a pane-less session: while its process is alive, an older
+      # paned record of the same conversation must not also be offered as closed.
+      for (p in hless) if (hlive[p] && (p in sid)) livesid[sid[p]] = 1
 
       for (p in alive) seen[p] = 1
       for (p in st)    seen[p] = 1
@@ -2331,6 +2396,11 @@ list() {
       maxnm = 0
       for (p in seen) {
         isalive = (p in alive); islive = isalive && (p in live)
+        # A headless row has no pane to be alive IN: the recorded pid, checked
+        # by collect(), is the whole of its liveness. Applied before anything is
+        # measured or drawn, so such a row goes down both branches below exactly
+        # as a paned one does.
+        if (p in hless) { isalive = hlive[p]; islive = hlive[p] }
         if (islive) {
           dir = (p in st && cwd[p] != "") ? cwd[p] : path[p]
         } else {
@@ -2348,6 +2418,7 @@ list() {
       n = 0
       for (p in seen) {
         isalive = (p in alive); islive = isalive && (p in live)
+        if (p in hless) { isalive = hlive[p]; islive = hlive[p] }
 
         if (islive) {
           if (p in st) {
@@ -2367,10 +2438,17 @@ list() {
           if (sid[p] != "" && (sid[p] in livesid)) continue
           s = "dead"; age = now - ts[p]; agetxt = agestr(ts[p])
           dir = (cwd[p] != "") ? cwd[p] : path[p]
-          d = (sid[p] != "") ? "closed — enter resumes it" : "closed, no session id — cannot resume"
+          # A headless session is never offered for resume: there is no pane to
+          # bring it back into and nobody to type at it. Say that, rather than
+          # promising an enter that will only refuse.
+          if (p in hless)        d = "headless, ended — nothing to resume"
+          else if (sid[p] != "") d = "closed — enter resumes it"
+          else                   d = "closed, no session id — cannot resume"
         }
         if (dir == "") dir = "(unknown)"
-        where = isalive ? loc[p] : "—"
+        # The loc column says WHERE the agent is, and for a headless one the
+        # answer is the thing worth knowing before pressing enter: nowhere.
+        where = (p in hless) ? "headless" : (isalive ? loc[p] : "—")
 
         # Group by the repo, but keep the subdirectory visible on the row so a
         # session started deeper in the tree is still identifiable.
@@ -2553,6 +2631,14 @@ timeline() {
       f="$STATE_DIR/${p#%}.tsv"
       [ -e "$f" ] && awk -F"$TAB" 'NR == 1 && $3 != "" { print "LIVE\t" $3 }' "$f"
     done
+    # A pane-less session is alive when the pid the hook recorded is: live_panes
+    # walks panes and can never see one. Without this every headless bar stopped
+    # at its last turn, which reads as "it finished" for an agent still working.
+    for f in "$STATE_DIR"/s-*.tsv; do
+      [ -e "$f" ] || continue
+      headless_alive "$f" &&
+        awk -F"$TAB" 'NR == 1 && $3 != "" { print "LIVE\t" $3 }' "$f"
+    done
     [ -e "$LABELS" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "NAME", $1, $2 }' "$LABELS"
     for f in "$STATE_DIR/history.tsv.1" "$STATE_DIR/history.tsv"; do
       [ -e "$f" ] || continue
@@ -2698,7 +2784,7 @@ counts() {
 }
 
 preview() {
-  local pane=$1 state=${2:-} f ts st sid cwd tr detail cfgd hascfg acct rprof
+  local pane=$1 state=${2:-} f ts st sid cwd tr detail cfgd hascfg acct rprof log
   [ "$pane" = "-" ] && return 0
   f="$STATE_DIR/${pane#%}.tsv"
   if [ -e "$f" ]; then
@@ -2724,6 +2810,24 @@ preview() {
     fi
     printf '\033[90m%s\033[0m\n' "----------------------------------------"
   fi
+  # A PANE-LESS SESSION HAS NOTHING TO CAPTURE, and nothing to resume into
+  # either, so it takes neither branch below. Its output went to $TA_LOG, which
+  # the hook wrote down; the tail of that file is this row's capture-pane, and a
+  # snapshot for the same reason capture-pane is one — the preview is re-rendered
+  # on every repaint, while a `tail -f` here would never return and would hang
+  # the pane fzf draws it in. ctrl-v opens the same log as a real follow.
+  case "$pane" in
+    %s-*)
+      if log=$(headless_log "$pane"); then
+        printf '\033[90mheadless — no pane. log (ctrl-v follows it):\n%s\033[0m\n' "$log"
+        tail -n 60 "$log" 2>/dev/null
+      else
+        printf '\033[90mheadless session — it runs in no pane, so there is nothing\n'
+        printf 'to show here and nothing to dock. No readable $TA_LOG was\n'
+        printf 'recorded for it either; export TA_LOG before starting one.\033[0m\n'
+      fi
+      return 0 ;;
+  esac
   if [ "$state" = dead ]; then
     # The REAL command, account prefix and all — built the same way enter builds
     # it. Printing the bare RESUME_CMD here said the session would come back on
@@ -2772,9 +2876,9 @@ preview() {
 # better than a heading with a bare pane id in it, while a WINDOW named after
 # its own directory is a rename tmux automatic-rename would only undo.
 preview_name() {  # <pane>
-  local pane=${1:-} sid dir nm
-  IFS="$US" read -r sid dir < <(
-    awk -F"$TAB" -v OFS="$US" 'NR==1 { print $3, $4; exit }' \
+  local pane=${1:-} sid dir lbl nm
+  IFS="$US" read -r sid dir lbl < <(
+    awk -F"$TAB" -v OFS="$US" 'NR==1 { print $3, $4, $10; exit }' \
         "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)
   nm=$(label_of "${sid:-$pane}")
   if [ -z "$nm" ]; then
@@ -2782,6 +2886,9 @@ preview_name() {  # <pane>
     # tmux default pane title is the host name, which names nothing.
     [ "$nm" = "$(hostname -s 2>/dev/null)" ] && nm=""
   fi
+  # $TA_LABEL — the same fallback the row itself uses, and the only name a
+  # headless session has: no pane means no pane title to strip a glyph off.
+  [ -n "$nm" ] || nm=$lbl
   [ -n "$nm" ] || nm=$(basename "${dir:-$pane}")
   printf '%s' "$nm"
 }
@@ -2799,9 +2906,20 @@ preview_window() {  # <pane> <state> — what ctrl-v runs
 }
 
 ask_preview() {  # <pane> <state> — the body of that popup
-  local pane=${1:-} state=${2:-} nm ans
+  local pane=${1:-} state=${2:-} nm ans log
   [ -n "$pane" ] && [ "$pane" != "-" ] || return 0
   nm=$(preview_name "$pane")
+  # THE LIVE VIEW OF A HEADLESS AGENT IS ITS LOG, because it has no pane to dock
+  # beside the list and enter cannot give it one. So this popup is the one place
+  # that follows it: the record and the last lines first, then a real `tail -f`
+  # that keeps printing until ctrl-c closes the popup with it. Deliberately NOT
+  # through `less`: paging a stream that never ends shows one screen and waits.
+  if log=$(headless_log "$pane"); then
+    printf '\033[1m%s\033[0m  \033[90mctrl-c closes · tail -f %s\033[0m\n' "${nm:-$pane}" "$log"
+    preview "$pane" "$state"
+    tail -n 0 -f "$log" 2>/dev/null
+    return 0
+  fi
   # less takes the scrolling and gives back a q that closes the popup with it
   # (the body exits, so the popup does). Without it the text is simply printed
   # and any key closes it — no scrollback, but the popup is still readable and
@@ -4108,6 +4226,29 @@ follow_sidebar() {
 # action — execute-silent does not touch the screen.
 act() {
   local what=${1:-} pane=${2:-} state=${3:-} sid=${4:-} dir=${5:-}
+  # A HEADLESS ROW IS NOT A PANE, so every verb that docks, focuses, types into
+  # or renames one has nothing to act on: the agent is a `claude -p` some daemon
+  # started, with no terminal anywhere. tmux answers "can't find pane %s-<id>"
+  # to all of them, and every one of those calls is silenced, so without this
+  # the key simply did nothing and said nothing about why. `open` on a CLOSED
+  # headless row was worse than nothing: it would have gone to resume_agent and
+  # started a fresh claude in a new window, which is not that agent coming back.
+  # ctrl-v is the one key that still works, and is what the notice points at:
+  # the popup follows the session's log. kill is deliberately left alone —
+  # ask_kill already reads a pane-less key as "forget this record", which is the
+  # only thing that can be done to such a row. Resuming the CONVERSATION is
+  # still possible where it belongs, in the closed-sessions browser (ctrl-y),
+  # which offers it once the session has actually ended.
+  case "$pane" in
+    %s-*)
+      case "$what" in
+        open|beside|borrow|goto|send|rename)
+          tmux display-message \
+            "tagents: headless session — no pane to dock, type into or rename (ctrl-v follows its log)" \
+            2>/dev/null
+          return 0 ;;
+      esac ;;
+  esac
   case "$what" in
     open)
       # Same thing wherever the list is running: the chat ends up in the sidebar's
@@ -4269,6 +4410,15 @@ closed_rows() {  # sid last first profile badge name dir source — newest first
     live_panes | sort -u | while IFS= read -r p; do
       f="$STATE_DIR/${p#%}.tsv"
       [ -e "$f" ] && awk -F"$TAB" 'NR == 1 && $3 != "" { print "LIVE\t" $3 }' "$f"
+    done
+    # A pane-less session is running when its recorded pid is, and live_panes
+    # can never see one. Without this a headless agent working right now was
+    # offered here as a closed session to resume — which would not resume it,
+    # it would start a second conversation on the same transcript.
+    for f in "$STATE_DIR"/s-*.tsv; do
+      [ -e "$f" ] || continue
+      headless_alive "$f" &&
+        awk -F"$TAB" 'NR == 1 && $3 != "" { print "LIVE\t" $3 }' "$f"
     done
     [ -e "$LABELS" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "NAME", $1, $2 }' "$LABELS"
     while IFS="$US" read -r p pd bd; do
