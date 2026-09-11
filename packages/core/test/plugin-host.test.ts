@@ -56,7 +56,7 @@ test('a listed plugin is imported through its package.json "tagents.entry"', asy
   assert.equal(p?.def.name, 'fixture');
   assert.equal(p?.def.apiVersion, PLUGIN_API_VERSION);
   assert.equal(p?.entry, path.join(PLUGINS, 'good', 'lib', 'plugin.mjs'));
-  assert.deepEqual(p?.def.commands?.map((c) => c.name), ['echo']);
+  assert.deepEqual(p?.def.commands?.map((c) => c.name), ['echo', 'greet', 'exits', 'boom', 'join']);
   assert.deepEqual(p?.def.services?.map((s) => s.name), ['ticker']);
   assert.deepEqual(p?.def.mcpTools?.map((m) => m.name), ['sessions_recent']);
 });
