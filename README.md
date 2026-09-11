@@ -55,6 +55,30 @@ them only through the same hook. Spawning, prompting and reading THOSE lives in
 separate workspace at the root of this repo; the scripts above neither import it
 nor need it.
 
+## The ecosystem
+
+| package | what it is |
+|---------|------------|
+| `tagents` (this script) | the dashboard: tmux, fzf, the tree, the sidebar. Bash, no dependencies of its own |
+| [`@tagents/core`](packages/core/README.md) | headless sessions — spawn, prompt, read, list — plus the plugin contract and host, behind a `tagents-core` CLI |
+| [`@tagents/knowledge`](packages/knowledge/README.md) | the owner's notes as markdown documents with an FTS5 index, a `tagents-knowledge` CLI and an MCP server |
+| plugins, e.g. `@tagents/plugin-telegram` | a package the config names: one `definePlugin({ … })` object offering CLI verbs, long-running services and MCP tools |
+
+One name reaches all of it. A verb `tagents` has no flag for — `tagents plugin
+list`, `tagents session list`, `tagents doctor` — is handed to `tagents-core`
+unchanged, found on `$PATH` or beside this script in a checkout.
+
+**The plugin model.** A plugin is an ordinary package that default-exports one
+`definePlugin({ name, apiVersion: 1, commands, services, mcpTools, locales })`
+object and declares where that object lives in its own package.json:
+`"tagents": { "apiVersion": 1, "entry": "./src/plugin.ts" }`. `tagents plugin
+add <package-or-path>` checks that manifest — without importing anything — and
+writes the package under `plugins:` in `~/.config/tagents/config.yaml`; the host
+loads exactly what that map names and never scans `node_modules`, because
+scanning is how a machine ends up running code nobody chose. `tagents plugin
+new <name>` scaffolds a package that is already a plugin and typechecks as
+written. See [packages/core/README.md](packages/core/README.md#plugins).
+
 ## Install
 
 ```sh
