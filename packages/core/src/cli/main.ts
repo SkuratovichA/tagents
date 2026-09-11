@@ -14,6 +14,12 @@
 // first rule; `plugin list` without it, and the other plugin verbs, are lines
 // for a person — see cli/plugin.ts.
 //
+// A verb this file does not know is offered to the configured plugins before it
+// is refused: `tagents-core telegram status` runs the `status` CliCommand of the
+// plugin named `telegram` (cli/plugin-run.ts). The core verbs are matched FIRST
+// and always win — what `session`, `sessions`, `plugin`, `doctor` and `help`
+// mean must not depend on what somebody has installed.
+//
 // Exit codes: 0 ok · 1 error · 2 usage · 3 refused · 4 timeout.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -31,6 +37,7 @@ import { renderRecent, renderSearch, renderShow, SESSIONS_PROGRAM } from '../tra
 import { formatAttemptError, type TurnOutcome } from '../turn-outcome.ts';
 import { EXIT, json, type Io } from './exit.ts';
 import { plugin } from './plugin.ts';
+import { runPluginCommand } from './plugin-run.ts';
 
 export { EXIT, type Io };
 
@@ -293,6 +300,10 @@ export async function main(argv: string[], io: Io = stdio()): Promise<number> {
       io.out(`${t('usage')}\n`);
       return verb === undefined ? EXIT.usage : EXIT.ok;
     }
+    // Every core verb is already answered above, so a word that got this far is
+    // free to be a plugin's — and only then does the config get read at all.
+    const fromPlugin = await runPluginCommand(verb, rest, io, t);
+    if (fromPlugin !== null) return fromPlugin;
     io.err(`${t('unknownCommand', { command: verb })}\n${t('usage')}\n`);
     return EXIT.usage;
   } catch (e) {
