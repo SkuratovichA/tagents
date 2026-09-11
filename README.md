@@ -377,11 +377,36 @@ warnings.
 | `●` | working | a prompt or a tool call is in flight |
 | `○` | new | the session just opened and has not been given anything yet |
 | `✗` | closed | no Claude process in that pane — `enter` resumes it, `ctrl-x` forgets it |
+| `●`… | headless | a session with no pane at all: same states, nothing to dock into |
 
 Claude Code also pings a notification after about a minute of silence, which
 says nothing beyond "your move". That is folded into IDLE rather than shown as
 its own state with its own message, so `⚠` stays a signal worth reacting to —
 including on the tmux window tab, which flags `blocked` panes only.
+
+**Headless sessions.** A `claude -p` started by a daemon, a launchd job or a
+`nohup` has no tmux pane anywhere in its ancestry. It is listed all the same, in
+the group of the directory it was launched in, with `headless` where the
+location column names a pane for everybody else. It shows the ordinary states —
+liveness is the pid of its claude process, recorded by the hook, rather than a
+pane — and dims to `✗ closed` when that process is gone, without offering a
+resume it has nowhere to put.
+
+What you cannot do with one is anything that needs a pane: `enter`, `ctrl-s`,
+`ctrl-e`, `ctrl-o` and `ctrl-r` refuse with a one-line notice. `ctrl-v` is the
+exception, and is the reason to look at such a row at all — it follows `$TA_LOG`
+with a live `tail -f`, and the sidebar preview shows the tail of the same file.
+So export the two variables before starting one:
+
+```sh
+TA_LABEL=ticket-agent TA_LOG=/tmp/ticket-agent.log \
+  nohup claude -p "$prompt" >>/tmp/ticket-agent.log 2>&1 &
+```
+
+`TA_LABEL` is the name the row shows (a headless session has no terminal title
+to borrow one from) and `TA_LOG` is what `ctrl-v` follows. Neither is required:
+without them the row is named after its directory and says it has no log. A name
+can still be given from outside with `tagents --label <session id> NAME`.
 
 ## Cost
 
@@ -535,6 +560,9 @@ with no tmux involved; `tests/launch.sh` starts and resumes real agents,
 covers what the row looks like — the badge column, the hidden ones, the `?`
 window running a real key, the one-line header and the `ctrl-v` modal — and
 `tests/names.sh` covers the window naming above, including the refusal to
-overwrite a name you typed. Each runs against a throwaway tmux server of its own
-(`tmux -L tatest-$$`), never the default socket. All five are bash 3.2, run
-every check, and exit non-zero when any of them fails.
+overwrite a name you typed, and `tests/headless.sh` covers the sessions with no
+pane at all — what the hook writes for one, how the row reads while its process
+lives and once it does not, and that every verb needing a pane refuses. Each
+runs against a throwaway tmux server of its own (`tmux -L tatest-$$`), never the
+default socket. All of them are bash 3.2, run every check, and exit non-zero
+when any of them fails.
