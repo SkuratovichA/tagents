@@ -87,7 +87,11 @@ export type {
   PluginContext,
   PluginDef,
   ServiceDef,
+  ServiceHandle,
 } from './plugin.ts';
+
+export { createContext, mergeLocales, runService } from './service.ts';
+export type { ContextOptions, RunServiceOptions, RunningService } from './service.ts';
 
 export {
   CONFIG_BASENAME,

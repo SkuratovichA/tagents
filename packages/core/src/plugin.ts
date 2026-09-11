@@ -32,14 +32,31 @@ export interface CliCommand<S extends z.ZodType> {
 }
 
 /**
- * Something that keeps running. `start` returns the two handles a supervisor
- * needs: `drain` to stop taking new work and finish what is in flight, `stop`
- * to give up now. Never kill a live worker — ask it to drain
- * (orchestrator/LEARNING.md, 11.09.2026).
+ * What a started service hands back: `drain` to stop taking new work and finish
+ * what is in flight, `stop` to give up now. Never kill a live worker — ask it to
+ * drain (orchestrator/LEARNING.md, 11.09.2026).
+ *
+ * `stop` takes the supervisor's word for WHY (a signal name, 'drain'), because
+ * a daemon logs its own shutdown and "SIGTERM" and "SIGINT" are different lines
+ * to whoever reads that log. It is optional: a service that does not care keeps
+ * the `stop(): void` it was written with.
+ *
+ * `done` is how a service says IT decides when it is over — the orchestrator's
+ * runner exits on its own drain handshake, not because a supervisor asked — so
+ * a host that merely started it still has something to await. Optional: a
+ * service that only ever stops when told has nothing to put in it, and
+ * `runService` then resolves `done` when drain/stop has been asked for.
  */
+export interface ServiceHandle {
+  drain(): Promise<void>;
+  stop(reason?: string): void;
+  readonly done?: Promise<void>;
+}
+
+/** Something that keeps running. */
 export interface ServiceDef {
   readonly name: string;
-  start(ctx: PluginContext): Promise<{ drain(): Promise<void>; stop(): void }>;
+  start(ctx: PluginContext): Promise<ServiceHandle>;
 }
 
 /** One MCP tool the host may expose on the plugin's behalf. */
