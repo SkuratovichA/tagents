@@ -1,0 +1,7 @@
+{
+  "name": "fixture-plugin-bad-version",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "tagents": { "entry": "./plugin.mjs" }
+}
