@@ -699,5 +699,29 @@ has "...and --keys says which" \
     "# keys.send: ctrl-g is taken already — using ctrl-e" \
     "$(env TMUX="$TMUXV" TA_CONFIG="$CCFG" bash "$TA" --keys)"
 
+# ---------------------------------------------------------------------------
+t "8. the dialogs draw — fzf paints on stderr, and nothing may silence it"
+# ---------------------------------------------------------------------------
+# On fzf 0.52 the UI goes to fd 2; an fzf run with 2>/dev/null is a blank modal
+# that still takes keys. The account picker was exactly that for a whole
+# session. Two guards: a static scan of every fzf call, and the picker itself
+# rendered in a pane and read back.
+ok "no fzf dialog throws its stderr away" "" \
+   "$(awk '/\| *fzf |^[[:space:]]*fzf --/{s=NR} s && NR-s<8 && /2>\/dev\/null\)/ {print NR; s=0}' "$TA")"
+PWIN=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" \
+         "exec bash --noprofile --norc" 2>/dev/null)
+sleep 0.4
+tm send-keys -t "$PWIN" "clear; env TA_CONFIG='$CFG' '$TA' --ask-profile pick '$REPO' tatest-dash" Enter
+i=0; while [ "$i" -lt 40 ]; do
+  case "$(tm capture-pane -p -t "$PWIN" 2>/dev/null)" in *"account>"*) break ;; esac
+  sleep 0.1; i=$((i+1))
+done
+SCREEN=$(tm capture-pane -p -t "$PWIN" 2>/dev/null)
+has "the account picker has its prompt on screen"  "account>"           "$SCREEN"
+has "...and the profile rows"                       "default (~/.claude)" "$SCREEN"
+has "...and its header"                             "start a new agent"   "$SCREEN"
+tm send-keys -t "$PWIN" Escape 2>/dev/null; sleep 0.3
+tm kill-window -t "$PWIN" 2>/dev/null
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
