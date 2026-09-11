@@ -1,10 +1,10 @@
 {
-  "name": "fixture-plugin",
+  "name": "fixture-plugin-missing-entry",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "tagents": {
     "apiVersion": 1,
-    "entry": "./lib/plugin.mjs"
+    "entry": "./dist/plugin.js"
   }
 }

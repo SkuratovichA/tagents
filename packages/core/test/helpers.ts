@@ -43,8 +43,9 @@ export function baseEnv(extra: Record<string, string> = {}): Record<string, stri
   };
 }
 
-export function runCli(args: string[], env: Record<string, string> = {}): RunResult {
-  const r = spawnSync(NODE, [cliEntry(), ...args], { encoding: 'utf8', env: baseEnv(env), cwd: PKG });
+/** `cwd` matters to the verbs that resolve a path or a package from where the caller stands. */
+export function runCli(args: string[], env: Record<string, string> = {}, cwd: string = PKG): RunResult {
+  const r = spawnSync(NODE, [cliEntry(), ...args], { encoding: 'utf8', env: baseEnv(env), cwd });
   if (r.error) throw r.error;
   return { code: r.status, signal: r.signal, stdout: r.stdout, stderr: r.stderr };
 }
