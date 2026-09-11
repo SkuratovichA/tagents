@@ -42,6 +42,23 @@ actually happen:
 `attempt.error`, byte for byte, because the orchestrator prints it into a
 Telegram topic and its contract tests pin it.
 
+A turn that did *not* succeed still carries what it managed to do: `timeout` and
+`exited` come with `sawText` and `sawResult` beside `toolUses`. That is what
+decides whether re-running it is safe — a turn that spoke or printed a result is
+not "not done", and repeating it delivers the work twice. `evidence(outcome)`
+answers for every kind, so a retry policy switches on nothing:
+
+```ts
+import { evidence, succeeded } from '@tagents/core';
+
+const { toolUses, sawText, sawResult } = evidence(outcome);
+const safeToRerun = !succeeded(outcome) && toolUses === 0 && !sawText && !sawResult;
+```
+
+Both flags are optional in the schema — an outcome that predates them reads as
+*no evidence*, which is the absence of proof that something happened, never
+proof that nothing did.
+
 Defaults, with the values the orchestrator runs on: `DEFAULT_TIMEOUT_MS`
 (50 min), `TIMEOUT_WARN_BEFORE_MS` (5 min), `RESULT_EXIT_GRACE_MS` (60 s),
 `PIPE_DRAIN_MS` (5 s).
@@ -67,11 +84,16 @@ const outcome = await driver.prompt(ref, 'summarise what changed today', {
   warnBeforeMs: 60_000,
   onWarn: ({ leftMs }) => console.error(`killing in ${leftMs} ms`),
   onEvent: (e) => e.kind === 'tool_use' && console.error(`→ ${e.name}`),
+  log: (line) => jobLog.write(`${line}\n`),   // this turn's diagnostics
 });
 ```
 
 `open()` starts **no process**. A session here is a transcript plus a claude
 session id; the only thing that runs is a prompt.
+
+`log` is per **turn** — the kill, abort and long-turn lines the driver writes
+while that turn runs. Without it they go to the driver's own `log`, which a
+process running turns in parallel would have to share between all of them.
 
 **`configDir` is tri-state**, and the three states mean different accounts:
 
@@ -202,3 +224,19 @@ pnpm -r test
 No `any`, anywhere: `test/lint-no-any.test.ts` is the gate, because `tsc` cannot
 catch a declared one. Erasable syntax only (no enums, no parameter properties) —
 the source runs unbuilt under Node's type stripping.
+
+## Changes
+
+**0.2.0** — additive, and both additions come from the same place: a caller has
+to be able to tell what a *failed* turn already did, and it has to be able to
+keep the turns of one process apart. `PromptOptions.log` takes a turn's own
+diagnostics sink, so the driver's kill/abort/warning lines follow the job that
+caused them instead of the driver that happens to own the child — one driver now
+serves a process that runs turns in parallel, where before it needed one driver
+per log. And the `timeout` and `exited` outcomes now carry `sawText` /
+`sawResult` beside `toolUses`, read by `evidence()`, so the evidence that makes
+re-running a turn unsafe arrives *on the outcome* instead of being scraped off
+the event stream by every consumer that needs it. Both flags are optional in the
+schema and the type: nothing that constructed an outcome under 0.1.0 stops
+compiling or parsing. No export was renamed or removed, no default changed, and
+`formatAttemptError()` prints exactly what it printed before.
