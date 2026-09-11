@@ -16,7 +16,7 @@ import { after, before, test } from 'node:test';
 import { ClaudeHeadlessDriver } from '../src/claude-driver.ts';
 import type { PromptOptions, SessionSpec, StreamEvent } from '../src/driver.ts';
 import { fakeClaude, tmpDir, type FakeScript } from '../src/testkit.ts';
-import { formatAttemptError, succeeded, TurnOutcomeSchema, type TurnOutcome } from '../src/turn-outcome.ts';
+import { evidence, formatAttemptError, succeeded, TurnOutcomeSchema, type TurnOutcome } from '../src/turn-outcome.ts';
 
 let tmp: string;
 before(() => {
@@ -134,6 +134,48 @@ test('the caller is warned before the kill, and not at all for a turn that finis
   const quiet: Array<{ elapsedMs: number; leftMs: number }> = [];
   await run({ result: RESULT }, { timeoutMs: 5000, warnBeforeMs: 4000, onWarn: (x) => quiet.push(x) });
   assert.equal(quiet.length, 0);
+});
+
+test('a turn that timed out after saying something records that it spoke', async () => {
+  const o = await run({ text: 'starting on it', result: null, hang: true }, { timeoutMs: 400 });
+  assert.equal(o.kind, 'timeout');
+  if (o.kind !== 'timeout') return;
+  assert.equal(o.sawText, true, 'the assistant text arrived before the killer did');
+  assert.equal(o.sawResult, false, 'a timeout is by definition a turn with no result');
+  assert.deepEqual(evidence(o), { toolUses: 0, sawText: true, sawResult: false });
+});
+
+test('an is_error result is evidence: the turn ran, it just ended badly', async () => {
+  const o = await run({ text: 'let me look', result: { isError: true, text: 'the model refused' }, exitCode: 1 });
+  assert.equal(o.kind, 'exited');
+  if (o.kind !== 'exited') return;
+  assert.equal(o.sawResult, true, 'is_error=true is still a result event');
+  assert.equal(o.sawText, true);
+  // Re-running this one would repeat whatever it already did.
+  assert.deepEqual(evidence(o), { toolUses: 0, sawText: true, sawResult: true });
+});
+
+test('a crash before anything happened carries no evidence at all', async () => {
+  const o = await run({ result: null, stderr: 'boom\n', exitCode: 1 });
+  assert.equal(o.kind, 'exited');
+  if (o.kind !== 'exited') return;
+  assert.equal(o.sawText, false);
+  assert.equal(o.sawResult, false);
+  assert.deepEqual(evidence(o), { toolUses: 0, sawText: false, sawResult: false });
+});
+
+test('a per-turn log takes the diagnostics, and the driver-wide one stays quiet', async () => {
+  lines.length = 0;
+  const mine: string[] = [];
+  const o = await run({ tools: ['Bash'], result: RESULT, hangAfterResult: true }, { log: (l) => mine.push(l) });
+  assert.equal(o.kind, 'killed-after-result');
+  assert.match(mine.join('\n'), /printed its result but did not exit/);
+  assert.deepEqual(lines, [], 'the turn had its own sink: nothing reached the driver-wide one');
+
+  // And a turn with no sink of its own still reaches the driver-wide log.
+  lines.length = 0;
+  await run({ result: null, hang: true }, { timeoutMs: 300 });
+  assert.match(lines.join('\n'), /timed out after/);
 });
 
 test('one prompt spawns the child exactly once', async () => {
