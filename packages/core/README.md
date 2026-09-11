@@ -180,6 +180,28 @@ A plugin offers `commands` (CLI verbs), `services` (things that keep running,
 each with `drain()` and `stop()`), `mcpTools` and `locales`. One broken plugin
 is reported, not thrown: the host stays usable with the ones that work.
 
+### Running one service, without a config file
+
+A plugin package whose own entry point is already running — a daemon under
+launchd, a `node src/runner.mjs` somebody typed — must not have to go back
+through a config that would only point at itself. Two calls are the whole path:
+
+```ts
+import { createContext, runService } from '@tagents/core';
+import plugin from './plugin.ts';
+
+const ctx = createContext({ plugin, log, configDir });   // driver, t, log, configDir
+const svc = await runService(plugin, 'runner', ctx, { signals: true });
+await svc.done;                                          // drain() / stop(reason) are there too
+```
+
+`createContext` binds `t` to core's catalogue with the plugin's laid over it
+(its own namespaces, so neither shadows the other) and gives it a
+`ClaudeHeadlessDriver` — a plugin never spawns `claude` itself. `signals: true`
+wires SIGINT/SIGTERM to `stop(<signal>)`; without it the process keeps its own
+signal handling, because a library must not take that away from whoever owns
+the process.
+
 ## Testing against it
 
 `@tagents/core` exports its own testkit, so a consumer's tests drive a **real**
@@ -226,6 +248,21 @@ catch a declared one. Erasable syntax only (no enums, no parameter properties) �
 the source runs unbuilt under Node's type stripping.
 
 ## Changes
+
+**0.3.0** — additive, and it comes from the one thing the plugin contract could
+describe but not do: RUN a service. `createContext({ plugin, log, configDir,
+locale? })` builds the PluginContext a plugin is entitled to, and
+`runService(plugin, name, ctx, { signals? })` starts one named service under it
+and hands back `drain()` / `stop(reason?)` / `done`. Neither reads
+`config.yaml`: `loadPlugins` still answers "which plugins did this machine
+choose", and these two answer "this process already knows, start it". The
+service handle gained two optional pieces to say what a real daemon does —
+`done`, for a service that decides its own exit (the orchestrator's runner ends
+on its own drain handshake, not because a supervisor asked), and a `reason` on
+`stop`, because "SIGTERM" and "SIGINT" are different lines in the log the
+daemon writes about its own shutdown. Both are optional: a service written
+against 0.2.0 keeps compiling, keeps loading and behaves identically, and no
+export was renamed or removed.
 
 **0.2.0** — additive, and both additions come from the same place: a caller has
 to be able to tell what a *failed* turn already did, and it has to be able to

@@ -1,6 +1,6 @@
 {
   "name": "@tagents/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "How a headless Claude Code session is spawned, prompted, read and listed: the session driver, the transcript reader, the agent-state reader and the tagents-core CLI",
   "type": "module",
   "license": "MIT",
