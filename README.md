@@ -36,12 +36,23 @@ all.
 | `hooks/notes-context.sh` | the Claude Code hook that carries the notes folder's diff into the prompt |
 | `hooks/notes-autocommit.sh` | the Claude Code hook that commits what Claude writes into the notes folder |
 | `config.example.yaml` | a commented example of the optional per-directory account config |
+| `packages/core/` | `@tagents/core`, the TypeScript package for **headless** sessions |
 
 They are one system. The hook writes a record per session into
 `~/.claude/agent-state/`; `tagents` joins that with the live tmux pane list and
 renders it; `tusage` supplies the two cost columns, joined on the session id.
 `tagents` degrades gracefully when `tusage` or the status line is missing, but
 without the state hook there is nothing to show.
+
+### Sessions with no pane
+
+Everything above is about sessions you can look at. The ones a bot or a cron job
+runs headlessly (`claude -p`) have no pane and no window, and the dashboard sees
+them only through the same hook. Spawning, prompting and reading THOSE lives in
+[`packages/core`](packages/core/README.md) — a TypeScript package
+(`@tagents/core`) with a `tagents-core` CLI, so bash gets it too. It is a
+separate workspace at the root of this repo; the scripts above neither import it
+nor need it.
 
 ## Install
 
