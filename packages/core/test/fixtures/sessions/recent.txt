@@ -1,0 +1,6 @@
+ffffffff  02-03 04:05        personal /Users/demo/git/other/repo
+          Собери сводку по топикам за неделю
+aaaaaaaa  01-02 03:04        personal /Users/demo/git/demo
+          Fix the deploy script for the staging cluster
+
+full text of one: sessions.mjs show <id-prefix>
