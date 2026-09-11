@@ -30,6 +30,7 @@ all.
 | file | what it does |
 |------|--------------|
 | `tagents` | the dashboard itself — the tree, the sidebar, the timeline |
+| `lib/tagents/` | what the dashboard is made of: one file per part, sourced by `tagents`. [What each one is](lib/tagents/README.md) |
 | `tusage`  | per-session cost, dollars and context accounting, read from the transcripts |
 | `hooks/tmux-agent-state.sh` | the Claude Code hook that publishes session state |
 | `hooks/claude-statusline.sh` | the Claude Code status line — and the only source for which model a session is *set* to |
@@ -59,7 +60,7 @@ nor need it.
 
 | package | what it is |
 |---------|------------|
-| `tagents` (this script) | the dashboard: tmux, fzf, the tree, the sidebar. Bash, no dependencies of its own |
+| `tagents` (this script) | the dashboard: tmux, fzf, the tree, the sidebar. Bash, no dependencies of its own — the entry point, with the rest of it in `lib/tagents/` |
 | [`@tagents/core`](packages/core/README.md) | headless sessions — spawn, prompt, read, list — plus the plugin contract and host, behind a `tagents-core` CLI |
 | [`@tagents/knowledge`](packages/knowledge/README.md) | the owner's notes as markdown documents with an FTS5 index, a `tagents-knowledge` CLI and an MCP server |
 | plugins, e.g. `@tagents/plugin-telegram` | a package the config names: one `definePlugin({ … })` object offering CLI verbs, long-running services and MCP tools |
@@ -105,6 +106,11 @@ ln -sf "$PWD/hooks/tmux-agent-state.sh" "$PWD/hooks/claude-statusline.sh" ~/.cla
 #      "padding": 0
 #    }
 ```
+
+`tagents` is the entry point of a checkout, not a file to copy on its own: the
+rest of it is `lib/tagents/*.sh` beside it, which it finds by following the
+symlink back to the real file. Copied alone it says so and stops, rather than
+half-working.
 
 Needs `tmux`, `fzf`, `jq` and `awk`. Written for bash 3.2 on purpose — macOS
 ships nothing newer.
@@ -587,7 +593,10 @@ window running a real key, the one-line header and the `ctrl-v` modal — and
 `tests/names.sh` covers the window naming above, including the refusal to
 overwrite a name you typed, and `tests/headless.sh` covers the sessions with no
 pane at all — what the hook writes for one, how the row reads while its process
-lives and once it does not, and that every verb needing a pane refuses. Each
-runs against a throwaway tmux server of its own (`tmux -L tatest-$$`), never the
-default socket. All of them are bash 3.2, run every check, and exit non-zero
-when any of them fails.
+lives and once it does not, and that every verb needing a pane refuses.
+`tests/modules.sh` covers the layout itself — that every module is sourced and
+no module is orphaned, that nothing is defined twice, that a module only defines
+things, and that the entry point still finds its modules through a symlink and
+refuses to run without them. Each runs against a throwaway tmux server of its
+own (`tmux -L tatest-$$`), never the default socket. All of them are bash 3.2,
+run every check, and exit non-zero when any of them fails.
