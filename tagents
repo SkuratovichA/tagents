@@ -87,6 +87,21 @@
 #   tagents --collapse PANE close an empty seat the sidebar no longer needs.
 #                           This is what unpark's own command list calls after a
 #                           chat it sent home leaves its placeholder behind
+#   tagents <verb> …        anything that is not one of the flags above — see
+#                           THE ECOSYSTEM
+#
+# THE ECOSYSTEM. This script is the tmux half of it. The other half is
+# @tagents/core (packages/core) — headless sessions, the plugin host — behind
+# the `tagents-core` CLI, and the plugins a config names (the Telegram
+# orchestrator, @tagents/plugin-telegram, is the first). A VERB THIS SCRIPT DOES
+# NOT KNOW IS THAT HALF'S: it is handed to tagents-core with the same argv and
+# its exit code comes back untouched, so `tagents plugin add ./my-plugin`,
+# `tagents session list` and `tagents doctor` all work from here and there is
+# one name to type for the whole thing. tagents-core is looked for on $PATH and
+# then beside this script, at packages/core/dist/cli/main.js, which is where a
+# repo checkout has it after a build; with neither, an unknown verb says which
+# of the two is missing and exits 2. Everything the dashboard answers itself is
+# a --flag and is matched first, so nothing can be shadowed by forwarding.
 #
 # Agents are grouped into a tree by working directory, so several sessions in
 # one repo sit under one header. Groups sort by their most urgent member, so a
@@ -5349,6 +5364,27 @@ dash() {
 
 # ---------------------------------------------------------------------------
 
+# The other half of the ecosystem, reached by the same name (see THE ECOSYSTEM
+# in the header). exec, so the argv and the exit code are the verb's own and
+# nothing of this script is left in the way.
+forward_core() {  # <verb> [args…]
+  local built
+  if command -v tagents-core >/dev/null 2>&1; then
+    exec tagents-core "$@"
+  fi
+  # A repo checkout: built, never installed. Executable since the build chmods
+  # it, but run through node when it is not — a fresh clone of the dist/.
+  built=${SELF%/*}/packages/core/dist/cli/main.js
+  if [ -x "$built" ]; then
+    exec "$built" "$@"
+  fi
+  if [ -f "$built" ] && command -v node >/dev/null 2>&1; then
+    exec node "$built" "$@"
+  fi
+  echo "tagents: no tagents-core on PATH and none at $built, so \"$1\" goes nowhere" >&2
+  exit 2
+}
+
 case "${1:-}" in
   --list)         list ;;
   --flat)         TA_FLAT=1 list ;;
@@ -5429,5 +5465,9 @@ case "${1:-}" in
   # cuts the help in half.
   -h|--help)      awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$SELF" ;;
   "")            dash ;;
-  *)             echo "tagents: unknown option $1" >&2; exit 2 ;;
+  # An unknown --flag is a typo in the dashboard's own vocabulary and stays an
+  # error here. A bare verb is not the dashboard's vocabulary at all: it is
+  # tagents-core's, and goes there with everything after it.
+  -*)            echo "tagents: unknown option $1" >&2; exit 2 ;;
+  *)             forward_core "$@" ;;
 esac
