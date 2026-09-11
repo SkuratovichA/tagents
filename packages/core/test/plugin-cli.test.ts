@@ -65,7 +65,10 @@ test('plugin list prints the config key and what the plugin offers', () => {
   assert.equal(runCli(['plugin', 'add', GOOD], inDir(dir)).code, 0);
   const r = runCli(['plugin', 'list'], inDir(dir));
   assert.equal(r.code, 0);
-  assert.equal(r.stdout, `fixture-plugin → ${GOOD}\n  commands: echo · services: ticker · mcp tools: sessions_recent\n`);
+  assert.equal(
+    r.stdout,
+    `fixture-plugin → ${GOOD}\n  commands: echo, greet, exits, boom, join · services: ticker · mcp tools: sessions_recent\n`
+  );
 });
 
 // -------------------------------------------------------------------- add ---
