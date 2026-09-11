@@ -404,6 +404,28 @@ twice and the totals silently inflate — measured at 13 requests indexed as 21.
 that loses it just returns. If the totals ever look wrong, `tusage --rebuild`
 throws the index away and rescans.
 
+**A transcript is indexed by session, not by path.** Claude Code moves a
+session's files between project directories — one started in a worktree lives
+under the worktree's slug and reappears under the parent project's when the
+worktree is deleted — so an index keyed by absolute path saw a new file after
+every move and read it again from byte 0. One live session was indexed under
+three slugs and $162 of the $285 charged to it was the copies. `offsets.tsv`
+carries the session-relative key (the sid, plus the path below it for a subagent
+file) as a fourth field, adopts the stored offset when that key turns up
+somewhere new, and reads only the tail; rows written before the key existed
+still work. If both copies are on disk at once only the newest is indexed, and
+`--update`/`--rebuild` say how many were skipped.
+
+**The meter calibrates the month.** Even with the duplicates gone the estimate
+runs steadily above the account's own meter — $807 against $733 one day, $758
+against $685 the next, the same ~0.90 both times, and no cache-rate hypothesis
+reproduces it. So paste a reading of the meter into the config and the ratio at
+that instant corrects every dollar the dashboard shows:
+`usage.meter: "2026-09-10 15:30 = 684.66"`, the credits `/usage` reports and the
+local time you read them. Corrected figures wear a `~` and the footer names the
+reading it used. A reading from another month, or one implying a correction
+outside 0.5–1.5, is ignored and the footer says so; re-read it now and then.
+
 Rates live in `PRICES` at the top of `tusage`, in dollars per million tokens,
 with cache multipliers (5m write 1.25x, 1h write 2x, read 0.1x) applied on top.
 They are checked against the ledger rather than trusted: `fable` is 15/75 there,
