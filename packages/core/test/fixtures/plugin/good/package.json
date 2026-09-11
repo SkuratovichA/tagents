@@ -3,5 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "tagents": { "entry": "./lib/plugin.mjs" }
+  "tagents": {
+    "apiVersion": 1,
+    "entry": "./lib/plugin.mjs"
+  }
 }
