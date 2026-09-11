@@ -238,6 +238,10 @@ export class ClaudeHeadlessDriver implements SessionDriver {
         if (sessionId) this.learned.set(ref.id, sessionId);
         const durationMs = Date.now() - startedAt;
         const detail = clipDetail(String(p?.result ?? err ?? ''));
+        // What the turn managed to do before it ended, for a caller deciding
+        // whether re-running it is safe. `reader.text` only ever grows from an
+        // assistant TEXT block, so non-empty IS "at least one text event".
+        const saw = { sawText: reader.text.length > 0, sawResult: reader.sawResult };
 
         if (spawnError) {
           resolve({ kind: 'spawn-failed', detail: spawnError });
@@ -257,10 +261,10 @@ export class ClaudeHeadlessDriver implements SessionDriver {
           return;
         }
         if (timedOut) {
-          resolve({ kind: 'timeout', sessionId, toolUses: reader.toolUses, limitMs: timeoutMs, detail });
+          resolve({ kind: 'timeout', sessionId, toolUses: reader.toolUses, limitMs: timeoutMs, detail, ...saw });
           return;
         }
-        resolve({ kind: 'exited', sessionId, toolUses: reader.toolUses, code, signal, detail });
+        resolve({ kind: 'exited', sessionId, toolUses: reader.toolUses, code, signal, detail, ...saw });
       };
 
       child.on('error', (e) => {

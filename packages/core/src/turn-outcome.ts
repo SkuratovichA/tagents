@@ -35,6 +35,23 @@ const KilledAfterResult = z.object({
   code: z.number().nullable(),
 });
 
+/**
+ * What a turn that did NOT succeed still managed to do on the wire. A caller
+ * deciding whether re-running it is safe needs this: `toolUses` alone misses a
+ * turn that only talked, and a turn that printed a result is not "not done" —
+ * re-running either duplicates work somebody already received (10.09.2026).
+ *
+ * OPTIONAL on purpose. The driver always fills both in; a consumer that built
+ * these outcomes by hand before 0.2.0 keeps parsing and keeps compiling, and
+ * `evidence()` reads a missing flag as "no evidence", never as proof.
+ */
+const Evidence = {
+  /** At least one assistant TEXT event arrived (not a tool result). */
+  sawText: z.boolean().optional(),
+  /** A `result` event arrived — including one with is_error=true. */
+  sawResult: z.boolean().optional(),
+};
+
 /** Our own timeout killer fired: no `result` ever came. */
 const Timeout = z.object({
   kind: z.literal('timeout'),
@@ -42,6 +59,7 @@ const Timeout = z.object({
   toolUses: z.number(),
   limitMs: z.number(),
   detail: z.string(),
+  ...Evidence,
 });
 
 /** The child left on its own without a usable result (or with is_error=true). */
@@ -52,6 +70,7 @@ const Exited = z.object({
   code: z.number().nullable(),
   signal: z.string().nullable(),
   detail: z.string(),
+  ...Evidence,
 });
 
 /** There was never a process: ENOENT, EACCES, a bad interpreter. */
@@ -91,6 +110,34 @@ export function outcomeSessionId(o: TurnOutcome): string | null {
 
 export function outcomeToolUses(o: TurnOutcome): number {
   return o.kind === 'spawn-failed' ? 0 : o.toolUses;
+}
+
+/** What a turn produced before it ended, whatever it ended as. */
+export interface TurnEvidence {
+  readonly toolUses: number;
+  readonly sawText: boolean;
+  readonly sawResult: boolean;
+}
+
+/**
+ * The one question worth asking of a turn that failed: did it already do
+ * something? Answered for every kind, so a caller's retry policy switches on
+ * nothing:
+ *
+ *   ok / killed-after-result → the result is what defines them, and the text is
+ *     on the outcome itself (`outcomeText`) — both true;
+ *   timeout / exited        → whatever the driver saw on the wire, and `false`
+ *     for an outcome built before 0.2.0 that carries no flags;
+ *   spawn-failed            → there was never a process: nothing, 0 tools.
+ *
+ * "No evidence" is never proof that nothing happened — it is the absence of
+ * proof that something did, which is the direction that keeps a retry honest.
+ */
+export function evidence(o: TurnOutcome): TurnEvidence {
+  if (o.kind === 'spawn-failed') return { toolUses: 0, sawText: false, sawResult: false };
+  if (o.kind === 'ok' || o.kind === 'killed-after-result')
+    return { toolUses: o.toolUses, sawText: true, sawResult: true };
+  return { toolUses: o.toolUses, sawText: o.sawText ?? false, sawResult: o.sawResult ?? false };
 }
 
 // `detail` is already squeezed and clipped the way turn.mjs clips it; doing it
