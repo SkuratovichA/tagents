@@ -17,6 +17,7 @@ export type {
 export {
   TurnOutcomeSchema,
   clipDetail,
+  evidence,
   formatAttemptError,
   outcomeSessionId,
   outcomeText,
@@ -29,6 +30,7 @@ export type {
   OkOutcome,
   SpawnFailedOutcome,
   TimeoutOutcome,
+  TurnEvidence,
   TurnOutcome,
 } from './turn-outcome.ts';
 
