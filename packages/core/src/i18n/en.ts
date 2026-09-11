@@ -1,0 +1,35 @@
+// The CLI's human strings. Anything a machine reads — JSON output, the
+// sessions.* text whose bytes the orchestrator's fixtures pin — never comes
+// from here.
+export const en = {
+  usage: [
+    'usage: tagents-core <command>',
+    '',
+    '  session open --cwd P [--label N] [--model M] [--effort E] [--resume ID]',
+    '               [--system-prompt-file F] [--mcp-config F]',
+    '               [--config-dir D | --no-config-dir] [--skip-permissions]',
+    '  session prompt <ref-json-or-id> <text> [--timeout MS] [--warn-before MS] [--events]',
+    '  session last <ref-json-or-id>',
+    '  session list [--label N] [--state S]...',
+    '  session abort <ref-json-or-id>',
+    '  sessions recent [N] | search <words…> | show <id-prefix>',
+    '  plugin list',
+    '  doctor',
+    '',
+    'exit: 0 ok · 1 error · 2 usage · 3 refused · 4 timeout',
+  ].join('\n'),
+  unknownCommand: 'unknown command: {{command}}',
+  missingOption: 'missing required option {{option}}',
+  unknownOption: 'unknown option {{option}}',
+  badRef: 'no session matches {{ref}}',
+  noPrompt: 'nothing to say: the prompt text is empty',
+  nothingToAbort: 'nothing is running for {{ref}}',
+  pluginNone: 'no plugins configured in {{file}}',
+  pluginFailed: '{{name}}: {{error}}',
+  doctorNode: 'node {{version}} ({{path}})',
+  doctorStateDir: 'agent state {{dir}} ({{count}} record(s))',
+  doctorConfig: 'config {{file}}: {{status}}',
+  doctorClaude: 'claude: {{status}}',
+  present: 'present',
+  missing: 'missing',
+} as const;
