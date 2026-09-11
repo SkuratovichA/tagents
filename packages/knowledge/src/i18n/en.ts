@@ -1,0 +1,41 @@
+// The CLI's human strings. Anything a machine reads — `--json` output, the
+// text the MCP tools return — never comes from here.
+export const en = {
+  usage: [
+    'usage: tagents-knowledge <command>',
+    '',
+    '  index [--dir D] [--db F] [--full]',
+    '  search <query…> [--tag T] [--kind K] [--limit N] [--json]',
+    '  show <id[#heading]> [--dir D]',
+    '  list [--kind K] [--tag T] [--json]',
+    '  lint [--dir D]',
+    '  mcp',
+    '',
+    'exit: 0 ok · 1 error · 2 usage · 4 nothing found',
+  ].join('\n'),
+  unknownCommand: 'unknown command: {{command}}',
+  missingOption: 'missing required argument {{option}}',
+  noDir: [
+    'no knowledge directory: set TAGENTS_KNOWLEDGE_DIR, pass --dir, or add to {{config}}',
+    '',
+    '  knowledge:',
+    '    dir: ~/git/personal/knowledge',
+  ].join('\n'),
+  missingDir: 'knowledge directory {{dir}} does not exist',
+  indexed:
+    'indexed {{db}}: {{added}} new, {{changed}} changed, {{unchanged}} unchanged, {{removed}} removed',
+  indexErrors: '{{count}} file(s) could not be read; run lint',
+  notIndexed: 'index {{db}} is empty — run: tagents-knowledge index',
+  noHits: 'nothing matches {{query}}',
+  unknownId: 'no document with id {{id}}',
+  unknownHeading: 'document {{id}} has no section "{{heading}}"',
+  noDocs: 'no documents in {{dir}}',
+  lintClean: '{{count}} document(s) in {{dir}}: no problems',
+  lintProblems: '{{count}} problem(s) in {{dir}}',
+  issueFrontmatter: 'invalid frontmatter — {{detail}}',
+  issueStem: 'id "{{id}}" must equal the filename stem "{{stem}}"',
+  issueDuplicateId: 'duplicate id "{{id}}", already used by {{other}}',
+  issueStale: 'updated {{updated}} is older than the newest commit touching the file ({{commit}})',
+  issueGenerated: 'generated_from {{source}} changed on {{changed}}, after updated {{updated}}',
+  issueDeadLink: 'dead link [[{{target}}]]',
+} as const;
