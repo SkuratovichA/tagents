@@ -173,6 +173,30 @@ names=$(tu --daily --since 30d | cut -f2 | sort -u | tr '\n' ' ')
 contains "work is back"            "work"  "$names"
 
 # ---------------------------------------------------------------------------
+t "5b. --calibrate prices an account at what its meter said"
+# ---------------------------------------------------------------------------
+# The fixture's work month is 5.00 + 27.50 = 32.50 at list; a meter that said
+# 16.25 means the account is billed at half of list.
+out=$(tu --calibrate work 16.25 2>&1); rc=$?
+ok "it succeeds"                     0 "$rc"
+contains "...and says the factor"    "x0.5000" "$out"
+ok "the factor is kept per account"  "work	0.5000" "$(cut -f1,2 "$ROOT/usage/factor.tsv")"
+ok "--daily now reports the metered dollars" "16.2500" \
+   "$(tu --daily --since 30d | awk -F"$TAB" '$2 == "work" { s += $3 } END { printf "%.4f", s }')"
+ok "...the other account is untouched"       "4.2500" \
+   "$(tu --daily --since 30d | awk -F"$TAB" '$2 == "personal" { s += $3 } END { printf "%.4f", s }')"
+ok "TU_NO_FACTOR=1 gives list price back"    "32.5000" \
+   "$(TU_NO_FACTOR=1 tu --daily --since 30d | awk -F"$TAB" '$2 == "work" { s += $3 } END { printf "%.4f", s }')"
+# A reading taken before the newest rows only divides by what existed then: the
+# 27.50 row sits at T2, so a reading one second earlier sees the 5.00 alone.
+out=$(tu --calibrate work 2.5 --at "$((T2 - 1))" 2>&1)
+contains "--at divides by the month as of then" "x0.5000" "$out"
+out=$(tu --calibrate work 500 2>&1); rc=$?
+ok "an absurd factor is refused"     1 "$rc"
+contains "...and says why"            "not a price" "$out"
+ok "...leaving the factor as it was" "0.5000" "$(awk -F"$TAB" '$1=="work"{print $2}' "$ROOT/usage/factor.tsv")"
+
+# ---------------------------------------------------------------------------
 t "6. a transcript that moves between project dirs is still one transcript"
 # ---------------------------------------------------------------------------
 

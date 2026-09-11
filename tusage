@@ -8,6 +8,9 @@
 #   tusage --by day|project|session|agent|model|hour
 #   tusage --since 5h|3d|month  window for --by (default 7d; month = since the 1st)
 #   tusage --until <epoch>      close the --daily window at that instant too
+#   tusage --calibrate <account> <amount> [--at "YYYY-MM-DD HH:MM"|<epoch>]
+#                               price that account at a factor that makes the
+#                               month-to-date equal what its own meter showed
 #   tusage --sessions           machine-readable per-session totals (for tagents)
 #   tusage --session <sid>      one session in detail
 #   tusage --burn               one-line status-bar string
@@ -566,6 +569,57 @@ slug_map() {
 # in — the same rules tagents already uses to pick a profile.
 ACCOUNTS="$STATE/accounts.tsv"
 
+# THE BILL IS NOT THE LIST PRICE. An Enterprise seat is metered at whatever the
+# contract says — on this account a flat 0.90 of list, two days running — and
+# the meter in `/usage` is the only figure that is actually billed. It cannot be
+# read by a script, but it can be read by a person once: `--calibrate work 732.71`
+# takes that reading, divides it by the month-to-date this index computes for the
+# same instant, and keeps the factor per account. From then on --daily reports
+# dollars the meter would agree with; --sessions and --burn stay at list, since
+# they are read next to the CLI's own list-price ledger. TU_NO_FACTOR=1 turns the
+# scaling off for one call — the calibration itself needs the unscaled number.
+FACTOR="$STATE/factor.tsv"           # account<TAB>factor<TAB>read at (epoch)<TAB>amount
+
+factor_arg() {  # -> "acct=factor;..." for awk, empty when off or absent
+  [ -z "${TU_NO_FACTOR:-}" ] || return 0
+  [ -s "$FACTOR" ] || return 0
+  awk -F"$TAB" '$2 + 0 > 0 { printf "%s=%s;", $1, $2 }' "$FACTOR"
+}
+
+calibrate() {  # <account> <amount> [at]
+  local acct=${1:-} amt=${2:-} at=${3:-} epoch mtd f tmp
+  [ -n "$acct" ] && [ -n "$amt" ] || { echo "tusage: --calibrate <account> <amount> [--at when]" >&2; return 2; }
+  case "$amt" in ''|*[!0-9.]*) echo "tusage: amount must be a number: $amt" >&2; return 2 ;; esac
+  if [ -z "$at" ]; then epoch=$(date +%s)
+  else
+    case "$at" in
+      *[!0-9]*) epoch=$(date -j -f '%Y-%m-%d %H:%M' "$at" +%s 2>/dev/null ||
+                        date -d "$at" +%s 2>/dev/null) ;;
+      *)        epoch=$at ;;
+    esac
+  fi
+  [ -n "${epoch:-}" ] || { echo "tusage: cannot read the time: $at" >&2; return 2; }
+  mtd=$(TU_NO_FACTOR=1 daily month "$epoch" |
+          awk -F"$TAB" -v a="$acct" '$2 == a { s += $3 } END { printf "%.4f", s + 0 }')
+  if ! awk -v m="$mtd" 'BEGIN { exit !(m + 0 > 0) }'; then
+    echo "tusage: nothing indexed for $acct this month up to that instant — nothing to calibrate" >&2
+    return 1
+  fi
+  f=$(awk -v a="$amt" -v m="$mtd" 'BEGIN { printf "%.4f", a / m }')
+  if ! awk -v f="$f" 'BEGIN { exit !(f >= 0.3 && f <= 2.0) }'; then
+    echo "tusage: a factor of $f (meter $amt vs indexed $mtd) is not a price, refusing" >&2
+    return 1
+  fi
+  mkdir -p "$STATE" 2>/dev/null || return 1
+  tmp="$FACTOR.tmp.$$"
+  { [ -s "$FACTOR" ] && awk -F"$TAB" -v a="$acct" '$1 != a' "$FACTOR"
+    printf '%s\t%s\t%s\t%s\n' "$acct" "$f" "$epoch" "$amt"; } >"$tmp" 2>/dev/null &&
+    mv -f "$tmp" "$FACTOR"
+  printf 'tusage: %s priced at x%s of list (meter $%s vs indexed $%s at %s)\n' \
+    "$acct" "$f" "$amt" "$mtd" "$(date -r "$epoch" '+%Y-%m-%d %H:%M' 2>/dev/null || echo "$epoch")"
+  return 0
+}
+
 # TU_ACCOUNTS is "name=dir;name=dir"; an empty dir means $HOME/.claude, the
 # default config dir. Unset, the accounts are discovered: the default one plus
 # every ~/.claude-* directory that keeps a history. Dirs are deduped by their
@@ -861,13 +915,20 @@ daily() {
   upto=${2:-0}; case "$upto" in ''|*[!0-9]*) upto=0 ;; esac
   { account_map | sed 's/^/A\t/'; cat "$FACTS"; } |
   awk -F"$TAB" -v OFS="$TAB" -v cut="$cut" -v upto="$upto" -v tz="$(date +%z)" \
-      -v prices="$(prices_arg)" "$AWK_PRICE$AWK_DAY"'
+      -v prices="$(prices_arg)" -v factors="$(factor_arg)" "$AWK_PRICE$AWK_DAY"'
+    BEGIN {
+      nf = split(factors, fr, ";")
+      for (i = 1; i <= nf; i++) if (fr[i] != "") { split(fr[i], q, "="); FAC[q[1]] = q[2] + 0 }
+    }
     $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
     $1 + 0 < cut { next }
     upto > 0 && $1 + 0 > upto { next }
     {
-      k = daystr(daykey($1)) SUBSEP (($3 in ACC) ? ACC[$3] : "?")
+      a = ($3 in ACC) ? ACC[$3] : "?"
+      k = daystr(daykey($1)) SUBSEP a
       d = usd($7, $1 + 0, $9,$10,$11,$12,$13)
+      # The contract rate, when a meter reading taught us one — see calibrate.
+      if (d > 0 && (a in FAC)) d *= FAC[a]
       c = $9 + 1.25*$10 + 2.0*$11 + 0.1*$12 + 5*$13
       # Same rule as --sessions: a zero-token row on an unknown model is the
       # "<synthetic>" placeholder, not a hole in the bill.
@@ -1039,12 +1100,14 @@ json() {
 
 # ---------------------------------------------------------------------------
 
-SINCE=7d; UNTIL=""; DIM=""; DO_UPDATE=1
+SINCE=7d; UNTIL=""; DIM=""; DO_UPDATE=1; CAL_ACCT=""; CAL_AMT=""; CAL_AT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --by)       DIM=${2:-project}; shift 2 ;;
     --since)    SINCE=${2:-7d}; shift 2 ;;
     --until)    UNTIL=${2:-}; shift 2 ;;
+    --calibrate) DIM=__calibrate; CAL_ACCT=${2:-}; CAL_AMT=${3:-}; shift 3 ;;
+    --at)       CAL_AT=${2:-}; shift 2 ;;
     --sessions) DIM=__sessions; shift ;;
     --daily)    DIM=__daily; shift ;;
     --session)  DIM=__detail; SID=${2:-}; shift 2 ;;
@@ -1066,6 +1129,7 @@ case "$DIM" in
   "")          summary ;;
   __sessions)  sessions "$SINCE" ;;
   __daily)     daily "$SINCE" "$UNTIL" ;;
+  __calibrate) calibrate "$CAL_ACCT" "$CAL_AMT" "$CAL_AT" ;;
   __detail)    session_detail "${SID:-}" ;;
   __burn)      burn ;;
   __json)      json "$SINCE" ;;
