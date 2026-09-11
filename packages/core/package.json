@@ -21,6 +21,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "postbuild": "chmod +x dist/cli/main.js",
     "prepare": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/**/*.test.ts\""
