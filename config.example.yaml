@@ -8,6 +8,13 @@
 # `tagents --config` prints this file the way tagents reads it, one
 # path<TAB>value line per leaf — the thing to look at when a rule will not fire.
 
+# ONE FILE, SEVERAL MACHINES. Put the accounts that differ per machine in
+# config.<hostname>.yaml next to this file (`hostname -s`): every `a.b` subtree
+# it names — claude.profiles, claude.rules, claude.default, notes.send … —
+# replaces the one here wholesale, everything else is inherited. Profiles and
+# rules are tables, so they are replaced and never merged: a profile whose
+# config_dir does not exist on this machine starts a logged-out Claude.
+
 claude:
   # Arguments every agent is started with, unless a profile overrides them.
   # A string (passed verbatim, your own shell words) or a list (each item is
