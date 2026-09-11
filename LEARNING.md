@@ -29,3 +29,36 @@ Both were in packages/core's init and pinned the package to i18next 25 while the
 ## FTS5 MATCH is AND, and user text must be quoted (11.09.2026)
 
 Two words in a query mean both words in the same chunk, so a case asserting that `['release', 'релиз*']` finds "either" was wrong about the engine, not about the data. And an unquoted `-` in `tmux-agent-state.sh` means NOT while a stray `"` is a syntax error: every user token is wrapped in double quotes before it reaches MATCH, with a trailing `*` kept outside the quotes as the prefix operator.
+
+## A splitter must refuse to run on its own output (12.09.2026)
+
+Re-running the tagents splitter on an already-split entry parsed the whole file
+as one function and produced nonsense, quietly — the manifest still "applied".
+Any tool that rewrites a file in place gets a guard on a marker only its own
+output contains, and the source of truth stays git: `git checkout -- tagents &&
+rm -rf lib/tagents` before every re-run.
+
+## One anchor, two matches: a second `case "${1:-}" in` (12.09.2026)
+
+Skipping the module load for `--help` was written as a second top-level
+`case "${1:-}" in`. That string is an ANCHOR elsewhere: the verification harness
+slices the file at it to build a definitions-only copy, and `tests/modules.sh`
+extracts the dispatch block with an awk range on it. Both silently matched the
+new block instead of the real dispatch — one failed loudly, the other would have
+checked nothing at all. The branch is an `if` now, and the anchor stays unique.
+
+## A static scan over several files needs FNR, and a reset per file (12.09.2026)
+
+`tests/ui.sh` looks for an fzf call whose stderr is silenced within the next
+eight lines. Pointed at nineteen modules instead of one file it kept `s` across
+the boundary, so a match at the end of one file flagged an innocent line at the
+start of the next. Multi-file awk: `FNR` for the window, `FNR==1 {s=0}` to reset
+it, and `FILENAME":"FNR` in the message so the number names something.
+
+## `declare -f` is the oracle for a refactor that only moves code (12.09.2026)
+
+Sourcing the definitions before and after and diffing `declare -f` (plus
+`declare -p` for the globals) proves byte-identical function bodies from bash's
+own parser, under the same bash the program runs on. It caught nothing here
+because nothing was wrong — which is the point: it is what made "the tests pass"
+mean "nothing moved" rather than "nothing tested moved".
