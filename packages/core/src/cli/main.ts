@@ -9,8 +9,10 @@
 //   * text verbs (sessions recent|search|show) print what orchestrator's
 //     sessions.mjs printed, byte for byte, because an agent reads that text out
 //     of a shell and the orchestrator's fixtures pin it.
-// Human-facing strings (usage, doctor) go through i18next; neither of the two
-// contracts above does.
+// Human-facing strings (usage, doctor, plugin) go through i18next; neither of
+// the two contracts above does. `plugin list --json` is a JSON verb by that
+// first rule; `plugin list` without it, and the other plugin verbs, are lines
+// for a person — see cli/plugin.ts.
 //
 // Exit codes: 0 ok · 1 error · 2 usage · 3 refused · 4 timeout.
 import fs from 'node:fs';
@@ -21,23 +23,18 @@ import type { TFunction } from 'i18next';
 import { ClaudeHeadlessDriver, DEFAULT_TIMEOUT_MS, TIMEOUT_WARN_BEFORE_MS } from '../claude-driver.ts';
 import type { SessionRef, SessionSpec, SessionState, StreamEvent } from '../driver.ts';
 import { readAgentState, stateDir } from '../agent-state.ts';
-import { configFile, loadPlugins } from '../host.ts';
+import { configFile } from '../host.ts';
 import { createT } from '../i18n/index.ts';
 import { isAlive } from '../pid.ts';
 import { parseSessionRef } from '../session-ref.ts';
 import { renderRecent, renderSearch, renderShow, SESSIONS_PROGRAM } from '../transcripts.ts';
 import { formatAttemptError, type TurnOutcome } from '../turn-outcome.ts';
+import { EXIT, json, type Io } from './exit.ts';
+import { plugin } from './plugin.ts';
 
-export const EXIT = { ok: 0, error: 1, usage: 2, refused: 3, timeout: 4 } as const;
-
-export interface Io {
-  out: (s: string) => void;
-  err: (s: string) => void;
-}
+export { EXIT, type Io };
 
 const STATES: readonly SessionState[] = ['new', 'working', 'blocked', 'done', 'gone'];
-
-const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
 function isState(s: string): s is SessionState {
   return (STATES as readonly string[]).includes(s);
@@ -257,31 +254,6 @@ function sessions(argv: string[], io: Io): number {
   }
   io.out(`usage: ${SESSIONS_PROGRAM} [recent [N] | search <words…> | show <id-prefix>]\n`);
   return EXIT.ok;
-}
-
-async function plugin(argv: string[], io: Io, t: TFunction): Promise<number> {
-  if (argv[0] !== 'list') {
-    io.err(`${t('unknownCommand', { command: `plugin ${argv[0] ?? ''}`.trim() })}\n`);
-    return EXIT.usage;
-  }
-  const loaded = await loadPlugins();
-  io.out(
-    json({
-      file: loaded.file,
-      plugins: loaded.plugins.map((p) => ({
-        name: p.def.name,
-        configuredAs: p.name,
-        from: p.from,
-        entry: p.entry,
-        apiVersion: p.def.apiVersion,
-        commands: (p.def.commands ?? []).map((c) => c.name),
-        services: (p.def.services ?? []).map((s) => s.name),
-        mcpTools: (p.def.mcpTools ?? []).map((m) => m.name),
-      })),
-      errors: loaded.errors,
-    })
-  );
-  return loaded.errors.length ? EXIT.error : EXIT.ok;
 }
 
 /** Is there a `claude` on PATH? Answered by looking, not by running it. */
