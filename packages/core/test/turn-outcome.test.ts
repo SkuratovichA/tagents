@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   clipDetail,
+  evidence,
   formatAttemptError,
   outcomeSessionId,
   outcomeText,
@@ -74,6 +75,57 @@ test('the accessors do not make a caller re-switch on the kind', () => {
   assert.equal(outcomeSessionId({ kind: 'spawn-failed', detail: 'x' }), null);
   assert.equal(outcomeToolUses(timeout), 2);
   assert.equal(outcomeToolUses({ kind: 'spawn-failed', detail: 'x' }), 0);
+});
+
+test('evidence answers for every kind, and reads a missing flag as no evidence', () => {
+  // A finished turn: the result is what makes it one, and its text is on it.
+  assert.deepEqual(evidence(ok), { toolUses: 1, sawText: true, sawResult: true });
+  assert.deepEqual(evidence({ ...ok, kind: 'killed-after-result', code: 143 }), {
+    toolUses: 1,
+    sawText: true,
+    sawResult: true,
+  });
+  assert.deepEqual(
+    evidence({ kind: 'timeout', sessionId: 's', toolUses: 2, limitMs: 1, detail: '', sawText: true, sawResult: false }),
+    { toolUses: 2, sawText: true, sawResult: false }
+  );
+  assert.deepEqual(
+    evidence({
+      kind: 'exited',
+      sessionId: 's',
+      toolUses: 0,
+      code: 1,
+      signal: null,
+      detail: 'refused',
+      sawText: false,
+      sawResult: true,
+    }),
+    { toolUses: 0, sawText: false, sawResult: true }
+  );
+  // There was never a process, so there is nothing it could have done.
+  assert.deepEqual(evidence({ kind: 'spawn-failed', detail: 'x' }), {
+    toolUses: 0,
+    sawText: false,
+    sawResult: false,
+  });
+  // An outcome built before 0.2.0 carries no flags: absence of proof, not proof.
+  assert.deepEqual(evidence({ kind: 'timeout', sessionId: null, toolUses: 3, limitMs: 1, detail: '' }), {
+    toolUses: 3,
+    sawText: false,
+    sawResult: false,
+  });
+});
+
+test('the evidence flags are optional, so an outcome written by 0.1 still parses', () => {
+  const old = { kind: 'timeout', sessionId: null, toolUses: 0, limitMs: 400, detail: 'stuck' };
+  assert.equal(TurnOutcomeSchema.safeParse(old).success, true);
+  assert.equal(TurnOutcomeSchema.safeParse({ ...old, sawText: true, sawResult: false }).success, true);
+  assert.equal(TurnOutcomeSchema.safeParse({ ...old, sawText: 'yes' }).success, false);
+  // They change nothing about the owner-facing line.
+  assert.equal(
+    formatAttemptError({ ...old, kind: 'timeout', sawText: true, sawResult: true }),
+    'exit=SIGKILL (timeout 400ms, 0 tool call(s)) stuck'
+  );
 });
 
 test('the union survives a round trip through JSON, and refuses a wrong shape', () => {
