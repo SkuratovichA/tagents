@@ -7,6 +7,7 @@
 #   tusage                      summary: last 5h window, today, last 7 days
 #   tusage --by day|project|session|agent|model|hour
 #   tusage --since 5h|3d|month  window for --by (default 7d; month = since the 1st)
+#   tusage --until <epoch>      close the --daily window at that instant too
 #   tusage --sessions           machine-readable per-session totals (for tagents)
 #   tusage --session <sid>      one session in detail
 #   tusage --burn               one-line status-bar string
@@ -258,6 +259,34 @@ path_facets() {  # <abs path> -> "slug<TAB>origin" where origin = main|sub|wf:<i
   esac
 }
 
+# A TRANSCRIPT IS THE SAME FILE WHEREVER CLAUDE CODE PUTS IT. A session started
+# in a worktree lives under the worktree's slug; when the worktree is deleted the
+# very same files reappear under the parent project's slug. Keyed by absolute
+# path, the index saw a brand-new file each time and re-read it from byte 0, so
+# every request in it was counted again — one live session was indexed under
+# three slugs and $162 of the $285 charged to it was the copies.
+#
+# The identity that survives the move is session-relative: the sid for the main
+# transcript, and the sid plus the path below its directory for a subagent or
+# workflow file. Everything above that (the project slug) is where the file
+# happens to live today.
+transcript_key() {  # <abs path> -> "<sid>" | "<sid>/subagents/..."
+  local rel=${1#"$PROJECTS"/} rest
+  rest=${rel#*/}
+  printf '%s' "${rest%.jsonl}"
+}
+
+# Newest-copy-wins needs an mtime, and BSD and GNU stat spell it differently.
+# GNU answers -f with filesystem info instead of failing, so the BSD spelling is
+# accepted only when it comes back as digits.
+mtime_of() {  # <abs path> -> epoch seconds, 0 if unknown
+  local m
+  m=$(stat -f %m "$1" 2>/dev/null)
+  case "$m" in ''|*[!0-9]*) m=$(stat -c %Y "$1" 2>/dev/null) ;; esac
+  case "$m" in ''|*[!0-9]*) m=0 ;; esac
+  printf '%s' "$m"
+}
+
 # facts rows: bucket, project-slug, sid, agentid, agenttype, kind, model,
 #             reqs, in, cw5, cw1h, cr, out, maxctx
 fold_rows() {  # <project-slug> <carried ids> <origin> ; extracted TSV on stdin
@@ -314,7 +343,7 @@ LOCK="$STATE/.update.lock"
 LOCK_STALE_MIN=${TU_LOCK_STALE_MIN:-5}
 
 update() {
-  local rebuild=${1:-0} f sz off end slug seen tmp work newoff n=0
+  local rebuild=${1:-0} loud=${2:-0} f sz off end slug seen tmp work newoff key state dups n=0
 
   mkdir -p "$STATE" 2>/dev/null || return 1
   # A background refresh that loses the race just returns — the winner is
@@ -354,20 +383,65 @@ update() {
   fi
   [ -s "$tmp/cand" ] || { : >"$STAMP"; return 0; }
 
-  : >"$tmp/newfacts"; : >"$tmp/newmeta"; : >"$tmp/newoff"
+  # The offsets table, keyed. Rows written before the key column existed are
+  # migrated here, not rewritten in place: the key is a pure function of the
+  # path, so deriving it once on the way in costs nothing and the old three-field
+  # rows keep working until the table is next written out.
+  : >"$tmp/offk"
+  [ -s "$OFFSETS" ] && awk -F"$TAB" -v OFS="$TAB" -v pref="$PROJECTS/" '
+      { k = $4
+        if (k == "") {
+          p = $1
+          if (index(p, pref) == 1) p = substr(p, length(pref) + 1)
+          i = index(p, "/"); if (i > 0) p = substr(p, i + 1)
+          sub(/\.jsonl$/, "", p)
+          k = p
+        }
+        print $1, $2, $3, k }' "$OFFSETS" >"$tmp/offk"
 
+  # Key every candidate, and add any already-indexed copy of the same key that is
+  # still on disk under its old path — mid-move, or a plain copy, both halves are
+  # there and only one of them may be counted.
+  : >"$tmp/keyed"; : >"$tmp/skipped"
   while IFS= read -r f; do
     [ -e "$f" ] || continue
+    printf '%s\t%s\t%s\tnew\n' "$(transcript_key "$f")" "$(mtime_of "$f")" "$f"
+  done <"$tmp/cand" >"$tmp/keyed"
+  if [ -s "$tmp/offk" ]; then
+    awk -F"$TAB" 'NR==FNR { ck[$1] = 1; cp[$3] = 1; next }
+                  ($4 in ck) && !($1 in cp) { print $4 "\t" $1 }' \
+        "$tmp/keyed" "$tmp/offk" |
+      while IFS="$TAB" read -r k f; do
+        [ -e "$f" ] || continue
+        printf '%s\t%s\t%s\told\n' "$k" "$(mtime_of "$f")" "$f"
+      done >>"$tmp/keyed"
+  fi
+  # Newest mtime wins the key; the losers are not parsed at all. A loser that is
+  # already indexed keeps its row, so the copy on disk is simply invisible.
+  sort -t"$TAB" -k1,1 -k2,2nr "$tmp/keyed" 2>/dev/null |
+    awk -F"$TAB" -v skip="$tmp/skipped" '
+      { if (seen[$1]++) { print > skip; next } print }' >"$tmp/plan"
+  dups=$(grep -c . "$tmp/skipped" 2>/dev/null); dups=${dups:-0}
+
+  : >"$tmp/newfacts"; : >"$tmp/newmeta"; : >"$tmp/newoff"
+
+  while IFS="$TAB" read -r key _ f state; do
+    [ "$state" = new ] || continue
+    [ -e "$f" ] || continue
     off=0; seen=""
-    if [ -s "$OFFSETS" ]; then
-      IFS="$TAB" read -r _ off seen < <(awk -F"$TAB" -v k="$f" '$1==k { print; exit }' "$OFFSETS")
+    # BY KEY, NOT BY PATH: a known key under a new path is the same transcript
+    # moved, so its offset and carried ids come along and only the tail is read.
+    if [ -s "$tmp/offk" ]; then
+      IFS="$TAB" read -r _ off seen _ < <(awk -F"$TAB" -v k="$key" '$4==k { print; exit }' "$tmp/offk")
       off=${off:-0}
     fi
     sz=$(wc -c <"$f" 2>/dev/null | tr -d ' '); sz=${sz:-0}
-    [ "$sz" -lt "$off" ] && { off=0; seen=""; }        # file was rewritten
+    # Shorter than the offset it inherited: not that file after all, so read it
+    # whole. Covers a rewritten transcript and a name reused by a shorter one.
+    [ "$sz" -lt "$off" ] && { off=0; seen=""; }
     end=$(complete_bytes "$f"); end=${end:-0}
     if [ "$end" -le "$off" ]; then
-      printf '%s\t%s\t%s\n' "$f" "$off" "$seen" >>"$tmp/newoff"
+      printf '%s\t%s\t%s\t%s\n' "$f" "$off" "$seen" "$key" >>"$tmp/newoff"
       continue
     fi
     IFS="$TAB" read -r slug origin < <(path_facets "$f")
@@ -380,19 +454,24 @@ update() {
     grep '^F'"$TAB" "$tmp/out" 2>/dev/null | cut -f2- >>"$tmp/newfacts"
     grep '^M'"$TAB" "$tmp/out" 2>/dev/null | cut -f2- >>"$tmp/newmeta"
     newoff=$(grep '^T'"$TAB" "$tmp/out" 2>/dev/null | cut -f2- | head -1)
-    printf '%s\t%s\t%s\n' "$f" "$end" "$newoff" >>"$tmp/newoff"
+    printf '%s\t%s\t%s\t%s\n' "$f" "$end" "$newoff" "$key" >>"$tmp/newoff"
     n=$((n + 1))
-  done <"$tmp/cand"
+  done <"$tmp/plan"
 
-  # merge offsets: untouched files keep their row
-  if [ -s "$OFFSETS" ]; then
-    awk -F"$TAB" -v OFS="$TAB" 'NR==FNR { upd[$1]=$0; next }
-                                { if ($1 in upd) next; print }' \
-        "$tmp/newoff" "$OFFSETS" >>"$tmp/newoff.merged" 2>/dev/null
+  # merge offsets: untouched files keep their row, and a key that moved keeps
+  # exactly one row — the new path's. The old path's row goes, or the next
+  # update would offer the offset of a file that is no longer there.
+  if [ -s "$tmp/offk" ]; then
+    awk -F"$TAB" -v OFS="$TAB" 'NR==FNR { up[$1] = 1; uk[$4] = 1; next }
+                                !($1 in up) && !($4 in uk)' \
+        "$tmp/newoff" "$tmp/offk" >>"$tmp/newoff.merged" 2>/dev/null
   fi
   cat "$tmp/newoff" >>"$tmp/newoff.merged" 2>/dev/null
-  sort -u "$tmp/newoff.merged" 2>/dev/null | awk -F"$TAB" '!seen[$1]++' >"$tmp/off.final"
+  sort -u "$tmp/newoff.merged" 2>/dev/null |
+    awk -F"$TAB" '!p[$1]++ && !k[$4]++' >"$tmp/off.final"
   mv -f "$tmp/off.final" "$OFFSETS" 2>/dev/null
+  [ "$dups" -gt 0 ] && [ "$loud" = 1 ] &&
+    echo "tusage: $dups duplicate transcript copies skipped" >&2
 
   [ -s "$tmp/newfacts" ] && cat "$tmp/newfacts" >>"$FACTS"
   if [ -s "$tmp/newmeta" ]; then
@@ -776,12 +855,16 @@ sessions() {
 # default, because a wrong login is worse than a visible hole.
 daily() {
   [ -s "$FACTS" ] || return 0
-  local cut; cut=$(( $(date +%s) - $(since_secs "${1:-7d}") ))
+  local cut upto; cut=$(( $(date +%s) - $(since_secs "${1:-7d}") ))
+  # --until cuts the far end, so a window can be closed at both ends: the meter
+  # calibration in tagents needs the month AS OF the instant the meter was read.
+  upto=${2:-0}; case "$upto" in ''|*[!0-9]*) upto=0 ;; esac
   { account_map | sed 's/^/A\t/'; cat "$FACTS"; } |
-  awk -F"$TAB" -v OFS="$TAB" -v cut="$cut" -v tz="$(date +%z)" \
+  awk -F"$TAB" -v OFS="$TAB" -v cut="$cut" -v upto="$upto" -v tz="$(date +%z)" \
       -v prices="$(prices_arg)" "$AWK_PRICE$AWK_DAY"'
     $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
     $1 + 0 < cut { next }
+    upto > 0 && $1 + 0 > upto { next }
     {
       k = daystr(daykey($1)) SUBSEP (($3 in ACC) ? ACC[$3] : "?")
       d = usd($7, $1 + 0, $9,$10,$11,$12,$13)
@@ -956,18 +1039,19 @@ json() {
 
 # ---------------------------------------------------------------------------
 
-SINCE=7d; DIM=""; DO_UPDATE=1
+SINCE=7d; UNTIL=""; DIM=""; DO_UPDATE=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --by)       DIM=${2:-project}; shift 2 ;;
     --since)    SINCE=${2:-7d}; shift 2 ;;
+    --until)    UNTIL=${2:-}; shift 2 ;;
     --sessions) DIM=__sessions; shift ;;
     --daily)    DIM=__daily; shift ;;
     --session)  DIM=__detail; SID=${2:-}; shift 2 ;;
     --burn)     DIM=__burn; shift ;;
     --json)     DIM=__json; shift ;;
-    --update)   update 0; exit $? ;;
-    --rebuild)  update 1; exit $? ;;
+    --update)   update 0 1; exit $? ;;
+    --rebuild)  update 1 1; exit $? ;;
     --no-update) DO_UPDATE=0; shift ;;
     # Print to the first non-comment line, never a hardcoded range: the header
     # grows, the range does not, and the help silently loses its tail.
@@ -981,7 +1065,7 @@ done
 case "$DIM" in
   "")          summary ;;
   __sessions)  sessions "$SINCE" ;;
-  __daily)     daily "$SINCE" ;;
+  __daily)     daily "$SINCE" "$UNTIL" ;;
   __detail)    session_detail "${SID:-}" ;;
   __burn)      burn ;;
   __json)      json "$SINCE" ;;
