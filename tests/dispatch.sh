@@ -64,12 +64,12 @@ export ARGV_FILE="$ARGV"
 
 # A copy of the script with nothing beside it: no packages/, so the only
 # tagents-core it can find is one on $PATH.
-SOLO="$TMP/solo"; mkdir -p "$SOLO"
-cp "$TA" "$SOLO/tagents"
+SOLO="$TMP/solo"; mkdir -p "$SOLO/lib"
+cp "$TA" "$SOLO/tagents"; cp -R "$HERE/../lib/tagents" "$SOLO/lib/"
 
 # ...and a copy with a built core beside it, the way a repo checkout looks.
-REPO="$TMP/repo"; mkdir -p "$REPO/packages/core/dist/cli"
-cp "$TA" "$REPO/tagents"
+REPO="$TMP/repo"; mkdir -p "$REPO/packages/core/dist/cli" "$REPO/lib"
+cp "$TA" "$REPO/tagents"; cp -R "$HERE/../lib/tagents" "$REPO/lib/"
 cat > "$REPO/packages/core/dist/cli/main.js" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$@" > "$ARGV_FILE"
