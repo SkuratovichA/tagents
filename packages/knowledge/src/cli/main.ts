@@ -13,7 +13,7 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
-import { openDb, reindex } from '../db.ts';
+import { openDb, reindex, silenceSqliteWarning } from '../db.ts';
 import { createT, type Translate } from '../i18n/index.ts';
 import { lint } from '../lint.ts';
 import { runMcp } from '../mcp/server.ts';
@@ -236,6 +236,10 @@ function cmdLint(argv: string[], io: Io, t: Translate): number {
 }
 
 export async function main(argv: string[], io: Io = stdio()): Promise<number> {
+  // Before anything runs: importing node:sqlite queues Node's experimental
+  // notice, and a verb that never opens the index (lint, help) would otherwise
+  // print it on the next tick, into stderr a human is reading.
+  silenceSqliteWarning();
   const t = createT();
   const [verb, ...rest] = argv;
   try {
