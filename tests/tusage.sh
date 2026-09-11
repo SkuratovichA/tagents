@@ -169,5 +169,54 @@ ok "the old names are gone"        ""      "$(printf '%s' "$names" | grep -o -E 
 names=$(tu --daily --since 30d | cut -f2 | sort -u | tr '\n' ' ')
 contains "work is back"            "work"  "$names"
 
+# ---------------------------------------------------------------------------
+t "6. a transcript that moves between project dirs is still one transcript"
+# ---------------------------------------------------------------------------
+
+# This section is last on purpose: it runs the real updater, and its --rebuild
+# throws the hand-written index above away.
+
+isoof() { date -u -r "$1" +%Y-%m-%dT%H:%M:%S.000Z 2>/dev/null || date -u -d "@$1" +%Y-%m-%dT%H:%M:%S.000Z; }
+
+SID=d1d1d1d1-2222-3333-4444-555555555555
+# 100k input on opus-5 = $0.50 a record, so the arithmetic is readable.
+rec() {  # <requestId> <epoch>
+  printf '{"type":"assistant","requestId":"%s","timestamp":"%s","sessionId":"%s","message":{"model":"claude-opus-5","usage":{"input_tokens":100000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}\n' \
+    "$1" "$(isoof "$2")" "$SID"
+}
+usd_of() {  # dollars --sessions attributes to $SID
+  bash "$TU" --no-update --sessions --since 30d 2>/dev/null | awk -F"$TAB" -v s="$SID" '$1 == s { print $11 }'
+}
+
+A="$TU_PROJECTS/-wt-gone"; B="$TU_PROJECTS/-the-parent"
+mkdir -p "$A/$SID/subagents"
+{ rec q1 "$T2"; rec q2 $((T2 + 60)); rec q3 $((T2 + 120)); } >"$A/$SID.jsonl"
+rec q4 $((T2 + 180)) >"$A/$SID/subagents/agent-x.jsonl"
+
+bash "$TU" --update >/dev/null 2>&1
+ok "three records plus one subagent record" "2.000000" "$(usd_of)"
+
+# The worktree went away and Claude Code re-homed the whole session under the
+# parent project; one more record arrived after the move.
+mkdir -p "$B"
+mv "$A/$SID.jsonl" "$A/$SID" "$B/"
+rec q5 $((T2 + 240)) >>"$B/$SID.jsonl"
+out=$(bash "$TU" --update 2>&1)
+
+ok "the move costs one record, not a second copy of the session" "2.500000" "$(usd_of)"
+off=$(cat "$TU_STATE/offsets.tsv")
+contains "offsets follow the file to its new home" "$B/$SID.jsonl" "$off"
+contains "...the subagent file too" "$B/$SID/subagents/agent-x.jsonl" "$off"
+ok "and the old path is gone" 0 "$(printf '%s\n' "$off" | grep -c "^$A/")"
+ok "one row per file, no more" 2 "$(printf '%s\n' "$off" | grep -c .)"
+ok "the key is the 4th field" "$SID" \
+   "$(printf '%s\n' "$off" | awk -F"$TAB" -v p="$B/$SID.jsonl" '$1 == p { print $4 }')"
+
+# Mid-move — or a stray copy — both halves sit on disk at once.
+cp "$B/$SID.jsonl" "$A/$SID.jsonl"
+out=$(bash "$TU" --rebuild 2>&1)
+contains "a rebuild says what it skipped" "duplicate transcript copies skipped" "$out"
+ok "and counts the session once" "2.500000" "$(usd_of)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
