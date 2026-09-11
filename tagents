@@ -1015,7 +1015,51 @@ usage_days() {  # the month so far for the watched account, one day per line
   usage_watch >/dev/null || return 1
   usage_env
   command -v tusage >/dev/null 2>&1 || return 1
-  tusage --no-update --daily --since month 2>/dev/null
+  if [ -n "${1:-}" ]; then
+    tusage --no-update --daily --since month --until "$1" 2>/dev/null
+  else
+    tusage --no-update --daily --since month 2>/dev/null
+  fi
+}
+
+# THE ESTIMATE IS STEADILY HIGH, AND NOT FOR A REASON IT CAN SEE. With the
+# duplicated transcripts gone the month still read $807 against a meter of $733,
+# and the day before $758 against $685 — the same ~0.90 both days. None of the
+# cache-rate hypotheses reproduce it (the 1h premium off gives $707, every cache
+# write at input rate $674), so it is not something the transcripts know. What
+# the account does know is its own meter, and a meter reading is one number a
+# human can copy out of /usage in five seconds. The ratio between the two at
+# that instant is the correction, and it is applied to everything on screen.
+#
+# It is deliberately narrow: a reading from a month other than this one says
+# nothing about this month's ratio, and a factor outside 0.5–1.5 means the
+# reading was mistyped or belongs to the other account. Both are ignored out
+# loud — a wrong figure worn with a ~ is worse than an uncorrected one.
+usage_calibration() {  # -> "<factor><TAB><label><TAB><note>"
+  local raw when amt epoch mtd out
+  raw=$(cfg_get usage.meter) || raw=""
+  [ -n "$raw" ] || { printf '1\t\t'; return 0; }
+  case "$raw" in
+    *=*) when=${raw%%=*}; amt=${raw##*=} ;;
+    *)   printf '1\t\tmeter reading unusable'; return 0 ;;
+  esac
+  when=$(printf '%s' "$when" | sed 's/^[[:space:]"]*//; s/[[:space:]"]*$//')
+  amt=$(printf '%s' "$amt" | tr -d ' "$,')
+  case "$when" in "$(date +%Y-%m)"-*) ;; *) printf '1\t\tmeter reading unusable'; return 0 ;; esac
+  case "$amt" in ''|*[!0-9.]*) printf '1\t\tmeter reading unusable'; return 0 ;; esac
+  # BSD date wants the format spelt out; GNU date parses it as written.
+  epoch=$(date -j -f '%Y-%m-%d %H:%M' "$when" +%s 2>/dev/null) ||
+    epoch=$(date -d "$when" +%s 2>/dev/null) || epoch=""
+  case "$epoch" in ''|*[!0-9]*) printf '1\t\tmeter reading unusable'; return 0 ;; esac
+  mtd=$(usage_days "$epoch" | awk -F"$TAB" -v w="$(usage_watch)" '$2 == w { s += $3 } END { printf "%.6f", s + 0 }')
+  out=$(awk -v a="$amt" -v m="$mtd" -v lbl="${when#*-}" '
+    BEGIN {
+      if (m + 0 <= 0) { printf "1\t\tmeter reading unusable"; exit }
+      f = a / m
+      if (f < 0.5 || f > 1.5) { printf "1\t\tmeter reading unusable"; exit }
+      printf "%.6f\t%s\t", f, lbl
+    }')
+  printf '%s' "$out"
 }
 
 # THREE RENDERINGS OF ONE ARITHMETIC, which is why they are one function: the
@@ -1036,8 +1080,14 @@ usage_line() {  # <status|footer|summary>
   # usage.workdays says otherwise, both are counted over Monday to Friday.
   workdays=$(cfg_get usage.workdays) || workdays=""
   case "$workdays" in false|no|0|off) workdays=0 ;; *) workdays=1 ;; esac
+  # Split by hand: tab is IFS whitespace, so `read` would fold the empty middle
+  # field of "1<TAB><TAB>note" away and hand the note to the label.
+  local cal rest factor label note
+  cal=$(usage_calibration); rest=${cal#*$TAB}
+  factor=${cal%%$TAB*}; label=${rest%%$TAB*}; note=${rest#*$TAB}
   usage_days | awk -F"$TAB" \
     -v mode="$mode" -v watch="$watch" -v badge="$badge" \
+    -v factor="${factor:-1}" -v meter="${label:-}" -v mnote="${note:-}" \
     -v limit="${limit:-0}" -v margin="${margin:-0}" -v workdays="$workdays" \
     -v y="$(date +%Y)" -v mo="$(date +%m)" -v dy="$(date +%d)" -v mon="$(date +%b)" \
     -v wd="$(date +%u)" \
@@ -1054,8 +1104,11 @@ usage_line() {  # <status|footer|summary>
     $1 != "" && NF >= 3 {
       seen = 1
       if ($2 != watch) next
-      per[int(substr($1, 9, 2))] += $3
-      mtd += $3
+      # CALIBRATED ONCE, AT THE DOOR. Every figure below — the month, today, the
+      # sparkline scale, the allowance left in limit−mtd — is a sum of these
+      # rows, so scaling the rows is the only place the factor has to appear.
+      per[int(substr($1, 9, 2))] += $3 * factor
+      mtd += $3 * factor
     }
     END {
       # No index, no tusage, or a month with nothing in it yet. The status bar
@@ -1098,7 +1151,8 @@ usage_line() {  # <status|footer|summary>
       else                                { tc = "colour244"; ac = "[90m" }
 
       if (mode == "status") {
-        printf "#[fg=%s]%s $%s/%s ·$%s/d #[default]", tc, badge, m(mtd), m(limit), m(allowed)
+        printf "#[fg=%s]%s %s$%s/%s ·$%s/d #[default]", tc, badge,
+               (meter != "" ? "~" : ""), m(mtd), m(limit), m(allowed)
         exit 0
       }
       spark = ""
@@ -1115,9 +1169,10 @@ usage_line() {  # <status|footer|summary>
         }
         spark = " · " spark
       }
-      printf "%s%s · %s $%s of $%s · today $%s · $%s/day left (%d%s)%s%s\n",
+      cal = (meter != "" ? " · ~meter " meter : (mnote != "" ? " · " mnote : ""))
+      printf "%s%s · %s $%s of $%s · today $%s · $%s/day left (%d%s)%s%s%s\n",
              esc ac, watch, mon, m(mtd), m(limit), m(per[dy] + 0), m(allowed), left, unit,
-             spark, esc "[0m"
+             cal, spark, esc "[0m"
     }'
 }
 
