@@ -707,7 +707,10 @@ t "8. the dialogs draw — fzf paints on stderr, and nothing may silence it"
 # session. Two guards: a static scan of every fzf call, and the picker itself
 # rendered in a pane and read back.
 ok "no fzf dialog throws its stderr away" "" \
-   "$(awk '/\| *fzf |^[[:space:]]*fzf --/{s=NR} s && NR-s<8 && /2>\/dev\/null\)/ {print NR; s=0}' "$TA")"
+   "$(awk 'FNR==1 {s=0}
+           /\| *fzf |^[[:space:]]*fzf --/{s=FNR}
+           s && FNR-s<8 && /2>\/dev\/null\)/ {print FILENAME":"FNR; s=0}' \
+        "$TA" "$HERE"/../lib/tagents/*.sh)"
 PWIN=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" \
          "exec bash --noprofile --norc" 2>/dev/null)
 sleep 0.4
