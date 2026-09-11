@@ -162,8 +162,8 @@ test('aborting something with no process behind it is refused, not faked', () =>
   assert.equal(r.stdout, '');
 });
 
-test('plugin list is JSON, and empty without a config', () => {
-  const r = runCli(['plugin', 'list'], withHome());
+test('plugin list --json is JSON, and empty without a config', () => {
+  const r = runCli(['plugin', 'list', '--json'], withHome());
   assert.equal(r.code, 0);
   const listed = parseSingleJson(r.stdout) as { plugins: unknown[]; errors: unknown[] };
   assert.deepEqual(listed.plugins, []);
