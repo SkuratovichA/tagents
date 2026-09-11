@@ -144,7 +144,10 @@ on stdout and nothing else; text verbs print what `sessions.mjs` printed.
 | `session list [--label N] [--state S]...` | `SessionRef[]` |
 | `session abort <ref-json-or-id>` | `{ aborted, id, pid }` |
 | `sessions recent [N] \| search <words…> \| show <id-prefix>` | text, byte-identical to `sessions.mjs` |
-| `plugin list` | the configured plugins and what each offers |
+| `plugin list [--json]` | the configured plugins and what each offers — lines, or one JSON document |
+| `plugin add <package-or-path> [--name N]` | validate a package's manifest and write it into `config.yaml` |
+| `plugin remove <name>` | take one entry back out |
+| `plugin new <name> [--dir D]` | scaffold a package that is already a plugin |
 | `doctor` | node, state dir, config file, `claude` on PATH |
 
 Exit codes: **0** ok · **1** error · **2** usage · **3** refused · **4** timeout.
@@ -179,6 +182,27 @@ is in its own `package.json`:
 A plugin offers `commands` (CLI verbs), `services` (things that keep running,
 each with `drain()` and `stop()`), `mcpTools` and `locales`. One broken plugin
 is reported, not thrown: the host stays usable with the ones that work.
+
+### Installing one
+
+```sh
+tagents-core plugin new notes          # a package that is already a plugin
+tagents-core plugin add ./notes        # …checked, and written into config.yaml
+tagents-core plugin list               # …and this is what the host sees in it
+tagents-core plugin remove notes
+```
+
+`add` resolves a directory (stored as an absolute path — the host resolves a
+relative `from:` against the CONFIG, not your shell) or an installed package
+name (stored as the name). It reads package.json and stats the entry, and that
+is the whole check: **importing a stranger's code to decide whether to install
+it is the wrong way round.** The edit goes in through yaml's Document API and
+is applied as a splice of the range it names, so every other key, comment and
+hand-aligned value in the file comes back byte for byte.
+
+Exit codes do the talking: **1** nothing resolved, **3** refused — something is
+there and it is not a plugin, or that name is already listed, and in both cases
+nothing was written.
 
 ### Running one service, without a config file
 
