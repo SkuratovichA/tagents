@@ -431,8 +431,8 @@ RS=$'\036'      # record separator: awk -v cannot take a value with a newline in
                 # it (BWK awk errors out and prints nothing), so the profile
                 # table handed to list() is joined with this instead
 
-cfg_parse() {  # stdin: yaml -> stdout: path<TAB>value, warnings on stderr
-  awk -v FNAME="$CONFIG_FILE" '
+cfg_parse() {  # [file name for warnings] stdin: yaml -> stdout: path<TAB>value, warnings on stderr
+  awk -v FNAME="${1:-$CONFIG_FILE}" '
     function warn(wn, wy) {
       printf "tagents: config: %s:%d: %s\n", FNAME, wn, wy > "/dev/stderr"
     }
@@ -607,7 +607,47 @@ cfg_load() {
   # raw "i/o error occurred on /dev/stdin" on every single invocation.
   { [ -f "$CONFIG_FILE" ] && [ -r "$CONFIG_FILE" ]; } || return 1
   CFG=$(cfg_parse <"$CONFIG_FILE")
+  cfg_overlay
   return 0
+}
+
+# ONE CONFIG, SEVERAL MACHINES. The file is shared through dotfiles, and the
+# one thing in it that cannot be shared is the account table: on one laptop the
+# default login is the employer's and ~/.claude-personal is the second one, on
+# another the default is the personal account and the second is a client's.
+# The same profile name pointing at a directory that does not exist on this
+# machine starts a logged-out Claude — silently, from a picker that looked fine.
+#
+# So config.<hostname>.yaml beside config.yaml is laid over it, per machine and
+# still in the repo. Granularity is the `a.b` subtree: every one the overlay
+# mentions (claude.profiles, claude.rules, claude.default, notes.send, …)
+# REPLACES the base subtree wholesale, the rest is inherited. Wholesale, not
+# merged, because profiles and rules are tables: a union would keep the base
+# laptop's ~/.claude-personal row in this machine's picker, which is the exact
+# thing being fixed, and rule indices from two files would collide.
+#
+# Overlay lines go FIRST: cfg_get takes the first match and cfg_children keeps
+# file order, so no lookup needs to know an overlay exists. TA_HOST stands in
+# for the hostname so a test can have one.
+cfg_overlay() {
+  local host over top
+  host=${TA_HOST:-$(hostname -s 2>/dev/null)}
+  [ -n "$host" ] || return 0
+  over="${CONFIG_FILE%.yaml}.$host.yaml"
+  { [ -f "$over" ] && [ -r "$over" ]; } || return 0
+  top=$(cfg_parse "$over" <"$over")
+  [ -n "$top" ] || return 0
+  CFG=$(printf '%s\n%s\n%s\n' "$top" "$RS" "$CFG" | awk -F"$TAB" -v rs="$RS" '
+    function sub2(p,   a, b) {       # the a.b prefix of a path
+      a = index(p, ".")
+      if (a == 0) return p
+      b = index(substr(p, a + 1), ".")
+      return (b == 0) ? p : substr(p, 1, a + b - 1)
+    }
+    $0 == rs { base = 1; next }
+    !base    { keep[sub2($1)] = 1; print; next }
+    !(sub2($1) in keep) { print }
+  ')
 }
 
 # Return 1 for "absent", 0 with empty output for "present and empty" — the two

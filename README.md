@@ -304,6 +304,23 @@ claude:
   default: ask
 ```
 
+### One config, several machines
+
+The file is shared through dotfiles, and the one thing in it that cannot be
+shared is the account table: on one laptop the default login is the employer's
+and `~/.claude-personal` is the second, on another the default is the personal
+account and the second is a client's. A profile pointing at a directory that
+does not exist on this machine starts a **logged-out** Claude, from a picker
+that looked perfectly fine.
+
+So `config.<hostname>.yaml` beside `config.yaml` (`hostname -s`) is laid over
+it. Every `a.b` subtree the overlay names — `claude.profiles`, `claude.rules`,
+`claude.default`, `notes.send`, … — replaces the base one wholesale; the rest is
+inherited. Wholesale rather than merged because profiles and rules are tables:
+a union would keep the other laptop's rows in this machine's picker, which is
+the exact thing being fixed. `tagents --config` prints the merged result;
+`TA_HOST` overrides the hostname, which is how the tests have one.
+
 Every `config_dir` you name here needs its own copy of Install steps 2–4 — the
 `hooks/` symlinks and the `settings.json` entries — inside it. A config dir with
 no `settings.json` runs no state hook and no status line, so agents started on

@@ -165,6 +165,38 @@ case "$err" in
   *) pass=$((pass + 1)); printf '  ok   ...without a raw awk error\n' ;;
 esac
 
+# A per-host overlay: config.<host>.yaml replaces the a.b subtrees it names and
+# inherits the rest. TA_HOST stands in for `hostname -s`.
+mkdir -p "$TMP/ov"
+cp "$HERE/../config.example.yaml" "$TMP/ov/config.yaml"
+cat >"$TMP/ov/config.mbp.yaml" <<'EOF'
+claude:
+  profiles:
+    sasha:
+      badge: s
+    nuzhin:
+      config_dir: ~/.claude-nuzhin
+  rules:
+    - dir: ~/git
+      profile: sasha
+EOF
+got=$(TA_HOST=mbp TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --config 2>&1)
+contains "overlay: its profiles are there" "claude.profiles.nuzhin.config_dir	~/.claude-nuzhin" "$got"
+case "$got" in *"claude.profiles.personal"*|*"claude.profiles.work"*) ov_base=kept ;; *) ov_base=gone ;; esac
+ok "overlay: the base laptop's profiles are NOT (replaced, not merged)" gone "$ov_base"
+ok "overlay: one rule, the overlay's" 1 "$(printf '%s\n' "$got" | grep -c '^claude\.rules\.[0-9]*\.dir')"
+contains "overlay: claude.args is inherited from the base" "claude.args	--dangerously-skip-permissions" "$got"
+contains "overlay: notes.send is inherited from the base" "notes.send	reference" "$got"
+contains "overlay: so is usage" "usage.monthly_limit_usd	850" "$got"
+ok "overlay: the overlay's profile is what a dir resolves to" sasha \
+   "$(TA_HOST=mbp TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --profile-for "$HOME/git/x" 2>/dev/null)"
+ok "overlay: a base profile is unknown here" 1 \
+   "$(TA_HOST=mbp TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --agent-cmd personal new >/dev/null 2>&1; echo $?)"
+ok "overlay: another host sees only the base" "" \
+   "$(TA_HOST=other TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --config 2>/dev/null | grep -c nuzhin | sed 's/^0$//')"
+ok "overlay: a missing overlay changes nothing" "$(TA_CONFIG="$HERE/../config.example.yaml" bash "$TA" --config 2>&1)" \
+   "$(TA_HOST=nowhere TA_CONFIG="$HERE/../config.example.yaml" bash "$TA" --config 2>&1)"
+
 # ---------------------------------------------------------------------------
 t "2. rules"
 # ---------------------------------------------------------------------------
