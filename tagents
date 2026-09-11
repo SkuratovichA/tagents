@@ -1771,7 +1771,7 @@ ask_rename() {  # the prompt itself — normally the body of the popup
     name=$(fzf --print-query --query "$cur" --layout=reverse --height=100% \
              --no-info --prompt='name> ' \
              --header="name this agent
-empty clears it · esc cancels" </dev/null 2>/dev/null)
+empty clears it · esc cancels" </dev/null)
     rc=$?
     # Esc (130) leaves the label exactly as it was. Every Enter here exits 1 —
     # nothing in the list to accept — and prints the query as its only line.
@@ -1904,8 +1904,7 @@ ask_columns() {  # <fzf port of the list, empty when there is none>
            --layout=reverse --height=100% --no-info --prompt='columns> ' \
            --header="show or hide a column
 enter toggles it · esc closes" \
-           --bind="enter:execute-silent($SELF --toggle-col {1} $port)+reload($SELF --col-rows)" \
-           2>/dev/null)
+           --bind="enter:execute-silent($SELF --toggle-col {1} $port)+reload($SELF --col-rows)")
   # Interactively nothing ever arrives here — the binding above is what enter
   # does, and it keeps the picker up. A --filter run has no bindings at all,
   # which is how this is driven from a test, and is the only way this is reached.
@@ -4440,7 +4439,7 @@ ask_closed() {  # <port> — the picker itself, normally the body of the popup
            --layout=reverse --height=100% --no-info --prompt='closed> ' \
            --preview="'$SELF' --closed-preview {1} {3} {4}" \
            --preview-window='right,50%,wrap' \
-           --header="closed sessions · enter resumes · esc closes" 2>/dev/null)
+           --header="closed sessions · enter resumes · esc closes")
   # A --filter run prints every match rather than the one under a cursor; the
   # first is the one that was asked for.
   pick=${pick%%$nl*}
@@ -4655,11 +4654,19 @@ ask_profile() {  # <new|pick|resume> <args…>
 
   # Not piped into `cut`: under pipefail an esc (fzf exits 130) would take the
   # whole pipeline down, and the empty answer is the normal way out of here.
+  #
+  # FZF DRAWS ON STDERR. Its UI is written to fd 2 so that stdout can be the
+  # answer; only the input comes from /dev/tty. So `2>/dev/null` on an fzf that
+  # is meant to be LOOKED AT is a blank modal that still takes keys — the
+  # picker "did not work" for a whole session on fzf 0.52 before this was
+  # traced (lsof on the running fzf: 2w /dev/null, 3r /dev/tty, nothing else).
+  # None of the dialogs here — this one, rename, columns, the ? window —
+  # may silence it; tests/ui.sh scans for exactly that.
   pick=$(printf '%s' "$rows" | fzf --delimiter="$TAB" --with-nth=2 \
            --layout=reverse --height=100% --no-info --prompt='account> ' \
            --header="$hdr
 $sub
-$note" 2>/dev/null)
+$note")
   pick=${pick%%$TAB*}
   [ -n "$pick" ] || return 0
   profile_exists "$pick" || return 0
@@ -4923,7 +4930,7 @@ EOF
   pick=$(printf '%s' "$rows" | fzf --ansi --delimiter="$TAB" --with-nth=3 \
            --layout=reverse --height=100% --no-info --prompt='keys> ' \
            --header="every key — enter runs the one you pick
-on the row the cursor was on · esc closes" 2>/dev/null)
+on the row the cursor was on · esc closes")
   # A --filter run prints every match rather than the one under a cursor; the
   # first is the one that was asked for.
   pick=${pick%%$nl*}
