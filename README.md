@@ -453,7 +453,14 @@ disturb the layout you had.
 `:q` commits the draft and leaves `@.claude/notes/prompt.md ` in the chat's
 input. **You** press Enter, and the CLI reads the file at that moment — so
 until you do, `prefix + C-t` reopens the draft and whatever you change is what
-gets sent. Nothing is truncated on the way out; the file is cleared for you the
+gets sent. Every other document in the folder that you changed since the
+session last saw it is mentioned right beside it (`@.claude/notes/review.md `),
+so a remark you left under a paragraph arrives with the whole file around it,
+not only as a `+` line in the diff. "Since the session last saw it" is the
+context hook's own marker, so the two agree; a document you annotate *after*
+the first `:q` is added to the line, and nothing is mentioned twice. The
+`paste` and `submit` shapes send the draft alone. Nothing is truncated on the
+way out; the file is cleared for you the
 next time the editor opens *after* it was actually sent (the submit hook
 commits it as `user: <first line>` and records the sha in `.git/ta-sent`, and
 the editor starts blank only when the file still matches that commit).
