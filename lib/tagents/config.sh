@@ -33,6 +33,10 @@ CFG_NOTES=''
 CFG_NPROBLEMS=0
 CFG_SUMMARY=''
 CFG_CHECKED=0
+# Where the status bar remembers the last verdict — see cfg_count_cached.
+CFG_STAMP="$STATE_DIR/.cfg-check"
+# How long a verdict may stand when the config itself has not changed.
+CFG_CHECK_EVERY=${TA_CFG_CHECK_EVERY:-60}
 CFG_PARSE_NOTES=''  # the lines the parser refused, kept on the way through cfg_load
 CFG_OVER_FILE=''    # the per-host overlay in effect, so a note can name the file a key is in
 CFG_OVER_TOPS=' '   # ...and the a.b subtrees it replaced, space-delimited
@@ -437,6 +441,53 @@ cfg_note() {  # <key, or empty> <what is wrong — and what to do>
 # no cfg_get, no subshell per row — because --counts runs it on every
 # status-bar tick. The profiles and the rules are accounts_check's, which knows
 # what a profile is; the file's own values are checked here.
+# WHAT THE STATUS BAR PAYS FOR THE CHECK, AND WHY IT DOES NOT PAY IT TWICE.
+# cfg_check parses the file and stats every profile directory: measured at ~50 ms
+# on every tick of every attached client, spent almost always to conclude that
+# nothing changed. So the count is remembered against the config's own identity
+# — is any config*.yaml in that directory newer than the stamp — which is a
+# glob and a file test. The config's mtime is the main key: a config you have
+# just fixed clears the marker on the very next tick rather than when a timer
+# gets round to it. An age ceiling sits behind it because a problem can be fixed
+# WITHOUT touching the config — creating the login directory the profile names
+# is the obvious one — and a marker that outlives its problem is its own lie.
+cfg_count_cached() {  # sets CFG_NPROBLEMS, cheaply, for the status bar
+  local f n when now path stale=0
+  # No file at all is no problem, and the stamp of a config that has been
+  # deleted would otherwise keep a marker on screen forever.
+  if [ ! -e "$CONFIG_FILE" ]; then
+    CFG_NPROBLEMS=0
+    rm -f "$CFG_STAMP" 2>/dev/null
+    return 0
+  fi
+  if [ -r "$CFG_STAMP" ]; then
+    for f in "${CONFIG_FILE%/*}"/config*.yaml; do
+      [ -e "$f" ] || continue
+      if [ "$f" -nt "$CFG_STAMP" ]; then stale=1; break; fi
+    done
+    if [ "$stale" = 0 ]; then
+      when=''; n=''; path=''
+      # The stamp NAMES the config it describes: one state directory serves
+      # whatever config a run was pointed at — the suites do exactly that, and
+      # so does anyone with TA_CONFIG — and a verdict about one file is not a
+      # verdict about another.
+      IFS=' ' read -r when n path < "$CFG_STAMP" 2>/dev/null || n=''
+      now=$(date +%s)
+      case ${when:-x}${n:-x} in
+        *[!0-9]*) ;;
+        *) if [ "$path" = "$CONFIG_FILE" ] &&
+             [ "$(( now - when ))" -lt "$CFG_CHECK_EVERY" ]; then
+             CFG_NPROBLEMS=$n; return 0
+           fi ;;
+      esac
+    fi
+  fi
+  cfg_check
+  mkdir -p "$STATE_DIR" 2>/dev/null
+  printf '%s %s %s\n' "$(date +%s)" "$CFG_NPROBLEMS" "$CONFIG_FILE" >"$CFG_STAMP" 2>/dev/null
+  return 0
+}
+
 cfg_check() {
   local k v i n
   [ "$CFG_CHECKED" = 1 ] && return 0

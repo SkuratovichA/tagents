@@ -777,5 +777,28 @@ has   "the status bar carries it too" "cfg!1" \
 hasnt "...and says nothing for the good one" "cfg!" "$(run --counts 2>/dev/null)"
 hasnt "...nor does the header"               "config:" "$(run --header 100 'open here' 'ctrl-q quit')"
 
+# The count the bar shows is remembered against the config's own mtime rather
+# than recomputed on every tick, so two things have to hold: a second call
+# agrees with the first, and fixing the file clears the marker at once instead
+# of when a timer allows.
+has "a second call agrees with the first" "cfg!1" \
+    "$(env TMUX="$TMUXV" TA_CONFIG="$BROKEN" bash "$TA" --counts 2>/dev/null)"
+mkdir -p "$ROOT/claude-nowhere"; : >"$ROOT/claude-nowhere/.claude.json"
+sleep 1   # mtime is the key and it is kept in seconds
+cat >"$BROKEN" <<EOF
+claude:
+  profiles:
+    personal:
+      config_dir: $ROOT/claude-nowhere
+    work:
+EOF
+hasnt "fixing the config clears it on the next call" "cfg!" \
+      "$(env TMUX="$TMUXV" TA_CONFIG="$BROKEN" bash "$TA" --counts 2>/dev/null)"
+# And a problem fixed WITHOUT touching the config — the directory appearing —
+# is picked up when the verdict ages out, which TA_CFG_CHECK_EVERY=0 forces.
+rm -rf "$ROOT/claude-nowhere"
+has "a problem that returns is seen again once the verdict ages out" "cfg!1" \
+    "$(env TMUX="$TMUXV" TA_CONFIG="$BROKEN" TA_CFG_CHECK_EVERY=0 bash "$TA" --counts 2>/dev/null)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
