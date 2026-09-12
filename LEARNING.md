@@ -78,3 +78,15 @@ With one client attached on a `script` pty, every new window on that server —
 even in another, detached session created with `-x 220` — came out 80x23, and
 fzf truncated the header under test to `..`. `set -w window-size manual` plus
 `resize-window -x 220 -y 50` is what sizes a window nobody is attached to.
+
+## A cache keyed on the wrong thing serves the wrong verdict (12.09.2026)
+
+The config check was cached for the status bar in one stamp per state directory
+— and nothing in it said WHICH config it described. A count computed for a
+broken `TA_CONFIG` was then handed to the next run pointed at a good one, and
+`tests/ui.sh`'s existing "says nothing for the good one" case caught it on the
+first run. A cache key has to name every input the value depends on: the stamp
+now carries the config's path beside the count and the time, any `config*.yaml`
+newer than the stamp invalidates it, and an age ceiling
+(`TA_CFG_CHECK_EVERY`, 60 s) covers the problems that are fixed WITHOUT touching
+the config — creating the login directory a profile names is the obvious one.
