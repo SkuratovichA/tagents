@@ -71,6 +71,11 @@ resolve_keys() {
   local verb def var val
   [ -n "$KEYS_RESOLVED" ] && return 0
   KEYS_RESOLVED=1
+  # Loaded here, in this process: every cfg_get below runs in a subshell, and a
+  # subshell inherits a parse already made but cannot hand one back — so
+  # without this the file was parsed eighteen times, and a line the parser
+  # refused was complained about eighteen times.
+  cfg_load || true
   KEY_NOTES=''
   KEY_TAKEN=' '
   while read -r verb def var; do

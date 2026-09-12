@@ -642,6 +642,12 @@ counts() {
   if sync_names_due; then
     sync_window_names >/dev/null 2>&1 &
   fi
+  # A config with something wrong in it, ahead of the counts: the status bar is
+  # there whether or not the dashboard is open, and a profile pointing nowhere
+  # is worth a glance before the next agent starts on it. Nothing at all when
+  # nothing is wrong, so the bar of a good config is unchanged to the byte.
+  cfg_check
+  [ -n "$CFG_SUMMARY" ] && printf '#[fg=magenta]cfg!%d ' "$CFG_NPROBLEMS"
   # TA_MARKS=0: the status bar wants field 3 of every row and nothing else, so
   # the seat marks would be computed and thrown away — see list().
   TA_MARKS=0 list | awk -F"$TAB" '
