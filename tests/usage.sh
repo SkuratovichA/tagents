@@ -72,8 +72,24 @@ done
 cat >"$BIN/tusage" <<'EOF'
 #!/bin/sh
 printf 'ACCOUNTS=%s\nRULES=%s\n' "${TU_ACCOUNTS:-}" "${TU_ACCOUNT_RULES:-}" >>"$TU_ENVOUT"
+# --until closes the window at an instant. The canned table is one row per day,
+# so the stub cuts on the day that instant falls in — which is all the real one
+# can do to a day row either.
+UNTIL=""; prev=""
 for a in "$@"; do
-  if [ "$a" = --daily ]; then cat "$TU_ROWS" 2>/dev/null; exit 0; fi
+  [ "$prev" = --until ] && UNTIL=$a
+  prev=$a
+done
+for a in "$@"; do
+  if [ "$a" = --daily ]; then
+    if [ -n "$UNTIL" ]; then
+      u=$(date -r "$UNTIL" +%Y-%m-%d 2>/dev/null || date -d "@$UNTIL" +%Y-%m-%d)
+      awk -F'\t' -v u="$u" '$1 <= u' "$TU_ROWS" 2>/dev/null
+    else
+      cat "$TU_ROWS" 2>/dev/null
+    fi
+    exit 0
+  fi
   if [ "$a" = --sessions ]; then
     printf 'sid-p\t0\t1\t150000\t0\tslug\t0\t0\t0\tclaude-opus-5\t12.34\t3.5\t1.25\t0\n'
     exit 0
@@ -235,6 +251,56 @@ run "$CFG" --counts >/dev/null
 E=$(cat "$ENVOUT")
 has "the profiles reach tusage"        "ACCOUNTS=personal=$ROOT/claude-personal;work=" "$E"
 has "...and so do the directory rules" "RULES=$REPO=work"                              "$E"
+
+# ---------------------------------------------------------------------------
+t "6. the meter calibrates the month"
+# ---------------------------------------------------------------------------
+# The reading is taken at the end of the 1st, so --until has a day to cut at and
+# the estimate it is compared with is smaller than the month total.
+MDAY1="$YM-01"
+MLABEL="${MDAY1#*-} 23:59"
+: >"$ROWS"
+printf '%s\twork\t400.0000\t10\t0\n' "$MDAY1" >>"$ROWS"
+MTOT=400
+if [ "$D" -gt 1 ]; then printf '%s\twork\t200.0000\t10\t0\n' "$TODAY" >>"$ROWS"; MTOT=600; fi
+
+mkmeter() {  # <when> <what the meter showed> -> the config path
+  mkcfg "$ROOT/config-meter.yaml" "usage:
+  watch: work
+  monthly_limit_usd: 850
+  safety_margin_pct: 5
+  meter: \"$1 = $2\""
+  printf '%s' "$ROOT/config-meter.yaml"
+}
+
+# 360 against the 400 the estimate had at that instant: a factor of 0.9.
+SCALED=$(awk -v t="$MTOT" 'BEGIN { printf "%d", t * 0.9 + 0.5 }')
+MCFG=$(mkmeter "$MDAY1 23:59" 360)
+C=$(run "$MCFG" --counts)
+has "the month is scaled to the meter"    "w ~\$$SCALED/850"   "$C"
+F=$(run "$MCFG" --ask-usage </dev/null | strip)
+has "...the footer names the reading"     "~meter $MLABEL"     "$F"
+has "...and carries the scaled month"     "\$$SCALED of \$850" "$F"
+
+# A reading from another month says nothing about this month's ratio.
+OCFG=$(mkmeter "2000-01-02 10:00" 360)
+C=$(run "$OCFG" --counts)
+has   "a reading from another month is ignored" "w \$$MTOT/850" "$C"
+hasnt "...and nothing wears a ~"                "~\$"           "$C"
+has   "...the footer says why"  "meter reading unusable" \
+      "$(run "$OCFG" --ask-usage </dev/null | strip)"
+
+# 1200 against 400 is a mistyped figure or the other account's meter, not a 3x
+# correction to apply to everything on screen.
+XCFG=$(mkmeter "$MDAY1 23:59" 1200)
+C=$(run "$XCFG" --counts)
+has   "an implausible factor is ignored" "w \$$MTOT/850" "$C"
+hasnt "...with no ~ either"              "~\$"           "$C"
+has   "...and the footer says why"  "meter reading unusable" \
+      "$(run "$XCFG" --ask-usage </dev/null | strip)"
+
+# Nothing changes for a config with no reading in it at all.
+hasnt "no meter, no note" "meter" "$(run "$CFG" --ask-usage </dev/null | strip)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

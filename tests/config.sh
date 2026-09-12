@@ -59,6 +59,7 @@ claude.rules.3.profile	work
 usage.monthly_limit_usd	850
 usage.safety_margin_pct	5
 usage.workdays	true
+usage.meter	2026-09-10 15:30 = 684.66
 notes.send	reference
 keys.closed	ctrl-y
 EOF
