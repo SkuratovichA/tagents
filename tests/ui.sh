@@ -87,13 +87,17 @@ EOF
 chmod +x "$BIN/claude" "$BIN/tusage"
 
 # personal has a config_dir, work has none — so an empty recorded account is
-# work's, and a dir nobody claims is nobody's.
+# work's, and a dir nobody claims is nobody's. The directory exists and has
+# been used, because a profile pointing nowhere is a config problem now, and a
+# problem puts an extra item in the header these checks measure the width of.
+LOGIN="$ROOT/claude-personal"
+mkdir -p "$LOGIN"; : >"$LOGIN/.claude.json"
 CFG="$ROOT/config.yaml"
 cat >"$CFG" <<EOF
 claude:
   profiles:
     personal:
-      config_dir: $HOME/.claude-personal
+      config_dir: $LOGIN
     work:
 EOF
 # ...and the same two with a badge written out by hand, two characters wide.
@@ -102,7 +106,7 @@ cat >"$CFG2" <<EOF
 claude:
   profiles:
     personal:
-      config_dir: $HOME/.claude-personal
+      config_dir: $LOGIN
       badge: PP
     work:
 EOF
@@ -113,7 +117,7 @@ cat >"$CFG3" <<EOF
 claude:
   profiles:
     personal:
-      config_dir: $HOME/.claude-personal
+      config_dir: $LOGIN
       badge: personal!
     work:
 EOF
@@ -199,7 +203,7 @@ mkrec() {  # <pane key> <session id> <recorded account, or - for a 6-field recor
       "$(date +%s)" done "$2" "$REPO" "" "waiting" "$3" >"$STATE/$1.tsv"
   fi
 }
-mkrec 8001 sid-p "$HOME/.claude-personal"   # claims the personal profile
+mkrec 8001 sid-p "$LOGIN"                   # claims the personal profile
 mkrec 8002 sid-w ""                         # unset: the one profile with no dir
 mkrec 8003 sid-u "/tmp/.claude-nobody"      # a dir no profile has heard of
 mkrec 8004 sid-o -                          # written before the account was
@@ -225,7 +229,7 @@ A=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" \
       "exec '$BIN/claude' 600" 2>/dev/null)
 AHOME=$(where "$A")
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-  "$(date +%s)" working sid-live "$REPO" "" "on it" "$HOME/.claude-personal" \
+  "$(date +%s)" working sid-live "$REPO" "" "on it" "$LOGIN" \
   >"$STATE/${A#%}.tsv"
 run --ensure-seat "$LIST" >/dev/null 2>&1
 sleep 0.3
@@ -485,6 +489,7 @@ has "the ctrl-w entry says what it takes from the filter query" \
     "delete-the-word" "$HELP"
 has "--preview-popup is documented"  "--preview-popup" "$HELP"
 has "--sync-names is documented"     "--sync-names"    "$HELP"
+has "--check is documented"          "--check"         "$HELP"
 
 # ---------------------------------------------------------------------------
 t "6. ctrl-v is a modal, not a column off the list"
@@ -730,6 +735,46 @@ has "...and the profile rows"                       "default (~/.claude)" "$SCRE
 has "...and its header"                             "start a new agent"   "$SCREEN"
 tm send-keys -t "$PWIN" Escape 2>/dev/null; sleep 0.3
 tm kill-window -t "$PWIN" 2>/dev/null
+
+# ---------------------------------------------------------------------------
+t "9. a wrong config is on the dashboard, and in the status bar"
+# ---------------------------------------------------------------------------
+# The reported bug: a profile whose config_dir is not on this machine, and a
+# dashboard that looked fine while the agent it started was logged out. The
+# list is drawn for real in a pane — popup mode, so it claims no sidebar and esc
+# closes it — and read back. A session of its own, 220 columns wide: popup mode
+# gives 55% of the pane to the preview, and at 80 columns the header is
+# truncated to ".." before the item under test. Sized by hand, because with the
+# keeper client attached on an 80x24 pty, window-size=latest makes every new
+# window 80 wide whatever -x asks for. Last, so the list it draws disturbs
+# nothing above.
+BROKEN="$ROOT/config-broken.yaml"
+cat >"$BROKEN" <<EOF
+claude:
+  profiles:
+    personal:
+      config_dir: $ROOT/claude-nowhere
+    work:
+EOF
+tm new-session -d -s tatest-cfg -x 220 -y 50 -c "$REPO" "exec bash --noprofile --norc" 2>/dev/null
+tm set -w -t tatest-cfg: window-size manual 2>/dev/null
+tm resize-window -t tatest-cfg: -x 220 -y 50 2>/dev/null
+CWIN=$(tm display -p -t tatest-cfg: '#{pane_id}' 2>/dev/null)
+sleep 0.4
+tm send-keys -t "$CWIN" "clear; env TA_CONFIG='$BROKEN' TA_MODE=popup '$TA'" Enter
+i=0; while [ "$i" -lt 60 ]; do
+  case "$(tm capture-pane -p -t "$CWIN" 2>/dev/null)" in *"agents>"*) break ;; esac
+  sleep 0.1; i=$((i+1))
+done
+SCREEN=$(tm capture-pane -p -t "$CWIN" 2>/dev/null)
+has "the header says how many problems, and where to look" \
+    "config: 1 problem (tagents --check)" "$SCREEN"
+tm send-keys -t "$CWIN" Escape 2>/dev/null; sleep 0.3
+tm kill-session -t tatest-cfg 2>/dev/null
+has   "the status bar carries it too" "cfg!1" \
+      "$(env TMUX="$TMUXV" TA_CONFIG="$BROKEN" bash "$TA" --counts 2>/dev/null)"
+hasnt "...and says nothing for the good one" "cfg!" "$(run --counts 2>/dev/null)"
+hasnt "...nor does the header"               "config:" "$(run --header 100 'open here' 'ctrl-q quit')"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

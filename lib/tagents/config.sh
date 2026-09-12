@@ -1,6 +1,6 @@
 # lib/tagents/config.sh — config.yaml, flattened
 #
-# The deliberate-YAML-subset awk parser (cfg_parse, 165 lines), the once-per-process load with its per-hostname overlay, the accessors everything else is built on (cfg_get/cfg_children/cfg_list), the three path transforms that must not be confused (cfg_expand_dir textually, never realpath, because the keychain is keyed by the literal string; cfg_quote for the /bin/sh command; norm_dir for rule matching), and --config. The section banner at 445-457 heads the file verbatim.
+# The deliberate-YAML-subset awk parser (cfg_parse, 165 lines), the once-per-process load with its per-hostname overlay, the accessors everything else is built on (cfg_get/cfg_children/cfg_list), the three path transforms that must not be confused (cfg_expand_dir textually, never realpath, because the keychain is keyed by the literal string; cfg_quote for the /bin/sh command; norm_dir for rule matching), --config, and --check: cfg_check collects what is wrong with the file into CFG_NOTES the way keys.sh collects KEY_NOTES — the parser's refusals (carried in its stream and sifted out by cfg_sift), the values, accounts_check's profiles and rules, the key notes — for the dashboard header, the status bar and the verb. The section banner at 445-457 heads the file verbatim.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -24,11 +24,30 @@ CFG_LOADED=0
 RS=$'\036'      # record separator: awk -v cannot take a value with a newline in
                 # it (BWK awk errors out and prints nothing), so the profile
                 # table handed to list() is joined with this instead
+CFG_NL='
+'
+# WHAT IS WRONG WITH THE CONFIG, collected once per process by cfg_check the way
+# resolve_keys collects KEY_NOTES: one line per problem, the count beside it,
+# and the one-item summary the dashboard header and the status bar show.
+CFG_NOTES=''
+CFG_NPROBLEMS=0
+CFG_SUMMARY=''
+CFG_CHECKED=0
+CFG_PARSE_NOTES=''  # the lines the parser refused, kept on the way through cfg_load
+CFG_OVER_FILE=''    # the per-host overlay in effect, so a note can name the file a key is in
+CFG_OVER_TOPS=' '   # ...and the a.b subtrees it replaced, space-delimited
+CFG_SIFTED=''       # cfg_sift's answer
+CFG_EXPANDED=''     # cfg_expand_dir_v's answer
+CFG_TOP=''          # cfg_top_of's answer
 
-cfg_parse() {  # [file name for warnings] stdin: yaml -> stdout: path<TAB>value, warnings on stderr
+cfg_parse() {  # [file name for warnings] stdin: yaml -> stdout: path<TAB>value, refusals as !<TAB>file:line: why
   awk -v FNAME="${1:-$CONFIG_FILE}" '
+    # A refusal travels IN the stream, on a line no key can begin with: the
+    # stream is read out of a command substitution, and stderr is the one thing
+    # a substitution cannot capture — which is how these went unseen for as
+    # long as they did. cfg_sift takes them back out.
     function warn(wn, wy) {
-      printf "tagents: config: %s:%d: %s\n", FNAME, wn, wy > "/dev/stderr"
+      printf "!\t%s:%d: %s\n", FNAME, wn, wy
     }
     # A # only starts a comment outside quotes and at the start of a word, so
     # `note: "a # b"` and `url: http://x#y` both survive intact.
@@ -201,8 +220,41 @@ cfg_load() {
   # raw "i/o error occurred on /dev/stdin" on every single invocation.
   { [ -f "$CONFIG_FILE" ] && [ -r "$CONFIG_FILE" ]; } || return 1
   CFG=$(cfg_parse <"$CONFIG_FILE")
+  cfg_sift "$CFG"; CFG=$CFG_SIFTED
   cfg_overlay
   return 0
+}
+
+# THE PARSER'S REFUSALS, TAKEN BACK OUT OF ITS STREAM. Each goes to stderr in
+# the line it has always been — a scripted --config reads it there — and into
+# CFG_PARSE_NOTES for cfg_check, which is how it reaches a dashboard that has no
+# stderr anybody sees. A stream with no refusal in it is handed back untouched:
+# the loop is only paid for by a file with something wrong in it.
+cfg_sift() {  # <parsed stream> -> CFG_SIFTED: the leaves alone
+  local ln
+  CFG_SIFTED=$1
+  case "$CFG_NL$1" in *"$CFG_NL!$TAB"*) ;; *) return 0 ;; esac
+  CFG_SIFTED=''
+  while IFS= read -r ln; do
+    case $ln in
+      "!$TAB"*)
+        ln=${ln#"!$TAB"}
+        echo "tagents: config: $ln" >&2
+        case $ln in "$HOME"/*) ln="~${ln#$HOME}" ;; esac
+        CFG_PARSE_NOTES="$CFG_PARSE_NOTES${CFG_PARSE_NOTES:+$CFG_NL}$ln" ;;
+      *) CFG_SIFTED="$CFG_SIFTED${CFG_SIFTED:+$CFG_NL}$ln" ;;
+    esac
+  done <<EOF
+$1
+EOF
+  return 0
+}
+
+# The a.b prefix of a path — the unit the overlay replaces — for the bash
+# callers; the merge in cfg_overlay has the same rule in awk, as sub2.
+cfg_top_of() {  # <path> -> CFG_TOP
+  local rest=${1#*.}
+  if [ "$rest" = "$1" ]; then CFG_TOP=$1; else CFG_TOP=${1%%.*}.${rest%%.*}; fi
 }
 
 # ONE CONFIG, SEVERAL MACHINES. The file is shared through dotfiles, and the
@@ -224,13 +276,23 @@ cfg_load() {
 # file order, so no lookup needs to know an overlay exists. TA_HOST stands in
 # for the hostname so a test can have one.
 cfg_overlay() {
-  local host over top
+  local host over top k v
   host=${TA_HOST:-$(hostname -s 2>/dev/null)}
   [ -n "$host" ] || return 0
   over="${CONFIG_FILE%.yaml}.$host.yaml"
   { [ -f "$over" ] && [ -r "$over" ]; } || return 0
   top=$(cfg_parse "$over" <"$over")
+  cfg_sift "$top"; top=$CFG_SIFTED
   [ -n "$top" ] || return 0
+  # Remembered for cfg_check: a note about a key has to name the file the key
+  # is in, and after the merge below nothing else knows which that was.
+  CFG_OVER_FILE=$over
+  while IFS="$TAB" read -r k v; do
+    cfg_top_of "$k"
+    case $CFG_OVER_TOPS in *" $CFG_TOP "*) ;; *) CFG_OVER_TOPS="$CFG_OVER_TOPS$CFG_TOP " ;; esac
+  done <<EOF
+$top
+EOF
   CFG=$(printf '%s\n%s\n%s\n' "$top" "$RS" "$CFG" | awk -F"$TAB" -v rs="$RS" '
     function sub2(p,   a, b) {       # the a.b prefix of a path
       a = index(p, ".")
@@ -281,14 +343,21 @@ cfg_list() {  # <path> -> a scalar as one line, or a sequence as one line each
 # sha256(the literal string), so ~/.claude-personal and the resolved path of a
 # symlinked ~/.claude-personal are two different logins. The .zshrc exports
 # $HOME/..., so that is exactly what has to be exported here.
-cfg_expand_dir() {  # <value>
+#
+# Two forms of the one rule: the printing one every caller uses, and the one
+# that sets a variable, for a loop that cannot pay a subshell per row.
+cfg_expand_dir_v() {  # <value> -> CFG_EXPANDED
   local d=${1:-}
   case $d in
     '~')   d=$HOME ;;
     '~/'*) d=$HOME/${d#'~/'} ;;
   esac
   while [ ${#d} -gt 1 ] && [ "${d%/}" != "$d" ]; do d=${d%/}; done
-  printf '%s' "$d"
+  CFG_EXPANDED=$d
+}
+cfg_expand_dir() {  # <value>
+  cfg_expand_dir_v "${1:-}"
+  printf '%s' "$CFG_EXPANDED"
 }
 
 # Single-quote a value for the command string tmux hands to /bin/sh. Done in
@@ -328,4 +397,136 @@ config_cmd() {
   cfg_load
   [ -n "$CFG" ] && printf '%s\n' "$CFG"
   return 0
+}
+
+# ---------------------------------------------------------------------------
+# what is wrong with the config
+#
+# A wrong config used to fail in silence. The parser's refusals and "rule 0
+# names unknown profile" went to a stderr that nothing under fzf, tmux
+# run-shell or the status bar ever shows, and a profile whose config_dir is not
+# on this machine was never looked at at all — so the picker looked fine and
+# the agent it started was logged out. cfg_check is the one place that looks,
+# once per process and kept, the way resolve_keys keeps KEY_NOTES; the header,
+# the status bar and --check all read what it found.
+#
+# Only what cannot be what it claims is a problem. An unknown key is not one:
+# the file is shared across machines and versions, and a key this version does
+# not read may be another's. Neither is a rule about a directory that is not
+# cloned here (see norm_dir), nor a good config, which produces nothing at all.
+# ---------------------------------------------------------------------------
+
+# One problem, in the shape every surface shows: the file it is in, the key,
+# what is wrong and what to do about it. The file is worked out per key because
+# the overlay owns some subtrees and the base the rest, and "config.yaml" for a
+# profile that lives in config.mbp.yaml sends the reader to the wrong file. No
+# key at all is a line the parser refused, which names its own file and line.
+cfg_note() {  # <key, or empty> <what is wrong — and what to do>
+  local f=''
+  if [ -n "${1:-}" ]; then
+    cfg_top_of "$1"
+    case $CFG_OVER_TOPS in *" $CFG_TOP "*) f=$CFG_OVER_FILE ;; *) f=$CONFIG_FILE ;; esac
+    case $f in "$HOME"/*) f="~${f#$HOME}" ;; esac
+    f="$f: $1: "
+  fi
+  CFG_NOTES="$CFG_NOTES${CFG_NOTES:+$CFG_NL}$f$2"
+  CFG_NPROBLEMS=$((CFG_NPROBLEMS + 1))
+}
+
+# Everything here is one pass over the flattened config in bash alone — no awk,
+# no cfg_get, no subshell per row — because --counts runs it on every
+# status-bar tick. The profiles and the rules are accounts_check's, which knows
+# what a profile is; the file's own values are checked here.
+cfg_check() {
+  local k v i n
+  [ "$CFG_CHECKED" = 1 ] && return 0
+  CFG_CHECKED=1
+  cfg_load || return 0
+  if [ -n "$CFG_PARSE_NOTES" ]; then
+    while IFS= read -r v; do
+      [ -n "$v" ] && cfg_note '' "$v"
+    done <<EOF
+$CFG_PARSE_NOTES
+EOF
+  fi
+  # The profiles before the values: a login that is not there is the problem
+  # worth reading first, and the list is read from the top.
+  accounts_check
+  while IFS="$TAB" read -r k v; do
+    case $k in
+      usage.monthly_limit_usd|usage.safety_margin_pct)
+        # awk reads "850 dollars" as 850 and "abc" as 0, and the month would be
+        # measured against a limit nobody set.
+        case $v in
+          ''|.|*[!0-9.]*|*.*.*) cfg_note "$k" "\"$v\" is not a number"; continue ;;
+        esac
+        i=${v%%.*}
+        if [ "$k" = usage.safety_margin_pct ] && [ -n "$i" ] && [ "$i" -gt 100 ]; then
+          cfg_note "$k" "$v is not a percentage — 0 to 100"
+        fi ;;
+      usage.workdays)
+        # Anything but the four words for "off" counts as on, so a False or a
+        # typo is a working week nobody asked for.
+        case $v in
+          true|false|yes|no|on|off|0|1) ;;
+          *) cfg_note "$k" "\"$v\" is not true or false — read as true" ;;
+        esac ;;
+      notes.send)
+        case $v in
+          reference|paste|submit) ;;
+          *) cfg_note "$k" "\"$v\" is not one of reference, paste, submit — tnotes uses reference" ;;
+        esac ;;
+    esac
+  done <<EOF
+$CFG
+EOF
+  # The keys are config too, and theirs were the one kind of note already
+  # shown — as a message that fades. Folded in, so the count is the whole truth
+  # and --check is the one list.
+  resolve_keys
+  if [ -n "$KEY_NOTES" ]; then
+    while IFS= read -r n; do
+      [ -n "$n" ] && cfg_note "${n%%:*}" "${n#*: }"
+    done <<EOF
+$KEY_NOTES
+EOF
+  fi
+  if [ "$CFG_NPROBLEMS" -eq 1 ]; then CFG_SUMMARY='config: 1 problem (tagents --check)'
+  elif [ "$CFG_NPROBLEMS" -gt 1 ]; then CFG_SUMMARY="config: $CFG_NPROBLEMS problems (tagents --check)"
+  fi
+  return 0
+}
+
+# THE ONE PLACE THE PROBLEMS ARE REPORTED — key_warn's shape. With no argument
+# it is one tmux display-message at dashboard start, a nudge rather than the
+# list: the list is what --check is for, and the header keeps the count on
+# screen for as long as the problem lasts, which a message that fades cannot.
+cfg_warn() {  # [prefix] — no argument means tmux display-message
+  local n pre=${1:-}
+  cfg_check
+  [ -n "$CFG_NOTES" ] || return 0
+  if [ $# -eq 0 ]; then
+    tmux display-message "tagents: $CFG_SUMMARY" 2>/dev/null || true
+    return 0
+  fi
+  while IFS= read -r n; do
+    [ -n "$n" ] && printf '%s%s\n' "$pre" "$n"
+  done <<EOF
+$CFG_NOTES
+EOF
+  return 0
+}
+
+# `tagents --check`: the list itself, and an exit code a script can act on.
+# --config keeps its contract — the flattened leaves on stdout, exit 0 —
+# because tnotes and the tests read it as data, and diagnostics mixed into
+# data are a second thing to parse. No file is not a problem: that is the
+# config that switches the whole feature off, on purpose.
+check_cmd() {
+  if ! { [ -f "$CONFIG_FILE" ] && [ -r "$CONFIG_FILE" ]; }; then
+    echo "tagents: no config at $CONFIG_FILE — nothing to check" >&2
+    return 0
+  fi
+  cfg_warn ''
+  [ "$CFG_NPROBLEMS" -eq 0 ]
 }

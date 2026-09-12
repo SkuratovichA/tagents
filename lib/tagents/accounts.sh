@@ -1,6 +1,6 @@
 # lib/tagents/accounts.sh — which Claude login an agent runs on
 #
-# The profile layer above the parser, keeping the two questions apart that the comments insist on keeping apart: profile_for/profile_named/profile_args pick a login for a NEW agent from claude.rules and claude.default, while profile_claiming/profile_of_cfg/resume_profile answer which login a RECORDED session actually belongs to (resume must never recompute from rules). agent_cmd is the single place the `env -u CLAUDE_CONFIG_DIR … claude …` string is assembled for both new and resume; prof_pairs is the badge/config-dir table list() and usage_env read.
+# The profile layer above the parser, keeping the two questions apart that the comments insist on keeping apart: profile_for/profile_named/profile_args pick a login for a NEW agent from claude.rules and claude.default, while profile_claiming/profile_of_cfg/resume_profile answer which login a RECORDED session actually belongs to (resume must never recompute from rules). agent_cmd is the single place the `env -u CLAUDE_CONFIG_DIR … claude …` string is assembled for both new and resume; prof_pairs is the badge/config-dir table list() and usage_env read; accounts_check is cfg_check's half that knows what a profile is — a config_dir that is not on this machine, a rule naming no profile, a default or usage.watch that is not one.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -260,4 +260,102 @@ prof_pairs() {
     [ -n "$bd" ] || bd=${p%"${p#?}"}
     printf '%s%s%s%s%s%s' "$p" "$US" "$pd" "$US" "$bd" "$RS"
   done
+}
+
+# WHAT IS WRONG WITH THE PROFILES AND THE RULES — cfg_check's half that has to
+# know what a profile is. One pass over the flattened config in bash alone: the
+# profiles and the rules are gathered into space-delimited lists rather than
+# looked up with cfg_get, which forks an awk per call, and this runs on every
+# status-bar tick.
+#
+# The config_dir checks are the reported bug. A profile pointing at a directory
+# this machine does not have is what a config shared through dotfiles produces
+# on every machine but the one it was written on (see cfg_overlay), and the
+# agent it starts has nothing to log in as — from a picker that looked fine.
+# Launching is still allowed: logging in once on a fresh directory is how a
+# new login is set up, and refusing would block exactly that. A directory that
+# exists but has never been written into gets a softer note, because Claude
+# will at least ask for the login rather than pretend to have one.
+accounts_check() {
+  local k v p d i rest profs=' ' rules=' ' rprof='' def='' watch=''
+  cfg_load || return 0
+  while IFS="$TAB" read -r k v; do
+    case $k in
+      claude.profiles.*)
+        rest=${k#claude.profiles.}; p=${rest%%.*}
+        case $profs in
+          *" $p "*) ;;
+          *) profs="$profs$p "
+             # profile_named and agent_cmd both read "ask" as the instruction
+             # to open the dialog before they look for a profile of that name.
+             [ "$p" = ask ] && cfg_note claude.profiles.ask \
+               'ask is the word that opens the dialog, not a name a profile can have — rename it' ;;
+        esac
+        [ "$rest" = "$p.config_dir" ] || continue
+        if [ -z "$v" ]; then
+          cfg_note "$k" 'is empty — an agent on it starts on the default login, and no session of it is claimed back; drop the key to mean the default account'
+          continue
+        fi
+        cfg_expand_dir_v "$v"; d=$CFG_EXPANDED
+        if [ ! -e "$d" ]; then
+          cfg_note "$k" "$v does not exist on this machine — an agent on it starts logged out; fix the path, or keep this machine's profiles in config.<hostname>.yaml beside the config"
+        elif [ ! -d "$d" ]; then
+          cfg_note "$k" "$v is not a directory — an agent on it starts logged out; fix the path"
+        elif [ "$d" = "$HOME/.claude" ]; then
+          # config.example.yaml says why: Claude keys its keychain item on the
+          # literal path, and a set CLAUDE_CONFIG_DIR is not the same item as
+          # an unset one, even at the default location.
+          cfg_note "$k" '~/.claude set explicitly is a different login from the default account — drop the key to mean the default account'
+        elif [ ! -e "$d/.claude.json" ] && [ ! -e "$d/settings.json" ]; then
+          cfg_note "$k" "$v has never been used by Claude (no .claude.json in it) — the first agent on it will ask you to log in"
+        fi ;;
+      claude.rules.*)
+        rest=${k#claude.rules.}; i=${rest%%.*}
+        case $rules in *" $i "*) ;; *) rules="$rules$i " ;; esac
+        # $US between records: a value may hold a space, a key cannot hold $US.
+        [ "$rest" = "$i.profile" ] && rprof="$rprof$i=$v$US" ;;
+      claude.default) def=$v ;;
+      usage.watch)    watch=$v ;;
+    esac
+  done <<EOF
+$CFG
+EOF
+  if [ "$profs" = ' ' ]; then
+    # No profiles switches the feature off — the launch is exactly what it was
+    # before any config existed — so rules and a default are dead text, and
+    # the usage figure has nobody to watch. One note, not one per rule.
+    if [ "$rules" != ' ' ] || [ -n "$def" ] || [ -n "$watch" ]; then
+      cfg_note claude.profiles 'none — claude.rules, claude.default and usage.watch do nothing without one'
+    fi
+    return 0
+  fi
+  for i in $rules; do
+    v="$US$rprof"
+    case $v in
+      *"$US$i="*)
+        p=${v#*"$US$i="}; p=${p%%"$US"*}
+        if [ -z "$p" ]; then
+          cfg_note "claude.rules.$i" 'names no profile — the rule is skipped; add profile: at the column of its dir or session'
+        elif [ "$p" != ask ]; then
+          case $profs in
+            *" $p "*) ;;
+            *) cfg_note "claude.rules.$i.profile" "\"$p\" is not in claude.profiles — the rule is skipped" ;;
+          esac
+        fi ;;
+      *) cfg_note "claude.rules.$i" 'names no profile — the rule is skipped; add profile: at the column of its dir or session' ;;
+    esac
+  done
+  if [ -n "$def" ] && [ "$def" != ask ]; then
+    case $profs in
+      *" $def "*) ;;
+      *) cfg_note claude.default "\"$def\" is not in claude.profiles — falls back to ask" ;;
+    esac
+  fi
+  if [ -n "$watch" ]; then
+    case $profs in
+      *" $watch "*) ;;
+      *) cfg_note usage.watch "\"$watch\" is not in claude.profiles — the month has nobody to watch" ;;
+    esac
+  fi
+  return 0
 }
