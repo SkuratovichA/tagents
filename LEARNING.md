@@ -62,3 +62,19 @@ Sourcing the definitions before and after and diffing `declare -f` (plus
 own parser, under the same bash the program runs on. It caught nothing here
 because nothing was wrong — which is the point: it is what made "the tests pass"
 mean "nothing moved" rather than "nothing tested moved".
+
+## A control run of `git show HEAD:tagents` needs HEAD's lib beside it (12.09.2026)
+
+tests/ui.sh compared the rows of the working tree against the committed entry
+written to a temp file. Since the split that entry refuses to run without
+`lib/tagents` beside it, printed nothing — and "nothing" compared equal to
+nothing until the working tree grew a column. `git archive HEAD lib/tagents |
+tar -x -C "$CONTROL"` next to the copied entry, and a guard that the control
+actually started.
+
+## `window-size latest` shrinks a detached session to the keeper's 80x24 (12.09.2026)
+
+With one client attached on a `script` pty, every new window on that server —
+even in another, detached session created with `-x 220` — came out 80x23, and
+fzf truncated the header under test to `..`. `set -w window-size manual` plus
+`resize-window -x 220 -y 50` is what sizes a window nobody is attached to.

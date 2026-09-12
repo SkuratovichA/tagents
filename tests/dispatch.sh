@@ -115,7 +115,7 @@ ok "an argument with a space stays one argument" 4 "$(wc -l < "$ARGV" | tr -d ' 
 t "2. the dashboard's own flags never reach it"
 # ---------------------------------------------------------------------------
 
-for flag in --help --keys --hidden-cols --config --header; do
+for flag in --help --keys --hidden-cols --config --check --header; do
   run "$SOLO/tagents" "$BIN:$BARE" "$flag" >/dev/null
   ok "$flag is answered here"   ""  "$(argv)"
 done

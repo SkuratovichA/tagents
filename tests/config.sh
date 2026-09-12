@@ -391,5 +391,227 @@ out=$(ac ask new); rc=$?
 ok "ask is an instruction, not an account" 1 "$rc"
 ok "...and builds nothing"                 "" "$out"
 
+# ---------------------------------------------------------------------------
+t "4. the checker: a wrong config says so"
+# ---------------------------------------------------------------------------
+# The reported bug: a profile whose config_dir is not on this machine started a
+# logged-out Claude from a picker that looked fine, and the problems that WERE
+# detected went to a stderr nothing under fzf shows. --check is the list, and
+# --header is the line the dashboard draws; a good config produces nothing on
+# either, so every case here is a fixture with exactly one kind of thing wrong.
+ck() { TA_CONFIG="$1" bash "$TA" --check 2>/dev/null; }
+hd() { TA_CONFIG="$1" bash "$TA" --header 120 'open here' 'ctrl-q quit' 2>/dev/null; }
+nlines() { printf '%s' "$1" | awk 'END { print NR }'; }
+
+# Logins that exist and have been used, for the profiles that are meant to pass.
+mkdir -p "$TMP/logins/personal" "$TMP/logins/work"
+: >"$TMP/logins/personal/.claude.json"
+: >"$TMP/logins/work/settings.json"
+
+cat >"$TMP/good.yaml" <<EOF
+claude:
+  profiles:
+    personal:
+      config_dir: $TMP/logins/personal
+    work:
+      config_dir: $TMP/logins/work
+    main:
+  rules:
+    - dir: $TMP/home/git/personal
+      profile: personal
+    - session: work
+      profile: ask
+  default: ask
+usage:
+  watch: work
+  monthly_limit_usd: 850
+  safety_margin_pct: 5.5
+  workdays: false
+notes:
+  send: submit
+keys:
+  closed: ctrl-y
+something_newer:
+  this_version_does_not_read: it
+EOF
+out=$(ck "$TMP/good.yaml"); rc=$?
+ok "a good config: nothing to say" "" "$out"
+ok "...and exit 0"                 0  "$rc"
+ok "...and a header of keys alone" "enter open here · ? keys · ctrl-q quit" "$(hd "$TMP/good.yaml")"
+out=$(TA_CONFIG=/nonexistent/config.yaml bash "$TA" --check 2>/dev/null); rc=$?
+ok "no config at all is not a problem: nothing, exit 0" "0" "$rc$out"
+
+# THE REPORTED BUG: a profile pointing at a directory this machine does not have.
+cat >"$TMP/nodir.yaml" <<EOF
+claude:
+  profiles:
+    personal:
+      config_dir: $TMP/logins/does-not-exist
+    work:
+EOF
+out=$(ck "$TMP/nodir.yaml"); rc=$?
+ok       "a config_dir that does not exist: exit 1" 1 "$rc"
+contains "...naming the file"    "nodir.yaml: "                          "$out"
+contains "...and the key"        "claude.profiles.personal.config_dir: " "$out"
+contains "...and what it means"  "does not exist on this machine — an agent on it starts logged out" "$out"
+ok       "...one line for one problem" 1 "$(nlines "$out")"
+contains "the dashboard header carries the count, and where to look" \
+         "config: 1 problem (tagents --check)" "$(hd "$TMP/nodir.yaml")"
+ok "--config keeps its contract: the leaves, exit 0" 0 \
+   "$(TA_CONFIG="$TMP/nodir.yaml" bash "$TA" --config >/dev/null 2>&1; echo $?)"
+contains "...with the leaves on stdout" \
+   "claude.profiles.personal.config_dir${TAB}$TMP/logins/does-not-exist" \
+   "$(TA_CONFIG="$TMP/nodir.yaml" bash "$TA" --config 2>/dev/null)"
+# Logging in once on a fresh directory is how a new login is set up, so the
+# launch is warned about, not refused.
+contains "--agent-cmd still builds the launch" "CLAUDE_CONFIG_DIR='$TMP/logins/does-not-exist'" \
+   "$(TA_CONFIG="$TMP/nodir.yaml" bash "$TA" --agent-cmd personal new 2>/dev/null)"
+
+# Every other shape a config_dir can be wrong in. ~/.claude is what the example
+# says not to write; HOME is moved so the test owns the directory it names.
+: >"$TMP/logins/afile"
+mkdir -p "$TMP/logins/empty" "$TMP/home/.claude"
+cat >"$TMP/kinds.yaml" <<EOF
+claude:
+  profiles:
+    filed:
+      config_dir: $TMP/logins/afile
+    fresh:
+      config_dir: $TMP/logins/empty
+    blank:
+      config_dir:
+    home:
+      config_dir: ~/.claude
+    ask:
+      config_dir: $TMP/logins/personal
+EOF
+out=$(HOME="$TMP/home" TA_CONFIG="$TMP/kinds.yaml" bash "$TA" --check 2>/dev/null)
+contains "a file where a directory should be" \
+   "claude.profiles.filed.config_dir: $TMP/logins/afile is not a directory" "$out"
+contains "a directory nothing has written into gets the softer note" \
+   "claude.profiles.fresh.config_dir: $TMP/logins/empty has never been used by Claude" "$out"
+contains "...saying what will happen instead" "will ask you to log in" "$out"
+contains "an empty config_dir is the default login by accident" \
+   "claude.profiles.blank.config_dir: is empty" "$out"
+contains "~/.claude written out is not the default account" \
+   "claude.profiles.home.config_dir: ~/.claude set explicitly is a different login" "$out"
+contains "a profile called ask can never be launched" \
+   "claude.profiles.ask: ask is the word that opens the dialog" "$out"
+ok "five problems, five lines" 5 "$(nlines "$out")"
+contains "...and the header counts the same five" "config: 5 problems (tagents --check)" \
+   "$(HOME="$TMP/home" TA_CONFIG="$TMP/kinds.yaml" bash "$TA" --header 120 'open here' 'ctrl-q quit' 2>/dev/null)"
+
+# The names that have to be profiles: in a rule, as the default, as the watch.
+cat >"$TMP/names.yaml" <<EOF
+claude:
+  profiles:
+    work:
+      config_dir: $TMP/logins/work
+  rules:
+    - dir: $TMP/home/git/personal
+      profile: nosuch
+    - dir: $TMP/home/git/personal
+    - dir: $TMP/home/git/work
+      profile:
+    - session: w
+      profile: ask
+    - dir: $TMP/home/git/work
+      profile: work
+  default: gone
+usage:
+  watch: nobody
+EOF
+out=$(ck "$TMP/names.yaml")
+contains "a rule naming an unknown profile" \
+   "claude.rules.0.profile: \"nosuch\" is not in claude.profiles — the rule is skipped" "$out"
+contains "a rule with no profile line"   "claude.rules.1: names no profile — the rule is skipped" "$out"
+contains "a rule with an empty one"      "claude.rules.2: names no profile" "$out"
+contains "a default that is not a profile" "claude.default: \"gone\" is not in claude.profiles — falls back to ask" "$out"
+contains "a watch that is not a profile"   "usage.watch: \"nobody\" is not in claude.profiles" "$out"
+ok "...and ask, and a real profile, pass: five in all" 5 "$(nlines "$out")"
+
+# Rules with no profiles at all are dead text — one note, not one per rule.
+cat >"$TMP/deadrules.yaml" <<EOF
+claude:
+  rules:
+    - dir: /tmp
+      profile: work
+    - dir: /var
+      profile: work
+  default: work
+EOF
+out=$(ck "$TMP/deadrules.yaml")
+contains "rules without profiles: one note" \
+   "claude.profiles: none — claude.rules, claude.default and usage.watch do nothing without one" "$out"
+ok "...and only one" 1 "$(nlines "$out")"
+
+# Values that cannot be what they claim — and a key fzf would refuse, folded
+# into the same list so the count is the whole truth.
+cat >"$TMP/values.yaml" <<EOF
+claude:
+  profiles:
+    work:
+      config_dir: $TMP/logins/work
+usage:
+  watch: work
+  monthly_limit_usd: 850 dollars
+  safety_margin_pct: 150
+  workdays: False
+notes:
+  send: mail
+keys:
+  new: ctrl-1
+EOF
+out=$(ck "$TMP/values.yaml")
+contains "a limit that is not a number" "usage.monthly_limit_usd: \"850 dollars\" is not a number" "$out"
+contains "a margin over 100"            "usage.safety_margin_pct: 150 is not a percentage" "$out"
+contains "workdays: False reads as true, and says so" \
+   "usage.workdays: \"False\" is not true or false — read as true" "$out"
+contains "notes.send outside its three words" \
+   "notes.send: \"mail\" is not one of reference, paste, submit" "$out"
+contains "a key fzf does not know, in the same list" \
+   "values.yaml: keys.new: 'ctrl-1' is not a key fzf knows" "$out"
+ok "five problems, five lines" 5 "$(nlines "$out")"
+
+# The parser's own refusals, which used to be stderr and nothing else.
+out=$(ck "$TMP/tabs.yaml")
+contains "a tab-indented line is in the list" "tabs.yaml:3: tab indentation is not supported" "$out"
+printf 'claude:\n  profiles:\n    work:\n  just words here\n  rules: [a, b]\n' >"$TMP/refused.yaml"
+out=$(ck "$TMP/refused.yaml")
+contains "so is a line that is not key: value" "refused.yaml:4: not a key: value line" "$out"
+contains "...and flow style"                    "refused.yaml:5: flow style is not supported" "$out"
+err=$(TA_CONFIG="$TMP/refused.yaml" bash "$TA" --config 2>&1 >/dev/null)
+contains "...while stderr still says it, once, for a script" \
+   "tagents: config: $TMP/refused.yaml:4: not a key: value line" "$err"
+ok "...once" 1 "$(printf '%s' "$err" | grep -c 'refused.yaml:4')"
+ok "...and the header counts both" "config: 2 problems (tagents --check)" \
+   "$(hd "$TMP/refused.yaml" | sed 's/.* · //')"
+
+# A note names the file its key is in: the overlay for what the overlay
+# replaced, the base for what was inherited.
+mkdir -p "$TMP/ov2"
+cat >"$TMP/ov2/config.yaml" <<EOF
+claude:
+  profiles:
+    personal:
+      config_dir: $TMP/logins/personal
+notes:
+  send: mail
+EOF
+cat >"$TMP/ov2/config.mbp.yaml" <<EOF
+claude:
+  profiles:
+    nuzhin:
+      config_dir: $TMP/logins/nowhere
+EOF
+out=$(TA_HOST=mbp TA_CONFIG="$TMP/ov2/config.yaml" bash "$TA" --check 2>/dev/null)
+contains "a problem in the overlay names the overlay" \
+   "config.mbp.yaml: claude.profiles.nuzhin.config_dir: " "$out"
+contains "...and one inherited from the base names the base" "ov2/config.yaml: notes.send: " "$out"
+ok "two files, two problems" 2 "$(nlines "$out")"
+out=$(TA_HOST=other TA_CONFIG="$TMP/ov2/config.yaml" bash "$TA" --check 2>/dev/null)
+ok "another host sees the base alone: its one problem" 1 "$(nlines "$out")"
+contains "...which is the base's" "ov2/config.yaml: notes.send: " "$out"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
