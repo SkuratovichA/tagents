@@ -266,11 +266,17 @@ ok "...at every width"            "" "$(cell %8001 "$(rows_at 60 TA_CONFIG=/none
 # control is the committed tagents, so this compares against the real thing
 # rather than against a description of it; the age is the one field that moves
 # between two runs a fraction of a second apart, so it is normalised away.
+# The control is a CHECKOUT, not a file. Since the program moved into
+# lib/tagents/*.sh the entry alone refuses to run, and a control that cannot run
+# is a control that quietly stops comparing anything: this case would have gone
+# on "passing" through the else branch below.
 CONTROL="$ROOT/tagents-control"
-if git -C "$HERE/.." show HEAD:tagents >"$CONTROL" 2>/dev/null && [ -s "$CONTROL" ]; then
+if mkdir -p "$CONTROL" &&
+   git -C "$HERE/.." archive HEAD tagents lib/tagents 2>/dev/null | tar -x -C "$CONTROL" 2>/dev/null &&
+   [ -s "$CONTROL/tagents" ]; then
   agenorm() { sed 's/[0-9]*:[0-9][0-9]/AGE/g'; }
   before=$(env TMUX="$TMUXV" TA_COLS=140 TA_MARKS=0 TA_CONFIG=/nonexistent/config.yaml \
-             bash "$CONTROL" --list | strip | agenorm)
+             bash "$CONTROL/tagents" --list | strip | agenorm)
   after=$(rows_at 140 TA_CONFIG=/nonexistent/config.yaml | agenorm)
   ok "no config: the rows are what they were before any of this" "$before" "$after"
 else
