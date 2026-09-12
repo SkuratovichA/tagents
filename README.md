@@ -363,6 +363,13 @@ a union would keep the other laptop's rows in this machine's picker, which is
 the exact thing being fixed. `tagents --config` prints the merged result;
 `TA_HOST` overrides the hostname, which is how the tests have one.
 
+`tagents --check` lists what is wrong with the config, one `file: key: problem — what
+to do` line each, and exits 1 while anything is; the dashboard header carries the count
+and the status bar shows `cfg!N`. The first thing it looks for is a profile whose
+`config_dir` is not on this machine, which is what a shared dotfiles config produces on
+every machine but the one it was written on: the agent starts logged out, from a picker
+that looked fine.
+
 Every `config_dir` you name here needs its own copy of Install steps 2–4 — the
 `hooks/` symlinks and the `settings.json` entries — inside it. A config dir with
 no `settings.json` runs no state hook and no status line, so agents started on

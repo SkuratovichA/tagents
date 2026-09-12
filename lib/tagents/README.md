@@ -15,13 +15,13 @@ others are built on `STATE_DIR` and `TAB`.
 | file | lines | what is in it |
 |---|---:|---|
 | `core.sh` | 94 | constants, and the plumbing every dialog is built on |
-| `config.sh` | 331 | config.yaml, flattened |
-| `accounts.sh` | 263 | which Claude login an agent runs on |
-| `usage.sh` | 218 | the monthly limit, on screen |
+| `config.sh` | 572 | config.yaml, flattened — and what is wrong with it |
+| `accounts.sh` | 361 | which Claude login an agent runs on, and whether it is there |
+| `usage.sh` | 273 | the monthly limit, on screen |
 | `state.sh` | 212 | the raw data every view reads |
 | `names.sh` | 369 | what an agent is called, and the window it names |
 | `columns.sh` | 123 | which columns are on screen |
-| `list.sh` | 666 | the rows — and the tally the status bar shows |
+| `list.sh` | 672 | the rows — and the tally the status bar shows |
 | `timeline.sh` | 162 | which agent worked when |
 | `preview.sh` | 176 | a row, up close |
 | `actions.sh` | 254 | what a key actually does |
@@ -31,8 +31,8 @@ others are built on `STATE_DIR` and `TAB`.
 | `dock.sh` | 381 | docking: the pane swapped into a seat, and sent home again |
 | `closed.sh` | 254 | the sessions that stopped running |
 | `launch.sh` | 293 | starting an agent |
-| `keys.sh` | 280 | every key, and where it comes from |
-| `dash.sh` | 239 | the dashboard itself |
+| `keys.sh` | 285 | every key, and where it comes from |
+| `dash.sh` | 251 | the dashboard itself |
 
 ## How it fits together
 
