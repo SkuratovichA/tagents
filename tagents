@@ -65,7 +65,19 @@
 #                           when no profiles are configured
 #   tagents --config        the config as tagents actually reads it, one
 #                           path<TAB>value line per leaf. This is the answer to
-#                           "why is my rule not firing"
+#                           "why is my rule not firing"; --check is the answer
+#                           to "why did it start logged out"
+#   tagents --check         what is wrong with the config, one line each: the
+#                           file, the key, what is wrong and what to do. A
+#                           profile whose config_dir is not on this machine, a
+#                           rule naming no profile or one that does not exist,
+#                           a default or usage.watch that is not a profile, a
+#                           usage number that is not one, a notes.send outside
+#                           its three words, a key fzf does not know, and the
+#                           lines the parser refused. Prints nothing and exits
+#                           0 when nothing is wrong, exits 1 otherwise. The
+#                           dashboard header and the status bar count the same
+#                           problems (see CONFIG)
 #   tagents --agent-cmd PROFILE new|resume [SID]
 #                           the exact command string a launch on that profile
 #                           would run, quoting and all
@@ -260,6 +272,16 @@
 # recorded by the state hook, because a conversation resumed on another login
 # simply is not there. `tagents --config` shows what tagents thinks the file
 # says, and `--agent-cmd` the command it would build from it.
+#
+# A WRONG CONFIG SAYS SO. `tagents --check` lists what is wrong with it — the
+# file, the key, what is wrong and what to do — and exits 1 while anything is.
+# The first thing it looks for is a profile whose config_dir is not on this
+# machine: that is the config a shared dotfiles repo produces on every machine
+# but the one it was written on, and the agent it starts has nothing to log in
+# as, from a picker that looked fine. The dashboard header carries the count
+# (`config: 2 problems (tagents --check)`) for as long as it is wrong, the
+# status bar shows `cfg!2`, and a good config shows nothing anywhere. Unknown
+# keys are not problems: the file is shared across versions as well.
 #
 # The dashboard is a sidebar: the list on the left, the selected agent's own pane
 # docked beside it, swapped in live so you can type into it. Enter only changes
@@ -525,6 +547,8 @@ case "${1:-}" in
   # "the config decided nothing" from "the config said ask".
   --profile-for)  profile_for "${2:-}" "${3:-}" && echo ;;
   --config)       config_cmd ;;
+  # ...and the one that says what is wrong with it — exit 1 while anything is.
+  --check)        check_cmd ;;
   --agent-cmd)    agent_cmd "${2:-}" "${3:-new}" "${4:-}" && echo ;;
   --counts)       counts ;;
   --preview)      preview "${2:-}" "${3:-}" ;;

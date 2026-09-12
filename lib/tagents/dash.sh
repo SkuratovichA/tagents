@@ -58,10 +58,17 @@ keyhdr() {  # <cols> <item>... -> the header, one item per line at worst
 # the way out.
 dash_header() {  # <cols> <enter label> [quit item]
   local items=()
+  cfg_check   # before resolve_keys: one parse in this process, none per key
   resolve_keys
   [ -n "$K_OPEN" ] && items[${#items[@]}]="$K_OPEN ${2:-open in sidebar}"
   [ -n "$K_KEYS" ] && items[${#items[@]}]="$K_KEYS keys"
   [ -n "${3:-}" ] && items[${#items[@]}]=$3
+  # The one item that is not a key: a config with something wrong in it, on
+  # screen for as long as it is wrong. The key notes were a message that fades,
+  # and "so I know if something is not right" needs the opposite of fading.
+  # Last, so a narrow pane spends its extra line on this rather than on a key;
+  # absent, not empty, when there is nothing to say.
+  [ -n "$CFG_SUMMARY" ] && items[${#items[@]}]=$CFG_SUMMARY
   keyhdr "${1:-80}" ${items[@]+"${items[@]}"}
 }
 
@@ -99,8 +106,13 @@ dash() {
   # A popup also closes once it has done what you asked; the sidebar stays.
   # Resolved before the header is built and before a single bind is made,
   # because every one of them now reads the answer out of these variables.
+  # cfg_check first: it loads the config in THIS process, so the cfg_get calls
+  # behind resolve_keys — each a subshell — inherit the parse rather than each
+  # repeating it, and repeating the parser's complaints with it.
+  cfg_check
   resolve_keys
   key_warn
+  cfg_warn
   quit=''
   [ -n "$K_QUIT" ] && quit="$K_QUIT quit"
   if [ "$mode" = popup ]; then esc_act=abort; quit=''; after='+abort'; fi
