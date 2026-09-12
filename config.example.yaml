@@ -7,6 +7,7 @@
 #
 # `tagents --config` prints this file the way tagents reads it, one
 # path<TAB>value line per leaf — the thing to look at when a rule will not fire.
+# `tagents --check` says what is wrong with it.
 
 # ONE FILE, SEVERAL MACHINES. Put the accounts that differ per machine in
 # config.<hostname>.yaml next to this file (`hostname -s`): every `a.b` subtree
