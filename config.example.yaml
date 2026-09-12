@@ -79,6 +79,15 @@ usage:
   # way: a weekend does not spend. `false` counts every calendar day.
   workdays: true
 
+  # WHAT THE ACCOUNT ITSELF SAYS IT HAS SPENT, and when it said so. The figure
+  # here is priced from transcripts and runs steadily ~10%% over the meter, for
+  # no reason the transcripts can see; the ratio between the two at one instant
+  # corrects everything on screen and the corrected figures wear a ~. Open
+  # /usage, copy the credits spent and the local time you read them, and re-read
+  # it now and then. A reading from another month, or one that implies a
+  # correction outside 0.5–1.5, is ignored and the footer says so.
+  meter: "2026-09-10 15:30 = 684.66"
+
 # The notes workspace (`tnotes`, prefix + C-t).
 notes:
   # What `:q` does with the draft in prompt.md. The draft is always committed
