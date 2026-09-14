@@ -130,8 +130,9 @@ case "${CLAUDE_PID:-}" in
 esac
 [ -n "$own" ] || own=$$
 
-# One field of a record's first line, without a shell loop to get at it.
-rec_parent() {  # <record file> — its session id and its label, in one read
+# Who a record belongs to and what it is called, in ONE read of it: both
+# questions are asked of the same file at the same moment everywhere below.
+rec_parent() {  # <record file> — sets parsid and parlbl
   parsid=; parlbl=
   IFS="$us" read -r parsid parlbl <<EOF
 $(awk -F'	' -v OFS="$us" 'NR==1 { print $3, $10; exit }' "$1" 2>/dev/null)
@@ -278,13 +279,18 @@ EOF
     fi
   fi
   if [ -z "$key" ]; then
-    if [ -n "${TMUX_PANE:-}" ]; then
+    # A pane id is %<number>, and anything else in $TMUX_PANE names nothing: a
+    # state file called after it would be junk named after junk, so it is not a
+    # fast path at all and goes the long way like everybody else.
+    tp=
+    case "${TMUX_PANE:-}" in %[0-9]*) tp=$TMUX_PANE ;; esac
+    if [ -n "$tp" ]; then
       # 2. The pane we were handed, but only while we can prove the record in it
       # is ours. A record we cannot prove is ours is never overwritten blindly —
       # that is what sent the walk after it instead.
-      rec_parent "$dir/${TMUX_PANE#%}.tsv"
+      rec_parent "$dir/${tp#%}.tsv"
       if [ -z "$parsid" ] || [ "$parsid" = "${sid:-}" ]; then
-        pane=$TMUX_PANE; key=${pane#%}; headless=0
+        pane=$tp; key=${pane#%}; headless=0
         parkey=; parsid=; parlbl=
         cpid=${PPID:-}; clog=${TA_LOG:-}; clbl=${TA_LABEL:-}
       else
