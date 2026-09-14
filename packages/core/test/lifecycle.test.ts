@@ -1,9 +1,11 @@
 // The turn lifecycle on a fake clock: the production timeouts (50 minutes, a
 // 60-second grace) proven to the millisecond without waiting for any of them.
 //
-// turn.test.ts pins the behaviour with real timers and short limits; this file
-// pins the timing itself and what is left behind. The child is still a real
-// process — only time is fake, so a kill here is a real SIGKILL.
+// turn.test.ts pins what each outcome IS, on real timers where nothing races
+// them and on this clock where something does; this file pins the timing itself
+// and what is left behind. The child is still a real process — only time is
+// fake, so a kill here is a real SIGKILL. FakeClock lives in helpers.ts: both
+// files steer a turn with it.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,48 +19,14 @@ import {
 import type { PromptOptions, StreamEvent } from '../src/driver.ts';
 import { fakeClaude, tmpDir, type FakeScript } from '../src/testkit.ts';
 import type { TurnOutcome } from '../src/turn-outcome.ts';
-import { TurnScope, type TurnClock } from '../src/turn-scope.ts';
+import { TurnScope } from '../src/turn-scope.ts';
+import { eventWaiter, FakeClock } from './helpers.ts';
 
 let tmp: string;
 before(() => {
   tmp = tmpDir('lifecycle-test');
 });
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
-
-/** Time that moves only when told to, firing what falls due on the way, in order. */
-class FakeClock implements TurnClock {
-  private t = 0;
-  private queue: Array<{ readonly at: number; readonly fn: () => void }> = [];
-
-  now(): number {
-    return this.t;
-  }
-
-  after(ms: number, fn: () => void): () => void {
-    const entry = { at: this.t + ms, fn };
-    this.queue.push(entry);
-    return () => {
-      this.queue = this.queue.filter((x) => x !== entry);
-    };
-  }
-
-  /** Timers scheduled and neither fired nor cancelled. */
-  get pending(): number {
-    return this.queue.length;
-  }
-
-  advance(ms: number): void {
-    const end = this.t + ms;
-    for (;;) {
-      const due = this.queue.filter((x) => x.at <= end).sort((a, b) => a.at - b.at)[0];
-      if (!due) break;
-      this.queue = this.queue.filter((x) => x !== due);
-      this.t = due.at;
-      due.fn();
-    }
-    this.t = end;
-  }
-}
 
 interface Turn {
   readonly clock: FakeClock;
@@ -71,23 +39,17 @@ interface Turn {
 function start(bin: string, o: Partial<PromptOptions> = {}): Turn {
   const clock = new FakeClock();
   const log: string[] = [];
-  const waiting = new Map<string, () => void>();
-  const arrived = new Set<string>();
+  const events = eventWaiter();
   const d = new ClaudeHeadlessDriver({ stateDir: path.join(tmp, 'state'), clock });
   const outcome = d.open({ kind: 'claude', cwd: tmp, skipPermissions: false, bin }).then((ref) =>
     d.prompt(ref, 'go', {
       timeoutMs: DEFAULT_TIMEOUT_MS,
       log: (l) => log.push(l),
-      onEvent: (e) => {
-        arrived.add(e.kind);
-        waiting.get(e.kind)?.();
-      },
+      onEvent: events.onEvent,
       ...o,
     })
   );
-  const seen = (kind: string): Promise<void> =>
-    arrived.has(kind) ? Promise.resolve() : new Promise((resolve) => waiting.set(kind, resolve));
-  return { clock, log, outcome, seen };
+  return { clock, log, outcome, seen: events.seen };
 }
 
 const fake = (script: FakeScript): string => fakeClaude(script, fs.mkdtempSync(path.join(tmp, 'fake-'))).bin;

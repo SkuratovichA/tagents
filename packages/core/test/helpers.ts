@@ -10,6 +10,8 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { StreamEvent } from '../src/driver.ts';
+import type { TurnClock } from '../src/turn-scope.ts';
 
 export const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PKG = path.resolve(HERE, '..');
@@ -157,4 +159,65 @@ export function writeStateRow(dir: string, r: StateRowInput): void {
 export function writeHistory(dir: string, rows: Array<[number, string, string, string, string, string]>): void {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'history.tsv'), rows.map((r) => r.join('\t')).join('\n') + '\n');
+}
+
+// ------------------------------------------------------------------- timing ---
+
+/** Time that moves only when told to, firing what falls due on the way, in order. */
+export class FakeClock implements TurnClock {
+  private t = 0;
+  private queue: Array<{ readonly at: number; readonly fn: () => void }> = [];
+
+  now(): number {
+    return this.t;
+  }
+
+  after(ms: number, fn: () => void): () => void {
+    const entry = { at: this.t + ms, fn };
+    this.queue.push(entry);
+    return () => {
+      this.queue = this.queue.filter((x) => x !== entry);
+    };
+  }
+
+  /** Timers scheduled and neither fired nor cancelled. */
+  get pending(): number {
+    return this.queue.length;
+  }
+
+  advance(ms: number): void {
+    const end = this.t + ms;
+    for (;;) {
+      const due = this.queue.filter((x) => x.at <= end).sort((a, b) => a.at - b.at)[0];
+      if (!due) break;
+      this.queue = this.queue.filter((x) => x !== due);
+      this.t = due.at;
+      due.fn();
+    }
+    this.t = end;
+  }
+}
+
+/**
+ * The onEvent sink a fake-clock turn is steered by. The child is a real
+ * process, so a test cannot know when it has spoken — it waits for the event
+ * (`await seen('text')`) and only then moves the clock, which is what makes a
+ * timeout test a statement about order instead of a race against a real timer.
+ */
+export interface EventWaiter {
+  readonly onEvent: (e: StreamEvent) => void;
+  /** Resolves on the first event of that kind. */
+  readonly seen: (kind: StreamEvent['kind']) => Promise<void>;
+}
+
+export function eventWaiter(): EventWaiter {
+  const waiting = new Map<string, () => void>();
+  const arrived = new Set<string>();
+  return {
+    onEvent: (e) => {
+      arrived.add(e.kind);
+      waiting.get(e.kind)?.();
+    },
+    seen: (kind) => (arrived.has(kind) ? Promise.resolve() : new Promise((resolve) => waiting.set(kind, resolve))),
+  };
 }
