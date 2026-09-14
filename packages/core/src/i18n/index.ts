@@ -13,11 +13,21 @@ export const resources = { en: { core: en }, ru: { core: ru } } as const;
 export type Locale = keyof typeof resources;
 export type CoreResource = typeof en;
 
-declare module 'i18next' {
-  interface CustomTypeOptions {
-    defaultNS: 'core';
-    resources: { core: CoreResource };
-  }
+// Core's own keys are checked HERE, not through i18next's CustomTypeOptions:
+// a library must not augment that global interface. Its .d.ts would carry the
+// augmentation into every consumer that shares the i18next instance (which is
+// every real install — only a link: dependency keeps two copies) and retype
+// THEIR t() to core's keys with core's default namespace. The plugin-facing
+// PluginContext.t stays i18next's own permissive TFunction on purpose.
+export type CoreKey = keyof CoreResource & string;
+export type CoreVars = Record<string, string | number>;
+export type CoreT = (key: CoreKey, vars?: CoreVars) => string;
+
+/** Key-checked view over a TFunction for core's own call sites. */
+export function coreT(t: TFunction): CoreT {
+  // No explicit undefined: i18next types its arguments as a tuple with an
+  // optional element, which exactOptionalPropertyTypes refuses to fill with one.
+  return (key, vars) => String(vars === undefined ? t(key) : t(key, vars));
 }
 
 export function isLocale(v: string | undefined): v is Locale {

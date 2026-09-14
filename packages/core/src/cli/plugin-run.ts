@@ -18,7 +18,7 @@
 // positionals, and a command that does not has them REFUSED rather than
 // silently dropped, because an argument nobody reads is an argument the caller
 // thinks was understood.
-import type { TFunction } from 'i18next';
+import type { CoreT } from '../i18n/index.ts';
 import { z } from 'zod';
 import { configDir, configFile, loadPlugins, type LoadedPlugin } from '../host.ts';
 import type { CliCommandDef } from '../plugin.ts';
@@ -94,7 +94,7 @@ export function issueLines(error: z.ZodError): string[] {
 }
 
 /** `<plugin> <command> — describe`, for a caller who has to pick one. */
-function listCommands(name: string, commands: readonly CliCommandDef[], io: Io, t: TFunction): number {
+function listCommands(name: string, commands: readonly CliCommandDef[], io: Io, t: CoreT): number {
   if (!commands.length) {
     io.err(`${t('pluginNoCommands', { plugin: name })}\n`);
     return EXIT.usage;
@@ -109,7 +109,7 @@ async function runCommand(
   command: CliCommandDef,
   argv: readonly string[],
   io: Io,
-  t: TFunction
+  t: CoreT
 ): Promise<number> {
   const parsed = parseArgv(argv);
   if (!parsed.ok) {
@@ -156,7 +156,7 @@ async function runCommand(
  * configured plugin answers to that name, so the caller can say what it always
  * said about a word it does not know.
  */
-export async function runPluginCommand(name: string, argv: readonly string[], io: Io, t: TFunction): Promise<number | null> {
+export async function runPluginCommand(name: string, argv: readonly string[], io: Io, t: CoreT): Promise<number | null> {
   const loaded = await loadPlugins(configFile());
   const found = loaded.plugins.find((p) => p.name === name || p.def.name === name);
   if (!found) {
