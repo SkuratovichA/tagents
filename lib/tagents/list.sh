@@ -1,6 +1,6 @@
 # lib/tagents/list.sh — the rows — and the tally the status bar shows
 #
-# list() stays one unit (619 lines): the responsive column fit, the UTF-8-safe width helpers macOS awk forces it to carry, the row format, the group headers, and the seat markers. grouped/toggle_group (the .flat marker list() reads) and counts() (the same renderer with TA_MARKS=0, plus the burn rate and the usage line) sit with it because nothing else calls them and both are meaningless without it.
+# list() stays one unit (754 lines): the responsive column fit, the UTF-8-safe width helpers macOS awk forces it to carry, the row format, the two-level tree a child session hangs in, the group headers, and the seat markers. grouped/toggle_group (the .flat marker list() reads) and counts() (the same renderer with TA_MARKS=0, plus the burn rate and the usage line) sit with it because nothing else calls them and both are meaningless without it.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
