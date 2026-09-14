@@ -39,19 +39,46 @@ before(() => {
     pid: 4242,
   });
   writeStateRow(dir, { key: '13', at: 1_759_000_000, state: 'done', sessionId: 'sess-c', configDir: null });
+  // A headless record in full: ten fields, the last two the log and the label.
+  writeStateRow(dir, {
+    key: 's-sess-d',
+    at: 1_760_000_050,
+    state: 'working',
+    sessionId: 'sess-d',
+    cwd: '/Users/demo/git/demo',
+    configDir: '',
+    pid: 5151,
+    logFile: '/tmp/ticket-agent.log',
+    label: 'ticket-agent',
+  });
+  // ...and a child of it: twelve, the last two naming the agent that started it.
+  writeStateRow(dir, {
+    key: 's-sess-e',
+    at: 1_760_000_060,
+    state: 'working',
+    sessionId: 'sess-e',
+    cwd: '/Users/demo/git/scratch',
+    configDir: '',
+    pid: 5252,
+    logFile: '',
+    label: '',
+    parentKey: 's-sess-d',
+    parentSid: 'sess-d',
+  });
   fs.writeFileSync(path.join(dir, 'not-a-key.tsv'), 'garbage\n');
   fs.mkdirSync(path.join(dir, 'sub'), { recursive: true });
   writeHistory(dir, [
     [1_760_000_000, 'start', 'sess-a', '%12', 'dashboard', '/Users/demo/git/demo'],
     [1_760_000_100, 'start', 'sess-b', '%0', 'tg-orchestrator', '/Users/demo/git/other'],
     [1_760_000_200, 'turn', 'sess-b', '%0', 'tg-orchestrator', '/Users/demo/git/other'],
+    [1_760_000_300, 'start', 'sess-e', '', '', '/Users/demo/git/scratch', 'sess-d'],
   ]);
 });
 after(() => fs.rmSync(path.dirname(dir), { recursive: true, force: true }));
 
 test('records are read newest first, and only real keys count', () => {
   const rows = readAgentState(dir);
-  assert.deepEqual(rows.map((r) => r.key), ['s-sess-b', '12', '13']);
+  assert.deepEqual(rows.map((r) => r.key), ['s-sess-b', 's-sess-e', 's-sess-d', '12', '13']);
 });
 
 test('the seventh column is the account, and its absence is not an empty one', () => {
@@ -68,6 +95,36 @@ test('an eighth column is the headless pid', () => {
   const rows = readAgentState(dir);
   assert.equal(rows.find((r) => r.key === 's-sess-b')?.pid, 4242);
   assert.equal(rows.find((r) => r.key === '12')?.pid, null);
+});
+
+test('the columns past the account belong to the rows with no pane', () => {
+  const byKey = new Map(readAgentState(dir).map((r) => [r.key, r]));
+  // Twelve fields: a child, and it says whose.
+  const kid = byKey.get('s-sess-e');
+  assert.equal(kid?.pid, 5252);
+  assert.equal(kid?.parentKey, 's-sess-d');
+  assert.equal(kid?.parentSid, 'sess-d');
+  assert.equal(kid?.label, '', 'an inherited label is blanked by the hook, not absent');
+  // Ten: a headless session, with a log and a name and nobody above it.
+  const daemon = byKey.get('s-sess-d');
+  assert.equal(daemon?.logFile, '/tmp/ticket-agent.log');
+  assert.equal(daemon?.label, 'ticket-agent');
+  assert.equal(daemon?.parentKey, null, 'ten fields say nothing about a parent');
+  assert.equal(daemon?.parentSid, null);
+  // Seven: a session with a pane, which carries none of it.
+  const paned = byKey.get('12');
+  assert.equal(paned?.pid, null);
+  assert.equal(paned?.logFile, null);
+  assert.equal(paned?.label, null);
+  assert.equal(paned?.parentKey, null);
+  assert.equal(paned?.parentSid, null);
+});
+
+test('a history line names the parent of a child, and of nobody else', () => {
+  const byId = new Map(readHistory(dir).map((h) => [h.sessionId, h]));
+  assert.equal(byId.get('sess-e')?.parentSid, 'sess-d');
+  assert.equal(byId.get('sess-e')?.pane, '', 'a child has no pane to name');
+  assert.equal(byId.get('sess-a')?.parentSid, '', 'six columns mean no parent');
 });
 
 test('a truncated or nonsense line is skipped, not crashed on', () => {
@@ -91,23 +148,30 @@ test('history carries the labels, latest start wins', () => {
   const labels = labelsBySession(dir);
   assert.equal(labels.get('sess-a'), 'dashboard');
   assert.equal(labels.get('sess-b'), 'tg-orchestrator');
-  assert.equal(readHistory(dir).length, 3);
+  assert.equal(readHistory(dir).length, 4);
 });
 
 test('the driver lists what the hook published, filtered by label and state', async () => {
   const d = new ClaudeHeadlessDriver({ stateDir: dir });
   const all = await d.list();
-  assert.deepEqual(all.map((r) => r.id), ['s-sess-b', '12', '13']);
-  const first = all[0];
+  assert.deepEqual(all.map((r) => r.id), ['s-sess-b', 's-sess-e', 's-sess-d', '12', '13']);
+  const first = all.find((r) => r.id === 's-sess-b');
   assert.equal(first?.claudeSessionId, 'sess-b');
   assert.equal(first?.spec.label, 'tg-orchestrator');
   assert.equal(first?.spec.configDir, '/Users/demo/.claude-work');
-  assert.equal(all[1]?.spec.configDir, null, 'an empty account column means the default one');
-  assert.equal('configDir' in (all[2]?.spec ?? {}), false, 'a pre-account row says nothing, so it inherits');
+  assert.equal(all.find((r) => r.id === '12')?.spec.configDir, null, 'an empty account column means the default one');
+  assert.equal(
+    'configDir' in (all.find((r) => r.id === '13')?.spec ?? {}),
+    false,
+    'a pre-account row says nothing, so it inherits'
+  );
 
   assert.deepEqual((await d.list({ label: 'dashboard' })).map((r) => r.id), ['12']);
   assert.deepEqual((await d.list({ state: ['blocked'] })).map((r) => r.id), ['s-sess-b']);
-  assert.deepEqual((await d.list({ state: ['working', 'done'] })).map((r) => r.id), ['12', '13']);
+  assert.deepEqual(
+    (await d.list({ state: ['working', 'done'] })).map((r) => r.id),
+    ['s-sess-e', 's-sess-d', '12', '13']
+  );
 });
 
 test('last() reads the transcript the hook recorded', async () => {

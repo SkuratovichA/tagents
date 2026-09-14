@@ -137,6 +137,10 @@ export interface StateRowInput {
   detail?: string;
   configDir?: string | null;
   pid?: number;
+  logFile?: string;
+  label?: string;
+  parentKey?: string;
+  parentSid?: string;
 }
 
 /** Write one record the way hooks/tmux-agent-state.sh writes it. */
@@ -152,11 +156,27 @@ export function writeStateRow(dir: string, r: StateRowInput): void {
   ];
   // configDir === null reproduces a pre-account record: SIX fields, not seven.
   if (r.configDir !== null) fields.push(r.configDir ?? '');
-  if (r.pid !== undefined) fields.push(String(r.pid));
+  // The tail is positional, so a field is only written once something after it
+  // has to be: asking for a parentKey alone still produces a well-formed
+  // twelve-column record, and asking for none of it leaves the seven the hook
+  // writes for a session with a pane.
+  const tail: Array<string | undefined> = [
+    r.pid === undefined ? undefined : String(r.pid),
+    r.logFile,
+    r.label,
+    r.parentKey,
+    r.parentSid,
+  ];
+  let last = -1;
+  for (let i = 0; i < tail.length; i += 1) if (tail[i] !== undefined) last = i;
+  for (let i = 0; i <= last; i += 1) fields.push(tail[i] ?? '');
   fs.writeFileSync(path.join(dir, `${r.key}.tsv`), `${fields.join('\t')}\n`);
 }
 
-export function writeHistory(dir: string, rows: Array<[number, string, string, string, string, string]>): void {
+export function writeHistory(
+  dir: string,
+  rows: Array<[number, string, string, string, string, string] | [number, string, string, string, string, string, string]>
+): void {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'history.tsv'), rows.map((r) => r.join('\t')).join('\n') + '\n');
 }
