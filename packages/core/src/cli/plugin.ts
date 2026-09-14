@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import type { TFunction } from 'i18next';
+import type { CoreT } from '../i18n/index.ts';
 import { configFile, loadPlugins } from '../host.ts';
 import {
   addPluginEntry,
@@ -30,7 +30,7 @@ const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 const listOr = (names: readonly string[] | undefined): string => (names?.length ? names.join(', ') : '—');
 
-async function list(argv: string[], io: Io, t: TFunction): Promise<number> {
+async function list(argv: string[], io: Io, t: CoreT): Promise<number> {
   const { values } = parseArgs({
     args: argv,
     options: { json: { type: 'boolean' } },
@@ -79,7 +79,7 @@ async function list(argv: string[], io: Io, t: TFunction): Promise<number> {
   return loaded.errors.length ? EXIT.error : EXIT.ok;
 }
 
-function add(argv: string[], io: Io, t: TFunction, cwd: string): number {
+function add(argv: string[], io: Io, t: CoreT, cwd: string): number {
   const { values, positionals } = parseArgs({
     args: argv,
     options: { name: { type: 'string' } },
@@ -119,7 +119,7 @@ function add(argv: string[], io: Io, t: TFunction, cwd: string): number {
   return EXIT.ok;
 }
 
-function remove(argv: string[], io: Io, t: TFunction): number {
+function remove(argv: string[], io: Io, t: CoreT): number {
   const { positionals } = parseArgs({ args: argv, options: {}, strict: true, allowPositionals: true });
   const name = positionals[0];
   if (name === undefined) {
@@ -135,7 +135,7 @@ function remove(argv: string[], io: Io, t: TFunction): number {
   return EXIT.ok;
 }
 
-function create(argv: string[], io: Io, t: TFunction, cwd: string): number {
+function create(argv: string[], io: Io, t: CoreT, cwd: string): number {
   const { values, positionals } = parseArgs({
     args: argv,
     options: { dir: { type: 'string' } },
@@ -171,7 +171,7 @@ function create(argv: string[], io: Io, t: TFunction, cwd: string): number {
 }
 
 /** The `plugin` verb, dispatched. Throws nothing main.ts does not already catch. */
-export async function plugin(argv: string[], io: Io, t: TFunction, cwd: string = process.cwd()): Promise<number> {
+export async function plugin(argv: string[], io: Io, t: CoreT, cwd: string = process.cwd()): Promise<number> {
   const [verb, ...rest] = argv;
   if (verb === 'list') return await list(rest, io, t);
   if (verb === 'add') return add(rest, io, t, cwd);

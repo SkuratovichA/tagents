@@ -25,12 +25,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import type { TFunction } from 'i18next';
 import { ClaudeHeadlessDriver, DEFAULT_TIMEOUT_MS, TIMEOUT_WARN_BEFORE_MS } from '../claude-driver.ts';
 import type { SessionRef, SessionSpec, SessionState, StreamEvent } from '../driver.ts';
 import { readAgentState, stateDir } from '../agent-state.ts';
 import { configFile } from '../host.ts';
-import { createT } from '../i18n/index.ts';
+import { createT, coreT, type CoreT } from '../i18n/index.ts';
 import { isAlive } from '../pid.ts';
 import { parseSessionRef } from '../session-ref.ts';
 import { renderRecent, renderSearch, renderShow, SESSIONS_PROGRAM } from '../transcripts.ts';
@@ -48,7 +47,7 @@ function isState(s: string): s is SessionState {
 }
 
 /** `session …` */
-async function session(argv: string[], io: Io, t: TFunction): Promise<number> {
+async function session(argv: string[], io: Io, t: CoreT): Promise<number> {
   const verb = argv[0];
   const rest = argv.slice(1);
   const driver = new ClaudeHeadlessDriver();
@@ -277,7 +276,7 @@ function claudeOnPath(env: NodeJS.ProcessEnv = process.env): string | null {
   return null;
 }
 
-function doctor(io: Io, t: TFunction): number {
+function doctor(io: Io, t: CoreT): number {
   const dir = stateDir();
   const file = configFile();
   const claude = claudeOnPath();
@@ -289,7 +288,7 @@ function doctor(io: Io, t: TFunction): number {
 }
 
 export async function main(argv: string[], io: Io = stdio()): Promise<number> {
-  const t = createT();
+  const t = coreT(createT());
   const [verb, ...rest] = argv;
   try {
     if (verb === 'session') return await session(rest, io, t);
