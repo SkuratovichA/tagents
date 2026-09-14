@@ -90,3 +90,15 @@ now carries the config's path beside the count and the time, any `config*.yaml`
 newer than the stamp invalidates it, and an age ceiling
 (`TA_CFG_CHECK_EVERY`, 60 s) covers the problems that are fixed WITHOUT touching
 the config — creating the login directory a profile names is the obvious one.
+
+## A library's `declare module 'i18next'` never shows under link: and breaks every real consumer (14.09.2026)
+Core augmented i18next's global `CustomTypeOptions` (`defaultNS: 'core'`, `resources`) from its own `.d.ts`. Locally the Telegram plugin consumes core through `link:`, which keeps two i18next copies (different typescript peer suffixes in the store), so the augmentation stayed on core's copy and the plugin typechecked. A clean clone resolves both to one file and every plugin `t('tg.key')` became a type error. A library types its own keys locally (`CoreT`) and leaves the global interface to the application; the only oracle for this class of bug is a clean install of the export.
+
+## exactOptionalPropertyTypes refuses an explicit undefined in a tuple-typed rest parameter (14.09.2026)
+`t(key, vars)` with `vars: X | undefined` fails against i18next's `(...args: [key, options?])` signature, and TypeScript prints the target with the generic already instantiated — a list of every core key — which reads like a leftover augmentation. It was not one: pass `t(key)` when there are no vars.
+
+## A single red timing test on a loaded box is not evidence against the change (14.09.2026)
+turn.test.ts gives a fake claude 400 ms of real time; with eleven claude processes running it lost the race once and passed on both re-runs. Re-run before reverting, and the durable fix is a fake clock in the driver, not a longer budget.
+
+## Dispose before you drain: a flush inside finish() re-armed a timer (14.09.2026)
+finish() cleared the timer list and then called reader.end(), which can flush a buffered result line; the result handler scheduled the 60 s grace timer into a list nobody would clear again, holding the event loop for a minute after the turn had resolved. Invisible to every real-timer test, found by the fake-clock one. Close the scope first, then drain; anything scheduled on a closed scope is a no-op.
