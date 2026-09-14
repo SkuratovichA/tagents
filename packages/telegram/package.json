@@ -1,0 +1,32 @@
+{
+  "name": "@tagents/telegram",
+  "version": "0.1.0",
+  "description": "The Telegram Bot API, typed and small: one envelope-parsing call(), the handful of methods a bot actually uses, and the 4096-character split",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "pnpm build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "zod": "^4.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "5.9.3"
+  }
+}

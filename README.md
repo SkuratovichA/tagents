@@ -39,6 +39,7 @@ all.
 | `config.example.yaml` | a commented example of the optional per-directory account config |
 | `packages/core/` | `@tagents/core`, the TypeScript package for **headless** sessions |
 | `packages/knowledge/` | [`@tagents/knowledge`](packages/knowledge/README.md), the owner's notes as markdown documents with an FTS5 index, a `tagents-knowledge` CLI and an MCP server |
+| `packages/telegram/` | [`@tagents/telegram`](packages/telegram/README.md), the Telegram Bot API typed and small — one client for every plugin that has a bot token |
 
 They are one system. The hook writes a record per session into
 `~/.claude/agent-state/`; `tagents` joins that with the live tmux pane list and
@@ -63,6 +64,7 @@ nor need it.
 | `tagents` (this script) | the dashboard: tmux, fzf, the tree, the sidebar. Bash, no dependencies of its own — the entry point, with the rest of it in `lib/tagents/` |
 | [`@tagents/core`](packages/core/README.md) | headless sessions — spawn, prompt, read, list — plus the plugin contract and host, behind a `tagents-core` CLI |
 | [`@tagents/knowledge`](packages/knowledge/README.md) | the owner's notes as markdown documents with an FTS5 index, a `tagents-knowledge` CLI and an MCP server |
+| [`@tagents/telegram`](packages/telegram/README.md) | the Telegram Bot API, typed and small: one envelope-parsing `call()`, the methods a bot actually uses, and the 4096-character split |
 | plugins, e.g. `@tagents/plugin-telegram` | a package the config names: one `definePlugin({ … })` object offering CLI verbs, long-running services and MCP tools |
 
 One name reaches all of it. A verb `tagents` has no flag for — `tagents plugin
