@@ -211,9 +211,20 @@ act() {
     %s-*)
       case "$what" in
         open|beside|borrow|goto|send|rename)
-          tmux display-message \
-            "tagents: headless session — no pane to dock, type into or rename (ctrl-v follows its log)" \
-            2>/dev/null
+          # A CHILD IS THE SAME REFUSAL FOR A DIFFERENT REASON, and the reason
+          # is what the notice is for: it is not a daemon nobody is watching,
+          # it is a `claude -p` the agent above it started, and there is no log
+          # to follow either — ctrl-v shows its transcript instead.
+          if [ -n "$(awk -F"$TAB" 'NR==1 { print $11; exit }' \
+                       "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)" ]; then
+            tmux display-message \
+              "tagents: child session — no pane to dock, type into or rename (ctrl-v shows its transcript)" \
+              2>/dev/null
+          else
+            tmux display-message \
+              "tagents: headless session — no pane to dock, type into or rename (ctrl-v follows its log)" \
+              2>/dev/null
+          fi
           return 0 ;;
       esac ;;
   esac

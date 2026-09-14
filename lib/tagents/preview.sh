@@ -5,19 +5,27 @@
 # Part of ./tagents; `tagents --help` is the model this implements.
 
 preview() {
-  local pane=$1 state=${2:-} f ts st sid cwd tr detail cfgd hascfg acct rprof log
+  local pane=$1 state=${2:-} f ts st sid cwd tr detail cfgd hascfg parkey acct rprof log
   [ "$pane" = "-" ] && return 0
   f="$STATE_DIR/${pane#%}.tsv"
   if [ -e "$f" ]; then
     # Not IFS=TAB: tab is IFS whitespace, so an empty field (no session id, no
     # detail) would collapse and shift every later value one slot left.
-    IFS="$US" read -r ts st sid cwd tr detail cfgd hascfg < <(
+    IFS="$US" read -r ts st sid cwd tr detail cfgd hascfg parkey < <(
       awk -F"$TAB" -v OFS="$US" \
-          'NR==1 { print $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0); exit }' "$f")
+          'NR==1 { print $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0), $11; exit }' "$f")
     printf '\033[1m%s\033[0m\n' "$(origin_of "${sid:-}" "${tr:-}" || printf '%s' "$cwd")"
     [ -n "$cwd" ] && printf '\033[90mcwd now: %s\033[0m\n' "$cwd"
     printf '\033[90m%s · %s\033[0m\n' "$st" "$detail"
     [ -n "$sid" ] && printf '\033[90msession %s\033[0m\n' "$sid"
+    # WHOSE SESSION THIS IS. A child was started by another agent and belongs
+    # with it — the row is already drawn under that agent, and this says which
+    # one it is by name rather than by key, the way every other heading here
+    # does. Named by preview_name so a parent that is itself pane-less resolves
+    # the same way as one sitting in a pane.
+    [ -n "${parkey:-}" ] &&
+      printf '\033[90mparent: %s  (%s)\033[0m\n' \
+             "$(preview_name "%${parkey}")" "$parkey"
     # Which login this conversation belongs to — the thing you cannot see from
     # the pane itself, and the thing that decides whether resuming it will find
     # anything. Silent for a record written before the hook recorded it.
@@ -42,6 +50,17 @@ preview() {
       if log=$(headless_log "$pane"); then
         printf '\033[90mheadless — no pane. log (ctrl-v follows it):\n%s\033[0m\n' "$log"
         tail -n 60 "$log" 2>/dev/null
+      elif [ -n "${tr:-}" ] && [ -e "${tr:-}" ]; then
+        # NO PANE AND NO LOG, which is every child session: whatever started it
+        # kept the output to itself. The transcript is the one thing left that
+        # says what the agent is doing, so the last few turns of it stand in for
+        # the capture-pane the row cannot have.
+        if [ -n "${parkey:-}" ]; then
+          printf '\033[90mchild session — no pane, no log. last of its transcript:\033[0m\n'
+        else
+          printf '\033[90mheadless session — no pane, no log. last of its transcript:\033[0m\n'
+        fi
+        transcript_tail "$tr" 20
       else
         printf '\033[90mheadless session — it runs in no pane, so there is nothing\n'
         printf 'to show here and nothing to dock. No readable $TA_LOG was\n'

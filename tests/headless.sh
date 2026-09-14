@@ -253,7 +253,10 @@ exec /bin/ps "\$@"
 EOF
 chmod +x "$SHIM2/tmux" "$SHIM2/ps"
 
-REPO2="$ROOT/repo2"; mkdir -p "$REPO2/.git"
+# A repo of its own for the children: a child usually runs somewhere else
+# than the agent that started it, and the name must not be a prefix of the
+# parent's, or a group header would match both.
+REPO2="$ROOT/kidrepo"; mkdir -p "$REPO2/.git"
 
 # A fake PARENT claude: it writes its own pid down, waits for the go-ahead — so
 # a record naming that pid can be in place before the child ever classifies
@@ -439,7 +442,10 @@ t "H2. the bug itself: an inherited \$TMUX_PANE is not a pane of one's own"
 # ---------------------------------------------------------------------------
 rm -f "$STATE"/s-*.tsv
 : >"$TMUXLOG2"
-newpane "exec '$BIN/claude' -c 'sleep 600'"
+# `-c 'sleep 600'` alone is not a claude to ps: a shell execs the last command
+# of a -c in place, so the process would rename itself `sleep` on the spot. A
+# second command after it is what keeps the shell — and the name — alive.
+newpane "exec '$BIN/claude' -c 'sleep 600; :'"
 PN2=$PANEID; K2=${PN2#%}
 prec "$K2" sid-p3p
 printf '%s\tBash ls\n' "$NOW0" >"$STATE/sub/$K2.a1"
@@ -698,6 +704,220 @@ t "12. a headless session that is still running is not a closed one"
 CR=$(HOME="$ROOT" run --closed-rows)
 hasnt "the live one is not offered for resume" "live$TAB" "$CR"
 has "the ended one is" "gone$TAB" "$CR"
+
+# ---------------------------------------------------------------------------
+# CHILDREN ON THE DASHBOARD: rows written by hand, under a parent that is real
+# ---------------------------------------------------------------------------
+rm -f "$STATE"/*.tsv "$STATE"/sub/* 2>/dev/null
+NOW=$(date +%s)
+
+crec() {  # <sid> <state> <pid> <label> <parent key> <parent sid> [age] [cwd] [transcript]
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(( NOW - ${7:-0} ))" "$2" "$1" "${8:-$REPO2}" "${9:-}" "Bash ls" "" \
+    "$3" "" "$4" "$5" "$6" >"$STATE/s-$1.tsv"
+}
+prec2() {  # <key> <sid> — the record of a session that owns a pane
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$NOW" working "$2" "$REPO" "" "Read main.c" "" >"$STATE/$1.tsv"
+}
+rowfor() {  # <pane key> — the whole row, tabs intact, colours stripped
+  TA_COLS=130 run --list | plain |
+    awk -F"$TAB" -v p="$1" '$1 == p && index($2, "▾") == 0 { print; exit }'
+}
+hdrfor() {  # <group basename> — the group header row, colours stripped
+  TA_COLS=130 run --list | plain |
+    awk -F"$TAB" -v n="▾ $1 " 'index($2, n) > 0 { print; exit }'
+}
+# Every ROW key in the order they come out, headers left out: a header carries
+# the pane key of its most urgent member too, and would be read as a second row.
+order() {
+  TA_COLS=130 run --list | plain |
+    awk -F"$TAB" 'index($2, "▾") == 0 { printf "%s ", $1 }'
+}
+# Like run(), but through the forwarding shim, so every tmux call it makes —
+# display-message included — is a line in a file to assert on.
+actlog() { env PATH="$SHIM2:$PATH" TMUX="$SOCK,0,0" bash "$TA" "$@"; }
+
+# The parent: a real fake claude in a real pane, so live_panes sees it the way
+# it sees any agent, and a record of its own beside it.
+newpane "exec '$BIN/claude' -c 'sleep 600; :'"
+MUM=$PANEID; MUMK=${MUM#%}
+prec2 "$MUMK" sid-mum
+sleep 0.3
+
+# A transcript with the shape a real one has: the title the session gave itself,
+# a prompt, a reply with a text block and a tool call — and a HALF-WRITTEN last
+# line, which is the normal state of a file something is still appending to.
+KIDTR="$ROOT/kid.jsonl"
+{
+  printf '%s\n' '{"type":"ai-title","aiTitle":"the nightly sweep"}'
+  printf '%s\n' '{"type":"user","message":{"content":[{"type":"text","text":"sweep the queue"}]}}'
+  printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"swept, nothing left"},{"type":"tool_use","name":"Bash","input":{"command":"ls -la /queue"}}]}}'
+  printf '%s' '{"type":"assistant","message":{"content":[{"type":"te'
+} >"$KIDTR"
+
+crec kid1 working "$$" "" "$MUMK" sid-mum 0 "$REPO2" "$KIDTR"
+
+# ---------------------------------------------------------------------------
+t "D1. a child renders under the agent that started it"
+# ---------------------------------------------------------------------------
+KIDROW=$(rowfor "%s-kid1")
+MUMROW=$(rowfor "$MUM")
+ok "the child sits directly under its parent" "$MUM %s-kid1" \
+   "$(order | awk '{ for (i = 1; i <= NF; i++) if ($i == "'"$MUM"'") print $i, $(i+1) }')"
+ok "...in the group of the parent, not of its own repo" "$REPO" \
+   "$(printf '%s' "$KIDROW" | awk -F"$TAB" '{ print $5 }')"
+has "the parent draws the tee it always drew" "  └─ " "$MUMROW"
+has "and the child hangs one level deeper" "     └─ " "$KIDROW"
+has "the location column says what it is" "child" "$KIDROW"
+has "...and the detail still names the repo it actually runs in" "kidrepo" "$KIDROW"
+
+# ---------------------------------------------------------------------------
+t "D1b. flat is flat"
+# ---------------------------------------------------------------------------
+FKID=$(TA_COLS=130 TA_FLAT=1 run --list | plain |
+         awk -F"$TAB" '$1 == "%s-kid1" { print; exit }')
+ok "the child keeps its own group" "$REPO2" \
+   "$(printf '%s' "$FKID" | awk -F"$TAB" '{ print $5 }')"
+hasnt "and there is no tree to hang it in" "└─" "$FKID"
+has "only the column that says what it is" "child" "$FKID"
+
+# ---------------------------------------------------------------------------
+t "D2. the header stands in for the parent, and counts the child"
+# ---------------------------------------------------------------------------
+ok "the header names a pane somebody can be sent to" "$MUM" \
+   "$(hdrfor repo | awk -F"$TAB" '{ print $1 }')"
+has "the parent shows what is fanned out under it" "⑂1" "$(rowfor "$MUM")"
+crec kid1 blocked "$$" "" "$MUMK" sid-mum 0 "$REPO2" "$KIDTR"
+has "a blocked child is a blocked group" "⚠1" "$(hdrfor repo)"
+ok "...and the header is still the parent" "$MUM" \
+   "$(hdrfor repo | awk -F"$TAB" '{ print $1 }')"
+crec kid1 working "$$" "" "$MUMK" sid-mum 0 "$REPO2" "$KIDTR"
+
+# ---------------------------------------------------------------------------
+t "D3. nothing that needs a pane is attempted on a child either"
+# ---------------------------------------------------------------------------
+: >"$TMUXLOG2"
+WINS=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
+for verb in open beside goto send rename; do
+  actlog --act "$verb" "%s-kid1" working kid1 "$REPO2" >/dev/null 2>&1
+  ok "--act $verb is refused quietly" 0 "$?"
+done
+ok "every one of them said it was a child" 5 \
+   "$(grep -c 'child session' "$TMUXLOG2")"
+ok "and none of them opened a window" "$WINS" \
+   "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+
+# ---------------------------------------------------------------------------
+t "D4. the preview of a child is its transcript"
+# ---------------------------------------------------------------------------
+PV=$(run --preview "%s-kid1" working | plain)
+has "it says whose session this is" "parent:" "$PV"
+has "...by the name the parent row shows" "parent: repo" "$PV"
+has "...and by its record key" "($MUMK)" "$PV"
+has "with no log there is the transcript" "child session" "$PV"
+has "the tool calls are in it" "▸ Bash" "$PV"
+has "...and what was said" "swept, nothing left" "$PV"
+hasnt "a half-written last line takes nothing with it" "error" "$PV"
+# ...and a child that DOES have a log is previewed from the log, as before.
+crec kid1 working "$$" "" "$MUMK" sid-mum 0 "$REPO2" "$KIDTR"
+awk -F"$TAB" -v OFS="$TAB" -v l="$LOG" \
+    'NR==1 { $9 = l; print }' "$STATE/s-kid1.tsv" >"$ROOT/tmp.tsv" &&
+  mv "$ROOT/tmp.tsv" "$STATE/s-kid1.tsv"
+PV=$(run --preview "%s-kid1" working | plain)
+has "a log still wins over the transcript" "the daemon said hello" "$PV"
+crec kid1 working "$$" "" "$MUMK" sid-mum 0 "$REPO2" "$KIDTR"
+
+# ---------------------------------------------------------------------------
+t "D9. a child is called what the session called itself"
+# ---------------------------------------------------------------------------
+has "the ai-title is the name" "the nightly sweep" "$(rowfor "%s-kid1")"
+ok "...and it is worked out once" "the nightly sweep" \
+   "$(awk -F"$TAB" '$1 == "kid1" { print $2; exit }' "$STATE/title.tsv")"
+# A transcript with no title of its own is a miss, and a miss is cached too —
+# otherwise every repaint re-reads two hundred lines of it for the same answer.
+printf '%s\n' '{"type":"user","message":{"content":"nothing to see"}}' >"$ROOT/plain.jsonl"
+crec kid2 working "$$" "" "$MUMK" sid-mum 0 "$REPO2" "$ROOT/plain.jsonl"
+rowfor "%s-kid2" >/dev/null
+ok "a title that is not there is remembered as not there" "-" \
+   "$(awk -F"$TAB" '$1 == "kid2" { print $2; exit }' "$STATE/title.tsv")"
+ok "...once, not once per repaint" 1 \
+   "$(awk -F"$TAB" '$1 == "kid2"' "$STATE/title.tsv" | wc -l | tr -d ' ')"
+rowfor "%s-kid2" >/dev/null
+ok "...still once after another look" 1 \
+   "$(awk -F"$TAB" '$1 == "kid2"' "$STATE/title.tsv" | wc -l | tr -d ' ')"
+has "and the row falls back to the directory" "kidrepo" "$(rowfor "%s-kid2")"
+rm -f "$STATE/s-kid2.tsv"
+
+# ---------------------------------------------------------------------------
+t "D8. the status bar counts a working child like any other agent"
+# ---------------------------------------------------------------------------
+has "the child is in the totals" "●2" "$(run --counts)"
+
+# ---------------------------------------------------------------------------
+t "D10. a grandchild joins the family, it does not start a third level"
+# ---------------------------------------------------------------------------
+crec kid3 working "$$" "" "s-kid1" kid1 0 "$REPO2" ""
+ORD=$(order)
+ok "the whole family is one block under the pane" "$MUM %s-kid1 %s-kid3 " \
+   "$(printf '%s' "$ORD" | awk '{ for (i = 1; i <= NF; i++) if ($i == "'"$MUM"'") printf "%s %s %s ", $i, $(i+1), $(i+2) }')"
+has "the grandchild hangs beside its parent, not under it" "     └─ " \
+   "$(rowfor "%s-kid3")"
+has "...which now has a sibling below it" "     ├─ " "$(rowfor "%s-kid1")"
+ok "...and it is in the group of the pane" "$REPO" \
+   "$(rowfor "%s-kid3" | awk -F"$TAB" '{ print $5 }')"
+rm -f "$STATE/s-kid3.tsv"
+
+# ---------------------------------------------------------------------------
+t "D6. a child whose parent is nowhere renders on its own, as it always did"
+# ---------------------------------------------------------------------------
+crec orphan working "$$" "" 9109 sid-nobody 0 "$REPO2" ""
+OROW=$(rowfor "%s-orphan")
+ok "it is back in its own group" "$REPO2" \
+   "$(printf '%s' "$OROW" | awk -F"$TAB" '{ print $5 }')"
+has "at the top level of it" "  └─ " "$OROW"
+has "...and still says what it is" "child" "$OROW"
+rm -f "$STATE/s-orphan.tsv"
+
+# ---------------------------------------------------------------------------
+t "D7. a dead child says so, and does not linger for a day"
+# ---------------------------------------------------------------------------
+crec kidx done "$DEADPID" "" "$MUMK" sid-mum 0 "$REPO2" ""
+DROW=$(rowfor "%s-kidx")
+has "a dead pid reads as closed here too" "✗ closed" "$DROW"
+has "and says why there is nothing to press" "child ended" "$DROW"
+hasnt "...rather than offering a resume" "enter resumes it" "$DROW"
+# An hour old: past SUB_TTL, nowhere near DEAD_TTL.
+crec kidold done "$DEADPID" "" "$MUMK" sid-mum 3600 "$REPO2" ""
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$(( NOW - 3600 ))" done sid-oldh "$REPO" "" "Bash ls" "" "$DEADPID" "" iteration \
+  >"$STATE/s-sid-oldh.tsv"
+ROWS=$(order)
+hasnt "a dead child expires on the subagent clock" "%s-kidold " "$ROWS"
+has "while a dead headless of the same age is still offered" "%s-sid-oldh " "$ROWS"
+rm -f "$STATE/s-kidx.tsv" "$STATE/s-kidold.tsv" "$STATE/s-sid-oldh.tsv"
+
+# ---------------------------------------------------------------------------
+t "D5. a child is not a conversation to come back to"
+# ---------------------------------------------------------------------------
+mkdir -p "$ROOT/.claude"
+printf '%s\tstart\tsid-mum\t%s\tmum\t%s\n' "$(( NOW - 3600 ))" "$MUM" "$REPO" >"$H"
+printf '%s\tstart\tkid-done\t\tsweeper\t%s\tsid-mum\n' "$(( NOW - 3000 ))" "$REPO2" >>"$H"
+printf '%s\tend\tkid-done\t\tsweeper\t%s\tsid-mum\n' "$(( NOW - 2400 ))" "$REPO2" >>"$H"
+# The control: an ordinary ended session, six columns and no parent, which must
+# still be offered — the suppression has to be about children and nothing else.
+printf '%s\tstart\tsid-plain\t%%9108\tnightly\t%s\n' "$(( NOW - 3000 ))" "$REPO" >>"$H"
+printf '%s\tend\tsid-plain\t%%9108\tnightly\t%s\n' "$(( NOW - 2400 ))" "$REPO" >>"$H"
+# ...and a prompt line for it in an account history, which is the other half of
+# what the picker joins: neither half may put a child back on the list.
+printf '{"sessionId":"kid-done","timestamp":%s000,"project":"%s","display":"sweep the queue"}\n' \
+  "$(( NOW - 3000 ))" "$REPO2" >"$ROOT/.claude/history.jsonl"
+CR=$(HOME="$ROOT" run --closed-rows)
+hasnt "an ended child is not offered for resume" "kid-done$TAB" "$CR"
+has "while an ordinary ended session still is" "sid-plain$TAB" "$CR"
+TL=$(COLUMNS=120 HOME="$ROOT" run --timeline | plain)
+has "the timeline still draws the child" "sweeper" "$TL"
+has "...marked as the work of another agent" "↳ sweeper" "$TL"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

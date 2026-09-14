@@ -340,8 +340,35 @@ list() {
       # always empty for one. $TA_LABEL is what whatever started it called it —
       # "ticket-agent" says far more than the basename of a directory.
       if (n == "" && (p in hlbl)) n = hlbl[p]
+      # ...and after that, the name the session gave itself. A child inherits no
+      # useful $TA_LABEL (the hook blanks the one it inherited), so this is often
+      # the only thing between it and the basename of a directory every agent in
+      # the repo would share.
+      if ((n == "" || n == host) && s != "" && (s in atitle)) n = atitle[s]
       if (n == "" || n == host) n = base(dir)
       return n
+    }
+    # WHICH ROW A CHILD HANGS UNDER. Its record names the parent twice — by
+    # session id, which survives the parent moving pane, and by record key,
+    # which is all there is when the parent has no session id on file. Neither
+    # is a promise that the parent is on this list at all: a child of an agent
+    # that has already gone renders at the top level, exactly as it did before
+    # any of this existed.
+    function prow(p,   q) {
+      q = ""
+      if ((p in psid) && psid[p] != "" && (psid[p] in bysid)) q = bysid[psid[p]]
+      else if (("%" par[p]) in seen) q = "%" par[p]
+      return (q == p) ? "" : q
+    }
+    # ...and the row a GRANDCHILD hangs under: the nearest ancestor that is not
+    # itself a child of somebody. Two deep and no deeper — a list that
+    # indents by generation is unreadable in a 45-column sidebar — so a whole
+    # family renders flat under the one agent that owns a pane. Bounded, and it
+    # gives up rather than looping if the records ever describe a cycle.
+    function anc(p,   q, i) {
+      q = prow(p)
+      for (i = 0; i < 8 && q != "" && (q in par); i++) q = prow(q)
+      return (q != "" && (q in par)) ? "" : q
     }
     BEGIN {
       # name<US>expanded config_dir<US>badge, joined with RS rather than
@@ -394,14 +421,23 @@ list() {
     $1=="N" { lab[$2]=$3; next }
     # A SESSION WITH NO PANE. hlive is the kill -0 the shell made of the pid the
     # hook recorded (awk cannot ask) and hlbl is its $TA_LABEL — the two answers
-    # a pane would have given for anybody else.
-    $1=="H" { hless[$2]=1; hlive[$2]=$3+0; hlbl[$2]=$4; next }
+    # a pane would have given for anybody else. par/psid are the two fields only
+    # a CHILD has: whose record it hangs under, by key and by session id.
+    # Assigned only when there is one, so `p in par` is the whole test for
+    # whether this row is a child of somebody.
+    $1=="H" { hless[$2]=1; hlive[$2]=$3+0
+              if ($4 != "") { par[$2]=$4; psid[$2]=$5 }
+              hlbl[$2]=$6; next }
     # WHEN YOU LAST TYPED INTO THAT SESSION — the file the hook writes on
     # UserPromptSubmit and on no other event, so it is the only clock in here
     # that does not move while a turn runs. Both the age column and the row
     # order are taken from it; ts[] below stays what it always was, the time of
     # the last event of any kind, because that is what DEAD_TTL measures.
     $1=="T" { pts[$2]=$3+0; next }
+    # The name a pane-less session gave itself, keyed by session id — the only
+    # name a child usually has, its $TA_LABEL having been blanked as inherited.
+    # It rides its own tag because T above is the prompt clock.
+    $1=="A" { atitle[$2]=$3; next }
     # "idle" was what SessionStart used to write, before that state was renamed
     # to "new" and "idle" became the label of a finished turn. A session that
     # started under the old hook and has not fired an event since would show as
@@ -436,6 +472,25 @@ list() {
       for (p in alive) seen[p] = 1
       for (p in st)    seen[p] = 1
 
+      # WHERE EVERY ROW LIVES, worked out before any of them is placed: a child
+      # is filed in the group of its PARENT, which may well come later in
+      # this unordered walk. The expression is the one both loops below make —
+      # the live cwd where there is one, the path of the pane otherwise.
+      for (p in seen) {
+        rdir[p] = (p in st && cwd[p] != "") ? cwd[p] : path[p]
+        if (rdir[p] == "") rdir[p] = "(unknown)"
+        gk[p] = (rdir[p] in root) ? root[rdir[p]] : rdir[p]
+        if ((p in sid) && sid[p] != "" && !(sid[p] in bysid)) bysid[sid[p]] = p
+      }
+      # ...and then which rows are children, and whose. under[] holds
+      # only the ones with a parent actually on this list; everything else falls
+      # through to the top level.
+      for (p in par) {
+        if (!(p in seen)) continue
+        a = anc(p)
+        if (a != "") { under[p] = a; if ((p in hless) && hlive[p]) livekids[a]++ }
+      }
+
       # The row names, measured before any row is drawn — the same selection
       # the loop below makes, so a record it would skip cannot widen the column.
       maxnm = 0
@@ -447,14 +502,16 @@ list() {
         # as a paned one does.
         if (p in hless) { isalive = hlive[p]; islive = hlive[p] }
         if (islive) {
-          dir = (p in st && cwd[p] != "") ? cwd[p] : path[p]
+          dir = rdir[p]
         } else {
           if (!(p in st)) continue
-          if (now - ts[p] > deadttl) continue
+          # A DEAD CHILD IS THE CORPSE OF A SUBAGENT, not a conversation somebody
+          # might come back to in the morning: nothing can resume it, so it
+          # expires on the subagent clock rather than lingering for a day.
+          if (now - ts[p] > ((p in par) ? ttl : deadttl)) continue
           if (sid[p] != "" && (sid[p] in livesid)) continue
-          dir = (cwd[p] != "") ? cwd[p] : path[p]
+          dir = rdir[p]
         }
-        if (dir == "") dir = "(unknown)"
         l = uclen(nameof(p, (p in sid) ? sid[p] : "", dir))
         if (l > maxnm) maxnm = l
       }
@@ -464,6 +521,13 @@ list() {
       for (p in seen) {
         isalive = (p in alive); islive = isalive && (p in live)
         if (p in hless) { isalive = hlive[p]; islive = hlive[p] }
+
+        # NESTED, as opposed to merely having a parent somewhere: a child whose
+        # parent is not on this list renders exactly as a headless row always
+        # did, and flat mode is flat — there nothing is re-grouped, re-sorted or
+        # drawn with a deeper tee, and the location column alone says what it is.
+        haspar = (p in par)
+        nest = (grp && (p in under))
 
         if (islive) {
           if (p in st) {
@@ -476,44 +540,59 @@ list() {
             # time, which for a finished turn is within a turn of the right one.
             said = ((p in pts) && pts[p] > 0) ? pts[p] : ts[p]
             age = now - said; agetxt = agestr(said)
-            dir = (cwd[p] != "") ? cwd[p] : path[p]
+            dir = rdir[p]
           } else {
             # Claude is running but no hook has fired yet. The name column
             # already carries its title, so leave the detail empty.
-            s = "?"; d = ""; age = 0; agetxt = "  --"; dir = path[p]
+            s = "?"; d = ""; age = 0; agetxt = "  --"; dir = rdir[p]
           }
           if (!(s in prio) || s == "dead") s = "?"
         } else {
           # No Claude process in this pane. Worth showing only if we know what
           # it was, recently enough to be worth resuming.
           if (!(p in st)) continue
-          if (now - ts[p] > deadttl) continue
+          if (now - ts[p] > (haspar ? ttl : deadttl)) continue
           if (sid[p] != "" && (sid[p] in livesid)) continue
           s = "dead"
           said = ((p in pts) && pts[p] > 0) ? pts[p] : ts[p]
           age = now - said; agetxt = agestr(said)
-          dir = (cwd[p] != "") ? cwd[p] : path[p]
+          dir = rdir[p]
           # A headless session is never offered for resume: there is no pane to
           # bring it back into and nobody to type at it. Say that, rather than
           # promising an enter that will only refuse.
-          if (p in hless)        d = "headless, ended — nothing to resume"
+          if (haspar)            d = "child ended — nothing to resume"
+          else if (p in hless)   d = "headless, ended — nothing to resume"
           else if (sid[p] != "") d = "closed — enter resumes it"
           else                   d = "closed, no session id — cannot resume"
         }
-        if (dir == "") dir = "(unknown)"
         # The loc column says WHERE the agent is, and for a headless one the
-        # answer is the thing worth knowing before pressing enter: nowhere.
-        where = (p in hless) ? "headless" : (isalive ? loc[p] : "—")
+        # answer is the thing worth knowing before pressing enter: nowhere. For
+        # a child it is the more useful half of the same answer — nowhere, and
+        # it belongs to the agent above it.
+        where = haspar ? "child" \
+                : ((p in hless) ? "headless" : (isalive ? loc[p] : "—"))
 
         # Group by the repo, but keep the subdirectory visible on the row so a
-        # session started deeper in the tree is still identifiable.
-        grpkey = (dir in root) ? root[dir] : dir
-        subp = (grpkey != dir) ? substr(dir, length(grpkey) + 2) "  " : ""
+        # session started deeper in the tree is still identifiable. A nested
+        # child goes in the group of its PARENT whatever its own cwd says — that is
+        # what "under" means — so the subdirectory half cannot assume the
+        # directory lies under the group at all, and names the repo honestly
+        # when it does not.
+        grpkey = nest ? gk[under[p]] : gk[p]
+        if (index(dir, grpkey) == 1 && grpkey != dir)
+          subp = substr(dir, length(grpkey) + 2) "  "
+        else if (nest && dir != "") subp = base(dir) "  "
+        else subp = ""
 
         n++; rp[n] = p; rs[n] = s; rage[n] = age; rg[n] = grpkey
         rdead[n] = (s == "dead") ? 1 : 0
+        ridx[p] = n; rnest[n] = nest; runder[n] = nest ? under[p] : ""
         rsid[n] = (p in sid) ? sid[p] : ""
-        pre = (islive && subs[p] > 0) ? sprintf("⑂%d ", subs[p]) : ""
+        # ...and the same prefix counts the live children hanging off this row:
+        # a session that fanned work out through `claude -p` has it fanned out
+        # just as much as one that used the Agent tool.
+        nkid = subs[p] + livekids[p]
+        pre = (islive && nkid > 0) ? sprintf("⑂%d ", nkid) : ""
         nm = nameof(p, rsid[n], dir)
 
         # Cost columns. ctx is the live context size — the thing that decides
@@ -572,9 +651,16 @@ list() {
         # The subagent share of that money — the answer to "why is this session
         # expensive when I have barely typed into it".
         if (udsub > 0 && burnw) pre = pre sprintf("%s⑂%s%s ", DIM, money(udsub), R)
-        if (detw) {
+        # THE DEEPER TEE IS PAID FOR OUT OF THE DETAIL OF THE CHILD. fitcols has
+        # one tree budget for the whole list, and widening it for a second level
+        # would move every column of every row on screen — including the paned
+        # rows the control run in tests/ui.sh compares byte for byte. So the
+        # three columns the second level costs come off this row and no other.
+        dw = detw - (nest ? 3 : 0)
+        if (dw < 0) dw = 0
+        if (dw) {
           dtl = subp d
-          if (uclen(dtl) > detw) dtl = uclip(dtl, detw - 1) "…"
+          if (uclen(dtl) > dw) dtl = uclip(dtl, dw - 1) "…"
           row = row " " pre DIM dtl R
         } else if (pre != "") row = row " " pre
         rbody[n] = row
@@ -592,8 +678,20 @@ list() {
         # "Directly under it" is the row order below, so the member is picked on
         # the same key: open, then most recently typed into.
         # (No apostrophes in here: the whole program is one single-quoted string.)
-        if (!(grpkey in gtotal) || rdead[n] < gtdead[grpkey] ||
-            (rdead[n] == gtdead[grpkey] && age < gtage[grpkey])) {
+        # The badges and gmin above count EVERY row in the group, children
+        # included: a blocked child is a real ⚠ and the group has to say so.
+        # The stand-in itself is chosen among the rows that are not nested
+        # children — enter on a header must land on a pane somebody can be sent
+        # to, and a child has none. Rank first, then the row order below, so a
+        # child is taken only where the group has nothing else at all.
+        # gtotal counts children too, so the first-seen test gets a flag of its
+        # own rather than borrowing that one.
+        grk = nest ? 1 : 0
+        if (!(grpkey in ghave) || grk < grank[grpkey] ||
+            (grk == grank[grpkey] &&
+             (rdead[n] < gtdead[grpkey] ||
+              (rdead[n] == gtdead[grpkey] && age < gtage[grpkey])))) {
+          ghave[grpkey] = 1; grank[grpkey] = grk
           gtdead[grpkey] = rdead[n]; gtage[grpkey] = age; gfirst[grpkey] = p
           gstate[grpkey] = s; gsid[grpkey] = rsid[n]; gdir[grpkey] = dir
         }
@@ -623,7 +721,7 @@ list() {
             gbt = sprintf("%s%s/5h%s", DIM, money(gburn[g]), R)
           hdr = sprintf("%s▾ %s%s%s  %s%s",
                         (gmin[g] < prio["dead"] ? BOLD : DIM), dirname(g), R, gpath, badge, gbt)
-          printf "%d\t%s\t0\t0\t0\t%s\t%s\t%s\t%s\t%s\n",
+          printf "%d\t%s\t0\t0\t0\t%s\t%s\t%s\t%s\t%s\t0\t0\t0\t0\n",
                  (gmin[g] < prio["dead"] ? 0 : 1), g, gfirst[g], hdr,
                  gstate[g], gsid[g], gdir[g]
         }
@@ -638,13 +736,33 @@ list() {
       # moves when you press enter, so two working agents cannot trade places
       # while they run. Closed agents keep to the bottom of their project, as
       # closed-only projects keep to the bottom of the list.
-      for (i = 1; i <= n; i++)
-        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n",
+      #
+      # SORTING A CHILD MEANS SORTING ITS FAMILY. Fields 4 and 5 are what the
+      # row is placed by, and for a child they are the closed flag and the age of
+      # the PARENT — the family travels as one block, wherever the parent
+      # belongs. Fields 11-14 then order that block from the inside: the family
+      # key (the row key of the parent, or the key of the row itself for
+      # everybody else, exactly the order this printed before plus a
+      # deterministic tiebreak), then parent before children, then each child by
+      # its own closed flag and its own age.
+      for (i = 1; i <= n; i++) {
+        fam = rp[i]; kid = 0; sd = rdead[i]; sa = rage[i]
+        if (rnest[i]) {
+          # ...unless the parent was filtered out after all (its record aged
+          # past the cutoff, or the same conversation is live elsewhere): then
+          # there is no row to hang under and this is an ordinary one.
+          j = ridx[runder[i]]
+          if (j != "") { fam = runder[i]; kid = 1; sd = rdead[j]; sa = rage[j] }
+        }
+        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\n",
                (grp ? (gmin[rg[i]] < prio["dead"] ? 0 : 1) : rdead[i]),
                (grp ? rg[i] : ""),
-               rdead[i], rage[i], rp[i], rbody[i], rs[i], rsid[i], rg[i]
+               sd, sa, rp[i], rbody[i], rs[i], rsid[i], rg[i],
+               fam, kid, rdead[i], rage[i]
+      }
     }' |
-    sort -t"$TAB" -k1,1n -k2,2 -k3,3n -k4,4n -k5,5n |
+    sort -t"$TAB" -k1,1n -k2,2 -k3,3n -k4,4n -k5,5n \
+         -k11,11 -k12,12n -k13,13n -k14,14n |
     awk -F"$TAB" -v grp="$grp" -v cur="$curseat" -v dks="$dockedset" -v RSC="$RS" '
       # The marker is drawn where the tee draws its dash, so a docked row is no
       # wider than any other and nothing shifts when a chat is docked. In flat
@@ -656,7 +774,20 @@ list() {
         ndk = split(dks, dka, RSC)
         for (di = 1; di <= ndk; di++) if (dka[di] != "") isdock[dka[di]] = 1
       }
-      { g[NR]=$2; kind[NR]=$3; pane[NR]=$6; body[NR]=$7; state[NR]=$8; sid[NR]=$9; dir[NR]=$10 }
+      # IS THIS THE LAST ROW AT ITS OWN LEVEL. Everything is buffered already, so
+      # this is a real lookahead rather than a guess about the next line: scan
+      # forward within the group to the first row at this depth or shallower. A
+      # shallower one, or the end of the group, means this branch of the tree
+      # ends here; one at the same depth means a sibling follows.
+      function lastat(i,   j) {
+        for (j = i + 1; j <= NR; j++) {
+          if (g[j] != g[i] || kind[j] == 0) return 1
+          if (depth[j] <= depth[i]) return (depth[j] < depth[i]) ? 1 : 0
+        }
+        return 1
+      }
+      { g[NR]=$2; kind[NR]=$3; pane[NR]=$6; body[NR]=$7; state[NR]=$8; sid[NR]=$9
+        dir[NR]=$10; depth[NR]=$12+0 }
       END {
         for (i = 1; i <= NR; i++) {
           # A group header carries its most urgent member pane id too, and a
@@ -665,9 +796,18 @@ list() {
           else if (cur != "" && pane[i] == cur) mk = HOT "▶" R
           else if (pane[i] in isdock)           mk = DIM "▹" R
           else                                  mk = grp ? DIM "─" R : " "
-          if (!grp)              tee = mk " "
-          else if (kind[i] == 0) tee = ""
-          else tee = DIM "  " ((i == NR || g[i+1] != g[i]) ? "└" : "├") R mk " "
+          # A CHILD IS NEVER DOCKED — it has no pane to dock — so its marker
+          # column is always the dash the tree draws, whatever a stale seat says.
+          if (depth[i] > 0) mk = DIM "─" R
+          last = lastat(i)
+          if (depth[i] == 0) parlast = last
+          if (!grp)               tee = mk " "
+          else if (kind[i] == 0)  tee = ""
+          else if (depth[i] == 0) tee = DIM "  " (last ? "└" : "├") R mk " "
+          # The second level carries the tee of the first level down beside it,
+          # unless the parent was the last row of its group and there is nothing
+          # left to carry.
+          else tee = DIM (parlast ? "     " : "  │  ") (last ? "└" : "├") R mk " "
           print pane[i] "\t" tee body[i] "\t" state[i] "\t" sid[i] "\t" dir[i]
         }
       }'
