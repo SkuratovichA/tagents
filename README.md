@@ -473,6 +473,7 @@ warnings.
 | `○` | new | the session just opened and has not been given anything yet |
 | `✗` | closed | no Claude process in that pane — `enter` resumes it, `ctrl-x` forgets it |
 | `●`… | headless | a session with no pane at all: same states, nothing to dock into |
+| `●`… | child | a headless session an agent started itself, drawn under that agent |
 
 Claude Code also pings a notification after about a minute of silence, which
 says nothing beyond "your move". That is folded into IDLE rather than shown as
@@ -500,8 +501,36 @@ TA_LABEL=ticket-agent TA_LOG=/tmp/ticket-agent.log \
 
 `TA_LABEL` is the name the row shows (a headless session has no terminal title
 to borrow one from) and `TA_LOG` is what `ctrl-v` follows. Neither is required:
-without them the row is named after its directory and says it has no log. A name
-can still be given from outside with `tagents --label <session id> NAME`.
+without them the row is named after the title the session gave itself, or after
+its directory. A name can still be given from outside with `tagents --label
+<session id> NAME`.
+
+**Child sessions.** An agent that runs `claude -p` from its own Bash tool starts
+a separate conversation with a session id of its own — and one that inherits
+`$TMUX_PANE` from the agent that spawned it, which is how it used to overwrite
+that agent's row and then delete it. Such a session is listed **under** the
+agent that started it, one level deeper in the tree and in that agent's group
+rather than in whatever scratch worktree it runs in, with `child` where the
+location column names a pane:
+
+```
+▾ tagents  ~/git/tagents                      ●2
+  └─ ● working   2:14  dashboard      …   1.0     Edit list.sh
+     └─ ● working   0:41  the nightly sweep   …   child   ▸ Bash ls -la
+```
+
+The `⑂` count on the parent counts it exactly as it counts a subagent, and a
+blocked child shows up in the group badges like any other row. It is named by
+`$TA_LABEL` where it has one of its own — an inherited one names the parent, so
+the hook drops it — and otherwise by the title the session gave itself, read out
+of its transcript. There is usually no `$TA_LOG` for one, so `ctrl-v` and the
+sidebar preview show the last turns of that transcript instead of a log tail,
+and the pane verbs refuse with a notice of their own. It is never offered in the
+closed-session picker: resuming somebody else's conversation would start a
+second one on the same transcript with nobody to type at it. The timeline still
+draws the hours it worked, marked with a `↳`. A child whose parent is no longer
+on the list falls back to a row of its own at the top level, and a grandchild
+joins the same block rather than opening a third level of indentation.
 
 ## The order, and the clock the rows are sorted on
 
