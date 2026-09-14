@@ -52,7 +52,26 @@ test('plain --output-format json (one object, no type) is a result too', () => {
   const r = feed(['{"is_error":false,"result":"legacy","session_id":"s"}\n'], (e) => events.push(e));
   assert.equal(r.payload?.result, 'legacy');
   assert.equal(r.sawResult, true);
-  assert.deepEqual(events, [{ kind: 'result', isError: false }]);
+  assert.deepEqual(events, [
+    { kind: 'result', isError: false, payload: { is_error: false, result: 'legacy', session_id: 's' } },
+  ]);
+});
+
+test('the result event carries the payload with the fields core does not model', () => {
+  const events: StreamEvent[] = [];
+  feed(
+    [
+      '{"type":"result","is_error":false,"result":"ok","session_id":"s","num_turns":3,' +
+        '"modelUsage":{"claude-opus-5":{"inputTokens":10,"outputTokens":2}}}\n',
+    ],
+    (e) => events.push(e)
+  );
+  const [e] = events;
+  assert.ok(e && e.kind === 'result');
+  if (!e || e.kind !== 'result') return;
+  // A consumer's ledger wants modelUsage and num_turns; core keeps them instead of stripping them.
+  assert.equal(e.payload.num_turns, 3);
+  assert.deepEqual(e.payload['modelUsage'], { 'claude-opus-5': { inputTokens: 10, outputTokens: 2 } });
 });
 
 test('a listener that throws cannot fail the turn it is watching', () => {

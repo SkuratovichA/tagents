@@ -10,7 +10,7 @@ import { z } from 'zod';
 import type { StreamEvent } from './driver.ts';
 
 /** The `result` event, which is exactly what `--output-format json` prints. */
-export const PayloadSchema = z.object({
+export const PayloadSchema = z.looseObject({
   is_error: z.boolean().optional(),
   result: z.string().optional(),
   session_id: z.string().optional(),
@@ -92,7 +92,7 @@ export class StreamReader {
     if (res.success) {
       this.payload = res.data;
       this.sawResult = true;
-      this.emit({ kind: 'result', isError: res.data.is_error === true });
+      this.emit({ kind: 'result', isError: res.data.is_error === true, payload: res.data });
       return;
     }
     const asst = AssistantEventSchema.safeParse(json);
@@ -117,7 +117,7 @@ export class StreamReader {
     if (plain.success && !env.data?.type && 'is_error' in (json as object)) {
       this.payload = plain.data;
       this.sawResult = true;
-      this.emit({ kind: 'result', isError: plain.data.is_error === true });
+      this.emit({ kind: 'result', isError: plain.data.is_error === true, payload: plain.data });
       return;
     }
     if (env.success && env.data.type) this.emit({ kind: 'other', type: env.data.type });

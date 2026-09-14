@@ -6,6 +6,7 @@
 // Nothing in this file runs. It is the vocabulary the CLI, the plugins and the
 // orchestrator share.
 import type { TurnOutcome } from './turn-outcome.ts';
+import type { ClaudePayload } from './stream.ts';
 
 /**
  * The coarse state the tmux hook publishes (hooks/tmux-agent-state.sh):
@@ -65,7 +66,12 @@ export interface SessionRef {
 export type StreamEvent =
   | { kind: 'tool_use'; name: string; input: Record<string, unknown> }
   | { kind: 'text'; text: string }
-  | { kind: 'result'; isError: boolean }
+  | {
+      kind: 'result';
+      isError: boolean;
+      /** The result payload as printed by the CLI, unknown fields kept (modelUsage, num_turns, …). */
+      payload: ClaudePayload;
+    }
   | { kind: 'other'; type: string };
 
 export interface PromptOptions {
