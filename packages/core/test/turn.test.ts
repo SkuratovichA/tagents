@@ -9,6 +9,16 @@
 //
 // The dedup/retry cases of the original stay in the orchestrator: claims and
 // retry policy are its business, not this package's.
+//
+// Time is the one thing here that is not real. A turn used to be given a few
+// hundred real milliseconds for a real node process to start, print and be read
+// before the killer fired, and on a loaded box it lost that race (LEARNING.md,
+// 14.09.2026) — a budget nobody can size, because it is a bet on the machine.
+// So every turn runs on the fake clock from helpers.ts: a case that needs a
+// timer to fire waits for the child's own event first (`await t.seen('text')`)
+// and only then advances the clock, and a case that needs no timer to fire
+// never moves it at all. The one exception is the silent timeout, which has no
+// output to race and keeps the real clock on purpose.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,6 +27,8 @@ import { ClaudeHeadlessDriver } from '../src/claude-driver.ts';
 import type { PromptOptions, SessionSpec, StreamEvent } from '../src/driver.ts';
 import { fakeClaude, tmpDir, type FakeScript } from '../src/testkit.ts';
 import { evidence, formatAttemptError, succeeded, TurnOutcomeSchema, type TurnOutcome } from '../src/turn-outcome.ts';
+import type { TurnClock } from '../src/turn-scope.ts';
+import { eventWaiter, FakeClock } from './helpers.ts';
 
 let tmp: string;
 before(() => {
@@ -25,19 +37,52 @@ before(() => {
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 const lines: string[] = [];
-const driver = (): ClaudeHeadlessDriver =>
-  new ClaudeHeadlessDriver({ stateDir: path.join(tmp, 'state'), log: (...p) => lines.push(p.join(' ')) });
+const driver = (clock?: TurnClock): ClaudeHeadlessDriver =>
+  new ClaudeHeadlessDriver({
+    stateDir: path.join(tmp, 'state'),
+    log: (...p) => lines.push(p.join(' ')),
+    ...(clock ? { clock } : {}),
+  });
 
-/** One turn against a scripted fake. Short timeouts: these are unit tests. */
-async function run(script: FakeScript, o: Partial<PromptOptions> = {}): Promise<TurnOutcome> {
+/** The same turn with its timers on a clock the case moves itself. */
+interface ClockTurn {
+  readonly clock: FakeClock;
+  readonly outcome: Promise<TurnOutcome>;
+  /** Resolves on the first event of that kind. */
+  readonly seen: (kind: StreamEvent['kind']) => Promise<void>;
+}
+
+/**
+ * A turn whose TIME is fake and whose everything else is real: the process, the
+ * pipe and the kill are the production ones, only `after()` is the test's. The
+ * open() is awaited on purpose — a turn's timers exist only once prompt() has
+ * been called, and a case that advanced the clock before that would advance
+ * nothing and then wait forever for a killer scheduled after the fact.
+ */
+async function onClock(script: FakeScript, o: Partial<PromptOptions> = {}): Promise<ClockTurn> {
   const fake = fakeClaude(script, fs.mkdtempSync(path.join(tmp, 'fake-')));
-  const spec: SessionSpec = { kind: 'claude', cwd: tmp, skipPermissions: false, bin: fake.bin };
-  const d = driver();
-  const ref = await d.open(spec);
-  const outcome = await d.prompt(ref, 'do the thing', { timeoutMs: 1500, warnBeforeMs: 0, exitGraceMs: 300, ...o });
-  // Every outcome must satisfy the published schema, not just the type.
-  TurnOutcomeSchema.parse(outcome);
-  return outcome;
+  const clock = new FakeClock();
+  const events = eventWaiter();
+  const d = driver(clock);
+  const ref = await d.open({ kind: 'claude', cwd: tmp, skipPermissions: false, bin: fake.bin });
+  const outcome = d
+    .prompt(ref, 'do the thing', { timeoutMs: 1500, warnBeforeMs: 0, exitGraceMs: 300, onEvent: events.onEvent, ...o })
+    .then((out) => {
+      // Every outcome must satisfy the published schema, not just the type.
+      TurnOutcomeSchema.parse(out);
+      return out;
+    });
+  return { clock, outcome, seen: events.seen };
+}
+
+/**
+ * One turn against a scripted fake that runs to its own end: the clock is the
+ * fake one and nobody moves it, so no driver timer can fire while a real node
+ * process is starting up. A case that NEEDS a timer to fire drives the clock
+ * itself through onClock().
+ */
+async function run(script: FakeScript, o: Partial<PromptOptions> = {}): Promise<TurnOutcome> {
+  return (await onClock(script, o)).outcome;
 }
 
 const RESULT = { text: 'Отправил в «dev»: сводку (msg 470)' };
@@ -57,12 +102,16 @@ test('a clean turn is ok', async () => {
 
 test('a turn killed after printing its result is a success, not a failure', async () => {
   lines.length = 0;
-  const t0 = Date.now();
-  const o = await run({ tools: ['Bash'], result: RESULT, hangAfterResult: true });
+  const t = await onClock({ tools: ['Bash'], result: RESULT, hangAfterResult: true });
+  await t.seen('result');
+  // What 'did not wait for the full timeout' actually means: the killer is gone
+  // and the only timer left is the exit grace, which is what fires below.
+  assert.equal(t.clock.pending, 1, 'the killer went with the result');
+  t.clock.advance(300);
+  const o = await t.outcome;
   assert.equal(o.kind, 'killed-after-result', 'result received => the turn succeeded');
   assert.equal(succeeded(o), true);
   assert.equal(formatAttemptError(o), null, 'a finished turn has no error line');
-  assert.ok(Date.now() - t0 < 1500, 'did not wait for the full timeout');
   assert.match(lines.join('\n'), /printed its result but did not exit/);
   if (o.kind !== 'killed-after-result') return;
   assert.equal(o.toolUses, 1);
@@ -70,7 +119,10 @@ test('a turn killed after printing its result is a success, not a failure', asyn
 });
 
 test('a turn that timed out after tool calls is a timeout, with the tools counted', async () => {
-  const o = await run({ tools: ['Bash'], result: null, hang: true }, { timeoutMs: 400 });
+  const t = await onClock({ tools: ['Bash'], result: null, hang: true }, { timeoutMs: 400 });
+  await t.seen('tool_use');
+  t.clock.advance(400);
+  const o = await t.outcome;
   assert.equal(o.kind, 'timeout');
   if (o.kind !== 'timeout') return;
   assert.equal(o.toolUses, 1);
@@ -79,7 +131,15 @@ test('a turn that timed out after tool calls is a timeout, with the tools counte
 });
 
 test('a silent timeout produced nothing at all', async () => {
-  const o = await run({ silent: true }, { timeoutMs: 300 });
+  // The one turn left on the REAL clock. A fake that prints nothing races
+  // nothing, so the 300 ms are honest here — and something has to prove that
+  // the driver's default clock kills a turn for real, not just a test's.
+  const fake = fakeClaude({ silent: true }, fs.mkdtempSync(path.join(tmp, 'fake-')));
+  const spec: SessionSpec = { kind: 'claude', cwd: tmp, skipPermissions: false, bin: fake.bin };
+  const d = driver();
+  const ref = await d.open(spec);
+  const o = await d.prompt(ref, 'do the thing', { timeoutMs: 300, warnBeforeMs: 0, exitGraceMs: 300 });
+  TurnOutcomeSchema.parse(o);
   assert.equal(o.kind, 'timeout');
   if (o.kind !== 'timeout') return;
   assert.equal(o.toolUses, 0);
@@ -120,24 +180,36 @@ test('a missing binary is a spawn failure, not a crash', async () => {
 
 test('the caller is warned before the kill, and not at all for a turn that finishes', async () => {
   const warns: Array<{ elapsedMs: number; leftMs: number }> = [];
-  const o = await run({ tools: ['Bash'], result: null, hang: true }, {
+  const t = await onClock({ tools: ['Bash'], result: null, hang: true }, {
     timeoutMs: 700,
     warnBeforeMs: 300,
     onWarn: (w) => warns.push(w),
   });
+  await t.seen('tool_use');
+  const warnAt = 700 - 300;
+  t.clock.advance(warnAt - 1);
+  assert.deepEqual(warns, [], 'not a millisecond early');
+  t.clock.advance(1);
+  assert.deepEqual(warns, [{ elapsedMs: warnAt, leftMs: 300 }]);
+  t.clock.advance(300);
+  const o = await t.outcome;
   assert.equal(o.kind, 'timeout');
-  assert.equal(warns.length, 1);
-  const w = warns[0];
-  assert.ok(w && w.elapsedMs >= 350 && w.elapsedMs < 700, `warned at ${w?.elapsedMs}ms`);
-  assert.equal(w?.leftMs, 300);
 
+  // A turn that finishes is not warned about, and leaves behind no timer that
+  // could warn about it later either.
   const quiet: Array<{ elapsedMs: number; leftMs: number }> = [];
-  await run({ result: RESULT }, { timeoutMs: 5000, warnBeforeMs: 4000, onWarn: (x) => quiet.push(x) });
-  assert.equal(quiet.length, 0);
+  const done = await onClock({ result: RESULT }, { timeoutMs: 5000, warnBeforeMs: 4000, onWarn: (x) => quiet.push(x) });
+  assert.equal((await done.outcome).kind, 'ok');
+  done.clock.advance(5000);
+  assert.deepEqual(quiet, []);
+  assert.equal(done.clock.pending, 0, 'the turn took its timers with it');
 });
 
 test('a turn that timed out after saying something records that it spoke', async () => {
-  const o = await run({ text: 'starting on it', result: null, hang: true }, { timeoutMs: 400 });
+  const t = await onClock({ text: 'starting on it', result: null, hang: true }, { timeoutMs: 400 });
+  await t.seen('text');
+  t.clock.advance(400);
+  const o = await t.outcome;
   assert.equal(o.kind, 'timeout');
   if (o.kind !== 'timeout') return;
   assert.equal(o.sawText, true, 'the assistant text arrived before the killer did');
@@ -167,34 +239,39 @@ test('a crash before anything happened carries no evidence at all', async () => 
 test('a per-turn log takes the diagnostics, and the driver-wide one stays quiet', async () => {
   lines.length = 0;
   const mine: string[] = [];
-  const o = await run({ tools: ['Bash'], result: RESULT, hangAfterResult: true }, { log: (l) => mine.push(l) });
+  const t = await onClock({ tools: ['Bash'], result: RESULT, hangAfterResult: true }, { log: (l) => mine.push(l) });
+  await t.seen('result');
+  t.clock.advance(300); // the exit grace
+  const o = await t.outcome;
   assert.equal(o.kind, 'killed-after-result');
   assert.match(mine.join('\n'), /printed its result but did not exit/);
   assert.deepEqual(lines, [], 'the turn had its own sink: nothing reached the driver-wide one');
 
   // And a turn with no sink of its own still reaches the driver-wide log.
   lines.length = 0;
-  await run({ result: null, hang: true }, { timeoutMs: 300 });
+  const bare = await onClock({ result: null, hang: true }, { timeoutMs: 300 });
+  bare.clock.advance(300);
+  await bare.outcome;
   assert.match(lines.join('\n'), /timed out after/);
 });
 
 test('one prompt spawns the child exactly once', async () => {
   const counts = path.join(tmp, 'spawns.txt');
   fs.writeFileSync(counts, '');
-  const o = await run({ tools: ['Bash'], result: RESULT, hangAfterResult: true, countFile: counts });
+  const t = await onClock({ tools: ['Bash'], result: RESULT, hangAfterResult: true, countFile: counts });
+  await t.seen('result');
+  t.clock.advance(300); // the exit grace
+  const o = await t.outcome;
   assert.equal(o.kind, 'killed-after-result');
   assert.equal(fs.readFileSync(counts, 'utf8'), 'run\n', 'a driver never re-runs a turn on its own');
 });
 
 test('events reach the caller while the turn runs', async () => {
   const seen: StreamEvent[] = [];
-  const fake = fakeClaude(
+  const o = await run(
     { tools: [{ name: 'Bash', input: { command: 'ls' } }], text: 'working on it', result: RESULT },
-    fs.mkdtempSync(path.join(tmp, 'fake-'))
+    { onEvent: (e) => seen.push(e) }
   );
-  const d = driver();
-  const ref = await d.open({ kind: 'claude', cwd: tmp, skipPermissions: false, bin: fake.bin });
-  const o = await d.prompt(ref, 'go', { timeoutMs: 2000, onEvent: (e) => seen.push(e) });
   assert.equal(o.kind, 'ok');
   assert.deepEqual(
     seen.map((e) => e.kind),
