@@ -24,6 +24,7 @@ import { readAgentState, labelsBySession, stateDir } from './agent-state.ts';
 import { StreamReader } from './stream.ts';
 import { clipDetail, type TurnOutcome } from './turn-outcome.ts';
 import { lastAssistant } from './transcripts.ts';
+import { realClock, TurnScope, type TurnClock } from './turn-scope.ts';
 
 /** 50 minutes, the orchestrator's DEFAULT_CLAUDE_TIMEOUT_MS. */
 export const DEFAULT_TIMEOUT_MS = 50 * 60 * 1000;
@@ -120,6 +121,34 @@ export interface ClaudeDriverOptions {
   readonly stateDir?: string;
   /** Called with one line of diagnostics per interesting moment. */
   readonly log?: (...parts: string[]) => void;
+  /** Where turns get their time: the real clock by default, a fake one in a lifecycle test. */
+  readonly clock?: TurnClock;
+}
+
+/** What the child left behind when it went. */
+interface Exit {
+  readonly code: number | null;
+  readonly signal: string | null;
+}
+
+/**
+ * Where one turn stands. `running` has no result yet; `resulted` has one and
+ * waits for the process to leave; `exited` has lost the process and waits for
+ * the pipes. The turn's disposed scope is the terminal state after all three.
+ */
+type Phase =
+  | { readonly tag: 'running' }
+  | { readonly tag: 'resulted'; readonly resultAt: number }
+  | { readonly tag: 'exited'; readonly resultAt: number | null; readonly exit: Exit };
+
+function resultAtOf(phase: Phase): number | null {
+  switch (phase.tag) {
+    case 'running':
+      return null;
+    case 'resulted':
+    case 'exited':
+      return phase.resultAt;
+  }
 }
 
 export class ClaudeHeadlessDriver implements SessionDriver {
@@ -131,10 +160,12 @@ export class ClaudeHeadlessDriver implements SessionDriver {
   private readonly running = new Map<string, ChildProcess>();
   /** ref.id → the claude session id learned from the last turn. */
   private readonly learned = new Map<string, string>();
+  private readonly clock: TurnClock;
 
   constructor(o: ClaudeDriverOptions = {}) {
     this.dir = o.stateDir ?? stateDir();
     this.log = o.log ?? (() => undefined);
+    this.clock = o.clock ?? realClock;
   }
 
   /** No process is started. `resume` is the claude session id to continue. */
@@ -158,7 +189,8 @@ export class ClaudeHeadlessDriver implements SessionDriver {
     const turnLog = o.log ?? ((line: string): void => this.log(line));
 
     return new Promise<TurnOutcome>((resolve) => {
-      const startedAt = Date.now();
+      const clock = this.clock;
+      const startedAt = clock.now();
       const child = spawn(spec.bin ?? 'claude', buildArgs(spec, text, resume), {
         cwd: spec.cwd,
         env: childEnv(spec),
@@ -166,30 +198,15 @@ export class ClaudeHeadlessDriver implements SessionDriver {
       });
       this.running.set(ref.id, child);
 
-      const reader = new StreamReader((e: StreamEvent) => {
-        if (e.kind === 'result' && !resultAt) {
-          // The work is done; from here on only the shutdown can go wrong.
-          resultAt = Date.now();
-          clearTimeout(killer);
-          later(() => {
-            if (!exit) kill(`claude printed its result but did not exit within ${exitGraceMs} ms — killing`);
-          }, exitGraceMs);
-        }
-        o.onEvent?.(e);
-      });
-
-      let err = '';
+      // Every timer of this turn and its abort listener. finish() disposes it,
+      // and a disposed scope schedules nothing: that is the whole cleanup.
+      const scope = new TurnScope(clock);
+      let phase: Phase = { tag: 'running' };
+      // The killer fired. Not a phase of its own: a result can still come out
+      // of the pipe after the SIGKILL, and the exit follows either way.
       let timedOut = false;
-      let resultAt: number | null = null;
-      let exit: { code: number | null; signal: string | null } | null = null;
-      let spawnError: string | null = null;
-      let done = false;
-      const timers: NodeJS.Timeout[] = [];
-      const later = (fn: () => void, ms: number): NodeJS.Timeout => {
-        const t = setTimeout(fn, ms);
-        timers.push(t);
-        return t;
-      };
+      let err = '';
+
       const kill = (why: string): void => {
         turnLog(why);
         try {
@@ -199,44 +216,69 @@ export class ClaudeHeadlessDriver implements SessionDriver {
         }
       };
 
-      const killer = later(() => {
+      const cancelKiller = scope.after(timeoutMs, () => {
         timedOut = true;
         kill(`claude timed out after ${Math.round(timeoutMs / 60000)} min — killing`);
-      }, timeoutMs);
+      });
 
       if (o.onWarn && timeoutMs > warnBeforeMs)
-        later(() => {
-          if (resultAt || exit) return;
-          turnLog(`claude running ${Math.round((Date.now() - startedAt) / 60000)} min — warning the caller`);
+        scope.after(timeoutMs - warnBeforeMs, () => {
+          if (phase.tag !== 'running') return;
+          turnLog(`claude running ${Math.round((clock.now() - startedAt) / 60000)} min — warning the caller`);
           try {
-            o.onWarn?.({ elapsedMs: Date.now() - startedAt, leftMs: warnBeforeMs });
+            o.onWarn?.({ elapsedMs: clock.now() - startedAt, leftMs: warnBeforeMs });
           } catch (e) {
             turnLog(`timeout warning failed: ${(e as Error).message}`);
           }
-        }, timeoutMs - warnBeforeMs);
+        });
 
-      const onAbort = (): void => kill('aborted by the caller — killing');
-      o.signal?.addEventListener('abort', onAbort, { once: true });
+      scope.onAbort(o.signal, () => kill('aborted by the caller — killing'));
 
+      const onResult = (): void => {
+        switch (phase.tag) {
+          case 'running':
+            // The work is done; from here on only the shutdown can go wrong.
+            phase = { tag: 'resulted', resultAt: clock.now() };
+            cancelKiller();
+            scope.after(exitGraceMs, () => {
+              if (phase.tag === 'resulted') kill(`claude printed its result but did not exit within ${exitGraceMs} ms — killing`);
+            });
+            return;
+          case 'exited':
+            // The process is already gone, so there is no exit left to wait for.
+            if (phase.resultAt === null) phase = { ...phase, resultAt: clock.now() };
+            cancelKiller();
+            return;
+          case 'resulted':
+            return;
+          default:
+            phase satisfies never;
+        }
+      };
+
+      const reader = new StreamReader((e: StreamEvent) => {
+        if (e.kind === 'result') onResult();
+        o.onEvent?.(e);
+      });
       child.stdout?.on('data', (d: Buffer) => reader.push(d.toString()));
       child.stderr?.on('data', (d: Buffer) => {
         err += d.toString();
       });
 
-      const finish = (): void => {
-        if (done) return;
-        done = true;
-        for (const t of timers) clearTimeout(t);
-        o.signal?.removeEventListener('abort', onAbort);
+      const finish = (spawnError: string | null = null): void => {
+        if (!scope.dispose()) return;
         this.running.delete(ref.id);
+        // May flush the result line itself, which moves the phase: read it after.
         reader.end();
 
         const p = reader.payload;
+        const resultAt = resultAtOf(phase);
+        const exit = phase.tag === 'exited' ? phase.exit : null;
         const code = exit?.code ?? null;
         const signal = exit?.signal ?? null;
         const sessionId = p?.session_id ?? reader.sessionId ?? null;
         if (sessionId) this.learned.set(ref.id, sessionId);
-        const durationMs = Date.now() - startedAt;
+        const durationMs = clock.now() - startedAt;
         const detail = clipDetail(String(p?.result ?? err ?? ''));
         // What the turn managed to do before it ended, for a caller deciding
         // whether re-running it is safe. `reader.text` only ever grows from an
@@ -267,16 +309,12 @@ export class ClaudeHeadlessDriver implements SessionDriver {
         resolve({ kind: 'exited', sessionId, toolUses: reader.toolUses, code, signal, detail, ...saw });
       };
 
-      child.on('error', (e) => {
-        spawnError = e.message;
-        exit = { code: null, signal: null };
-        finish();
-      });
+      child.on('error', (e) => finish(e.message));
       child.on('exit', (code, signal) => {
-        exit = { code, signal };
-        later(finish, pipeDrainMs); // in case `close` never comes
+        phase = { tag: 'exited', resultAt: resultAtOf(phase), exit: { code, signal } };
+        scope.after(pipeDrainMs, () => finish()); // in case `close` never comes
       });
-      child.on('close', finish);
+      child.on('close', () => finish());
     });
   }
 
