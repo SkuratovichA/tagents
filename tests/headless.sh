@@ -92,6 +92,10 @@ export TA_SESSION=tatest-dash
 export TA_CONFIG=/nonexistent/config.yaml   # no profiles: no dialog anywhere
 unset TMUX TMUX_PANE TA_MODE TA_FLAT TA_COLS TA_NEW_CMD TA_RESUME_CMD TA_HOME
 unset CLAUDE_CONFIG_DIR TA_LABEL TA_LOG
+# The suite itself runs inside a real Claude session, which exports both of
+# these: left in place, every hook run below would be classified against THAT
+# session's ancestry instead of the fixture's.
+unset CLAUDE_PID CLAUDE_CODE_SESSION_ID
 
 LOG="$ROOT/ticket-agent.log"
 printf 'the daemon said hello\nand then it said goodbye\n' >"$LOG"
@@ -188,7 +192,9 @@ ok "the end is in the history" end "$(awk -F"$TAB" 'NR==3 { print $2 }' "$H")"
 ok "and nothing was unset on a pane" 0 "$(grep -c '@agent' "$TMUXLOG")"
 
 # ---------------------------------------------------------------------------
-# the dashboard half: a tmux server of its own, and rows built by hand
+# A TMUX SERVER OF ITS OWN, and both halves need it: the child cases below run
+# against real panes on it, and the dashboard rows after them are read through
+# it. NOTHING HERE MAY TOUCH THE DEFAULT TMUX SOCKET.
 # ---------------------------------------------------------------------------
 tm() { tmux -L "$S" "$@"; }
 tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 'sleep 600' || exit 1
@@ -213,6 +219,399 @@ row_of() {  # <pane key> — the rendered row for it, colours stripped
     awk -F"$TAB" -v p="$1" \
         '$1 == p && index($2, "\342\226\276") == 0 { print $2; exit }' | plain
 }
+
+# ---------------------------------------------------------------------------
+# CHILD SESSIONS: a `claude -p` an agent starts from its own Bash tool.
+#
+# The whole of the classification is ancestry, so the fixtures have to be real
+# processes in a real ppid chain — a fake parent claude that starts a fake child
+# claude that runs the hook, and panes on the private server whose occupant IS
+# one of them. Both fakes are the same copy of /bin/sh named `claude`.
+#
+# The tmux shim of the hook half would fail every call, which is no good here:
+# these runs must reach the PRIVATE server and nothing else. So a second shim
+# FORWARDS instead — and refuses, loudly and in the log, any call made without a
+# $TMUX to point it at a socket, which is the only way one of them could land on
+# the default server.
+# ---------------------------------------------------------------------------
+SHIM2="$ROOT/shim2"; mkdir -p "$SHIM2"
+TMUXLOG2="$ROOT/tmux-fwd.log"; : >"$TMUXLOG2"
+PSLOG="$ROOT/ps.log"; : >"$PSLOG"
+REALTMUX=$(command -v tmux)
+cat >"$SHIM2/tmux" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >>"$TMUXLOG2"
+[ -n "\${TMUX:-}" ] || { printf 'DEFAULT-SOCKET %s\n' "\$*" >>"$TMUXLOG2"; exit 1; }
+exec "$REALTMUX" "\$@"
+EOF
+# Every ps the hook makes, one line each: the walk is the expensive half and the
+# hot path must not make one at all, which is not provable any other way.
+cat >"$SHIM2/ps" <<EOF
+#!/bin/sh
+printf '%s\n' "\$*" >>"$PSLOG"
+exec /bin/ps "\$@"
+EOF
+chmod +x "$SHIM2/tmux" "$SHIM2/ps"
+
+REPO2="$ROOT/repo2"; mkdir -p "$REPO2/.git"
+
+# A fake PARENT claude: it writes its own pid down, waits for the go-ahead — so
+# a record naming that pid can be in place before the child ever classifies
+# itself — then runs the CHILD claude as a real child of its own and waits.
+cat >"$ROOT/parent.sh" <<'EOS'
+#!/bin/sh
+printf '%s' "$$" >"$1"
+if [ "$2" != - ]; then
+  n=0
+  while [ ! -e "$2" ] && [ "$n" -lt 400 ]; do n=$((n + 1)); sleep 0.05; done
+fi
+fin=$3
+shift 3
+"$@"
+if [ "$fin" != - ]; then : >"$fin"; sleep 600; fi
+EOS
+# A fake CHILD claude. $CLAUDE_PID is its own pid, which is exactly what Claude
+# Code exports to a hook, and the hook runs as its child.
+cat >"$ROOT/kid.sh" <<'EOS'
+#!/bin/sh
+printf '%s' "$$" >"$1"
+CLAUDE_PID=$$
+export CLAUDE_PID
+printf '%s' "$2" | sh "$3"
+EOS
+# A fake claude that IS a pane's own process and runs the hook itself: the
+# ordinary case, the one that must never be read as somebody's child. It stays
+# asleep afterwards so the pane keeps its occupant.
+cat >"$ROOT/solo.sh" <<'EOS'
+#!/bin/sh
+printf '%s' "$$" >"$1"
+if [ "$2" != - ]; then
+  n=0
+  while [ ! -e "$2" ] && [ "$n" -lt 400 ]; do n=$((n + 1)); sleep 0.05; done
+fi
+CLAUDE_PID=$$
+export CLAUDE_PID
+printf '%s' "$4" | sh "$5"
+: >"$3"
+sleep 600
+EOS
+# TWO CLAUDES IN ONE PANE: one asleep (a sibling suspended with ctrl-z) and one
+# that execs over the pane's shell and so IS the pane's process. Reaching your
+# own pane is what makes you not a child, however many of you are in it.
+cat >"$ROOT/sibling.sh" <<'EOS'
+#!/bin/sh
+"$1" -c 'sleep 600' claude &
+exec "$1" "$2" "$3" "$4" "$5" "$6" "$7"
+EOS
+chmod +x "$ROOT/parent.sh" "$ROOT/kid.sh" "$ROOT/solo.sh" "$ROOT/sibling.sh"
+
+PPIDF="$ROOT/parent.pid"; KPIDF="$ROOT/kid.pid"
+GO="$ROOT/go"; FIN="$ROOT/fin"
+PAYLOAD=""
+FAMPID=""
+KIDPANES=""
+
+waitfor() {  # <file> — 20s at the outside; every producer here is milliseconds
+  local n=0
+  while [ ! -e "$1" ] && [ "$n" -lt 400 ]; do n=$((n + 1)); sleep 0.05; done
+}
+mkpay() {  # <event> <sid> [extra json] [cwd]
+  PAYLOAD="{\"hook_event_name\":\"$1\",\"session_id\":\"$2\",\"cwd\":\"${4:-$REPO2}\",\"transcript_path\":\"$ROOT/t.jsonl\",\"source\":\"startup\"${3:-}}"
+}
+sum() { cksum <"${1:-/dev/null}" 2>/dev/null; }
+prec() {  # <key> <sid> — a seven-field paned record, as the hook writes one
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$NOW0" working "$2" "$REPO" "" "Bash ls" "" >"$STATE/$1.tsv"
+}
+hrec10() {  # <key> <sid> <pid> <label> — a headless record, ten fields
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$NOW0" working "$2" "$REPO" "" "Bash ls" "" "$3" "" "$4" >"$STATE/$1.tsv"
+}
+crec12() {  # <key> <sid> <pid> <parent key> <parent sid>
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$NOW0" working "$2" "$REPO2" "" "Bash ls" "" "$3" "" "" "$4" "$5" \
+    >"$STATE/$1.tsv"
+}
+# The family, with the test stepping in between the two processes.
+family_start() {  # [env assignments...]
+  rm -f "$PPIDF" "$KPIDF" "$GO" "$FIN"
+  env PATH="$SHIM:$PATH" TMUX="$ROOT/no-such-socket,0,0" "$@" \
+      "$BIN/claude" "$ROOT/parent.sh" "$PPIDF" "$GO" - \
+      "$BIN/claude" "$ROOT/kid.sh" "$KPIDF" "$PAYLOAD" "$HOOK" &
+  FAMPID=$!
+  waitfor "$PPIDF"
+}
+family_go() { : >"$GO"; wait "$FAMPID" 2>/dev/null; }
+# The hook run straight from the test shell under a fake child claude that does
+# NOT descend from the pane whose $TMUX_PANE it was handed — the shape of the
+# bug this is all about.
+kidrun() {  # [env assignments...]
+  rm -f "$KPIDF"
+  env PATH="$SHIM2:$PATH" TMUX="$SOCK,0,0" "$@" \
+      "$BIN/claude" "$ROOT/kid.sh" "$KPIDF" "$PAYLOAD" "$HOOK"
+}
+# ...and the hook with an explicit $CLAUDE_PID, for the events that are about
+# the cache in the record rather than about the ancestry.
+hookas() {  # <claude pid> [env assignments...]
+  printf '%s' "$PAYLOAD" |
+    env PATH="$SHIM2:$PATH" TMUX="$SOCK,0,0" CLAUDE_PID="$1" "${@:2}" sh "$HOOK"
+}
+# A window on the private server whose command is given verbatim. The pane id
+# lands in $PANEID rather than on stdout: it is also remembered here so the
+# whole lot can be torn down afterwards, and a command substitution would throw
+# that half away with the subshell.
+newpane() {  # <command> — sets PANEID
+  PANEID=$(tm new-window -d -P -F '#{pane_id}' "$1" 2>/dev/null)
+  KIDPANES="$KIDPANES $PANEID"
+}
+
+NOW0=$(date +%s)
+rm -f "$STATE"/*.tsv "$STATE"/sub/* 2>/dev/null
+
+# ---------------------------------------------------------------------------
+t "H1. a child of a parent that has no pane either is filed under the parent"
+# ---------------------------------------------------------------------------
+# Rule 1(a): the only thing that names a pane-less parent is its own record, so
+# the parent is found by the pid in field 8 of it.
+mkpay SessionStart sid-c1
+family_start TA_LABEL=ticket-agent
+P1=$(cat "$PPIDF")
+hrec10 "s-sid-p1h" sid-p1h "$P1" tg-orchestrator
+BEFORE=$(sum "$STATE/s-sid-p1h.tsv")
+family_go
+C1="$STATE/s-sid-c1.tsv"
+ok "the child is keyed by its own session, never the parent's file" 1 \
+   "$([ -e "$C1" ] && echo 1 || echo 0)"
+ok "it has twelve fields" 12 "$(nf "$C1")"
+ok "the eleventh is the parent's record key" "s-sid-p1h" "$(field 11 "$C1")"
+ok "the twelfth is the parent's session" sid-p1h "$(field 12 "$C1")"
+ok "the eighth is still its own claude" "$(cat "$KPIDF")" "$(field 8 "$C1")"
+ok "the parent's record is untouched, to the byte" "$BEFORE" \
+   "$(sum "$STATE/s-sid-p1h.tsv")"
+ok "a label of its own survives" ticket-agent "$(field 10 "$C1")"
+
+# ---------------------------------------------------------------------------
+t "H8. an inherited label names the parent, not the child"
+# ---------------------------------------------------------------------------
+mkpay SessionStart sid-c8
+family_start TA_LABEL=tg-orchestrator
+P8=$(cat "$PPIDF")
+hrec10 "s-sid-p8" sid-p8 "$P8" tg-orchestrator
+family_go
+C8="$STATE/s-sid-c8.tsv"
+ok "the parent's own name is not copied onto the child" "" "$(field 10 "$C8")"
+ok "...nor into the history line" "" \
+   "$(awk -F"$TAB" '$3 == "sid-c8" { print $5; exit }' "$H")"
+
+mkpay SessionStart sid-c8b
+family_start TA_LABEL=other
+P8B=$(cat "$PPIDF")
+hrec10 "s-sid-p8b" sid-p8b "$P8B" tg-orchestrator
+family_go
+ok "a name that is the child's own is kept" other \
+   "$(field 10 "$STATE/s-sid-c8b.tsv")"
+
+# ---------------------------------------------------------------------------
+t "H1b. a child of an agent sitting in a pane is filed under that pane"
+# ---------------------------------------------------------------------------
+# Rule 1(b): the claude above us has no record of its own to be found by pid,
+# but our chain walks straight through it into its pane.
+rm -f "$STATE"/s-*.tsv
+mkpay SessionStart sid-c2
+rm -f "$PPIDF" "$KPIDF" "$GO" "$FIN"
+newpane "exec env PATH='$SHIM2:$PATH' '$BIN/claude' '$ROOT/parent.sh' '$PPIDF' '$GO' '$FIN' '$BIN/claude' '$ROOT/kid.sh' '$KPIDF' '$PAYLOAD' '$HOOK'"
+PN1=$PANEID
+ok "the parent has a pane of its own" 1 \
+   "$(printf '%s' "$PN1" | grep -c '^%[0-9]')"
+waitfor "$PPIDF"
+prec "${PN1#%}" sid-p2p
+BEFORE=$(sum "$STATE/${PN1#%}.tsv")
+: >"$GO"
+waitfor "$FIN"
+C2="$STATE/s-sid-c2.tsv"
+ok "the child is keyed by its own session here too" 12 "$(nf "$C2")"
+ok "the eleventh field is the parent's pane" "${PN1#%}" "$(field 11 "$C2")"
+ok "the twelfth is the session in that pane" sid-p2p "$(field 12 "$C2")"
+ok "the pane's own record is untouched" "$BEFORE" "$(sum "$STATE/${PN1#%}.tsv")"
+
+# ---------------------------------------------------------------------------
+t "H2. the bug itself: an inherited \$TMUX_PANE is not a pane of one's own"
+# ---------------------------------------------------------------------------
+rm -f "$STATE"/s-*.tsv
+: >"$TMUXLOG2"
+newpane "exec '$BIN/claude' -c 'sleep 600'"
+PN2=$PANEID; K2=${PN2#%}
+prec "$K2" sid-p3p
+printf '%s\tBash ls\n' "$NOW0" >"$STATE/sub/$K2.a1"
+BEFORE=$(sum "$STATE/$K2.tsv")
+mkpay SessionStart sid-c3
+kidrun TMUX_PANE="$PN2"
+C3="$STATE/s-sid-c3.tsv"
+ok "the child got a record of its own" 12 "$(nf "$C3")"
+ok "...pointing at the pane it inherited" "$K2" "$(field 11 "$C3")"
+ok "...and at the session that really owns it" sid-p3p "$(field 12 "$C3")"
+ok "the pane's record survived SessionStart" "$BEFORE" "$(sum "$STATE/$K2.tsv")"
+for ev in PreToolUse Stop SessionEnd; do
+  mkpay "$ev" sid-c3 ',"tool_name":"Bash"'
+  kidrun TMUX_PANE="$PN2"
+  ok "...and $ev" "$BEFORE" "$(sum "$STATE/$K2.tsv")"
+done
+ok "the parent's subagent record is still there" 1 \
+   "$([ -e "$STATE/sub/$K2.a1" ] && echo 1 || echo 0)"
+ok "the child's own record went with its SessionEnd" 0 \
+   "$([ -e "$C3" ] && echo 1 || echo 0)"
+ok "no state was mirrored onto the parent's pane" 0 \
+   "$(grep -c "set -p -t $PN2 @agent" "$TMUXLOG2")"
+ok "...and nothing was unset on it either" 0 "$(grep -c 'set -up' "$TMUXLOG2")"
+
+# ---------------------------------------------------------------------------
+t "H2b. an orphan is still a child of the pane it was handed"
+# ---------------------------------------------------------------------------
+# Rule 2 is about THIS session's chain, not about who is still alive in there.
+rm -f "$STATE"/s-*.tsv
+newpane "exec sleep 600"
+PN3=$PANEID; K3=${PN3#%}
+prec "$K3" sid-p4p
+BEFORE=$(sum "$STATE/$K3.tsv")
+mkpay SessionStart sid-c4
+kidrun TMUX_PANE="$PN3"
+ok "a pane with nobody left in it is still the parent" "$K3" \
+   "$(field 11 "$STATE/s-sid-c4.tsv")"
+ok "...and its record is untouched" "$BEFORE" "$(sum "$STATE/$K3.tsv")"
+
+# ---------------------------------------------------------------------------
+t "H3. a session that reaches its own pane is never a child"
+# ---------------------------------------------------------------------------
+rm -f "$STATE"/s-*.tsv
+mkpay SessionStart sid-c5 "" "$REPO"
+rm -f "$ROOT/solo.pid" "$ROOT/solo.go" "$ROOT/solo.fin"
+newpane "exec env PATH='$SHIM2:$PATH' '$BIN/claude' '$ROOT/solo.sh' '$ROOT/solo.pid' '$ROOT/solo.go' '$ROOT/solo.fin' '$PAYLOAD' '$HOOK'"
+PN4=$PANEID; K4=${PN4#%}
+waitfor "$ROOT/solo.pid"
+# The stale record goes in FIRST, or the hook would overwrite it and prove
+# nothing: what is being asserted is that this session takes the pane back.
+prec "$K4" sid-stale
+: >"$ROOT/solo.go"
+waitfor "$ROOT/solo.fin"
+ok "the record is keyed by the pane" 7 "$(nf "$STATE/$K4.tsv")"
+ok "...and names this session, not the stale one" sid-c5 "$(field 3 "$STATE/$K4.tsv")"
+ok "nothing was filed under the session id" 0 \
+   "$([ -e "$STATE/s-sid-c5.tsv" ] && echo 1 || echo 0)"
+
+# ---------------------------------------------------------------------------
+t "H3b. ...nor is one that shares its pane with a sibling"
+# ---------------------------------------------------------------------------
+mkpay SessionStart sid-c6 "" "$REPO"
+rm -f "$ROOT/sib.pid" "$ROOT/sib.fin"
+newpane "exec env PATH='$SHIM2:$PATH' '$BIN/claude' '$ROOT/sibling.sh' '$BIN/claude' '$ROOT/solo.sh' '$ROOT/sib.pid' - '$ROOT/sib.fin' '$PAYLOAD' '$HOOK'"
+PN5=$PANEID; K5=${PN5#%}
+waitfor "$ROOT/sib.fin"
+ok "two claudes in one pane, and the pane is still the key" 7 "$(nf "$STATE/$K5.tsv")"
+ok "...with this session in it" sid-c6 "$(field 3 "$STATE/$K5.tsv")"
+ok "and nothing under the session id" 0 \
+   "$([ -e "$STATE/s-sid-c6.tsv" ] && echo 1 || echo 0)"
+
+# ---------------------------------------------------------------------------
+t "H4. the answer is decided once and then read off the record"
+# ---------------------------------------------------------------------------
+rm -f "$STATE"/s-*.tsv
+mkpay SessionStart sid-c3
+kidrun TMUX_PANE="$PN2"
+OWNPID=$(field 8 "$C3")
+: >"$PSLOG"
+mkpay PreToolUse sid-c3 ',"tool_name":"Bash","tool_input":{"command":"ls"}'
+hookas "$OWNPID" TMUX_PANE="$PN2"
+ok "the process table is not read at all on the hot path" 0 \
+   "$(wc -l <"$PSLOG" | tr -d ' ')"
+ok "the parent's key is carried forward" "$K2" "$(field 11 "$C3")"
+ok "...and the parent's session with it" sid-p3p "$(field 12 "$C3")"
+ok "...and the pid that owns the record" "$OWNPID" "$(field 8 "$C3")"
+ok "while the state follows the event" working "$(field 2 "$C3")"
+BEFORE=$(sum "$STATE/$K2.tsv")
+: >"$PSLOG"
+hookas 999999 TMUX_PANE="$PN2"
+ok "a record owned by another pid is re-decided, not reused" 1 \
+   "$([ -s "$PSLOG" ] && echo 1 || echo 0)"
+ok "...and the pane's record is still not ours to write" "$BEFORE" \
+   "$(sum "$STATE/$K2.tsv")"
+
+# ---------------------------------------------------------------------------
+t "H2c. a record lost mid-flight is decided again, not written over the pane"
+# ---------------------------------------------------------------------------
+rm -f "$C3"
+BEFORE=$(sum "$STATE/$K2.tsv")
+mkpay PreToolUse sid-c3 ',"tool_name":"Bash"'
+hookas "$$" TMUX_PANE="$PN2"
+ok "the child is a child again" "$K2" "$(field 11 "$C3")"
+ok "and the pane's record is still untouched" "$BEFORE" "$(sum "$STATE/$K2.tsv")"
+mkpay SessionEnd sid-c3
+hookas "$$" TMUX_PANE="$PN2"
+ok "its SessionEnd takes its own record and no other" 0 \
+   "$([ -e "$C3" ] && echo 1 || echo 0)"
+ok "...leaving the pane's where it was" "$BEFORE" "$(sum "$STATE/$K2.tsv")"
+
+# ---------------------------------------------------------------------------
+t "H7. a stale child record cannot re-adopt the session"
+# ---------------------------------------------------------------------------
+sleep 30 & STALEPID=$!
+kill "$STALEPID" 2>/dev/null; wait "$STALEPID" 2>/dev/null
+crec12 "s-sid-c7" sid-c7 "$STALEPID" "$K2" sid-p3p
+mkpay SessionStart sid-c7 "" "$REPO"
+rm -f "$ROOT/h7.pid" "$ROOT/h7.fin"
+newpane "exec env PATH='$SHIM2:$PATH' '$BIN/claude' '$ROOT/solo.sh' '$ROOT/h7.pid' - '$ROOT/h7.fin' '$PAYLOAD' '$HOOK'"
+PN6=$PANEID; K6=${PN6#%}
+waitfor "$ROOT/h7.fin"
+ok "the child record is gone" 0 \
+   "$([ -e "$STATE/s-sid-c7.tsv" ] && echo 1 || echo 0)"
+ok "...and the session is in its pane" sid-c7 "$(field 3 "$STATE/$K6.tsv")"
+
+# ---------------------------------------------------------------------------
+t "H9. a parent's SessionEnd takes its finished children with it"
+# ---------------------------------------------------------------------------
+rm -f "$STATE"/s-*.tsv
+sleep 30 & DEADKID=$!
+kill "$DEADKID" 2>/dev/null; wait "$DEADKID" 2>/dev/null
+crec12 "s-sid-d" sid-d "$DEADKID" 9102 sid-par
+crec12 "s-sid-l" sid-l "$$" 9102 sid-par
+printf '%s\tBash ls\n' "$NOW0" >"$STATE/sub/s-sid-d.a1"
+prec 9102 sid-par
+mkpay SessionEnd sid-par
+hookas "$$" TMUX_PANE=%9102
+ok "the finished child's record went with the parent" 0 \
+   "$([ -e "$STATE/s-sid-d.tsv" ] && echo 1 || echo 0)"
+ok "...and its subagent files" 0 \
+   "$([ -e "$STATE/sub/s-sid-d.a1" ] && echo 1 || echo 0)"
+ok "a child still running is kept" 1 \
+   "$([ -e "$STATE/s-sid-l.tsv" ] && echo 1 || echo 0)"
+ok "and the parent's own record is gone" 0 \
+   "$([ -e "$STATE/9102.tsv" ] && echo 1 || echo 0)"
+
+# ---------------------------------------------------------------------------
+t "H6. the history says which lines belong to a child"
+# ---------------------------------------------------------------------------
+ok "a child's pane column is empty" "" \
+   "$(awk -F"$TAB" '$3 == "sid-c3" && $2 == "start" { print $4; exit }' "$H")"
+ok "...and its seventh column is the parent's session" sid-p3p \
+   "$(awk -F"$TAB" '$3 == "sid-c3" && $2 == "start" { print $7; exit }' "$H")"
+ok "an end line carries it too" sid-p3p \
+   "$(awk -F"$TAB" '$3 == "sid-c3" && $2 == "end" { print $7; exit }' "$H")"
+ok "a session with a pane still writes six fields and no more" 6 \
+   "$(awk -F"$TAB" '$3 == "sid-c5" { print NF; exit }' "$H")"
+ok "...with the pane where it always was" "$PN4" \
+   "$(awk -F"$TAB" '$3 == "sid-c5" { print $4; exit }' "$H")"
+
+ok "nothing here ever reached for the default tmux socket" 0 \
+   "$(grep -c 'DEFAULT-SOCKET' "$TMUXLOG2")"
+
+# The child half is done with: its panes would otherwise read as live agents in
+# every list below, and its records as rows.
+for p in $KIDPANES; do tm kill-window -t "$p" >/dev/null 2>&1; done
+rm -f "$STATE"/*.tsv "$STATE"/sub/* 2>/dev/null
+sleep 0.3
+
+# ---------------------------------------------------------------------------
+# the dashboard half: rows built by hand, read through the server above
+# ---------------------------------------------------------------------------
 
 # A live headless session is one whose recorded pid is alive: this very shell
 # will do, and a pid that has been waited on is the surest dead one there is.

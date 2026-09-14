@@ -103,6 +103,10 @@ export TA_SESSION=tatest-dash
 export TA_CONFIG="$CFG"
 unset TMUX TMUX_PANE TA_MODE TA_FLAT TA_COLS TA_NEW_CMD TA_RESUME_CMD TA_HOME
 unset CLAUDE_CONFIG_DIR
+# The suite runs inside a real Claude session, which exports this; the hook
+# reads it as "the claude I am running inside" and would classify these runs
+# against that session's ancestry.
+unset CLAUDE_PID
 
 tm() { tmux -L "$S" "$@"; }
 
