@@ -49,7 +49,7 @@ timeline() {
     [ -e "$LABELS" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "NAME", $1, $2 }' "$LABELS"
     for f in "$STATE_DIR/history.tsv.1" "$STATE_DIR/history.tsv"; do
       [ -e "$f" ] || continue
-      awk -F"$TAB" -v OFS="$TAB" '{ print "H", $1, $2, $3, $4, $5, $6 }' "$f"
+      awk -F"$TAB" -v OFS="$TAB" '{ print "H", $1, $2, $3, $4, $5, $6, $7 }' "$f"
     done
   } | awk -F"$TAB" -v now="$now" -v hours="$hours" -v offsec="$offsec" \
           -v barw="$barw" -v home="$HOME" -v namew="$namew" -v cwdw="$cwdw" '
@@ -103,6 +103,8 @@ timeline() {
         if ($5 != "") pane[s] = $5
         if ($6 != "") hlab[s] = $6
         if ($7 != "") cwd[s]  = $7
+        # Only a child writes an eighth field, the session that started it.
+        if ($8 != "") kid[s] = 1
         next
       }
       END {
@@ -129,6 +131,10 @@ timeline() {
                : (((s in pane) && (pane[s] in lab)) ? lab[pane[s]] \
                   : ((s in hlab) ? hlab[s] : base(cwd[s])))
           if (nm == "") nm = substr(s, 1, 8)
+          # A child is the work of the agent above it, not a session somebody
+          # sat down at: marked rather than hidden, since the hours it spent are
+          # as real as anybody elses.
+          if (s in kid) nm = "↳ " nm
 
           b0 = int(((first[s] > cutoff ? first[s] : cutoff) - cutoff) / span * barw)
           b1 = int(((fin < now ? fin : now) - cutoff) / span * barw)

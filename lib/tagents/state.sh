@@ -1,6 +1,6 @@
 # lib/tagents/state.sh — the raw data every view reads
 #
-# Where the dashboard's facts come from: live_panes (the ps ancestry walk that proves a Claude is really running; live_pane_pids is the walk with the pid kept), rec_row/live_sids (a record's resume fields, and the session ids running right now), repo_root/dir_roots (grouping by the nearest .git), state_files (why a naive *.tsv glob once produced panes called %history), headless_alive/headless_log (a `claude -p` run has no pane, only a pid and a $TA_LOG), origin_of (the transcript's first cwd, cached in ORIGINS, because the live cwd drifts), and collect() — the single pass that emits the P/L/R/N/S/H/B/M/U stream list(), counts() and the pickers all read. The 'rows' banner heads the file.
+# Where the dashboard's facts come from: live_panes (the ps ancestry walk that proves a Claude is really running; live_pane_pids is the walk with the pid kept), rec_row/live_sids (a record's resume fields, and the session ids running right now), repo_root/dir_roots (grouping by the nearest .git), state_files (why a naive *.tsv glob once produced panes called %history), headless_alive/headless_log (a `claude -p` run has no pane, only a pid and a $TA_LOG), transcript_tail/title_of (what a session with neither shows and calls itself, cached in TITLES), origin_of (the transcript's first cwd, cached in ORIGINS, because the live cwd drifts), and collect() — the single pass that emits the P/L/R/N/S/H/T/B/M/U stream list(), counts() and the pickers all read. The 'rows' banner heads the file.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -130,6 +130,78 @@ headless_log() {  # <pane key %s-<sid>>
   printf '%s' "$log"
 }
 
+# THE LAST FEW TURNS OF A TRANSCRIPT, for a session with neither a pane to
+# capture nor a readable $TA_LOG — which is every child session, since whatever
+# started it kept its output to itself. Data, not view: the preview prints it,
+# ctrl-v pages it, and both want the same lines.
+#
+# Tail-bounded on purpose. A transcript reaches tens of megabytes and this is
+# re-run on every cursor move, so only the last few records are ever read — four
+# lines per wanted line, since tool results and meta records outnumber the turns.
+# `fromjson?` rather than a plain parse: a half-written last line is the normal
+# state of a file being appended to, and it must skip that line rather than take
+# the whole output with it (the lesson closed.sh already learned).
+transcript_tail() {  # <transcript file> [lines]
+  local f=${1:-} n=${2:-20}
+  [ -n "$f" ] && [ -r "$f" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  tail -n $(( n * 4 )) -- "$f" 2>/dev/null |
+    jq -R -r '
+      fromjson? | select(.type == "user" or .type == "assistant")
+      | .message.content
+      | if type == "array" then .[] else empty end
+      | if .type == "tool_use"
+        then "▸ " + .name + " " + ((.input | tostring) | gsub("\\s+"; " ") | .[0:120])
+        elif .type == "text" then (.text | gsub("\\s+"; " ") | .[0:300])
+        else empty end' 2>/dev/null |
+    tail -n "$n"
+}
+
+# WHAT A SESSION CALLS ITSELF. Claude Code writes one {"type":"ai-title"} record
+# near the top of a transcript — the name it gave the conversation — and for a
+# session with no pane and no $TA_LABEL that is the only name there is: the
+# alternative is the basename of a directory, which every agent in a repo shares.
+#
+# Resolved once per session and cached beside the origins, three columns:
+# session id, the title or "-" for "there is none", and how big the transcript
+# was when we looked. A MISS IS CACHED TOO, or every repaint would re-read 200
+# lines of every transcript that has no title yet — and it is re-checked only
+# once the file has actually grown past the size we read it at, since the title
+# line is written near the top and cannot appear without the file changing.
+TITLES="$STATE_DIR/title.tsv"
+title_of() {  # <session-id> <transcript-path>
+  local sid=${1:-} tr=${2:-} sz=0 hit= hsz= t=
+  [ -n "$sid" ] || return 1
+  if [ -n "$tr" ] && [ -e "$tr" ]; then
+    sz=$(stat -f %z "$tr" 2>/dev/null) || sz=0
+  fi
+  case ${sz:-0} in ''|*[!0-9]*) sz=0 ;; esac
+  if [ -e "$TITLES" ]; then
+    # The LAST line for the id, not the first: a re-checked miss is appended,
+    # and the newest answer is the one that counts.
+    IFS="$US" read -r hit hsz < <(
+      awk -F"$TAB" -v OFS="$US" -v k="$sid" \
+          '$1 == k { t = $2; s = $3 } END { if (t != "") print t, s }' \
+          "$TITLES" 2>/dev/null)
+    if [ -n "${hit:-}" ]; then
+      [ "$hit" != - ] && { printf '%s' "$hit"; return 0; }
+      case ${hsz:-0} in ''|*[!0-9]*) hsz=0 ;; esac
+      [ "$hsz" -ge "$sz" ] && return 1
+    fi
+  fi
+  if [ -n "$tr" ] && [ -e "$tr" ] && command -v jq >/dev/null 2>&1; then
+    # Clipped and scrubbed by jq rather than by cut: .[0:60] counts characters,
+    # and a title cut by bytes ends in half a glyph.
+    t=$(head -200 -- "$tr" 2>/dev/null |
+          jq -R -r 'fromjson? | select(.type == "ai-title")
+                    | ((.aiTitle // "") | tostring
+                       | gsub("[\\t\\r\\n]+"; " ") | .[0:60])' 2>/dev/null | head -1)
+  fi
+  printf '%s\t%s\t%s\n' "$sid" "${t:--}" "$sz" >>"$TITLES" 2>/dev/null
+  [ -n "${t:-}" ] || return 1
+  printf '%s' "$t"
+}
+
 # WHERE AN AGENT LIVES is where it was launched — and the hook cannot tell us
 # that. Its payload carries the *live* cwd, which follows the Bash tool's `cd`:
 # one session was observed under five different directories inside a single turn
@@ -187,7 +259,7 @@ collect() {
   dir_roots
   [ -e "$LABELS" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "N", $1, $2 }' "$LABELS"
 
-  local f key ts st sid cwd tr det cfgd hascfg orig hlbl hl
+  local f key ts st sid cwd tr det cfgd hascfg orig hlbl hpar hpsid hl ttl
   state_files | while IFS= read -r f; do
     key=${f##*/}; key=${key%.tsv}
     # Not IFS=TAB: tab is IFS whitespace, so the (often empty) session id would
@@ -195,9 +267,9 @@ collect() {
     # The 7th field is the account. A record written by an older hook has six
     # fields and no opinion at all, which is a different answer from "unset, so
     # the default account" — hence the flag alongside it.
-    IFS="$US" read -r ts st sid cwd tr det cfgd hascfg hlbl < <(
+    IFS="$US" read -r ts st sid cwd tr det cfgd hascfg hpar hpsid hlbl < <(
       awk -F"$TAB" -v OFS="$US" \
-          'NR==1 { print $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0), $10; exit }' "$f" 2>/dev/null)
+          'NR==1 { print $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0), $11, $12, $10; exit }' "$f" 2>/dev/null)
     orig=$(origin_of "${sid:-}" "${tr:-}")
     printf 'S\t%%%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$key" "${ts:-0}" "${st:-}" "${sid:-}" "${orig:-${cwd:-}}" "${tr:-}" "${det:-}" \
@@ -205,12 +277,22 @@ collect() {
     # A PANE-LESS SESSION NEEDS ITS OWN LINE, because the two things the renderer
     # reads off a pane it cannot read here: whether the agent is running (the
     # recorded pid, which only the shell can kill -0) and what to call it (there
-    # is no pane title, so $TA_LABEL is the name). The log is not in it — only
-    # the preview wants that, and it reads the record itself (headless_log).
+    # is no pane title, so $TA_LABEL is the name). Plus, for a child, whose it
+    # is — the parent's record key and session id, which is what the row is
+    # nested under. Those two come BEFORE the label for the reason the pane
+    # format above gives: the label is the one field carrying arbitrary text, so
+    # it goes last. The log is not in it — only the preview wants that, and it
+    # reads the record itself (headless_log).
     case $key in
       s-?*)
         hl=0; headless_alive "$f" && hl=1
-        printf 'H\t%%%s\t%s\t%s\n' "$key" "$hl" "${hlbl:-}" ;;
+        printf 'H\t%%%s\t%s\t%s\t%s\t%s\n' \
+          "$key" "$hl" "${hpar:-}" "${hpsid:-}" "${hlbl:-}"
+        # ...and the name the session gave itself, for the rows that have no
+        # other. Emitted for pane-less rows only: everybody else has a pane
+        # title, which is the same answer without reading a file.
+        ttl=$(title_of "${sid:-}" "${tr:-}") &&
+          printf 'T\t%s\t%s\n' "${sid:-}" "$ttl" ;;
     esac
   done
 
