@@ -41,21 +41,50 @@ test('every spec field lands on the command line, in the documented order', () =
     'fable',
     '--effort',
     'high',
+    '--disallowedTools',
+    'Bash,WebFetch',
+    '--strict-mcp-config',
+    '--mcp-config',
+    '/p/mcp.json',
     '--output-format',
     'stream-json',
     '--verbose',
     '--dangerously-skip-permissions',
     '--append-system-prompt-file',
     '/p/agent.md',
-    '--strict-mcp-config',
-    '--mcp-config',
-    '/p/mcp.json',
-    '--disallowedTools',
-    'Bash,WebFetch',
     '--resume',
     'sess-7',
     'go',
   ]);
+});
+
+// `--disallowedTools <tools...>` and `--mcp-config <configs...>` are variadic
+// on the CLI: they eat argv words until the next option. With the prompt right
+// after one of them, `claude -p` turned the busano ticket agent's prompt into
+// tool names and died with "Input must be provided either through stdin or as
+// a prompt argument" on every fresh session (15.09.2026). Whatever the spec,
+// each variadic option must be followed by its one value and then an option.
+test('a variadic option is never the last thing before the prompt', () => {
+  const specs: SessionSpec[] = [
+    { ...base, disallowedTools: ['Bash'] },
+    { ...base, mcpConfig: '/p/mcp.json' },
+    { ...base, disallowedTools: ['Bash'], mcpConfig: '/p/mcp.json' },
+    { ...base, model: 'opus', skipPermissions: true, systemPromptFile: '/p/a.md', disallowedTools: DISALLOWED_TOOLS },
+    { ...base, effort: 'high', mcpConfig: '/p/mcp.json', disallowedTools: DISALLOWED_TOOLS },
+  ];
+  for (const spec of specs)
+    for (const resume of [null, 'sess-1']) {
+      const args = buildArgs(spec, 'the prompt', resume);
+      assert.equal(args.at(-1), 'the prompt');
+      for (const flag of ['--disallowedTools', '--mcp-config']) {
+        const i = args.indexOf(flag);
+        if (i === -1) continue;
+        assert.ok(
+          args[i + 2]?.startsWith('--'),
+          `${flag} must be followed by one value and then an option, got: ${args.slice(i, i + 3).join(' ')}`
+        );
+      }
+    }
 });
 
 test('tools are refused by name, never with an empty --tools', () => {

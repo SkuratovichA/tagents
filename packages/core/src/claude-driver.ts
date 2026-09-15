@@ -70,16 +70,25 @@ export const DISALLOWED_TOOLS = [
  * contract test asserts that -p, --output-format stream-json and
  * --append-system-prompt-file are all present and in front of the prompt.
  * stream-json without --verbose is refused by the CLI in -p mode.
+ *
+ * `--disallowedTools <tools...>` and `--mcp-config <configs...>` are VARIADIC:
+ * the CLI keeps eating argv words until the next option. So they must never be
+ * the last option before the prompt — on a fresh session (no --resume) the
+ * prompt would become one more "permission deny rule" and the CLI would exit 1
+ * with "Input must be provided either through stdin or as a prompt argument"
+ * (the busano ticket agent, 15.09.2026, every batch after the port). They go
+ * in front of --output-format, the one option that is always there to
+ * terminate them; the test pins that no variadic option ever touches the prompt.
  */
 export function buildArgs(spec: SessionSpec, text: string, resume: string | null): string[] {
   const args = ['-p'];
   if (spec.model) args.push('--model', spec.model);
   if (spec.effort) args.push('--effort', spec.effort);
+  if (spec.disallowedTools?.length) args.push('--disallowedTools', spec.disallowedTools.join(','));
+  if (spec.mcpConfig) args.push('--strict-mcp-config', '--mcp-config', spec.mcpConfig);
   args.push('--output-format', 'stream-json', '--verbose');
   if (spec.skipPermissions) args.push('--dangerously-skip-permissions');
   if (spec.systemPromptFile) args.push('--append-system-prompt-file', spec.systemPromptFile);
-  if (spec.mcpConfig) args.push('--strict-mcp-config', '--mcp-config', spec.mcpConfig);
-  if (spec.disallowedTools?.length) args.push('--disallowedTools', spec.disallowedTools.join(','));
   if (resume) args.push('--resume', resume);
   args.push(text);
   return args;
