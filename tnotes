@@ -374,8 +374,42 @@ changed_artifacts() {  # <dir> -> paths relative to the folder, one per line
   fi | grep -v '[[:space:]]' | head -8
 }
 
+# WHAT THE INPUT BOX SHOWS. The CLI draws its input between two rules — a row
+# of ─ above, one below, the first row prefixed ❯ — and an input longer than
+# the pane wraps onto rows between them. The cursor is somewhere inside, so the
+# box is the rows between the nearest rule above it and the nearest rule below.
+# A pane with no rule above (an older layout, the stubs in tests) gets the
+# contiguous non-blank rows ending at the cursor instead. Leading whitespace is
+# dropped so that a mention the wrap split mid-word joins back up when the rows
+# are concatenated.
+input_text() {  # <chat pane> -> the rows of the input box, one per line
+  local chat=$1 row
+  row=$(tmux display -p -t "$chat" '#{cursor_y}' 2>/dev/null)
+  case "${row:-x}" in *[!0-9]*) return 0 ;; esac
+  tmux capture-pane -p -t "$chat" 2>/dev/null | awk -v cur="$((row + 1))" '
+    function rule(s,  t) {
+      t = s; gsub(/─/, "", t); gsub(/[[:space:]]/, "", t)
+      return (s ~ /─/ && t == "") || s ~ /^[[:space:]]*(╭|╰)/
+    }
+    function blank(s) { return s ~ /^[[:space:]]*$/ }
+    { line[NR] = $0 }
+    END {
+      if (cur < 1 || cur > NR) exit
+      top = 0
+      for (i = cur - 1; i >= 1; i--) if (rule(line[i])) { top = i; break }
+      if (top > 0) {
+        bot = NR + 1
+        for (i = cur + 1; i <= NR; i++) if (rule(line[i])) { bot = i; break }
+      } else {
+        for (top = cur - 1; top >= 1 && !blank(line[top]); top--) ;
+        bot = cur + 1
+      }
+      for (i = top + 1; i < bot; i++) { s = line[i]; sub(/^[[:space:]]+/, "", s); print s }
+    }'
+}
+
 cmd_send() {
-  local chat=${1:-} dir=${2:-} cmd mode ref row base refs r typed rowtext hasprompt=0
+  local chat=${1:-} dir=${2:-} cmd mode ref base refs r typed rowtext joined hasprompt=0
   [ -n "$chat" ] && [ -n "$dir" ] || { printf 'tnotes: send <chat> <dir>\n' >&2; exit 2; }
   commit_notes "$dir"
   grep -q '[^[:space:]]' "$dir/prompt.md" 2>/dev/null && hasprompt=1
@@ -410,18 +444,17 @@ cmd_send() {
     # A SECOND :q MUST NOT LEAVE A SECOND MENTION. Reopening the editor to
     # change one's mind before pressing Enter is the whole point of this mode,
     # and the references the first :q typed are still sitting there unsubmitted.
-    # The cursor's row IS the input line — the CLI's history is all above it —
-    # so the pane is asked what the user is looking at rather than remembered,
-    # and each mention is typed only if that row does not already carry it.
-    row=$(tmux display -p -t "$chat" '#{cursor_y}' 2>/dev/null)
-    case "${row:-x}" in
-      *[!0-9]*) row= ;;
-    esac
-    rowtext=""
-    [ -n "$row" ] && rowtext=$(tmux capture-pane -p -t "$chat" -S "$row" -E "$row" 2>/dev/null)
+    # So the pane is asked what the input box shows rather than remembered, and
+    # each mention is typed only if the box does not already carry it. The
+    # whole box, not the cursor's row: three mentions wrap onto three rows in a
+    # sidebar-wide pane, and a look at the last row alone typed the first two
+    # again on every :q. The rows are also checked joined, for a mention the
+    # wrap cut in half.
+    rowtext=$(input_text "$chat")
+    joined=$(printf '%s' "$rowtext" | tr -d '\n')
     typed=""
     for r in $refs; do
-      case "$rowtext" in *"$r"*) ;; *) typed="$typed$r " ;; esac
+      case "$rowtext $joined" in *"$r"*) ;; *) typed="$typed$r " ;; esac
     done
     [ -n "$typed" ] || exit 0
     tmux send-keys -t "$chat" -l "$typed" 2>/dev/null || exit 1
