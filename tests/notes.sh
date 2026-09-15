@@ -266,6 +266,34 @@ ok  "...without mentioning the document a second time" 1 "$(printf '%s' "$ROWT" 
 tm send-keys -t "$CHAT" Enter; sleep 0.3; : >"$ROOT/pasted.txt"
 
 # ---------------------------------------------------------------------------
+t "6c. a second :q adds nothing, even when the mentions wrap"
+# ---------------------------------------------------------------------------
+# A chat 48 columns wide, as in a sidebar: two long document names plus the
+# draft cannot share one row, so the first mentions land ABOVE the cursor and
+# one of them is cut in half by the wrap. A check of the cursor row alone found
+# none of them there and typed them again on every :q.
+WCHAT=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" \
+          "exec claude >'$ROOT/pastedw.txt'" 2>/dev/null)
+tm resize-window -t "$WCHAT" -x 48 -y 12 >/dev/null 2>&1
+sleep 0.6
+printf 'one\n' >"$NOTES/a-document-with-a-long-name-one.md"
+printf 'two\n' >"$NOTES/a-document-with-a-long-name-two.md"
+printf 'wrapped draft\n' >"$NOTES/prompt.md"
+run send "$WCHAT" "$NOTES" >/dev/null 2>&1
+sleep 0.5
+WT=$(tm capture-pane -p -t "$WCHAT" 2>/dev/null)
+ok "the mentions wrapped onto more than one row" yes \
+   "$([ "$(printf '%s\n' "$WT" | grep -c '@')" -ge 2 ] && echo yes || echo no)"
+run send "$WCHAT" "$NOTES" >/dev/null 2>&1
+ok "a second send exits 0" 0 "$?"
+sleep 0.5
+WJ=$(tm capture-pane -p -t "$WCHAT" 2>/dev/null | sed 's/^[[:space:]]*//' | tr -d '\n')
+ok "...and the draft is mentioned once"          1 "$(printf '%s' "$WJ" | grep -o 'notes/prompt.md' | wc -l | tr -d ' ')"
+ok "...the first document once"                  1 "$(printf '%s' "$WJ" | grep -o 'long-name-one.md' | wc -l | tr -d ' ')"
+ok "...and the one the wrap cut in half, once"   1 "$(printf '%s' "$WJ" | grep -o 'long-name-two.md' | wc -l | tr -d ' ')"
+tm kill-window -t "$WCHAT" >/dev/null 2>&1
+
+# ---------------------------------------------------------------------------
 t "7. a draft is never typed into something that is not claude"
 # ---------------------------------------------------------------------------
 BEFORE=$(git -C "$NOTES" log --oneline 2>/dev/null | wc -l | tr -d ' ')
