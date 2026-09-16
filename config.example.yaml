@@ -69,7 +69,11 @@ usage:
   # off: no figure in the status bar, no footer under the list, no $ window.
   # watch: work
 
-  # The monthly cap, from the account's own billing page.
+  # The monthly cap, from the account's own billing page. It is the FALLBACK:
+  # tusage fetches the account's own meter every 15 minutes (TU_METER_TTL to
+  # change that, TU_NO_METER=1 to stop it) and while a reading is fresh the
+  # limit on screen is the one the meter reports, not this. This is what shows
+  # when the meter cannot be reached — or when the seat has no meter at all.
   monthly_limit_usd: 850
 
   # The estimate is priced from transcripts and reads a few percent under the
@@ -80,6 +84,9 @@ usage:
   # way: a weekend does not spend. `false` counts every calendar day.
   workdays: true
 
+  # AN OVERRIDE, NOT THE ROUTINE WAY IN: the meter is fetched automatically and
+  # a reading here wins over the fetched one, which is what makes it useful when
+  # the account cannot be read (a second login, credentials elsewhere).
   # WHAT THE ACCOUNT ITSELF SAYS IT HAS SPENT, and when it said so. The figure
   # here is priced from transcripts and runs steadily ~10%% over the meter, for
   # no reason the transcripts can see; the ratio between the two at one instant
