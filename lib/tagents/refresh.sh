@@ -16,6 +16,12 @@ refresher() {
   dp=$(dash_pane)
   # No claim before the first post has been answered: a port is only worth
   # publishing once the list behind it is known to be listening — see below.
+  # THE ACCOUNTS TRAVEL WITH THE UPDATE TOO. usage_env is what hands tusage the
+  # profile names and the directory rules; every reader in usage.sh calls it,
+  # but the writer here did not — so each 5th tick rebuilt the account map under
+  # config-dir labels (`default`, `d`), the next read rebuilt it back, and the
+  # meter was fetched a second time under a name nothing reads.
+  usage_env
   while sleep 2; do
     # Advance the token index out here, not in list(): parsing the tail of every
     # transcript costs a few hundred milliseconds, and a keystroke must never
