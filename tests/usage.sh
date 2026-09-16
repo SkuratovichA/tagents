@@ -71,7 +71,7 @@ done
 # environment it was given.
 cat >"$BIN/tusage" <<'EOF'
 #!/bin/sh
-printf 'ACCOUNTS=%s\nRULES=%s\n' "${TU_ACCOUNTS:-}" "${TU_ACCOUNT_RULES:-}" >>"$TU_ENVOUT"
+printf 'ACCOUNTS=%s\nRULES=%s\nARGS=%s\n' "${TU_ACCOUNTS:-}" "${TU_ACCOUNT_RULES:-}" "$*" >>"$TU_ENVOUT"
 # --until closes the window at an instant. The canned table is one row per day,
 # so the stub cuts on the day that instant falls in — which is all the real one
 # can do to a day row either.
@@ -251,6 +251,17 @@ run "$CFG" --counts >/dev/null
 E=$(cat "$ENVOUT")
 has "the profiles reach tusage"        "ACCOUNTS=personal=$ROOT/claude-personal;work=" "$E"
 has "...and so do the directory rules" "RULES=$REPO=work"                              "$E"
+
+# The refresher is the one WRITER: its --update rebuilds the account map, and
+# a rebuild under different labels than the readers use flips the map on every
+# tick. Driven against a dead port it updates on its 5th tick and leaves after
+# five refused posts — about ten seconds.
+: >"$ENVOUT"
+( TA_PORT=1 run "$CFG" --refresher >/dev/null 2>&1 & ); i=0
+while [ "$i" -lt 60 ] && ! grep -q -- '--update' "$ENVOUT" 2>/dev/null; do sleep 0.25; i=$((i+1)); done
+sleep 0.3
+UPD=$(awk '/^ACCOUNTS=/{a=$0} /^ARGS=.*--update/{print a; exit}' "$ENVOUT")
+ok "the refresher hands tusage --update the same accounts" "ACCOUNTS=personal=$ROOT/claude-personal;work=" "$UPD"
 
 # ---------------------------------------------------------------------------
 t "6. the meter calibrates the month"
