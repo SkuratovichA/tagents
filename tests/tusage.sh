@@ -58,6 +58,10 @@ T1=$(( T2 - 172800 ))              # two days back: a different local day under 
 D1=$(dayof "$T1"); D2=$(dayof "$T2")
 
 export TU_STATE="$ROOT/usage" TU_PROJECTS="$ROOT/projects"
+# THE METER IS OFF EXCEPT WHERE IT IS THE SUBJECT. --update fetches it now, and
+# a test suite must never ask the real keychain for a token or the real API for
+# a figure. Section 5c turns it back on for its own calls, with fakes on PATH.
+export TU_NO_METER=1
 # The projects dir has to exist BEFORE projects.tsv is written, or slug_map's
 # find -newer guard fires and regenerates the (empty) map over the fixture.
 mkdir -p "$TU_PROJECTS" "$TU_STATE" "$ROOT/acct/work" "$ROOT/acct/personal"
@@ -195,6 +199,94 @@ out=$(tu --calibrate work 500 2>&1); rc=$?
 ok "an absurd factor is refused"     1 "$rc"
 contains "...and says why"            "not a price" "$out"
 ok "...leaving the factor as it was" "0.5000" "$(awk -F"$TAB" '$1=="work"{print $2}' "$ROOT/usage/factor.tsv")"
+
+# ---------------------------------------------------------------------------
+t "5c. --meter reads the account's own spend"
+# ---------------------------------------------------------------------------
+# Nothing here touches the keychain or the network: `security` and `curl` are
+# shell scripts on PATH, and every argv curl is handed is appended to a log the
+# checks read back.
+MBIN="$ROOT/mbin"; mkdir -p "$MBIN"
+export CURL_LOG="$ROOT/curl.log"; : >"$CURL_LOG"
+export MBODY="$ROOT/meter-body.json"
+
+cat >"$MBIN/security" <<'EOF'
+#!/bin/sh
+printf '{"claudeAiOauth":{"accessToken":"t0k3n","expiresAt":1}}\n'
+EOF
+cat >"$MBIN/curl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$CURL_LOG"
+out=""; prev=""
+for a in "$@"; do
+  [ "$prev" = -o ] && out=$a
+  prev=$a
+done
+[ -n "$out" ] && cat "$MBODY" >"$out"
+printf '%s' "${CURL_CODE:-200}"
+EOF
+chmod +x "$MBIN/security" "$MBIN/curl"
+
+body() {  # <used, minor units> <limit, minor units> — what /api/oauth/usage answers
+  printf '{"spend":{"used":{"amount_minor":%s,"exponent":2},"limit":{"amount_minor":%s,"exponent":2},"percent":83,"severity":"warning","enabled":true}}\n' \
+    "$1" "$2" >"$MBODY"
+}
+TTL=900; CODE=200
+meter() {  # tusage with the fakes in front of it and the meter switched on
+  env PATH="$MBIN:$PATH" TU_NO_METER= TU_METER_TTL="$TTL" CURL_CODE="$CODE" \
+      TU_METER_ITEMS="work=Test-credentials" \
+      TU_ACCOUNTS="work=$ROOT/acct/work;personal=$ROOT/acct/personal" \
+      bash "$TU" --no-update --meter "$@" 2>&1
+}
+curls() { grep -c . "$CURL_LOG"; }
+mrow() { awk -F"$TAB" -v a="${2:-work}" -v n="$1" '$1 == a { print $n; exit }' "$ROOT/usage/meter.tsv"; }
+fac() { awk -F"$TAB" '$1 == "work" { print $2 }' "$ROOT/usage/factor.tsv"; }
+
+body 83016 100000
+out=$(meter --force)
+ok "the used figure is the minor units scaled by the exponent" "830.16" "$(mrow 2)"
+ok "...and so is the limit"                                    "1000.00" "$(mrow 3)"
+ok "...the row is good"                                        "ok"      "$(mrow 5)"
+contains "--meter names the status"                            "ok"      "$out"
+ok "one account, one fetch"                                    1         "$(curls)"
+contains "the token travels as a header"  "Authorization: Bearer t0k3n" "$(cat "$CURL_LOG")"
+ok "...and is written nowhere on disk"    0 "$(grep -rl t0k3n "$ROOT/usage" 2>/dev/null | grep -c .)"
+# An account whose credentials this cannot name is not guessed at.
+ok "a login with no known keychain item is left alone" "nometer" "$(mrow 5 personal)"
+# 830.16 against the fixture month of 32.50 at list is not a price. The reading
+# is still the reading; only the factor refuses to follow it.
+contains "an impossible factor is refused out loud" "not a price" "$out"
+ok "...leaving the factor as section 5b left it" "0.5000" "$(fac)"
+
+n=$(curls); meter --refresh >/dev/null
+ok "a second read inside the TTL asks nobody" "$n" "$(curls)"
+
+# 26.00 against the same 32.50 is x0.8 — a factor a meter reading can produce.
+body 2600 100000
+TTL=0; meter --refresh >/dev/null; TTL=900
+ok "a zero TTL fetches again"          "$((n + 1))" "$(curls)"
+ok "...and the reading re-prices the account" "0.8000" "$(fac)"
+ok "...the row follows it"                    "26.00"  "$(mrow 2)"
+
+# A refused fetch keeps yesterday's figures rather than blanking the panel.
+n=$(curls); CODE=500; out=$(meter --force); CODE=200
+ok "a 500 is an error row"                 "error" "$(mrow 5)"
+ok "...that keeps the reading before it"   "26.00" "$(mrow 2)"
+ok "...with its limit"                     "1000.00" "$(mrow 3)"
+contains "...and the output says so" "the last fetch failed" "$out"
+ok "the failure still cost exactly one call" "$((n + 1))" "$(curls)"
+
+# A plan seat answers the same endpoint with no spend object in it at all.
+printf '{"account":{"uuid":"a1"}}\n' >"$MBODY"
+out=$(meter --force)
+ok "no spend object, no meter"       "nometer" "$(mrow 5)"
+ok "...and the factor is untouched"  "0.8000"  "$(fac)"
+contains "...the note says why"      "no spend meter" "$out"
+
+n=$(curls)
+env PATH="$MBIN:$PATH" TU_METER_ITEMS="work=Test-credentials" \
+    TU_ACCOUNTS="work=$ROOT/acct/work" bash "$TU" --update >/dev/null 2>&1
+ok "TU_NO_METER=1 --update asks nothing" "$n" "$(curls)"
 
 # ---------------------------------------------------------------------------
 t "6. a transcript that moves between project dirs is still one transcript"
