@@ -104,6 +104,22 @@ usage_calibration() {  # -> "<factor><TAB><label><TAB><note>"
   printf '%s' "$out"
 }
 
+# THE READING IS NO LONGER TYPED. tusage fetches the account's own meter every
+# quarter of an hour and leaves it in usage/meter.tsv under this state dir; a
+# row that is `ok` and fresh is the same reading the paragraph above asks a
+# person for, only current. Two days is the outer edge of useful: past that the
+# month has moved on without it and the estimate on its own is the honest
+# answer, so the ~ comes off and the configured limit comes back.
+usage_meter() {  # -> "<used><TAB><limit><TAB><fetched at>" for the watched account
+  local w f
+  w=$(usage_watch) || return 1
+  f="$STATE_DIR/usage/meter.tsv"
+  [ -s "$f" ] || return 1
+  awk -F"$TAB" -v w="$w" -v now="$(date +%s)" '
+    $1 == w && $5 == "ok" && $4 + 0 > 0 && now - ($4 + 0) < 172800 {
+      printf "%s\t%s\t%s", $2, $3, $4; exit }' "$f"
+}
+
 # THREE RENDERINGS OF ONE ARITHMETIC, which is why they are one function: the
 # status bar, the fzf footer and the last line of the $ table have to agree to
 # the cent, and two of them are read side by side. `summary` is `footer` without
@@ -127,6 +143,21 @@ usage_line() {  # <status|footer|summary>
   local cal rest factor label note
   cal=$(usage_calibration); rest=${cal#*$TAB}
   factor=${cal%%$TAB*}; label=${rest%%$TAB*}; note=${rest#*$TAB}
+  # THE FETCHED METER IS THE MONTH; THE TYPED ONE IS AN OVERRIDE. A reading in
+  # the config was put there on purpose and wins, and so does its complaint —
+  # an unusable reading is something to fix, not something to route around. The
+  # rows are already scaled to the meter by tusage, so the factor here is 1 and
+  # all that is left to carry is the ~ and the time it was read at.
+  local mrow mlimit mat
+  if [ -z "$label" ] && [ -z "$note" ]; then
+    mrow=$(usage_meter) || mrow=""
+    if [ -n "$mrow" ]; then
+      mlimit=${mrow#*$TAB}; mat=${mlimit#*$TAB}; mlimit=${mlimit%%$TAB*}
+      factor=1
+      label=$(date -r "$mat" '+%H:%M' 2>/dev/null) || label=""
+      case "$mlimit" in ''|0|0.00|*[!0-9.]*) ;; *) limit=$mlimit ;; esac
+    fi
+  fi
   usage_days | awk -F"$TAB" \
     -v mode="$mode" -v watch="$watch" -v badge="$badge" \
     -v factor="${factor:-1}" -v meter="${label:-}" -v mnote="${note:-}" \
