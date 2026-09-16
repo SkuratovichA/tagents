@@ -509,15 +509,28 @@ somewhere new, and reads only the tail; rows written before the key existed
 still work. If both copies are on disk at once only the newest is indexed, and
 `--update`/`--rebuild` say how many were skipped.
 
-**The meter calibrates the month.** Even with the duplicates gone the estimate
-runs steadily above the account's own meter — $807 against $733 one day, $758
-against $685 the next, the same ~0.90 both times, and no cache-rate hypothesis
-reproduces it. So paste a reading of the meter into the config and the ratio at
-that instant corrects every dollar the dashboard shows:
-`usage.meter: "2026-09-10 15:30 = 684.66"`, the credits `/usage` reports and the
-local time you read them. Corrected figures wear a `~` and the footer names the
-reading it used. A reading from another month, or one implying a correction
-outside 0.5–1.5, is ignored and the footer says so; re-read it now and then.
+**The month is the meter, and the meter is fetched.** The estimate runs
+steadily beside the account's own meter without tracking it — $807 against $733
+one day, $1108 against $830 a fortnight later — and a ratio typed in by hand
+goes stale within days. So `tusage --meter` asks the account: a GET to
+`/api/oauth/usage` with the OAuth token Claude Code keeps in the keychain for
+the default config dir, giving the month-to-date spend and the limit behind it.
+The reading lands in `meter.tsv` (one row per account, refreshed at most every
+`TU_METER_TTL` seconds — 900 by default, 300 past 90% of the limit), re-prices
+the per-day factor so `--daily` and the sparkline agree with it, and `--update`
+refreshes it in passing, which is how the dashboard gets it for free.
+`TU_NO_METER=1` turns it off. The token is read into a variable, handed to curl
+as one header and dropped — never printed, never logged, never written down.
+
+On screen: while a reading is under two days old the limit is the meter's own
+and the month wears a `~`, with `~meter HH:MM` in the footer naming when it was
+read; `usage.monthly_limit_usd` is what shows when the meter cannot be reached.
+A seat with no meter (a plan, not credits) answers without a spend figure and is
+left alone for a day. `tusage --calibrate work 732.71` is still there as the
+manual fallback — the way to price an account whose meter this cannot read — and
+`usage.meter: "2026-09-10 15:30 = 684.66"` in the config overrides the fetched
+reading entirely. A typed reading from another month, or one implying a
+correction outside 0.5–1.5, is ignored and the footer says so.
 
 Rates live in `PRICES` at the top of `tusage`, in dollars per million tokens,
 with cache multipliers (5m write 1.25x, 1h write 2x, read 0.1x) applied on top.
