@@ -11,6 +11,8 @@
 #   tusage --calibrate <account> <amount> [--at "YYYY-MM-DD HH:MM"|<epoch>]
 #                               price that account at a factor that makes the
 #                               month-to-date equal what its own meter showed
+#   tusage --meter [--refresh|--force]
+#                               what the account's own meter says it has spent
 #   tusage --sessions           machine-readable per-session totals (for tagents)
 #   tusage --session <sid>      one session in detail
 #   tusage --burn               one-line status-bar string
@@ -28,6 +30,17 @@
 # THE DOLLARS ARE AN ESTIMATE, NOT A BILL: roughly 3% under Claude Code's own
 # ledger on a large session and more on small ones, because retries, titles and
 # away summaries never reach a transcript and so are never counted.
+#
+# EXCEPT FOR THE MONTH, WHICH IS THE METER. The account's own spend is one
+# authenticated GET away — `/api/oauth/usage`, with the OAuth token Claude Code
+# keeps in the keychain for the default config dir — and that figure is the one
+# the bill is written from. --meter reads it into meter.tsv (one row per
+# account, at most one fetch per account per call, TU_METER_TTL seconds apart —
+# 900 by default, 300 past 90% of the limit), re-calibrates the per-day factor
+# from it, and --update refreshes it in passing, which is how the dashboard gets
+# it for free. TU_NO_METER=1 turns the whole thing off. The token is read into a
+# variable, handed to curl as one header and dropped: it is never printed,
+# never logged, and never written anywhere.
 #
 # WHY AN INDEX. 800 MB of transcripts across ~1300 files: a full scan costs a
 # second and a half, which is fine once and far too slow for a dashboard that
@@ -571,8 +584,11 @@ ACCOUNTS="$STATE/accounts.tsv"
 
 # THE BILL IS NOT THE LIST PRICE. An Enterprise seat is metered at whatever the
 # contract says — on this account a flat 0.90 of list, two days running — and
-# the meter in `/usage` is the only figure that is actually billed. It cannot be
-# read by a script, but it can be read by a person once: `--calibrate work 732.71`
+# the meter in `/usage` is the only figure that is actually billed. --meter now
+# fetches that reading itself and calls this for every account it reads, so the
+# factor follows the meter without anybody typing it; by hand it is still one
+# command, and the only way to price an account whose meter cannot be reached:
+# `--calibrate work 732.71`
 # takes that reading, divides it by the month-to-date this index computes for the
 # same instant, and keeps the factor per account. From then on --daily reports
 # dollars the meter would agree with; --sessions and --burn stay at list, since
@@ -644,6 +660,188 @@ account_dirs() {
     d=$(cd "$d" 2>/dev/null && pwd -P) || continue
     printf '%s\t%s\n' "$n" "$d"
   done | awk -F"$TAB" '!seen[$2]++'
+}
+
+# ---------------------------------------------------------------------------
+#  The meter — what the account itself says it has spent
+# ---------------------------------------------------------------------------
+#
+# A TYPED-IN READING IS STALE THE DAY AFTER IT IS TAKEN. The calibration factor
+# above drifted from 0.98 to 0.73 in two days and the dashboard read $1108
+# against a meter of $830; against Claude Code's own per-session ledger the
+# estimate is wrong in both directions, so no single ratio can be trusted for
+# long. The figure the account is actually billed is one authenticated GET
+# away: `/api/oauth/usage` answers with the month-to-date spend and the limit
+# behind it, for whichever login owns the OAuth token in the keychain. So the
+# month becomes the meter, the index keeps only the shape of the days, and
+# calibrate() is re-run from each reading so --daily agrees with it too.
+#
+# HOW OFTEN. The dashboard's refresher calls --update every few seconds, so the
+# TTL in the row IS the rate limit: TU_METER_TTL (900s) normally, 300s once the
+# account is past 90% of its limit, 5 minutes after a failure and a day after an
+# account that has no meter at all — a plan seat answers without a spend object,
+# and asking it again this hour will not change that.
+#
+# THE TOKEN NEVER LEAVES THE PROCESS. It is read out of the keychain into a
+# shell variable, handed to curl as one header, and dropped. It is never
+# printed, never logged, and nothing derived from it is written to meter.tsv.
+METER="$STATE/meter.tsv"   # account<TAB>used<TAB>limit<TAB>fetched at<TAB>status<TAB>next try
+
+meter_item() {  # <account> -> the keychain item holding its credentials, or 1
+  local acct=${1:-} item dir home
+  [ -n "$acct" ] || return 1
+  # An explicit naming wins: a second login keeps its credentials under an item
+  # only whoever set it up can know the name of.
+  item=$(printf '%s' "${TU_METER_ITEMS:-}" | tr ';' '\n' |
+           awk -F= -v a="$acct" '$1 == a { sub(/^[^=]*=/, ""); print; exit }')
+  if [ -n "$item" ]; then printf '%s' "$item"; return 0; fi
+  dir=$(account_dirs | awk -F"$TAB" -v a="$acct" '$1 == a { print $2; exit }')
+  [ -n "$dir" ] || return 1
+  home=$(cd "$HOME/.claude" 2>/dev/null && pwd -P) || return 1
+  # Claude Code writes ONE keychain item, and it belongs to the default config
+  # dir. Every other login has credentials somewhere this cannot guess.
+  [ "$dir" = "$home" ] || return 1
+  printf 'Claude Code-credentials'
+}
+
+meter_token() {  # <account> -> its OAuth access token, or 1
+  local item tok
+  item=$(meter_item "${1:-}") || return 1
+  tok=$(security find-generic-password -s "$item" -w 2>/dev/null |
+          jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)
+  [ -n "$tok" ] || return 1
+  printf '%s' "$tok"
+}
+
+meter_field() {  # <account> <field number>
+  [ -s "$METER" ] || return 1
+  awk -F"$TAB" -v a="${1:-}" -v n="${2:-1}" '$1 == a { print $n; exit }' "$METER"
+}
+
+meter_put() {  # <account> <used> <limit> <fetched at> <status> <next try>
+  local tmp
+  mkdir -p "$STATE" 2>/dev/null || return 1
+  tmp="$METER.tmp.$$"
+  { [ -s "$METER" ] && awk -F"$TAB" -v a="$1" '$1 != a' "$METER"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "$6"; } >"$tmp" 2>/dev/null &&
+    mv -f "$tmp" "$METER"
+}
+
+meter_fetch() {  # <account> — one GET, one row, never more than one of either
+  local acct=${1:-} tok body code now ttl pct um ue lm le used lim pu pl pt ps
+  [ -n "$acct" ] || return 1
+  now=$(date +%s)
+  # A failed reading must not erase a good one: yesterday's figure with a
+  # visible error beside it is worth more than a blank the dashboard would
+  # silently fall back from.
+  pu=$(meter_field "$acct" 2); pl=$(meter_field "$acct" 3)
+  pt=$(meter_field "$acct" 4); ps=$(meter_field "$acct" 5)
+  [ "${ps:-}" = ok ] || { pu=""; pl=""; pt=""; }
+
+  tok=$(meter_token "$acct") || {
+    meter_put "$acct" "$pu" "$pl" "$pt" error "$((now + 300))"
+    return 1
+  }
+  body="$STATE/.meter.$$.json"
+  code=$(curl -sS --max-time 8 -o "$body" -w '%{http_code}' \
+           -H "Authorization: Bearer $tok" \
+           -H "anthropic-beta: oauth-2025-04-20" \
+           https://api.anthropic.com/api/oauth/usage 2>/dev/null)
+  tok=""
+  if [ "${code:-}" != 200 ]; then
+    rm -f "$body" 2>/dev/null
+    meter_put "$acct" "$pu" "$pl" "$pt" error "$((now + 300))"
+    return 1
+  fi
+  um=$(jq -r '.spend.used.amount_minor // empty' "$body" 2>/dev/null)
+  ue=$(jq -r '.spend.used.exponent // 2' "$body" 2>/dev/null)
+  lm=$(jq -r '.spend.limit.amount_minor // empty' "$body" 2>/dev/null)
+  le=$(jq -r '.spend.limit.exponent // 2' "$body" 2>/dev/null)
+  pct=$(jq -r '.spend.percent // 0' "$body" 2>/dev/null)
+  rm -f "$body" 2>/dev/null
+
+  # A plan seat answers the same endpoint with no spend object at all. That is
+  # an answer, not a failure, and it will still be the answer tomorrow.
+  case "${um:-}" in ''|*[!0-9]*)
+    meter_put "$acct" "" "" "$now" nometer "$((now + 86400))"
+    return 0 ;;
+  esac
+  case "${ue:-}" in ''|*[!0-9]*) ue=2 ;; esac
+  used=$(awk -v m="$um" -v e="$ue" 'BEGIN { printf "%.2f", m / (10 ^ e) }')
+  lim=""
+  case "${le:-}" in ''|*[!0-9]*) le=2 ;; esac
+  case "${lm:-}" in ''|*[!0-9]*) ;; *) lim=$(awk -v m="$lm" -v e="$le" 'BEGIN { printf "%.2f", m / (10 ^ e) }') ;; esac
+
+  ttl=${TU_METER_TTL:-900}
+  case "$ttl" in ''|*[!0-9]*) ttl=900 ;; esac
+  case "${pct:-}" in ''|*[!0-9]*) pct=0 ;; esac
+  # Near the wall the figure is the one being watched, so it is refreshed at
+  # three times the rate. A shorter TTL asked for on purpose still wins.
+  if [ "$pct" -ge 90 ] && [ "$ttl" -gt 300 ]; then ttl=300; fi
+  meter_put "$acct" "$used" "$lim" "$now" ok "$((now + ttl))" || return 1
+
+  # The meter prices the month; the factor makes --daily and the sparkline agree
+  # with it, which is what calibrate() has always done — it is just no longer a
+  # human typing the reading. A refusal is a note on stderr, not a failure: the
+  # row is good even when the ratio it implies is not a price.
+  calibrate "$acct" "$used" >/dev/null
+  return 0
+}
+
+meter_refresh() {  # [--force] [account…]
+  local force=0 acct list now nt st at
+  [ -z "${TU_NO_METER:-}" ] || return 0
+  case "${1:-}" in --force) force=1; shift ;; esac
+  now=$(date +%s)
+  if [ $# -eq 0 ]; then list=$(account_dirs | cut -f1 | tr '\n' ' '); else list=$*; fi
+  for acct in $list; do
+    [ -n "$acct" ] || continue
+    if ! meter_item "$acct" >/dev/null 2>&1; then
+      st=$(meter_field "$acct" 5)
+      [ "${st:-}" = nometer ] ||
+        meter_put "$acct" "$(meter_field "$acct" 2)" "$(meter_field "$acct" 3)" \
+                  "$(meter_field "$acct" 4)" nometer "$((now + 86400))"
+      continue
+    fi
+    if [ "$force" != 1 ]; then
+      nt=$(meter_field "$acct" 6)
+      case "${nt:-}" in ''|*[!0-9]*) nt=0 ;; esac
+      # AN EXPLICIT TTL APPLIES TO THE READING ALREADY TAKEN, not only to the
+      # next one: somebody who asks for a faster meter means now, not in the
+      # quarter of an hour the last row was written with.
+      case "${TU_METER_TTL:-}" in
+        ''|*[!0-9]*) ;;
+        *) if [ "$(meter_field "$acct" 5)" = ok ]; then
+             at=$(meter_field "$acct" 4)
+             case "${at:-}" in ''|*[!0-9]*) ;; *) nt=$((at + TU_METER_TTL)) ;; esac
+           fi ;;
+      esac
+      [ "$now" -lt "$nt" ] && continue
+    fi
+    meter_fetch "$acct"
+  done
+  return 0
+}
+
+meter_show() {  # the rows, for a person
+  local acct used lim at st nt when
+  [ -s "$METER" ] ||
+    { echo "tusage: no meter reading yet — tusage --meter --refresh" >&2; return 1; }
+  printf '%-12s %10s %10s  %-16s %s\n' account used limit fetched status
+  # A TAB IS IFS WHITESPACE EVEN WHEN IFS IS JUST A TAB, so `read` folds the
+  # empty used/limit of a nometer row into one separator and hands the status to
+  # the wrong variable. Fill the holes before reading them.
+  awk -F"$TAB" -v OFS="$TAB" '{ for (i = 1; i <= 6; i++) if ($i == "") $i = "-"; print }' "$METER" |
+  while IFS="$TAB" read -r acct used lim at st nt; do
+    [ -n "$acct" ] || continue
+    when="-"
+    case "${at:-}" in [0-9]*) when=$(date -r "$at" '+%Y-%m-%d %H:%M' 2>/dev/null || printf '%s' "$at") ;; esac
+    printf '%-12s %10s %10s  %-16s %s\n' "$acct" "$used" "$lim" "$when" "$st"
+    case "$st" in
+      nometer) printf '# %s: this login reports no spend meter (a plan seat, or credentials this cannot read) — the estimate stands alone\n' "$acct" ;;
+      error)   printf '# %s: the last fetch failed; the figures above are the reading before it\n' "$acct" ;;
+    esac
+  done
 }
 
 # Writes $ACCOUNTS (sid<TAB>account) and prints it. Called with --locked from
@@ -1101,6 +1299,7 @@ json() {
 # ---------------------------------------------------------------------------
 
 SINCE=7d; UNTIL=""; DIM=""; DO_UPDATE=1; CAL_ACCT=""; CAL_AMT=""; CAL_AT=""
+MET_REFRESH=0; MET_FORCE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --by)       DIM=${2:-project}; shift 2 ;;
@@ -1108,12 +1307,17 @@ while [ $# -gt 0 ]; do
     --until)    UNTIL=${2:-}; shift 2 ;;
     --calibrate) DIM=__calibrate; CAL_ACCT=${2:-}; CAL_AMT=${3:-}; shift 3 ;;
     --at)       CAL_AT=${2:-}; shift 2 ;;
+    --meter)    DIM=__meter; shift ;;
+    --refresh)  MET_REFRESH=1; shift ;;
+    --force)    MET_FORCE=1; shift ;;
     --sessions) DIM=__sessions; shift ;;
     --daily)    DIM=__daily; shift ;;
     --session)  DIM=__detail; SID=${2:-}; shift 2 ;;
     --burn)     DIM=__burn; shift ;;
     --json)     DIM=__json; shift ;;
-    --update)   update 0 1; exit $? ;;
+    # The meter runs AFTER the index work and outside its lock: it is a network
+    # call, and holding a lock across one would wedge every other tick behind it.
+    --update)   update 0 1; URC=$?; meter_refresh; exit "$URC" ;;
     --rebuild)  update 1 1; exit $? ;;
     --no-update) DO_UPDATE=0; shift ;;
     # Print to the first non-comment line, never a hardcoded range: the header
@@ -1130,6 +1334,9 @@ case "$DIM" in
   __sessions)  sessions "$SINCE" ;;
   __daily)     daily "$SINCE" "$UNTIL" ;;
   __calibrate) calibrate "$CAL_ACCT" "$CAL_AMT" "$CAL_AT" ;;
+  __meter)     if [ "$MET_FORCE" = 1 ]; then meter_refresh --force
+               elif [ "$MET_REFRESH" = 1 ]; then meter_refresh; fi
+               meter_show ;;
   __detail)    session_detail "${SID:-}" ;;
   __burn)      burn ;;
   __json)      json "$SINCE" ;;
