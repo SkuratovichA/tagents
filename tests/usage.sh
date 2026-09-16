@@ -302,5 +302,45 @@ has   "...and the footer says why"  "meter reading unusable" \
 # Nothing changes for a config with no reading in it at all.
 hasnt "no meter, no note" "meter" "$(run "$CFG" --ask-usage </dev/null | strip)"
 
+# ---------------------------------------------------------------------------
+t "7. the meter tusage fetched sets the limit"
+# ---------------------------------------------------------------------------
+# tusage leaves each account's own reading in usage/meter.tsv under the state
+# dir, with the day rows already scaled to it — so all the dashboard has to add
+# is the limit the account reports and the ~ that says where the figure is from.
+MTSV="$STATE/usage/meter.tsv"; mkdir -p "$STATE/usage"
+MNOW=$(date +%s)
+mkmrow() {  # <status> <fetched at>
+  printf 'work\t830.16\t1000.00\t%s\t%s\t%s\n' "$2" "$1" "$((MNOW + 900))" >"$MTSV"
+}
+
+mkmrow ok "$MNOW"
+C=$(run "$CFG" --counts)
+has "the limit is the account's, not the config's" "w ~\$$MTOT/1000" "$C"
+F=$(run "$CFG" --ask-usage </dev/null | strip)
+has "...the footer names the time it was read" "~meter $(date -r "$MNOW" +%H:%M)" "$F"
+has "...and carries the same limit"            "of \$1000"                        "$F"
+
+# Three days on the month has moved without it, and the estimate on its own is
+# the honest answer: the configured limit comes back and the ~ comes off.
+mkmrow ok "$((MNOW - 259200))"
+C=$(run "$CFG" --counts)
+has   "a stale reading is not a reading" "w \$$MTOT/850" "$C"
+hasnt "...and nothing wears a ~"         "~\$"           "$C"
+
+# A row left by a fetch that failed carries the figures before it, which is
+# worth reading in --meter and worth nothing on the status bar.
+mkmrow error "$MNOW"
+has "an error row is ignored too" "w \$$MTOT/850" "$(run "$CFG" --counts)"
+
+# A reading typed into the config was put there on purpose, so it wins.
+# (mkmeter writes one file, and section 6 left the implausible reading in it.)
+MCFG=$(mkmeter "$MDAY1 23:59" 360)
+mkmrow ok "$MNOW"
+C=$(run "$MCFG" --counts)
+has "the configured reading wins"  "w ~\$$SCALED/850" "$C"
+has "...and the footer names it"   "~meter $MLABEL"   "$(run "$MCFG" --ask-usage </dev/null | strip)"
+rm -f "$MTSV"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
