@@ -69,13 +69,15 @@ mkdir -p "$TU_PROJECTS" "$TU_STATE" "$ROOT/acct/work" "$ROOT/acct/personal"
 # facts: 1 bucket 2 slug 3 sid 4 agentid 5 agenttype 6 kind 7 model
 #        8 reqs 9 in 10 cw5 11 cw1h 12 cr 13 out 14 maxctx
 #
-# opus-5 is $5/MTok in, $25/MTok out; sonnet-5 is $3/$15 (its introductory pair
-# expired at epoch 1788220799, before any fixture row). Cache multipliers are
-# ratios of the input rate: 5m write 1.25x, 1h write 2x, read 0.1x.
+# opus-5 is $5/MTok in, $25/MTok out; sonnet-5 is $2/$10. Write multipliers are
+# ratios of the input rate: 5m write 1.25x, 1h write 2x. Reads are 0.1x the
+# input rate for every model except fable/mythos 5.1, which state their own
+# $0.25/MTok in the table — section 7 pins that, in its own fixture, because
+# these rows are chosen to make the calibration factors come out round.
 {
   # A  day1 work     1M input on opus            -> 1e6*5/1e6            = 5.0000
   printf '%s\tw-slug\ts-work\t-\t-\t-\tclaude-opus-5\t2\t1000000\t0\t0\t0\t0\t1000000\n' "$T1"
-  # B  day1 personal 1M 5m cache-write on sonnet -> 1.25*1e6*3/1e6       = 3.7500
+  # B  day1 personal 1M 5m cache-write on sonnet -> 1.25*1e6*2/1e6       = 2.5000
   printf '%s\tp-slug\ts-pers\t-\t-\t-\tclaude-sonnet-5\t1\t0\t1000000\t0\t0\t0\t1000000\n' "$T1"
   # F  day1 personal 100k input on opus          -> 1e5*5/1e6            = 0.5000
   printf '%s\tw-slug\ts-dup\t-\t-\t-\tclaude-opus-5\t1\t100000\t0\t0\t0\t0\t100000\n' "$T1"
@@ -115,14 +117,14 @@ tu() { bash "$TU" --no-update "$@" 2>&1; }
 t "1. --daily: dollars per day per account"
 # ---------------------------------------------------------------------------
 
-want=$(printf '%s\tpersonal\t4.2500\t2\t0\n%s\twork\t5.0000\t2\t0\n%s\twork\t27.5000\t5\t1' \
+want=$(printf '%s\tpersonal\t3.0000\t2\t0\n%s\twork\t5.0000\t2\t0\n%s\twork\t27.5000\t5\t1' \
        "$D1" "$D1" "$D2")
 got=$(tu --daily --since 30d)
 ok "day x account x dollars" "$want" "$got"
 
 # B 3.75 + F 0.50; F is s-dup, which is only personal because the personal
 # history touched it later than the work one.
-contains "the duplicated sid lands on the newer history" "${D1}${TAB}personal${TAB}4.2500" "$got"
+contains "the duplicated sid lands on the newer history" "${D1}${TAB}personal${TAB}3.0000" "$got"
 # C 25.00 + D 2.50 + E 0.00, and E is the row with no published rate.
 contains "an unrated row adds no dollars but is counted" "${D2}${TAB}work${TAB}27.5000${TAB}5${TAB}1" "$got"
 
@@ -187,7 +189,7 @@ contains "...and says the factor"    "x0.5000" "$out"
 ok "the factor is kept per account"  "work	0.5000" "$(cut -f1,2 "$ROOT/usage/factor.tsv")"
 ok "--daily now reports the metered dollars" "16.2500" \
    "$(tu --daily --since 30d | awk -F"$TAB" '$2 == "work" { s += $3 } END { printf "%.4f", s }')"
-ok "...the other account is untouched"       "4.2500" \
+ok "...the other account is untouched"       "3.0000" \
    "$(tu --daily --since 30d | awk -F"$TAB" '$2 == "personal" { s += $3 } END { printf "%.4f", s }')"
 ok "TU_NO_FACTOR=1 gives list price back"    "32.5000" \
    "$(TU_NO_FACTOR=1 tu --daily --since 30d | awk -F"$TAB" '$2 == "work" { s += $3 } END { printf "%.4f", s }')"
@@ -336,6 +338,40 @@ cp "$B/$SID.jsonl" "$A/$SID.jsonl"
 out=$(bash "$TU" --rebuild 2>&1)
 contains "a rebuild says what it skipped" "duplicate transcript copies skipped" "$out"
 ok "and counts the session once" "2.500000" "$(usd_of)"
+
+# ---------------------------------------------------------------------------
+t "7. a model that states its own cache-read rate is priced at it"
+# Fable/Mythos 5.1 read at $0.25/MTok — 0.025x their $10 input, not the 0.1x
+# every other model charges. Its own index, so the fixtures above stay round.
+# In this shell, not a subshell: an ok() in a subshell increments a copy of the
+# tally and the suite would then pass while this section failed.
+SAVE_STATE=$TU_STATE; SAVE_PROJ=$TU_PROJECTS
+SAVE_ACCT=$TU_ACCOUNTS; SAVE_RULES=$TU_ACCOUNT_RULES
+export TU_STATE="$ROOT/cr/usage" TU_PROJECTS="$ROOT/cr/projects"
+export TU_ACCOUNTS="work=$ROOT/cr/acct/work" TU_ACCOUNT_RULES=""
+mkdir -p "$TU_STATE" "$TU_PROJECTS" "$ROOT/cr/acct/work"
+hist s-cr 1000 >"$ROOT/cr/acct/work/history.jsonl"
+
+cr_usd() { bash "$TU" --no-update --daily | awk -F"$TAB" '{ print $3 }'; }
+cr_model() {  # <model id> — one row, 1M cache read and nothing else
+  printf '%s\tc-slug\ts-cr\t-\t-\t-\t%s\t1\t0\t0\t0\t1000000\t0\t1000000\n' "$T2" "$1" >"$TU_STATE/facts.tsv"
+  printf 's-cr\tc-slug\t%s\t%s\t%s\n' "$T2" "$T2" "$1" >"$TU_STATE/sessions.tsv"
+  printf 'c-slug\t%s\n' "$ROOT/cr/git/work/cr" >"$TU_STATE/projects.tsv"
+}
+
+cr_model claude-fable-5-1
+ok "fable 5.1 reads cost \$0.25/MTok, not 0.1x its input" "0.2500" "$(cr_usd)"
+# A dated snapshot id must reach the same row through the longest-prefix match.
+cr_model claude-fable-5-1-20260901
+ok "...and a dated snapshot id matches the same rate"      "0.2500" "$(cr_usd)"
+# fable 5 (no read rate of its own) and opus 5 keep the 0.1x default.
+cr_model claude-fable-5
+ok "...while fable 5 keeps the 0.1x default"               "1.0000" "$(cr_usd)"
+cr_model claude-opus-5
+ok "...and so does opus 5"                                 "0.5000" "$(cr_usd)"
+
+export TU_STATE="$SAVE_STATE" TU_PROJECTS="$SAVE_PROJ"
+export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
