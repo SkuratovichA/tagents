@@ -237,11 +237,15 @@ row_of() {  # <pane key> — the rendered row for it, colours stripped
 SHIM2="$ROOT/shim2"; mkdir -p "$SHIM2"
 TMUXLOG2="$ROOT/tmux-fwd.log"; : >"$TMUXLOG2"
 PSLOG="$ROOT/ps.log"; : >"$PSLOG"
+# The refusals go in a file of their OWN, opened once here and truncated by
+# nothing afterwards: the forwarding log above is cleared twice mid-run, and a
+# marker written into it can only ever prove the window between two of those.
+DEFSOCK="$ROOT/default-socket.log"; : >"$DEFSOCK"
 REALTMUX=$(command -v tmux)
 cat >"$SHIM2/tmux" <<EOF
 #!/bin/sh
 printf '%s\n' "\$*" >>"$TMUXLOG2"
-[ -n "\${TMUX:-}" ] || { printf 'DEFAULT-SOCKET %s\n' "\$*" >>"$TMUXLOG2"; exit 1; }
+[ -n "\${TMUX:-}" ] || { printf 'DEFAULT-SOCKET %s\n' "\$*" >>"$DEFSOCK"; exit 1; }
 exec "$REALTMUX" "\$@"
 EOF
 # Every ps the hook makes, one line each: the walk is the expensive half and the
@@ -713,7 +717,7 @@ ok "...with the pane where it always was" "$PN4" \
    "$(awk -F"$TAB" '$3 == "sid-c5" { print $4; exit }' "$H")"
 
 ok "nothing here ever reached for the default tmux socket" 0 \
-   "$(grep -c 'DEFAULT-SOCKET' "$TMUXLOG2")"
+   "$(grep -c 'DEFAULT-SOCKET' "$DEFSOCK")"
 
 # The child half is done with: its panes would otherwise read as live agents in
 # every list below, and its records as rows.
@@ -1098,6 +1102,15 @@ has "while an ordinary ended session still is" "sid-plain$TAB" "$CR"
 TL=$(COLUMNS=120 HOME="$ROOT" run --timeline | plain)
 has "the timeline still draws the child" "sweeper" "$TL"
 has "...marked as the work of another agent" "↳ sweeper" "$TL"
+
+# ---------------------------------------------------------------------------
+t "D11. and the whole run never reached for the default tmux socket"
+# ---------------------------------------------------------------------------
+# The last word, over every call the forwarding shim saw from the first child
+# case to here — the mid-run check above covers only its own stretch, the log it
+# reads being truncated on either side of it.
+ok "the shim was never called without a socket to point it at" 0 \
+   "$(grep -c 'DEFAULT-SOCKET' "$DEFSOCK")"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
