@@ -357,7 +357,7 @@ list() {
     function prow(p,   q) {
       q = ""
       if ((p in psid) && psid[p] != "" && (psid[p] in bysid)) q = bysid[psid[p]]
-      else if (("%" par[p]) in seen) q = "%" par[p]
+      else if (("%" par[p]) in kept) q = "%" par[p]
       return (q == p) ? "" : q
     }
     # ...and the row a GRANDCHILD hangs under: the nearest ancestor that is not
@@ -480,19 +480,11 @@ list() {
         rdir[p] = (p in st && cwd[p] != "") ? cwd[p] : path[p]
         if (rdir[p] == "") rdir[p] = "(unknown)"
         gk[p] = (rdir[p] in root) ? root[rdir[p]] : rdir[p]
-        if ((p in sid) && sid[p] != "" && !(sid[p] in bysid)) bysid[sid[p]] = p
-      }
-      # ...and then which rows are children, and whose. under[] holds
-      # only the ones with a parent actually on this list; everything else falls
-      # through to the top level.
-      for (p in par) {
-        if (!(p in seen)) continue
-        a = anc(p)
-        if (a != "") { under[p] = a; if ((p in hless) && hlive[p]) livekids[a]++ }
       }
 
       # The row names, measured before any row is drawn — the same selection
       # the loop below makes, so a record it would skip cannot widen the column.
+      # It is also where kept[] comes from: which records survive to be rows.
       maxnm = 0
       for (p in seen) {
         isalive = (p in alive); islive = isalive && (p in live)
@@ -512,8 +504,33 @@ list() {
           if (sid[p] != "" && (sid[p] in livesid)) continue
           dir = rdir[p]
         }
+        kept[p] = 1
         l = uclen(nameof(p, (p in sid) ? sid[p] : "", dir))
         if (l > maxnm) maxnm = l
+      }
+
+      # WHICH ROW OWNS A SESSION ID — over the rows that will be DRAWN, not over
+      # every record collected. A conversation routinely has two records, a
+      # stale <pane>.tsv from where it used to run and the live one, and the
+      # walk hands them over in hash order: rank instead, so a child hangs under
+      # the row the eye can see rather than under a corpse. First wins among
+      # equals, as before.
+      for (p in kept) {
+        if (!(p in sid) || sid[p] == "") continue
+        lv = (p in hless) ? (hlive[p] + 0) : (((p in alive) && (p in live)) ? 1 : 0)
+        if (!(sid[p] in bysid) || (lv && !bylive[sid[p]])) {
+          bysid[sid[p]] = p; bylive[sid[p]] = lv
+        }
+      }
+      # ...and then which rows are children, and whose. under[] holds only the
+      # ones whose parent is a rendered row: a parent record that exists but was
+      # skipped above is no parent to hang anything under, and filing a child
+      # under it put the row in a group with no header of its own, charged it the
+      # indent, and then drew it at the top level anyway.
+      for (p in par) {
+        if (!(p in kept)) continue
+        a = anc(p)
+        if (a != "") { under[p] = a; if ((p in hless) && hlive[p]) livekids[a]++ }
       }
       fitcols()
 
