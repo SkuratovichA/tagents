@@ -130,11 +130,14 @@ preview_name() {  # <pane>
   # $TA_LABEL — the same fallback the row itself uses, and the only name a
   # headless session has: no pane means no pane title to strip a glyph off.
   [ -n "$nm" ] || nm=$lbl
-  # WHAT THE SESSION CALLED ITSELF, before the directory it happens to run in:
-  # the row above this heading reaches for the ai-title there too, and a parent
-  # named one way on the list and another way here reads as two agents. The
-  # transcript comes out of the same read as the session id.
-  [ -n "$nm" ] || nm=$(title_of "${sid:-}" "${tr:-}") || nm=
+  # WHAT THE SESSION CALLED ITSELF, before the directory it happens to run in —
+  # for a pane-less record only, the one kind the list reads the ai-title for
+  # (collect() emits it for those alone): the row above this heading and the
+  # heading must name the parent the same way, and a paned row never reaches for
+  # the title. The transcript comes out of the same read as the session id.
+  case ${pane#%} in
+    s-?*) [ -n "$nm" ] || nm=$(title_of "${sid:-}" "${tr:-}") || nm= ;;
+  esac
   [ -n "$nm" ] || nm=$(basename "${dir:-$pane}")
   printf '%s' "$nm"
 }
