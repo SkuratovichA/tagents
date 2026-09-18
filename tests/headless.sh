@@ -643,6 +643,26 @@ ok "the child record is gone" 0 \
 ok "...and the session is in its pane" sid-c7 "$(field 3 "$STATE/$K6.tsv")"
 
 # ---------------------------------------------------------------------------
+t "H7b. a record left by another pid sends the hook back to the walk"
+# ---------------------------------------------------------------------------
+# The shape of a child whose SessionStart went missing: there is a record for
+# the session, but the pid that wrote it is not ours, so nothing in it can be
+# believed. The pane in $TMUX_PANE is the parent's and was never this session's
+# to write — the hot path's step 2 would have keyed the record by it.
+newpane "exec sleep 600"
+PN7=$PANEID; K7=${PN7#%}
+rm -f "$STATE/$K7.tsv"
+crec12 "s-sid-c7b" sid-c7b "$STALEPID" 9199 sid-elsewhere
+mkpay PreToolUse sid-c7b ',"tool_name":"Bash"'
+kidrun TMUX_PANE="$PN7"
+ok "the pane it was handed got no record of its own" 0 \
+   "$([ -e "$STATE/$K7.tsv" ] && echo 1 || echo 0)"
+ok "...the session was decided again instead" "$K7" \
+   "$(field 11 "$STATE/s-sid-c7b.tsv")"
+ok "...and the record is still keyed by the session" "$(cat "$KPIDF")" \
+   "$(field 8 "$STATE/s-sid-c7b.tsv")"
+
+# ---------------------------------------------------------------------------
 t "H9. a parent's SessionEnd takes its finished children with it"
 # ---------------------------------------------------------------------------
 rm -f "$STATE"/s-*.tsv
