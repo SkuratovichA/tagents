@@ -605,12 +605,31 @@ ACCOUNTS="$STATE/accounts.tsv"
 # dollars the meter would agree with; --sessions and --burn stay at list, since
 # they are read next to the CLI's own list-price ledger. TU_NO_FACTOR=1 turns the
 # scaling off for one call — the calibration itself needs the unscaled number.
-FACTOR="$STATE/factor.tsv"           # account<TAB>factor<TAB>read at (epoch)<TAB>amount
+FACTOR="$STATE/factor.tsv"  # account<TAB>factor<TAB>read at<TAB>amount<TAB>prices
+
+# A FACTOR IS ONLY VALID FOR THE TABLE IT WAS DERIVED AGAINST. It is meter
+# divided by what this index computed at that instant, so correcting a rate
+# invalidates every stored factor at once — and silently, in the worst
+# direction: the old haircut lands on top of the new prices and the month
+# reads far under the meter. (Observed 2026-09-18: the fable/sonnet rates were
+# corrected two minutes after a meter fetch, and the work account showed $790
+# against a $973 reading until it was recalibrated.) So each row carries a
+# fingerprint of the price table, and a row whose fingerprint no longer matches
+# is ignored rather than trusted: list price is a little high, a stale factor is
+# a lot low, and the next meter reading re-derives it anyway.
+prices_fp() { printf '%s' "$PRICES" | tr -s ' \n' ' ' | cksum | tr -d ' '; }
 
 factor_arg() {  # -> "acct=factor;..." for awk, empty when off or absent
   [ -z "${TU_NO_FACTOR:-}" ] || return 0
   [ -s "$FACTOR" ] || return 0
-  awk -F"$TAB" '$2 + 0 > 0 { printf "%s=%s;", $1, $2 }' "$FACTOR"
+  awk -F"$TAB" -v fp="$(prices_fp)" '$2 + 0 > 0 && $5 == fp { printf "%s=%s;", $1, $2 }' "$FACTOR"
+}
+
+# Rows the fingerprint check is ignoring, so a caller can say why the dollars
+# moved instead of leaving it to be discovered on the status bar.
+factor_stale() {  # -> account names, space separated
+  [ -s "$FACTOR" ] || return 0
+  awk -F"$TAB" -v fp="$(prices_fp)" '$2 + 0 > 0 && $5 != fp { printf "%s ", $1 }' "$FACTOR"
 }
 
 calibrate() {  # <account> <amount> [at]
@@ -640,7 +659,7 @@ calibrate() {  # <account> <amount> [at]
   mkdir -p "$STATE" 2>/dev/null || return 1
   tmp="$FACTOR.tmp.$$"
   { [ -s "$FACTOR" ] && awk -F"$TAB" -v a="$acct" '$1 != a' "$FACTOR"
-    printf '%s\t%s\t%s\t%s\n' "$acct" "$f" "$epoch" "$amt"; } >"$tmp" 2>/dev/null &&
+    printf '%s\t%s\t%s\t%s\t%s\n' "$acct" "$f" "$epoch" "$amt" "$(prices_fp)"; } >"$tmp" 2>/dev/null &&
     mv -f "$tmp" "$FACTOR"
   printf 'tusage: %s priced at x%s of list (meter $%s vs indexed $%s at %s)\n' \
     "$acct" "$f" "$amt" "$mtd" "$(date -r "$epoch" '+%Y-%m-%d %H:%M' 2>/dev/null || echo "$epoch")"

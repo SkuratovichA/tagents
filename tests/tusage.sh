@@ -370,6 +370,22 @@ ok "...while fable 5 keeps the 0.1x default"               "1.0000" "$(cr_usd)"
 cr_model claude-opus-5
 ok "...and so does opus 5"                                 "0.5000" "$(cr_usd)"
 
+# A factor is meter / what this index computed, so it is only valid for the
+# price table it was derived against. Correcting a rate must not leave the old
+# haircut sitting on top of the new prices.
+cr_model claude-opus-5
+ok "the fixture prices at list before calibration" "0.5000" "$(cr_usd)"
+out=$(bash "$TU" --no-update --calibrate work 0.25 2>&1)
+contains "...and calibrates against it" "x0.5000" "$out"
+ok "...so --daily reports the metered dollars" "0.2500" "$(cr_usd)"
+
+# Same index, a different table: the stored factor no longer applies, so the
+# dollars must equal the unfactored dollars under the new table (1M read at
+# 0.1 x $10 = $1.00), not the stale 0.5x of them.
+ok "a factor derived against another price table is ignored" "1.0000" \
+   "$(TU_PRICES='claude-opus-5 10 50' bash "$TU" --no-update --daily | awk -F"$TAB" '{ print $3 }')"
+ok "...and the original table still gets its factor" "0.2500" "$(cr_usd)"
+
 export TU_STATE="$SAVE_STATE" TU_PROJECTS="$SAVE_PROJ"
 export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
 
