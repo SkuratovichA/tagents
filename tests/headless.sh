@@ -839,11 +839,16 @@ sleep 0.3
 # A transcript with the shape a real one has: the title the session gave itself,
 # a prompt, a reply with a text block and a tool call — and a HALF-WRITTEN last
 # line, which is the normal state of a file something is still appending to.
+# The malformed line in the MIDDLE is the one that proves the guard: a line at
+# the end is dropped by a plain fromjson too, while a broken line with good
+# turns after it takes the whole rest of the file down with it.
 KIDTR="$ROOT/kid.jsonl"
 {
   printf '%s\n' '{"type":"ai-title","aiTitle":"the nightly sweep"}'
   printf '%s\n' '{"type":"user","message":{"content":[{"type":"text","text":"sweep the queue"}]}}'
   printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"swept, nothing left"},{"type":"tool_use","name":"Bash","input":{"command":"ls -la /queue"}}]}}'
+  printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"te'
+  printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"and then it went quiet"}]}}'
   printf '%s' '{"type":"assistant","message":{"content":[{"type":"te'
 } >"$KIDTR"
 
@@ -909,7 +914,9 @@ has "...and by its record key" "($MUMK)" "$PV"
 has "with no log there is the transcript" "child session" "$PV"
 has "the tool calls are in it" "▸ Bash" "$PV"
 has "...and what was said" "swept, nothing left" "$PV"
-hasnt "a half-written last line takes nothing with it" "error" "$PV"
+has "a broken line takes none of the turns after it with it" \
+    "and then it went quiet" "$PV"
+hasnt "...and puts nothing of its own on the page" "error" "$PV"
 # ...and a child that DOES have a log is previewed from the log, as before.
 crec kid1 working "$$" "" "$MUMK" sid-mum 0 "$REPO2" "$KIDTR"
 awk -F"$TAB" -v OFS="$TAB" -v l="$LOG" \
