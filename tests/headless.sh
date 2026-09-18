@@ -663,6 +663,21 @@ ok "...and the record is still keyed by the session" "$(cat "$KPIDF")" \
    "$(field 8 "$STATE/s-sid-c7b.tsv")"
 
 # ---------------------------------------------------------------------------
+t "H10. a \$TMUX_PANE that is not a pane id is not a key either"
+# ---------------------------------------------------------------------------
+# Anything but %<number> names no pane, and the hot path used to take it for one
+# all the same: the state directory grew files called after whatever the
+# variable held, a bare `.tsv` among them when it held nothing usable.
+mkpay PreToolUse sid-c10 ',"tool_name":"Bash"'
+kidrun TMUX_PANE=not-a-pane
+ok "nothing is keyed by the junk it was handed" 0 \
+   "$([ -e "$STATE/not-a-pane.tsv" ] && echo 1 || echo 0)"
+ok "...and there is no bare .tsv either" 0 \
+   "$(ls -a "$STATE" | grep -c '^\.tsv$')"
+ok "the session has a record of its own instead" sid-c10 \
+   "$(field 3 "$STATE/s-sid-c10.tsv")"
+
+# ---------------------------------------------------------------------------
 t "H9. a parent's SessionEnd takes its finished children with it"
 # ---------------------------------------------------------------------------
 rm -f "$STATE"/s-*.tsv
