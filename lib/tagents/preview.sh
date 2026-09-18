@@ -111,14 +111,15 @@ preview() {
 
 # The heading of that page: the name the row shows for the agent, resolved the
 # way ask_kill resolves it — the label first, then the pane title with Claude
-# leading glyph off it, then the project. Deliberately NOT the way
+# leading glyph off it, then $TA_LABEL, then what the session called itself, and
+# the project last of all. Deliberately NOT the way
 # sync_window_names resolves it: a heading falling back to the project is
 # better than a heading with a bare pane id in it, while a WINDOW named after
 # its own directory is a rename tmux automatic-rename would only undo.
 preview_name() {  # <pane>
-  local pane=${1:-} sid dir lbl nm
-  IFS="$US" read -r sid dir lbl < <(
-    awk -F"$TAB" -v OFS="$US" 'NR==1 { print $3, $4, $10; exit }' \
+  local pane=${1:-} sid dir tr lbl nm
+  IFS="$US" read -r sid dir tr lbl < <(
+    awk -F"$TAB" -v OFS="$US" 'NR==1 { print $3, $4, $5, $10; exit }' \
         "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)
   nm=$(label_of "${sid:-$pane}")
   if [ -z "$nm" ]; then
@@ -129,6 +130,11 @@ preview_name() {  # <pane>
   # $TA_LABEL — the same fallback the row itself uses, and the only name a
   # headless session has: no pane means no pane title to strip a glyph off.
   [ -n "$nm" ] || nm=$lbl
+  # WHAT THE SESSION CALLED ITSELF, before the directory it happens to run in:
+  # the row above this heading reaches for the ai-title there too, and a parent
+  # named one way on the list and another way here reads as two agents. The
+  # transcript comes out of the same read as the session id.
+  [ -n "$nm" ] || nm=$(title_of "${sid:-}" "${tr:-}") || nm=
   [ -n "$nm" ] || nm=$(basename "${dir:-$pane}")
   printf '%s' "$nm"
 }
