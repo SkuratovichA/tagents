@@ -135,3 +135,12 @@ window names never fired here and the machine name became the agent's name. Foun
 tests/headless.sh, whose parent pane is a fake claude that sets no title. One rule now (`host_title` in
 core.sh, both forms), and a test fixture that is compared against the committed entry byte for byte must
 title its panes itself rather than depend on what the machine is called.
+
+## A test that cannot fail is not a test: take the code out and watch it go red (19.09.2026)
+
+Two post-review tests passed with the very code they claimed to pin removed: D4's `fromjson?` guard
+(jq carries on past a line it cannot parse either way; the `?` only quiets stderr, which `--preview`
+never shows) and D6c's live-over-dead rank in the session-id map (livesid had already dropped every
+corpse before the map was built, so the rank was dead code). The reviewer's mutation check caught both;
+the rank went, and the comments now say what each fixture actually pins. For every "this test pins X",
+remove X once and run the suite before calling it a test.
