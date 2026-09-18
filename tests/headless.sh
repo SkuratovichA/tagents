@@ -329,9 +329,9 @@ prec() {  # <key> <sid> — a seven-field paned record, as the hook writes one
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$NOW0" working "$2" "$REPO" "" "Bash ls" "" >"$STATE/$1.tsv"
 }
-hrec10() {  # <key> <sid> <pid> <label> — a headless record, ten fields
+hrec10() {  # <key> <sid> <pid> <label> [log] — a headless record, ten fields
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$NOW0" working "$2" "$REPO" "" "Bash ls" "" "$3" "" "$4" >"$STATE/$1.tsv"
+    "$NOW0" working "$2" "$REPO" "" "Bash ls" "" "$3" "${5:-}" "$4" >"$STATE/$1.tsv"
 }
 crec12() {  # <key> <sid> <pid> <parent key> <parent sid>
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
@@ -416,6 +416,66 @@ hrec10 "s-sid-p8b" sid-p8b "$P8B" tg-orchestrator
 family_go
 ok "a name that is the child's own is kept" other \
    "$(field 10 "$STATE/s-sid-c8b.tsv")"
+
+# $TA_LOG is inherited exactly as $TA_LABEL is, and tailing the parent's log in
+# the child's preview is the same lie by another name.
+mkpay SessionStart sid-c8c
+family_start TA_LABEL=own-name TA_LOG="$LOG"
+P8C=$(cat "$PPIDF")
+hrec10 "s-sid-p8c" sid-p8c "$P8C" tg-orchestrator "$LOG"
+family_go
+ok "the parent's log is not copied onto the child" "" \
+   "$(field 9 "$STATE/s-sid-c8c.tsv")"
+ok "...while a name of its own is untouched by it" own-name \
+   "$(field 10 "$STATE/s-sid-c8c.tsv")"
+
+LOG2="$ROOT/child.log"
+printf 'a log the child opened itself\n' >"$LOG2"
+mkpay SessionStart sid-c8d
+family_start TA_LOG="$LOG2"
+P8D=$(cat "$PPIDF")
+hrec10 "s-sid-p8d" sid-p8d "$P8D" tg-orchestrator "$LOG"
+family_go
+ok "a log that is the child's own is kept" "$LOG2" \
+   "$(field 9 "$STATE/s-sid-c8d.tsv")"
+
+# ---------------------------------------------------------------------------
+t "H8b. ...and a name inherited two levels up is nobody's either"
+# ---------------------------------------------------------------------------
+# The immediate parent is a child whose own label was blanked when IT was filed,
+# so there is nothing to compare against there: the name belongs to the agent at
+# the head of the family, and the chain has to be walked to find it.
+mkpay SessionStart sid-g1
+family_start TA_LABEL=tg-orchestrator
+PG=$(cat "$PPIDF")
+crec12 "s-sid-c1g" sid-c1g "$PG" "s-sid-p1h" sid-p1h
+ok "the middle of the chain carries no name of its own" "" \
+   "$(field 10 "$STATE/s-sid-c1g.tsv")"
+family_go
+ok "the grandchild is filed under it" "s-sid-c1g" \
+   "$(field 11 "$STATE/s-sid-g1.tsv")"
+ok "...and the name of the agent above them both is not its own" "" \
+   "$(field 10 "$STATE/s-sid-g1.tsv")"
+
+# ---------------------------------------------------------------------------
+t "H8c. a parent sitting in a pane keeps its name in the history, not in a field"
+# ---------------------------------------------------------------------------
+# A paned record is seven fields long and has no field 10 at all, so the only
+# place the name it was started with survives is the `start` line of its session.
+newpane "exec sleep 600"
+PN8=$PANEID; K8=${PN8#%}
+prec "$K8" sid-p8p
+printf '%s\tstart\tsid-p8p\t%s\tnightly-sweep\t%s\n' "$NOW0" "$PN8" "$REPO" >>"$H"
+mkpay SessionStart sid-c8e
+kidrun TMUX_PANE="$PN8" TA_LABEL=nightly-sweep
+ok "the child is filed under the pane" "$K8" "$(field 11 "$STATE/s-sid-c8e.tsv")"
+ok "...and does not answer to the name the pane was started with" "" \
+   "$(field 10 "$STATE/s-sid-c8e.tsv")"
+mkpay SessionStart sid-c8f
+kidrun TMUX_PANE="$PN8" TA_LABEL=a-name-of-its-own
+ok "a name the history does not know is the child's own" a-name-of-its-own \
+   "$(field 10 "$STATE/s-sid-c8f.tsv")"
+rm -f "$STATE/$K8.tsv"
 
 # ---------------------------------------------------------------------------
 t "H1b. a child of an agent sitting in a pane is filed under that pane"
