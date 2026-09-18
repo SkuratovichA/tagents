@@ -30,7 +30,9 @@
 #                headless one: 11 the parent's record key ("83" or "s-<sid>"),
 #                12 the parent's session id. A child NEVER touches the pane it
 #                inherited — no @agent, no `set -up`, and its subagent files are
-#                keyed by its own session.
+#                keyed by its own session. Fields 9 and 10 are its own or empty:
+#                a $TA_LOG or $TA_LABEL that any ancestor was started with was
+#                inherited through the environment and names that ancestor.
 #
 # WHO THE PARENT IS is decided at SessionStart and cached in the record.
 # $CLAUDE_PID — the pid of the claude process this hook is running inside — is
@@ -139,6 +141,42 @@ $(awk -F'	' -v OFS="$us" 'NR==1 { print $3, $10; exit }' "$1" 2>/dev/null)
 EOF
 }
 
+# AN INHERITED $TA_LOG AND $TA_LABEL NAME AN ANCESTOR, NOT THIS SESSION. A child
+# started from an agent's Bash tool inherits the whole environment: the label, so
+# every child of tg-orchestrator called itself tg-orchestrator, and the log, so
+# its preview tailed the PARENT's log and its own transcript was never looked at.
+# Both are blanked here, where the family is being read anyway.
+#
+# Up the WHOLE chain, not just to the parent: by the time a grandchild starts,
+# its parent's own record has had both fields blanked already, so a comparison
+# with the parent alone would let the root's values through at the second
+# generation. Bounded at eight hops, and it stops at a missing record or at a
+# pane record — which carries neither field and names no parent of its own.
+ta_disown() {
+  dk=$parkey; di=0
+  while [ -n "$dk" ] && [ "$di" -lt 8 ]; do
+    [ -e "$dir/$dk.tsv" ] || break
+    IFS="$us" read -r da9 da10 da11 <<EOF
+$(awk -F'	' -v OFS="$us" 'NR==1 { print $9, $10, $11; exit }' \
+       "$dir/$dk.tsv" 2>/dev/null)
+EOF
+    [ -n "$clog" ] && [ "$clog" = "${da9:-}" ] && clog=
+    [ -n "$clbl" ] && [ "$clbl" = "${da10:-}" ] && clbl=
+    [ -n "$clog" ] || [ -n "$clbl" ] || return 0
+    dk=${da11:-}; di=$((di + 1))
+  done
+  # A PANED PARENT HAS NO FIELD 10 to compare against: the label it was started
+  # with lives only in the history, on the `start` line of its session. One awk
+  # over a file this hook already touches, and off the hot path — classify() is
+  # the expensive branch in any case.
+  if [ -n "$clbl" ] && [ -n "${parsid:-}" ] && [ -e "$dir/history.tsv" ]; then
+    dhl=$(awk -F'	' -v s="$parsid" \
+              '$2 == "start" && $3 == s { l = $5 } END { print l }' \
+              "$dir/history.tsv" 2>/dev/null)
+    [ -n "${dhl:-}" ] && [ "$dhl" = "$clbl" ] && clbl=
+  fi
+}
+
 # ONE PASS OVER THE PROCESS TABLE ANSWERS FOUR QUESTIONS, and it is the only
 # pass this hook ever makes. Which pane this session's ancestry reaches, if any;
 # which process is the claude running it, the only liveness signal a session
@@ -241,13 +279,11 @@ classify() {
   # which is the honest answer, while a 0 would be read as a whole process group.
   [ -n "$cpid" ] || cpid=${PPID:-}
   clog=${TA_LOG:-}
-  # AN INHERITED LABEL NAMES THE PARENT, NOT THIS SESSION. A child started from
-  # an agent's Bash tool inherits its whole environment, $TA_LABEL included, so
-  # every child of tg-orchestrator called itself tg-orchestrator. Blanked here,
-  # while the parent's record is being read anyway; the row then falls back to
-  # the session's own ai-title.
   clbl=${TA_LABEL:-}
-  if [ -n "$parkey" ] && [ -n "$parlbl" ] && [ "$parlbl" = "$clbl" ]; then clbl=; fi
+  # Neither is this session's if the family it has just been filed under was
+  # started with it; the row then falls back to the session's own ai-title, and
+  # the preview to its own transcript.
+  if [ -n "$parkey" ]; then ta_disown; fi
 }
 
 if [ "$event" = SessionStart ]; then
@@ -276,9 +312,17 @@ EOF
     if [ "$hasown" = 0 ] || [ "$c8" = "$own" ]; then
       key="s-$sid"; headless=1; pane=
       cpid=$c8; clog=$c9; clbl=$c10; parkey=$c11; parsid=$c12
+    else
+      # Not our record — and that is a reason to think again about where this
+      # session belongs, not a reason to fall back to the pane we were handed.
+      # A child whose SessionStart went missing has exactly this shape, and step
+      # 2 would have written the parent's pane for it.
+      redecide=1
     fi
   fi
-  if [ -z "$key" ]; then
+  if [ "${redecide:-0}" = 1 ]; then
+    classify
+  elif [ -z "$key" ]; then
     # A pane id is %<number>, and anything else in $TMUX_PANE names nothing: a
     # state file called after it would be junk named after junk, so it is not a
     # fast path at all and goes the long way like everybody else.
