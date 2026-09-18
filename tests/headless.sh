@@ -1002,6 +1002,29 @@ ok "the row is the one it draws with no such record at all" \
 rm -f "$STATE/s-ghostkid.tsv"
 
 # ---------------------------------------------------------------------------
+t "D6c. ...and one whose parent has two records hangs under the live one"
+# ---------------------------------------------------------------------------
+# A conversation routinely has more records than one with a single session id:
+# a <pane>.tsv for every pane it has ever run in, and the live one. Which of
+# them owned the session id was whichever awk hashed first, so the child was
+# filed under a corpse that draws no row at all as often as not.
+for k in 9103 9104 9105 9106; do
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(( NOW - 120 ))" done sid-mum "$REPO" "" "Read main.c" "" >"$STATE/$k.tsv"
+done
+ORD=$(order)
+ok "not one of the stale records draws a row" "" \
+   "$(printf '%s' "$ORD" |
+        awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^%910[3-6]$/) printf "%s ", $i }')"
+ok "...and the child still sits directly under the live parent" "$MUM %s-kid1" \
+   "$(printf '%s' "$ORD" | awk '{ for (i = 1; i <= NF; i++) if ($i == "'"$MUM"'") print $i, $(i+1) }')"
+ok "...in the live parent's group" "$REPO" \
+   "$(rowfor "%s-kid1" | awk -F"$TAB" '{ print $5 }')"
+has "...hanging one level deeper, as a nested row does" "     └─ " \
+   "$(rowfor "%s-kid1")"
+rm -f "$STATE"/910[3-6].tsv
+
+# ---------------------------------------------------------------------------
 t "D7. a dead child says so, and does not linger for a day"
 # ---------------------------------------------------------------------------
 crec kidx done "$DEADPID" "" "$MUMK" sid-mum 0 "$REPO2" ""
