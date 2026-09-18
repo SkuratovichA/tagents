@@ -926,6 +926,19 @@ PV=$(run --preview "%s-kid1" working | plain)
 has "a log still wins over the transcript" "the daemon said hello" "$PV"
 crec kid1 working "$$" "" "$MUMK" sid-mum 0 "$REPO2" "$KIDTR"
 
+# A PANE-LESS PARENT has no pane title to be named by and may well have no
+# $TA_LABEL either. The row for it shows what the session called itself, and
+# this heading has to agree with it: a parent named one way on the list and
+# another way here reads as two different agents.
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$NOW" working sid-titled "$REPO" "$KIDTR" "Bash ls" "" "$$" "" "" \
+  >"$STATE/s-sid-titled.tsv"
+crec kidt working "$$" "" "s-sid-titled" sid-titled 0 "$REPO2" ""
+PV=$(run --preview "%s-kidt" working | plain)
+has "a pane-less parent is named by what its session called itself" \
+    "parent: the nightly sweep" "$PV"
+rm -f "$STATE/s-sid-titled.tsv" "$STATE/s-kidt.tsv"
+
 # ---------------------------------------------------------------------------
 t "D9. a child is called what the session called itself"
 # ---------------------------------------------------------------------------
