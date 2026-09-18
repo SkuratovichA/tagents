@@ -256,11 +256,13 @@
 # its scratch directory would put it in, with "child" where the location column
 # names a pane; the ⑂ count on the parent row includes it, and the group badges
 # count it like any other row. It is named by $TA_LABEL where it has one of its
-# own — an inherited one names the parent, so it is dropped — and otherwise by
-# the title the session gave itself, read out of its transcript. Nothing that
-# needs a pane works on it, exactly as for a headless row, and there is usually
-# no $TA_LOG either: ctrl-v and the sidebar preview show the last turns of the
-# transcript instead. It is never offered in the closed-session picker (ctrl-y)
+# own — a value it merely inherited names an ancestor rather than itself, so the
+# hook drops it, and drops an inherited $TA_LOG with it, however many
+# generations up the family the two came from — and otherwise by the title the
+# session gave itself, read out of its transcript. Nothing that needs a pane
+# works on it, exactly as for a headless row, and it usually has no $TA_LOG of
+# its own: ctrl-v and the sidebar preview show the last turns of the transcript
+# instead. It is never offered in the closed-session picker (ctrl-y)
 # — nobody can resume a conversation somebody else was having — and the
 # timeline marks it with a ↳. A child of an agent that is no longer on the list
 # falls back to a row of its own, at the top level.

@@ -521,9 +521,11 @@ location column names a pane:
 
 The `⑂` count on the parent counts it exactly as it counts a subagent, and a
 blocked child shows up in the group badges like any other row. It is named by
-`$TA_LABEL` where it has one of its own — an inherited one names the parent, so
-the hook drops it — and otherwise by the title the session gave itself, read out
-of its transcript. There is usually no `$TA_LOG` for one, so `ctrl-v` and the
+`$TA_LABEL` where it has one of its own — a value it merely inherited names an
+ancestor rather than itself, so the hook drops it, and drops an inherited
+`$TA_LOG` with it, however many generations up the family the two came from —
+and otherwise by the title the session gave itself, read out of its transcript.
+A child rarely has a `$TA_LOG` of its own, so `ctrl-v` and the
 sidebar preview show the last turns of that transcript instead of a log tail,
 and the pane verbs refuse with a notice of their own. It is never offered in the
 closed-session picker: resuming somebody else's conversation would start a
