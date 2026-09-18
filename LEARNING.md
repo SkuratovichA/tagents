@@ -120,3 +120,18 @@ A stub `claude` written as `exec sleep 600` turns the pane's current command int
 
 ## A variadic CLI option swallows the prompt that follows it (15.09.2026)
 `claude -p` declares `--disallowedTools <tools...>` and `--mcp-config <configs...>` as variadic: they keep taking argv words until the next option. buildArgs() put `--disallowedTools` last, so on every fresh session (no `--resume`) the prompt became one more "permission deny rule" and the CLI exited 1 with "Input must be provided either through stdin or as a prompt argument" — an earlier ticket agent lost every batch after the port and no test caught it because the argv test only pinned the resumed case. A variadic option goes in front of an option that is always present (`--output-format`), and the test now walks every spec × {resume, fresh} and asserts each variadic flag is followed by one value and then an option.
+## `perl -pi -e 's|…\|\|…|…|'`: an escaped delimiter is a bare `|`, i.e. an empty alternation (18.09.2026)
+
+With `|` as the substitution delimiter, `\|\|` in the pattern is un-escaped to `||` before the regex
+is compiled, which matches the empty string at every position — the replacement was splattered between
+every character of lib/tagents/list.sh (807 lines "changed", the file unreadable). Use `s{…}{…}` when
+the pattern contains a pipe, and check `git diff --stat` before running anything on the result.
+
+## tmux's default pane title is the FULL host name; every "that is just the hostname" check used `hostname -s` (18.09.2026)
+
+On a Mac `hostname` is `sukas-MacBook-Pro.local` and `hostname -s` is `sukas-MacBook-Pro`; tmux titles
+an untitled pane with the former, so the "names nothing" rule in preview_name, ask_kill, the list and the
+window names never fired here and the machine name became the agent's name. Found by D4 of
+tests/headless.sh, whose parent pane is a fake claude that sets no title. One rule now (`host_title` in
+core.sh, both forms), and a test fixture that is compared against the committed entry byte for byte must
+title its panes itself rather than depend on what the machine is called.
