@@ -510,17 +510,15 @@ list() {
       }
 
       # WHICH ROW OWNS A SESSION ID — over the rows that will be DRAWN, not over
-      # every record collected. A conversation routinely has two records, a
-      # stale <pane>.tsv from where it used to run and the live one, and the
-      # walk hands them over in hash order: rank instead, so a child hangs under
-      # the row the eye can see rather than under a corpse. First wins among
-      # equals, as before.
+      # every record collected. A conversation routinely has more records than
+      # one with a single session id, a stale <pane>.tsv for every pane it has
+      # run in beside the live one — and the stale ones never get this far: the
+      # loop above drops a closed record whose session is live elsewhere
+      # (livesid), so whatever is left is the row the eye can see, and first
+      # wins among those.
       for (p in kept) {
         if (!(p in sid) || sid[p] == "") continue
-        lv = (p in hless) ? (hlive[p] + 0) : (((p in alive) && (p in live)) ? 1 : 0)
-        if (!(sid[p] in bysid) || (lv && !bylive[sid[p]])) {
-          bysid[sid[p]] = p; bylive[sid[p]] = lv
-        }
+        if (!(sid[p] in bysid)) bysid[sid[p]] = p
       }
       # ...and then which rows are children, and whose. under[] holds only the
       # ones whose parent is a rendered row: a parent record that exists but was

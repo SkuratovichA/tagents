@@ -858,9 +858,12 @@ sleep 0.3
 # A transcript with the shape a real one has: the title the session gave itself,
 # a prompt, a reply with a text block and a tool call — and a HALF-WRITTEN last
 # line, which is the normal state of a file something is still appending to.
-# The malformed line in the MIDDLE is the one that proves the guard: a line at
-# the end is dropped by a plain fromjson too, while a broken line with good
-# turns after it takes the whole rest of the file down with it.
+# The malformed line in the MIDDLE is a regression sample, not a proof of the
+# guard: jq carries on past a line it cannot parse either way, so a plain
+# fromjson would show the same turns — what `fromjson?` buys is that the parse
+# error never reaches stderr, which the ctrl-v popup would print. Nothing
+# routed through --preview can observe that, and the checks below do not claim
+# to; they pin that the turns after a broken line are still shown.
 KIDTR="$ROOT/kid.jsonl"
 {
   printf '%s\n' '{"type":"ai-title","aiTitle":"the nightly sweep"}'
@@ -1044,9 +1047,10 @@ rm -f "$STATE/s-ghostkid.tsv"
 t "D6c. ...and one whose parent has two records hangs under the live one"
 # ---------------------------------------------------------------------------
 # A conversation routinely has more records than one with a single session id:
-# a <pane>.tsv for every pane it has ever run in, and the live one. Which of
-# them owned the session id was whichever awk hashed first, so the child was
-# filed under a corpse that draws no row at all as often as not.
+# a <pane>.tsv for every pane it has ever run in, and the live one. What keeps
+# a corpse out of the parent slot is that a closed record whose session is live
+# elsewhere never becomes a row at all (livesid), and the session-id map is
+# built over the rows that are drawn — so the child hangs under the live one.
 for k in 9103 9104 9105 9106; do
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$(( NOW - 120 ))" done sid-mum "$REPO" "" "Read main.c" "" >"$STATE/$k.tsv"
