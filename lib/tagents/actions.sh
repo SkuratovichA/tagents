@@ -128,7 +128,7 @@ ask_kill() {  # the confirmation itself — normally the body of the popup
     [ -z "$dir" ] && dir=$(tmux display -p -t "$pane" '#{pane_current_path}' 2>/dev/null)
     if [ -z "$nm" ]; then
       nm=$(untitle_of "$(tmux display -p -t "$pane" '#{pane_title}' 2>/dev/null)")
-      [ "$nm" = "$(hostname -s 2>/dev/null)" ] && nm=""
+      host_title "$nm" && nm=""
     fi
     [ -z "$nm" ] && nm=$(basename "${dir:-?}")
     where=$(tmux display -p -t "$pane" \

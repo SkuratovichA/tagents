@@ -66,6 +66,19 @@ lock_age() {  # <dir> -> seconds
 # RETURN`, which bash 3.2 fires again when the caller returns (see collapse_seat).
 unlock_dir() { rm -rf "${1:?}" 2>/dev/null; return 0; }
 
+# tmux default pane title is the machine name, which names nothing — and it is
+# the FULL name (`hostname`, sukas-MacBook-Pro.local) while the comparisons
+# here were all made against the short one (`hostname -s`), so on a Mac the
+# default title slipped through as the name of every agent that had not set a
+# title of its own. Both forms are "nothing"; anything else somebody chose.
+host_title() {  # <title> — true when it is only the host name
+  case ${1:-} in
+    '') return 1 ;;
+    "$(hostname -s 2>/dev/null)"|"$(hostname 2>/dev/null)") return 0 ;;
+  esac
+  return 1
+}
+
 # Prompts run in a tmux popup, not in the dashboard pane. fzf's `execute` hands
 # the terminal to the child, which puts the prompt under fzf's alternate screen
 # where it is invisible, and lets a child that never returns wedge the whole
