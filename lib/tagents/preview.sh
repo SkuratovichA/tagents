@@ -124,7 +124,7 @@ preview_name() {  # <pane>
   if [ -z "$nm" ]; then
     nm=$(untitle_of "$(tmux display -p -t "$pane" '#{pane_title}' 2>/dev/null)")
     # tmux default pane title is the host name, which names nothing.
-    [ "$nm" = "$(hostname -s 2>/dev/null)" ] && nm=""
+    host_title "$nm" && nm=""
   fi
   # $TA_LABEL — the same fallback the row itself uses, and the only name a
   # headless session has: no pane means no pane title to strip a glyph off.

@@ -234,6 +234,12 @@ DWIN=$(where "$LIST")
 # id would take that closed row off the list entirely.
 A=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" \
       "exec '$BIN/claude' 600" 2>/dev/null)
+# A title of its own. Nothing here sets one, and tmux then shows the machine
+# name — the FULL one, sukas-MacBook-Pro.local on a Mac — which names nothing
+# and is exactly what the name rule drops. The control run below compares this
+# tree byte for byte against the committed entry, so the name of this row must
+# not depend on what the machine is called.
+tm select-pane -T "live agent" -t "$A"
 AHOME=$(where "$A")
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$(date +%s)" working sid-live "$REPO" "" "on it" "$LOGIN" \

@@ -70,7 +70,7 @@ list() {
 
   collect | awk -F"$TAB" -v now="$(date +%s)" -v ttl="$SUB_TTL" \
                 -v grp="$grp" -v home="$HOME" -v deadttl="$DEAD_TTL" -v cols="$cols" \
-                -v host="$(hostname -s 2>/dev/null)" \
+                -v host="$(hostname -s 2>/dev/null)" -v hostf="$(hostname 2>/dev/null)" \
                 -v profs="$(prof_pairs)" -v USC="$US" -v RSC="$RS" \
                 -v hidecols="$hidecols" '
     # macOS awk counts bytes, so substr and %-Ns cut Cyrillic mid-character and
@@ -344,8 +344,8 @@ list() {
       # useful $TA_LABEL (the hook blanks the one it inherited), so this is often
       # the only thing between it and the basename of a directory every agent in
       # the repo would share.
-      if ((n == "" || n == host) && s != "" && (s in atitle)) n = atitle[s]
-      if (n == "" || n == host) n = base(dir)
+      if ((n == "" || n == host || n == hostf) && s != "" && (s in atitle)) n = atitle[s]
+      if (n == "" || n == host || n == hostf) n = base(dir)
       return n
     }
     # WHICH ROW A CHILD HANGS UNDER. Its record names the parent twice — by

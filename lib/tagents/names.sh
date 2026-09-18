@@ -191,7 +191,7 @@ sync_window_names() {
       b=${f##*/}; b=${b%.tsv}
       awk -F"$TAB" -v k="%$b" 'NR == 1 { print "S|@|" k "|@|" $1 "|@|" $3; exit }' "$f"
     done
-  } | awk -v host="$(hostname -s 2>/dev/null)" -v OFS="$TAB" '
+  } | awk -v host="$(hostname -s 2>/dev/null)" -v hostf="$(hostname 2>/dev/null)" -v OFS="$TAB" '
     # Claude prefixes the terminal title with a spinner glyph; the rest is the
     # session title it maintains itself. Same rule as the list — and the same
     # rule untitle_of applies in shell, because the row, this window name and the
@@ -227,7 +227,7 @@ sync_window_names() {
       if ((dp in psid) && psid[dp] != "" && (psid[dp] in lab)) dn = lab[psid[dp]]
       else if (dp in lab) dn = lab[dp]
       else dn = untitle(ptitle[dp])
-      return (dn == host) ? "" : dn
+      return (dn == host || dn == hostf) ? "" : dn
     }
     { nf = split($0, a, "\\|@\\|"); kd = a[1] }
     kd == "P" {
