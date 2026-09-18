@@ -165,20 +165,30 @@ transcript_tail() {  # <transcript file> [lines]
 # Resolved once per session and cached beside the origins, three columns:
 # session id, the title or "-" for "there is none", and how big the transcript
 # was when we looked. A MISS IS CACHED TOO, or every repaint would re-read 200
-# lines of every transcript that has no title yet — and it is re-checked only
-# once the file has actually grown past the size we read it at, since the title
-# line is written near the top and cannot appear without the file changing.
+# lines of every transcript that has no title yet.
+#
+# A LIVE transcript is bigger on every repaint, so "re-check once it grew" would
+# re-check a titleless session every two seconds — and, appending, would grow the
+# cache by a line each time. So: one row per session id, rewritten in place, and
+# a miss is re-checked only when the growth could plausibly have brought a title
+# with it. The record sits near the top of the file, within the 200 lines we
+# read: a transcript that was already 64 KiB without one never gains one, and
+# below that we wait for a full 8 KiB of new text before looking again.
 TITLES="$STATE_DIR/title.tsv"
+TITLE_MAXSZ=65536   # past this the first 200 lines are long behind us
+TITLE_STEP=8192     # and below it, re-read only after this much new text
 title_of() {  # <session-id> <transcript-path>
-  local sid=${1:-} tr=${2:-} sz=0 hit= hsz= t=
+  local sid=${1:-} tr=${2:-} sz=0 hit= hsz= t= tmp=
   [ -n "$sid" ] || return 1
   if [ -n "$tr" ] && [ -e "$tr" ]; then
-    sz=$(stat -f %z "$tr" 2>/dev/null) || sz=0
+    # wc -c, as the hook's history rotation does it; it pads, so strip the pad.
+    sz=$(wc -c <"$tr" 2>/dev/null) || sz=0
+    sz=${sz// /}
   fi
   case ${sz:-0} in ''|*[!0-9]*) sz=0 ;; esac
   if [ -e "$TITLES" ]; then
-    # The LAST line for the id, not the first: a re-checked miss is appended,
-    # and the newest answer is the one that counts.
+    # The LAST line for the id, not the first: a cache written before the rows
+    # were rewritten in place may still hold several, and the newest one counts.
     IFS="$US" read -r hit hsz < <(
       awk -F"$TAB" -v OFS="$US" -v k="$sid" \
           '$1 == k { t = $2; s = $3 } END { if (t != "") print t, s }' \
@@ -186,7 +196,8 @@ title_of() {  # <session-id> <transcript-path>
     if [ -n "${hit:-}" ]; then
       [ "$hit" != - ] && { printf '%s' "$hit"; return 0; }
       case ${hsz:-0} in ''|*[!0-9]*) hsz=0 ;; esac
-      [ "$hsz" -ge "$sz" ] && return 1
+      [ "$hsz" -ge "$TITLE_MAXSZ" ] && return 1
+      [ "$sz" -lt $(( hsz + TITLE_STEP )) ] && return 1
     fi
   fi
   if [ -n "$tr" ] && [ -e "$tr" ] && command -v jq >/dev/null 2>&1; then
@@ -197,7 +208,18 @@ title_of() {  # <session-id> <transcript-path>
                     | ((.aiTitle // "") | tostring
                        | gsub("[\\t\\r\\n]+"; " ") | .[0:60])' 2>/dev/null | head -1)
   fi
-  printf '%s\t%s\t%s\n' "$sid" "${t:--}" "$sz" >>"$TITLES" 2>/dev/null
+  # Rewrite the row rather than append one: the file holds one line per session
+  # and is small by construction, so a copy beside it and a mv are cheap.
+  tmp="$TITLES.$$"
+  if [ -e "$TITLES" ]; then
+    awk -F"$TAB" -v k="$sid" '$1 != k' "$TITLES" >"$tmp" 2>/dev/null || :
+  else
+    : >"$tmp" 2>/dev/null || :
+  fi
+  if [ -e "$tmp" ]; then
+    printf '%s\t%s\t%s\n' "$sid" "${t:--}" "$sz" >>"$tmp" 2>/dev/null
+    mv -f "$tmp" "$TITLES" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+  fi
   [ -n "${t:-}" ] || return 1
   printf '%s' "$t"
 }
@@ -290,9 +312,12 @@ collect() {
           "$key" "$hl" "${hpar:-}" "${hpsid:-}" "${hlbl:-}"
         # ...and the name the session gave itself, for the rows that have no
         # other. Emitted for pane-less rows only: everybody else has a pane
-        # title, which is the same answer without reading a file.
+        # title, which is the same answer without reading a file. Tagged A and
+        # not T: T is the prompt clock below, one line per file in prompt/, and
+        # two kinds of record sharing a tag is two readers quietly reading the
+        # wrong one.
         ttl=$(title_of "${sid:-}" "${tr:-}") &&
-          printf 'T\t%s\t%s\n' "${sid:-}" "$ttl" ;;
+          printf 'A\t%s\t%s\n' "${sid:-}" "$ttl" ;;
     esac
   done
 
