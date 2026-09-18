@@ -296,14 +296,17 @@ CLAUDE_PID=$$
 export CLAUDE_PID
 printf '%s' "$4" | sh "$5"
 : >"$3"
-sleep 600
+sleep 600; :
 EOS
 # TWO CLAUDES IN ONE PANE: one asleep (a sibling suspended with ctrl-z) and one
 # that execs over the pane's shell and so IS the pane's process. Reaching your
 # own pane is what makes you not a child, however many of you are in it.
+# The `; :' is not decoration: with a single command a shell execs it in place,
+# so the sibling would be a `sleep' in the process table and no claude at all.
 cat >"$ROOT/sibling.sh" <<'EOS'
 #!/bin/sh
-"$1" -c 'sleep 600' claude &
+"$1" -c 'sleep 600; :' claude &
+printf '%s' "$!" >"$3.sib"
 exec "$1" "$2" "$3" "$4" "$5" "$6" "$7"
 EOS
 chmod +x "$ROOT/parent.sh" "$ROOT/kid.sh" "$ROOT/solo.sh" "$ROOT/sibling.sh"
@@ -508,10 +511,18 @@ ok "nothing was filed under the session id" 0 \
 t "H3b. ...nor is one that shares its pane with a sibling"
 # ---------------------------------------------------------------------------
 mkpay SessionStart sid-c6 "" "$REPO"
-rm -f "$ROOT/sib.pid" "$ROOT/sib.fin"
+rm -f "$ROOT/sib.pid" "$ROOT/sib.pid.sib" "$ROOT/sib.fin"
 newpane "exec env PATH='$SHIM2:$PATH' '$BIN/claude' '$ROOT/sibling.sh' '$BIN/claude' '$ROOT/solo.sh' '$ROOT/sib.pid' - '$ROOT/sib.fin' '$PAYLOAD' '$HOOK'"
 PN5=$PANEID; K5=${PN5#%}
 waitfor "$ROOT/sib.fin"
+# The premise first: the pane really does hold two processes the hook's walk
+# would call claude. Without this the case passes for the wrong reason.
+SIBPID=$(cat "$ROOT/sib.pid.sib" 2>/dev/null)
+ok "the sibling is a claude in the process table" claude \
+   "$(ps -o comm= -p "${SIBPID:-0}" 2>/dev/null | sed 's:.*/::')"
+ok "...and so is the one that ran the hook" claude \
+   "$(ps -o comm= -p "$(cat "$ROOT/sib.pid" 2>/dev/null || echo 0)" 2>/dev/null |
+        sed 's:.*/::')"
 ok "two claudes in one pane, and the pane is still the key" 7 "$(nf "$STATE/$K5.tsv")"
 ok "...with this session in it" sid-c6 "$(field 3 "$STATE/$K5.tsv")"
 ok "and nothing under the session id" 0 \
@@ -846,6 +857,16 @@ ok "...once, not once per repaint" 1 \
 rowfor "%s-kid2" >/dev/null
 ok "...still once after another look" 1 \
    "$(awk -F"$TAB" '$1 == "kid2"' "$STATE/title.tsv" | wc -l | tr -d ' ')"
+# A session that is still talking has a bigger transcript on every repaint, and
+# that alone must not buy another read: the title record is near the top, so a
+# few new bytes at the end cannot have put one there.
+SZ0=$(awk -F"$TAB" '$1 == "kid2" { print $3; exit }' "$STATE/title.tsv")
+printf '%s\n' '{"type":"user","message":{"content":"still nothing"}}' >>"$ROOT/plain.jsonl"
+rowfor "%s-kid2" >/dev/null
+ok "a growing transcript does not multiply the rows" 1 \
+   "$(awk -F"$TAB" '$1 == "kid2"' "$STATE/title.tsv" | wc -l | tr -d ' ')"
+ok "...nor buy it another read" "$SZ0" \
+   "$(awk -F"$TAB" '$1 == "kid2" { print $3; exit }' "$STATE/title.tsv")"
 has "and the row falls back to the directory" "kidrepo" "$(rowfor "%s-kid2")"
 rm -f "$STATE/s-kid2.tsv"
 
@@ -878,6 +899,27 @@ ok "it is back in its own group" "$REPO2" \
 has "at the top level of it" "  └─ " "$OROW"
 has "...and still says what it is" "child" "$OROW"
 rm -f "$STATE/s-orphan.tsv"
+
+# ---------------------------------------------------------------------------
+t "D6b. ...and so does one whose parent is on file but not on the list"
+# ---------------------------------------------------------------------------
+# A parent record more than a day old is past DEAD_TTL and draws no row. Nesting
+# was decided against the records rather than against the rows, so the child was
+# filed in a group with no header of its own and charged the deeper tee's three
+# columns of detail — and then drawn at the top level anyway.
+agenorm() { sed 's/[0-9]*:[0-9][0-9]/AGE/g'; }
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$(( NOW - 86410 ))" done sid-ghost "$REPO" "" "Read main.c" "" >"$STATE/9107.tsv"
+crec ghostkid working "$$" "" 9107 sid-ghost 0 "$REPO2" ""
+GROW=$(rowfor "%s-ghostkid" | agenorm)
+ok "it is in its own group" "$REPO2" \
+   "$(printf '%s' "$GROW" | awk -F"$TAB" '{ print $5 }')"
+has "at the top level of it" "  └─ " "$GROW"
+has "...and still says what it is" "child" "$GROW"
+rm -f "$STATE/9107.tsv"
+ok "the row is the one it draws with no such record at all" \
+   "$(rowfor "%s-ghostkid" | agenorm)" "$GROW"
+rm -f "$STATE/s-ghostkid.tsv"
 
 # ---------------------------------------------------------------------------
 t "D7. a dead child says so, and does not linger for a day"
