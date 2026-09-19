@@ -74,7 +74,7 @@ case "$pane" in %[0-9]*) ;; *) pane= ;; esac
 [ -n "$cpid" ] || cpid=${PPID:-}
 
 dir=${TA_STATE_DIR:-$HOME/.claude/agent-state}
-mkdir -p "$dir/sub" 2>/dev/null || exit 0
+mkdir -p "$dir/sub" "$dir/prompt" 2>/dev/null || exit 0
 
 payload=$(cat 2>/dev/null) || exit 0
 [ -n "$payload" ] || exit 0
@@ -158,6 +158,21 @@ if [ "$headless" = 0 ] && [ -z "${TMUX_PANE:-}" ] && [ -n "${sid:-}" ] &&
 fi
 
 # ---------------------------------------------------------------------------
+# WHEN THE OWNER LAST TYPED — one file per session, holding nothing but that
+# epoch second. Written on UserPromptSubmit and on nothing else, which is the
+# whole point: the record above is rewritten on every tool call, so an age taken
+# from it restarts at 0:00 the moment an agent picks up a tool, and a list
+# sorted on it reshuffles while you watch. This one moves once per turn, when
+# you send something, so it is both a stable sort key and the answer to "how
+# long since my last message" — i.e. how much of the one-hour prompt cache is
+# left. Its own file rather than an eighth field, so the record stays byte for
+# byte what every reader of it already expects.
+# ---------------------------------------------------------------------------
+if [ "$event" = UserPromptSubmit ] && [ -z "${agent:-}" ]; then
+  printf '%s\n' "$now" >"$dir/prompt/$key" 2>/dev/null
+fi
+
+# ---------------------------------------------------------------------------
 # Append-only history, read by `tagents --timeline`. Only three event kinds get
 # logged, so this stays a handful of lines per session instead of one per tool
 # call: session start, end of a turn — which is what makes "was working at this
@@ -204,6 +219,7 @@ fi
 if [ "$state" = "gone" ]; then
   rm -f "$dir/$key.tsv"
   rm -f "$dir/sub/$key".* 2>/dev/null
+  rm -f "$dir/prompt/$key" 2>/dev/null
   # No pane, no pane option to unset — and `-t ""` is not a no-op to tmux, it is
   # "the current pane", i.e. somebody else's.
   [ -n "$pane" ] && tmux set -up -t "$pane" @agent 2>/dev/null

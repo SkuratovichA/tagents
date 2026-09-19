@@ -187,6 +187,19 @@ collect() {
     esac
   done
 
+  # WHEN THE OWNER LAST TYPED INTO EACH SESSION, one epoch second per file,
+  # written by the hook on UserPromptSubmit and on nothing else. The age column
+  # and the row order are both taken from it: the record's own timestamp moves on
+  # every tool call, so an age taken from that reads 0:00 for every working agent
+  # and a list ordered on it reshuffles under the cursor. Read with the shell's
+  # own redirect — one line, no fork, and this runs once per file per repaint.
+  for f in "$STATE_DIR"/prompt/*; do
+    [ -e "$f" ] || continue
+    key=${f##*/}
+    ts=; IFS= read -r ts <"$f" 2>/dev/null
+    printf 'T\t%%%s\t%s\n' "$key" "${ts:-0}"
+  done
+
   for f in "$STATE_DIR"/sub/*; do
     [ -e "$f" ] || continue
     awk -v OFS="$TAB" '

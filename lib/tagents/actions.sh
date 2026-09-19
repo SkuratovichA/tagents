@@ -181,6 +181,8 @@ forget_agent() {  # <pane-key> — drop a closed session's record from the list
   [ -n "$key" ] || return 0
   rm -f "$STATE_DIR/$key.tsv" 2>/dev/null
   rm -f "$STATE_DIR/sub/$key".* 2>/dev/null
+  # ...and when you last typed into it, which is what the row was ordered on.
+  rm -f "$STATE_DIR/prompt/$key" 2>/dev/null
   return 0
 }
 

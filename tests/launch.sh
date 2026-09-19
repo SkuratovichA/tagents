@@ -363,5 +363,34 @@ ok "the client's current pane is the agent it just started" \
 ok "and that pane is docked in a sidebar seat" \
    yes "$([ -n "$(tm display -p -t "%$n" '#{@tagents_docked}' 2>/dev/null)" ] && echo yes || echo no)"
 
+# ---------------------------------------------------------------------------
+t "10. the hook records when you last typed, and nothing else touches it"
+# ---------------------------------------------------------------------------
+# One file per session holding one epoch second, and the ONLY event that writes
+# it is UserPromptSubmit: the list is ordered on it and the age column is read
+# off it, so a clock that moved on every tool call would put both back where
+# they were — a working agent forever at 0:00 and rows trading places mid-turn.
+PP=9301
+ev() {  # <json body>
+  printf '%s' "$1" |
+    env TMUX="$SOCK,0,0" TMUX_PANE="%$PP" sh "$HOOK"
+}
+ev "{\"hook_event_name\":\"UserPromptSubmit\",\"session_id\":\"sid-$PP\",\"cwd\":\"$PERS\",\"transcript_path\":\"\",\"prompt\":\"go\"}"
+typed=$(cat "$STATE/prompt/$PP" 2>/dev/null)
+ok "a prompt writes the second it was sent" yes \
+   "$([ -n "$typed" ] && [ "$typed" -ge $(( $(date +%s) - 5 )) ] && echo yes || echo no)"
+
+sleep 1
+ev "{\"hook_event_name\":\"PreToolUse\",\"session_id\":\"sid-$PP\",\"cwd\":\"$PERS\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls\"}}"
+ev "{\"hook_event_name\":\"Stop\",\"session_id\":\"sid-$PP\",\"cwd\":\"$PERS\"}"
+ok "a whole turn of events leaves it alone" "$typed" \
+   "$(cat "$STATE/prompt/$PP" 2>/dev/null)"
+ok "...while the record itself has moved on" yes \
+   "$(awk -F'\t' -v w="$typed" 'NR==1 { print ($1 > w) ? "yes" : "no" }' "$STATE/$PP.tsv")"
+
+ev "{\"hook_event_name\":\"SessionEnd\",\"session_id\":\"sid-$PP\",\"cwd\":\"$PERS\"}"
+ok "and the session ending takes it with the record" no \
+   "$([ -e "$STATE/prompt/$PP" ] && echo yes || echo no)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
