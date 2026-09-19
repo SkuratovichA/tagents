@@ -102,3 +102,6 @@ turn.test.ts gives a fake claude 400 ms of real time; with eleven claude process
 
 ## Dispose before you drain: a flush inside finish() re-armed a timer (14.09.2026)
 finish() cleared the timer list and then called reader.end(), which can flush a buffered result line; the result handler scheduled the 60 s grace timer into a list nobody would clear again, holding the event loop for a minute after the turn had resolved. Invisible to every real-timer test, found by the fake-clock one. Close the scope first, then drain; anything scheduled on a closed scope is a no-op.
+
+## An apostrophe in an awk comment ends the awk program (19.09.2026)
+`list()` is one single-quoted shell string, so a comment reading "the hook's file" closes the quote and bash reports a syntax error dozens of lines later, at the first parenthesis it then meets. The rule is already written inside that awk (`No apostrophes in here`) — it applies to every comment added to it, not just the one it sits next to. `bash -n lib/tagents/*.sh` catches it in a second.

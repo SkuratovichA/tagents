@@ -396,6 +396,12 @@ list() {
     # hook recorded (awk cannot ask) and hlbl is its $TA_LABEL — the two answers
     # a pane would have given for anybody else.
     $1=="H" { hless[$2]=1; hlive[$2]=$3+0; hlbl[$2]=$4; next }
+    # WHEN YOU LAST TYPED INTO THAT SESSION — the file the hook writes on
+    # UserPromptSubmit and on no other event, so it is the only clock in here
+    # that does not move while a turn runs. Both the age column and the row
+    # order are taken from it; ts[] below stays what it always was, the time of
+    # the last event of any kind, because that is what DEAD_TTL measures.
+    $1=="T" { pts[$2]=$3+0; next }
     # "idle" was what SessionStart used to write, before that state was renamed
     # to "new" and "idle" became the label of a finished turn. A session that
     # started under the old hook and has not fired an event since would show as
@@ -461,7 +467,15 @@ list() {
 
         if (islive) {
           if (p in st) {
-            s = st[p]; d = det[p]; age = now - ts[p]; agetxt = agestr(ts[p])
+            s = st[p]; d = det[p]
+            # Not ts[p]: the age column answers "how long since MY last message",
+            # which is how much of the one-hour prompt cache is left — so an
+            # agent that has been grinding for twenty minutes says 20:00, not the
+            # 0:00 its last tool call would have said. Sessions recorded before
+            # the hook wrote this file have nothing to fall back on but the event
+            # time, which for a finished turn is within a turn of the right one.
+            said = ((p in pts) && pts[p] > 0) ? pts[p] : ts[p]
+            age = now - said; agetxt = agestr(said)
             dir = (cwd[p] != "") ? cwd[p] : path[p]
           } else {
             # Claude is running but no hook has fired yet. The name column
@@ -475,7 +489,9 @@ list() {
           if (!(p in st)) continue
           if (now - ts[p] > deadttl) continue
           if (sid[p] != "" && (sid[p] in livesid)) continue
-          s = "dead"; age = now - ts[p]; agetxt = agestr(ts[p])
+          s = "dead"
+          said = ((p in pts) && pts[p] > 0) ? pts[p] : ts[p]
+          age = now - said; agetxt = agestr(said)
           dir = (cwd[p] != "") ? cwd[p] : path[p]
           # A headless session is never offered for resume: there is no pane to
           # bring it back into and nobody to type at it. Say that, rather than
@@ -495,6 +511,7 @@ list() {
         subp = (grpkey != dir) ? substr(dir, length(grpkey) + 2) "  " : ""
 
         n++; rp[n] = p; rs[n] = s; rage[n] = age; rg[n] = grpkey
+        rdead[n] = (s == "dead") ? 1 : 0
         rsid[n] = (p in sid) ? sid[p] : ""
         pre = (islive && subs[p] > 0) ? sprintf("⑂%d ", subs[p]) : ""
         nm = nameof(p, rsid[n], dir)
@@ -562,12 +579,22 @@ list() {
         } else if (pre != "") row = row " " pre
         rbody[n] = row
 
-        # A group header stands in for its most urgent member, so it carries
+        # The most urgent state in the project, which is what decides whether
+        # its header is bold and whether the whole project sinks to the closed
+        # section — and nothing else. It used to be the sort key too, which is
+        # what made a project climb the list the moment one of its agents blocked
+        # and drop back when you answered it.
+        if (!(grpkey in gtotal) || prio[s] < gmin[grpkey]) gmin[grpkey] = prio[s]
+
+        # A group header stands in for the row directly under it, so it carries
         # the state, session and directory of that member too — otherwise enter
         # on the header of a closed project could not resume it, having no id.
+        # "Directly under it" is the row order below, so the member is picked on
+        # the same key: open, then most recently typed into.
         # (No apostrophes in here: the whole program is one single-quoted string.)
-        if (!(grpkey in gtotal) || prio[s] < gmin[grpkey]) {
-          gmin[grpkey] = prio[s]; gfirst[grpkey] = p
+        if (!(grpkey in gtotal) || rdead[n] < gtdead[grpkey] ||
+            (rdead[n] == gtdead[grpkey] && age < gtage[grpkey])) {
+          gtdead[grpkey] = rdead[n]; gtage[grpkey] = age; gfirst[grpkey] = p
           gstate[grpkey] = s; gsid[grpkey] = rsid[n]; gdir[grpkey] = dir
         }
         gtotal[grpkey]++
@@ -597,13 +624,25 @@ list() {
           hdr = sprintf("%s▾ %s%s%s  %s%s",
                         (gmin[g] < prio["dead"] ? BOLD : DIM), dirname(g), R, gpath, badge, gbt)
           printf "%d\t%s\t0\t0\t0\t%s\t%s\t%s\t%s\t%s\n",
-                 gmin[g], g, gfirst[g], hdr, gstate[g], gsid[g], gdir[g]
+                 (gmin[g] < prio["dead"] ? 0 : 1), g, gfirst[g], hdr,
+                 gstate[g], gsid[g], gdir[g]
         }
       }
+      # THE ORDER, and the two things it is deliberately NOT sensitive to:
+      # state, and anything that moves during a turn. Projects keep the place
+      # their path puts them (field 1 is only open-or-closed, field 2 the path),
+      # so answering a blocked agent no longer drags its project up the list and
+      # back down again. Inside a project a row sorts on how recently YOU typed
+      # into it — the newest conversation on top, an agent that is working
+      # usually being the one you just sent something to — and that clock only
+      # moves when you press enter, so two working agents cannot trade places
+      # while they run. Closed agents keep to the bottom of their project, as
+      # closed-only projects keep to the bottom of the list.
       for (i = 1; i <= n; i++)
         printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n",
-               (grp ? gmin[rg[i]] : prio[rs[i]]), (grp ? rg[i] : ""),
-               prio[rs[i]], -rage[i], rp[i], rbody[i], rs[i], rsid[i], rg[i]
+               (grp ? (gmin[rg[i]] < prio["dead"] ? 0 : 1) : rdead[i]),
+               (grp ? rg[i] : ""),
+               rdead[i], rage[i], rp[i], rbody[i], rs[i], rsid[i], rg[i]
     }' |
     sort -t"$TAB" -k1,1n -k2,2 -k3,3n -k4,4n -k5,5n |
     awk -F"$TAB" -v grp="$grp" -v cur="$curseat" -v dks="$dockedset" -v RSC="$RS" '

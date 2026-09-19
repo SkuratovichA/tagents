@@ -6,15 +6,15 @@ has spent — with the selected chat docked beside the list so you can type into
 it without leaving.
 
 ```
-▾ storefront   ~/git/storefront          ⚠1 ✓1 ●1   $31.4/5h
-  ├─ ⚠ BLOCKED   2:14  w api       142k  $38.3  opus5    work      %31
-  ├─ ● working   0:08  w web        38k   $9.1  sonnet5  work      %44  ⑂2
-  └─ ✓ IDLE     17:02  w worker     12k   $2.7  haiku4.5 work      %12
 ▾ .dotfiles    ~/git/.dotfiles           ●1
   └─ ● working   0:31  p dotfiles   71k  $44.0  opus5    personal  %3
+▾ storefront   ~/git/storefront          ⚠1 ✓1 ●1   $31.4/5h
+  ├─ ● working   0:08  w web        38k   $9.1  sonnet5  work      %44  ⑂2
+  ├─ ⚠ BLOCKED   2:14  w api       142k  $38.3  opus5    work      %31
+  └─ ✓ IDLE     17:02  w worker     12k   $2.7  haiku4.5 work      %12
 ```
 
-state · age · **badge** · name · context · cost · model · **account** · pane.
+state · since you last typed · **badge** · name · context · cost · model · **account** · pane.
 Both bold columns say which Claude login the session is on, named after the
 profile in `config.yaml` that claims its `CLAUDE_CONFIG_DIR` — see
 [Configuration](#configuration). The account name appears on wide lists only;
@@ -448,6 +448,16 @@ to borrow one from) and `TA_LOG` is what `ctrl-v` follows. Neither is required:
 without them the row is named after its directory and says it has no log. A name
 can still be given from outside with `tagents --label <session id> NAME`.
 
+## The order, and the clock the rows are sorted on
+
+**Projects keep the place their path gives them.** The list is not sorted by how urgent anything is: a project does not climb when one of its agents blocks and does not drop back when you answer it, so the thing you were looking at is still where you left it. The only project that moves is one with nothing running in it at all — every agent closed — and it moves once, to the dim section at the bottom. What a project is doing is in its header badge (`⚠1 ✓1 ●1`), which is a thing to read rather than a thing that rearranges the page under you.
+
+**Inside a project, rows are ordered by when YOU last typed into them** — the newest conversation on top, closed ones underneath. Not by state, and not by anything that moves during a turn: the state record is rewritten on every tool call, so ordering on it made two working agents trade places while they ran. The clock here moves exactly once per turn, when you press enter, which is also why the agent you just sent something to is the one at the top.
+
+**The second column is that same clock** — how long since your last message, not how long the session has been in its current state. It is the number that says how much of the one-hour prompt cache is left: while it reads `47:12` the next thing you send is still cheap, and once it has an `h` in it (`1h03`) the cache is gone and the whole conversation is re-read at full price. It is a floor, deliberately: a long turn keeps writing the cache after your prompt, so a row that says `58:00` may have a few more minutes in it than that, never fewer.
+
+It comes from one file per session under `$STATE_DIR/prompt/`, written by the hook on `UserPromptSubmit` and by nothing else, and removed with the record when the session ends. A session recorded before that file existed falls back to the time of its last event, which for a finished turn is within one turn of the right answer.
+
 ## Cost
 
 Each row shows what the session has cost in dollars and which model it is on:
@@ -633,7 +643,9 @@ on.
 with no tmux involved; `tests/launch.sh` starts and resumes real agents,
 `tests/panes.sh` docks, undocks and kills them across seats, `tests/ui.sh`
 covers what the row looks like — the badge column, the hidden ones, the `?`
-window running a real key, the one-line header and the `ctrl-v` modal — and
+window running a real key, the one-line header, the `ctrl-v` modal and the
+order, which is checked by making a state change and asserting that nothing
+moved — and
 `tests/names.sh` covers the window naming above, including the refusal to
 overwrite a name you typed, and `tests/headless.sh` covers the sessions with no
 pane at all — what the hook writes for one, how the row reads while its process

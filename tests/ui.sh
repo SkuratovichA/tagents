@@ -166,8 +166,8 @@ rows_at() {  # <cols> [VAR=value ...] -> the list at that width, without colour
   env TMUX="$TMUXV" TA_COLS="$cols" TA_MARKS=0 "$@" bash "$TA" --list | strip
 }
 
-# A row of the list by pane id — never the group header, which carries its most
-# urgent member's pane id as well.
+# A row of the list by pane id — never the group header, which carries the pane
+# id of the row directly under it as well.
 row_of() {
   printf '%s\n' "${2:-}" |
     awk -F'\t' -v p="${1:-}" 'index($2, "\342\226\276") == 0 && $1 == p { print $2; exit }'
@@ -799,6 +799,101 @@ hasnt "fixing the config clears it on the next call" "cfg!" \
 rm -rf "$ROOT/claude-nowhere"
 has "a problem that returns is seen again once the verdict ages out" "cfg!1" \
     "$(env TMUX="$TMUXV" TA_CONFIG="$BROKEN" TA_CFG_CHECK_EVERY=0 bash "$TA" --counts 2>/dev/null)"
+
+# ---------------------------------------------------------------------------
+t "10. the order — projects keep their place, rows follow when you last typed"
+# ---------------------------------------------------------------------------
+# WHAT THIS IS FOR. The list used to be sorted by state: a project climbed to the
+# top the moment one of its agents blocked and dropped back when you answered it,
+# and inside a project a row jumped as its agent went working → idle → working.
+# Nothing you can read that way stays where you left it. The order is now the
+# path for projects and "when did I last type into it" for rows — the one clock
+# that does not move during a turn.
+mkdir -p "$STATE/prompt"
+said() { printf '%s\n' "$(( $(date +%s) - $2 ))" >"$STATE/prompt/${1#%}"; }
+
+# A second project, whose path sorts AFTER the first — the point of the checks
+# below is that nothing it does moves it off that place.
+REPO2="$ROOT/repo-z"; mkdir -p "$REPO2/.git"
+# ...and a third with nothing but a closed agent in it, whose path sorts FIRST.
+REPO3="$ROOT/repo-aaa"; mkdir -p "$REPO3/.git"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$(date +%s)" done sid-cold "$REPO3" "" "over" "$LOGIN" >"$STATE/8010.tsv"
+said %8010 30
+
+agent() {  # <dir> <pane key var> — a live claude in its own window
+  tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$1" \
+    "exec '$BIN/claude' 600" 2>/dev/null
+}
+live() {  # <pane> <state> <sid> <dir>
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(date +%s)" "$2" "$3" "$4" "" "on it" "$LOGIN" >"$STATE/${1#%}.tsv"
+}
+A2=$(agent "$REPO")
+B=$(agent "$REPO2")
+live "$A2" working sid-live2 "$REPO"
+live "$B"  working sid-liveZ "$REPO2"
+# A is the live agent of section 0, and is the older conversation of the two.
+said "$A"  600
+said "$A2"  60
+said "$B"   60
+said %8001  90
+said %8002 300
+said %8003 900
+said %8004  30
+sleep 0.3
+
+groups() { rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") > 0 { split($2, a, " "); print a[2] }' | tr '\n' ' '; }
+order()  { rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") == 0 { print $1 }' | tr '\n' ' '; }
+ok "projects sort by path, and the closed-only one is last" \
+   "repo repo-z repo-aaa " "$(groups)"
+ok "inside a project the newest conversation is on top, closed ones below" \
+   "$A2 $A %8004 %8001 %8002 %8003 %8010 " \
+   "$(order | sed "s/$B //")"
+
+# THE CHECK THIS EXISTS FOR. Everything above moved only because a timestamp
+# said so; here nothing moves at all, because a state change is not one.
+live "$B" blocked sid-liveZ "$REPO2"
+ok "a blocked agent does not drag its project up the list" \
+   "repo repo-z repo-aaa " "$(groups)"
+live "$A" blocked sid-live "$REPO"
+ok "...nor its own row up its project" \
+   "$A2 $A %8004 %8001 %8002 %8003 %8010 " "$(order | sed "s/$B //")"
+live "$A" working sid-live "$REPO"
+
+# ...and typing into it IS one: the only thing that reorders the list is you.
+said "$A" 1
+ok "answering it puts it on top, where you just left off" \
+   "$A $A2 %8004 %8001 %8002 %8003 %8010 " "$(order | sed "s/$B //")"
+said "$A" 600
+
+# The header is a stand-in for the row under it, which is now the newest one
+# rather than the most urgent — enter on a header and enter on its first row
+# must still mean the same agent.
+ok "the header carries the pane id of the row below it" "$A2" \
+   "$(rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") > 0 { print $1; exit }')"
+
+# ---------------------------------------------------------------------------
+t "10b. the age column is time since YOUR last message"
+# ---------------------------------------------------------------------------
+# The record is rewritten on every tool call, so an age taken from it read 0:00
+# for every working agent — useless for the one question it is asked: how long
+# since I last said anything, i.e. how much of the one-hour prompt cache is left.
+live "$A2" working sid-live2 "$REPO"     # record timestamp: now
+said "$A2" 1800                          # ...but the last prompt was 30m ago
+has "a working agent says how long its turn has been running" " 30:00  " \
+    "$(row_of "$A2" "$(rows_at 140)")"
+said "$A2" 3660
+has "past the hour it reads in hours, which is the cache gone" " 1h01  " \
+    "$(row_of "$A2" "$(rows_at 140)")"
+# A session recorded before the hook ever wrote one of these files has nothing
+# but its event time, and must still render an age rather than 1970.
+rm -f "$STATE/prompt/${A2#%}"
+hasnt "a session with no prompt file yet does not fall back to the epoch" "h" \
+      "$(row_of "$A2" "$(rows_at 140)" | sed 's/[^0-9h:].*//')"
+
+tm kill-pane -t "$A2" 2>/dev/null
+tm kill-pane -t "$B" 2>/dev/null
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
