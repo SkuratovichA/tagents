@@ -533,11 +533,14 @@ case "${1:-}" in
   --closed-rows)    closed_rows ;;
   --closed-preview) shift; closed_preview "$@" ;;
   --ask-closed)     ask_closed "${2:-}" ;;
-  # What comes back after a reboot: the snapshot, and what it holds. The rows
-  # are machine-readable on purpose, like --closed-rows — what the tests assert
-  # on, and what to look at before trusting a restore with them.
+  # What comes back after a reboot: the snapshot, what it holds, and the restore
+  # itself. The rows are machine-readable on purpose, like --closed-rows — what
+  # the tests assert on, and what to look at before trusting a restore with
+  # them. --auto is what the tmux-resurrect hook calls: silent when
+  # resurrect.auto is off, and its report goes to the log.
   --resurrect-save) resurrect_save ;;
   --resurrect-rows) resurrect_rows_cmd "${2:-}" ;;
+  --resurrect)      shift; resurrect_restore "$@" ;;
   --keys)         keys_table; key_warn '# ' ;;
   # ${4-...}, not ${4:-...}: an EMPTY quit item is how popup mode asks for a
   # header without one, and defaulting that back would test the wrong header.
