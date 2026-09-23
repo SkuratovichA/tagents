@@ -105,3 +105,9 @@ finish() cleared the timer list and then called reader.end(), which can flush a 
 
 ## An apostrophe in an awk comment ends the awk program (19.09.2026)
 `list()` is one single-quoted shell string, so a comment reading "the hook's file" closes the quote and bash reports a syntax error dozens of lines later, at the first parenthesis it then meets. The rule is already written inside that awk (`No apostrophes in here`) — it applies to every comment added to it, not just the one it sits next to. `bash -n lib/tagents/*.sh` catches it in a second.
+
+## A test stub that `exec`s sleep hides the pane from every liveness check (23.09.2026)
+A stub `claude` written as `exec sleep 600` turns the pane's current command into `sleep` and leaves no process called `claude` under the pane, so both ways tagents asks "is this chat alive" — the pane command and the process under it — answer no, and every placement test reads the resumed chat as dead. The stub keeps its name instead: `exec -a "$0" /bin/bash -c 'sleep 600; :' "$0" "$@"` — the pane command stays `claude` and the pane stays live for as long as the test needs.
+
+## A `continue` in a lock loop's takeover branch skips the decrement and spins forever (23.09.2026)
+`lock_dir` read a failed `stat` as mtime 0, so a lock whose parent directory is unwritable looked infinitely stale, `rm -rf` "succeeded" on nothing, and the `continue` jumped over `tries=$((tries - 1))`; `mkdir` failed again and the loop never left. Every pass through a retry loop costs a try, the takeover pass included, and a stat failure reads as age 0, not as age from the epoch. `tnotes` `take_lock` still has the old shape.
