@@ -46,15 +46,12 @@ EOF
 }
 
 closed_rows() {  # sid last first profile badge name dir source — newest first
-  local p pd bd f sid cfgd hascfg prof
+  local p pd bd f b sid cfgd hascfg prof
   {
     # Running right now, and therefore not closed: resuming re-registers under a
     # new pane and the old record lingers, so the id is what settles it — the
     # same test --list makes before it offers a dead row.
-    live_panes | sort -u | while IFS= read -r p; do
-      f="$STATE_DIR/${p#%}.tsv"
-      [ -e "$f" ] && awk -F"$TAB" 'NR == 1 && $3 != "" { print "LIVE\t" $3 }' "$f"
-    done
+    live_sids | sed "s/^/LIVE$TAB/"
     # A pane-less session is running when its recorded pid is, and live_panes
     # can never see one. Without this a headless agent working right now was
     # offered here as a closed session to resume — which would not resume it,
@@ -96,8 +93,8 @@ EOF
     for f in "$STATE_DIR"/*.tsv; do
       [ -e "$f" ] || continue
       case ${f##*/} in *[!0-9].tsv) continue ;; esac
-      IFS="$US" read -r sid cfgd hascfg < <(
-        awk -F"$TAB" -v OFS="$US" 'NR==1 { print $3, $7, (NF >= 7 ? 1 : 0); exit }' "$f")
+      b=${f##*/}
+      IFS="$US" read -r sid _ _ cfgd hascfg < <(rec_row "${b%.tsv}")
       [ -n "${sid:-}" ] || continue
       [ "${hascfg:-0}" = 1 ] || continue
       prof=$(profile_claiming "$(cfg_expand_dir "${cfgd:-}")") || prof=""

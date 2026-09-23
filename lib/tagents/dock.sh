@@ -96,21 +96,11 @@ collapse_locked() {  # <placeholder> — only ever called by collapse_seat
 # (undock_pane, or each turn of undock_window's loop), and the second firing
 # would remove a lock some other process had just taken.
 collapse_seat() {  # <placeholder now sitting in the sidebar window>
-  local sp=${1:-} tries=40
+  local sp=${1:-}
   [ -n "$sp" ] || return 0
-  mkdir -p "$STATE_DIR" 2>/dev/null
-  while :; do
-    mkdir "$COLLAPSE_LOCK" 2>/dev/null && break
-    if [ -n "$(find "$COLLAPSE_LOCK" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
-      rm -rf "$COLLAPSE_LOCK" 2>/dev/null
-      mkdir "$COLLAPSE_LOCK" 2>/dev/null && break
-    fi
-    tries=$((tries - 1))
-    [ "$tries" -gt 0 ] || return 0
-    sleep 0.05
-  done
+  lock_dir "$COLLAPSE_LOCK" 60 40 || return 0
   collapse_locked "$sp"
-  rm -rf "$COLLAPSE_LOCK" 2>/dev/null
+  unlock_dir "$COLLAPSE_LOCK"
   return 0
 }
 

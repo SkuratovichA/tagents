@@ -26,9 +26,7 @@ resume_agent() {
   # launch paths below do. It is the account this conversation ran on, and the
   # rules never get a vote: resuming it on another login opens another history,
   # where the session simply does not exist.
-  IFS="$US" read -r cfgd hascfg < <(
-    awk -F"$TAB" -v OFS="$US" 'NR==1 { print $7, (NF >= 7 ? 1 : 0); exit }' \
-        "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)
+  IFS="$US" read -r _ _ _ cfgd hascfg < <(rec_row "$pane")
   sess=$(tmux display -p -t "$pane" '#{session_name}' 2>/dev/null)
   [ -n "$sess" ] || sess=$DASH_SESSION
   prof=$(resume_profile "${cfgd:-}" "${hascfg:-0}" "$dir" "$sess")
@@ -54,15 +52,14 @@ resume_with() {  # <pane> <sid> <dir> <profile> [session] — the restart itself
 
   if [ -n "$pane" ] && tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx -- "$pane"; then
     cur=$(tmux display -p -t "$pane" '#{pane_current_command}' 2>/dev/null)
-    case "$cur" in
-      zsh|bash|sh|fish|dash|tcsh|ksh)
-        # Its own pane, idle at a prompt — the natural place to bring it back.
-        rm -f "$STATE_DIR/${pane#%}.tsv"
-        tmux send-keys -t "$pane" -l -- "cd \"$dir\" && $cmd"
-        tmux send-keys -t "$pane" Enter
-        open_agent "$pane"
-        return 0 ;;
-    esac
+    if is_shell_cmd "$cur"; then
+      # Its own pane, idle at a prompt — the natural place to bring it back.
+      rm -f "$STATE_DIR/${pane#%}.tsv"
+      tmux send-keys -t "$pane" -l -- "cd \"$dir\" && $cmd"
+      tmux send-keys -t "$pane" Enter
+      open_agent "$pane"
+      return 0
+    fi
   fi
 
   # Pane is gone, or busy with something else — do not type into it.

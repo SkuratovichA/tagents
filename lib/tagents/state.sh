@@ -1,6 +1,6 @@
 # lib/tagents/state.sh — the raw data every view reads
 #
-# Where the dashboard's facts come from: live_panes (the ps ancestry walk that proves a Claude is really running), repo_root/dir_roots (grouping by the nearest .git), state_files (why a naive *.tsv glob once produced panes called %history), headless_alive/headless_log (a `claude -p` run has no pane, only a pid and a $TA_LOG), origin_of (the transcript's first cwd, cached in ORIGINS, because the live cwd drifts), and collect() — the single pass that emits the P/L/R/N/S/H/B/M/U stream list(), counts() and the pickers all read. The 'rows' banner heads the file.
+# Where the dashboard's facts come from: live_panes (the ps ancestry walk that proves a Claude is really running; live_pane_pids is the walk with the pid kept), rec_row/live_sids (a record's resume fields, and the session ids running right now), repo_root/dir_roots (grouping by the nearest .git), state_files (why a naive *.tsv glob once produced panes called %history), headless_alive/headless_log (a `claude -p` run has no pane, only a pid and a $TA_LOG), origin_of (the transcript's first cwd, cached in ORIGINS, because the live cwd drifts), and collect() — the single pass that emits the P/L/R/N/S/H/B/M/U stream list(), counts() and the pickers all read. The 'rows' banner heads the file.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -13,13 +13,24 @@
 # shows a bare version number; matching the path is version-proof. A state file
 # alone proves nothing — Claude may have exited and left the shell behind.
 live_panes() {
+  live_pane_pids | cut -f1
+
+  # Secondary signal, in case the process walk comes up empty.
+  tmux list-panes -a -F '#{pane_id} #{pane_current_command}' 2>/dev/null |
+    awk '$2 ~ /^[0-9]+\.[0-9]+\.[0-9]+$/ || $2 == "claude" { print $1 }'
+}
+
+# The walk itself, with the pid of the Claude it found beside each pane: the
+# snapshot taken before a reboot needs that process's argv, and the pane alone
+# cannot give it. live_panes is this without the pid, plus its fallback.
+live_pane_pids() {  # pane TAB claude pid, one line per Claude process
   {
     # The pane map goes through stdin, not -v: BWK awk (the macOS one) rejects
     # a -v value containing newlines, and fails silently enough to look like
     # "no Claude is running anywhere".
     tmux list-panes -a -F 'MAP #{pane_pid} #{pane_id}' 2>/dev/null
     ps -eo pid=,ppid=,comm= 2>/dev/null
-  } | awk '
+  } | awk -v OFS="$TAB" '
       $1 == "MAP" { pane[$2] = $3; next }
       {
         pid = $1; c = $0
@@ -31,15 +42,31 @@ live_panes() {
         for (p in cl) {
           q = p
           for (i = 0; i < 50 && q != "" && q != "0" && q != "1"; i++) {
-            if (q in pane) { print pane[q]; break }
+            if (q in pane) { print pane[q], p; break }
             q = up[q]
           }
         }
       }'
+}
 
-  # Secondary signal, in case the process walk comes up empty.
-  tmux list-panes -a -F '#{pane_id} #{pane_current_command}' 2>/dev/null |
-    awk '$2 ~ /^[0-9]+\.[0-9]+\.[0-9]+$/ || $2 == "claude" { print $1 }'
+# The first line of a pane's record, the fields a restart needs, in one place:
+# the session id to resume and the account it ran on. hascfg is 1 when the
+# record has the account field at all — a record written before accounts
+# existed has six fields, and "no field" is not the same answer as "the
+# default login" (see resume_profile).
+rec_row() {  # <pane key> -> sid US cwd US transcript US cfgd US hascfg (hascfg: the record has the account field at all)
+  awk -F"$TAB" -v OFS="$US" 'NR == 1 { print $3, $4, $5, $7, (NF >= 7 ? 1 : 0); exit }' "$STATE_DIR/${1#%}.tsv" 2>/dev/null
+}
+
+# Running right now, by session id: resuming re-registers a conversation under
+# a new pane and the old record lingers, so the id is what settles whether a
+# conversation is already up — never the pane.
+live_sids() {  # the session id of every pane a Claude is running in, one per line
+  local p sid rest
+  for p in $(live_panes | sort -u); do
+    IFS="$US" read -r sid rest < <(rec_row "$p"); [ -n "$sid" ] && printf '%s\n' "$sid"
+  done
+  return 0   # a last pane with no record is not a failure of the list
 }
 
 # Sessions started from a subdirectory of a repo belong with the rest of that

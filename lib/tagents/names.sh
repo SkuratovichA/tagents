@@ -110,13 +110,18 @@ label_cmd() {
 # own name from a person's, so recording the unescaped request would make the
 # window read as one somebody typed — and freeze it at that name for ever. A
 # rename that failed records nothing at all, for exactly the same reason.
-rename_win() {  # <window id> <name>
-  local wid=${1:-} nm=${2:-} esc
+#
+# `plain` RENAMES WITHOUT THE STAMP: a name somebody typed, put back on a window
+# that had to be recreated, is still theirs — stamping it would hand it to the
+# sweep, which renames our own windows after their agents.
+rename_win() {  # <window id> <name> [plain]
+  local wid=${1:-} nm=${2:-} how=${3:-} esc
   { [ -n "$wid" ] && [ -n "$nm" ]; } || return 1
   esc=$(printf '%s' "$nm" | sed 's/#/##/g')
   tmux rename-window -t "$wid" -- "$esc" 2>/dev/null || return 1
-  tmux set -w -t "$wid" @tagents_name \
-       "$(tmux display -p -t "$wid" '#{window_name}' 2>/dev/null)" 2>/dev/null
+  [ "$how" != plain ] &&
+    tmux set -w -t "$wid" @tagents_name \
+         "$(tmux display -p -t "$wid" '#{window_name}' 2>/dev/null)" 2>/dev/null
   return 0
 }
 
@@ -309,18 +314,31 @@ EOF
 NAMES_STAMP="$STATE_DIR/.names.ts"
 NAMES_EVERY=${TA_NAMES_EVERY:-30}
 
-sync_names_due() {  # 0 at most once every NAMES_EVERY seconds, and stamps it
+# The throttle on its own, for every job the status bar runs in passing (this
+# sweep, the resurrect snapshot). An interval that is not a positive number of
+# seconds means the job is off: `resurrect.every: 0` is how that one is turned
+# off, and nothing here may read it as "every time".
+due_every() {  # <stamp file> <seconds> — 0 at most once every <seconds>, and stamps it
   local now last
+  [ "${2:-0}" -gt 0 ] 2>/dev/null || return 1
   now=$(date +%s)
-  last=$(cat "$NAMES_STAMP" 2>/dev/null)
+  last=$(cat "$1" 2>/dev/null)
   case ${last:-x} in ''|*[!0-9]*) last=0 ;; esac
-  [ "$(( now - last ))" -ge "$NAMES_EVERY" ] || return 1
-  mkdir -p "$STATE_DIR" 2>/dev/null
+  [ "$(( now - last ))" -ge "$2" ] || return 1
+  mkdir -p "${1%/*}" 2>/dev/null
   # Stamped before the work, not after: several clients redraw at the same
   # instant, and a stamp written at the end would let every one of them start a
-  # sweep of its own first.
-  printf '%s\n' "$now" >"$NAMES_STAMP" 2>/dev/null
+  # job of its own first.
+  printf '%s\n' "$now" >"$1" 2>/dev/null
   return 0
+}
+
+# TA_NAMES_EVERY=0 has always meant "on every call" (the tests ask for it rather
+# than wait out the 30 seconds), where due_every reads 0 as off; the zero keeps
+# its old meaning here.
+sync_names_due() {  # 0 at most once every NAMES_EVERY seconds, and stamps it
+  [ "$NAMES_EVERY" = 0 ] && return 0
+  due_every "$NAMES_STAMP" "$NAMES_EVERY"
 }
 
 rename_agent() {

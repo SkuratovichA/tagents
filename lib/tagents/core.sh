@@ -1,6 +1,6 @@
 # lib/tagents/core.sh — constants, and the plumbing every dialog is built on
 #
-# The globals the whole program reads (STATE_DIR and the TA_* overrides, the TAB/US separators) plus the four helpers that belong to no feature: has_popup/prompt/prompt_at (why a prompt must be a tmux popup and not an fzf `execute` child — that essay, lines 1775-1797, heads the file), post_fzf (how a popup pokes the list that spawned it), pane_exists (a row can be 2 s stale) and tilde_of. Sourced first, so every STATE_DIR-derived global later is legal.
+# The globals the whole program reads (STATE_DIR and the TA_* overrides, the TAB/US separators) plus the four helpers that belong to no feature: has_popup/prompt/prompt_at (why a prompt must be a tmux popup and not an fzf `execute` child — that essay, lines 1775-1797, heads the file), post_fzf (how a popup pokes the list that spawned it), pane_exists (a row can be 2 s stale) and tilde_of — and the three shared by the restart paths: is_shell_cmd (the one kind of pane safe to replace) and the mkdir lock lock_dir/unlock_dir. Sourced first, so every STATE_DIR-derived global later is legal.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -36,6 +36,32 @@ tilde_of() {  # <path>
   local p=${1:-}
   case $p in "$HOME"/*) printf '~%s' "${p#$HOME}" ;; *) printf '%s' "$p" ;; esac
 }
+
+# What an idle pane looks like to tmux: the shell itself in front, nothing it
+# started. Anything else is somebody's editor, build or chat, and a restart
+# leaves it alone.
+is_shell_cmd() {  # <pane_current_command> — an idle shell, the one thing safe to type into or replace
+  case ${1:-} in zsh|bash|sh|fish|dash|tcsh|ksh) return 0 ;; esac
+  return 1
+}
+
+# mkdir is the atomic primitive (macOS has no flock). A lock older than <stale>
+# seconds belongs to a process that died holding it and is taken over. The same
+# loop tnotes carries as take_lock (tnotes:216-228) — that script stands alone.
+lock_dir() {  # <dir> <stale seconds> [tries, 0.05 s apart; default 40]
+  local d=$1 stale=$2 tries=${3:-40} age
+  mkdir -p "${d%/*}" 2>/dev/null
+  while :; do
+    mkdir "$d" 2>/dev/null && return 0
+    age=$(( $(date +%s) - $(stat -f %m "$d" 2>/dev/null || echo 0) ))
+    [ "$age" -gt "$stale" ] && rm -rf "$d" 2>/dev/null && continue
+    tries=$((tries - 1)); [ "$tries" -gt 0 ] || return 1
+    sleep 0.05
+  done
+}
+# The release, a statement of its own on every path out: never a `trap ...
+# RETURN`, which bash 3.2 fires again when the caller returns (see collapse_seat).
+unlock_dir() { rm -rf "${1:?}" 2>/dev/null; return 0; }
 
 # Prompts run in a tmux popup, not in the dashboard pane. fzf's `execute` hands
 # the terminal to the child, which puts the prompt under fzf's alternate screen
