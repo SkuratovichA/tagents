@@ -1,6 +1,6 @@
 # lib/tagents/resurrect.sh — what comes back after a reboot
 #
-# The snapshot a restore works from: resurrect_rows (one A row per live chat, a D row when the sidebar is up — a docked chat filed at its home seat, never at the sidebar), resurrect_save (a full replacement, never twice the same, the newest RESURRECT_KEEP kept), resurrect_latest/resurrect_pick (the newest snapshot, and the newest one written before this tmux server started — the one a restore wants), resurrect_rows_cmd (the raw rows, for the tests and for a curious person), and the two triggers: resurrect_soon after a launch or a kill, resurrect_due for the status bar. Then the restore that reads it: resurrect_place (the pane a chat goes back into — its own idle shell, else a new window, else a new session), resurrect_restore (every row not already running, resumed on the login it ran on with its model and effort, and a report per row), with resurrect_auto_on and resurrect_has_transcript deciding whether to run at all and which rows are worth it. The section banner heads the file.
+# The snapshot a restore works from: resurrect_rows (one A row per live chat, a D row when the sidebar is up — a docked chat filed at its home seat, never at the sidebar), resurrect_save (a full replacement, never twice the same, the newest RESURRECT_KEEP kept), resurrect_latest/resurrect_pick (the newest snapshot, and the newest one written before this tmux server started — the one a restore wants), resurrect_rows_cmd (the raw rows, for the tests and for a curious person), and the two triggers: resurrect_soon after a launch or a kill, resurrect_due for the status bar. Then the restore that reads it: resurrect_place (the pane a chat goes back into — its own idle shell, else a new window, else a new session), resurrect_restore (every row not already running, resumed on the login it ran on with its model and effort, and a report per row), with resurrect_auto_on and resurrect_has_transcript deciding whether to run at all and which rows are worth it, and resurrect_notes last (the orphaned editors in ta-notes closed, the editor of every restored chat that had one opened again). The section banner heads the file.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -33,6 +33,11 @@
 # a new session. The account is the one the chat ran on, never the rules, and
 # never a dialog — a hook has no client to ask. Anything already running, by
 # session id, is left alone, so running it twice is harmless.
+#
+# THE NOTES EDITORS come back as nvim in ta-notes with nothing linking them to
+# a chat, still holding their files open. They are closed, and tnotes is asked
+# for a fresh editor beside each restored chat that had one — last, because
+# tnotes only recognises a chat that is already running.
 # ---------------------------------------------------------------------------
 RESURRECT_DIR="$STATE_DIR/resurrect"
 RESURRECT_LOG="$STATE_DIR/resurrect.log"
@@ -240,8 +245,29 @@ resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
   return 0
 }
 
-# Reopening the tnotes editor of every restored chat. A no-op for now: defined
-# ahead of the restore that calls it, so that call never has to be guarded.
-resurrect_notes() {  # <restored panes that had an editor…>
+# The tnotes editor of every restored chat that had one, opened again once the
+# chats are up — best-effort, and anything but `off` in resurrect.notes is
+# reopen, as --check says. tnotes is looked up on PATH first, then beside this
+# script the way the focus hooks find it (refresh.sh): a hook's PATH may not
+# hold ~/.local/bin.
+resurrect_notes() {  # <restored panes that had an editor…> — after the agents are up
+  local mode tn p w
+  mode=$(cfg_get resurrect.notes) || mode=reopen
+  [ "$mode" = off ] && return 0
+  tn=$(command -v tnotes 2>/dev/null) || tn="${SELF%/*}/tnotes"
+  [ -x "$tn" ] || return 0
+  # Editors tmux-resurrect brought back hold the notes files open with no
+  # @ta_notes_for to link them to a chat: orphans, and the swap-file warning
+  # the next prefix C-t would run into. Only the holder window stays (the
+  # session and holder names are tnotes' own; tests/resurrect.sh pins them).
+  tmux list-panes -s -t "=ta-notes" -F '#{window_id} #{window_name} #{@ta_notes_for}' 2>/dev/null |
+    awk '$2 != "hold" && $3 == "" { print $1 }' | sort -u |
+    while IFS= read -r w; do tmux kill-window -t "$w" 2>/dev/null; done
+  [ $# -gt 0 ] || return 0
+  sleep 1   # tnotes recognises a chat by its command name or its record; both need a moment
+  for p in "$@"; do
+    if "$tn" toggle "$p" >/dev/null 2>&1; then echo "✓ notes beside $p"
+    else echo "! notes for $p did not reopen — prefix C-t"; fi
+  done
   return 0
 }
