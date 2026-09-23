@@ -228,7 +228,7 @@ The `resurrect:` leaf of the tagents config steers it; every key is optional and
 resurrect:
   auto: true       # restore when tmux-resurrect's post-restore-all hook fires (default true)
   every: 300       # seconds between status-bar captures; 0 turns the periodic capture off
-  notes: reopen    # reopen the tnotes editor of every restored chat: reopen | off
+  notes: reopen    # reopen the tnotes editor of every restored chat that had it on screen: reopen | off
 ```
 
 `auto: false` makes the hook do nothing at all; `tagents --resurrect` by hand still works.
