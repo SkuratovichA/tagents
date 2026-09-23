@@ -8,7 +8,7 @@
 # timeline: which agent worked when, from the hook's append-only history
 # ---------------------------------------------------------------------------
 timeline() {
-  local hours=${TA_TIMELINE_HOURS:-24} now cols barw z zh zm offsec f p
+  local hours=${TA_TIMELINE_HOURS:-24} now cols barw z zh zm offsec f
 
   if [ ! -e "$STATE_DIR/history.tsv" ] && [ ! -e "$STATE_DIR/history.tsv.1" ]; then
     echo "tagents: no history yet — it starts filling on the next session start" >&2
@@ -36,10 +36,7 @@ timeline() {
   {
     # Sessions alive right now, so a span with no end event reads as running
     # rather than as having stopped at its last turn.
-    live_panes | sort -u | while IFS= read -r p; do
-      f="$STATE_DIR/${p#%}.tsv"
-      [ -e "$f" ] && awk -F"$TAB" 'NR == 1 && $3 != "" { print "LIVE\t" $3 }' "$f"
-    done
+    live_sids | sed "s/^/LIVE$TAB/"
     # A pane-less session is alive when the pid the hook recorded is: live_panes
     # walks panes and can never see one. Without this every headless bar stopped
     # at its last turn, which reads as "it finished" for an agent still working.
