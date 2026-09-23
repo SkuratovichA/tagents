@@ -58,6 +58,7 @@ resume_with() {  # <pane> <sid> <dir> <profile> [session] — the restart itself
       tmux send-keys -t "$pane" -l -- "cd \"$dir\" && $cmd"
       tmux send-keys -t "$pane" Enter
       open_agent "$pane"
+      resurrect_soon
       return 0
     fi
   fi
@@ -68,6 +69,9 @@ resume_with() {  # <pane> <sid> <dir> <profile> [session] — the restart itself
   [ -n "$sess" ] || sess=$DASH_SESSION
   newpane=$(tmux new-window -d -t "$sess:" -P -F '#{pane_id}' \
               -c "$dir" "$cmd" 2>/dev/null) || return 1
+  # Before open_agent, whose status is this function's: the capture waits for
+  # the SessionStart record anyway, so it does not care which runs first.
+  resurrect_soon
   open_agent "$newpane"
 }
 
@@ -206,6 +210,10 @@ start_agent() {  # <root> <session> <profile>
   # window instead. ctrl-n and ctrl-p both land here and both behave the same.
   idx=$(tmux display -p -t "$newpane" '#{window_index}' 2>/dev/null)
   open_agent "$newpane" || goto "$newpane"
+  # Every launch and every kill retakes the snapshot, so a chat is in it within
+  # seconds of starting rather than at the next status-bar tick — see
+  # resurrect_soon for why it is not taken at once.
+  resurrect_soon
   tmux display-message \
     "tagents: new agent in $(basename "$root") ($sess:$idx)${prof:+ as $prof}" 2>/dev/null
   return 0
