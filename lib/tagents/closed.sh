@@ -58,6 +58,7 @@ closed_rows() {  # sid last first profile badge name dir source — newest first
     # it would start a second conversation on the same transcript.
     for f in "$STATE_DIR"/s-*.tsv; do
       [ -e "$f" ] || continue
+      # A headless record (the hook's ten-field layout) and only its session id; a pane record is read through rec_row (state.sh).
       headless_alive "$f" &&
         awk -F"$TAB" 'NR == 1 && $3 != "" { print "LIVE\t" $3 }' "$f"
     done
