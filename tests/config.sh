@@ -61,6 +61,9 @@ usage.safety_margin_pct	5
 usage.workdays	true
 usage.meter	2026-09-10 15:30 = 684.66
 notes.send	reference
+resurrect.auto	true
+resurrect.every	300
+resurrect.notes	reopen
 keys.closed	ctrl-y
 EOF
 )

@@ -109,6 +109,15 @@ notes:
   #   submit     paste the text and press Enter; the draft is cleared at once.
   send: reference
 
+# Bringing every chat back after a reboot (`tagents --resurrect`, and tmux-resurrect's save and restore hooks).
+resurrect:
+  # What tmux-resurrect's restore hook runs: once per tmux server and only in its first 5 minutes, silent when resurrect.auto is false.
+  auto: true
+  # How often the status bar writes down which chat lives in which pane, in seconds (300; 0 is never).
+  every: 300
+  # Each resumed chat gets the notes editor it had on screen back, unless resurrect.notes is off: reopen | off.
+  notes: reopen
+
 # Every key of the dashboard, and what it is bound to. Only the ones you write
 # here move; the rest keep the defaults commented beside them. `tagents --keys`
 # prints where each one actually ended up.
