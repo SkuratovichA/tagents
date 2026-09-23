@@ -681,6 +681,10 @@ counts() {
   if sync_names_due; then
     sync_window_names >/dev/null 2>&1 &
   fi
+  # The resurrect snapshot rides the same tick for the same reason: a reboot
+  # does not wait for the dashboard to be open, and the pre-reboot set is only
+  # as fresh as the last capture. Its own throttle (resurrect.every, 0 = off).
+  if resurrect_due; then resurrect_save >/dev/null 2>&1 & fi
   # A config with something wrong in it, ahead of the counts: the status bar is
   # there whether or not the dashboard is open, and a profile pointing nowhere
   # is worth a glance before the next agent starts on it. Nothing at all when

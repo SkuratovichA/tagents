@@ -527,6 +527,20 @@ EOF
           reference|paste|submit) ;;
           *) cfg_note "$k" "\"$v\" is not one of reference, paste, submit — tnotes uses reference" ;;
         esac ;;
+      resurrect.every)
+        # due_every reads anything but a positive number as off, so a "5m"
+        # would quietly stop the capture a reboot depends on.
+        case $v in ''|*[!0-9]*) cfg_note "$k" "\"$v\" is not a number of seconds" ;; esac ;;
+      resurrect.auto)
+        case $v in
+          true|false|yes|no|on|off|0|1) ;;
+          *) cfg_note "$k" "\"$v\" is not true or false — read as true" ;;
+        esac ;;
+      resurrect.notes)
+        case $v in
+          reopen|off) ;;
+          *) cfg_note "$k" "\"$v\" is not one of reopen, off — read as reopen" ;;
+        esac ;;
     esac
   done <<EOF
 $CFG

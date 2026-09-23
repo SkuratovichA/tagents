@@ -173,6 +173,9 @@ end_agent() {  # <pane> — hang up the agent running in it
   # claiming this session has work fanned out under it. Its own record is kept
   # on purpose — that is what leaves the row as "closed, enter resumes it".
   [ -n "$key" ] && rm -f "$STATE_DIR/sub/$key".* 2>/dev/null
+  # A chat hung up on purpose must not come back after the next reboot: the
+  # snapshot is retaken now rather than at the next status-bar tick.
+  resurrect_soon
   return 0
 }
 

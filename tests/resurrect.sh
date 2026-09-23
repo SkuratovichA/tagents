@@ -152,6 +152,15 @@ col() {  # <row> <column number>, empty columns kept
 
 resurrect_files() { ls "$STATE/resurrect" 2>/dev/null | grep -c -E '^[0-9]+\.tsv$'; }
 
+waitfiles() {  # <count> — a capture started in the background has landed (~10 s)
+  local i=0
+  while [ "$i" -lt 100 ]; do
+    [ "$(resurrect_files)" -ge "$1" ] && return 0
+    i=$((i + 1)); sleep 0.1
+  done
+  return 1
+}
+
 newest() { ls -1 "$STATE/resurrect" 2>/dev/null | grep -E '^[0-9]+\.tsv$' | sort -rn | awk 'NR == 1 { print }'; }
 
 clear_out() { rm -f "$OUT"/*.out 2>/dev/null; return 0; }
@@ -449,6 +458,48 @@ out=$(run --resurrect --from "$SNAP/dash.tsv")
 has "the report says so" "✓ dashboard" "$out"
 ok "a window in tatest-dash carries the marker" 1 \
    "$(tm list-windows -t =tatest-dash -F '#{@tagents}' 2>/dev/null | grep -c '^1$')"
+
+# ---------------------------------------------------------------------------
+t "14. the status bar captures, throttled; every: 0 turns it off"
+# ---------------------------------------------------------------------------
+# The save is started in the background by --counts, so a new file is waited
+# for rather than expected at once. Every chat restored above is a set no
+# snapshot holds yet, so a capture that should not happen would show.
+before=$(resurrect_files)
+run --counts >/dev/null 2>&1
+sleep 2
+ok "every: 0 — no capture"  "$before" "$(resurrect_files)"
+ok "...and no stamp either" ""        "$(ls "$STATE/.resurrect.ts" 2>/dev/null)"
+TA_RESURRECT_EVERY=1 run --counts >/dev/null 2>&1
+waitfiles $((before + 1)); ok "due: the status bar captures" 0 "$?"
+ok "...and stamps the time" 1 "$(ls "$STATE/.resurrect.ts" 2>/dev/null | wc -l | tr -d ' ')"
+# A changed set inside the interval is left for the next due tick: the stamp
+# is the throttle, not the contents.
+tm kill-session -t =tatest-nodir >/dev/null 2>&1
+TA_RESURRECT_EVERY=3600 run --counts >/dev/null 2>&1
+sleep 2
+ok "not due: no capture, though the set changed" $((before + 1)) "$(resurrect_files)"
+sleep 1
+TA_RESURRECT_EVERY=1 run --counts >/dev/null 2>&1
+waitfiles $((before + 2)); ok "due again: the changed set is captured" 0 "$?"
+sleep 1
+TA_RESURRECT_EVERY=1 run --counts >/dev/null 2>&1
+sleep 2
+ok "due, the same set: not written twice" $((before + 2)) "$(resurrect_files)"
+
+# ---------------------------------------------------------------------------
+t "15. --check names a resurrect key it cannot read"
+# ---------------------------------------------------------------------------
+sed 's/every: 0/every: soon/' "$CFG" >"$ROOT/config-every.yaml"
+{ cat "$CFG"; printf '  notes: maybe\n'; }     >"$ROOT/config-notes.yaml"
+{ cat "$CFG"; printf '  auto: sometimes\n'; }  >"$ROOT/config-auto.yaml"
+hasnt "a good resurrect leaf: nothing said about it" "resurrect." "$(run --check 2>/dev/null)"
+has "every: soon" 'resurrect.every: "soon" is not a number of seconds' \
+    "$(TA_CONFIG="$ROOT/config-every.yaml" run --check 2>/dev/null)"
+has "notes: maybe" 'resurrect.notes: "maybe" is not one of reopen, off' \
+    "$(TA_CONFIG="$ROOT/config-notes.yaml" run --check 2>/dev/null)"
+has "auto: sometimes" 'resurrect.auto: "sometimes" is not true or false' \
+    "$(TA_CONFIG="$ROOT/config-auto.yaml" run --check 2>/dev/null)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
