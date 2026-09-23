@@ -501,5 +501,65 @@ has "notes: maybe" 'resurrect.notes: "maybe" is not one of reopen, off' \
 has "auto: sometimes" 'resurrect.auto: "sometimes" is not true or false' \
     "$(TA_CONFIG="$ROOT/config-auto.yaml" run --check 2>/dev/null)"
 
+# ---------------------------------------------------------------------------
+t "16. the dash window a reboot leaves is where the list starts, not beside it"
+# ---------------------------------------------------------------------------
+# Server C is the sidebar as tmux-resurrect restores it: a window called dash
+# with no marker and an idle shell in each pane the list, its seat and a docked
+# chat used to hold.
+tm kill-server >/dev/null 2>&1
+sleep 1
+tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 'sleep 600' || exit 1
+tm set -g default-shell /bin/sh >/dev/null 2>&1
+tm set -g default-command '' >/dev/null 2>&1
+tm set -gw window-size manual >/dev/null 2>&1
+SOCK=$(tm display -p '#{socket_path}' 2>/dev/null)
+DW=$(tm new-window -d -t tatest-dash: -n dash -P -F '#{window_id}' -c "$NOR")
+tm resize-window -t "$DW" -x 200 -y 50 >/dev/null 2>&1
+DP=$(tm display -p -t "$DW" '#{pane_id}')
+SP=$(tm split-window -d -t "$DW" -P -F '#{pane_id}' -c "$NOR")
+
+dashes() { tm list-windows -t =tatest-dash -F '#{window_name}' 2>/dev/null | grep -c '^dash$'; }
+# The list is a bash script, so its pane's command reads as a shell whatever it
+# is doing; what tells it from the idle shell is the pid it stamps on its pane.
+waitlist() {  # <pane id> — a list has started in it and claimed it (~5 s)
+  local i=0 pid
+  while [ "$i" -lt 50 ]; do
+    pid=$(tm display -p -t "$1" '#{@tagents_list}' 2>/dev/null)
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && return 0
+    i=$((i + 1)); sleep 0.1
+  done
+  return 1
+}
+
+run --ensure-dash >/dev/null 2>&1; ok "--ensure-dash succeeds" 0 "$?"
+ok "one window named dash" 1 "$(dashes)"
+ok "...the one that was restored" "$DW" \
+   "$(tm list-windows -t =tatest-dash -F '#{window_id} #{window_name}' | awk '$2 == "dash" { print $1 }')"
+ok "...and it carries the marker" 1 "$(tm show -wv -t "$DW" @tagents 2>/dev/null)"
+waitlist "$DP"; ok "the list runs in its first pane" 0 "$?"
+has "...started there in place of the shell" tagents "$(tm display -p -t "$DP" '#{pane_start_command}')"
+ok "the spare shell is gone" "" "$(tm display -p -t "$SP" '#{pane_id}' 2>/dev/null)"
+# ensure_dash always gives the list a seat beside it; anything else would be a
+# leftover shell or a second list grown next to the first.
+ok "one pane besides the seat" 1 \
+   "$(tm list-panes -t "$DW" -F '#{@tagents_slot}' 2>/dev/null | grep -c -v '^1$')"
+ok "...and it is the one list" 1 \
+   "$(tm list-panes -t "$DW" -F '#{@tagents_list}' 2>/dev/null | grep -c .)"
+
+# A dash window with something running in it is somebody's, however it is
+# named: left as it is, and the sidebar gets a window of its own.
+tm kill-window -t "$DW" >/dev/null 2>&1
+BW=$(tm new-window -d -t tatest-dash: -n dash -P -F '#{window_id}' 'sleep 600')
+tm resize-window -t "$BW" -x 200 -y 50 >/dev/null 2>&1
+run --ensure-dash >/dev/null 2>&1
+ok "a dash window in use keeps what it runs" sleep "$(tm display -p -t "$BW" '#{pane_current_command}')"
+ok "...keeps its one pane" 1 "$(tm display -p -t "$BW" '#{window_panes}')"
+ok "...and gets no marker" "" "$(tm show -wv -t "$BW" @tagents 2>/dev/null)"
+ok "a second dash is made beside it" 2 "$(dashes)"
+ok "...and that one is the sidebar" 1 \
+   "$(tm list-windows -t =tatest-dash -F '#{window_id} #{window_name} #{@tagents}' |
+        awk -v b="$BW" '$1 != b && $2 == "dash" && $3 == "1"' | wc -l | tr -d ' ')"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

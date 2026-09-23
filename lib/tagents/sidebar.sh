@@ -1,6 +1,6 @@
 # lib/tagents/sidebar.sh — which pane is the dashboard right now
 #
-# The marker discipline, with the essay at 3328-3368 (two real incidents: a stray @tagents_dash sending every dock to a chat pane; several lists fighting over one marker) heading the file. list_in_pane's kill -0 on a stamped pid, dash_pane (own pane first, marker only as fallback, stale markers cleared), dash_window vs dash_session_window, claim_dash/release_dash, is_agent_pane, and ensure_dash — get-or-create the session, the window, the list pane, and a seat.
+# The marker discipline, with the essay at 3328-3368 (two real incidents: a stray @tagents_dash sending every dock to a chat pane; several lists fighting over one marker) heading the file. list_in_pane's kill -0 on a stamped pid, dash_pane (own pane first, marker only as fallback, stale markers cleared), dash_window vs dash_session_window, claim_dash/release_dash, is_agent_pane, and ensure_dash — get-or-create the session, the window (adopt_dash_window takes over the one tmux-resurrect restores after a reboot), the list pane, and a seat.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -149,10 +149,46 @@ is_agent_pane() {  # <pane-id> — is a Claude actually running in it?
   return 1
 }
 
+# A window called dash in the dashboard session, every pane of it an idle shell
+# and none of them marked, is what tmux-resurrect leaves where the sidebar was.
+# The list is started IN it rather than beside it; its other panes were seats
+# and docked chats and go — the chats come back at their homes through
+# --resurrect. Anything running in there means somebody is using the window.
+adopt_dash_window() {
+  local w p cur first=""
+  w=$(tmux list-windows -t "=$DASH_SESSION" -F '#{window_id} #{window_name} #{@tagents}' 2>/dev/null |
+        awk '$2 == "dash" && $3 == "" { print $1; exit }')
+  [ -n "$w" ] || return 1
+  while read -r p cur; do
+    [ -n "$p" ] || continue
+    is_shell_cmd "$cur" || return 1
+    [ -n "$first" ] || first=$p
+  done <<EOF
+$(tmux list-panes -t "$w" -F '#{pane_id} #{pane_current_command}' 2>/dev/null)
+EOF
+  [ -n "$first" ] || return 1
+  tmux list-panes -t "$w" -F '#{pane_id}' 2>/dev/null | awk -v f="$first" '$1 != f' |
+    while IFS= read -r p; do tmux kill-pane -t "$p" 2>/dev/null; done
+  tmux respawn-pane -k -t "$first" "exec '$SELF'" 2>/dev/null || return 1
+  printf '%s' "$w"
+}
+
+# A list claims the sidebar itself, a moment after it starts (claim_dash), so
+# whoever has just started one waits for the claim instead of assuming it —
+# about two seconds, then it gives up with a non-zero status.
+await_list() {
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ -n "$(dash_pane)" ] && return 0
+    sleep 0.2
+  done
+  return 1
+}
+
 ensure_dash() {
-  local win="" dp
+  local win="" dp adopted=""
   if tmux has-session -t "=$DASH_SESSION" 2>/dev/null; then
     win=$(dash_session_window)
+    [ -z "$win" ] && win=$(adopt_dash_window) && adopted=1
     # The session can outlive the dashboard window — a docked or borrowed window
     # keeps it alive on its own — so re-create it rather than assuming it.
     [ -z "$win" ] && win=$(tmux new-window -d -t "$DASH_SESSION:" -n dash -P \
@@ -171,6 +207,10 @@ ensure_dash() {
   # docked around that chat and ctrl-n switched the client to a sidebar with no
   # list in it. Re-home the marker instead of trusting it, and never give it to a
   # pane that is running an agent.
+  #
+  # An adopted window already has its list starting in it, and a list grown
+  # beside that one before it claims would be a second sidebar: wait for it.
+  [ -n "$adopted" ] && await_list
   dp=$(dash_pane)
   if [ -n "$dp" ]; then
     if [ "$(tmux display -p -t "$dp" '#{window_id}' 2>/dev/null)" != "$win" ] || is_agent_pane "$dp"; then
@@ -197,12 +237,7 @@ ensure_dash() {
     # The list claims the marker itself, a moment after it starts. Wait for it:
     # the caller's next move is dock(), and dock with no sidebar to dock into
     # does nothing at all — one keypress silently lost.
-    if [ -n "$dp" ]; then
-      for _ in 1 2 3 4 5 6 7 8 9 10; do
-        [ -n "$(dash_pane)" ] && break
-        sleep 0.2
-      done
-    fi
+    [ -n "$dp" ] && await_list
   fi
   [ -n "$dp" ] && ensure_seat "$dp" >/dev/null
   tmux select-window -t "$win" 2>/dev/null
