@@ -162,6 +162,7 @@ adopt_dash_window() {
   while read -r p cur; do
     [ -n "$p" ] || continue
     is_shell_cmd "$cur" || return 1
+    list_in_pane "$p" && return 1   # the list is a bash script: its pane reads as a shell while it runs
     [ -n "$first" ] || first=$p
   done <<EOF
 $(tmux list-panes -t "$w" -F '#{pane_id} #{pane_current_command}' 2>/dev/null)
@@ -185,16 +186,17 @@ await_list() {
 }
 
 ensure_dash() {
-  local win="" dp adopted=""
+  local win="" dp started=""
   if tmux has-session -t "=$DASH_SESSION" 2>/dev/null; then
     win=$(dash_session_window)
-    [ -z "$win" ] && win=$(adopt_dash_window) && adopted=1
+    [ -z "$win" ] && win=$(adopt_dash_window) && started=1
     # The session can outlive the dashboard window — a docked or borrowed window
     # keeps it alive on its own — so re-create it rather than assuming it.
     [ -z "$win" ] && win=$(tmux new-window -d -t "$DASH_SESSION:" -n dash -P \
-                             -F '#{window_id}' "exec '$SELF'" 2>/dev/null)
+                             -F '#{window_id}' "exec '$SELF'" 2>/dev/null) && started=1
   else
     tmux new-session -d -s "$DASH_SESSION" -n dash -x 200 -y 50 "exec '$SELF'" 2>/dev/null || return 1
+    started=1
     win=$(tmux list-windows -t "=$DASH_SESSION" -F '#{window_id}' 2>/dev/null | head -1)
   fi
   [ -z "$win" ] && return 1
@@ -208,9 +210,8 @@ ensure_dash() {
   # list in it. Re-home the marker instead of trusting it, and never give it to a
   # pane that is running an agent.
   #
-  # An adopted window already has its list starting in it, and a list grown
-  # beside that one before it claims would be a second sidebar: wait for it.
-  [ -n "$adopted" ] && await_list
+  # A window adopted or made just now already has its list starting in it, and a list grown beside that one before it claims would be a second sidebar: wait for it.
+  [ -n "$started" ] && await_list
   dp=$(dash_pane)
   if [ -n "$dp" ]; then
     if [ "$(tmux display -p -t "$dp" '#{window_id}' 2>/dev/null)" != "$win" ] || is_agent_pane "$dp"; then
