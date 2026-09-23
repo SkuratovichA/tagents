@@ -4,7 +4,8 @@
 # live chat, which snapshot a restore picks, and where a docked chat is filed;
 # then the restore itself, on a second server standing in for the one a reboot
 # brings up: each chat back in its pane, on its login, with its model — and
-# every way a row can fail to come back without anything else going wrong.
+# every way a row can fail to come back without anything else going wrong;
+# last, the dashboard window and the notes editors a reboot leaves behind.
 #
 # NOTHING HERE MAY TOUCH THE DEFAULT TMUX SOCKET. The server is created with
 # `tmux -L tatest-$$ -f /dev/null` and torn down in the trap, and tagents is
@@ -86,7 +87,10 @@ EOF
 # tusage is real and reads the real usage index; stubbed to nothing so the
 # dashboard under test stays hermetic and fast.
 printf '#!/bin/sh\nexit 0\n' >"$BIN/tusage"
-chmod +x "$BIN/claude" "$BIN/tusage"
+# tnotes is stubbed too: a restore only has to ASK for each editor back, and
+# the log of what it asked is the whole assertion (tests/notes.sh owns tnotes).
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"$TA_STUB_OUT/tnotes.log"\n' >"$BIN/tnotes"
+chmod +x "$BIN/claude" "$BIN/tusage" "$BIN/tnotes"
 
 CFG="$ROOT/config.yaml"
 cat >"$CFG" <<EOF
@@ -560,6 +564,55 @@ ok "a second dash is made beside it" 2 "$(dashes)"
 ok "...and that one is the sidebar" 1 \
    "$(tm list-windows -t =tatest-dash -F '#{window_id} #{window_name} #{@tagents}' |
         awk -v b="$BW" '$1 != b && $2 == "dash" && $3 == "1"' | wc -l | tr -d ' ')"
+
+# ---------------------------------------------------------------------------
+t "17. the editors tmux-resurrect orphaned go; a restored chat's editor comes back"
+# ---------------------------------------------------------------------------
+# ta-notes as a reboot leaves it: the holder, two editors nothing links to a
+# chat any more, and one that still names its chat (an editor opened since).
+# The session and holder names are tnotes' own; a rename there must fail here.
+ok "tnotes parks editors in the session the restore cleans" ta-notes \
+   "$(sed -n 's/^NOTES_SESSION=//p' "$HERE/../tnotes")"
+has "...under a holder window called hold" "-n hold" "$(grep 'new-session' "$HERE/../tnotes")"
+notes_park() {
+  tm new-session -d -s ta-notes -n hold 'sleep 600'
+  O1=$(tm new-window -d -t ta-notes: -P -F '#{window_id}' 'sleep 600')
+  O2=$(tm new-window -d -t ta-notes: -P -F '#{window_id}' 'sleep 600')
+  LW=$(tm new-window -d -t ta-notes: -P -F '#{window_id}' 'sleep 600')
+  tm set -p -t "$LW" @ta_notes_for %1
+}
+# Not `display -t`: for a window id that is gone it prints nothing and exits 0.
+gone() {  # <window id> -> there | gone
+  case " $(tm list-windows -a -F '#{window_id}' 2>/dev/null | tr '\n' ' ') " in
+    *" $1 "*) echo there ;; *) echo gone ;;
+  esac
+}
+notes_park
+transcript sid-notes
+arow sid-notes "" 1 tatest-notes 0 0 Notes "" "$NOR" "" 1 "" "" >"$SNAP/notes.tsv"
+rm -f "$OUT/tnotes.log"
+out=$(run --resurrect --from "$SNAP/notes.tsv")
+NP=$(tm display -p -t tatest-notes:0.0 '#{pane_id}' 2>/dev/null)
+f=$(outof "$NP"); ok "the chat runs" 0 "$?"
+ok "the first orphan is gone"  gone "$(gone "$O1")"
+ok "the second orphan is gone" gone "$(gone "$O2")"
+ok "the holder stays" 1 "$(tm list-windows -t =ta-notes -F '#{window_name}' 2>/dev/null | grep -c '^hold$')"
+ok "the linked editor stays" there "$(gone "$LW")"
+ok "tnotes was asked for the chat's editor" "toggle $NP" "$(cat "$OUT/tnotes.log" 2>/dev/null)"
+has "...and the report says so" "notes beside $NP" "$out"
+
+tm kill-session -t =ta-notes >/dev/null 2>&1
+notes_park
+CFG3="$ROOT/config-notes-off.yaml"
+{ cat "$CFG"; printf '  notes: off\n'; } >"$CFG3"
+transcript sid-notes-off
+arow sid-notes-off "" 1 tatest-notesoff 0 0 Off "" "$NOR" "" 1 "" "" >"$SNAP/notes-off.tsv"
+rm -f "$OUT/tnotes.log"
+out=$(TA_CONFIG="$CFG3" run --resurrect --from "$SNAP/notes-off.tsv")
+has "off: the chat is still restored" "✓ tatest-notesoff:0.0 Off" "$out"
+ok "off: the first orphan is left"  there "$(gone "$O1")"
+ok "off: the second orphan is left" there "$(gone "$O2")"
+ok "off: tnotes is not asked" "" "$(cat "$OUT/tnotes.log" 2>/dev/null)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
