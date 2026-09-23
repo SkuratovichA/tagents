@@ -208,10 +208,10 @@ What comes back, and how:
 - **With its model** (the status line records a `/model` switch too) and any `--effort` it was started with. `--resume` brings the permission mode back by itself.
 - **Under its window name**: a name tagents gave the window keeps following the agent, and one you typed stays yours.
 - **The dashboard**, when it was up. tmux-resurrect restores the sidebar as a dead `dash` window, and the list is started in that window rather than beside it — by the restore and by `prefix A` alike. Docked chats come back at their homes, undocked, and `enter` docks them again.
-- **The notes editor** of every chat that had one open. The editors tmux-resurrect brought back in `ta-notes` belong to no chat and hold their files open, so the next `prefix C-t` would run into a swap-file warning; they are closed first.
-- **Nothing twice.** A chat already running, by session id, is skipped — so running the restore again is harmless — and so is one whose transcript is gone from its login. A directory that no longer exists is resumed in `$HOME`, and the report says so.
+- **The notes editor** of every chat whose editor was on screen; one that was hidden stays hidden. The editors tmux-resurrect brought back, parked in `ta-notes` or beside a chat in its own window, belong to no chat and hold their files open, so the next `prefix C-t` would run into a swap-file warning; they are closed first.
+- **Nothing twice.** A chat already running, by session id, is skipped, and so is one whose transcript is gone from its login. A directory that no longer exists is resumed in `$HOME`, and the report says so. The hook's `--auto` restores once per tmux server, and only within the server's first 5 minutes: tmux-resurrect fires the same hook on a `prefix + C-r` in a server that has been up for hours, where a restore would bring back every chat ended since the boot and replace idle shells that are yours now. `tagents --resurrect` by hand is the way to run it again.
 
-The snapshots are `$STATE_DIR/resurrect/<epoch>.tsv` (`~/.claude/agent-state/` by default). One is written on every tmux-resurrect save (every 15 minutes with continuum, and on `prefix + C-s`), a few seconds after every launch or kill by tagents, and by the status bar every `resurrect.every` seconds; one that says exactly what the newest already says is not written again, and the newest 50 are kept. **The restore uses the newest snapshot written before this tmux server started**, so the captures taken after the boot — nothing at first, then the first new chats — can never shadow the set that was running before it. `tagents --resurrect-rows` prints that snapshot's raw rows, `tagents --resurrect-rows latest` the newest one of all.
+The snapshots are `$STATE_DIR/resurrect/<epoch>.tsv` (`~/.claude/agent-state/` by default). One is written on every tmux-resurrect save (every 15 minutes with continuum, and on `prefix + C-s`), a few seconds after every launch or kill by tagents, and by the status bar every `resurrect.every` seconds; one that says exactly what the newest already says is not written again, and the newest 50 are kept, plus the one a restore on this server would read however old it is. **The restore uses the newest snapshot written before this tmux server started**, so the captures taken after the boot can never shadow the set that was running before it. They are not harmless all the same: a capture of a server nothing has been restored on yet says "no chats", and a second server start soon after (a `kill-server`, a crash) would pick exactly that one. So while `resurrect.auto` is on, a new server is not captured until the hook has restored it (or until it is 5 minutes old, if the hook never fires), nothing is captured while a restore is placing chats, and the restore takes a snapshot of its own 15 seconds after it is done, once the chats it resumed have written their records. `tagents --resurrect-rows` prints that snapshot's raw rows, `tagents --resurrect-rows latest` the newest one of all.
 
 Two lines in `~/.tmux.conf`, after the tmux-resurrect plugin settings, make both halves happen on their own:
 
@@ -220,7 +220,7 @@ set -g @resurrect-hook-post-save-layout '~/.local/bin/tagents --resurrect-save'
 set -g @resurrect-hook-post-restore-all '~/.local/bin/tagents --resurrect --auto'
 ```
 
-The first captures on every tmux-resurrect save, the second restores once continuum has put the layout back after a start. `tmux source-file ~/.tmux.conf` picks them up. `--auto` has no terminal, so its report goes to `$STATE_DIR/resurrect.log` and the status line says `tagents: resurrected N agents, K skipped`.
+The first captures on every tmux-resurrect save, the second restores once continuum has put the layout back after a start. `tmux source-file ~/.tmux.conf` picks them up. `--auto` has no terminal, so its report goes to `$STATE_DIR/resurrect.log` (its last 2000 lines are kept) and the status line says `tagents: resurrected N agents, K skipped`.
 
 The `resurrect:` leaf of the tagents config steers it; every key is optional and `tagents --check` names a value it cannot read:
 
@@ -247,6 +247,7 @@ resurrect:
 - An `/effort` chosen inside a session is recorded nowhere; only an `--effort` on the command line is replayed. `/model` is covered.
 - A Claude on a login without the state hook has no record, so it is not captured.
 - Headless sessions (`s-*`) have no pane to go back into and are not resurrected.
+- A shell under a resumed chat: its pane runs `claude --resume` itself, like a chat started from the dashboard, so `/exit` closes the pane instead of dropping back to a prompt.
 - A chat started by hand in the last `resurrect.every` seconds before an unplanned crash (launches by tagents are captured a few seconds after they start). The procedure above closes that gap for a planned reboot.
 
 ## Hiding columns
