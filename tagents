@@ -45,6 +45,26 @@
 #                           sid, last activity, first seen, account, badge,
 #                           name, directory, and which files it was found in.
 #                           This is what ctrl-y's picker is built from
+#   tagents --resurrect-save
+#                           write down which chat lives in which pane — session
+#                           id, account, model, window — so a reboot can bring
+#                           it back. tmux-resurrect's save hook, every launch
+#                           and kill, and the status bar every resurrect.every
+#                           seconds (300; 0 is never) run this; it is here to
+#                           be run by hand before a planned reboot
+#   tagents --resurrect-rows [file|latest]
+#                           the raw rows of a snapshot, one TAB-separated line
+#                           per chat: the one --resurrect would use (the newest
+#                           written before this tmux server started), the
+#                           newest of all, or that file
+#   tagents --resurrect [--dry-run] [--auto] [--from file|latest]
+#                           resume every recorded chat that is not running, in
+#                           its own pane on the login it ran on, with its model,
+#                           and its notes editor unless resurrect.notes is off.
+#                           --dry-run only says what it would do; --auto is
+#                           what tmux-resurrect's restore hook runs: silent when
+#                           resurrect.auto is false, and its report goes to
+#                           resurrect.log in the state directory
 #   tagents --hidden-cols   which columns are hidden right now (see ctrl-w)
 #   tagents --col-rows      the picker's rows as the picker itself reads them,
 #                           key<TAB>the checkmark line — what ctrl-w shows you
@@ -73,8 +93,9 @@
 #                           rule naming no profile or one that does not exist,
 #                           a default or usage.watch that is not a profile, a
 #                           usage number that is not one, a notes.send outside
-#                           its three words, a key fzf does not know, and the
-#                           lines the parser refused. Prints nothing and exits
+#                           its three words, a resurrect.* value it cannot read,
+#                           a key fzf does not know, and the lines the parser
+#                           refused. Prints nothing and exits
 #                           0 when nothing is wrong, exits 1 otherwise. The
 #                           dashboard header and the status bar count the same
 #                           problems (see CONFIG)

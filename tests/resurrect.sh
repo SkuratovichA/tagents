@@ -614,5 +614,18 @@ ok "off: the first orphan is left"  there "$(gone "$O1")"
 ok "off: the second orphan is left" there "$(gone "$O2")"
 ok "off: tnotes is not asked" "" "$(cat "$OUT/tnotes.log" 2>/dev/null)"
 
+# ---------------------------------------------------------------------------
+t "18. --help names the three entry points and the keys that steer them"
+# ---------------------------------------------------------------------------
+# The header comment is the help; a verb missing from it is a verb nobody finds
+# the night before a reboot.
+HELP=$(run --help)
+has "--resurrect-save is documented"          "tagents --resurrect-save"                          "$HELP"
+has "--resurrect-rows is documented"          "tagents --resurrect-rows [file|latest]"            "$HELP"
+has "--resurrect is documented"               "--resurrect [--dry-run] [--auto] [--from file|latest]" "$HELP"
+has "resurrect.every is named"                "resurrect.every" "$HELP"
+has "resurrect.auto is named"                 "resurrect.auto"  "$HELP"
+has "resurrect.notes is named"                "resurrect.notes" "$HELP"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
