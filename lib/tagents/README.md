@@ -30,6 +30,7 @@ others are built on `STATE_DIR` and `TAB`.
 | `seats.sh` | 290 | seats: what they are and which one is current |
 | `dock.sh` | 381 | docking: the pane swapped into a seat, and sent home again |
 | `closed.sh` | 254 | the sessions that stopped running |
+| `resurrect.sh` | 273 | every chat back where it was after a reboot |
 | `launch.sh` | 293 | starting an agent |
 | `keys.sh` | 285 | every key, and where it comes from |
 | `dash.sh` | 251 | the dashboard itself |
