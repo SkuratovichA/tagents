@@ -74,14 +74,16 @@ mkdir -p "$ROOT/cfg-p" "$HOME/.claude"
 # ending in /claude like the real CLI's, and whose argv still carries every
 # argument the stub was given — the --effort a restore has to replay. The
 # `; :` stops bash from exec'ing the sleep in its place.
+# TA_STUB_NOREC in the server's environment skips the record, so what is left under the pane is only what was there before the stub started.
 cat >"$BIN/claude" <<'EOF'
 #!/bin/bash
 out="$TA_STUB_OUT/${TMUX_PANE#%}.out"
 { printf 'CFG=%s\n' "${CLAUDE_CONFIG_DIR-<unset>}"; printf 'ARGS=%s\n' "$*"; printf 'PWD=%s\n' "$PWD"; } >"$out"
 sid=""; prev=""; for a in "$@"; do [ "$prev" = --resume ] && sid=$a; prev=$a; done
 [ -n "$sid" ] || sid="sid-${TMUX_PANE#%}"
-printf '{"hook_event_name":"SessionStart","session_id":"%s","cwd":"%s","transcript_path":"","source":"startup"}' "$sid" "$PWD" |
-  sh "$TA_STUB_HOOK" >/dev/null 2>&1
+[ -n "${TA_STUB_NOREC:-}" ] ||
+  printf '{"hook_event_name":"SessionStart","session_id":"%s","cwd":"%s","transcript_path":"","source":"startup"}' "$sid" "$PWD" |
+    sh "$TA_STUB_HOOK" >/dev/null 2>&1
 exec -a "$0" /bin/bash -c 'sleep 600; :' "$0" "$@"
 EOF
 # tusage is real and reads the real usage index; stubbed to nothing so the
@@ -114,7 +116,9 @@ export TA_STATE_DIR="$STATE"
 export TA_SESSION=tatest-dash
 export TA_CONFIG="$CFG"
 unset TMUX TMUX_PANE TA_MODE TA_FLAT TA_COLS TA_NEW_CMD TA_RESUME_CMD TA_HOME
-unset CLAUDE_CONFIG_DIR TA_RESURRECT_EVERY TA_RESURRECT_KEEP
+unset CLAUDE_CONFIG_DIR TA_RESURRECT_EVERY TA_RESURRECT_KEEP TA_RESURRECT_YOUNG TA_RESURRECT_SOON
+# The capture a restore leaves behind lands a second later instead of fifteen, so a test can wait for it rather than have it land in the middle of a later one.
+export TA_RESURRECT_RETAKE=1
 
 tm() { tmux -L "$S" "$@"; }
 
@@ -190,6 +194,24 @@ transcript() {  # <sid> — a conversation the default login still holds
   mkdir -p "$HOME/.claude/projects/x"; : >"$HOME/.claude/projects/x/$1.jsonl"
 }
 
+# What the hook's --auto leaves on a server it restored: captures are held off on a young server until it has run.
+booted() { tm display -p '#{start_time}' >"$STATE/.resurrect.done"; }
+
+waitsnap() {  # <sid> <present|absent> — the newest snapshot has, or no longer has, that chat (~10 s)
+  local i=0 r
+  while [ "$i" -lt 100 ]; do
+    r=$(row "$STATE/resurrect/$(newest)" "$1")
+    case $2 in
+      present) [ -n "$r" ] && return 0 ;;
+      absent)  [ -z "$r" ] && return 0 ;;
+    esac
+    i=$((i + 1)); sleep 0.1
+  done
+  return 1
+}
+
+panes_named() { tm list-panes -a -F '#{pane_id}' 2>/dev/null | grep -c -x -- "$1"; }   # <pane id> -> 1 while it exists, 0 once it is gone
+
 # ---------------------------------------------------------------------------
 t "1. a capture: one row per live chat, keyed by session id"
 # ---------------------------------------------------------------------------
@@ -199,6 +221,8 @@ tm rename-window -t tatest-proj:1 Alpha
 tm set -w -t tatest-proj:1 @tagents_name Alpha
 tm new-window -d -t tatest-other:1 -c "$NOR" "claude --dangerously-skip-permissions"
 tm rename-window -t tatest-other:1 Hand
+# tagents named it once and somebody typed another name over it since: the typed one is not tagents'.
+tm set -w -t tatest-other:1 @tagents_name Stale
 # A pane with a record and no Claude in it: the record alone must not count.
 tm new-window -d -t tatest-other:2 -c "$NOR" 'sleep 600'
 
@@ -212,6 +236,11 @@ printf '%s\tidle\tsid-sleep\t%s\t\t\t\n' "$(date +%s)" "$NOR" >"$STATE/$NS.tsv"
 
 waitrec "$N1"; ok "the first stub wrote its record" 0 "$?"
 waitrec "$N2"; ok "the second stub wrote its record" 0 "$?"
+
+# A server this young, which the hook has not restored yet, holds none of the chats it is about to get back.
+run --resurrect-save
+ok "a young server the hook has not restored is not captured" 0 "$(resurrect_files)"
+booted
 
 run --resurrect-save; ok "--resurrect-save succeeds" 0 "$?"
 ok "one snapshot file" 1 "$(resurrect_files)"
@@ -236,7 +265,7 @@ ok "row 2: default account, empty"  ""            "$(col "$r2" 3)"
 ok "row 2: ...but the field exists" 1             "$(col "$r2" 4)"
 ok "row 2: session"            tatest-other       "$(col "$r2" 5)"
 ok "row 2: window name"        Hand               "$(col "$r2" 8)"
-ok "row 2: a typed name is not tagents'" ""       "$(col "$r2" 9)"
+ok "row 2: tagents' name no longer the window's is not recorded" "" "$(col "$r2" 9)"
 ok "row 2: directory"          "$NOR"             "$(col "$r2" 10)"
 ok "row 2: no model recorded"  ""                 "$(col "$r2" 13)"
 ok "row 2: fourteen columns"   14                 "$(printf '%s\n' "$r2" | awk -F'\t' '{ print NF }')"
@@ -308,6 +337,28 @@ rm -f "$S3"
 ok "...and cleaned up: S1 is the newest again" "${S1##*/}" "$(newest)"
 
 # ---------------------------------------------------------------------------
+t "3b. a notes editor counts only while it is on screen beside its chat"
+# ---------------------------------------------------------------------------
+# tnotes links both ways: @ta_notes on the chat names its editor, @ta_notes_for on the editor names its chat. A hidden editor is parked in ta-notes, and a restore does not bring one of those back.
+E1=$(tm split-window -d -t "$P1" -P -F '#{pane_id}' 'sleep 600')
+tm set -p -t "$E1" @ta_notes_for "$P1"; tm set -p -t "$P1" @ta_notes "$E1"
+tm new-session -d -s ta-notes -n hold 'sleep 600'
+E2=$(tm new-window -d -t ta-notes: -P -F '#{pane_id}' 'sleep 600')
+tm set -p -t "$E2" @ta_notes_for "$P2"; tm set -p -t "$P2" @ta_notes "$E2"
+
+sleep 1
+run --resurrect-save
+S4="$STATE/resurrect/$(newest)"
+ok "an editor on screen: the notes column is 1" 1  "$(col "$(row "$S4" "$SID1")" 12)"
+ok "a parked editor: the notes column is empty" "" "$(col "$(row "$S4" "$SID2")" 12)"
+
+tm kill-pane -t "$E1" 2>/dev/null
+tm kill-session -t =ta-notes >/dev/null 2>&1
+tm set -up -t "$P1" @ta_notes; tm set -up -t "$P2" @ta_notes
+[ "$S4" = "$S1" ] || rm -f "$S4"
+ok "...and cleaned up: S1 is the newest again" "${S1##*/}" "$(newest)"
+
+# ---------------------------------------------------------------------------
 t "4. a restore on the same server finds both chats running and starts nothing"
 # ---------------------------------------------------------------------------
 before=$(nouts)
@@ -375,6 +426,9 @@ arow sid-dry "" 1 tatest-other 0 0 Dry "" "$NOR" "" "" "" "" >"$SNAP/dry.tsv"
 before=$(nouts)
 out=$(run --resurrect --dry-run --from "$SNAP/dry.tsv")
 has "it would resume the row" "would resume tatest-other:0.0 Dry [sid-dry]" "$out"
+# Pane numbers start again from %0 after a reboot, so the pane may still hold a record some other chat left under its number.
+has "...with a command that drops the pane's old record before claude starts" \
+    "rm -f '$STATE'/\"\${TMUX_PANE#%}\".tsv; exec " "$out"
 sleep 0.5
 ok "...and launched nothing" "$before" "$(nouts)"
 ok "...and opened no window" 2 "$(nwin tatest-other)"
@@ -428,6 +482,60 @@ f=$(outof "$pane"); ok "the chat runs" 0 "$?"
 ok "...in HOME" "$HOME" "$(field PWD "$f")"
 
 # ---------------------------------------------------------------------------
+t "10b. a pane's record from before the reboot is gone before the chat starts"
+# ---------------------------------------------------------------------------
+# The idle shells tmux-resurrect left, each under a record some other chat wrote for the same pane number before the reboot.
+tm new-session -d -s tatest-stale -x 200 -y 50 -c "$NOR"
+tm new-window -d -t tatest-stale: -c "$NOR"
+SP0=$(tm display -p -t tatest-stale:0.0 '#{pane_id}')
+SP1=$(tm display -p -t tatest-stale:1.0 '#{pane_id}')
+for p in "$SP0" "$SP1"; do
+  printf '%s\tidle\tsid-stale\t%s\t\t\t\n' "$(date +%s)" "$NOR" >"$STATE/${p#%}.tsv"
+done
+transcript sid-fresh
+arow sid-fresh "" 1 tatest-stale 0 0 Fresh "" "$NOR" "" "" "" "" >"$SNAP/stale.tsv"
+run --resurrect --from "$SNAP/stale.tsv" >/dev/null
+outof "$SP0" >/dev/null; ok "the chat runs in the pane" 0 "$?"
+waitrec "${SP0#%}"
+ok "...and its record is the resumed one" sid-fresh "$(awk -F'\t' 'NR == 1 { print $3 }' "$STATE/${SP0#%}.tsv" 2>/dev/null)"
+# A chat that has written no record of its own yet: only the one it found could be there.
+tm setenv -g TA_STUB_NOREC 1
+transcript sid-norec
+arow sid-norec "" 1 tatest-stale 1 0 Norec "" "$NOR" "" "" "" "" >"$SNAP/norec.tsv"
+run --resurrect --from "$SNAP/norec.tsv" >/dev/null
+outof "$SP1" >/dev/null; ok "a chat with no record yet runs" 0 "$?"
+ok "...and the record it found under its pane is gone" "" "$(ls "$STATE/${SP1#%}.tsv" 2>/dev/null)"
+tm setenv -gu TA_STUB_NOREC
+
+# ---------------------------------------------------------------------------
+t "10c. an account never written down: the default login, its transcript checked there"
+# ---------------------------------------------------------------------------
+# A record from before the hook wrote the account (hascfg 0) is resumed on the login a hand-typed claude would get — the default one, where the transcript is looked for too.
+arow sid-old-nots "" 0 tatest-other 1 0 Old "" "$NOR" "" "" "" "" >"$SNAP/old-nots.tsv"
+before=$(nouts)
+has "no transcript on the default login: skipped" "transcript gone" "$(run --resurrect --from "$SNAP/old-nots.tsv")"
+sleep 0.5
+ok "...and nothing was launched" "$before" "$(nouts)"
+transcript sid-old
+arow sid-old "" 0 tatest-old 0 0 Old "" "$NOR" "" "" "" "" >"$SNAP/old.tsv"
+out=$(run --resurrect --from "$SNAP/old.tsv")
+has "the report says whose login it got" "account not recorded, default login" "$out"
+pane=$(tm display -p -t tatest-old:0.0 '#{pane_id}' 2>/dev/null)
+f=$(outof "$pane"); ok "the chat runs" 0 "$?"
+has "...resuming its conversation" "--resume sid-old" "$(field ARGS "$f")"
+ok "...on the default login" "<unset>" "$(field CFG "$f")"
+
+# ---------------------------------------------------------------------------
+t "10d. an effort given as --effort=X comes back as well"
+# ---------------------------------------------------------------------------
+transcript sid-eq
+arow sid-eq "" 1 tatest-eq 0 0 Eq "" "$NOR" "" "" "" "$BIN/claude --dangerously-skip-permissions --effort=max" >"$SNAP/eq.tsv"
+run --resurrect --from "$SNAP/eq.tsv" >/dev/null
+pane=$(tm display -p -t tatest-eq:0.0 '#{pane_id}' 2>/dev/null)
+f=$(outof "$pane"); ok "the chat runs" 0 "$?"
+has "...with its effort" "--effort max" "$(field ARGS "$f")"
+
+# ---------------------------------------------------------------------------
 t "11. --auto: off in the config is silent; on, the report goes to the log"
 # ---------------------------------------------------------------------------
 CFG2="$ROOT/config-off.yaml"
@@ -441,12 +549,40 @@ sleep 0.5
 ok "off: launches nothing" "$before" "$(nouts)"
 tm has-session -t =tatest-auto 2>/dev/null; ok "off: no session" 1 "$?"
 ok "off: writes no log" "" "$(ls "$STATE/resurrect.log" 2>/dev/null)"
+# Every restore above left a capture a second behind it, held off because this server is young and the hook has not run on it: let them land before it does.
+sleep 1
+ok "no capture on this server before the hook ran" 1 "$(resurrect_files)"
+nf=$(resurrect_files)
 out=$(run --resurrect --auto --from "$SNAP/auto.tsv" 2>&1)
 ok "on: prints nothing, the log is the report" "" "$out"
 has "on: the log has the resumed line" "✓ tatest-auto:0.0 Auto" "$(cat "$STATE/resurrect.log" 2>/dev/null)"
 pane=$(tm display -p -t tatest-auto:0.0 '#{pane_id}' 2>/dev/null)
 f=$(outof "$pane"); ok "on: the chat runs" 0 "$?"
 has "...resuming its conversation" "--resume sid-auto" "$(field ARGS "$f")"
+ok "on: the server is stamped as restored" "$(tm display -p '#{start_time}')" "$(cat "$STATE/.resurrect.done" 2>/dev/null)"
+waitfiles $((nf + 1)); ok "on: the snapshot is retaken once the chats are up" 0 "$?"
+has "...and holds the chat it resumed" "sid-auto" "$(cat "$STATE/resurrect/$(newest)" 2>/dev/null)"
+
+# tmux-resurrect runs the hook on every restore, a prefix C-r hours after the boot included.
+seq 1 2500 >"$STATE/resurrect.log"
+transcript sid-again
+arow sid-again "" 1 tatest-again 0 0 Again "" "$NOR" "" "" "" "" >"$SNAP/again.tsv"
+before=$(nouts)
+out=$(run --resurrect --auto --from "$SNAP/again.tsv" 2>&1)
+has "a second --auto on the same server: already restored" "already restored on this server" "$(tail -n 1 "$STATE/resurrect.log")"
+sleep 0.5
+ok "...and launches nothing" "$before" "$(nouts)"
+tm has-session -t =tatest-again 2>/dev/null; ok "...and makes no session" 1 "$?"
+ok "the log keeps its last 2000 lines, then this run's" 2003 "$(wc -l <"$STATE/resurrect.log" | tr -d ' ')"
+ok "...the oldest ones dropped" 501 "$(sed -n 1p "$STATE/resurrect.log")"
+# A server with no stamp, up longer than RESURRECT_YOUNG: this one has been up far longer than a second.
+rm -f "$STATE/.resurrect.done"
+out=$(TA_RESURRECT_YOUNG=1 run --resurrect --auto --from "$SNAP/again.tsv" 2>&1)
+has "an old server: not a boot, skipped" "not a boot" "$(tail -n 1 "$STATE/resurrect.log")"
+sleep 0.5
+ok "...and launches nothing" "$before" "$(nouts)"
+tm has-session -t =tatest-again 2>/dev/null; ok "...and makes no session" 1 "$?"
+ok "...stamped all the same, so it is not asked twice" "$(tm display -p '#{start_time}')" "$(cat "$STATE/.resurrect.done" 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
 t "12. an empty snapshot says so"
@@ -466,9 +602,7 @@ ok "a window in tatest-dash carries the marker" 1 \
 # ---------------------------------------------------------------------------
 t "14. the status bar captures, throttled; every: 0 turns it off"
 # ---------------------------------------------------------------------------
-# The save is started in the background by --counts, so a new file is waited
-# for rather than expected at once. Every chat restored above is a set no
-# snapshot holds yet, so a capture that should not happen would show.
+# The save is started in the background by --counts, so a new file is waited for rather than expected at once. The dashboard test 13 brought back is in no snapshot yet (the retake in test 11 predates it), so a capture that should not happen would show.
 before=$(resurrect_files)
 run --counts >/dev/null 2>&1
 sleep 2
@@ -506,6 +640,67 @@ has "auto: sometimes" 'resurrect.auto: "sometimes" is not true or false' \
     "$(TA_CONFIG="$ROOT/config-auto.yaml" run --check 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
+t "15b. a held lock holds a restore and every capture off; a stale one holds nothing"
+# ---------------------------------------------------------------------------
+# The snapshots so far are set aside, so every count below starts from none.
+mkdir -p "$ROOT/aside"; mv "$STATE/resurrect/"*.tsv "$ROOT/aside/" 2>/dev/null
+mkdir "$STATE/.resurrect.lock"
+out=$(run --resurrect --from "$SNAP/dry.tsv"); rc=$?
+has "a held lock: the restore says why it stops" "another resurrect is running" "$out"
+ok "...and exits non-zero" 1 "$rc"
+run --resurrect-save
+ok "a held lock: no capture while a restore places chats" 0 "$(resurrect_files)"
+touch -t 202001010000 "$STATE/.resurrect.lock"
+run --resurrect-save
+ok "a lock left by a restore that died holds no capture off" 1 "$(resurrect_files)"
+rmdir "$STATE/.resurrect.lock" 2>/dev/null
+
+# lock_dir itself, on a lock nobody else touches: a mkdir that fails for another reason than a holder must not spin.
+CORE="$HERE/../lib/tagents/core.sh"
+LK="$ROOT/lk"; mkdir -p "$LK/ro"; chmod 555 "$LK/ro"
+( . "$CORE"; lock_dir "$LK/ro/lock" 120 10 ) & lp=$!
+i=0; while kill -0 "$lp" 2>/dev/null && [ "$i" -lt 10 ]; do sleep 0.1; i=$((i + 1)); done
+if kill -0 "$lp" 2>/dev/null; then kill "$lp" 2>/dev/null; rc=spinning; else wait "$lp"; rc=$?; fi
+ok "a lock whose parent cannot be written: gives up within a second" 1 "$rc"
+chmod 755 "$LK/ro"
+mkdir "$LK/held"
+( . "$CORE"; lock_dir "$LK/held" 120 3 ); ok "a lock held just now is not taken" 1 "$?"
+touch -t 202001010000 "$LK/held"
+( . "$CORE"; lock_dir "$LK/held" 120 3 ); ok "a stale lock is taken over" 0 "$?"
+
+# ---------------------------------------------------------------------------
+t "15c. pruning keeps the newest RESURRECT_KEEP, and the one a restore would read"
+# ---------------------------------------------------------------------------
+start=$(tm display -p '#{start_time}')
+rm -f "$STATE/resurrect/"*.tsv
+for i in 1 2 3 4; do printf 'x%s\n' "$i" >"$STATE/resurrect/$((start + i)).tsv"; done
+TA_RESURRECT_KEEP=2 run --resurrect-save
+ok "four old ones and a new one: the newest two stay" 2 "$(resurrect_files)"
+rm -f "$STATE/resurrect/"*.tsv
+printf 'x0\n' >"$STATE/resurrect/$((start - 100)).tsv"
+for i in 1 2 3 4; do printf 'x%s\n' "$i" >"$STATE/resurrect/$((start + i)).tsv"; done
+TA_RESURRECT_KEEP=2 run --resurrect-save
+ok "the pre-start one stays as well, older than the two" 3 "$(resurrect_files)"
+ok "...and it is the one a restore reads" "$STATE/resurrect/$((start - 100)).tsv" \
+   "$(ls "$STATE/resurrect/$((start - 100)).tsv" 2>/dev/null)"
+rm -f "$STATE/resurrect/"*.tsv
+mv "$ROOT/aside/"*.tsv "$STATE/resurrect/" 2>/dev/null
+
+# ---------------------------------------------------------------------------
+t "15d. a launch and a kill each retake the snapshot"
+# ---------------------------------------------------------------------------
+# Both run in a popup from the list, which the suite cannot drive; this is the same code from the command line.
+clear_out
+TA_RESURRECT_SOON=1 run --new "$PERS" personal >/dev/null 2>&1
+i=0; while [ "$(nouts)" -lt 1 ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+LN=$(ls "$OUT" 2>/dev/null | sed -n 's/\.out$//p')
+ok "the launch started one chat" 1 "$(printf '%s\n' "$LN" | grep -c .)"
+waitsnap "sid-$LN" present; ok "...and it is in the snapshot within seconds" 0 "$?"
+printf 'y\n' | TA_RESURRECT_SOON=1 run --ask-kill "%$LN" "sid-$LN" >/dev/null 2>&1
+ok "the kill ended it" 0 "$(panes_named "%$LN")"
+waitsnap "sid-$LN" absent; ok "...and it is out of the snapshot within seconds" 0 "$?"
+
+# ---------------------------------------------------------------------------
 t "16. the dash window a reboot leaves is where the list starts, not beside it"
 # ---------------------------------------------------------------------------
 # Server C is the sidebar as tmux-resurrect restores it: a window called dash
@@ -536,7 +731,14 @@ waitlist() {  # <pane id> — a list has started in it and claimed it (~5 s)
   return 1
 }
 
-run --ensure-dash >/dev/null 2>&1; ok "--ensure-dash succeeds" 0 "$?"
+# The whole of it in one restore, the way the hook runs it: a chat and the D row that brings the sidebar back.
+transcript sid-ad
+{ arow sid-ad "" 1 tatest-ad 0 0 Ad "" "$NOR" "" "" "" ""; printf 'D\ttatest-dash\t0\n'; } >"$SNAP/ad.tsv"
+out=$(run --resurrect --from "$SNAP/ad.tsv"); ok "--resurrect succeeds" 0 "$?"
+pane=$(tm display -p -t tatest-ad:0.0 '#{pane_id}' 2>/dev/null)
+f=$(outof "$pane"); ok "the chat runs" 0 "$?"
+has "...resuming its conversation" "--resume sid-ad" "$(field ARGS "$f")"
+has "the dashboard comes back in the same run" "✓ dashboard" "$out"
 ok "one window named dash" 1 "$(dashes)"
 ok "...the one that was restored" "$DW" \
    "$(tm list-windows -t =tatest-dash -F '#{window_id} #{window_name}' | awk '$2 == "dash" { print $1 }')"
@@ -565,6 +767,42 @@ ok "...and that one is the sidebar" 1 \
    "$(tm list-windows -t =tatest-dash -F '#{window_id} #{window_name} #{@tagents}' |
         awk -v b="$BW" '$1 != b && $2 == "dash" && $3 == "1"' | wc -l | tr -d ' ')"
 
+# The list is a bash script, so a pane still running one reads as an idle shell: an unmarked dash window with a live list in it is not a corpse either. A sleep stands in for the list, stamped the way claim_dash stamps its pane.
+killdashes() {
+  tm list-windows -t =tatest-dash -F '#{window_id} #{window_name}' 2>/dev/null |
+    awk '$2 == "dash" { print $1 }' | while IFS= read -r w; do tm kill-window -t "$w" >/dev/null 2>&1; done
+}
+killdashes
+LW2=$(tm new-window -d -t tatest-dash: -n dash -P -F '#{window_id}' -c "$NOR")
+LP=$(tm display -p -t "$LW2" '#{pane_id}')
+sleep 600 & LPID=$!
+tm set -p -t "$LP" @tagents_list "$LPID"
+lpid0=$(tm display -p -t "$LP" '#{pane_pid}')
+run --ensure-dash >/dev/null 2>&1
+ok "a dash window whose list still runs keeps its pane" "$lpid0" "$(tm display -p -t "$LP" '#{pane_pid}' 2>/dev/null)"
+ok "...and gets no marker" "" "$(tm show -wv -t "$LW2" @tagents 2>/dev/null)"
+ok "...and the sidebar gets a window of its own" 2 "$(dashes)"
+kill "$LPID" 2>/dev/null; wait "$LPID" 2>/dev/null
+
+# Every list in the dashboard session, counted by the pid each one stamps on its pane.
+lists() {
+  local n=0 p pid
+  while read -r p pid; do [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && n=$((n + 1)); done <<EOF
+$(tm list-panes -s -t =tatest-dash -F '#{pane_id} #{@tagents_list}' 2>/dev/null)
+EOF
+  echo "$n"
+}
+# A list started in a new window, or a new session, takes a moment to claim it; one grown beside it before then is a second sidebar.
+killdashes
+run --ensure-dash >/dev/null 2>&1
+sleep 2
+ok "a new dash window: one list in it" 1 "$(lists)"
+tm new-session -d -s tatest-keep 'sleep 600'
+tm kill-session -t =tatest-dash >/dev/null 2>&1
+run --ensure-dash >/dev/null 2>&1
+sleep 2
+ok "a new dashboard session: one list in it" 1 "$(lists)"
+
 # ---------------------------------------------------------------------------
 t "17. the editors tmux-resurrect orphaned go; a restored chat's editor comes back"
 # ---------------------------------------------------------------------------
@@ -588,17 +826,28 @@ gone() {  # <window id> -> there | gone
   esac
 }
 notes_park
+# The editor that was on screen comes back beside its chat instead: the idle shell where the chat was, and next to it an editor still sitting in the notes directory with nothing linking it to the chat.
+ND="$ROOT/proj/.claude"; mkdir -p "$ND/notes"
+tm new-session -d -s tatest-notes -x 200 -y 50 -c "$NOR"
+NP0=$(tm display -p -t tatest-notes:0.0 '#{pane_id}')
+OP=$(tm split-window -d -t tatest-notes:0 -P -F '#{pane_id}' -c "$ND/notes" 'sleep 600')
 transcript sid-notes
-arow sid-notes "" 1 tatest-notes 0 0 Notes "" "$NOR" "" 1 "" "" >"$SNAP/notes.tsv"
+transcript sid-parked
+{ arow sid-notes "" 1 tatest-notes 0 0 Notes "" "$NOR" "" 1 "" ""
+  arow sid-parked "" 1 tatest-parked 0 0 Parked "" "$NOR" "" "" "" ""; } >"$SNAP/notes.tsv"
 rm -f "$OUT/tnotes.log"
 out=$(run --resurrect --from "$SNAP/notes.tsv")
 NP=$(tm display -p -t tatest-notes:0.0 '#{pane_id}' 2>/dev/null)
 f=$(outof "$NP"); ok "the chat runs" 0 "$?"
+ok "...in the pane it had" "$NP0" "$NP"
+ok "the unlinked editor beside it is gone" 0 "$(panes_named "$OP")"
 ok "the first orphan is gone"  gone "$(gone "$O1")"
 ok "the second orphan is gone" gone "$(gone "$O2")"
 ok "the holder stays" 1 "$(tm list-windows -t =ta-notes -F '#{window_name}' 2>/dev/null | grep -c '^hold$')"
 ok "the linked editor stays" there "$(gone "$LW")"
-ok "tnotes was asked for the chat's editor" "toggle $NP" "$(cat "$OUT/tnotes.log" 2>/dev/null)"
+PP=$(tm display -p -t tatest-parked:0.0 '#{pane_id}' 2>/dev/null)
+outof "$PP" >/dev/null; ok "the chat whose editor was parked runs too" 0 "$?"
+ok "tnotes was asked for the one editor that was on screen, once" "toggle $NP" "$(cat "$OUT/tnotes.log" 2>/dev/null)"
 has "...and the report says so" "notes beside $NP" "$out"
 
 tm kill-session -t =ta-notes >/dev/null 2>&1
