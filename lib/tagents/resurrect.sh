@@ -1,6 +1,6 @@
 # lib/tagents/resurrect.sh — what comes back after a reboot
 #
-# The snapshot a restore works from: resurrect_rows (one A row per live chat, a D row when the sidebar is up — a docked chat filed at its home seat, never at the sidebar), resurrect_save (a full replacement, never twice the same, the newest RESURRECT_KEEP kept), resurrect_latest/resurrect_pick (the newest snapshot, and the newest one written before this tmux server started — the one a restore wants), resurrect_rows_cmd (the raw rows, for the tests and for a curious person), and the two triggers: resurrect_soon after a launch or a kill, resurrect_due for the status bar. The section banner heads the file.
+# The snapshot a restore works from: resurrect_rows (one A row per live chat, a D row when the sidebar is up — a docked chat filed at its home seat, never at the sidebar), resurrect_save (a full replacement, never twice the same, the newest RESURRECT_KEEP kept), resurrect_latest/resurrect_pick (the newest snapshot, and the newest one written before this tmux server started — the one a restore wants), resurrect_rows_cmd (the raw rows, for the tests and for a curious person), and the two triggers: resurrect_soon after a launch or a kill, resurrect_due for the status bar. Then the restore that reads it: resurrect_place (the pane a chat goes back into — its own idle shell, else a new window, else a new session), resurrect_restore (every row not already running, resumed on the login it ran on with its model and effort, and a report per row), with resurrect_auto_on and resurrect_has_transcript deciding whether to run at all and which rows are worth it. The section banner heads the file.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -25,6 +25,14 @@
 # marked as used. A file is named after the second it was written; one that says
 # exactly what the newest already says is not written at all (tmux-resurrect's
 # own rule), and only the newest RESURRECT_KEEP stay.
+#
+# THE RESTORE PUTS `claude --resume` BACK AT THE SAME COORDINATES, and never
+# rebuilds what tmux-resurrect already did: the idle shell it left where a chat
+# was is replaced (respawn-pane, so nothing is typed into a shell that may still
+# be reading its rc files), and only a missing or busy seat gets a new window or
+# a new session. The account is the one the chat ran on, never the rules, and
+# never a dialog — a hook has no client to ask. Anything already running, by
+# session id, is left alone, so running it twice is harmless.
 # ---------------------------------------------------------------------------
 RESURRECT_DIR="$STATE_DIR/resurrect"
 RESURRECT_LOG="$STATE_DIR/resurrect.log"
@@ -129,6 +137,108 @@ resurrect_soon() { ( sleep 5; resurrect_save ) >/dev/null 2>&1 & }   # after a l
 # it is not there, TA_RESURRECT_EVERY over both. 0 is off (see due_every).
 resurrect_every() { local e; e=$(cfg_get resurrect.every) || e=300; printf '%s' "${TA_RESURRECT_EVERY:-$e}"; }
 resurrect_due()   { due_every "$RESURRECT_STAMP" "$(resurrect_every)"; }
+
+# Whether the tmux-resurrect hook may restore on its own. On unless the config
+# says one of the four words for off: a reboot that brings nothing back because
+# a key was misspelt is the worse surprise, and --check names the misspelling.
+resurrect_auto_on() {  # resurrect.auto: absent or anything but the four words for off = on
+  local v; v=$(cfg_get resurrect.auto) || return 0
+  case $v in false|no|0|off) return 1 ;; esac
+}
+
+# A conversation --resume cannot find opens an empty chat that looks restored.
+# Claude Code moves transcripts between project dirs, so the recorded path is
+# not trusted: any project of the login that holds the session id will do.
+resurrect_has_transcript() {  # <config dir root> <sid>
+  set -- "$1"/projects/*/"$2".jsonl; [ -e "$1" ]
+}
+
+# Where a chat goes back: its own pane when tmux-resurrect put an idle shell
+# there, a new window in its session when that pane is busy or gone, a new
+# session when even that is gone. Prints the pane id. A pane with any tagents or
+# tnotes marker is somebody's seat or editor, never an idle shell to replace.
+resurrect_place() {  # <session> <window index> <pane index> <dir> <cmd>
+  local sess=$1 widx=$2 pidx=$3 dir=$4 cmd=$5 t cur
+  if ! tmux has-session -t "=$sess" 2>/dev/null; then
+    tmux new-session -d -s "$sess" -x 200 -y 50 -c "$dir" -P -F '#{pane_id}' "$cmd" 2>/dev/null
+    return
+  fi
+  t="=$sess:$widx.$pidx"
+  cur=$(tmux display -p -t "$t" '#{pane_current_command}|@|#{@tagents}#{@tagents_slot}#{@tagents_docked}#{@ta_notes_for}' 2>/dev/null)
+  if [ -n "$cur" ] && is_shell_cmd "${cur%%|@|*}" && [ -z "${cur#*|@|}" ]; then
+    tmux respawn-pane -k -t "$t" -c "$dir" "$cmd" 2>/dev/null &&
+      tmux display -p -t "$t" '#{pane_id}' 2>/dev/null
+    return
+  fi
+  tmux new-window -d -t "=$sess:" -P -F '#{pane_id}' -c "$dir" "$cmd" 2>/dev/null
+}
+
+# The restore: every A row of the snapshot that is not running already, resumed
+# through agent_cmd exactly as a launch from the list would be, then the
+# dashboard when it was up. One line per row says what happened to it — the
+# only account of a restore a hook ever gives, so it goes to RESURRECT_LOG then.
+# The lock keeps a hook and a hand-typed run from resuming the same chat twice.
+resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
+  local dry=0 auto=0 file="" live n=0 k=0 total notes_panes=""
+  local t sid cfgd hascfg sess widx pidx wname tname dir docked notes model argv
+  local prof cmd pane note eff wid
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --dry-run) dry=1 ;;  --auto) auto=1 ;;  --from) shift; file=${1:-} ;;
+      *) echo "tagents --resurrect: unknown option $1" >&2; return 2 ;;
+    esac; shift
+  done
+  if [ "$auto" = 1 ]; then
+    resurrect_auto_on || return 0
+    exec >>"$RESURRECT_LOG" 2>&1          # a hook has no terminal; the log is the report
+    printf '\n== %s ==\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+  fi
+  case $file in
+    '')     file=$(resurrect_pick) || { echo "tagents: no snapshot from before this tmux server started — nothing to resurrect"; return 0; } ;;
+    latest) file=$(resurrect_latest) || { echo "tagents: no snapshot yet"; return 0; } ;;
+  esac
+  [ -s "$file" ] || { echo "tagents: nothing recorded in $file"; return 0; }
+  [ "$dry" = 1 ] || lock_dir "$RESURRECT_LOCK" 120 || { echo "tagents: another resurrect is running"; return 1; }
+  live=$(live_sids | tr '\n' ' ')
+  total=$(awk -F"$TAB" '$1 == "A"' "$file" | wc -l | tr -d ' ')
+  # Not IFS=TAB on the raw line: an empty field would collapse (see collect()
+  # in state.sh), so the rows are re-joined with US first.
+  while IFS="$US" read -r t sid cfgd hascfg sess widx pidx wname tname dir docked notes model argv; do
+    note=""
+    case " $live " in *" $sid "*) echo "– $sess:$widx ${tname:-$wname}: already running"; k=$((k + 1)); continue ;; esac
+    if [ "$hascfg" = 1 ] && ! resurrect_has_transcript "${cfgd:-$HOME/.claude}" "$sid"; then
+      echo "– $sess:$widx ${tname:-$wname}: transcript gone — skipped"; k=$((k + 1)); continue
+    fi
+    [ -d "$dir" ] || { note="$note; $(tilde_of "$dir") is gone, resumed in ~"; dir=$HOME; }
+    prof=$(resume_profile "$cfgd" "$hascfg" "$dir" "$sess")
+    [ "$prof" = ask ] && { prof=""; note="$note; account not recorded, default login"; }
+    cmd=$(agent_cmd "$prof" resume "$sid") || { echo "! $sess:$widx: no profile \"$prof\" — skipped"; k=$((k + 1)); continue; }
+    # --resume brings back the permission mode but not a model picked with
+    # --model or /model; the status line recorded that one. Effort only exists
+    # on the command line it was started with.
+    [ -n "$model" ] && cmd="$cmd --model $(cfg_quote "$model")"
+    eff=$(printf '%s\n' "$argv" | awk '{ for (i = 1; i < NF; i++) if ($i == "--effort") { print $(i + 1); exit } }')
+    [ -n "$eff" ] && cmd="$cmd --effort $(cfg_quote "$eff")"
+    if [ "$dry" = 1 ]; then echo "✓ would resume $sess:$widx.$pidx ${tname:-$wname} [$sid]${note}"; n=$((n + 1)); continue; fi
+    pane=$(resurrect_place "$sess" "$widx" "$pidx" "$dir" "$cmd") && [ -n "$pane" ] ||
+      { echo "! $sess:$widx: could not open a pane — skipped"; k=$((k + 1)); continue; }
+    # tagents' own name is stamped again so the naming sweep keeps it; a typed
+    # one goes back plain, and only when the window had to be made anew.
+    wid=$(tmux display -p -t "$pane" '#{window_id}' 2>/dev/null)
+    if [ -n "$tname" ]; then rename_win "$wid" "$tname"
+    elif [ -n "$wname" ] && [ "$(tmux display -p -t "$pane" '#{window_name}' 2>/dev/null)" != "$wname" ]; then rename_win "$wid" "$wname" plain; fi
+    [ "$notes" = 1 ] && notes_panes="$notes_panes $pane"
+    echo "✓ $sess:$widx.$pidx ${tname:-$wname} → $pane${prof:+ ($prof)}${model:+ $model}${note}"; n=$((n + 1))
+  done < <(awk -F"$TAB" -v OFS="$US" '$1 == "A" { $1 = $1; print }' "$file" | sort -t"$US" -k5,5 -k6,6n -k7,7n)
+  if [ "$dry" != 1 ]; then
+    [ -n "$(awk -F"$TAB" '$1 == "D"' "$file")" ] && ensure_dash >/dev/null 2>&1 && echo "✓ dashboard"
+    resurrect_notes $notes_panes
+    unlock_dir "$RESURRECT_LOCK"
+  fi
+  echo "tagents: $n resumed, $k skipped, $total recorded ($(tilde_of "$file"))"
+  [ "$auto" = 1 ] && tmux display-message "tagents: resurrected $n agents, $k skipped — $(tilde_of "$RESURRECT_LOG")" 2>/dev/null
+  return 0
+}
 
 # Reopening the tnotes editor of every restored chat. A no-op for now: defined
 # ahead of the restore that calls it, so that call never has to be guarded.

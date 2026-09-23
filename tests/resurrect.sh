@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 #
 # tests/resurrect.sh — what comes back after a reboot: the snapshot of every
-# live chat, which snapshot a restore picks, and where a docked chat is filed.
+# live chat, which snapshot a restore picks, and where a docked chat is filed;
+# then the restore itself, on a second server standing in for the one a reboot
+# brings up: each chat back in its pane, on its login, with its model — and
+# every way a row can fail to come back without anything else going wrong.
 #
 # NOTHING HERE MAY TOUCH THE DEFAULT TMUX SOCKET. The server is created with
 # `tmux -L tatest-$$ -f /dev/null` and torn down in the trap, and tagents is
@@ -151,6 +154,29 @@ resurrect_files() { ls "$STATE/resurrect" 2>/dev/null | grep -c -E '^[0-9]+\.tsv
 
 newest() { ls -1 "$STATE/resurrect" 2>/dev/null | grep -E '^[0-9]+\.tsv$' | sort -rn | awk 'NR == 1 { print }'; }
 
+clear_out() { rm -f "$OUT"/*.out 2>/dev/null; return 0; }
+
+nouts() { ls "$OUT" 2>/dev/null | grep -c '\.out$'; }
+
+nwin() { tm list-windows -t "=$1" 2>/dev/null | wc -l | tr -d ' '; }
+
+outof() {  # <pane id> -> the stub file that pane writes, once it is there (~5 s)
+  local f="$OUT/${1#%}.out" i=0
+  while [ "$i" -lt 50 ]; do
+    [ -s "$f" ] && { printf '%s' "$f"; return 0; }
+    i=$((i + 1)); sleep 0.1
+  done
+  printf '%s' "$f"; return 1
+}
+
+arow() {  # <sid cfgd hascfg sess widx pidx wname tname dir docked notes model argv> -> a crafted A row
+  printf 'A'; for f in "$@"; do printf '\t%s' "$f"; done; printf '\n'
+}
+
+transcript() {  # <sid> — a conversation the default login still holds
+  mkdir -p "$HOME/.claude/projects/x"; : >"$HOME/.claude/projects/x/$1.jsonl"
+}
+
 # ---------------------------------------------------------------------------
 t "1. a capture: one row per live chat, keyed by session id"
 # ---------------------------------------------------------------------------
@@ -267,6 +293,162 @@ tm set -uw -t tatest-dash:0 @tagents
 tm kill-pane -t "$PH" 2>/dev/null
 rm -f "$S3"
 ok "...and cleaned up: S1 is the newest again" "${S1##*/}" "$(newest)"
+
+# ---------------------------------------------------------------------------
+t "4. a restore on the same server finds both chats running and starts nothing"
+# ---------------------------------------------------------------------------
+before=$(nouts)
+out=$(run --resurrect --from "$S1"); rc=$?
+ok "--resurrect succeeds" 0 "$rc"
+ok "both chats are already running" 2 "$(printf '%s\n' "$out" | grep -c 'already running')"
+sleep 0.5
+ok "...and nothing was launched" "$before" "$(nouts)"
+ok "the lock is released" "" "$(ls -d "$STATE/.resurrect.lock" 2>/dev/null)"
+
+# ---------------------------------------------------------------------------
+t "5. after a server restart every chat comes back where it was, on its login"
+# ---------------------------------------------------------------------------
+# Server B is what tmux-resurrect leaves: the same sessions and windows, the
+# same names, an idle shell where each chat was. S1 is now from before it.
+tm kill-server >/dev/null 2>&1
+sleep 1
+clear_out
+tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 'sleep 600' || exit 1
+tm set -g default-shell /bin/sh >/dev/null 2>&1
+tm set -g default-command '' >/dev/null 2>&1
+tm set -gw window-size manual >/dev/null 2>&1
+tm new-session -d -s tatest-proj -x 200 -y 50 -c "$PERS"
+tm new-window -d -t tatest-proj: -n Alpha -c "$PERS"
+tm new-session -d -s tatest-other -x 200 -y 50 -c "$NOR"
+tm new-window -d -t tatest-other: -n Hand -c "$NOR"
+for w in tatest-proj:0 tatest-proj:1 tatest-other:0 tatest-other:1; do
+  tm resize-window -t "$w" -x 200 -y 50 >/dev/null 2>&1
+done
+SOCK=$(tm display -p '#{socket_path}' 2>/dev/null)
+mkdir -p "$ROOT/cfg-p/projects/x"
+: >"$ROOT/cfg-p/projects/x/$SID1.jsonl"
+transcript "$SID2"
+
+out=$(run --resurrect); rc=$?
+ok "--resurrect succeeds" 0 "$rc"
+B1=$(tm display -p -t tatest-proj:1.0 '#{pane_id}')
+B2=$(tm display -p -t tatest-other:1.0 '#{pane_id}')
+f1=$(outof "$B1"); ok "chat 1 is running in its own pane" 0 "$?"
+has "chat 1: its conversation"  "--resume $SID1"           "$(field ARGS "$f1")"
+has "chat 1: its model"         "--model claude-opus-5-5"  "$(field ARGS "$f1")"
+has "chat 1: its effort"        "--effort high"            "$(field ARGS "$f1")"
+ok  "chat 1: its login"         "$ROOT/cfg-p"              "$(field CFG "$f1")"
+ok  "chat 1: its directory"     "$PERS"                    "$(field PWD "$f1")"
+f2=$(outof "$B2"); ok "chat 2 is running in its own pane" 0 "$?"
+has "chat 2: its conversation"  "--resume $SID2"           "$(field ARGS "$f2")"
+ok  "chat 2: the default login" "<unset>"                  "$(field CFG "$f2")"
+ok  "chat 2: its directory"     "$NOR"                     "$(field PWD "$f2")"
+hasnt "chat 2: no model was recorded, none is passed" "--model" "$(field ARGS "$f2")"
+ok "no window added in tatest-proj"  2 "$(nwin tatest-proj)"
+ok "no window added in tatest-other" 2 "$(nwin tatest-other)"
+ok "Alpha is tagents' name again" Alpha "$(tm show -wv -t tatest-proj:1 @tagents_name 2>/dev/null)"
+ok "Hand keeps its name"          Hand  "$(tm display -p -t tatest-other:1 '#{window_name}')"
+ok "...and stays a typed name"    ""    "$(tm show -wv -t tatest-other:1 @tagents_name 2>/dev/null)"
+ok "the report has two resumed lines" 2 "$(printf '%s\n' "$out" | grep -c '^✓')"
+has "...and the totals" "2 resumed, 0 skipped, 2 recorded" "$out"
+
+SNAP="$ROOT/snap"; mkdir -p "$SNAP"
+
+# ---------------------------------------------------------------------------
+t "6. --dry-run says what would come back and starts nothing"
+# ---------------------------------------------------------------------------
+transcript sid-dry
+arow sid-dry "" 1 tatest-other 0 0 Dry "" "$NOR" "" "" "" "" >"$SNAP/dry.tsv"
+before=$(nouts)
+out=$(run --resurrect --dry-run --from "$SNAP/dry.tsv")
+has "it would resume the row" "would resume tatest-other:0.0 Dry [sid-dry]" "$out"
+sleep 0.5
+ok "...and launched nothing" "$before" "$(nouts)"
+ok "...and opened no window" 2 "$(nwin tatest-other)"
+
+# ---------------------------------------------------------------------------
+t "7. a pane that is busy is left alone: the chat gets a window of its own"
+# ---------------------------------------------------------------------------
+tm respawn-pane -k -t tatest-other:0.0 'sleep 600'
+transcript sid-busy
+arow sid-busy "" 1 tatest-other 0 0 Busy "" "$NOR" "" "" "" "" >"$SNAP/busy.tsv"
+out=$(run --resurrect --from "$SNAP/busy.tsv")
+ok "a third window in tatest-other" 3 "$(nwin tatest-other)"
+pane=$(tm list-windows -t tatest-other -F '#{window_index} #{pane_id}' | sort -n | awk 'END { print $2 }')
+f=$(outof "$pane"); ok "the chat runs in it" 0 "$?"
+has "...resuming its conversation" "--resume sid-busy" "$(field ARGS "$f")"
+ok "...under its recorded name" Busy "$(tm display -p -t "$pane" '#{window_name}')"
+ok "the busy pane still runs its sleep" sleep "$(tm display -p -t tatest-other:0.0 '#{pane_current_command}')"
+
+# ---------------------------------------------------------------------------
+t "8. a session that is gone is created"
+# ---------------------------------------------------------------------------
+transcript sid-gone
+arow sid-gone "" 1 tatest-gone 3 0 Gone "" "$NOR" "" "" "" "" >"$SNAP/gone.tsv"
+out=$(run --resurrect --from "$SNAP/gone.tsv")
+tm has-session -t =tatest-gone 2>/dev/null; ok "tatest-gone exists" 0 "$?"
+pane=$(tm display -p -t tatest-gone:0.0 '#{pane_id}' 2>/dev/null)
+f=$(outof "$pane"); ok "its window 0 runs the chat" 0 "$?"
+has "...resuming its conversation" "--resume sid-gone" "$(field ARGS "$f")"
+ok "...named from the snapshot" Gone "$(tm display -p -t tatest-gone:0 '#{window_name}' 2>/dev/null)"
+
+# ---------------------------------------------------------------------------
+t "9. a conversation whose transcript is gone is skipped"
+# ---------------------------------------------------------------------------
+arow sid-nots "" 1 tatest-other 1 0 Nots "" "$NOR" "" "" "" "" >"$SNAP/nots.tsv"
+before=$(nouts); wins=$(nwin tatest-other)
+out=$(run --resurrect --from "$SNAP/nots.tsv")
+has "the report says why" "transcript gone" "$out"
+sleep 0.5
+ok "...and nothing was launched" "$before" "$(nouts)"
+ok "...and no window opened" "$wins" "$(nwin tatest-other)"
+
+# ---------------------------------------------------------------------------
+t "10. a directory that is gone: resumed in HOME, and said so"
+# ---------------------------------------------------------------------------
+transcript sid-nodir
+arow sid-nodir "" 1 tatest-nodir 0 0 Nodir "" /nonexistent "" "" "" "" >"$SNAP/nodir.tsv"
+out=$(run --resurrect --from "$SNAP/nodir.tsv")
+has "the report notes it" "/nonexistent is gone, resumed in ~" "$out"
+pane=$(tm display -p -t tatest-nodir:0.0 '#{pane_id}' 2>/dev/null)
+f=$(outof "$pane"); ok "the chat runs" 0 "$?"
+ok "...in HOME" "$HOME" "$(field PWD "$f")"
+
+# ---------------------------------------------------------------------------
+t "11. --auto: off in the config is silent; on, the report goes to the log"
+# ---------------------------------------------------------------------------
+CFG2="$ROOT/config-off.yaml"
+{ cat "$CFG"; printf '  auto: false\n'; } >"$CFG2"
+transcript sid-auto
+arow sid-auto "" 1 tatest-auto 0 0 Auto "" "$NOR" "" "" "" "" >"$SNAP/auto.tsv"
+before=$(nouts)
+out=$(TA_CONFIG="$CFG2" run --resurrect --auto --from "$SNAP/auto.tsv" 2>&1)
+ok "off: prints nothing" "" "$out"
+sleep 0.5
+ok "off: launches nothing" "$before" "$(nouts)"
+tm has-session -t =tatest-auto 2>/dev/null; ok "off: no session" 1 "$?"
+ok "off: writes no log" "" "$(ls "$STATE/resurrect.log" 2>/dev/null)"
+out=$(run --resurrect --auto --from "$SNAP/auto.tsv" 2>&1)
+ok "on: prints nothing, the log is the report" "" "$out"
+has "on: the log has the resumed line" "✓ tatest-auto:0.0 Auto" "$(cat "$STATE/resurrect.log" 2>/dev/null)"
+pane=$(tm display -p -t tatest-auto:0.0 '#{pane_id}' 2>/dev/null)
+f=$(outof "$pane"); ok "on: the chat runs" 0 "$?"
+has "...resuming its conversation" "--resume sid-auto" "$(field ARGS "$f")"
+
+# ---------------------------------------------------------------------------
+t "12. an empty snapshot says so"
+# ---------------------------------------------------------------------------
+: >"$SNAP/empty.tsv"
+has "nothing recorded" "nothing recorded" "$(run --resurrect --from "$SNAP/empty.tsv")"
+
+# ---------------------------------------------------------------------------
+t "13. a D row brings the dashboard back"
+# ---------------------------------------------------------------------------
+printf 'D\ttatest-dash\t0\n' >"$SNAP/dash.tsv"
+out=$(run --resurrect --from "$SNAP/dash.tsv")
+has "the report says so" "✓ dashboard" "$out"
+ok "a window in tatest-dash carries the marker" 1 \
+   "$(tm list-windows -t =tatest-dash -F '#{@tagents}' 2>/dev/null | grep -c '^1$')"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
