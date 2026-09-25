@@ -191,11 +191,39 @@ fi
 
 # prompt.md is the channel the user types INTO the running session (tnotes sends
 # it and clears it); it has already been delivered as a prompt, so replaying it
-# here would say everything twice.
-stat=$(git -C "$dir" diff --stat "$base" HEAD -- . ':!prompt.md' 2>/dev/null)
+# here would say everything twice. An `archive/` folder — at the top of the
+# notes or inside a ticket's folder — holds documents whose conclusions have
+# landed: kept for their reasoning, out of the onboarding path, so nothing under
+# one is replayed either. tnotes draws the same line for its @-mentions with the
+# same three pathspecs, and tests/notes-hooks.sh pins the two against each other.
+set -- ':!prompt.md' ':!archive/*' ':!*/archive/*'
 
-# Nothing outside prompt.md moved: the commits are accounted for, so bank them
-# and stay quiet rather than injecting an empty section.
+# A DOCUMENT MOVED INTO AN ARCHIVE WAS ARCHIVED, NOT DELETED. With its new path
+# excluded, git can pair the rename with nothing and reports the old path as a
+# deletion — the whole document as `-` lines, which is exactly what archiving
+# was meant to keep out. So the moves are found first with both paths in play,
+# each old path is excluded as well, and the stat names the move in one line.
+# quotePath off: a name outside ASCII would come back escaped otherwise, and
+# the exclusion would miss it.
+tab=$(printf '\t')
+archived=$(git -C "$dir" -c core.quotePath=false diff -M --name-status "$base" HEAD -- . ':!prompt.md' 2>/dev/null |
+  awk -F'\t' '$1 ~ /^R/ && ($3 ~ /^archive\// || $3 ~ /\/archive\//) { print $2 "\t" $3 }')
+while IFS=$tab read -r old new; do
+  [ -n "$old" ] || continue
+  set -- "$@" ":(exclude,literal)$old"
+done <<EOF
+$archived
+EOF
+
+stat=$(git -C "$dir" diff --stat "$base" HEAD -- . "$@" 2>/dev/null)
+if [ -n "$archived" ]; then
+  moves=$(printf '%s\n' "$archived" | awk -F'\t' '{ print " archived: " $1 " => " $2 }')
+  if [ -n "$stat" ]; then stat="$stat
+$moves"; else stat=$moves; fi
+fi
+
+# Nothing outside prompt.md and the archives moved: the commits are accounted
+# for, so bank them and stay quiet rather than injecting an empty section.
 if [ -z "$stat" ]; then
   nudge
   printf '%s\n' "$head" >"$marker" 2>/dev/null
@@ -203,7 +231,7 @@ if [ -z "$stat" ]; then
 fi
 
 body=$(git -C "$dir" diff --no-color "$base" HEAD -- \
-  '*.md' '*.txt' '*.markdown' '*.json' '*.yaml' '*.yml' ':!prompt.md' 2>/dev/null)
+  '*.md' '*.txt' '*.markdown' '*.json' '*.yaml' '*.yml' "$@" 2>/dev/null)
 bytes=$(printf '%s' "$body" | wc -c | tr -d ' ')
 
 # A folder that grew a pasted log or a rewritten book is not context, it is a

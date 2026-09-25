@@ -363,14 +363,21 @@ ref_path() {  # <chat pane> <dir> -> the path to put after the @
 # references go alone, so closing the editor after only editing a document still
 # tells the chat which one. Capped: a folder-wide rewrite is a diff to read, not
 # eight attachments. A path with whitespace cannot be mentioned and is skipped.
+# AN ARCHIVE IS NOT AN ARTIFACT. A document under `archive/` — at the top of the
+# notes or inside a ticket's folder — has been absorbed and is out of the
+# onboarding path, so it is never attached: the same three pathspecs the prompt
+# hook (hooks/notes-context.sh) diffs with, and tests/notes-hooks.sh pins the
+# two against each other. A path that is gone cannot be attached either, and a
+# document moved INTO an archive looks exactly like one here: with its new path
+# excluded, git reports the old one as deleted.
 changed_artifacts() {  # <dir> -> paths relative to the folder, one per line
   local dir=$1 seen
   [ -d "$dir/.git" ] || return 0
   seen=$(cat "$dir/.git/ta-last-seen" 2>/dev/null)
   if [ -n "$seen" ] && git -C "$dir" cat-file -e "${seen}^{commit}" 2>/dev/null; then
-    git -C "$dir" diff --name-only "$seen" HEAD -- . ':!prompt.md' 2>/dev/null
+    git -C "$dir" diff --name-only --diff-filter=d "$seen" HEAD -- . ':!prompt.md' ':!archive/*' ':!*/archive/*' 2>/dev/null
   else
-    git -C "$dir" ls-files -- . ':!prompt.md' 2>/dev/null
+    git -C "$dir" ls-files -- . ':!prompt.md' ':!archive/*' ':!*/archive/*' 2>/dev/null
   fi | grep -v '[[:space:]]' | head -8
 }
 
