@@ -214,6 +214,21 @@ ok "a usage block naming nobody changes nothing" \
    "$(run "$NOBLOCK" --counts)" "$(run "$NOWATCH" --counts)"
 hasnt "...and prints no figure at all" "/850" "$(run "$NOWATCH" --counts)"
 
+# Off means tusage is never run, not run and ignored: the status tick and the
+# list build are the two paths that would pay for it every few seconds.
+: >"$ENVOUT"
+run "$NOWATCH" --counts >/dev/null
+run "$NOWATCH" --list >/dev/null
+ok "with no watch the status bar and the list never run tusage" "" "$(grep '^ARGS=' "$ENVOUT")"
+has "...the cost column reads as hidden"     "cost" "$(run "$NOWATCH" --hidden-cols)"
+hasnt "...and the picker does not offer it"  "cost" "$(run "$NOWATCH" --col-rows)"
+: >"$ENVOUT"
+run "$CFG" --counts >/dev/null
+run "$CFG" --list >/dev/null
+has "with a watch the status bar asks for the burn" "ARGS=--no-update --burn"     "$(cat "$ENVOUT")"
+has "...and the list for the sessions"              "ARGS=--no-update --sessions" "$(cat "$ENVOUT")"
+has "...and the picker offers cost"                 "cost" "$(run "$CFG" --col-rows)"
+
 # ---------------------------------------------------------------------------
 t "3. the config leaves and the key"
 # ---------------------------------------------------------------------------

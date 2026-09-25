@@ -26,7 +26,7 @@ preview() {
       printf '\033[90maccount: %s  (%s)\033[0m\n' "$acct" "${cfgd:-default ~/.claude}"
     # What this session has actually cost, broken down by every subagent and
     # workflow it spawned — the part that is invisible from the pane itself.
-    if [ -n "$sid" ] && command -v tusage >/dev/null 2>&1; then
+    if [ -n "$sid" ] && usage_on; then
       tusage --no-update --session "$sid" 2>/dev/null | tail -n +2
     fi
     printf '\033[90m%s\033[0m\n' "----------------------------------------"

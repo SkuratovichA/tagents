@@ -168,8 +168,8 @@ EOF
       { p[++n] = $2 }
       END { s = (n > 10) ? n - 9 : 1; for (i = s; i <= n; i++) printf "  %s\n", p[i] }'
   # What it cost, when tusage is installed and the session is still inside its
-  # 62-day index. Absent tusage this is simply not part of the preview.
-  if command -v tusage >/dev/null 2>&1; then
+  # 62-day index. Absent tusage or usage.watch this is simply not part of the preview.
+  if usage_on; then
     printf '\n'
     tusage --no-update --session "$sid" 2>/dev/null | head -12
   fi

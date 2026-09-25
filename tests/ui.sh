@@ -122,6 +122,13 @@ claude:
     work:
 EOF
 
+# ...and the first one with usage.watch set, for the checks about the cost
+# column only: without a watch there is no column to show or hide. The list in
+# the throwaway server keeps $CFG, since a watch also puts a footer under it and
+# that needs an fzf new enough for --footer.
+CFGW="$ROOT/config-watch.yaml"
+{ cat "$CFG"; printf 'usage:\n  watch: personal\n'; } >"$CFGW"
+
 # EXPORTED BEFORE THE SERVER EXISTS. A tmux server keeps the environment it was
 # started with and hands it to every command it runs, so anything the list or an
 # agent pane needs has to be in place now.
@@ -290,6 +297,10 @@ fi
 # ---------------------------------------------------------------------------
 t "1b. a pane wider than the table"
 # ---------------------------------------------------------------------------
+# From here to the end of the picker checks every row is drawn with the cost
+# column on, which is what the widths and the hiding are measured against.
+export TA_CONFIG="$CFGW"
+
 # A record of its own, with a label far longer than the 24 columns the width
 # table used to stop at, torn down again at the end of the section so nothing
 # after it sees an extra agent in the tree.
@@ -405,7 +416,7 @@ ok "TA_HIDE_COLS wins over the state file" "model" \
 # is the half of the design that only exists in the binding: enter toggles, the
 # picker STAYS OPEN with the checkmark flipped, and the cursor is where it was.
 PICK=$(tm new-window -d -t tatest-dash: -P -F '#{pane_id}' \
-         "exec '$TA' --ask-columns" 2>/dev/null)
+         "exec env TA_CONFIG='$CFGW' '$TA' --ask-columns" 2>/dev/null)
 sleep 1
 tm send-keys -t "$PICK" Down Down Enter; sleep 1    # third row down is cost
 ok  "enter in the picker hides the row under the cursor" "cost" "$(run --hidden-cols)"
@@ -415,6 +426,7 @@ tm send-keys -t "$PICK" Enter; sleep 1
 ok  "...with the cursor still on it, so enter puts it back" "" "$(run --hidden-cols)"
 tm send-keys -t "$PICK" Escape; sleep 0.7
 ok  "esc closes the picker" no "$(lives "$PICK")"
+export TA_CONFIG="$CFG"
 
 # ---------------------------------------------------------------------------
 t "3. the ? window"

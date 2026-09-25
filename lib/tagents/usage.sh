@@ -53,6 +53,16 @@ usage_watch() {  # the watched profile, or exit 1 — the feature's on/off switc
   printf '%s' "$w"
 }
 
+# The same switch as a yes/no, asked once per process: collect() and counts()
+# run on every refresh and every status tick, and tusage is the one thing on
+# those paths that costs real time. With no usage.watch nothing runs tusage at
+# all — not the cost column, not the /5h burn, not the refresher's index update,
+# not a preview's breakdown. A subshell answers it again; that is one awk.
+usage_on() {
+  [ -n "${USAGE_ON:-}" ] || { usage_watch >/dev/null && USAGE_ON=1 || USAGE_ON=0; }
+  [ "$USAGE_ON" = 1 ] && command -v tusage >/dev/null 2>&1
+}
+
 usage_days() {  # the month so far for the watched account, one day per line
   usage_watch >/dev/null || return 1
   usage_env
