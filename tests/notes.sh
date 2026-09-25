@@ -47,6 +47,10 @@ ok()   { if [ "$2" = "$3" ]; then pass=$((pass+1)); printf '  ok   %s\n' "$1"
          else fail=$((fail+1)); printf '  FAIL %s\n       expected: %s\n       actual:   %s\n' "$1" "$2" "$3"; fi; }
 has()  { case "$3" in *"$2"*) pass=$((pass+1)); printf '  ok   %s\n' "$1" ;;
          *) fail=$((fail+1)); printf '  FAIL %s\n       expected to contain: %s\n       actual: %s\n' "$1" "$2" "$3" ;; esac; }
+# Was missing until 25.09: 6b called it, `command not found` went to stderr,
+# and its two "must not contain" checks counted as neither pass nor fail.
+hasnt(){ case "$3" in *"$2"*) fail=$((fail+1)); printf '  FAIL %s\n       must not contain: %s\n       actual: %s\n' "$1" "$2" "$3" ;;
+         *) pass=$((pass+1)); printf '  ok   %s\n' "$1" ;; esac; }
 t()    { printf '\n%s\n' "$1"; }
 
 # ---------------------------------------------------------------------------
@@ -252,11 +256,15 @@ git -C "$NOTES" -c user.name=t -c user.email=t@t commit -qm "seen" >/dev/null 2>
 git -C "$NOTES" rev-parse HEAD >"$NOTES/.git/ta-last-seen"
 printf 'five seven five\n' >"$NOTES/haiku.md"
 : >"$NOTES/prompt.md"
+# The input still carries the reference section 6 typed and never submitted,
+# so "the empty draft is not mentioned" is a count that did not move.
+PM_BEFORE=$(tm capture-pane -p -t "$CHAT" 2>/dev/null | grep -o '@\.claude/notes/prompt\.md' | wc -l | tr -d ' ')
 run send "$CHAT" "$NOTES" >/dev/null 2>&1
 ROWT=$(tm capture-pane -p -t "$CHAT" 2>/dev/null)
 has   "with no draft the changed document is mentioned on its own" "@.claude/notes/haiku.md" "$ROWT"
 hasnt "...and a document the model already saw is not"             "old.md"                 "$ROWT"
-hasnt "...nor the empty draft"                                      "@.claude/notes/prompt.md" "$ROWT"
+ok    "...nor the empty draft" "$PM_BEFORE" \
+      "$(printf '%s' "$ROWT" | grep -o '@\.claude/notes/prompt\.md' | wc -l | tr -d ' ')"
 printf 'see the haiku\n' >"$NOTES/prompt.md"
 run send "$CHAT" "$NOTES" >/dev/null 2>&1
 ROWT=$(tm capture-pane -p -t "$CHAT" 2>/dev/null)
@@ -292,6 +300,33 @@ ok "...and the draft is mentioned once"          1 "$(printf '%s' "$WJ" | grep -
 ok "...the first document once"                  1 "$(printf '%s' "$WJ" | grep -o 'long-name-one.md' | wc -l | tr -d ' ')"
 ok "...and the one the wrap cut in half, once"   1 "$(printf '%s' "$WJ" | grep -o 'long-name-two.md' | wc -l | tr -d ' ')"
 tm kill-window -t "$WCHAT" >/dev/null 2>&1
+
+# ---------------------------------------------------------------------------
+t "6d. an archived document is never mentioned"
+# ---------------------------------------------------------------------------
+# The prompt hook keeps `archive/` out of the diff (tests/notes-hooks.sh); the
+# mentions draw the same line, or :q would attach what the diff withheld. A
+# document moved into one turns into a deletion once its new path is excluded,
+# and a path that is gone cannot be attached either way.
+ACHAT=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" \
+          "exec claude >'$ROOT/pasteda.txt'" 2>/dev/null)
+sleep 0.6
+mkdir -p "$NOTES/archive" "$NOTES/AA-7/archive"
+printf 'shelved\n'  >"$NOTES/archive/shelved.md"
+printf 'absorbed\n' >"$NOTES/AA-7/archive/absorbed.md"
+git -C "$NOTES" mv haiku.md archive/haiku.md >/dev/null 2>&1
+git -C "$NOTES" rm -q a-document-with-a-long-name-two.md >/dev/null 2>&1
+: >"$NOTES/prompt.md"
+run send "$ACHAT" "$NOTES" >/dev/null 2>&1
+ok "send exits 0" 0 "$?"
+sleep 0.5
+AT=$(tm capture-pane -p -t "$ACHAT" 2>/dev/null)
+has   "a live document is mentioned"                "long-name-one.md" "$AT"
+hasnt "one in the top-level archive is not"         "shelved.md"       "$AT"
+hasnt "...nor one in a ticket's archive"            "absorbed.md"      "$AT"
+hasnt "...nor one that was moved into an archive"   "haiku.md"         "$AT"
+hasnt "...nor one that is gone"                     "long-name-two.md" "$AT"
+tm kill-window -t "$ACHAT" >/dev/null 2>&1
 
 # ---------------------------------------------------------------------------
 t "7. a draft is never typed into something that is not claude"

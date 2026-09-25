@@ -316,5 +316,53 @@ ok "...named after the draft"            "user: still a draft" "$(git -C "$NOTES
 ok "...and marks it sent"                "$(nhead)" "$(cat "$SENT" 2>/dev/null)"
 contains "...and tells the turn" "attached prompt.md is the user's message" "$(ctx_of "$out")"
 
+# ---------------------------------------------------------------------------
+t "14. an archive is out of the prompt"
+# ---------------------------------------------------------------------------
+# `archive/` — at the top of the folder or inside a ticket's — holds documents
+# whose conclusions have landed: kept for their reasoning, never replayed.
+mkdir -p "$NOTES/archive" "$NOTES/AA-7/archive" "$NOTES/notes-archive"
+printf 'ARCHTOP once decided\n' >"$NOTES/archive/old.md"
+printf 'ARCHTICKET absorbed\n'  >"$NOTES/AA-7/archive/plan.md"
+printf 'SIBLING still live\n'   >"$NOTES/notes-archive/live.md"
+printf 'LIVE a new document\n'  >"$NOTES/fresh.md"
+git -C "$NOTES" add -A && git -C "$NOTES" commit -q -m "user: shelve"
+out=$(submit)
+contains "a live document is replayed"                   "+LIVE a new document" "$out"
+lacks    "a top-level archive is not"                    "ARCHTOP"              "$out"
+lacks    "...not even by name"                           "old.md"               "$out"
+lacks    "nor a ticket's archive"                        "ARCHTICKET"           "$out"
+lacks    "...not even by name"                           "plan.md"              "$out"
+contains "a folder that merely contains the word is live" "+SIBLING still live" "$out"
+ok "the marker advanced" "$(nhead)" "$(marker)"
+
+printf 'ARCHMORE\n' >>"$NOTES/archive/old.md"
+git -C "$NOTES" commit -qam "user: archive edit"
+ok "a change inside an archive alone injects nothing" "" "$(raw_submit)"
+ok "...and is banked like an outbox-only commit"      "$(nhead)" "$(marker)"
+
+# A DOCUMENT MOVED INTO AN ARCHIVE WAS ARCHIVED, NOT DELETED: the move is named
+# in one line, and the document is not replayed as a wall of `-` lines.
+git -C "$NOTES" mv doc.md AA-7/archive/doc.md
+git -C "$NOTES" commit -q -m "user: absorbed"
+out=$(submit)
+contains "the move is named"                        "archived: doc.md => AA-7/archive/doc.md" "$out"
+lacks    "...and the document is not replayed as deleted" "-line one"        "$out"
+lacks    "...not a line of it"                      "-> is this right?"       "$out"
+ok "the marker advanced" "$(nhead)" "$(marker)"
+
+git -C "$NOTES" mv AA-7/archive/doc.md doc.md
+git -C "$NOTES" commit -q -m "user: revived"
+out=$(submit)
+contains "a document moved back out is a document again" "+line one" "$out"
+lacks    "...with no move to name"                       "archived:" "$out"
+
+# THE TWO SIDES DRAW ONE LINE. tnotes attaches what this diff shows; if either
+# stopped excluding what the other does, :q would hand the chat what the prompt
+# withheld, or the reverse.
+SPEC="':!prompt.md' ':!archive/*' ':!*/archive/*'"
+ok "the hook excludes the archives"    1 "$(grep -c -F -- "$SPEC" "$HOOKS/notes-context.sh")"
+ok "...and tnotes draws the same line" 2 "$(grep -c -F -- "$SPEC" "$HERE/../tnotes")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

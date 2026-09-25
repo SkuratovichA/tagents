@@ -111,3 +111,9 @@ A stub `claude` written as `exec sleep 600` turns the pane's current command int
 
 ## A `continue` in a lock loop's takeover branch skips the decrement and spins forever (23.09.2026)
 `lock_dir` read a failed `stat` as mtime 0, so a lock whose parent directory is unwritable looked infinitely stale, `rm -rf` "succeeded" on nothing, and the `continue` jumped over `tries=$((tries - 1))`; `mkdir` failed again and the loop never left. Every pass through a retry loop costs a try, the takeover pass included, and a stat failure reads as age 0, not as age from the epoch. `tnotes` `take_lock` still has the old shape.
+
+## A second awk over the first awk's output counts the columns the first one kept, not git's (25.09.2026)
+`notes-context.sh` filters `git diff --name-status` down to `old<TAB>new` and then a second awk printed `$2 " => " $3` — the columns of the git line, not of the two-column line it was actually reading — so the archive notice came out as `archived: <new> => `. The suite caught it; `sh -x` on a two-commit fixture showed it in one run. When a pipeline re-reads its own output, the field numbers restart from what the previous stage printed.
+
+## A helper defined in three suites and used in a fourth ran nowhere, and every check that called it counted as neither pass nor fail (25.09.2026)
+`tests/notes.sh` called `hasnt` since 6b was written, but only `closed.sh`, `launch.sh` and `headless.sh` define it; under `set -uo pipefail` without `-e` the call is `command not found` on stderr and the suite still ends `0 failed`. A "must not contain" check that never runs looks exactly like one that passes. Every helper a suite calls is defined in that suite, and a new check is watched fail once before it is trusted.

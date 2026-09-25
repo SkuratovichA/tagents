@@ -633,7 +633,8 @@ session last saw it is mentioned right beside it (`@.claude/notes/review.md `),
 so a remark you left under a paragraph arrives with the whole file around it,
 not only as a `+` line in the diff. "Since the session last saw it" is the
 context hook's own marker, so the two agree; a document you annotate *after*
-the first `:q` is added to the line, and nothing is mentioned twice. The
+the first `:q` is added to the line, and nothing is mentioned twice.
+Nothing under an `archive/` folder is ever mentioned (see below), and neither is a document that is gone. The
 `paste` and `submit` shapes send the draft alone. Nothing is truncated on the
 way out; the file is cleared for you the
 next time the editor opens *after* it was actually sent (the submit hook
@@ -659,6 +660,7 @@ The folder is a git repo of its own, and that is the whole mechanism:
 - `prompt.md` is excluded from all of it (it was already delivered as a
   prompt), and a diff over 60 KB is replaced by its stat with a note to open
   the files.
+- **An `archive/` folder is out of the prompt** — at the top of the notes or inside a ticket's folder (`AA-1234/archive/`). A document whose conclusions have landed goes there to keep its reasoning without re-entering every turn: nothing under it is diffed or mentioned, a change made only inside one injects nothing, and a document you move into one arrives as a single line (`archived: plan.md => AA-1234/archive/plan.md`) rather than as its whole text deleted. A folder that merely contains the word (`notes-archive/`) is a folder like any other.
 
 `tnotes` is the command behind the key — `tnotes toggle <pane-id>` is what the
 binding runs; run `tnotes` with no arguments for the rest:
