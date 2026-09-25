@@ -707,7 +707,7 @@ counts() {
     }'
   # ...followed by what the last five hours cost, so the number that decides
   # whether you are about to hit the limit is on screen without asking.
-  command -v tusage >/dev/null 2>&1 && tusage --no-update --burn 2>/dev/null
+  usage_on && tusage --no-update --burn 2>/dev/null
   # ...and then the month against its limit, for the one account being watched.
   # Prints nothing at all when no usage block names one, so the status bar of a
   # config without the feature is unchanged to the byte.

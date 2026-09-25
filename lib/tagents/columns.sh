@@ -30,9 +30,20 @@ model${TAB}which model the session is set to
 acct${TAB}the account name, on the widest lists
 loc${TAB}which pane the agent is in"
 
-col_keys() { printf '%s\n' "$COLS_TABLE" | cut -f1; }
+# WITH NO usage.watch THERE IS NO MONEY TO SHOW, so cost is neither offered nor
+# drawn: it drops out of the picker and reads as hidden, while $STATE_DIR/cols
+# is left exactly as it was, so switching the feature back on brings back the
+# choice made while it was on.
+cols_table() {
+  if usage_on; then printf '%s\n' "$COLS_TABLE"
+  else printf '%s\n' "$COLS_TABLE" | awk -F"$TAB" '$1 != "cost"'
+  fi
+}
+
+col_keys() { cols_table | cut -f1; }
 
 hidden_cols() {  # the effective hidden set, one key per line
+  usage_on || echo cost
   if [ -n "${TA_HIDE_COLS:-}" ]; then
     printf '%s' "$TA_HIDE_COLS" | tr ',' '\n' | awk 'NF { print $1 }'
     return 0
@@ -71,7 +82,7 @@ toggle_col() {  # <key> [fzf port of the list behind the picker]
 col_rows() {  # key<TAB>the row as it is read
   local hidden key desc mark
   hidden=" $(hidden_cols | tr '\n' ' ')"
-  printf '%s\n' "$COLS_TABLE" | while IFS="$TAB" read -r key desc; do
+  cols_table | while IFS="$TAB" read -r key desc; do
     [ -n "$key" ] || continue
     case $hidden in *" $key "*) mark=' ' ;; *) mark=x ;; esac
     printf '%s\t[%s] %-5s  %s\n' "$key" "$mark" "$key" "$desc"

@@ -21,14 +21,14 @@ refresher() {
   # but the writer here did not — so each 5th tick rebuilt the account map under
   # config-dir labels (`default`, `d`), the next read rebuilt it back, and the
   # meter was fetched a second time under a name nothing reads.
-  usage_env
+  usage_on && usage_env
   while sleep 2; do
     # Advance the token index out here, not in list(): parsing the tail of every
     # transcript costs a few hundred milliseconds, and a keystroke must never
     # wait on it. Every 5th tick is ~10s of lag on a number that moves slowly.
     tick=$(( (tick + 1) % 5 ))
     if [ "$tick" = 0 ]; then
-      command -v tusage >/dev/null 2>&1 && tusage --update >/dev/null 2>&1
+      usage_on && tusage --update >/dev/null 2>&1
       # The footer is one of fzf's own frames, not a row, so reload-sync leaves
       # it alone — it has to be pushed. On this tick and no other: the figure it
       # carries only moves when the index it is read from does.

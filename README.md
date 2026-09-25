@@ -44,6 +44,7 @@ all.
 They are one system. The hook writes a record per session into
 `~/.claude/agent-state/`; `tagents` joins that with the live tmux pane list and
 renders it; `tusage` supplies the two cost columns, joined on the session id.
+`tusage` is only run once `usage.watch` names a profile (see `config.example.yaml`); without it no cost is shown anywhere.
 `tagents` degrades gracefully when `tusage` or the status line is missing, but
 without the state hook there is nothing to show.
 

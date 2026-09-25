@@ -247,6 +247,6 @@ collect() {
   # Token accounting, joined on session id. --no-update keeps this to one awk
   # pass over the index; advancing the index is the refresher loop's job, so a
   # keystroke never waits on it.
-  command -v tusage >/dev/null 2>&1 &&
+  usage_on &&
     tusage --no-update --sessions 2>/dev/null | sed "s/^/U${TAB}/"
 }

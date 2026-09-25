@@ -66,7 +66,8 @@ claude:
 # by hand when the plan does. `tagents --keys` lists $ for the day-by-day table.
 usage:
   # The profile whose spend is tracked. With this omitted every usage surface is
-  # off: no figure in the status bar, no footer under the list, no $ window.
+  # off: no figure in the status bar, no footer under the list, no $ window,
+  # no cost column or /5h burn, and tusage is never run at all.
   # watch: work
 
   # The monthly cap, from the account's own billing page. It is the FALLBACK:
