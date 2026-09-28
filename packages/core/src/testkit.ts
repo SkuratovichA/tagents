@@ -54,6 +54,25 @@ export interface FakeScript {
   readonly argvFile?: string;
   /** Split every line across two writes, to prove the reader reassembles them. */
   readonly chunked?: boolean;
+  /**
+   * Behave like `--input-format stream-json --replay-user-messages`: ignore
+   * the argv prompt, read user lines from stdin, echo each one back, and answer
+   * with `result` (plus `text`/`tools`) after `sleepMs`. A line that arrives
+   * while a turn works is absorbed into it; a line that arrives while idle
+   * starts a turn of its own. The process leaves when stdin ends and it is idle.
+   */
+  readonly stdin?: FakeStdin;
+}
+
+export interface FakeStdin {
+  /** Every raw line read from stdin is appended here. */
+  readonly linesFile?: string;
+  /** Hold the echo of a line that arrives mid-turn until that turn's result: the model had no tool boundary left. */
+  readonly replayAfterResult?: boolean;
+  /** Echo only the first line (the prompt); later lines are read and never reach the "model". */
+  readonly replayOnlyFirst?: boolean;
+  /** The result of the Nth turn (0-based) — `result` is the fallback for a turn not listed. */
+  readonly results?: readonly FakeResult[];
 }
 
 export interface FakeClaude {
@@ -68,7 +87,13 @@ const RUNNER = `#!NODE#
 'use strict';
 const fs = require('fs');
 const plan = #PLAN#;
-if (plan.argvFile) fs.writeFileSync(plan.argvFile, JSON.stringify({ argv: process.argv.slice(2), env: process.env }));
+const stdinKind = () => {
+  try {
+    const st = fs.fstatSync(0);
+    return st.isFIFO() || st.isSocket() ? 'pipe' : st.isCharacterDevice() ? 'null' : 'other';
+  } catch { return 'none'; }
+};
+if (plan.argvFile) fs.writeFileSync(plan.argvFile, JSON.stringify({ argv: process.argv.slice(2), env: process.env, stdin: stdinKind() }));
 if (plan.countFile) fs.appendFileSync(plan.countFile, 'run\\n');
 const sid = plan.sessionId || 'sess-1';
 const say = (o) => {
@@ -80,7 +105,66 @@ const say = (o) => {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const hang = () => setInterval(() => {}, 1000);
-(async () => {
+const resultLine = (r) => {
+  const payload = {
+    is_error: r.isError === true,
+    result: r.text === undefined ? 'done' : r.text,
+    session_id: sid,
+    total_cost_usd: r.costUsd === undefined ? 0.1 : r.costUsd,
+    num_turns: r.numTurns === undefined ? 3 : r.numTurns,
+    duration_ms: r.durationMs === undefined ? 5 : r.durationMs,
+  };
+  return plan.plain ? payload : Object.assign({ type: 'result', subtype: 'success' }, payload);
+};
+if (plan.stdin) {
+  const sp = plan.stdin;
+  let busy = false;
+  let ended = false;
+  let turn = 0;
+  let seen = 0;
+  let buf = '';
+  const held = [];
+  const echo = (line) => say(Object.assign({}, JSON.parse(line), { session_id: sid, isReplay: true }));
+  const leave = () => {
+    if (!ended || busy) return;
+    if (plan.stderr) process.stderr.write(plan.stderr);
+    if (plan.hangAfterResult || plan.hang) { hang(); return; }
+    process.exitCode = plan.exitCode || 0;
+  };
+  const work = async () => {
+    busy = true;
+    for (const t of plan.tools || []) {
+      const tool = typeof t === 'string' ? { name: t, input: {} } : t;
+      say({ type: 'assistant', session_id: sid, message: { content: [{ type: 'tool_use', name: tool.name, input: tool.input || {} }] } });
+    }
+    if (plan.text) say({ type: 'assistant', session_id: sid, message: { content: [{ type: 'text', text: plan.text }] } });
+    if (plan.sleepMs) await sleep(plan.sleepMs);
+    const r = (sp.results && sp.results[turn]) || plan.result;
+    turn += 1;
+    if (r) say(resultLine(r));
+    busy = false;
+    const next = held.splice(0);
+    if (next.length) { for (const l of next) echo(l); await work(); return; }
+    leave();
+  };
+  const onLine = (line) => {
+    if (!line.trim()) return;
+    seen += 1;
+    if (sp.linesFile) fs.appendFileSync(sp.linesFile, line + '\\n');
+    if (sp.replayOnlyFirst && seen > 1) return;
+    if (busy) { if (sp.replayAfterResult) held.push(line); else echo(line); return; }
+    echo(line);
+    void work();
+  };
+  say({ type: 'system', subtype: 'init', session_id: sid });
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (d) => {
+    buf += d;
+    let nl = buf.indexOf('\\n');
+    while (nl >= 0) { onLine(buf.slice(0, nl)); buf = buf.slice(nl + 1); nl = buf.indexOf('\\n'); }
+  });
+  process.stdin.on('end', () => { ended = true; leave(); });
+} else (async () => {
   for (const line of plan.noise || []) process.stdout.write(line + '\\n');
   if (plan.silent) { hang(); return; }
   say({ type: 'system', subtype: 'init', session_id: sid });
@@ -90,18 +174,7 @@ const hang = () => setInterval(() => {}, 1000);
   }
   if (plan.text) say({ type: 'assistant', session_id: sid, message: { content: [{ type: 'text', text: plan.text }] } });
   if (plan.sleepMs) await sleep(plan.sleepMs);
-  if (plan.result !== null && plan.result !== undefined) {
-    const r = plan.result;
-    const payload = {
-      is_error: r.isError === true,
-      result: r.text === undefined ? 'done' : r.text,
-      session_id: sid,
-      total_cost_usd: r.costUsd === undefined ? 0.1 : r.costUsd,
-      num_turns: r.numTurns === undefined ? 3 : r.numTurns,
-      duration_ms: r.durationMs === undefined ? 5 : r.durationMs,
-    };
-    say(plan.plain ? payload : Object.assign({ type: 'result', subtype: 'success' }, payload));
-  }
+  if (plan.result !== null && plan.result !== undefined) say(resultLine(plan.result));
   if (plan.stderr) process.stderr.write(plan.stderr);
   if (plan.hangAfterResult || plan.hang) { hang(); return; }
   process.exitCode = plan.exitCode || 0;

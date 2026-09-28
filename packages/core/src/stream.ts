@@ -32,6 +32,12 @@ const ToolUseBlockSchema = z.object({
 });
 const TextBlockSchema = z.object({ type: z.literal('text'), text: z.string() });
 const EnvelopeSchema = z.object({ type: z.string().optional(), session_id: z.string().optional() });
+/**
+ * With `--replay-user-messages` the CLI echoes every stdin line it accepted as
+ * a `user` event carrying `isReplay: true`, in the order written. Tool results
+ * are `user` events too, without the flag.
+ */
+const ReplayEventSchema = z.object({ type: z.literal('user'), isReplay: z.literal(true) });
 
 export class StreamReader {
   /** The result payload, once it has been seen. */
@@ -46,9 +52,16 @@ export class StreamReader {
 
   private pending = '';
   private readonly onEvent: ((e: StreamEvent) => void) | undefined;
+  private readonly onReplay: (() => void) | undefined;
 
-  constructor(onEvent?: ((e: StreamEvent) => void) | undefined) {
+  /**
+   * `onReplay` hears every stdin line the CLI echoed back. It gets no id: the
+   * reader cannot know which line it was, the writer does (the echo keeps the
+   * write order), so the writer emits the `replay` event itself.
+   */
+  constructor(onEvent?: ((e: StreamEvent) => void) | undefined, onReplay?: (() => void) | undefined) {
     this.onEvent = onEvent;
+    this.onReplay = onReplay;
   }
 
   push(chunk: string): void {
@@ -87,6 +100,15 @@ export class StreamReader {
     }
     const env = EnvelopeSchema.safeParse(json);
     if (env.success && env.data.session_id) this.sessionId = env.data.session_id;
+
+    if (this.onReplay && ReplayEventSchema.safeParse(json).success) {
+      try {
+        this.onReplay();
+      } catch {
+        // Same rule as emit(): a listener must not fail the turn.
+      }
+      return;
+    }
 
     const res = ResultEventSchema.safeParse(json);
     if (res.success) {

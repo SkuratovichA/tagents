@@ -62,6 +62,12 @@ export interface SessionRef {
   readonly spec: SessionSpec;
 }
 
+/** One message delivered into a running turn through stdin. `id` is the caller's, echoed back on replay. */
+export interface TurnInput {
+  readonly id: string;
+  readonly text: string;
+}
+
 /** What the caller learns WHILE a turn runs. */
 export type StreamEvent =
   | { kind: 'tool_use'; name: string; input: Record<string, unknown> }
@@ -72,6 +78,11 @@ export type StreamEvent =
       /** The result payload as printed by the CLI, unknown fields kept (modelUsage, num_turns, …). */
       payload: ClaudePayload;
     }
+  /**
+   * A line delivered through `PromptOptions.input` reached the model: the CLI
+   * echoed it back. Never emitted for the prompt line itself.
+   */
+  | { kind: 'replay'; id: string }
   | { kind: 'other'; type: string };
 
 export interface PromptOptions {
@@ -96,6 +107,19 @@ export interface PromptOptions {
    */
   readonly log?: (line: string) => void;
   readonly signal?: AbortSignal;
+  /**
+   * Messages for the model that arrive WHILE the turn runs. Absent, the turn is
+   * what it always was: the prompt in argv, no stdin, the first result ends it.
+   * Present, the prompt becomes the first stdin line (`--input-format
+   * stream-json --replay-user-messages`), every item pulled is written to stdin
+   * at once, and the turn lasts until a result arrives with no written line
+   * still waiting for its echo — a line the model had no tool boundary left to
+   * read becomes its own turn in the same process. The driver calls the
+   * iterator's `return()` the moment it stops reading, so an iterable that
+   * refuses new items after `return()` never loses one; `TurnOutcome.delivered`
+   * says which of the items pulled reached the model.
+   */
+  readonly input?: AsyncIterable<TurnInput>;
 }
 
 export interface SessionDriver {

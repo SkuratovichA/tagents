@@ -19,6 +19,7 @@ import type {
   SessionSpec,
   SessionState,
   StreamEvent,
+  TurnInput,
 } from './driver.ts';
 import { readAgentState, labelsBySession, stateDir } from './agent-state.ts';
 import { StreamReader } from './stream.ts';
@@ -79,19 +80,29 @@ export const DISALLOWED_TOOLS = [
  * (the busano ticket agent, 15.09.2026, every batch after the port). They go
  * in front of --output-format, the one option that is always there to
  * terminate them; the test pins that no variadic option ever touches the prompt.
+ *
+ * `viaStdin` is the input mode of PromptOptions.input: the prompt is not in
+ * argv at all but the first stdin line, and the CLI echoes every line it reads.
  */
-export function buildArgs(spec: SessionSpec, text: string, resume: string | null): string[] {
+export function buildArgs(spec: SessionSpec, text: string, resume: string | null, viaStdin = false): string[] {
   const args = ['-p'];
   if (spec.model) args.push('--model', spec.model);
   if (spec.effort) args.push('--effort', spec.effort);
   if (spec.disallowedTools?.length) args.push('--disallowedTools', spec.disallowedTools.join(','));
   if (spec.mcpConfig) args.push('--strict-mcp-config', '--mcp-config', spec.mcpConfig);
   args.push('--output-format', 'stream-json', '--verbose');
+  if (viaStdin) args.push('--input-format', 'stream-json', '--replay-user-messages');
   if (spec.skipPermissions) args.push('--dangerously-skip-permissions');
   if (spec.systemPromptFile) args.push('--append-system-prompt-file', spec.systemPromptFile);
   if (resume) args.push('--resume', resume);
-  args.push(text);
+  if (!viaStdin) args.push(text);
   return args;
+}
+
+/** One stdin line of `--input-format stream-json`: a user message, as the CLI's own SDK writes it. */
+export function stdinLine(text: string): string {
+  const message = { role: 'user', content: [{ type: 'text', text }] };
+  return `${JSON.stringify({ type: 'user', message, parent_tool_use_id: null, session_id: '' })}\n`;
 }
 
 /**
@@ -196,14 +207,15 @@ export class ClaudeHeadlessDriver implements SessionDriver {
     // This turn's diagnostics sink. A driver serves one process; a turn serves
     // one job, and the job is what has a log to write into — so o.log wins.
     const turnLog = o.log ?? ((line: string): void => this.log(line));
+    const input = o.input;
 
     return new Promise<TurnOutcome>((resolve) => {
       const clock = this.clock;
       const startedAt = clock.now();
-      const child = spawn(spec.bin ?? 'claude', buildArgs(spec, text, resume), {
+      const child = spawn(spec.bin ?? 'claude', buildArgs(spec, text, resume, input !== undefined), {
         cwd: spec.cwd,
         env: childEnv(spec),
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       });
       this.running.set(ref.id, child);
 
@@ -243,7 +255,74 @@ export class ClaudeHeadlessDriver implements SessionDriver {
 
       scope.onAbort(o.signal, () => kill('aborted by the caller — killing'));
 
+      // Input mode only (o.input present). `delivered` is every item pulled, in
+      // order; `unread` is the lines written to stdin and not yet echoed back,
+      // oldest first, the prompt line (null) at its head. The CLI echoes in
+      // write order, so an echo always belongs to the head.
+      const delivered: { id: string; replayed: boolean }[] = [];
+      const unread: ({ id: string; replayed: boolean } | null)[] = [];
+      let stdinOpen = false;
+      let iterator: AsyncIterator<TurnInput> | null = null;
+      // When the LAST result arrived. In input mode a result that leaves lines
+      // unread keeps the phase `running`, so the phase alone cannot say it.
+      let lastResultAt: number | null = null;
+      // num_turns summed over every result: unlike the cost it is per result.
+      let resultTurns: number | null = null;
+      // The outcome is out; the pump must not report into a resolved turn.
+      let settled = false;
+
+      const stopPulling = (): void => {
+        const it = iterator;
+        iterator = null;
+        try {
+          it?.return?.()?.catch(() => undefined);
+        } catch {
+          // The iterable's own shutdown failing is not this turn's failure.
+        }
+      };
+
+      const closeInput = (): void => {
+        stopPulling();
+        if (!stdinOpen) return;
+        stdinOpen = false;
+        child.stdin?.end();
+      };
+
+      const writeLine = (line: string): boolean => {
+        const stdin = child.stdin;
+        if (!stdinOpen || !stdin || !stdin.writable) return false;
+        stdin.write(line);
+        return true;
+      };
+
+      const onReplay = (): void => {
+        const head = unread.shift();
+        if (head === undefined) {
+          turnLog('claude echoed a stdin line nobody is waiting for — ignoring it');
+          return;
+        }
+        if (head === null) return; // the prompt line
+        head.replayed = true;
+        try {
+          o.onEvent?.({ kind: 'replay', id: head.id });
+        } catch {
+          // A listener must not be able to fail the turn it is only watching.
+        }
+      };
+
       const onResult = (): void => {
+        lastResultAt = clock.now();
+        if (input && phase.tag === 'running') {
+          // A result proves the prompt was read, echoed or not.
+          if (unread[0] === null) unread.shift();
+          if (unread.length > 0) {
+            // Written after the model's last tool boundary: the CLI answers it
+            // as a turn of its own in this same process (E3a, 28.09.2026).
+            turnLog(`claude printed a result with ${unread.length} input line(s) unread — waiting for their turn`);
+            return;
+          }
+          closeInput();
+        }
         switch (phase.tag) {
           case 'running':
             // The work is done; from here on only the shutdown can go wrong.
@@ -265,10 +344,16 @@ export class ClaudeHeadlessDriver implements SessionDriver {
         }
       };
 
-      const reader = new StreamReader((e: StreamEvent) => {
-        if (e.kind === 'result') onResult();
-        o.onEvent?.(e);
-      });
+      const reader = new StreamReader(
+        (e: StreamEvent) => {
+          if (e.kind === 'result') {
+            if (input) resultTurns = (resultTurns ?? 0) + (e.payload.num_turns ?? 0);
+            onResult();
+          }
+          o.onEvent?.(e);
+        },
+        input ? onReplay : undefined
+      );
       child.stdout?.on('data', (d: Buffer) => reader.push(d.toString()));
       child.stderr?.on('data', (d: Buffer) => {
         err += d.toString();
@@ -279,9 +364,18 @@ export class ClaudeHeadlessDriver implements SessionDriver {
         this.running.delete(ref.id);
         // May flush the result line itself, which moves the phase: read it after.
         reader.end();
+        // Nothing is written from here on; an item pulled late is not delivered.
+        settled = true;
+        stdinOpen = false;
+        stopPulling();
+        const extra = input ? { delivered: delivered.map((d) => ({ ...d })) } : {};
 
+        // In input mode `p` is the LAST result. Its total_cost_usd counts the
+        // whole process (0.068 → 0.072 → 0.075 over three results in E3a,
+        // 28.09.2026), so it is the turn's cost and summing would count twice;
+        // num_turns and usage are per result, so the turns are summed instead.
         const p = reader.payload;
-        const resultAt = resultAtOf(phase);
+        const resultAt = resultAtOf(phase) ?? (input ? lastResultAt : null);
         const exit = phase.tag === 'exited' ? phase.exit : null;
         const code = exit?.code ?? null;
         const signal = exit?.signal ?? null;
@@ -304,23 +398,64 @@ export class ClaudeHeadlessDriver implements SessionDriver {
             sessionId,
             toolUses: reader.toolUses,
             costUsd: p.total_cost_usd ?? null,
-            numTurns: p.num_turns ?? null,
+            numTurns: input && resultTurns !== null ? resultTurns : (p.num_turns ?? null),
             durationMs,
+            ...extra,
           };
           // The exit code is about the shutdown, not the work.
           resolve(resultAt !== null && code !== 0 ? { kind: 'killed-after-result', ...base, code } : { kind: 'ok', ...base });
           return;
         }
         if (timedOut) {
-          resolve({ kind: 'timeout', sessionId, toolUses: reader.toolUses, limitMs: timeoutMs, detail, ...saw });
+          resolve({ kind: 'timeout', sessionId, toolUses: reader.toolUses, limitMs: timeoutMs, detail, ...saw, ...extra });
           return;
         }
-        resolve({ kind: 'exited', sessionId, toolUses: reader.toolUses, code, signal, detail, ...saw });
+        resolve({ kind: 'exited', sessionId, toolUses: reader.toolUses, code, signal, detail, ...saw, ...extra });
       };
+
+      // Pull input items for as long as stdin is open, writing each at once.
+      const pump = async (it: AsyncIterator<TurnInput>): Promise<void> => {
+        for (;;) {
+          let next: IteratorResult<TurnInput>;
+          try {
+            next = await it.next();
+          } catch (e) {
+            turnLog(`turn input failed: ${(e as Error).message}`);
+            return;
+          }
+          if (next.done) return;
+          if (settled) {
+            turnLog(`input ${next.value.id} arrived after the turn ended — not delivered`);
+            return;
+          }
+          const item = { id: next.value.id, replayed: false };
+          delivered.push(item);
+          if (writeLine(stdinLine(next.value.text))) unread.push(item);
+          else turnLog(`input ${item.id} arrived after stdin closed — not written`);
+          // An iterator that ignores return() must still not be read forever.
+          if (iterator === null && !stdinOpen) return;
+        }
+      };
+
+      if (input) {
+        stdinOpen = true;
+        // EPIPE and friends: the process died under us. What was written and
+        // never echoed stays `replayed: false`, which is the whole report.
+        child.stdin?.on('error', (e) => {
+          stdinOpen = false;
+          turnLog(`claude stdin: ${e.message}`);
+        });
+        unread.push(null);
+        writeLine(stdinLine(text));
+        iterator = input[Symbol.asyncIterator]();
+        void pump(iterator);
+      }
 
       child.on('error', (e) => finish(e.message));
       child.on('exit', (code, signal) => {
         phase = { tag: 'exited', resultAt: resultAtOf(phase), exit: { code, signal } };
+        stdinOpen = false;
+        stopPulling();
         scope.after(pipeDrainMs, () => finish()); // in case `close` never comes
       });
       child.on('close', () => finish());
