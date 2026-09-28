@@ -17,12 +17,24 @@ const Counters = {
   durationMs: z.number(),
 };
 
+/**
+ * Only on a turn that was given `PromptOptions.input`: every item pulled from
+ * it, in order, and whether the CLI echoed it back — which is the one proof
+ * the model read it. An item not replayed was never seen by the model (a line
+ * written and then lost with a killed process is not in its transcript,
+ * verified 28.09.2026), so the caller owns delivering it again.
+ */
+const Delivered = {
+  delivered: z.array(z.object({ id: z.string(), replayed: z.boolean() })).optional(),
+};
+
 const Ok = z.object({
   kind: z.literal('ok'),
   text: z.string(),
   sessionId: z.string().nullable(),
   toolUses: z.number(),
   ...Counters,
+  ...Delivered,
 });
 
 /** Finished, then killed: `result` arrived, the process left with code !== 0. */
@@ -33,6 +45,7 @@ const KilledAfterResult = z.object({
   toolUses: z.number(),
   ...Counters,
   code: z.number().nullable(),
+  ...Delivered,
 });
 
 /**
@@ -60,6 +73,7 @@ const Timeout = z.object({
   limitMs: z.number(),
   detail: z.string(),
   ...Evidence,
+  ...Delivered,
 });
 
 /** The child left on its own without a usable result (or with is_error=true). */
@@ -71,12 +85,14 @@ const Exited = z.object({
   signal: z.string().nullable(),
   detail: z.string(),
   ...Evidence,
+  ...Delivered,
 });
 
 /** There was never a process: ENOENT, EACCES, a bad interpreter. */
 const SpawnFailed = z.object({
   kind: z.literal('spawn-failed'),
   detail: z.string(),
+  ...Delivered,
 });
 
 export const TurnOutcomeSchema = z.discriminatedUnion('kind', [

@@ -12,6 +12,7 @@ export type {
   SessionSpec,
   SessionState,
   StreamEvent,
+  TurnInput,
 } from './driver.ts';
 
 export {
@@ -43,6 +44,7 @@ export {
   TIMEOUT_WARN_BEFORE_MS,
   buildArgs,
   childEnv,
+  stdinLine,
 } from './claude-driver.ts';
 export type { ClaudeDriverOptions } from './claude-driver.ts';
 
@@ -116,4 +118,4 @@ export { DEFAULT_LOCALE, createI18n, createT, isLocale, resources } from './i18n
 export type { CoreResource, Locale } from './i18n/index.ts';
 
 export { drained, fakeClaude, sleep, tmpDir } from './testkit.ts';
-export type { FakeClaude, FakeResult, FakeScript, FakeToolCall } from './testkit.ts';
+export type { FakeClaude, FakeResult, FakeScript, FakeStdin, FakeToolCall } from './testkit.ts';
