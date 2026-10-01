@@ -186,12 +186,21 @@ export class FakeClock implements TurnClock {
   }
 
   advance(ms: number): void {
-    const end = this.t + ms;
+    this.fire(this.t + ms);
+  }
+
+  /** The machine asleep for `ms`: time jumps, and every timer that fell due meanwhile fires late, at the wake. */
+  sleep(ms: number): void {
+    this.t += ms;
+    this.fire(this.t);
+  }
+
+  private fire(end: number): void {
     for (;;) {
       const due = this.queue.filter((x) => x.at <= end).sort((a, b) => a.at - b.at)[0];
       if (!due) break;
       this.queue = this.queue.filter((x) => x !== due);
-      this.t = due.at;
+      this.t = Math.max(this.t, due.at);
       due.fn();
     }
     this.t = end;

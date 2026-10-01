@@ -11,6 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import {
+  AWAKE_TICK_MS,
   ClaudeHeadlessDriver,
   DEFAULT_TIMEOUT_MS,
   RESULT_EXIT_GRACE_MS,
@@ -98,6 +99,57 @@ test('the 50-minute timeout warns at 45:00 and kills at 50:00, to the millisecon
   if (o.kind === 'timeout') assert.equal(o.toolUses, 1);
   assert.equal(turn.clock.pending, 0, 'nothing outlives the turn');
   assert.ok(Date.now() - t0 < 5000, 'fifty minutes did not take fifty minutes');
+});
+
+const MIN = 60 * 1000;
+
+test('an hour asleep under the turn is not counted: the warning and the kill wait for awake minutes', async () => {
+  // 01.10.2026: a 90-minute turn killed after about five awake minutes.
+  const warns: Array<{ elapsedMs: number; leftMs: number }> = [];
+  const turn = start(fake({ tools: ['Bash'], result: null, hang: true }), { onWarn: (w) => warns.push(w) });
+  await turn.seen('tool_use');
+
+  turn.clock.advance(30 * MIN);
+  turn.clock.sleep(60 * MIN);
+  // Ninety wall minutes: a wall-clock timer would have warned at 45:00 and killed at 50:00.
+  assert.match(turn.log.join('\n'), /^turn: machine slept ~60 min, not counted$/m);
+  assert.doesNotMatch(turn.log.join('\n'), /timed out/);
+  assert.deepEqual(warns, []);
+
+  // The tick that woke up counted two ticks of the gap.
+  const awake = 30 * MIN + 2 * AWAKE_TICK_MS;
+  const warnAt = DEFAULT_TIMEOUT_MS - TIMEOUT_WARN_BEFORE_MS;
+  turn.clock.advance(warnAt - awake - 1);
+  assert.deepEqual(warns, []);
+  turn.clock.advance(1);
+  assert.deepEqual(warns, [{ elapsedMs: warnAt, leftMs: TIMEOUT_WARN_BEFORE_MS }]);
+
+  turn.clock.advance(TIMEOUT_WARN_BEFORE_MS - 1);
+  assert.doesNotMatch(turn.log.join('\n'), /timed out/);
+  turn.clock.advance(1);
+  assert.match(turn.log.join('\n'), /^claude timed out after 50 min — killing$/m);
+  assert.equal(turn.log.filter((l) => l.includes('slept')).length, 1, 'one line per sleep');
+
+  const o = await turn.outcome;
+  assert.equal(o.kind, 'timeout');
+  assert.equal(turn.clock.pending, 0, 'nothing outlives the turn');
+});
+
+test('ninety awake minutes do kill a 90-minute turn, under the line the callers key on', async () => {
+  const turn = start(fake({ tools: ['Bash'], result: null, hang: true }), { timeoutMs: 90 * MIN });
+  await turn.seen('tool_use');
+
+  turn.clock.advance(90 * MIN - 1);
+  assert.doesNotMatch(turn.log.join('\n'), /timed out/);
+  turn.clock.advance(1);
+  // The busano ticket agent's status.sh greps for the `claude timed out` prefix.
+  assert.ok(turn.log.includes('claude timed out after 90 min — killing'), turn.log.join('\n'));
+  assert.doesNotMatch(turn.log.join('\n'), /slept/, 'ticks on time are not a sleep');
+
+  const o = await turn.outcome;
+  assert.equal(o.kind, 'timeout');
+  if (o.kind === 'timeout') assert.equal(o.limitMs, 90 * MIN);
+  assert.equal(turn.clock.pending, 0);
 });
 
 test('a result cancels the killer and starts the 60-second grace, which kills at 60:00 exactly', async () => {

@@ -86,10 +86,14 @@ export type StreamEvent =
   | { kind: 'other'; type: string };
 
 export interface PromptOptions {
-  /** Hard limit. When it fires the child is killed and the turn is a 'timeout'. */
+  /**
+   * Hard limit, in time the machine was AWAKE: a sleep under the turn is not
+   * counted. When it is reached the child is killed and the turn is a 'timeout'.
+   */
   readonly timeoutMs: number;
   /** Fire `onWarn` this long before the kill. */
   readonly warnBeforeMs?: number;
+  /** `elapsedMs` and `leftMs` are awake time, the measure `timeoutMs` is in. */
   readonly onWarn?: (info: { elapsedMs: number; leftMs: number }) => void;
   /** How long a child may take to leave AFTER printing its result. */
   readonly exitGraceMs?: number;

@@ -23,6 +23,7 @@ import type {
 } from './driver.ts';
 import { readAgentState, labelsBySession, stateDir } from './agent-state.ts';
 import { StreamReader } from './stream.ts';
+import { holdAwake, keepAwakeWanted, type KeepAwake } from './keep-awake.ts';
 import { clipDetail, type TurnOutcome } from './turn-outcome.ts';
 import { lastAssistant } from './transcripts.ts';
 import { realClock, TurnScope, type TurnClock } from './turn-scope.ts';
@@ -31,6 +32,11 @@ import { realClock, TurnScope, type TurnClock } from './turn-scope.ts';
 export const DEFAULT_TIMEOUT_MS = 50 * 60 * 1000;
 /** The caller hears about a long turn this much before it is killed. */
 export const TIMEOUT_WARN_BEFORE_MS = 5 * 60 * 1000;
+/**
+ * How often a turn adds up the time it was awake. A gap of more than two ticks
+ * is the machine asleep, and only two ticks of it count towards the timeout.
+ */
+export const AWAKE_TICK_MS = 10 * 1000;
 /**
  * A turn whose `result` event has arrived is OVER. If the process is still
  * around after this, something is stuck on the way out (an MCP server, a
@@ -143,7 +149,16 @@ export interface ClaudeDriverOptions {
   readonly log?: (...parts: string[]) => void;
   /** Where turns get their time: the real clock by default, a fake one in a lifecycle test. */
   readonly clock?: TurnClock;
+  /**
+   * What holds the machine awake while a turn's child lives: caffeinate on
+   * macOS unless TA_KEEP_AWAKE=0, nothing elsewhere (keep-awake.ts). null
+   * turns it off; a test passes a recorder.
+   */
+  readonly keepAwake?: KeepAwake | null;
 }
+
+/** "60 min", or seconds when it was less than a minute. */
+const sleptFor = (ms: number): string => (ms >= 60 * 1000 ? `${Math.round(ms / 60000)} min` : `${Math.round(ms / 1000)} s`);
 
 /** What the child left behind when it went. */
 interface Exit {
@@ -181,11 +196,14 @@ export class ClaudeHeadlessDriver implements SessionDriver {
   /** ref.id → the claude session id learned from the last turn. */
   private readonly learned = new Map<string, string>();
   private readonly clock: TurnClock;
+  private readonly keepAwake: KeepAwake | null;
 
   constructor(o: ClaudeDriverOptions = {}) {
     this.dir = o.stateDir ?? stateDir();
     this.log = o.log ?? (() => undefined);
     this.clock = o.clock ?? realClock;
+    // Not `??`: an explicit null is the off switch, not a missing option.
+    this.keepAwake = o.keepAwake !== undefined ? o.keepAwake : keepAwakeWanted() ? holdAwake : null;
   }
 
   /** No process is started. `resume` is the claude session id to continue. */
@@ -222,6 +240,8 @@ export class ClaudeHeadlessDriver implements SessionDriver {
       // Every timer of this turn and its abort listener. finish() disposes it,
       // and a disposed scope schedules nothing: that is the whole cleanup.
       const scope = new TurnScope(clock);
+      // Released with the scope. No pid means the spawn failed, and `error` ends the turn.
+      if (this.keepAwake && child.pid !== undefined) scope.own(this.keepAwake(child.pid, turnLog));
       let phase: Phase = { tag: 'running' };
       // The killer fired. Not a phase of its own: a result can still come out
       // of the pipe after the SIGKILL, and the exit follows either way.
@@ -237,21 +257,47 @@ export class ClaudeHeadlessDriver implements SessionDriver {
         }
       };
 
-      const cancelKiller = scope.after(timeoutMs, () => {
-        timedOut = true;
-        kill(`claude timed out after ${Math.round(timeoutMs / 60000)} min — killing`);
-      });
-
-      if (o.onWarn && timeoutMs > warnBeforeMs)
-        scope.after(timeoutMs - warnBeforeMs, () => {
-          if (phase.tag !== 'running') return;
-          turnLog(`claude running ${Math.round((clock.now() - startedAt) / 60000)} min — warning the caller`);
+      // The limit counts AWAKE time. A MacBook on battery sleeps under a running
+      // turn and the timers count the sleep: on 01.10.2026 a 90-minute turn was
+      // killed after about five awake minutes, its 85-minute warning arriving 85.5
+      // wall minutes in. So a tick adds the time since the last one, capped at two
+      // ticks — a longer gap is the machine asleep, and is not counted.
+      const warnAt = o.onWarn && timeoutMs > warnBeforeMs ? timeoutMs - warnBeforeMs : null;
+      let awakeMs = 0;
+      let lastTick = startedAt;
+      let warned = false;
+      let cancelTick = (): void => undefined;
+      const tick = (): void => {
+        const now = clock.now();
+        const gap = Math.max(0, now - lastTick);
+        const counted = Math.min(gap, 2 * AWAKE_TICK_MS);
+        lastTick = now;
+        awakeMs += counted;
+        if (gap > counted) turnLog(`turn: machine slept ~${sleptFor(gap - counted)}, not counted`);
+        if (awakeMs >= timeoutMs) {
+          timedOut = true;
+          kill(`claude timed out after ${Math.round(timeoutMs / 60000)} min — killing`);
+          return;
+        }
+        if (warnAt !== null && !warned && awakeMs >= warnAt && phase.tag === 'running') {
+          warned = true;
+          turnLog(`claude running ${Math.round(awakeMs / 60000)} min — warning the caller`);
           try {
-            o.onWarn?.({ elapsedMs: clock.now() - startedAt, leftMs: warnBeforeMs });
+            o.onWarn?.({ elapsedMs: awakeMs, leftMs: timeoutMs - awakeMs });
           } catch (e) {
             turnLog(`timeout warning failed: ${(e as Error).message}`);
           }
-        });
+        }
+        schedule();
+      };
+      // The next tick never lands past the warning or the kill, so on a clock
+      // that does not sleep both fire to the millisecond.
+      const schedule = (): void => {
+        const toWarn = warnAt !== null && !warned && warnAt > awakeMs ? warnAt - awakeMs : Infinity;
+        cancelTick = scope.after(Math.min(AWAKE_TICK_MS, timeoutMs - awakeMs, toWarn), tick);
+      };
+      schedule();
+      const cancelKiller = (): void => cancelTick();
 
       scope.onAbort(o.signal, () => kill('aborted by the caller — killing'));
 
