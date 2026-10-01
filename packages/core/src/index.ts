@@ -36,6 +36,7 @@ export type {
 } from './turn-outcome.ts';
 
 export {
+  AWAKE_TICK_MS,
   ClaudeHeadlessDriver,
   DEFAULT_TIMEOUT_MS,
   DISALLOWED_TOOLS,
@@ -47,6 +48,9 @@ export {
   stdinLine,
 } from './claude-driver.ts';
 export type { ClaudeDriverOptions } from './claude-driver.ts';
+
+export { KEEP_AWAKE_ENV, holdAwake, keepAwakeWanted } from './keep-awake.ts';
+export type { KeepAwake, Spawner } from './keep-awake.ts';
 
 export { PayloadSchema, StreamReader } from './stream.ts';
 export type { ClaudePayload } from './stream.ts';

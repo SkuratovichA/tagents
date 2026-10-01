@@ -65,6 +65,15 @@ export class TurnScope {
     this.owned.add(() => signal.removeEventListener('abort', fn));
   }
 
+  /** Any other teardown the scope owns, run on dispose. On a disposed scope it runs at once. Must not throw. */
+  own(release: () => void): void {
+    if (this.closed) {
+      release();
+      return;
+    }
+    this.owned.add(release);
+  }
+
   /** Tear down everything still owned. Returns false if it had already been disposed. */
   dispose(): boolean {
     if (this.closed) return false;
