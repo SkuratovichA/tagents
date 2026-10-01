@@ -135,6 +135,22 @@ test('an hour asleep under the turn is not counted: the warning and the kill wai
   assert.equal(turn.clock.pending, 0, 'nothing outlives the turn');
 });
 
+test('a warning that lands late still reports leftMs as warnBeforeMs, the figure callers pin', async () => {
+  const warns: Array<{ elapsedMs: number; leftMs: number }> = [];
+  const turn = start(fake({ tools: ['Bash'], result: null, hang: true }), { onWarn: (w) => warns.push(w) });
+  await turn.seen('tool_use');
+
+  const warnAt = DEFAULT_TIMEOUT_MS - TIMEOUT_WARN_BEFORE_MS;
+  turn.clock.advance(warnAt - AWAKE_TICK_MS);
+  // The tick due at 45:00 fires at 45:25 and counts two ticks of the gap.
+  turn.clock.sleep(35 * 1000);
+  assert.deepEqual(warns, [{ elapsedMs: warnAt + AWAKE_TICK_MS, leftMs: TIMEOUT_WARN_BEFORE_MS }]);
+  assert.match(turn.log.join('\n'), /^turn: machine slept ~15 s, not counted$/m);
+
+  turn.clock.advance(TIMEOUT_WARN_BEFORE_MS);
+  assert.equal((await turn.outcome).kind, 'timeout');
+});
+
 test('ninety awake minutes do kill a 90-minute turn, under the line the callers key on', async () => {
   const turn = start(fake({ tools: ['Bash'], result: null, hang: true }), { timeoutMs: 90 * MIN });
   await turn.seen('tool_use');

@@ -95,7 +95,7 @@ session id; the only thing that runs is a prompt.
 while that turn runs. Without it they go to the driver's own `log`, which a
 process running turns in parallel would have to share between all of them.
 
-`timeoutMs` and the `onWarn` figures count **awake time**: a tick every `AWAKE_TICK_MS` (10 s) adds the time since the previous one, capped at two ticks, so a laptop that sleeps under a turn does not spend its limit asleep, and each sleep gets one `turn: machine slept ~N min, not counted` line. On macOS the driver also runs `caffeinate -i -w <child pid>` for the length of every turn — an idle-sleep assertion, which does not hold a machine whose lid is closed. `TA_KEEP_AWAKE=0` or `keepAwake: null` in the driver options turns it off, and a missing `caffeinate` is one log line, never a failed turn.
+`timeoutMs` and `onWarn`'s `elapsedMs` count **awake time** (`leftMs` stays `warnBeforeMs`): a tick every `AWAKE_TICK_MS` (10 s) adds the time since the previous one, capped at two ticks, so a laptop that sleeps under a turn does not spend its limit asleep, and each sleep gets one `turn: machine slept ~N min, not counted` line. On macOS the driver also runs `caffeinate -i -w <child pid>` for the length of every turn — an idle-sleep assertion, which does not hold a machine whose lid is closed. `TA_KEEP_AWAKE=0` or `keepAwake: null` in the driver options turns it off, and a missing `caffeinate` is one log line, never a failed turn.
 
 **`configDir` is tri-state**, and the three states mean different accounts:
 
