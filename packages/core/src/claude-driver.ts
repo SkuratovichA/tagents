@@ -283,7 +283,8 @@ export class ClaudeHeadlessDriver implements SessionDriver {
           warned = true;
           turnLog(`claude running ${Math.round(awakeMs / 60000)} min — warning the caller`);
           try {
-            o.onWarn?.({ elapsedMs: awakeMs, leftMs: timeoutMs - awakeMs });
+            // leftMs stays the nominal window: callers pin it (the orchestrator's turn test does).
+            o.onWarn?.({ elapsedMs: awakeMs, leftMs: warnBeforeMs });
           } catch (e) {
             turnLog(`timeout warning failed: ${(e as Error).message}`);
           }

@@ -93,7 +93,7 @@ export interface PromptOptions {
   readonly timeoutMs: number;
   /** Fire `onWarn` this long before the kill. */
   readonly warnBeforeMs?: number;
-  /** `elapsedMs` and `leftMs` are awake time, the measure `timeoutMs` is in. */
+  /** `elapsedMs` is awake time, the measure `timeoutMs` is in; `leftMs` is `warnBeforeMs`, even when the warning lands a little late. */
   readonly onWarn?: (info: { elapsedMs: number; leftMs: number }) => void;
   /** How long a child may take to leave AFTER printing its result. */
   readonly exitGraceMs?: number;
