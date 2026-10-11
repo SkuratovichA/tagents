@@ -144,3 +144,6 @@ never shows) and D6c's live-over-dead rank in the session-id map (livesid had al
 corpse before the map was built, so the rank was dead code). The reviewer's mutation check caught both;
 the rank went, and the comments now say what each fixture actually pins. For every "this test pins X",
 remove X once and run the suite before calling it a test.
+
+## A suite written on main while a branch was out misses that branch's setup (11.10.2026)
+`tests/resurrect.sh` landed on main after child-sessions branched, so it never got the `unset CLAUDE_PID` the branch gave every suite that plays the hook from a stub; rebased, 42 of its checks failed because the hook classified the stubs against the real Claude session running the suite. A clean textual rebase proves nothing about files only one side knew: run every suite afterwards, and run the failing one on main as the control — ten other checks there fail on main too, and were not this branch's. Also: the root `pnpm typecheck` nests a second pnpm that resolves 9.1.4 on this machine and stops on `ERR_PNPM_BAD_PM_VERSION`; `pnpm -r typecheck` and `pnpm -r test` run the same gates.

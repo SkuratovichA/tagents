@@ -117,6 +117,8 @@ export TA_SESSION=tatest-dash
 export TA_CONFIG="$CFG"
 unset TMUX TMUX_PANE TA_MODE TA_FLAT TA_COLS TA_NEW_CMD TA_RESUME_CMD TA_HOME
 unset CLAUDE_CONFIG_DIR TA_RESURRECT_EVERY TA_RESURRECT_KEEP TA_RESURRECT_YOUNG TA_RESURRECT_SOON
+# The suite runs inside a real Claude session, which exports this; the hook reads it as "the claude I am running inside" and would classify the stubs against that session's ancestry (see tests/launch.sh).
+unset CLAUDE_PID
 # The capture a restore leaves behind lands a second later instead of fifteen, so a test can wait for it rather than have it land in the middle of a later one.
 # A server the suite starts stays "young" for the whole run however slow the box is, so the one "not a boot" check sets its own TA_RESURRECT_YOUNG inline.
 export TA_RESURRECT_RETAKE=1 TA_RESURRECT_YOUNG=3600
