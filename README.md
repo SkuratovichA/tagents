@@ -40,6 +40,8 @@ all.
 | `packages/core/` | `@tagents/core`, the TypeScript package for **headless** sessions |
 | `packages/knowledge/` | [`@tagents/knowledge`](packages/knowledge/README.md), the owner's notes as markdown documents with an FTS5 index, a `tagents-knowledge` CLI and an MCP server |
 | `packages/telegram/` | [`@tagents/telegram`](packages/telegram/README.md), the Telegram Bot API typed and small — one client for every plugin that has a bot token |
+| `packages/contract/` | `@tagents/contract`, private — generates the contract of the [Claude Code plugin](#the-claude-code-plugin) from the code and moves the plugin's version |
+| `.claude-plugin/`, `skills/tagents/`, `contract.json` | the [Claude Code plugin](#the-claude-code-plugin): its manifest, its skill, and the contract generated from the code |
 
 They are one system. The hook writes a record per session into
 `~/.claude/agent-state/`; `tagents` joins that with the live tmux pane list and
@@ -82,6 +84,31 @@ loads exactly what that map names and never scans `node_modules`, because
 scanning is how a machine ends up running code nobody chose. `tagents plugin
 new <name>` scaffolds a package that is already a plugin and typechecks as
 written. See [packages/core/README.md](packages/core/README.md#plugins).
+
+## The Claude Code plugin
+
+This repo is also a Claude Code plugin, and its own marketplace:
+
+```
+/plugin install tagents --marketplace SkuratovichA/tagents
+```
+
+That one line needs Claude Code 2.1.275 or later; before it, `/plugin marketplace add SkuratovichA/tagents` and then `/plugin install tagents@tagents`.
+
+It gives a session the `tagents` skill, which is the contract described below, and registers `tagents-knowledge mcp` as the `knowledge` MCP server, so `tagents-knowledge` has to be on `$PATH`. If that server is already registered by hand with `claude mcp add`, remove the hand-made entry or its tools appear twice. The plugin registers no hooks: the state hook and the status line stay steps 3 and 4 of [Install](#install), because a plugin cannot set a status line.
+
+**The contract is generated, never written.** `pnpm plugin:gen` reads four things out of the code and rewrites `contract.json` and `skills/tagents/references/`:
+
+| what | read from | lands in |
+|------|-----------|----------|
+| every verb, flag and exit code of `tagents-core` and `tagents-knowledge` | the command specs `parseArgs` itself is handed, `packages/*/src/cli/spec.ts` | `contract.json`, `references/cli.md` |
+| every MCP tool and its input schema | the server `createServer()` builds, asked for its tool list the way a client asks | `contract.json`, `references/mcp.md` |
+| the public TypeScript API of each package | declarations emitted from the sources, through [API Extractor](https://api-extractor.com/) | `references/*.api.md`, and a hash of each in `contract.json` |
+| the flags of `tagents`, `tusage` and `tnotes` | each script's own `--help` | `references/scripts.md` |
+
+**The version moves by itself.** `plugin.json` carries a digest of everything the plugin ships: the generated files, the skill and the manifests. When a regeneration changes that digest, the version moves with it — a minor bump when the structure of the contract changed (a verb, a flag, a tool, a schema, an exported signature), a patch bump when only text did. The bash scripts have no spec to read, so a change in their help counts as text. Text that is part of an exported type is a signature: `@tagents/core` and `@tagents/knowledge` export their string tables with literal types, so an edited message there is a minor bump too. An installed plugin stays on its version until the version changes, which is why the bump is not left to memory.
+
+**Three things keep it honest.** `.githooks/pre-commit`, switched on for the clone by `pnpm install` unless the clone already has a `core.hooksPath` of its own, regenerates when a commit touches a source of the contract and adds the result to that same commit; when the regeneration itself fails, the commit is refused. `pnpm test` fails when the files on disk are stale. CI runs `pnpm plugin:check` and `claude plugin validate --strict`. Two branches that both moved the version conflict on `version` and `digest` in `plugin.json`: take either side and run `pnpm plugin:gen`.
 
 ## Install
 
