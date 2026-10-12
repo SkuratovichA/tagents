@@ -120,3 +120,15 @@ A stub `claude` written as `exec sleep 600` turns the pane's current command int
 
 ## A variadic CLI option swallows the prompt that follows it (15.09.2026)
 `claude -p` declares `--disallowedTools <tools...>` and `--mcp-config <configs...>` as variadic: they keep taking argv words until the next option. buildArgs() put `--disallowedTools` last, so on every fresh session (no `--resume`) the prompt became one more "permission deny rule" and the CLI exited 1 with "Input must be provided either through stdin or as a prompt argument" — the busano ticket agent lost every batch after the port and no test caught it because the argv test only pinned the resumed case. A variadic option goes in front of an option that is always present (`--output-format`), and the test now walks every spec × {resume, fresh} and asserts each variadic flag is followed by one value and then an option.
+
+## API Extractor reads any `.d.ts` under a `node_modules` path as someone else's package (12.10.2026)
+The declarations for the API reports were first emitted into `packages/<name>/node_modules/.cache/`, because it is git-ignored and keeps `@tagents/core` resolvable. API Extractor treats every file under a `node_modules` segment as external, so each export came out as a bare re-export and the report held no API at all. The cache lives in `packages/contract/.cache/` instead, one `mkdtemp` directory per call: two test files run as parallel processes, and a shared directory let one delete the other's declarations.
+
+## API Extractor resolves `types` from the working directory when it is only given a tsconfig path (12.10.2026)
+With `compiler.tsconfigFilePath`, `types: ["node"]` was looked up from `process.cwd()`: the test passed from `packages/contract` and the generator, started from the repo root, died with `Unable to follow symbol for "AbortSignal"`. `compiler.overrideTsconfig` with an explicit `typeRoots` makes it independent of where it is started, and the test now runs the call from two other working directories in child processes. A tool that runs from a hook, from CI and from a test has three working directories, and the test has to use more than one of them.
+
+## `tusage --help` creates its state directory and needs jq before it prints anything (12.10.2026)
+The generator ran the three scripts for their help with the real `HOME`, so a check that promised to write nothing ran `mkdir -p ~/.claude/agent-state/usage` on every commit, and with a hand-made `PATH=/usr/bin:/bin` it would have failed on a machine whose jq lives elsewhere. A script run only for its text gets a throwaway `HOME` and the caller's own `PATH`.
+
+## In zsh an unquoted variable holding a command line is one word (12.10.2026)
+A scratch test of the pre-commit hook kept `G="git -c user.name=… commit"` and ran `$G -qam …`; zsh does not split it, so every commit exited 127 and the lines after it reported the previous commit as if it were the new one. A shell function does what the variable was meant to, and its name must not be an alias already defined in the profile (`g` is).
