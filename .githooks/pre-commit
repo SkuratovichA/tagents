@@ -1,0 +1,21 @@
+#!/bin/sh
+# Regenerates the Claude Code plugin contract when a commit touches what the contract is generated from, and puts the result into that same commit. The stale check in `pnpm test` and in CI catches a commit made without this hook.
+#
+# The generator reads the working tree, not the index: a partially staged file contributes all of itself.
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+git diff --cached --name-only --diff-filter=ACMRD |
+  grep -q -E '^(packages/[^/]+/(src/|package\.json$|tsconfig[^/]*\.json$)|pnpm-lock\.yaml$|tagents$|tusage$|tnotes$|skills/|\.claude-plugin/|contract\.json$)' || exit 0
+
+if [ ! -d packages/contract/node_modules ]; then
+  echo 'pre-commit: packages/contract has no node_modules, so the plugin contract was not regenerated. Run pnpm install, then node packages/contract/src/main.ts.' >&2
+  exit 0
+fi
+
+if ! node packages/contract/src/main.ts; then
+  echo 'pre-commit: the plugin contract could not be regenerated, so nothing was committed. If the error above names a missing export of a workspace package, its dist is stale: run pnpm -r build.' >&2
+  exit 1
+fi
+
+git add -A -- contract.json .claude-plugin/plugin.json 'skills/tagents/references/*.md'

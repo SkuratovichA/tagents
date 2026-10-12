@@ -1,0 +1,24 @@
+{
+  "name": "@tagents/contract",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Generates the Claude Code plugin's contract from the code — the CLI verbs and flags, the MCP tool schemas, the public TypeScript API and the scripts' help — and bumps the plugin version when what the plugin ships changes",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@microsoft/api-extractor": "^7.59.4",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@tagents/core": "workspace:*",
+    "@tagents/knowledge": "workspace:*",
+    "@tagents/telegram": "workspace:*",
+    "@types/node": "^22",
+    "typescript": "5.9.3"
+  }
+}

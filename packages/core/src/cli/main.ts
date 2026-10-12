@@ -37,6 +37,7 @@ import { formatAttemptError, type TurnOutcome } from '../turn-outcome.ts';
 import { EXIT, json, type Io } from './exit.ts';
 import { plugin } from './plugin.ts';
 import { runPluginCommand } from './plugin-run.ts';
+import { SESSION_LIST, SESSION_OPEN, SESSION_PROMPT } from './spec.ts';
 
 export { EXIT, type Io };
 
@@ -55,18 +56,7 @@ async function session(argv: string[], io: Io, t: CoreT): Promise<number> {
   if (verb === 'open') {
     const { values } = parseArgs({
       args: rest,
-      options: {
-        cwd: { type: 'string' },
-        label: { type: 'string' },
-        model: { type: 'string' },
-        effort: { type: 'string' },
-        resume: { type: 'string' },
-        'system-prompt-file': { type: 'string' },
-        'mcp-config': { type: 'string' },
-        'config-dir': { type: 'string' },
-        'no-config-dir': { type: 'boolean' },
-        'skip-permissions': { type: 'boolean' },
-      },
+      options: SESSION_OPEN.options,
       strict: true,
       allowPositionals: false,
     });
@@ -97,11 +87,7 @@ async function session(argv: string[], io: Io, t: CoreT): Promise<number> {
   if (verb === 'prompt') {
     const { values, positionals } = parseArgs({
       args: rest,
-      options: {
-        timeout: { type: 'string' },
-        'warn-before': { type: 'string' },
-        events: { type: 'boolean' },
-      },
+      options: SESSION_PROMPT.options,
       strict: true,
       allowPositionals: true,
     });
@@ -149,7 +135,7 @@ async function session(argv: string[], io: Io, t: CoreT): Promise<number> {
   if (verb === 'list') {
     const { values } = parseArgs({
       args: rest,
-      options: { label: { type: 'string' }, state: { type: 'string', multiple: true } },
+      options: SESSION_LIST.options,
       strict: true,
       allowPositionals: false,
     });
