@@ -37,4 +37,10 @@ export const ru = {
   issueStale: 'updated {{updated}} старее последнего коммита по файлу ({{commit}})',
   issueGenerated: 'источник generated_from {{source}} изменён {{changed}}, позже updated {{updated}}',
   issueDeadLink: 'битая ссылка [[{{target}}]]',
+  summaryIndex: 'приводит индекс в соответствие с папкой; --full пересобирает его с нуля',
+  summarySearch: 'печатает по строке на совпадение: id#заголовок, оценку и фрагмент',
+  summaryShow: 'печатает markdown документа или одного его раздела',
+  summaryList: 'печатает по строке на документ: id, вид, дату обновления, заголовок и теги',
+  summaryLint: 'проверяет то, что каждый документ утверждает о себе',
+  summaryMcp: 'отдаёт инструменты знаний по stdio как MCP-сервер',
 } as const;
