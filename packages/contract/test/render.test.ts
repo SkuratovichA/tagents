@@ -5,7 +5,7 @@ import { createT } from '../src/i18n/index.ts';
 import { renderCli, renderMcp, renderScripts, schemaType, usageLine } from '../src/render.ts';
 import { sampleCli, sampleHelp, sampleServer, sampleTool } from './sample.ts';
 
-const t = createT('en');
+const t = createT();
 
 test('every verb path and every flag of the contract is in cli.md', () => {
   const md = renderCli([sampleCli], t);

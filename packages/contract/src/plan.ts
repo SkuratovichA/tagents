@@ -35,9 +35,9 @@ export interface Plan {
 const text = (content: string | Uint8Array): string =>
   typeof content === 'string' ? content : Buffer.from(content).toString('utf8');
 
-/** The references and contract.json, rendered in English whatever the machine's locale is. */
+/** The references and contract.json, rendered in English. */
 export function generatedFiles(sources: Sources, contract: JsonObject = buildContract(sources)): ReadonlyMap<string, string> {
-  const t = createT('en');
+  const t = createT();
   return new Map<string, string>([
     [CONTRACT_FILE, stringifyJson(contract)],
     [`${REFERENCES_DIR}/cli.md`, renderCli(sources.cli, t)],
@@ -94,8 +94,8 @@ function withOwnKeys(plugin: JsonObject, version: string, digest: string, t: Tra
   return Object.fromEntries('metadata' in plugin ? entries : [...entries, ['metadata', metadata]]);
 }
 
-/** `t` words the errors only: what is rendered into the tree is English whatever it is. */
-export function planGenerate(sources: Sources, disk: Disk, t: Translate = createT('en')): Plan {
+/** `t` words the errors only; everything rendered into the tree is English. */
+export function planGenerate(sources: Sources, disk: Disk, t: Translate = createT()): Plan {
   const contract = buildContract(sources);
   const generated = generatedFiles(sources, contract);
   const plugin = readPlugin(disk, t);

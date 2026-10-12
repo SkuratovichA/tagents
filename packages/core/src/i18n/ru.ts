@@ -1,5 +1,8 @@
 // Русские строки CLI. Машинный вывод (JSON и текст sessions.*) не переводится.
-export const ru = {
+import type { en } from './en.ts';
+
+// Typed by its keys only: the table is exported through `resources`, and literal types would make every Russian string part of the package's public type.
+export const ru: Partial<Record<keyof typeof en, string>> = {
   usage: [
     'использование: tagents-core <команда>',
     '',
@@ -52,17 +55,4 @@ export const ru = {
   doctorClaude: 'claude: {{status}}',
   present: 'есть',
   missing: 'нет',
-  summarySessionOpen: 'запускает фоновую сессию Claude и печатает её SessionRef в JSON',
-  summarySessionPrompt: 'отправляет сессии один запрос и печатает TurnOutcome в JSON; с --events — события NDJSON, итог последним',
-  summarySessionLast: 'печатает последний ответ ассистента в сессии и его время в JSON, либо null',
-  summarySessionList: 'печатает известные сессии как JSON-массив SessionRef, с фильтром по метке и состоянию',
-  summarySessionAbort: 'останавливает ход, идущий в сессии, и печатает в JSON, удалось ли это, вместе с id и pid',
-  summarySessionsRecent: 'печатает последние транскрипты текстом',
-  summarySessionsSearch: 'печатает транскрипты, подходящие под слова, текстом',
-  summarySessionsShow: 'печатает полный текст одного транскрипта по префиксу id',
-  summaryPluginList: 'перечисляет настроенные плагины и что каждый даёт: строками или, с --json, одним JSON-документом',
-  summaryPluginAdd: 'проверяет манифест пакета и записывает плагин в config.yaml',
-  summaryPluginRemove: 'убирает запись о плагине из config.yaml',
-  summaryPluginNew: 'создаёт заготовку пакета, который уже является плагином',
-  summaryDoctor: 'печатает версию node, каталог состояния, конфиг и наличие claude в PATH',
-} as const;
+};

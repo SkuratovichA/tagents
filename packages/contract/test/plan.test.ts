@@ -9,7 +9,7 @@ import { REFERENCES_DIR, planGenerate, type Disk } from '../src/plan.ts';
 import type { Sources } from '../src/types.ts';
 import { SAMPLE_PLUGIN, applied, sampleCli, sampleDisk, sampleSources } from './sample.ts';
 
-const t = createT('en');
+const t = createT();
 const PLUGIN = '.claude-plugin/plugin.json';
 
 function pluginOf(disk: Disk): Record<string, unknown> {

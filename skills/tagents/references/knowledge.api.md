@@ -305,34 +305,7 @@ export const resources: {
         };
     };
     readonly ru: {
-        readonly knowledge: {
-            readonly usage: string;
-            readonly unknownCommand: "неизвестная команда: {{command}}";
-            readonly missingOption: "не хватает обязательного аргумента {{option}}";
-            readonly noDir: string;
-            readonly missingDir: "каталог знаний {{dir}} не существует";
-            readonly indexed: "проиндексировано {{db}}: новых {{added}}, изменённых {{changed}}, без изменений {{unchanged}}, удалено {{removed}}";
-            readonly indexErrors: "файлов не прочитано: {{count}}; запустите lint";
-            readonly notIndexed: "индекс {{db}} пуст — выполните: tagents-knowledge index";
-            readonly noHits: "ничего не найдено по запросу {{query}}";
-            readonly unknownId: "нет документа с id {{id}}";
-            readonly unknownHeading: "в документе {{id}} нет раздела «{{heading}}»";
-            readonly noDocs: "в каталоге {{dir}} нет документов";
-            readonly lintClean: "документов в {{dir}}: {{count}}, проблем нет";
-            readonly lintProblems: "проблем в {{dir}}: {{count}}";
-            readonly issueFrontmatter: "некорректный frontmatter — {{detail}}";
-            readonly issueStem: "id «{{id}}» должен совпадать с именем файла «{{stem}}»";
-            readonly issueDuplicateId: "дублирующийся id «{{id}}», уже занят {{other}}";
-            readonly issueStale: "updated {{updated}} старее последнего коммита по файлу ({{commit}})";
-            readonly issueGenerated: "источник generated_from {{source}} изменён {{changed}}, позже updated {{updated}}";
-            readonly issueDeadLink: "битая ссылка [[{{target}}]]";
-            readonly summaryIndex: "приводит индекс в соответствие с папкой; --full пересобирает его с нуля";
-            readonly summarySearch: "печатает по строке на совпадение: id#заголовок, оценку и фрагмент";
-            readonly summaryShow: "печатает markdown документа или одного его раздела";
-            readonly summaryList: "печатает по строке на документ: id, вид, дату обновления, заголовок и теги";
-            readonly summaryLint: "проверяет то, что каждый документ утверждает о себе";
-            readonly summaryMcp: "отдаёт инструменты знаний по stdio как MCP-сервер";
-        };
+        readonly knowledge: Partial<Record<"usage" | "unknownCommand" | "missingOption" | "noDir" | "missingDir" | "indexed" | "indexErrors" | "notIndexed" | "noHits" | "unknownId" | "unknownHeading" | "noDocs" | "lintClean" | "lintProblems" | "issueFrontmatter" | "issueStem" | "issueDuplicateId" | "issueStale" | "issueGenerated" | "issueDeadLink" | "summaryIndex" | "summarySearch" | "summaryShow" | "summaryList" | "summaryLint" | "summaryMcp", string>>;
     };
 };
 

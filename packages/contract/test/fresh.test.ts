@@ -7,6 +7,6 @@ import { createT } from '../src/i18n/index.ts';
 import { REPO_ROOT, planTree, staleLines } from '../src/tree.ts';
 
 test('the plugin contract on disk is what the code generates', async () => {
-  const plan = await planTree(REPO_ROOT, createT('en'));
-  assert.deepEqual(staleLines(plan, createT('en')), []);
+  const plan = await planTree(REPO_ROOT, createT());
+  assert.deepEqual(staleLines(plan, createT()), []);
 });

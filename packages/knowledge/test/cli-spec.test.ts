@@ -122,8 +122,12 @@ test('knowledgeCliContract lists every verb with a non-empty English summary', (
   }
 });
 
-test('en and ru hold the same keys', () => {
-  assert.deepEqual(Object.keys(ru).sort(), Object.keys(en).sort());
+test('ru holds only keys that en holds, and no summary*: the contract is English', () => {
+  const enKeys = new Set(Object.keys(en));
+  for (const key of Object.keys(ru)) {
+    assert.ok(enKeys.has(key), `${key} is in ru but not in en`);
+    assert.ok(!key.startsWith('summary'), `${key} must not be translated`);
+  }
 });
 
 test('knowledgeCliContract is English whatever the machine speaks', () => {
