@@ -24,6 +24,7 @@ import {
 } from '../plugin-config.ts';
 import { EXIT, json, type Io } from './exit.ts';
 import { scaffoldFiles } from './scaffold.ts';
+import { PLUGIN_ADD, PLUGIN_LIST, PLUGIN_NEW, PLUGIN_REMOVE } from './spec.ts';
 
 /** A config key and a directory name, so it is typeable and greppable. */
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -33,7 +34,7 @@ const listOr = (names: readonly string[] | undefined): string => (names?.length 
 async function list(argv: string[], io: Io, t: CoreT): Promise<number> {
   const { values } = parseArgs({
     args: argv,
-    options: { json: { type: 'boolean' } },
+    options: PLUGIN_LIST.options,
     strict: true,
     allowPositionals: false,
   });
@@ -82,7 +83,7 @@ async function list(argv: string[], io: Io, t: CoreT): Promise<number> {
 function add(argv: string[], io: Io, t: CoreT, cwd: string): number {
   const { values, positionals } = parseArgs({
     args: argv,
-    options: { name: { type: 'string' } },
+    options: PLUGIN_ADD.options,
     strict: true,
     allowPositionals: true,
   });
@@ -120,7 +121,7 @@ function add(argv: string[], io: Io, t: CoreT, cwd: string): number {
 }
 
 function remove(argv: string[], io: Io, t: CoreT): number {
-  const { positionals } = parseArgs({ args: argv, options: {}, strict: true, allowPositionals: true });
+  const { positionals } = parseArgs({ args: argv, options: PLUGIN_REMOVE.options, strict: true, allowPositionals: true });
   const name = positionals[0];
   if (name === undefined) {
     io.err(`${t('missingOption', { option: '<name>' })}\n`);
@@ -138,7 +139,7 @@ function remove(argv: string[], io: Io, t: CoreT): number {
 function create(argv: string[], io: Io, t: CoreT, cwd: string): number {
   const { values, positionals } = parseArgs({
     args: argv,
-    options: { dir: { type: 'string' } },
+    options: PLUGIN_NEW.options,
     strict: true,
     allowPositionals: true,
   });

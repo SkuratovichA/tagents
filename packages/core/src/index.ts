@@ -120,6 +120,7 @@ export type { AddOutcome, PackageProblem, PluginPackage, RemoveOutcome, ResolveR
 
 export { DEFAULT_LOCALE, createI18n, createT, isLocale, resources } from './i18n/index.ts';
 export type { CoreResource, Locale } from './i18n/index.ts';
+export type { CliContract, CommandSpec } from './cli/spec.ts';
 
 export { drained, fakeClaude, sleep, tmpDir } from './testkit.ts';
 export type { FakeClaude, FakeResult, FakeScript, FakeStdin, FakeToolCall } from './testkit.ts';
