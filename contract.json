@@ -1,0 +1,468 @@
+{
+  "contractVersion": 1,
+  "cli": {
+    "tagents-core": {
+      "exit": {
+        "ok": 0,
+        "error": 1,
+        "usage": 2,
+        "refused": 3,
+        "timeout": 4
+      },
+      "commands": [
+        {
+          "path": [
+            "session",
+            "open"
+          ],
+          "positionals": [],
+          "options": {
+            "cwd": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "effort": {
+              "type": "string"
+            },
+            "resume": {
+              "type": "string"
+            },
+            "system-prompt-file": {
+              "type": "string"
+            },
+            "mcp-config": {
+              "type": "string"
+            },
+            "config-dir": {
+              "type": "string"
+            },
+            "no-config-dir": {
+              "type": "boolean"
+            },
+            "skip-permissions": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "cwd"
+          ],
+          "summary": "starts a headless Claude session and prints its SessionRef as JSON"
+        },
+        {
+          "path": [
+            "session",
+            "prompt"
+          ],
+          "positionals": [
+            "<ref-json-or-id>",
+            "<text>"
+          ],
+          "options": {
+            "timeout": {
+              "type": "string"
+            },
+            "warn-before": {
+              "type": "string"
+            },
+            "events": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "summary": "sends one prompt to a session and prints the TurnOutcome as JSON; with --events, NDJSON events with the outcome last"
+        },
+        {
+          "path": [
+            "session",
+            "last"
+          ],
+          "positionals": [
+            "<ref-json-or-id>"
+          ],
+          "options": {},
+          "required": [],
+          "summary": "prints the last assistant text of a session and when it came, as JSON, or null"
+        },
+        {
+          "path": [
+            "session",
+            "list"
+          ],
+          "positionals": [],
+          "options": {
+            "label": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string",
+              "multiple": true
+            }
+          },
+          "required": [],
+          "summary": "prints the known sessions as a JSON array of SessionRef, filtered by label and state"
+        },
+        {
+          "path": [
+            "session",
+            "abort"
+          ],
+          "positionals": [
+            "<ref-json-or-id>"
+          ],
+          "options": {},
+          "required": [],
+          "summary": "stops the turn running in a session and prints whether it did, with the id and pid, as JSON"
+        },
+        {
+          "path": [
+            "sessions",
+            "recent"
+          ],
+          "positionals": [
+            "[N]"
+          ],
+          "options": {},
+          "required": [],
+          "summary": "prints the most recent transcripts as text"
+        },
+        {
+          "path": [
+            "sessions",
+            "search"
+          ],
+          "positionals": [
+            "<words…>"
+          ],
+          "options": {},
+          "required": [],
+          "summary": "prints the transcripts that match the words, as text"
+        },
+        {
+          "path": [
+            "sessions",
+            "show"
+          ],
+          "positionals": [
+            "<id-prefix>"
+          ],
+          "options": {},
+          "required": [],
+          "summary": "prints the full text of one transcript, picked by id prefix"
+        },
+        {
+          "path": [
+            "plugin",
+            "list"
+          ],
+          "positionals": [],
+          "options": {
+            "json": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "summary": "lists the configured plugins and what each offers, as lines or with --json one JSON document"
+        },
+        {
+          "path": [
+            "plugin",
+            "add"
+          ],
+          "positionals": [
+            "<package-or-path>"
+          ],
+          "options": {
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "summary": "validates a package manifest and writes the plugin into config.yaml"
+        },
+        {
+          "path": [
+            "plugin",
+            "remove"
+          ],
+          "positionals": [
+            "<name>"
+          ],
+          "options": {},
+          "required": [],
+          "summary": "takes one plugin entry back out of config.yaml"
+        },
+        {
+          "path": [
+            "plugin",
+            "new"
+          ],
+          "positionals": [
+            "<name>"
+          ],
+          "options": {
+            "dir": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "summary": "scaffolds a package that is already a plugin"
+        },
+        {
+          "path": [
+            "doctor"
+          ],
+          "positionals": [],
+          "options": {},
+          "required": [],
+          "summary": "prints the node version, the state directory, the config file and whether claude is on PATH"
+        }
+      ]
+    },
+    "tagents-knowledge": {
+      "exit": {
+        "ok": 0,
+        "error": 1,
+        "usage": 2,
+        "notFound": 4
+      },
+      "commands": [
+        {
+          "path": [
+            "index"
+          ],
+          "positionals": [],
+          "options": {
+            "dir": {
+              "type": "string"
+            },
+            "db": {
+              "type": "string"
+            },
+            "full": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "summary": "brings the index in line with the folder; --full rebuilds it from nothing"
+        },
+        {
+          "path": [
+            "search"
+          ],
+          "positionals": [
+            "<query…>"
+          ],
+          "options": {
+            "dir": {
+              "type": "string"
+            },
+            "db": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "limit": {
+              "type": "string"
+            },
+            "json": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "summary": "prints one line per hit: id#heading, score and snippet"
+        },
+        {
+          "path": [
+            "show"
+          ],
+          "positionals": [
+            "<id[#heading]>"
+          ],
+          "options": {
+            "dir": {
+              "type": "string"
+            },
+            "db": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "summary": "prints the markdown of a document, or of one section of it"
+        },
+        {
+          "path": [
+            "list"
+          ],
+          "positionals": [],
+          "options": {
+            "dir": {
+              "type": "string"
+            },
+            "db": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "json": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "summary": "prints one line per document: id, kind, updated, title and tags"
+        },
+        {
+          "path": [
+            "lint"
+          ],
+          "positionals": [],
+          "options": {
+            "dir": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "summary": "checks the claims each document makes about itself"
+        },
+        {
+          "path": [
+            "mcp"
+          ],
+          "positionals": [],
+          "options": {},
+          "required": [],
+          "summary": "serves the knowledge tools over stdio as an MCP server"
+        }
+      ]
+    }
+  },
+  "mcp": {
+    "tagents-knowledge": {
+      "tools": [
+        {
+          "name": "knowledge_get",
+          "description": "The markdown of one document by id, or of a single \"## \" section when heading is given.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "document id, the filename stem"
+              },
+              "heading": {
+                "description": "a \"## \" heading inside that document; omit for the whole document",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        },
+        {
+          "name": "knowledge_list",
+          "description": "Every document as JSON: id, title, kind, tags, updated, path, headings.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "description": "only this kind (cheatsheet | runbook | map | decision | note)",
+                "type": "string"
+              },
+              "tag": {
+                "description": "only documents carrying this tag",
+                "type": "string"
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        },
+        {
+          "name": "knowledge_search",
+          "description": "Full-text search over the owner's knowledge documents (Russian and English). Returns the matching sections as JSON: id, title, heading, score, snippet, path. Read a whole section with knowledge_get.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string",
+                "minLength": 1,
+                "description": "words to look for; all of them must appear"
+              },
+              "tag": {
+                "description": "only documents carrying this tag",
+                "type": "string"
+              },
+              "kind": {
+                "description": "only documents of this kind (cheatsheet | runbook | map | decision | note)",
+                "type": "string"
+              },
+              "limit": {
+                "description": "how many sections (default 10)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 50
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        },
+        {
+          "name": "sessions_recent",
+          "description": "The latest sessions across every Claude account on this machine, newest first — the same text the sessions CLI prints.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "limit": {
+                "description": "how many (default 15)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 50
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        },
+        {
+          "name": "sessions_search",
+          "description": "Sessions whose project path or opening prompt contains every one of these words — the same text the sessions CLI prints.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "words": {
+                "type": "string",
+                "minLength": 1,
+                "description": "words that must all appear"
+              }
+            },
+            "required": [
+              "words"
+            ],
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        }
+      ]
+    }
+  },
+  "api": {
+    "@tagents/core": "sha256:39e66dcf455ed56229b86723aefc41fc3ab1e5c5272aa766e978736d10743280",
+    "@tagents/knowledge": "sha256:47fbab5339872906acab73146fcbaa64bbf7e87740c4ca1c5c5e9c8ce71b7b3d",
+    "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"
+  }
+}
