@@ -13,6 +13,8 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
+import { EXIT } from './exit.ts';
+import { INDEX, LINT, LIST, SEARCH, SHOW } from './spec.ts';
 import { openDb, reindex, silenceSqliteWarning } from '../db.ts';
 import { createT, type Translate } from '../i18n/index.ts';
 import { lint } from '../lint.ts';
@@ -20,7 +22,7 @@ import { runMcp } from '../mcp/server.ts';
 import { resolveDb, resolveDir } from '../paths.ts';
 import { getDoc, getSection, listDocs, parseAddress, search, type Filters } from '../search.ts';
 
-export const EXIT = { ok: 0, error: 1, usage: 2, notFound: 4 } as const;
+export { EXIT };
 
 export interface Io {
   out: (s: string) => void;
@@ -75,7 +77,7 @@ function filters(values: { tag?: string | undefined; kind?: string | undefined }
 function cmdIndex(argv: string[], io: Io, t: Translate): number {
   const { values } = parseArgs({
     args: argv,
-    options: { dir: { type: 'string' }, db: { type: 'string' }, full: { type: 'boolean' } },
+    options: INDEX.options,
     strict: true,
     allowPositionals: false,
   });
@@ -108,14 +110,7 @@ function cmdIndex(argv: string[], io: Io, t: Translate): number {
 function cmdSearch(argv: string[], io: Io, t: Translate): number {
   const { values, positionals } = parseArgs({
     args: argv,
-    options: {
-      dir: { type: 'string' },
-      db: { type: 'string' },
-      tag: { type: 'string' },
-      kind: { type: 'string' },
-      limit: { type: 'string' },
-      json: { type: 'boolean' },
-    },
+    options: SEARCH.options,
     strict: true,
     allowPositionals: true,
   });
@@ -148,7 +143,7 @@ function cmdSearch(argv: string[], io: Io, t: Translate): number {
 function cmdShow(argv: string[], io: Io, t: Translate): number {
   const { values, positionals } = parseArgs({
     args: argv,
-    options: { dir: { type: 'string' }, db: { type: 'string' } },
+    options: SHOW.options,
     strict: true,
     allowPositionals: true,
   });
@@ -188,13 +183,7 @@ function cmdShow(argv: string[], io: Io, t: Translate): number {
 function cmdList(argv: string[], io: Io, t: Translate): number {
   const { values } = parseArgs({
     args: argv,
-    options: {
-      dir: { type: 'string' },
-      db: { type: 'string' },
-      kind: { type: 'string' },
-      tag: { type: 'string' },
-      json: { type: 'boolean' },
-    },
+    options: LIST.options,
     strict: true,
     allowPositionals: false,
   });
@@ -219,7 +208,7 @@ function cmdList(argv: string[], io: Io, t: Translate): number {
 function cmdLint(argv: string[], io: Io, t: Translate): number {
   const { values } = parseArgs({
     args: argv,
-    options: { dir: { type: 'string' } },
+    options: LINT.options,
     strict: true,
     allowPositionals: false,
   });
