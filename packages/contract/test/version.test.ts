@@ -10,7 +10,7 @@ import type { CliContract, McpTool, Sources } from '../src/types.ts';
 import { bumpVersion, decideVersion, digestOf, structureOf } from '../src/version.ts';
 import { sampleApi, sampleCli, sampleServer, sampleSources, sampleTool } from './sample.ts';
 
-const t = createT('en');
+const t = createT();
 
 /** A decision for a tree whose contract.json holds `before` and whose sources now say `after`, at 0.3.5 with a digest that no longer matches. */
 function decide(before: Sources | undefined, after: Sources) {

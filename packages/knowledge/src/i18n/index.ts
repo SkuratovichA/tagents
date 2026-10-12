@@ -37,6 +37,6 @@ export function interpolate(template: string, vars: Vars): string {
 /** A fresh translator per call: a library must not own a global. */
 export function createT(locale: string | undefined = process.env['TAGENTS_LOCALE']): Translate {
   const lng = isLocale(locale) ? locale : DEFAULT_LOCALE;
-  const table = resources[lng].knowledge;
+  const table: Partial<Record<KnowledgeKey, string>> = resources[lng].knowledge;
   return (key, vars) => interpolate(table[key] ?? en[key], vars ?? {});
 }
