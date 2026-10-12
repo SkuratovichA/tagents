@@ -435,3 +435,6 @@ Both are measured on tmux 3.7b (dot kept in session names, a refused join-pane, 
 ## `tagents --ensure-dash` from outside tmux exits 1 and says nothing (24.10.2026)
 
 In the cockpit it works on a client: with no terminal attached to the server there is none to take to the session `tagents`, so it returns 1 silently and creates nothing. Attach a terminal first (`tmux attach -t <session>`), then run it, or press `prefix + A` in that terminal.
+
+## `hostname -s` is not a machine's identity on a Mac (12.10.2026)
+The per-machine overlay was keyed on `hostname -s` alone, and with HostName never set (`scutil --get HostName`: "not set") that is whatever macOS derived last: one laptop answered `sukas-MBP` for weeks and `sukas-MacBook-Pro` after a reboot. Its overlay was not found, the base profiles applied without a word, rows on the second login showed `?`, and the reboot restore resumed every one of them logged out. `tagents --check` had nothing to say, because the base profile's directory existed — an earlier logged-out launch had left it there. A key that selects per-machine config has to be a name the machine keeps: `cfg_hosts` offers `hostname -s` and then the LocalHostName, and the first that has a file wins. When a row shows `?`, `tagents --config` is the one command to run: it printed the other laptop's profiles.
