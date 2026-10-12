@@ -201,6 +201,35 @@ ok "overlay: another host sees only the base" "" \
 ok "overlay: a missing overlay changes nothing" "$(TA_CONFIG="$HERE/../config.example.yaml" bash "$TA" --config 2>&1)" \
    "$(TA_HOST=nowhere TA_CONFIG="$HERE/../config.example.yaml" bash "$TA" --config 2>&1)"
 
+# A machine answers to more than one name. On a Mac whose HostName was never set, `hostname -s` is whatever macOS derived last, and the overlay has to be found under the name that stays put (the LocalHostName) once the reported one has moved. Both commands are stubbed: what they say on the box running the suite is not the subject.
+HB="$TMP/hostbin"; mkdir -p "$HB"
+host_stub() {  # <what `hostname -s` says> <what `scutil --get LocalHostName` says; empty = scutil fails>
+  printf '#!/bin/sh\ncase "${1:-}" in -s) echo %s ;; *) echo %s.local ;; esac\n' "$1" "$1" >"$HB/hostname"
+  if [ -n "$2" ]; then printf '#!/bin/sh\n[ "$*" = "--get LocalHostName" ] && echo %s\n' "$2" >"$HB/scutil"
+  else printf '#!/bin/sh\necho "scutil: nothing to say" >&2\nexit 1\n' >"$HB/scutil"; fi
+  chmod +x "$HB/hostname" "$HB/scutil"
+}
+ov_named() { env -u TA_HOST PATH="$HB:$PATH" TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --config; }  # the overlay fixture, under the stubbed names
+ov_plain=$(TA_HOST=nowhere TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --config 2>&1)  # the fixture with no overlay laid over it
+cat >"$TMP/ov/config.second.yaml" <<'EOF'
+claude:
+  profiles:
+    elsewhere:
+      badge: e
+EOF
+host_stub flaky mbp
+contains "overlay: found under the LocalHostName when hostname -s names no file" \
+  "claude.profiles.nuzhin.config_dir	~/.claude-nuzhin" "$(ov_named 2>&1)"
+host_stub mbp second
+got=$(ov_named 2>&1)
+case "$got" in *"claude.profiles.elsewhere"*) ov_first=localhostname ;; *"claude.profiles.nuzhin"*) ov_first=hostname ;; *) ov_first=neither ;; esac
+ok "overlay: the name hostname -s reports is looked under first" hostname "$ov_first"
+host_stub flaky mbp
+ok "overlay: TA_HOST is the only name looked under" "$ov_plain" \
+   "$(env PATH="$HB:$PATH" TA_HOST=nowhere TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --config 2>&1)"
+host_stub flaky ""
+ok "overlay: a machine with no LocalHostName is its hostname, and says nothing about it" "$ov_plain" "$(ov_named 2>&1)"
+
 # ---------------------------------------------------------------------------
 t "2. rules"
 # ---------------------------------------------------------------------------
