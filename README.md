@@ -420,6 +420,8 @@ a union would keep the other laptop's rows in this machine's picker, which is
 the exact thing being fixed. `tagents --config` prints the merged result;
 `TA_HOST` overrides the hostname, which is how the tests have one.
 
+A machine answers to more than one name, so the overlay is looked for under each: `hostname -s` first, then on a Mac the LocalHostName (`scutil --get LocalHostName`). The first is not an identity there — with HostName never set it is whatever macOS derived last, and one laptop answered `sukas-MBP` for weeks and `sukas-MacBook-Pro` after a reboot. Its overlay was not found, the base profiles applied without a word, and every chat on its second login was resumed logged out. Name the overlay after the LocalHostName and it is found whatever `hostname -s` says that day. `TA_HOST` is exactly one name: nothing else is tried.
+
 `tagents --check` lists what is wrong with the config, one `file: key: problem — what
 to do` line each, and exits 1 while anything is; the dashboard header carries the count
 and the status bar shows `cfg!N`. The first thing it looks for is a profile whose

@@ -278,13 +278,19 @@ cfg_top_of() {  # <path> -> CFG_TOP
 #
 # Overlay lines go FIRST: cfg_get takes the first match and cfg_children keeps
 # file order, so no lookup needs to know an overlay exists. TA_HOST stands in
-# for the hostname so a test can have one.
+# for the hostname so a test can have one. Which names the overlay is looked
+# for under is cfg_hosts, below.
 cfg_overlay() {
-  local host over top k v
-  host=${TA_HOST:-$(hostname -s 2>/dev/null)}
-  [ -n "$host" ] || return 0
-  over="${CONFIG_FILE%.yaml}.$host.yaml"
-  { [ -f "$over" ] && [ -r "$over" ]; } || return 0
+  local host over="" top k v
+  while IFS= read -r host; do
+    [ -n "$host" ] || continue
+    over="${CONFIG_FILE%.yaml}.$host.yaml"
+    { [ -f "$over" ] && [ -r "$over" ]; } && break
+    over=""
+  done <<EOF
+$(cfg_hosts)
+EOF
+  [ -n "$over" ] || return 0
   top=$(cfg_parse "$over" <"$over")
   cfg_sift "$top"; top=$CFG_SIFTED
   [ -n "$top" ] || return 0
@@ -308,6 +314,13 @@ EOF
     !base    { keep[sub2($1)] = 1; print; next }
     !(sub2($1) in keep) { print }
   ')
+}
+
+# THE MACHINE HAS MORE THAN ONE NAME. `hostname -s` is not an identity on a Mac whose HostName was never set (`scutil --get HostName` says "not set"): it is whatever macOS derived last, and the same laptop answered sukas-MBP for weeks and sukas-MacBook-Pro after a reboot. The overlay was not found, the base profiles applied without a word, and every chat on the second login was resumed logged out. So the overlay is looked for under each name the machine answers to: the reported one first, so that an overlay found today is the one found tomorrow, then the LocalHostName, which moves only when somebody renames the Mac. scutil is macOS only; elsewhere it is not there and adds nothing. TA_HOST is exactly one name, never a first guess.
+cfg_hosts() {
+  [ -n "${TA_HOST:-}" ] && { printf '%s\n' "$TA_HOST"; return 0; }
+  { hostname -s; scutil --get LocalHostName; } 2>/dev/null | awk 'NF && !seen[$0]++'
+  return 0
 }
 
 # Return 1 for "absent", 0 with empty output for "present and empty" — the two
