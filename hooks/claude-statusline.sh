@@ -65,9 +65,21 @@ if [ -n "${sid:-}" ] && [ -n "${mid:-}" ]; then
   # prices the transcript instead, which is the only way to answer "what did
   # the subagents cost" or "what did the last five hours cost", but where the
   # two disagree this one is right.
-  tmpf="$d/.$sid.$$"
-  if printf '%s\t%s\t%s\t%s\n' "$(date +%s)" "$mid" "$mname" "${cost:-0}" >"$tmpf" 2>/dev/null; then
-    mv -f "$tmpf" "$d/$sid.tsv" 2>/dev/null || rm -f "$tmpf"
+  # Claude Code runs this every 30 s per open session, and a rewrite of an
+  # unchanged file makes the picker reload for nothing: the file is written only
+  # when what the readers use (the model, its name and the cost; field 1, the
+  # time, is read by nothing) differs from what is there. The tab is held in a
+  # variable and the line is cut with ${old#*TAB}, not split with read, because
+  # tab is IFS whitespace and an empty field would collapse.
+  tab=$(printf '\t')
+  new="$mid$tab$mname$tab${cost:-0}"
+  old=
+  [ -r "$d/$sid.tsv" ] && IFS= read -r old <"$d/$sid.tsv" 2>/dev/null
+  if [ ! -e "$d/$sid.tsv" ] || [ "${old#*"$tab"}" != "$new" ]; then
+    tmpf="$d/.$sid.$$"
+    if printf '%s\t%s\n' "$(date +%s)" "$new" >"$tmpf" 2>/dev/null; then
+      mv -f "$tmpf" "$d/$sid.tsv" 2>/dev/null || rm -f "$tmpf"
+    fi
   fi
 fi
 
