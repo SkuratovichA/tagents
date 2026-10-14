@@ -174,6 +174,7 @@ name_window() {
 # ---------------------------------------------------------------------------
 sync_window_names() {
   local plan line wid nm cur b f
+  host_once   # in this shell, not in the subshell below: a failing hostname would run once per call
   plan=$({
     # One list-panes for the lot: window options resolve in a pane format, so
     # the window name, its automatic-rename and both markers come back per pane.
@@ -193,7 +194,7 @@ sync_window_names() {
     [ $# -gt 0 ] && awk -F"$TAB" "$AWK_SKIP_GONE"' FNR == 1 {
       k = FILENAME; sub(/^.*\//, "", k); sub(/\.tsv$/, "", k)
       print "S|@|%" k "|@|" $1 "|@|" $3 }' "$@" </dev/null 2>/dev/null
-  } | awk -v host="${HOST_S:-$(hostname -s 2>/dev/null)}" -v OFS="$TAB" '
+  } | awk -v host="$HOST_S" -v OFS="$TAB" '
     # Claude prefixes the terminal title with a spinner glyph; the rest is the
     # session title it maintains itself. Same rule as the list — and the same
     # rule untitle_of applies in shell, because the row, this window name and the

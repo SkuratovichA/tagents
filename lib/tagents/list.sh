@@ -81,9 +81,10 @@ list() {
     tallyto="$STATE_DIR/.counts.tally.$$"
   fi
 
+  host_once   # in this shell: $(…) below is a subshell, and a failing hostname would run again on every call
   collect | awk -F"$TAB" -v now="$(date +%s)" -v ttl="$SUB_TTL" \
                 -v grp="$grp" -v home="$HOME" -v deadttl="$DEAD_TTL" -v cols="$cols" \
-                -v host="${HOST_S:-$(hostname -s 2>/dev/null)}" \
+                -v host="$HOST_S" \
                 -v profs="$(prof_pairs)" -v USC="$US" -v RSC="$RS" \
                 -v hidecols="$hidecols" '
     # macOS awk counts bytes, so substr and %-Ns cut Cyrillic mid-character and

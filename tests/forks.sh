@@ -442,5 +442,20 @@ printf '%%9 @1 1 %s - 0\n%%2 @1 - - %%9 1\n' "$$" >"$SLDIR/panes"
 sl_run "$SLSTUB"'slot'
 has "a parked, active placeholder still calls unpark" "unpark %2" "$(cat "$SLDIR/unparked")"
 
+# ---------------------------------------------------------------------------
+t "hostname is started once per process without a config file, even when it fails"
+# No config file means cfg_load returns before cfg_overlay, so HOST_S was never set, and a failing
+# hostname left HOST_S empty for the ":-" at each use to run it again.
+HNSHIM="$ROOT/hnshim"; mkdir -p "$HNSHIM"
+printf '#!/bin/sh\necho x >>"%s/hn.count"\nexit 1\n' "$CNT" >"$HNSHIM/hostname"
+chmod +x "$HNSHIM/hostname"
+fresh; add_states 2
+: >"$CNT/hn.count"
+TA_CONFIG="$ROOT/absent.yaml" PATH="$HNSHIM:$PATH" fn 'list; list' >/dev/null 2>&1
+le "two lists in one process start hostname at most once" 1 "$(wc -l <"$CNT/hn.count" | tr -d ' ')"
+: >"$CNT/hn.count"
+TA_CONFIG="$ROOT/absent.yaml" PATH="$HNSHIM:$PATH" fn 'sync_window_names; sync_window_names' >/dev/null 2>&1
+le "two names sweeps in one process start hostname at most once" 1 "$(wc -l <"$CNT/hn.count" | tr -d ' ')"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
