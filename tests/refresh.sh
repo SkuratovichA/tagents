@@ -107,7 +107,10 @@ n=0; read -r n <"$RF_DIR/tick"
 echo "$n $*" >>"$RF_DIR/tusage.log"
 # What the stamp said when the update began, and the burn a scenario files.
 case "$*" in
-  --update*) cat "$RF_STATE/.counts.ts" >"$RF_DIR/ts.update.$n" 2>/dev/null ;;
+  --update*) cat "$RF_STATE/.counts.ts" >"$RF_DIR/ts.update.$n" 2>/dev/null
+             # What the update was handed in the environment: usage_env's exports.
+             printf '%s' "${TU_ACCOUNT_RULES-}" >"$RF_DIR/rules.update.$n"
+             printf '%s' "${TU_ACCOUNTS-}" >"$RF_DIR/accts.update.$n" ;;
   *--burn*)  cat "$RF_DIR/burn" 2>/dev/null ;;
 esac
 exit 0
@@ -403,6 +406,74 @@ act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\""
 go 5
 ok "tusage --daily ran once on the 5th tick" 1 "$(awk '$1 == 5 && /--daily/' "$D/tusage.log" | wc -l | tr -d ' ')"
 has "...and the footer was posted on it" "change-footer(" "$(awk '$1 == 5' "$D/curl.log")"
+
+t "15. the bar's config marker follows the config for as long as the refresher lives"
+# A fresh process computes the verdict once; a refresher is the same process for
+# a day. TA_CFG_CHECK_EVERY is small, so that the verdict kept in .cfg-check ages
+# inside a scenario (every act below costs the 1.1 s that ages it).
+export TA_CFG_CHECK_EVERY=3
+BADCONFIG='usage:\n  monthly_limit_usd: abc\n'
+tallyact() { act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\""; }
+seeout() { act 2 'cat "$RF_STATE/.counts.out" >"$RF_DIR/out.2"'; }
+
+newrun cfgone
+printf "$BADCONFIG" >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+tallyact; seeout; act 3 ':'; act 4 ':'
+# A verdict made just now: the refresher starts on a cache hit, so the one
+# problem is counted without the check having run in its shell.
+printf '%s 1 %s\n' "$(now_s)" "$RFCFG" >"$STATE/.cfg-check"
+go 5
+ok "one problem and a fresh verdict: the marker says 1 from the start" "$EXP1" "$(cat "$D/out.2" 2>/dev/null)"
+ok "...and still says 1 once the verdict has aged and the 5th tick has computed it again (not 2)" "$EXP1" "$(cat "$STATE/.counts.out" 2>/dev/null)"
+ok "...and the verdict kept for the next bar is 1 problem" 1 "$(awk '{ print $2 }' "$STATE/.cfg-check" 2>/dev/null)"
+
+newrun cfgfix
+printf "$BADCONFIG" >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+tallyact; seeout; act 3 'printf "x: 1\n" >"$RF_CFG"'
+go 5
+ok "a config with a problem has the marker" "$EXP1" "$(cat "$D/out.2" 2>/dev/null)"
+ok "fixed under the refresher: the marker is gone by the next 5th tick" "$TALLY1" "$(cat "$STATE/.counts.out" 2>/dev/null)"
+
+newrun cfgbreak
+printf 'x: 1\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+tallyact; seeout; act 3 'printf "usage:\n  monthly_limit_usd: abc\n" >"$RF_CFG"'
+go 5
+ok "a good config has no marker" "$TALLY1" "$(cat "$D/out.2" 2>/dev/null)"
+ok "broken under the refresher: the marker is there by the next 5th tick" "$EXP1" "$(cat "$STATE/.counts.out" 2>/dev/null)"
+unset TA_CFG_CHECK_EVERY
+
+# What usage_env exports is the config's, and goes when the config's entry goes.
+newrun cfgenv
+mkdir -p "$ROOT/claude-personal"
+cat >"$RFCFG" <<YAML
+usage:
+  watch: personal
+claude:
+  profiles:
+    personal:
+      config_dir: $ROOT/claude-personal
+  rules:
+    - dir: $ROOT/proj
+      profile: personal
+YAML
+touch -t 200001010000 "$RFCFG"
+cat >"$D/cfg.norules" <<YAML
+usage:
+  watch: personal
+claude:
+  profiles:
+    personal:
+      config_dir: $ROOT/claude-personal
+YAML
+printf 'usage:\n  watch: personal\n' >"$D/cfg.noprofiles"
+act 6  'cp "$RF_DIR/cfg.norules" "$RF_CFG"'
+act 11 'cp "$RF_DIR/cfg.noprofiles" "$RF_CFG"'
+go 15
+has "the directory rule is handed to the update while the config has it" "$ROOT/proj=personal" "$(cat "$D/rules.update.5" 2>/dev/null)"
+ok "the rule removed from the config is gone from the next update" "" "$(cat "$D/rules.update.10" 2>/dev/null)"
+has "the profile map stays while the config has the profile" "personal=" "$(cat "$D/accts.update.10" 2>/dev/null)"
+ok "the profiles removed from the config are gone from the next update" "" "$(cat "$D/accts.update.15" 2>/dev/null)"
+ok "all three updates ran" "5 10 15" "$(awk '$2 == "--update" { printf "%s%s", s, $1; s = " " } END { print "" }' "$D/tusage.log")"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

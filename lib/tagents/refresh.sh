@@ -149,7 +149,7 @@ refresher() {
       # last one that was there.
       if ! [ "$cfgmark" -nt "$CONFIG_FILE" ] || ! [ "$cfgmark" -nt "$ovl" ]; then
         : >"$cfgmark" 2>/dev/null
-        CFG=""; CFG_LOADED=0; USAGE_ON=
+        cfg_reset; USAGE_ON=
         cfg_load
         usage_on && usage_env
       fi

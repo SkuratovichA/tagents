@@ -229,6 +229,25 @@ cfg_load() {
   return 0
 }
 
+# EVERYTHING THE LOAD AND THE CHECK REMEMBER, PUT BACK TO WHAT A PROCESS STARTS
+# WITH. Each of those memos is written for a process that lives for one run: the
+# load is parsed once, cfg_check guards itself with CFG_CHECKED and adds to
+# CFG_NPROBLEMS and CFG_NOTES rather than setting them, and the parse and
+# overlay notes only ever grow. A refresher lives as long as its list, so when it
+# reads the config again it clears them here first — otherwise the old load's
+# refusals and overlay stay in, a problem count is never worked out again, and
+# the next check adds to the last one's. usage_env's exports go too: it sets them
+# only when there is something to set, so a rule removed from the config would
+# otherwise stay in the environment of every tusage the refresher starts.
+cfg_reset() {
+  CFG=''; CFG_LOADED=0
+  CFG_PARSE_NOTES=''; CFG_OVER_FILE=''; CFG_OVER_TOPS=' '
+  CFG_NOTES=''; CFG_NPROBLEMS=0; CFG_SUMMARY=''; CFG_CHECKED=0
+  # resolve_keys is run by cfg_check and remembers its own verdict (keys.sh).
+  KEYS_RESOLVED=''
+  unset TU_ACCOUNTS TU_ACCOUNT_RULES
+}
+
 # THE PARSER'S REFUSALS, TAKEN BACK OUT OF ITS STREAM. Each goes to stderr in
 # the line it has always been — a scripted --config reads it there — and into
 # CFG_PARSE_NOTES for cfg_check, which is how it reaches a dashboard that has no
