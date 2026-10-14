@@ -475,5 +475,30 @@ has "the profile map stays while the config has the profile" "personal=" "$(cat 
 ok "the profiles removed from the config are gone from the next update" "" "$(cat "$D/accts.update.15" 2>/dev/null)"
 ok "all three updates ran" "5 10 15" "$(awk '$2 == "--update" { printf "%s%s", s, $1; s = " " } END { print "" }' "$D/tusage.log")"
 
+t "16. a config or an overlay that is deleted, or made again, is read again on the next 5th tick"
+# A file that is not there is never newer than anything, so the mtime rule cannot
+# see it go; the refresher remembers whether each of the two existed at its last read.
+updates() { awk '$2 == "--update" { printf "%s%s", s, $1; s = " " } END { print "" }' "$D/tusage.log"; }
+
+newrun cfggone
+printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+act 3 'rm -f "$RF_CFG"'
+act 6 'printf "usage:\n  watch: me\n" >"$RF_CFG"'
+go 10
+ok "the config deleted at tick 3: no tusage --update on the 5th; made again at tick 6: one on the 10th" "10" "$(updates)"
+
+export TA_HOST=ovlhost
+OVLF="${RFCFG%.yaml}.ovlhost.yaml"
+newrun ovlgone
+rm -f "$OVLF"
+printf 'x: 1\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf 'usage:\n  watch: me\n' >"$OVLF"; touch -t 200001010000 "$OVLF"
+act 3 "rm -f '$OVLF'"
+act 6 "printf 'usage:\\n  watch: me\\n' >'$OVLF'"
+go 10
+ok "the overlay with the usage block deleted at tick 3: no update on the 5th; made again at tick 6: one on the 10th" "10" "$(updates)"
+rm -f "$OVLF"
+unset TA_HOST
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
