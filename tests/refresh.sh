@@ -511,5 +511,24 @@ ok "the overlay with the usage block deleted at tick 3: no update on the 5th; ma
 rm -f "$OVLF"
 unset TA_HOST
 
+# ---------------------------------------------------------------------------
+t "10. markers are named by pid; what a dead pid left is swept at the start"
+# ---------------------------------------------------------------------------
+newrun sweep
+sh -c 'exit 0' & deadpid=$!; wait "$deadpid" 2>/dev/null
+for n in "$deadpid" "$$"; do
+  : >"$STATE/.refresher.$n"; : >"$STATE/.refresher.$n.cfg"; : >"$STATE/.refresher.$n.start"
+  : >"$STATE/.counts.tally.$n"; : >"$STATE/.counts.out.$n"
+done
+act 3 'ls -A "$RF_STATE" >"$RF_DIR/ls.3"'
+go 3
+ok "the files of the dead pid are all gone" "0" "$(ls -A "$STATE" | grep -c "\.$deadpid")"
+ok "the files of the live pid are all kept" "5" "$(ls -A "$STATE" | grep -c "\.$$")"
+ok "while it runs the loop has exactly its three markers, named by its pid and not by the port" "3" \
+   "$(grep -v "\.$$" "$D/ls.3" | grep -c '^\.refresher\.[0-9][0-9]*\(\.cfg\|\.start\)\{0,1\}$')"
+ok "...of which none is the port's" "0" "$(grep -c "^\.refresher\.$PORT" "$D/ls.3")"
+ok "...and its own are gone again when it ends (the three of the live pid stay)" "3" "$(markers)"
+rm -f "$STATE"/.refresher.* "$STATE"/.counts.*.[0-9]*
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
