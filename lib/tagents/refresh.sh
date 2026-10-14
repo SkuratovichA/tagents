@@ -347,7 +347,7 @@ counts_stamp() {
 refresher_counts() {
   local f="$STATE_DIR/.counts.tally" tl="" text
   [ -e "$f" ] && ! [ "$startmark" -nt "$f" ] || return 0
-  { IFS= read -r -d '' tl <"$f"; } 2>/dev/null
+  slurp tl "$f"
   [ -n "$tl" ] || return 0
   if [ -n "$cdirty" ] || [ "$tl" != "$lasttl" ] || [ ! -e "$COUNTS_OUT" ]; then
     # The trailing newlines of the burn and the month line belong to the text,
