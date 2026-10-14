@@ -673,7 +673,40 @@ list() {
       }'
 }
 
+# tmux re-runs the status job on every redraw, and with Claude panes retitling
+# constantly that is about once a second, whatever status-interval says; every run
+# used to start dozens of programs. The numbers in the bar may lag by up to
+# COUNTS_EVERY seconds — that is accepted for these and for nothing else, so list()
+# is never cached. due_every stamps before the work, so a client redrawing a moment
+# after another reads that one's output; two at the very same instant can both be
+# due, which is why each writes a temp file of its own. The
+# output is written to a temp file and renamed over the cache, so a redraw never
+# reads a half-written line.
+COUNTS_STAMP="$STATE_DIR/.counts.ts"
+COUNTS_OUT="$STATE_DIR/.counts.out"
+COUNTS_EVERY=${TA_COUNTS_EVERY:-5}   # 0: on every call, as TA_NAMES_EVERY=0 means
+# Anything but digits is the default: due_every reads a non-number as "off", and
+# for the bar that would be computed never and an empty cache for good.
+case $COUNTS_EVERY in ''|*[!0-9]*) COUNTS_EVERY=5 ;; esac
+
 counts() {
+  local tmpf
+  if [ "$COUNTS_EVERY" -ne 0 ] && ! due_every "$COUNTS_STAMP" "$COUNTS_EVERY"; then
+    cat "$COUNTS_OUT" 2>/dev/null
+    return 0
+  fi
+  # The config is parsed here, in this shell and after the cache check: a cached
+  # tick needs none of it, and every $(cfg_get …) in counts_now inherits it.
+  cfg_load
+  # A temp name of its own per process, as set_label's: two clients can both be due.
+  [ -d "$STATE_DIR" ] || mkdir -p "$STATE_DIR" 2>/dev/null
+  tmpf="$COUNTS_OUT.$$"
+  counts_now >"$tmpf" 2>/dev/null
+  mv -f "$tmpf" "$COUNTS_OUT" 2>/dev/null || rm -f "$tmpf"
+  cat "$COUNTS_OUT" 2>/dev/null
+}
+
+counts_now() {
   # The window names are swept from here as well as from the refresher, so they
   # keep up for somebody who never opens the dashboard at all: the status bar is
   # the one thing that runs either way. Backgrounded and throttled — see

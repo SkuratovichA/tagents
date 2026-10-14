@@ -531,8 +531,13 @@ forward_core() {  # <verb> [args…]
 }
 
 case "${1:-}" in
-  --list)         list ;;
-  --flat)         TA_FLAT=1 list ;;
+  # cfg_load here, in the process itself: the first lookup happens inside a
+  # $(…), where the parse would be lost with the subshell and repeated for every
+  # later one. Loaded before that, all of them inherit it. Verbs that never read
+  # the config do not get this line.
+  # --counts does it inside counts(), after its cache check.
+  --list)         cfg_load; list ;;
+  --flat)         cfg_load; TA_FLAT=1 list ;;
   --toggle-group) toggle_group ;;
   --timeline)     timeline ;;
   --label)        label_cmd "${2:-}" "${3:-}" ;;
@@ -619,7 +624,7 @@ case "${1:-}" in
   # than a fixed line range: the block keeps growing and a stale range silently
   # cuts the help in half.
   -h|--help)      awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$SELF" ;;
-  "")            dash ;;
+  "")            cfg_load; dash ;;
   # An unknown --flag is a typo in the dashboard's own vocabulary and stays an
   # error here. A bare verb is not the dashboard's vocabulary at all: it is
   # tagents-core's, and goes there with everything after it.

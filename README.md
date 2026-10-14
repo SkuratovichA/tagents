@@ -737,6 +737,13 @@ lives and once it does not, and that every verb needing a pane refuses.
 `tests/modules.sh` covers the layout itself — that every module is sourced and
 no module is orphaned, that nothing is defined twice, that a module only defines
 things, and that the entry point still finds its modules through a symlink and
-refuses to run without them. Each runs against a throwaway tmux server of its
+refuses to run without them. `tests/forks.sh` covers what one repaint costs in
+processes — that the number of programs `--list` starts does not grow with the
+records in the state directory, that `--counts` reads its config once and
+reuses its output for five seconds (`TA_COUNTS_EVERY=0` turns that off), and
+that a record which cannot be read does not take the ones after it down —
+because the status bar and the refresher run these hundreds of times a minute
+and the endpoint security agent inspects every process they start. Each runs
+against a throwaway tmux server of its
 own (`tmux -L tatest-$$`), never the default socket. All of them are bash 3.2,
 run every check, and exit non-zero when any of them fails.

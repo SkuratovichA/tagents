@@ -76,6 +76,7 @@ export PATH="$BIN:$PATH"
 export TA_STATE_DIR="$STATE"
 export TA_SESSION=tatest-dash
 export TA_CONFIG=/nonexistent/config.yaml   # no profiles: no dialog anywhere
+export TA_COUNTS_EVERY=0   # --counts is cached for 5 s by default; these checks expect fresh numbers
 unset TMUX TMUX_PANE TA_MODE TA_FLAT TA_COLS TA_NEW_CMD TA_RESUME_CMD TA_HOME
 unset TA_HIDE_COLS TA_NAMES_EVERY CLAUDE_CONFIG_DIR
 
