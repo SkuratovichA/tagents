@@ -368,6 +368,7 @@ rm -f "$STATE/.names.ts"
 PATH="$ALLSHIM:$PATH" fn 'due_every "$STATE_DIR/.names.ts" 30; echo "rc=$?"' >"$ROOT/due.out" 2>&1
 ok "no stamp at all is due, with nothing on stderr" "rc=0" "$(cat "$ROOT/due.out")"
 ok "...and none of those started a cat" 0 "$(grep -c '^cat$' "$CNT/all")"
+ok "...while the shim did log the date calls (so a silent shim cannot pass)" 1 "$([ "$(grep -c '^date$' "$CNT/all")" -ge 1 ] && echo 1 || echo 0)"
 
 # ---------------------------------------------------------------------------
 t "slot: a lap asks tmux once and sleeps once"
