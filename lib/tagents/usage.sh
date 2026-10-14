@@ -137,7 +137,7 @@ usage_meter() {  # -> "<used><TAB><limit><TAB><fetched at>" for the watched acco
 # status text, a \036 byte and the footer text, from one run of the awk: the
 # refresher wants the two on the same tick, and each is a fetch of the month.
 usage_line() {  # <status|footer|summary|both>
-  local mode=${1:-status} watch limit margin badge dnow dy_y dy_mo dy_d dy_mon dy_wd esc=$'\033'
+  local mode=${1:-status} watch limit margin badge dy_y dy_mo dy_d dy_mon dy_wd esc=$'\033'
   watch=$(usage_watch) || return 0
   limit=$(cfg_get usage.monthly_limit_usd) || limit=""
   margin=$(cfg_get usage.safety_margin_pct) || margin=""
@@ -171,9 +171,11 @@ usage_line() {  # <status|footer|summary|both>
     fi
   fi
   # One date for all five fields: each is a process the agent watching the box inspects.
-  dnow=$(date '+%Y %m %d %b %u')
-  dy_y=${dnow%% *}; dnow=${dnow#* }; dy_mo=${dnow%% *}; dnow=${dnow#* }
-  dy_d=${dnow%% *}; dnow=${dnow#* }; dy_mon=${dnow%% *}; dy_wd=${dnow#* }
+  # %b goes last of the month fields and the separator is "|": a locale's month
+  # abbreviation may hold a space, and the split must not depend on it not.
+  IFS='|' read -r dy_y dy_mo dy_d dy_wd dy_mon <<EOF
+$(date '+%Y|%m|%d|%u|%b')
+EOF
   usage_days | awk -F"$TAB" \
     -v mode="$mode" -v watch="$watch" -v badge="$badge" \
     -v factor="${factor:-1}" -v meter="${label:-}" -v mnote="${note:-}" \
