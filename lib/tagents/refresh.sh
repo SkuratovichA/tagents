@@ -81,6 +81,7 @@ refresher() {
   local port=${TA_PORT:-} tick=0 dp seat last="" fails=0 fl pub=""
   local snap="" rsnap="" ssnap="" pending=1 due body first mark cfgmark ovl
   local startmark t0 live="" lasttl="" lasttext="" cdirty=1
+  local cfgseen="" ovlseen="" cfgnow ovlnow
   [ -z "$port" ] && return 0
   # One marker per refresher, in the state directory every writer already uses:
   # its time is "when the last reload was posted", and the second one is "when
@@ -97,6 +98,10 @@ refresher() {
   # Touched before the first read of the config, so a write that lands while it
   # is being read is not older than the marker.
   : >"$cfgmark" 2>/dev/null
+  # Whether each of the two files was there at this read, for the re-read on the
+  # 5th tick: see the test there.
+  [ -e "$CONFIG_FILE" ] && cfgseen=1
+  [ -e "$ovl" ] && ovlseen=1
   # THE CONFIG IS LOADED IN THIS SHELL, not left to the first lookup. --refresher
   # is dispatched without a cfg_load, and cfg_get is almost always called inside
   # a $(...): the load it triggers there dies with the subshell, so every lookup
@@ -144,11 +149,22 @@ refresher() {
       # list — one started before usage was turned off went on running tusage
       # for a day. Not older than the marker is "changed", as above; the marker
       # is its own, because the one for the list is touched on every reload.
+      # A file that is NOT THERE is never newer than anything, so a config or an
+      # overlay that was deleted is not seen by the time test (`-nt` is true when
+      # its right-hand file does not exist): whether each existed at the last read
+      # is remembered, and a change of that is a change too. Deleting the overlay
+      # that holds the usage: block is how usage gets turned off, and the update
+      # went on running.
       # The memos are cleared with it: the usage switch is asked once per
       # process, and a config that has gone away must read as empty, not as the
       # last one that was there.
-      if ! [ "$cfgmark" -nt "$CONFIG_FILE" ] || ! [ "$cfgmark" -nt "$ovl" ]; then
+      cfgnow=""; ovlnow=""
+      [ -e "$CONFIG_FILE" ] && cfgnow=1
+      [ -e "$ovl" ] && ovlnow=1
+      if ! [ "$cfgmark" -nt "$CONFIG_FILE" ] || ! [ "$cfgmark" -nt "$ovl" ] ||
+         [ "$cfgnow" != "$cfgseen" ] || [ "$ovlnow" != "$ovlseen" ]; then
         : >"$cfgmark" 2>/dev/null
+        cfgseen=$cfgnow; ovlseen=$ovlnow
         cfg_reset; USAGE_ON=
         cfg_load
         usage_on && usage_env
