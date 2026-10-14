@@ -34,7 +34,8 @@ REFRESH_SNAP_FMT='#{pane_id}|@|#{session_name}:#{window_index}.#{pane_index}|@|#
 # spare reload costs a little where a missed one loses a change. A path that does
 # not exist is never newer than anything, which is also why a file that was
 # DELETED is not seen here: its directory is checked where it has one worth
-# checking, and the forced reload of the 5th tick catches the rest.
+# checking, a deleted state file is seen by the refresher's count of them, and
+# the forced reload of the 5th tick catches the rest.
 #
 # The paths are what collect() and list() open: the state files (history.tsv is
 # not one), the origin cache, the labels, the hidden-columns file and the .flat
@@ -81,7 +82,7 @@ refresher() {
   local port=${TA_PORT:-} tick=0 dp seat last="" fails=0 fl pub=""
   local snap="" rsnap="" ssnap="" pending=1 due body first mark cfgmark ovl
   local startmark t0 live="" lasttl="" lasttext="" cdirty=1
-  local cfgseen="" ovlseen="" cfgnow ovlnow
+  local cfgseen="" ovlseen="" cfgnow ovlnow nstate rstate="" sf
   [ -z "$port" ] && return 0
   # One marker per refresher, in the state directory every writer already uses:
   # its time is "when the last reload was posted", and the second one is "when
@@ -217,9 +218,18 @@ refresher() {
     # the post, not after: a write that lands while the list is running is then
     # not older than it, and is seen on the next tick. A reload that was refused
     # has already touched the marker, so it is remembered in $pending instead.
+    # A DELETED STATE FILE is invisible to refresh_changed (and $STATE_DIR itself
+    # is left out of it), and forget_agent removes <key>.tsv without a reload, so
+    # the files are counted: a count other than the one at the last answered
+    # reload is a change. A glob that matched nothing stays a literal and is not
+    # counted.
+    nstate=0
+    for sf in "$STATE_DIR"/[0-9]*.tsv "$STATE_DIR"/s-*.tsv; do
+      [ -e "$sf" ] && nstate=$((nstate + 1))
+    done
     due=""
     if [ -n "$pending" ] || [ "$tick" = 0 ] || [ "$snap" != "$rsnap" ] ||
-       refresh_changed "$mark" "$ovl"; then
+       [ "$nstate" != "$rstate" ] || refresh_changed "$mark" "$ovl"; then
       due=1
       : >"$mark" 2>/dev/null
       body="reload-sync($SELF --list)"
@@ -257,7 +267,7 @@ refresher() {
     fails=0
     refresher_counts
     # What the reload saw is what the next snapshot is compared with.
-    if [ -n "$due" ]; then rsnap=$snap; pending=""; fi
+    if [ -n "$due" ]; then rsnap=$snap; rstate=$nstate; pending=""; fi
 
     # THE SEATS ARE ONLY LOOKED AT WHEN TMUX MOVED. Every pane, option and seat
     # stamp they read is in the snapshot, so an unchanged snapshot means the same
