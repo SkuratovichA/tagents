@@ -324,7 +324,10 @@ due_every() {  # <stamp file> <seconds> — 0 at most once every <seconds>, and 
   local now last
   [ "${2:-0}" -gt 0 ] 2>/dev/null || return 1
   now=$(date +%s)
-  last=$(cat "$1" 2>/dev/null)
+  # The shell's own read, not cat: the status bar asks this on every redraw. The
+  # braces are for a stamp that is not there, whose error is printed before a
+  # 2>/dev/null on the read itself could apply.
+  last=; { read -r last <"$1"; } 2>/dev/null
   case ${last:-x} in ''|*[!0-9]*) last=0 ;; esac
   [ "$(( now - last ))" -ge "$2" ] || return 1
   mkdir -p "${1%/*}" 2>/dev/null

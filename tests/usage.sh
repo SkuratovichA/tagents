@@ -81,6 +81,7 @@ for a in "$@"; do
   prev=$a
 done
 for a in "$@"; do
+  if [ "$a" = --burn ]; then cat "$TU_ROWS.burn" 2>/dev/null; exit 0; fi
   if [ "$a" = --daily ]; then
     if [ -n "$UNTIL" ]; then
       u=$(date -r "$UNTIL" +%Y-%m-%d 2>/dev/null || date -d "@$UNTIL" +%Y-%m-%d)
@@ -367,6 +368,48 @@ C=$(run "$MCFG" --counts)
 has "the configured reading wins"  "w ~\$$SCALED/850" "$C"
 has "...and the footer names it"   "~meter $MLABEL"   "$(run "$MCFG" --ask-usage </dev/null | strip)"
 rm -f "$MTSV"
+
+# ---------------------------------------------------------------------------
+t "9. what the refresher keeps for the bar is what the bar would have computed"
+# ---------------------------------------------------------------------------
+# counts_parts captures the burn and the month line with their trailing newlines,
+# counts_compose puts them around a tally, and the bytes have to be counts_now's.
+# The functions are reached in a bash that has loaded the modules the way the
+# entry point loads them.
+LIBD="$HERE/../lib/tagents"
+FN_MODS=$(sed -n '/for ta_mod in/,/; do/p' "$TA" | sed 's/.*for ta_mod in//; s/; do.*//' | tr -d '\\' | tr -s ' \n' '  ')
+fnrun() {  # <config> <code> — the same environment as run, and the modules loaded
+  env TMUX="$TMUXV" PATH="$BIN:$PATH" TA_CONFIG="$1" TA_STATE_DIR="$STATE" \
+      TA_COUNTS_EVERY=0 TA_COLS=140 TU_ROWS="$ROWS" TU_ENVOUT="$ENVOUT" \
+      SELF="$TA" FN_LIB="$LIBD" FN_MODS="$FN_MODS" /bin/bash -c \
+      'set -uo pipefail; for m in $FN_MODS; do . "$FN_LIB/$m.sh"; done; cfg_load; eval "$1"' fnrun "$2"
+}
+rm -f "$STATE"/s-sid-*.tsv; : >"$STATE/origin.tsv"
+i=0; for st in blocked done working working; do
+  i=$((i + 1))
+  printf '%s\t%s\tsid-%s\t%s\t\t\t\t%s\t\tlabel %s\n' "$(date +%s)" "$st" "$i" "$REPO" "$$" "$i" >"$STATE/s-sid-$i.tsv"
+  printf 'sid-%s\t%s\n' "$i" "$REPO" >>"$STATE/origin.tsv"
+done
+mkrows 400
+# A burn line that ends in a newline, as a line printed by a script may.
+printf '#[fg=#665c54]5h #[fg=#928374]$12.34 \n' >"$ROWS.burn"
+fnrun "$CFG" 'counts_now' >"$ROOT/now.out" 2>/dev/null
+fnrun "$CFG" 'counts_parts; tl=$(TA_MARKS=0 TA_TALLY=1 list; printf .); counts_compose "${tl%.}"' >"$ROOT/compose.out" 2>/dev/null
+has "the bar has the tally, the burn and the month in it" "5h " "$(cat "$ROOT/now.out")"
+has "...with the month figure" "w \$400/850" "$(cat "$ROOT/now.out")"
+has "...and the tally" "⚠1 " "$(cat "$ROOT/now.out")"
+cmp -s "$ROOT/now.out" "$ROOT/compose.out"
+ok "usage on: counts_compose of counts_parts and the tally is counts_now, byte for byte" 0 "$?"
+rm -f "$ROWS.burn"
+fnrun "$CFG" 'counts_now' >"$ROOT/now.out" 2>/dev/null
+fnrun "$CFG" 'counts_parts; tl=$(TA_MARKS=0 TA_TALLY=1 list; printf .); counts_compose "${tl%.}"' >"$ROOT/compose.out" 2>/dev/null
+cmp -s "$ROOT/now.out" "$ROOT/compose.out"
+ok "...and with a burn that prints nothing" 0 "$?"
+fnrun "$NOWATCH" 'counts_now' >"$ROOT/now.out" 2>/dev/null
+fnrun "$NOWATCH" 'counts_parts; tl=$(TA_MARKS=0 TA_TALLY=1 list; printf .); counts_compose "${tl%.}"' >"$ROOT/compose.out" 2>/dev/null
+cmp -s "$ROOT/now.out" "$ROOT/compose.out"
+ok "usage off: the same" 0 "$?"
+rm -f "$STATE"/s-sid-*.tsv
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -20,7 +20,7 @@ list() {
   # *attached client*, so it silently hid whichever agent you happened to be
   # looking at. The dashboard pane runs fzf, never Claude, so it can never show
   # up here anyway and needs no special case.
-  local grp=1 cols dp ss seat curseat="" dockedset="" hidecols
+  local grp=1 cols dp ss seat curseat="" dockedset="" hidecols tallyto="" rc
   grouped || grp=0
   # Joined with $RS, never newlines: awk -v refuses a value with a newline in it
   # (BWK awk, and silently enough to look like "nothing is hidden").
@@ -67,6 +67,18 @@ list() {
       dockedset=$(printf '%s\n' "$ss" |
         awk -F"$TAB" -v rs="$RS" '$2 == "docked" { printf "%s%s", $1, rs }')
     fi
+  fi
+
+  # THE TALLY IS WRITTEN HERE, by the one awk that has the finished rows, to a
+  # file the refresher turns into the status bar's cache (see refresher_counts).
+  # Only by a list drawn with its marks on, which is the picker's own: the bar
+  # asks for TA_MARKS=0, and a list that exists only to be counted (TA_TALLY=1)
+  # prints the tally and writes nothing. The file is renamed into place below, so
+  # a reader never sees half of one; a state directory that is missing or read-only
+  # gets no file, and list() ends the way it always did.
+  if [ "${TA_MARKS:-1}" = 1 ] && [ "${TA_TALLY:-0}" != 1 ] &&
+     [ -d "$STATE_DIR" ] && [ -w "$STATE_DIR" ]; then
+    tallyto="$STATE_DIR/.counts.tally.$$"
   fi
 
   collect | awk -F"$TAB" -v now="$(date +%s)" -v ttl="$SUB_TTL" \
@@ -646,7 +658,8 @@ list() {
                rdead[i], rage[i], rp[i], rbody[i], rs[i], rsid[i], rg[i]
     }' |
     sort -t"$TAB" -k1,1n -k2,2 -k3,3n -k4,4n -k5,5n |
-    awk -F"$TAB" -v grp="$grp" -v cur="$curseat" -v dks="$dockedset" -v RSC="$RS" '
+    awk -F"$TAB" -v grp="$grp" -v cur="$curseat" -v dks="$dockedset" -v RSC="$RS" \
+        -v tallyonly="${TA_TALLY:-0}" -v tallyto="$tallyto" '
       # The marker is drawn where the tee draws its dash, so a docked row is no
       # wider than any other and nothing shifts when a chat is docked. In flat
       # mode there is no tee to borrow from, so the two columns are given to
@@ -669,20 +682,51 @@ list() {
           if (!grp)              tee = mk " "
           else if (kind[i] == 0) tee = ""
           else tee = DIM "  " ((i == NR || g[i+1] != g[i]) ? "└" : "├") R mk " "
-          print pane[i] "\t" tee body[i] "\t" state[i] "\t" sid[i] "\t" dir[i]
+          # THE STATUS BAR COUNTS WHAT IS PRINTED HERE, in the one place that has
+          # it. A group header carries the state of its most urgent member, so
+          # counting every row showed a single blocked agent twice; the header is
+          # the row with the marker (UTF-8 for it below) in what is drawn.
+          if (index(tee body[i], "\342\226\276") == 0) tn[state[i]]++
+          if (!tallyonly) print pane[i] "\t" tee body[i] "\t" state[i] "\t" sid[i] "\t" dir[i]
         }
+        tally = ""
+        if (tn["blocked"]) tally = tally sprintf("#[fg=yellow]⚠%d ", tn["blocked"])
+        if (tn["done"])    tally = tally sprintf("#[fg=cyan]✓%d ",   tn["done"])
+        if (tn["working"]) tally = tally sprintf("#[fg=green]●%d ",  tn["working"])
+        tally = tally "#[default]"
+        # With tallyonly that is all there is, and no newline after it.
+        if (tallyonly) printf "%s", tally
+        if (tallyto != "") { printf "%s", tally > tallyto; close(tallyto) }
       }'
+  rc=$?
+  # The status the pipeline ended with is list()'s own, whatever the rename does.
+  if [ -n "$tallyto" ]; then
+    mv -f "$tallyto" "$STATE_DIR/.counts.tally" 2>/dev/null || rm -f "$tallyto"
+  fi
+  return "$rc"
 }
 
 # tmux re-runs the status job on every redraw, and with Claude panes retitling
 # constantly that is about once a second, whatever status-interval says; every run
-# used to start dozens of programs. The numbers in the bar may lag by up to
-# COUNTS_EVERY seconds — that is accepted for these and for nothing else, so list()
-# is never cached. due_every stamps before the work, so a client redrawing a moment
-# after another reads that one's output; two at the very same instant can both be
-# due, which is why each writes a temp file of its own. The
-# output is written to a temp file and renamed over the cache, so a redraw never
-# reads a half-written line.
+# used to start dozens of programs, and the endpoint security agent on this box
+# inspects every one of them. So the bar reads a cache, and the cache has two
+# keepers.
+#   The refresher, while a picker is open. It already has the tally: the list it
+#   posts every few seconds counts the rows as it draws them (see the end of
+#   list()), and refresher_counts turns the last tally into the cache and stamps
+#   it on every tick the list answers. With that stamp fresh counts() below never
+#   finds itself due, so the bar costs one `date` and no list of its own.
+#   The bar itself, whenever nobody keeps the stamp: no picker, a picker that
+#   stopped answering, a tally that was never written. Then it is due again after
+#   COUNTS_EVERY seconds and counts_now computes the lot, as it always did.
+# The numbers in the bar may lag by up to COUNTS_EVERY seconds whoever keeps them
+# — that is accepted for these and for nothing else, so list() is never cached.
+# due_every stamps before the work, so a client redrawing a moment after another
+# reads that one's output; two at the very same instant can both be due, which is
+# why each writes a temp file of its own. The output is written to a temp file and
+# renamed over the cache, so a redraw never reads a half-written line. The cache
+# is read with the shell's own read, not cat: nothing is started for a cached run
+# but the date due_every asks.
 COUNTS_STAMP="$STATE_DIR/.counts.ts"
 COUNTS_OUT="$STATE_DIR/.counts.out"
 COUNTS_EVERY=${TA_COUNTS_EVERY:-5}   # 0: on every call, as TA_NAMES_EVERY=0 means
@@ -691,9 +735,13 @@ COUNTS_EVERY=${TA_COUNTS_EVERY:-5}   # 0: on every call, as TA_NAMES_EVERY=0 mea
 case $COUNTS_EVERY in ''|*[!0-9]*) COUNTS_EVERY=5 ;; esac
 
 counts() {
-  local tmpf
+  local tmpf x=""
   if [ "$COUNTS_EVERY" -ne 0 ] && ! due_every "$COUNTS_STAMP" "$COUNTS_EVERY"; then
-    cat "$COUNTS_OUT" 2>/dev/null
+    # Whole file, every byte of it, trailing newlines included: -d '' reads to the
+    # end, IFS= keeps the edges, and the braces keep the error of a missing file
+    # away from the bar (the redirection fails before a 2>/dev/null on read does).
+    { IFS= read -r -d '' x <"$COUNTS_OUT"; } 2>/dev/null
+    printf '%s' "$x"
     return 0
   fi
   # The config is parsed here, in this shell and after the cache check: a cached
@@ -704,20 +752,53 @@ counts() {
   tmpf="$COUNTS_OUT.$$"
   counts_now >"$tmpf" 2>/dev/null
   mv -f "$tmpf" "$COUNTS_OUT" 2>/dev/null || rm -f "$tmpf"
-  cat "$COUNTS_OUT" 2>/dev/null
+  { IFS= read -r -d '' x <"$COUNTS_OUT"; } 2>/dev/null
+  printf '%s' "$x"
 }
 
+# THE BAR'S TEXT IN FOUR PIECES, which the refresher keeps apart because they
+# move at different speeds: the config marker, the burn and the month line change
+# on a 5th tick at most (the usage index and the config are what they are read
+# from), the tally with every list the picker draws. counts_parts reads the three
+# slow ones into CP_*, counts_compose puts a tally between them, and what it
+# prints is, byte for byte, what counts_now prints — the two are checked against
+# each other (tests/forks.sh, tests/usage.sh), so one cannot drift from the
+# other. The burn and the month line keep their trailing newlines, as printed.
+counts_parts() {
+  local x
+  CP_PREFIX=""; CP_BURN=""; CP_STATUS=""
+  cfg_count_cached
+  [ "$CFG_NPROBLEMS" -gt 0 ] && printf -v CP_PREFIX '#[fg=magenta]cfg!%d ' "$CFG_NPROBLEMS"
+  if usage_on; then
+    { x=$(tusage --no-update --burn 2>/dev/null; printf .); } 2>/dev/null
+    CP_BURN=${x%.}
+  fi
+  { x=$(usage_line status; printf .); } 2>/dev/null
+  CP_STATUS=${x%.}
+}
+
+counts_compose() {  # <tally> — the text of counts_now, from counts_parts and a tally
+  printf '%s%s%s%s' "$CP_PREFIX" "$1" "$CP_BURN" "$CP_STATUS"
+}
+
+# The full computation, for a bar nobody is keeping. It is the slow way round:
+# a whole list() (about 38 programs and 75 forks) to count rows the picker may
+# have counted two seconds ago, which is why a refresher keeps the cache instead
+# while it can.
 counts_now() {
   # The window names are swept from here as well as from the refresher, so they
   # keep up for somebody who never opens the dashboard at all: the status bar is
   # the one thing that runs either way. Backgrounded and throttled — see
-  # sync_names_due — and started before the counting so the two overlap.
+  # sync_names_due — and started before the counting so the two overlap. A
+  # refresher that keeps the stamp does the same on its own 5th tick, and then
+  # this does not run at all.
   if sync_names_due; then
     sync_window_names >/dev/null 2>&1 &
   fi
   # The resurrect snapshot rides the same tick for the same reason: a reboot
   # does not wait for the dashboard to be open, and the pre-reboot set is only
-  # as fresh as the last capture. Its own throttle (resurrect.every, 0 = off).
+  # as fresh as the last capture. Its own throttle (resurrect.every, 0 = off);
+  # the refresher takes it over on its 5th tick, along with the names.
   if resurrect_due; then resurrect_save >/dev/null 2>&1 & fi
   # A config with something wrong in it, ahead of the counts: the status bar is
   # there whether or not the dashboard is open, and a profile pointing nowhere
@@ -725,20 +806,12 @@ counts_now() {
   # nothing is wrong, so the bar of a good config is unchanged to the byte.
   cfg_count_cached
   [ "$CFG_NPROBLEMS" -gt 0 ] && printf '#[fg=magenta]cfg!%d ' "$CFG_NPROBLEMS"
-  # TA_MARKS=0: the status bar wants field 3 of every row and nothing else, so
-  # the seat marks would be computed and thrown away — see list().
-  TA_MARKS=0 list | awk -F"$TAB" '
-    # Group headers carry the state of their most urgent member, so counting
-    # every row made a single blocked agent show up twice in the status bar.
-    index($2, "\342\226\276") > 0 { next }   # UTF-8 for the header marker
-    { n[$3]++ }
-    END {
-      out = ""
-      if (n["blocked"]) out = out sprintf("#[fg=yellow]⚠%d ", n["blocked"])
-      if (n["done"])    out = out sprintf("#[fg=cyan]✓%d ",   n["done"])
-      if (n["working"]) out = out sprintf("#[fg=green]●%d ",  n["working"])
-      printf "%s#[default]", out
-    }'
+  # TA_MARKS=0: the status bar wants the tally and nothing else, so the seat
+  # marks would be computed and thrown away — see list(). TA_TALLY=1 makes list()
+  # print the tally and no rows: the rule that decides what is counted (the
+  # header rows are not) is in list(), where the picker's own tally comes from,
+  # and nowhere else.
+  TA_MARKS=0 TA_TALLY=1 list
   # ...followed by what the last five hours cost, so the number that decides
   # whether you are about to hit the limit is on screen without asking.
   usage_on && tusage --no-update --burn 2>/dev/null

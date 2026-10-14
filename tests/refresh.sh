@@ -105,6 +105,12 @@ cat >"$BIN/tusage" <<'EOF'
 #!/bin/sh
 n=0; read -r n <"$RF_DIR/tick"
 echo "$n $*" >>"$RF_DIR/tusage.log"
+# What the stamp said when the update began, and the burn a scenario files.
+case "$*" in
+  --update*) cat "$RF_STATE/.counts.ts" >"$RF_DIR/ts.update.$n" 2>/dev/null ;;
+  *--burn*)  cat "$RF_DIR/burn" 2>/dev/null ;;
+esac
+exit 0
 EOF
 chmod +x "$BIN"/* "$TREE/tnotes"
 
@@ -300,6 +306,95 @@ if [ -n "$FP" ]; then
 else
   fail=$((fail + 1)); printf '  FAIL fzf never published its port\n'
 fi
+
+# ---------------------------------------------------------------------------
+t "9. the refresher keeps the status bar's cache from the tally the list wrote"
+# ---------------------------------------------------------------------------
+# The list writes .counts.tally each time it is rendered with its marks on; the
+# loop turns the last one into .counts.out and stamps .counts.ts on every tick
+# its post is answered, so the bar serves the cache and starts no list of its
+# own. The text is the tally with the config marker in front (a bad number in the
+# config gives exactly one).
+TALLY1='#[fg=yellow]⚠1 #[fg=green]●2 #[default]'
+TALLY2='#[fg=cyan]✓4 #[default]'
+EXP1="#[fg=magenta]cfg!1 $TALLY1"
+EXP2="#[fg=magenta]cfg!1 $TALLY2"
+now_s() { date +%s; }
+num() {  # <file> — the epoch in it, or 0 for a file that is missing or empty
+  local v=""; read -r v <"$1" 2>/dev/null
+  case ${v:-x} in ''|*[!0-9]*) echo 0 ;; *) echo "$v" ;; esac
+}
+newrun counts
+printf 'usage:\n  monthly_limit_usd: abc\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+# The list renders during tick 1, and the first tally is there for the loop's
+# first answered post; the second is written on the 5th tick.
+act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\""
+act 2 'cat "$RF_STATE/.counts.out" >"$RF_DIR/out.2"; ls -i "$RF_STATE/.counts.out" >"$RF_DIR/ino.2"; cat "$RF_STATE/.counts.ts" >"$RF_DIR/ts.2"'
+act 4 'ls -i "$RF_STATE/.counts.out" >"$RF_DIR/ino.4"; cat "$RF_STATE/.counts.ts" >"$RF_DIR/ts.4"; [ -e "$RF_STATE/.resurrect.ts" ] && echo yes >"$RF_DIR/res.4"'
+act 5 "printf '%s' '$TALLY2' >\"\$RF_STATE/.counts.tally\""
+act 6 'cat "$RF_STATE/.counts.out" >"$RF_DIR/out.6"; ls -i "$RF_STATE/.counts.out" >"$RF_DIR/ino.6"'
+go 7
+END_S=$(now_s)
+ok "after the first answered tick .counts.out is the config marker and the tally" "$EXP1" "$(cat "$D/out.2" 2>/dev/null)"
+ts_end=$(num "$STATE/.counts.ts")
+ok ".counts.ts holds an epoch within 2 s of now" 1 "$(( ts_end > 0 && END_S - ts_end >= 0 && END_S - ts_end <= 2 ? 1 : 0 ))"
+ok "the stamp moves on every answered tick" 1 "$(( $(num "$D/ts.2") > 0 && $(num "$D/ts.4") > $(num "$D/ts.2") ? 1 : 0 ))"
+ok "there is a cache file to compare" 1 "$([ -s "$D/ino.2" ] && echo 1 || echo 0)"
+ok ".counts.out is not rewritten while its text is the same (same inode)" "$(cat "$D/ino.2" 2>/dev/null)" "$(cat "$D/ino.4" 2>/dev/null)"
+ok "a tally that changed is written (new text, new inode)" "$EXP2" "$(cat "$D/out.6" 2>/dev/null)"
+ok "...into a different file" 1 "$([ -n "$(cat "$D/ino.6" 2>/dev/null)" ] && [ "$(cat "$D/ino.6" 2>/dev/null)" != "$(cat "$D/ino.2" 2>/dev/null)" ] && echo 1 || echo 0)"
+ok "no temp file is left in the state directory" 0 "$(ls -A "$STATE" | grep -c '^\.counts\.out\.')"
+ok "the resurrect snapshot is not due before the 5th tick" "" "$(cat "$D/res.4" 2>/dev/null)"
+ok "...and is taken on it, since the bar no longer does" yes "$([ -e "$STATE/.resurrect.ts" ] && echo yes || echo no)"
+ok "the three marker files are gone when the loop ends" 0 "$(markers)"
+
+t "10. a tally from before this refresher started is not served"
+newrun oldtally
+printf 'usage:\n  monthly_limit_usd: abc\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf '%s' "$TALLY1" >"$STATE/.counts.tally"; touch -t 200001010000 "$STATE/.counts.tally"
+go 4
+ok "no cache is written from it" no "$([ -e "$STATE/.counts.out" ] && echo yes || echo no)"
+ok "...and no stamp is put on it" no "$([ -e "$STATE/.counts.ts" ] && echo yes || echo no)"
+
+t "11. once the list stops answering the stamp stops moving"
+newrun deaf
+act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\""
+act 3 'cat "$RF_STATE/.counts.ts" >"$RF_DIR/ts.3"'
+act 4 ':'
+act 5 ':'
+act 6 ':'
+echo "from 3" >"$D/curlfail"
+go 8
+END_S=$(now_s)
+ts_end=$(num "$STATE/.counts.ts")
+ok "the stamp was put on the answered ticks" 1 "$(( $(num "$D/ts.3") > 0 ? 1 : 0 ))"
+ok "every post from tick 3 on was refused, and the loop ended" 7 "$(lasttick)"
+ok "the stamp is where tick 2 left it, three seconds and a tick 0 later" "$(num "$D/ts.3")" "$ts_end"
+ok "...which is not now" 1 "$(( END_S - ts_end >= 3 ? 1 : 0 ))"
+
+t "12. the stamp is renewed straight after the sleep on the 5th tick, before the work"
+newrun slow
+printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\""
+act 4 'cat "$RF_STATE/.counts.ts" >"$RF_DIR/ts.4"'
+act 5 ':'
+go 5
+ok "tusage --update ran on the 5th tick" yes "$([ -e "$D/ts.update.5" ] && echo yes || echo no)"
+ok "the stamp it found is newer than the one tick 4 left (a slow update cannot age it)" 1 \
+   "$(( $(num "$D/ts.4") > 0 && $(num "$D/ts.update.5") > $(num "$D/ts.4") ? 1 : 0 ))"
+
+t "13. the burn and the month are taken again on the 5th tick"
+newrun burn
+printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf '5h $1.00 ' >"$D/burn"
+act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\""
+act 3 'cat "$RF_STATE/.counts.out" >"$RF_DIR/out.3"; printf "5h \$2.00 " >"$RF_DIR/burn"'
+act 4 'cat "$RF_STATE/.counts.out" >"$RF_DIR/out.4"'
+go 5
+has "the burn is in the text from the first tick" '5h $1.00 ' "$(cat "$D/out.3" 2>/dev/null)"
+has "...and the tally follows it" "$TALLY1" "$(cat "$D/out.3" 2>/dev/null)"
+ok "a burn that moves is not read between 5th ticks" "$(cat "$D/out.3" 2>/dev/null)" "$(cat "$D/out.4" 2>/dev/null)"
+has "...and is read again on the 5th" '5h $2.00 ' "$(cat "$STATE/.counts.out" 2>/dev/null)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -250,5 +250,124 @@ ok "the cached run starts no hostname" 0 "$h"
 export TA_CONFIG="$ROOT/absent.yaml"
 export TA_COUNTS_EVERY=0
 
+# ---------------------------------------------------------------------------
+t "the tally: list() counts it once, by the rule the status bar used to apply"
+# THE ORACLE IS THE OLD PIPELINE, kept here word for word: `TA_MARKS=0 list`
+# through an awk of its own that skipped every row with the header marker in its
+# second field and counted the third. The rule now lives in list()'s last awk,
+# and what comes out of it has to be what this prints.
+ORACLE='
+  index($2, "\342\226\276") > 0 { next }
+  { n[$3]++ }
+  END {
+    out = ""
+    if (n["blocked"]) out = out sprintf("#[fg=yellow]⚠%d ", n["blocked"])
+    if (n["done"])    out = out sprintf("#[fg=cyan]✓%d ",   n["done"])
+    if (n["working"]) out = out sprintf("#[fg=green]●%d ",  n["working"])
+    printf "%s#[default]", out
+  }'
+# Live pane-less sessions: the recorded pid is this shell, which is alive, so the
+# rows are blocked, done and working and not ended. <state>:<project> each.
+add_live() {
+  local spec i=0 st d
+  for spec in "$@"; do
+    i=$((i + 1)); st=${spec%%:*}; d="$ROOT/proj-${spec#*:}"; mkdir -p "$d"
+    printf '%s\t%s\tsid-%s\t%s\t\t\t\t%s\t\tlabel %s\n' "$NOW" "$st" "$i" "$d" "$$" "$i" \
+      >"$STATE/s-sid-$i.tsv"
+    printf 'sid-%s\t%s\n' "$i" "$d" >>"$STATE/origin.tsv"
+  done
+}
+export TA_CONFIG="$ROOT/absent.yaml"
+for mode in grouped flat; do
+  fresh; add_live blocked:1 done:1 working:2 working:2 blocked:3 done:3 working:3
+  if [ "$mode" = flat ]; then export TA_FLAT=1; else unset TA_FLAT; fi
+  TA_MARKS=0 "$TA" --list 2>/dev/null | awk -F"$TAB" "$ORACLE" >"$ROOT/old.tally"
+  TA_MARKS=0 TA_TALLY=1 "$TA" --list >"$ROOT/new.tally" 2>/dev/null
+  has "$mode: the fixture has blocked, done and working rows" "⚠2 " "$(cat "$ROOT/old.tally")"
+  if [ "$mode" = grouped ]; then
+    has "grouped: the fixture has group headers" "▾" "$(TA_MARKS=0 "$TA" --list 2>/dev/null)"
+  fi
+  cmp -s "$ROOT/old.tally" "$ROOT/new.tally"
+  ok "$mode: TA_TALLY=1 prints exactly what the old awk printed" 0 "$?"
+  rm -f "$STATE/.counts.tally"
+  "$TA" --list >/dev/null 2>&1
+  cmp -s "$ROOT/old.tally" "$STATE/.counts.tally"
+  ok "$mode: a marks-on --list leaves the same bytes in .counts.tally" 0 "$?"
+  ok "$mode: ...and no temp file behind it" 0 "$(ls -A "$STATE" | grep -c '^\.counts\.tally\.')"
+  rm -f "$STATE/.counts.tally"
+  TA_MARKS=0 "$TA" --list >/dev/null 2>&1
+  ok "$mode: a list without marks (the status bar's) leaves no tally" no "$([ -e "$STATE/.counts.tally" ] && echo yes || echo no)"
+  TA_TALLY=1 "$TA" --list >/dev/null 2>&1
+  ok "$mode: nor does one that only wants the tally" no "$([ -e "$STATE/.counts.tally" ] && echo yes || echo no)"
+done
+unset TA_FLAT
+fresh
+TA_MARKS=0 "$TA" --list 2>/dev/null | awk -F"$TAB" "$ORACLE" >"$ROOT/old.tally"
+TA_MARKS=0 TA_TALLY=1 "$TA" --list >"$ROOT/new.tally" 2>/dev/null
+cmp -s "$ROOT/old.tally" "$ROOT/new.tally"
+ok "no sessions: both print the bare reset" 0 "$?"
+"$TA" --list >/dev/null 2>&1
+ok "...and the marks-on list leaves it in .counts.tally" "#[default]" "$(cat "$STATE/.counts.tally" 2>/dev/null)"
+
+# ---------------------------------------------------------------------------
+t "--counts: the pieces the refresher keeps compose to exactly what counts_now prints"
+# The two functions are called in a bash that has loaded the modules the way the
+# entry point loads them, because that is the only way to reach a function.
+LIBD="$HERE/../lib/tagents"
+FN_MODS=$(sed -n '/for ta_mod in/,/; do/p' "$TA" | sed 's/.*for ta_mod in//; s/; do.*//' | tr -d '\\' | tr -s ' \n' '  ')
+fn() {  # <code> — runs it with the modules loaded and the config read
+  SELF="$TA" FN_LIB="$LIBD" FN_MODS="$FN_MODS" /bin/bash -c \
+    'set -uo pipefail; for m in $FN_MODS; do . "$FN_LIB/$m.sh"; done; cfg_load; eval "$1"' fn "$1"
+}
+printf 'usage:\n  monthly_limit_usd: abc\n' >"$ROOT/cfgbad.yaml"
+for cf in "$ROOT/absent.yaml" "$ROOT/cfgbad.yaml"; do
+  export TA_CONFIG=$cf
+  fresh; add_live blocked:1 done:1 working:2
+  fn 'counts_now' >"$ROOT/now.out" 2>/dev/null
+  fn 'counts_parts; tl=$(TA_MARKS=0 TA_TALLY=1 list; printf .); counts_compose "${tl%.}"' \
+    >"$ROOT/compose.out" 2>/dev/null
+  cmp -s "$ROOT/now.out" "$ROOT/compose.out"
+  ok "${cf##*/}: counts_compose of counts_parts and the tally is counts_now, byte for byte" 0 "$?"
+  has "${cf##*/}: ...and it is not empty" "⚠1 " "$(cat "$ROOT/now.out")"
+done
+has "a config with a problem keeps its marker in front" "cfg!1 " "$(cat "$ROOT/now.out")"
+export TA_CONFIG="$ROOT/absent.yaml"
+
+# ---------------------------------------------------------------------------
+t "--counts: a cached run starts one program, date, and prints the cache as it is"
+ALLSHIM="$ROOT/allshim"; mkdir -p "$ALLSHIM"
+for p in awk basename cat chmod cp cut date dirname env find grep head hostname id kill ln ls \
+         mkdir mktemp mv ps readlink rm sed sleep sort stat tail tee touch tr tmux uname wc xargs tusage; do
+  real=$(command -v "$p" 2>/dev/null) || continue
+  printf '#!/bin/sh\necho %s >>"%s/all"\nexec "%s" "$@"\n' "$p" "$CNT" "$real" >"$ALLSHIM/$p"
+  chmod +x "$ALLSHIM/$p"
+done
+unset TA_COUNTS_EVERY
+fresh
+# Trailing newlines on purpose: the bar's text can end in them (a usage line does).
+printf '#[fg=green]●3 #[default]\n\n' >"$STATE/.counts.out"
+printf '%s\n' "$(date +%s)" >"$STATE/.counts.ts"
+: >"$CNT/all"
+PATH="$ALLSHIM:$PATH" /bin/bash "$TA" --counts >"$ROOT/cached.out" 2>/dev/null
+ok "the programs one cached --counts starts" "date" "$(tr '\n' ' ' <"$CNT/all" | sed 's/ $//')"
+cmp -s "$STATE/.counts.out" "$ROOT/cached.out"
+ok "...and what it prints is the cache, byte for byte" 0 "$?"
+export TA_COUNTS_EVERY=0
+
+# ---------------------------------------------------------------------------
+t "due_every: the stamp is read without a program, and a bad stamp reads as old"
+fresh
+printf '%s\n' "$(date +%s)" >"$STATE/.names.ts"
+: >"$CNT/all"
+PATH="$ALLSHIM:$PATH" fn 'due_every "$STATE_DIR/.names.ts" 30; echo "rc=$?"' >"$ROOT/due.out" 2>/dev/null
+ok "a fresh stamp is not due" "rc=1" "$(cat "$ROOT/due.out")"
+printf 'junk\n' >"$STATE/.names.ts"
+PATH="$ALLSHIM:$PATH" fn 'due_every "$STATE_DIR/.names.ts" 30; echo "rc=$?"' >"$ROOT/due.out" 2>/dev/null
+ok "a stamp that is not a number is due" "rc=0" "$(cat "$ROOT/due.out")"
+rm -f "$STATE/.names.ts"
+PATH="$ALLSHIM:$PATH" fn 'due_every "$STATE_DIR/.names.ts" 30; echo "rc=$?"' >"$ROOT/due.out" 2>&1
+ok "no stamp at all is due, with nothing on stderr" "rc=0" "$(cat "$ROOT/due.out")"
+ok "...and none of those started a cat" 0 "$(grep -c '^cat$' "$CNT/all")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

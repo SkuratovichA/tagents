@@ -1,6 +1,6 @@
 # lib/tagents/refresh.sh — keeping a list current
 #
-# Everything that reacts to time or to focus: the refresher loop (a 2 s tick that posts a reload to the picker only when something it draws changed, and a bare ignore otherwise, looks at the seats only when tmux changed, and every 5th tick reloads regardless, repairs the usage figure, window names, seats and notes, and re-reads a changed config; five failed posts end it), claim_port's re-assertion, follow_cursor, poke with its (pane, seat) debounce — one pane switch can fire three hooks — and install_focus_hooks, which wires the four tmux events lazily on the first dock.
+# Everything that reacts to time or to focus: the refresher loop (a 2 s tick that posts a reload to the picker only when something it draws changed, and a bare ignore otherwise, looks at the seats only when tmux changed, and every 5th tick reloads regardless, repairs the usage figure, window names, seats and notes, re-reads a changed config, and takes the resurrect snapshot; five failed posts end it), and keeps the status bar's cache from the tally the list writes, claim_port's re-assertion, follow_cursor, poke with its (pane, seat) debounce — one pane switch can fire three hooks — and install_focus_hooks, which wires the four tmux events lazily on the first dock.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -69,15 +69,28 @@ refresh_changed() {  # <marker> <overlay config path> — 0 when something chang
 #            proves the list is listening and a dead one still ends the loop
 #   seats    the block at the foot of the loop, when the snapshot changed, when
 #            no claim is held, and on every 5th tick as a backstop
+# AND THE STATUS BAR IS FED FROM HERE while this loop is answered. tmux runs
+# `tagents --counts` every few seconds, and each run that is due is a whole list
+# (about 38 programs and 75 forks) to count rows the list this loop reloads has
+# already counted: list() leaves its tally in .counts.tally, and every answered
+# tick turns it into .counts.out and stamps .counts.ts, so the bar's own throttle
+# never finds itself due and it serves the cache for the price of a date. The
+# stamp stops with the answers (a refused post clears `live`), and the bar is then
+# due again within COUNTS_EVERY seconds and computes for itself. See refresher_counts.
 refresher() {
   local port=${TA_PORT:-} tick=0 dp seat last="" fails=0 fl pub=""
   local snap="" rsnap="" ssnap="" pending=1 due body first mark cfgmark ovl
+  local startmark t0 live="" lasttl="" lasttext="" cdirty=1
   [ -z "$port" ] && return 0
   # One marker per refresher, in the state directory every writer already uses:
   # its time is "when the last reload was posted", and the second one is "when
   # the config was last read" (see below). A refresher that is killed leaves
   # them behind, and the next one on the same port overwrites them.
   mark="$STATE_DIR/.refresher.$port"; cfgmark="$mark.cfg"
+  # "When this refresher started": a tally older than it belongs to some earlier
+  # picker, hours ago perhaps, and is never served (see refresher_counts).
+  startmark="$mark.start"
+  : >"$startmark" 2>/dev/null
   # The per-host overlay is read by cfg_overlay from this same path.
   host_once
   ovl="${CONFIG_FILE%.yaml}.${TA_HOST:-$HOST_S}.yaml"
@@ -93,6 +106,10 @@ refresher() {
   # the tusage update off at the same time. Loaded here, both read the one copy,
   # and the re-read on the 5th tick below replaces it for both at once.
   cfg_load
+  # THE CLOCK, READ ONCE. The stamp on the bar's cache is written on every tick
+  # and a date per tick is a program per tick; SECONDS counts for free, so the
+  # epoch of any later moment is t0 + SECONDS.
+  t0=$(( $(date +%s) - SECONDS ))
   # THE PORT IS ONLY KNOWN IN HERE. fzf hands $FZF_PORT to the start: bind and
   # to nothing else, so --poke — fired from a tmux hook in a window that has
   # never heard of this list — has no way to ask for it. It is published on the
@@ -108,12 +125,20 @@ refresher() {
   # config-dir labels (`default`, `d`), the next read rebuilt it back, and the
   # meter was fetched a second time under a name nothing reads.
   usage_on && usage_env
+  # The pieces of the bar's text that move slowly, read once here and again on
+  # every 5th tick (see counts_parts). After usage_env: the month line needs it.
+  counts_parts
   while sleep 2; do
     # Advance the token index out here, not in list(): parsing the tail of every
     # transcript costs a few hundred milliseconds, and a keystroke must never
     # wait on it. Every 5th tick is ~10s of lag on a number that moves slowly.
     tick=$(( (tick + 1) % 5 ))
     if [ "$tick" = 0 ]; then
+      # THE STAMP IS RENEWED BEFORE THE SLOW WORK OF THIS TICK, not after it: a
+      # tusage --update can take longer than COUNTS_EVERY, and a stamp that aged
+      # past it in there would make the bar compute for itself in the middle of
+      # a loop that is keeping it. Only while the stamp is being kept at all.
+      [ -n "$live" ] && counts_stamp
       # A CONFIG CHANGED UNDER A RUNNING REFRESHER IS READ AGAIN. The config is
       # memoised for the life of a process, and a refresher lives as long as its
       # list — one started before usage was turned off went on running tusage
@@ -129,6 +154,9 @@ refresher() {
         usage_on && usage_env
       fi
       usage_on && tusage --update >/dev/null 2>&1
+      # What the update moved is in the burn and the month line, and the config
+      # that was just read again may have gained or lost its problem.
+      counts_parts; cdirty=1
       # The footer is one of fzf's own frames, not a row, so reload-sync leaves
       # it alone — it has to be pushed. On this tick and no other: the figure it
       # carries only moves when the index it is read from does.
@@ -138,6 +166,11 @@ refresher() {
       # every-5th-tick branch, and there is one refresher per list — while the
       # status bar path throttles itself, since it has no tick of its own.
       sync_window_names >/dev/null 2>&1
+      # The resurrect snapshot, which the status bar used to take whenever it
+      # computed the counts. While this loop keeps the stamp it does not compute
+      # them, so the snapshot rides the tick that already sweeps the names; its own
+      # throttle (resurrect.every) still decides whether it is due.
+      if resurrect_due; then resurrect_save >/dev/null 2>&1 & fi
       # Self-heal the sidebar. When a docked agent's Claude exits, its pane dies
       # inside the dashboard window and that seat is simply gone until something
       # docks again. Put it back rather than making the user notice and work out
@@ -187,6 +220,9 @@ refresher() {
     # ignore is there to find out.
     if ! curl -s -XPOST "http://127.0.0.1:$port" -d "$body" >/dev/null 2>&1; then
       fails=$((fails + 1))
+      # A list that does not answer is not one whose tally is current: the stamp
+      # stops here, and the bar takes the counting back within COUNTS_EVERY.
+      live=""
       [ -n "$due" ] && pending=1
       # A LIST THAT DOES NOT ANSWER HAS NO CLAIM TO MAKE. The five-strike grace
       # keeps the loop alive through a busy fzf, but a refresher whose fzf is
@@ -204,6 +240,7 @@ refresher() {
       continue
     fi
     fails=0
+    refresher_counts
     # What the reload saw is what the next snapshot is compared with.
     if [ -n "$due" ]; then rsnap=$snap; pending=""; fi
 
@@ -234,7 +271,7 @@ refresher() {
       claim_port
     fi
   done
-  rm -f "$mark" "$cfgmark" 2>/dev/null
+  rm -f "$mark" "$cfgmark" "$startmark" 2>/dev/null
   # Only ever taken down by its owner. A refresher outlived by its fzf — the
   # list respawned, five posts refused — must not wipe the claim the NEXT
   # refresher has already made on the same pane: that is how a live dashboard
@@ -242,6 +279,46 @@ refresher() {
   [ -n "$pub" ] && [ "$(tmux show -pv -t "$pub" @tagents_port 2>/dev/null)" = "$port" ] &&
     tmux set -up -t "$pub" @tagents_port 2>/dev/null
   return 0
+}
+
+# THE STAMP ON THE BAR'S CACHE, in the epoch the refresher's own clock says. The
+# braces are for a state directory that is gone: the error of a failed redirection
+# is printed before a 2>/dev/null on the printf could apply. Uses t0.
+counts_stamp() {
+  { printf '%s\n' "$((t0 + SECONDS))" >"$COUNTS_STAMP"; } 2>/dev/null
+}
+
+# THE BAR'S CACHE FROM THE LIST'S TALLY, on every tick whose post was answered.
+# The reload is asynchronous, so the tally read here is the one the previous
+# reload left: at most one tick old, which is far inside COUNTS_EVERY. It is only
+# served when it is not older than this refresher (a tally left by a picker that
+# closed hours ago says nothing about now); until the first list has written one
+# the stamp stays where it was and the bar counts for itself. Everything is the
+# shell's own: on an idle tick nothing here starts a program, and the cache is
+# rewritten, by a rename, only when its text is not the one already there. Uses
+# the refresher's startmark, t0, live, lasttl, lasttext and cdirty.
+refresher_counts() {
+  local f="$STATE_DIR/.counts.tally" tl="" text
+  [ -e "$f" ] && ! [ "$startmark" -nt "$f" ] || return 0
+  { IFS= read -r -d '' tl <"$f"; } 2>/dev/null
+  [ -n "$tl" ] || return 0
+  if [ -n "$cdirty" ] || [ "$tl" != "$lasttl" ] || [ ! -e "$COUNTS_OUT" ]; then
+    # The trailing newlines of the burn and the month line belong to the text,
+    # and a command substitution would eat them: a character goes after, and off.
+    text=$(counts_compose "$tl"; printf .); text=${text%.}
+    if [ "$text" != "$lasttext" ] || [ ! -e "$COUNTS_OUT" ]; then
+      if { printf '%s' "$text" >"$COUNTS_OUT.$$"; } 2>/dev/null &&
+         mv -f "$COUNTS_OUT.$$" "$COUNTS_OUT" 2>/dev/null; then
+        lasttext=$text
+      else
+        rm -f "$COUNTS_OUT.$$" 2>/dev/null
+        return 0   # nothing was written, so nothing is vouched for
+      fi
+    fi
+    lasttl=$tl; cdirty=""
+  fi
+  counts_stamp
+  live=1
 }
 
 # THE PORT IS A CLAIM THAT HAS TO BE KEPT, not a note left once. The list pane
