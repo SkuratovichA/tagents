@@ -369,5 +369,25 @@ PATH="$ALLSHIM:$PATH" fn 'due_every "$STATE_DIR/.names.ts" 30; echo "rc=$?"' >"$
 ok "no stamp at all is due, with nothing on stderr" "rc=0" "$(cat "$ROOT/due.out")"
 ok "...and none of those started a cat" 0 "$(grep -c '^cat$' "$CNT/all")"
 
+# ---------------------------------------------------------------------------
+t "slot: a lap asks tmux once and sleeps once"
+SLSHIM="$ROOT/slshim"; mkdir -p "$SLSHIM"
+cat >"$SLSHIM/tmux" <<EOF
+#!/bin/sh
+echo "\$*" >>"$CNT/sl.tmux"
+case "\$*" in
+  list-panes*) printf '%%9 @1 1 $$ - 0\n%%2 @2 - - - 0\n' ;;
+  display*window_id*) echo @2 ;;
+esac
+EOF
+printf '#!/bin/sh\necho "$*" >>"%s/sl.sleep"\n' "$CNT" >"$SLSHIM/sleep"
+chmod +x "$SLSHIM/tmux" "$SLSHIM/sleep"
+: >"$CNT/sl.tmux"; : >"$CNT/sl.sleep"
+# The pane is outside the dashboard window and parks nobody: the second lap ends the loop.
+TMUX_PANE=%2 PATH="$SLSHIM:$PATH" fn 'slot; echo "rc=$?"' >"$ROOT/slot.out" 2>/dev/null
+ok "slot returned after two laps" 1 "$(grep -c 'rc=0$' "$ROOT/slot.out")"
+ok "...with one tmux call per lap" 2 "$(wc -l <"$CNT/sl.tmux" | tr -d ' ')"
+ok "...and one sleep" 1 "$(wc -l <"$CNT/sl.sleep" | tr -d ' ')"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
