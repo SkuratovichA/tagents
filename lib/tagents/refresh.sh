@@ -194,7 +194,7 @@ refresher() {
       # The footer is one of fzf's own frames, not a row, so reload-sync leaves
       # it alone — it has to be pushed. On this tick and no other: the figure it
       # carries only moves when the index it is read from does.
-      [ -n "$CP_FOOTER" ] && post_fzf "$port" "change-footer($CP_FOOTER)"
+      [ -n "$CP_FOOTER" ] && post_fzf "$port" "change-footer($CP_FOOTER)" || :
       # Windows named after their agents. Unthrottled here — this is already the
       # every-5th-tick branch, and there is one refresher per list — while the
       # status bar path throttles itself, since it has no tick of its own.
@@ -260,7 +260,7 @@ refresher() {
     # seconds of a list that never answers, which is a list that has really gone;
     # anything short of that resets the count. An idle tick counts the same: its
     # ignore is there to find out.
-    if ! curl -s -XPOST "http://127.0.0.1:$port" -d "$body" >/dev/null 2>&1; then
+    if ! post_fzf "$port" "$body"; then
       fails=$((fails + 1))
       # A list that does not answer is not one whose tally is current: the stamp
       # stops here, and the bar takes the counting back within COUNTS_EVERY.

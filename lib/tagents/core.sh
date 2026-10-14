@@ -116,8 +116,7 @@ prompt_at() {  # <width> <height> <args for $SELF...>
 # port travels as an argument, like the row fields do. No port (a bare --list
 # from a script, or a test) is not an error: the toggle still happens, it is
 # just not seen until the next refresher tick.
-post_fzf() {  # <port> <fzf action>
+post_fzf() {  # <port> <fzf action> — curl's exit status; 0 when there is no port
   [ -n "${1:-}" ] || return 0
   curl -s -XPOST "http://127.0.0.1:$1" -d "$2" >/dev/null 2>&1
-  return 0
 }
