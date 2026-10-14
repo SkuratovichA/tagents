@@ -72,17 +72,21 @@ live_sids() {  # the session id of every pane a Claude is running in, one per li
 # Sessions started from a subdirectory of a repo belong with the rest of that
 # repo — grouping by raw cwd would file ~/repo/packages/client separately from
 # ~/repo and make it look like an agent had gone missing. Walk up to the .git.
-repo_root() {
+# repo_root_v sets REPO_ROOT and costs no process; repo_root prints it for the
+# callers that want a command substitution.
+repo_root_v() {
   local d=$1
+  REPO_ROOT=
   # Absolute paths only, and bail out when there is no slash left to strip:
   # ${d%/*} on a slashless value returns it unchanged, i.e. an infinite loop.
   case $d in /*) ;; *) return 1 ;; esac
   while [ -n "$d" ] && [ "$d" != / ]; do
-    [ -e "$d/.git" ] && { printf '%s' "$d"; return 0; }
+    [ -e "$d/.git" ] && { REPO_ROOT=$d; return 0; }
     case $d in */*) d=${d%/*} ;; *) return 1 ;; esac
   done
   return 1
 }
+repo_root() { repo_root_v "$@" && printf '%s' "$REPO_ROOT"; }
 
 # Only <pane number>.tsv holds a pane's state. history.tsv and labels.tsv sit in
 # the same directory, and globbing *.tsv swept them up as panes called
@@ -184,7 +188,7 @@ dir_roots() {
     [ $# -gt 0 ] && awk -F"$TAB" "$AWK_SKIP_GONE"' FNR == 1 { print $4 }' "$@" </dev/null 2>/dev/null
   } | sort -u | while IFS= read -r d; do
     [ -n "$d" ] || continue
-    r=$(repo_root "$d") || continue
+    repo_root_v "$d" || continue; r=$REPO_ROOT
     [ "$r" = "$d" ] && continue
     printf 'R%s%s%s%s\n' "$TAB" "$d" "$TAB" "$r"
   done

@@ -106,11 +106,11 @@ seat_here() {  # <the output of seats> <pane> — is that pane one of them?
 # before a chat is evicted from one, and finally the leftmost chat. Every answer
 # is checked against the seats of THIS window, so a marker that names a pane
 # which has stopped being a seat is skipped rather than believed.
-current_seat() {  # <list pane> -> the seat, nothing when the window has none
+current_seat() {  # <list pane> [<the output of seats>] -> the seat, nothing when the window has none
   local dp=${1:-} win ss cur
   win=$(tmux display -p -t "$dp" '#{window_id}' 2>/dev/null)
   [ -n "$win" ] || return 0
-  ss=$(seats "$dp")
+  if [ $# -ge 2 ]; then ss=$2; else ss=$(seats "$dp"); fi
   [ -n "$ss" ] || return 0
   cur=$(tmux show -vw -t "$win" @tagents_cur 2>/dev/null)
   if [ -n "$cur" ] && seat_here "$ss" "$cur"; then printf '%s' "$cur"; return 0; fi

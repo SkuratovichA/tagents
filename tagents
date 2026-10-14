@@ -459,7 +459,12 @@ set -uo pipefail
 # with the usual `export CDPATH` and a relative invocation this came back as two
 # lines and every fzf binding built from it was a syntax error. `--` for a
 # directory whose name starts with a dash.
-SELF=$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")
+# Parameter expansion in place of dirname and basename (two processes a run);
+# a path without a slash is the current directory, as dirname says.
+_src=${BASH_SOURCE[0]}
+case $_src in */*) _srcdir=${_src%/*} ;; *) _srcdir=. ;; esac
+SELF=$(CDPATH= cd -- "${_srcdir:-/}" && pwd)/${_src##*/}
+unset _src _srcdir
 
 # THE REST OF THE PROGRAM IS lib/tagents/*.sh, SOURCED HERE. Those files hold
 # function definitions and their own constants and run nothing, so this list

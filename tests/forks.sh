@@ -136,7 +136,7 @@ settle --counts; a=$(starts awk --counts); h=$(starts hostname --counts)
 TA_CONFIG=$(config_of 30)
 settle --counts; b=$(starts awk --counts)
 ok "30 config keys start as many awk as 3" "$a" "$b"
-le "hostname is started at most twice (list's own, and the overlay's)" 2 "$h"
+le "hostname is started once for the whole process (list and overlay share it)" 1 "$h"
 
 # ---------------------------------------------------------------------------
 t "the records still come out"
@@ -196,6 +196,47 @@ ok "the counts are not empty" 1 "$([ -n "$want" ] && echo 1 || echo 0)"
 ok "TA_COUNTS_EVERY=abc still prints the counts" "$want" "$got"
 export TA_CONFIG="$ROOT/absent.yaml"
 export TA_COUNTS_EVERY=0
+
+# ---------------------------------------------------------------------------
+t "--list: repo_root is not a command substitution per directory"
+# A $(...) is a fork even when it calls only a function. Measured on an xtrace of
+# the whole run: bash doubles the leading + of a line that runs inside $(...), so
+# the lines of dir_roots that begin with ++ are the forks dir_roots makes.
+fresh
+for i in 1 2 3; do
+  mkdir -p "$ROOT/rr$i/.git" "$ROOT/rr$i/pkg"
+  printf '%s\tworking\tsid-%s\t%s\t\t\t\t0\t\tlabel %s\n' "$NOW" "$i" "$ROOT/rr$i/pkg" "$i" >"$STATE/s-sid-$i.tsv"
+  printf 'sid-%s\t%s\n' "$i" "$ROOT/rr$i/pkg" >>"$STATE/origin.tsv"
+done
+xt="$ROOT/xtrace.log"
+PS4='+${BASH_SUBSHELL}|${FUNCNAME[0]:-}| ' bash -x "$TA" --list >/dev/null 2>"$xt"
+ok "dir_roots forks nothing for 3 directories" 0 "$(grep -c '^++[0-9]*|dir_roots| repo_root' "$xt")"
+ok "dir_roots still walked 3 directories" 3 "$(grep -c '^+[0-9]*|dir_roots| repo_root' "$xt")"
+
+# ---------------------------------------------------------------------------
+t "--list: the seats are asked once"
+TSHIM="$ROOT/tshim"; mkdir -p "$TSHIM"
+cat >"$TSHIM/tmux" <<EOF
+#!/bin/sh
+echo "\$*" >>"$CNT/tmux"
+case "\$*" in
+  *@tagents_dash*) echo "%1 1 $$" ;;
+  "display -p -t %1 #{window_id}") echo @1 ;;
+  *tagents_docked*) printf '%%1 - -\n%%2 docked -\n%%3 - free\n' ;;
+esac
+EOF
+chmod +x "$TSHIM/tmux"
+fresh; add_states 2
+: >"$CNT/tmux"
+PATH="$TSHIM:$PATH" "$TA" --list >/dev/null 2>&1
+ok "list() starts one list-panes for the seats" 1 "$(grep -c "^list-panes -t .*tagents_slot" "$CNT/tmux")"
+
+# ---------------------------------------------------------------------------
+t "--sync-names: awk starts do not grow with the state files"
+export TA_CONFIG="$ROOT/absent.yaml"
+fresh; add_states 2; a=$(starts awk --sync-names)
+fresh; add_states 6; b=$(starts awk --sync-names)
+ok "6 state files start as many awk as 2" "$a" "$b"
 
 # ---------------------------------------------------------------------------
 t "--counts: a cached run does not parse the config"

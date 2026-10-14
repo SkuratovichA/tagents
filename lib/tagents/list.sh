@@ -20,7 +20,7 @@ list() {
   # *attached client*, so it silently hid whichever agent you happened to be
   # looking at. The dashboard pane runs fzf, never Claude, so it can never show
   # up here anyway and needs no special case.
-  local grp=1 cols dp seat curseat="" dockedset="" hidecols
+  local grp=1 cols dp ss seat curseat="" dockedset="" hidecols
   grouped || grp=0
   # Joined with $RS, never newlines: awk -v refuses a value with a newline in it
   # (BWK awk, and silently enough to look like "nothing is hidden").
@@ -61,16 +61,17 @@ list() {
   if [ "${TA_MARKS:-1}" = 1 ]; then
     dp=$(dash_pane)
     if [ -n "$dp" ]; then
-      seat=$(current_seat "$dp")
+      ss=$(seats "$dp")
+      seat=$(current_seat "$dp" "$ss")
       is_docked "$seat" && curseat=$seat
-      dockedset=$(seats "$dp" |
+      dockedset=$(printf '%s\n' "$ss" |
         awk -F"$TAB" -v rs="$RS" '$2 == "docked" { printf "%s%s", $1, rs }')
     fi
   fi
 
   collect | awk -F"$TAB" -v now="$(date +%s)" -v ttl="$SUB_TTL" \
                 -v grp="$grp" -v home="$HOME" -v deadttl="$DEAD_TTL" -v cols="$cols" \
-                -v host="$(hostname -s 2>/dev/null)" \
+                -v host="${HOST_S:-$(hostname -s 2>/dev/null)}" \
                 -v profs="$(prof_pairs)" -v USC="$US" -v RSC="$RS" \
                 -v hidecols="$hidecols" '
     # macOS awk counts bytes, so substr and %-Ns cut Cyrillic mid-character and
