@@ -396,5 +396,13 @@ has "...and the tally follows it" "$TALLY1" "$(cat "$D/out.3" 2>/dev/null)"
 ok "a burn that moves is not read between 5th ticks" "$(cat "$D/out.3" 2>/dev/null)" "$(cat "$D/out.4" 2>/dev/null)"
 has "...and is read again on the 5th" '5h $2.00 ' "$(cat "$STATE/.counts.out" 2>/dev/null)"
 
+t "14. the 5th tick fetches the month once, for the bar and the footer together"
+newrun month
+printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\""
+go 5
+ok "tusage --daily ran once on the 5th tick" 1 "$(awk '$1 == 5 && /--daily/' "$D/tusage.log" | wc -l | tr -d ' ')"
+has "...and the footer was posted on it" "change-footer(" "$(awk '$1 == 5' "$D/curl.log")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

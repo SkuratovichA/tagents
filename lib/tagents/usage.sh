@@ -133,9 +133,11 @@ usage_meter() {  # -> "<used><TAB><limit><TAB><fetched at>" for the watched acco
 # THREE RENDERINGS OF ONE ARITHMETIC, which is why they are one function: the
 # status bar, the fzf footer and the last line of the $ table have to agree to
 # the cent, and two of them are read side by side. `summary` is `footer` without
-# the sparkline — the table draws the days itself, right above it.
-usage_line() {  # <status|footer|summary>
-  local mode=${1:-status} watch limit margin badge
+# the sparkline — the table draws the days itself, right above it. `both` is the
+# status text, a \036 byte and the footer text, from one run of the awk: the
+# refresher wants the two on the same tick, and each is a fetch of the month.
+usage_line() {  # <status|footer|summary|both>
+  local mode=${1:-status} watch limit margin badge dnow dy_y dy_mo dy_d dy_mon dy_wd esc=$'\033'
   watch=$(usage_watch) || return 0
   limit=$(cfg_get usage.monthly_limit_usd) || limit=""
   margin=$(cfg_get usage.safety_margin_pct) || margin=""
@@ -168,13 +170,17 @@ usage_line() {  # <status|footer|summary>
       case "$mlimit" in ''|0|0.00|*[!0-9.]*) ;; *) limit=$mlimit ;; esac
     fi
   fi
+  # One date for all five fields: each is a process the agent watching the box inspects.
+  dnow=$(date '+%Y %m %d %b %u')
+  dy_y=${dnow%% *}; dnow=${dnow#* }; dy_mo=${dnow%% *}; dnow=${dnow#* }
+  dy_d=${dnow%% *}; dnow=${dnow#* }; dy_mon=${dnow%% *}; dy_wd=${dnow#* }
   usage_days | awk -F"$TAB" \
     -v mode="$mode" -v watch="$watch" -v badge="$badge" \
     -v factor="${factor:-1}" -v meter="${label:-}" -v mnote="${note:-}" \
     -v limit="${limit:-0}" -v margin="${margin:-0}" -v workdays="$workdays" \
-    -v y="$(date +%Y)" -v mo="$(date +%m)" -v dy="$(date +%d)" -v mon="$(date +%b)" \
-    -v wd="$(date +%u)" \
-    -v esc="$(printf '\033')" -v bars='▁ ▂ ▃ ▄ ▅ ▆ ▇ █' '
+    -v y="$dy_y" -v mo="$dy_mo" -v dy="$dy_d" -v mon="$dy_mon" \
+    -v wd="$dy_wd" \
+    -v esc="$esc" -v bars='▁ ▂ ▃ ▄ ▅ ▆ ▇ █' '
     # $459, not $458.7392: this is a number read out of the corner of an eye.
     # Under ten dollars the cents are the whole of the information, so they stay.
     function m(x) { return (x >= 10 ? sprintf("%d", x + 0.5) : sprintf("%.2f", x)) }
@@ -198,6 +204,7 @@ usage_line() {  # <status|footer|summary>
       # says nothing at all rather than showing a zero somebody has to interpret;
       # the footer is a line that exists either way, so it says why it is empty.
       if (!seen) {
+        if (mode == "both") printf "\036"
         if (mode != "status") printf "%s%s · no usage data%s\n", esc "[90m", watch, esc "[0m"
         exit 0
       }
@@ -233,13 +240,14 @@ usage_line() {  # <status|footer|summary>
       else if (frac >= 0.7 || pace > allowed) { tc = "yellow"; ac = "[33m" }
       else                                { tc = "colour244"; ac = "[90m" }
 
-      if (mode == "status") {
-        printf "#[fg=%s]%s %s$%s/%s ·$%s/d #[default]", tc, badge,
-               (meter != "" ? "~" : ""), m(mtd), m(limit), m(allowed)
-        exit 0
+      if (mode == "status" || mode == "both") {
+        st = sprintf("#[fg=%s]%s %s$%s/%s ·$%s/d #[default]", tc, badge,
+                     (meter != "" ? "~" : ""), m(mtd), m(limit), m(allowed))
+        if (mode == "status") { printf "%s", st; exit 0 }
+        printf "%s\036", st
       }
       spark = ""
-      if (mode == "footer") {
+      if (mode == "footer" || mode == "both") {
         # The last seven days of THIS month: no date arithmetic, because the
         # data is month-to-date anyway and a cell for the 29th of last month
         # would be a cell that can never be filled.

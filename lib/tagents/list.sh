@@ -766,15 +766,23 @@ counts() {
 # other. The burn and the month line keep their trailing newlines, as printed.
 counts_parts() {
   local x
-  CP_PREFIX=""; CP_BURN=""; CP_STATUS=""
+  CP_PREFIX=""; CP_BURN=""; CP_STATUS=""; CP_FOOTER=""
   cfg_count_cached
   [ "$CFG_NPROBLEMS" -gt 0 ] && printf -v CP_PREFIX '#[fg=magenta]cfg!%d ' "$CFG_NPROBLEMS"
   if usage_on; then
     { x=$(tusage --no-update --burn 2>/dev/null; printf .); } 2>/dev/null
     CP_BURN=${x%.}
   fi
-  { x=$(usage_line status; printf .); } 2>/dev/null
-  CP_STATUS=${x%.}
+  # The status text and the footer text from one run: \036 between them, and the
+  # footer as $(usage_line footer) gives it, without its trailing newlines.
+  { x=$(usage_line both; printf .); } 2>/dev/null
+  x=${x%.}
+  case "$x" in
+    *$'\036'*)
+      CP_STATUS=${x%%$'\036'*}; CP_FOOTER=${x#*$'\036'}
+      while [ "${CP_FOOTER%$'\n'}" != "$CP_FOOTER" ]; do CP_FOOTER=${CP_FOOTER%$'\n'}; done ;;
+    *) CP_STATUS=$x ;;
+  esac
 }
 
 counts_compose() {  # <tally> — the text of counts_now, from counts_parts and a tally

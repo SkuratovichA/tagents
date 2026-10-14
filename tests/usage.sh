@@ -411,5 +411,40 @@ cmp -s "$ROOT/now.out" "$ROOT/compose.out"
 ok "usage off: the same" 0 "$?"
 rm -f "$STATE"/s-sid-*.tsv
 
+# ---------------------------------------------------------------------------
+t "10. both is the status text and the footer from one run, with one date"
+# ---------------------------------------------------------------------------
+# usage_line both prints the status text, a \036 byte and the footer text. Split
+# at the byte, the halves are, byte for byte, what status and footer print.
+splitpart() {  # <1|2> <file> — one half of a both output
+  awk -v want="$1" 'BEGIN { RS = "\036" } NR == want { printf "%s", $0 }' "$2"
+}
+bothcase() {  # <label> <config>
+  fnrun "$2" 'usage_line both'   >"$ROOT/both.out" 2>/dev/null
+  fnrun "$2" 'usage_line status' >"$ROOT/st.out"   2>/dev/null
+  fnrun "$2" 'usage_line footer' >"$ROOT/ft.out"   2>/dev/null
+  splitpart 1 "$ROOT/both.out" >"$ROOT/both.1"; splitpart 2 "$ROOT/both.out" >"$ROOT/both.2"
+  cmp -s "$ROOT/both.1" "$ROOT/st.out"; ok "$1: the first half is the status text" 0 "$?"
+  cmp -s "$ROOT/both.2" "$ROOT/ft.out"; ok "$1: the second half is the footer text" 0 "$?"
+  ok "$1: the footer half is not empty" 1 "$([ -s "$ROOT/both.2" ] && echo 1 || echo 0)"
+}
+mkrows 400
+bothcase "a month with data" "$CFG"
+bothcase "a calibration note" "$(mkmeter "2000-01-02 10:00" 360)"
+mkmrow ok "$MNOW"
+bothcase "a meter row" "$CFG"
+rm -f "$MTSV"
+: >"$ROWS"
+bothcase "no data" "$CFG"
+ok "...the status half of no data is empty" 0 "$(splitpart 1 "$ROOT/both.out" | wc -c | tr -d ' ')"
+mkrows 400
+
+# date is a process, and the month line is drawn every few seconds.
+printf '#!/bin/sh\necho x >>"$DATELOG"\nexec /bin/date "$@"\n' >"$BIN/date"; chmod +x "$BIN/date"
+: >"$ROOT/date.log"
+DATELOG="$ROOT/date.log" fnrun "$CFG" 'usage_line footer' >/dev/null 2>&1
+ok "usage_line footer starts one date" 1 "$(wc -l <"$ROOT/date.log" | tr -d ' ')"
+rm -f "$BIN/date"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

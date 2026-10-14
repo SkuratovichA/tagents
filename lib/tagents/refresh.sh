@@ -160,8 +160,7 @@ refresher() {
       # The footer is one of fzf's own frames, not a row, so reload-sync leaves
       # it alone — it has to be pushed. On this tick and no other: the figure it
       # carries only moves when the index it is read from does.
-      fl=$(usage_line footer) && [ -n "$fl" ] &&
-        post_fzf "$port" "change-footer($fl)"
+      [ -n "$CP_FOOTER" ] && post_fzf "$port" "change-footer($CP_FOOTER)"
       # Windows named after their agents. Unthrottled here — this is already the
       # every-5th-tick branch, and there is one refresher per list — while the
       # status bar path throttles itself, since it has no tick of its own.
