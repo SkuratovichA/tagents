@@ -222,6 +222,15 @@ ok "a new state file (3), a new sub file (7), a rewritten model file (9), a remo
 ok "and the ticks between them stay quiet" "2 4 6 8 11 14" "$(ignores)"
 
 # ---------------------------------------------------------------------------
+t "2b. a deleted state file reloads the list on the next tick"
+# ---------------------------------------------------------------------------
+newrun gone
+act 3 'rm -f "$RF_STATE/9.tsv"'
+go 6
+ok "the state file removed between two idle ticks (3) reloads once, then the forced tick" "1 3 5" "$(reloads)"
+ok "the other ticks stay quiet" "2 4 6" "$(ignores)"
+
+# ---------------------------------------------------------------------------
 t "3. tmux changes: a reload, and the seats looked at again"
 # ---------------------------------------------------------------------------
 newrun tmux
