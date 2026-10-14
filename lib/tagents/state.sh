@@ -112,6 +112,13 @@ state_files() {
 headless_alive() {  # <state file>
   local pid
   pid=$(awk -F"$TAB" 'NR==1 { print $8; exit }' "${1:-}" 2>/dev/null)
+  pid_alive "$pid"
+}
+
+# The question above once the pid is in hand, for the caller that read the record
+# some other way (collect brings it along with the rest of the record).
+pid_alive() {  # <pid>
+  local pid=${1:-}
   # 0 is rejected with the rest: `kill -0 0` asks about this whole process
   # group, which is always alive, and a record that could not name a pid must
   # not be the one row that can never go closed.
@@ -156,14 +163,25 @@ origin_of() {  # <session-id> <transcript-path>
   printf '%s' "$d"
 }
 
+# A record deleted between a glob and the awk that reads it must not take the
+# rest of the directory down with it: macOS awk stops dead at an argument it
+# cannot open. In front of a one-awk-per-directory program this drops every
+# argument that cannot be read before the first record is. Each call also reads
+# </dev/null, because an awk left with no argument at all reads stdin.
+AWK_SKIP_GONE='BEGIN { for (i = 1; i < ARGC; i++) if ((getline junk < ARGV[i]) < 0) ARGV[i] = ""; else close(ARGV[i]) }'
+
 dir_roots() {
   local d r
   {
     tmux list-panes -a -F '#{pane_current_path}' 2>/dev/null
     [ -e "$ORIGINS" ] && cut -f2 "$ORIGINS" 2>/dev/null
-    state_files | while IFS= read -r d; do
-      awk -F"$TAB" 'FNR == 1 { print $4 }' "$d"
-    done
+    # One awk for every state file rather than one per file: this runs on every
+    # repaint, and a process started per record is what the endpoint security
+    # agent inspects one by one. The braces are a pipeline stage, so the
+    # positional parameters set here are this subshell's own.
+    set --
+    while IFS= read -r d; do set -- "$@" "$d"; done < <(state_files)
+    [ $# -gt 0 ] && awk -F"$TAB" "$AWK_SKIP_GONE"' FNR == 1 { print $4 }' "$@" </dev/null 2>/dev/null
   } | sort -u | while IFS= read -r d; do
     [ -n "$d" ] || continue
     r=$(repo_root "$d") || continue
@@ -187,32 +205,66 @@ collect() {
   dir_roots
   [ -e "$LABELS" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "N", $1, $2 }' "$LABELS"
 
-  local f key ts st sid cwd tr det cfgd hascfg orig hlbl hl
-  state_files | while IFS= read -r f; do
-    key=${f##*/}; key=${key%.tsv}
-    # Not IFS=TAB: tab is IFS whitespace, so the (often empty) session id would
-    # collapse and shift every later field one slot to the left.
-    # The 7th field is the account. A record written by an older hook has six
-    # fields and no opinion at all, which is a different answer from "unset, so
-    # the default account" — hence the flag alongside it.
-    IFS="$US" read -r ts st sid cwd tr det cfgd hascfg hlbl < <(
-      awk -F"$TAB" -v OFS="$US" \
-          'NR==1 { print $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0), $10; exit }' "$f" 2>/dev/null)
-    orig=$(origin_of "${sid:-}" "${tr:-}")
-    printf 'S\t%%%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$key" "${ts:-0}" "${st:-}" "${sid:-}" "${orig:-${cwd:-}}" "${tr:-}" "${det:-}" \
-      "${cfgd:-}" "${hascfg:-0}"
-    # A PANE-LESS SESSION NEEDS ITS OWN LINE, because the two things the renderer
-    # reads off a pane it cannot read here: whether the agent is running (the
-    # recorded pid, which only the shell can kill -0) and what to call it (there
-    # is no pane title, so $TA_LABEL is the name). The log is not in it — only
-    # the preview wants that, and it reads the record itself (headless_log).
-    case $key in
-      s-?*)
-        hl=0; headless_alive "$f" && hl=1
-        printf 'H\t%%%s\t%s\t%s\n' "$key" "$hl" "${hlbl:-}" ;;
-    esac
-  done
+  local f key ts st sid cwd tr det cfgd hascfg orig hlbl hl pid
+  # ONE AWK FOR ALL THE STATE FILES, and for the origin cache beside them: a
+  # process per record — two, with the cache lookup — is what a repaint used to
+  # cost per session, thrice a second, and the endpoint security agent inspects
+  # every one. The cache is read first (its lines are <session id><TAB><dir>, the
+  # first match wins as in origin_of) and each state file then yields one line:
+  # its path, the cached origin (empty for a session not seen before, which is
+  # the only case origin_of's slow path is still called for) and the fields below.
+  # A file with no first line yields no record for awk to hook onto, so the files
+  # are counted off the argument list and a skipped one gets its defaults in
+  # turn, which is what an empty file always read as.
+  # Not IFS=TAB: tab is IFS whitespace, so the (often empty) session id would
+  # collapse and shift every later field one slot to the left.
+  # The 7th field is the account. A record written by an older hook has six
+  # fields and no opinion at all, which is a different answer from "unset, so
+  # the default account" — hence the flag alongside it.
+  set --
+  while IFS= read -r f; do set -- "$@" "$f"; done < <(state_files)
+  if [ $# -gt 0 ]; then
+    [ -e "$ORIGINS" ] && set -- "$ORIGINS" "$@"
+    while IFS="$US" read -r f orig ts st sid cwd tr det cfgd hascfg pid hlbl; do
+      key=${f##*/}; key=${key%.tsv}
+      [ -z "$orig" ] && [ -n "$sid" ] && orig=$(origin_of "$sid" "$tr")
+      printf 'S\t%%%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$key" "${ts:-0}" "${st:-}" "${sid:-}" "${orig:-${cwd:-}}" "${tr:-}" "${det:-}" \
+        "${cfgd:-}" "${hascfg:-0}"
+      # A PANE-LESS SESSION NEEDS ITS OWN LINE, because the two things the renderer
+      # reads off a pane it cannot read here: whether the agent is running (the
+      # recorded pid, which only the shell can kill -0) and what to call it (there
+      # is no pane title, so $TA_LABEL is the name). The log is not in it — only
+      # the preview wants that, and it reads the record itself (headless_log). The
+      # pid is field 8 of the record, brought along by the awk above, so asking
+      # after it costs no process of its own.
+      case $key in
+        s-?*)
+          hl=0; pid_alive "$pid" && hl=1
+          printf 'H\t%%%s\t%s\t%s\n' "$key" "$hl" "${hlbl:-}" ;;
+      esac
+    done < <(awk -F"$TAB" -v OFS="$US" -v orig="$ORIGINS" '
+      function blank(p) { print p, "", "", "", "", "", "", "", "", "0", "", "" }
+      BEGIN {
+        # A record deleted between the glob and here must not take the rest of
+        # the list down with it: this awk stops dead at a file it cannot open,
+        # where the old one-awk-per-file loop lost that one row. So every
+        # argument is probed first and a vanished one is dropped from ARGV.
+        for (i = 1; i < ARGC; i++) {
+          if ((getline junk < ARGV[i]) < 0) { ARGV[i] = ""; continue }
+          close(ARGV[i])
+          if (ARGV[i] != orig) sf[++ns] = ARGV[i]
+        }
+        nx = 1
+      }
+      FILENAME == orig { if (!($1 in o)) o[$1] = $2; next }
+      FNR == 1 {
+        while (nx <= ns && sf[nx] != FILENAME) blank(sf[nx++])
+        nx++
+        print FILENAME, o[$3], $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0), $8, $10
+      }
+      END { while (nx <= ns) blank(sf[nx++]) }' "$@" </dev/null 2>/dev/null)
+  fi
 
   # WHEN THE OWNER LAST TYPED INTO EACH SESSION, one epoch second per file,
   # written by the hook on UserPromptSubmit and on nothing else. The age column
@@ -227,22 +279,22 @@ collect() {
     printf 'T\t%%%s\t%s\n' "$key" "${ts:-0}"
   done
 
-  for f in "$STATE_DIR"/sub/*; do
-    [ -e "$f" ] || continue
-    awk -v OFS="$TAB" '
-      FNR==1 { n=split(FILENAME,a,"/"); k=a[n]; sub(/\..*$/,"",k) }
-      { print "B", "%" k, $0 }' "$f"
-  done
+  # One awk for the whole directory, like the state files above: the key is
+  # already taken from FILENAME, so nothing about a file is needed from outside.
+  set -- "$STATE_DIR"/sub/*
+  [ -e "$1" ] && awk -v OFS="$TAB" "$AWK_SKIP_GONE"'
+    FNR==1 { n=split(FILENAME,a,"/"); k=a[n]; sub(/\..*$/,"",k) }
+    { print "B", "%" k, $0 }' "$@" </dev/null 2>/dev/null
 
   # Which model each session is SET to, recorded by claude-statusline.sh. This
   # is not the same question tusage answers: tusage reports the model that
   # served the newest request, which is what the money is computed from and
   # which goes stale the moment you /model a session and do not talk to it.
-  for f in "$STATE_DIR"/model/*.tsv; do
-    [ -e "$f" ] || continue
-    key=${f##*/}; key=${key%.tsv}
-    awk -F"$TAB" -v OFS="$TAB" -v s="$key" 'NR==1 { print "M", s, $2, $4; exit }' "$f"
-  done
+  # One awk for every file: the session id is the file name, taken off FILENAME,
+  # and only the first line of each is read (FNR, since NR runs on across files).
+  set -- "$STATE_DIR"/model/*.tsv
+  [ -e "$1" ] && awk -F"$TAB" -v OFS="$TAB" "$AWK_SKIP_GONE"'
+    FNR == 1 { s = FILENAME; sub(/.*\//, "", s); sub(/\.tsv$/, "", s); print "M", s, $2, $4 }' "$@" </dev/null 2>/dev/null
 
   # Token accounting, joined on session id. --no-update keeps this to one awk
   # pass over the index; advancing the index is the refresher loop's job, so a

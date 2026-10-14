@@ -163,7 +163,7 @@ run() {  # <config> <args...> — the environment every check needs, never expor
   local cfg=$1
   shift
   env TMUX="$TMUXV" PATH="$BIN:$PATH" TA_CONFIG="$cfg" TA_STATE_DIR="$STATE" \
-      TA_COLS=140 TA_MARKS=0 TU_ROWS="$ROWS" TU_ENVOUT="$ENVOUT" \
+      TA_COUNTS_EVERY=0 TA_COLS=140 TA_MARKS=0 TU_ROWS="$ROWS" TU_ENVOUT="$ENVOUT" \
       bash "$TA" "$@" 2>/dev/null
 }
 

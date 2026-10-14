@@ -313,13 +313,22 @@ EOF
 # Return 1 for "absent", 0 with empty output for "present and empty" — the two
 # are different answers, and `config_dir:` written blank must not read as
 # ~/.claude-personal having been left out.
+#
+# A loop over the parsed text in the shell, not an awk over it: callers ask for
+# one key after another inside $(…), and a process per lookup is what one status
+# bar tick used to pay a dozen times over. The value stops at a tab, as awk's $2
+# did, and the first match wins.
 cfg_get() {  # <path>
-  local out
+  local k v
   cfg_load
-  out=$(printf '%s\n' "$CFG" | awk -F"$TAB" -v k="$1" '$1 == k { print "=" $2; exit }')
-  [ -n "$out" ] || return 1
-  printf '%s' "${out#=}"
-  return 0
+  while IFS="$TAB" read -r k v; do
+    [ "$k" = "$1" ] || continue
+    printf '%s' "${v%%"$TAB"*}"
+    return 0
+  done <<EOF
+$CFG
+EOF
+  return 1
 }
 
 cfg_children() {  # <path> -> direct child names, file order, no repeats
@@ -447,10 +456,11 @@ cfg_note() {  # <key, or empty> <what is wrong — and what to do>
 # nothing changed. So the count is remembered against the config's own identity
 # — is any config*.yaml in that directory newer than the stamp — which is a
 # glob and a file test. The config's mtime is the main key: a config you have
-# just fixed clears the marker on the very next tick rather than when a timer
-# gets round to it. An age ceiling sits behind it because a problem can be fixed
-# WITHOUT touching the config — creating the login directory the profile names
-# is the obvious one — and a marker that outlives its problem is its own lie.
+# just fixed clears the marker the next time the bar is recomputed (COUNTS_EVERY
+# seconds at most) rather than when a timer gets round to it. An age ceiling sits
+# behind it because a problem can be fixed WITHOUT touching the config — creating
+# the login directory the profile names is the obvious one — and a marker that
+# outlives its problem is its own lie.
 cfg_count_cached() {  # sets CFG_NPROBLEMS, cheaply, for the status bar
   local f n when now path stale=0
   # No file at all is no problem, and the stamp of a config that has been
