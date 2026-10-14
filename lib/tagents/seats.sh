@@ -181,23 +181,28 @@ unpark() {  # <pane-id> — if this is a placeholder, bring its agent back here
 # also stands in for an agent while that agent is docked, so it says where the
 # agent went when it finds itself outside the dashboard window.
 slot() {
-  local dwin last="" win parked active stray=0 out ids p w d l pk ac mylist me=${TMUX_PANE:-}
+  local dwin marked last="" win parked active stray=0 out ids p w d l pk ac mylist me=${TMUX_PANE:-}
   while :; do
     # ONE QUESTION TO TMUX PER LAP, not six: every pane with the four things this
     # loop wants to know about it. An option that is not set is "-", so the line
-    # always has six fields. dwin is dash_pane's rule (the first pane marked as
-    # the dashboard whose list is alive, the pane's own list first of all) read
-    # off the same lines; dead markers are left for the callers that clear them.
+    # always has six fields. dwin is dash_pane's rule (dash_pane_pick, fed the marked
+    # panes of these lines, the pane's own list first of all); dead markers are left for the callers that clear them.
     out=$(tmux list-panes -a -F '#{pane_id} #{window_id} #{?@tagents_dash,#{@tagents_dash},-} #{?@tagents_list,#{@tagents_list},-} #{?@tagents_parked,#{@tagents_parked},-} #{&&:#{pane_active},#{&&:#{window_active},#{session_attached}}}' 2>/dev/null)
-    dwin=""; win=""; parked=""; active=0; mylist="-"; ids=" "
+    dwin=""; win=""; parked=""; active=0; mylist="-"; ids=" "; marked=""
     while read -r p w d l pk ac; do
       [ -n "$p" ] || continue
       ids="$ids$p "
       if [ "$p" = "$me" ]; then win=$w; mylist=$l; [ "$pk" = - ] || parked=$pk; active=$ac; fi
-      if [ -z "$dwin" ] && [ "$d" = 1 ] && [ "$l" != - ] && kill -0 "$l" 2>/dev/null; then dwin=$w; fi
+      [ "$d" != 1 ] || marked="$marked$p $d $l $w
+"
     done <<EOF
 $out
 EOF
+    dwin=$(dash_pane_pick <<EOF
+$marked
+EOF
+)
+    dwin=${dwin#* }
     if [ "$mylist" != - ] && kill -0 "$mylist" 2>/dev/null; then dwin=$win; fi
     [ -n "$dwin" ] || dwin=$(dash_session_window)
     # NOBODY'S SEAT LEFT TO KEEP WARM. A placeholder outside the dashboard window

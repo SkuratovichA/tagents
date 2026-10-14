@@ -389,5 +389,58 @@ ok "slot returned after two laps" 1 "$(grep -c 'rc=0$' "$ROOT/slot.out")"
 ok "...with one tmux call per lap" 2 "$(wc -l <"$CNT/sl.tmux" | tr -d ' ')"
 ok "...and one sleep" 1 "$(wc -l <"$CNT/sl.sleep" | tr -d ' ')"
 
+# ---------------------------------------------------------------------------
+t "slot and dash_pane choose the list pane by one rule"
+# The panes and windows tmux answers with are read from files, so each case sets them. The sleep
+# shim ends the loop (SIGTERM to the slot's own shell) on its third call, and a watcher kills the
+# run after 20 seconds, so a wrong answer fails instead of hanging; macOS has no timeout(1).
+SL2="$ROOT/sl2"; mkdir -p "$SL2"
+cat >"$SL2/tmux" <<'EOF'
+#!/bin/sh
+echo "$*" >>"$SLDIR/tmux.log"
+case "$*" in
+  list-panes*window_id*) cat "$SLDIR/panes" ;;
+  list-panes*) cat "$SLDIR/panes3" ;;
+  list-windows*) cat "$SLDIR/wins" ;;
+  display*window_id*) echo @1 ;;
+esac
+EOF
+cat >"$SL2/sleep" <<'EOF'
+#!/bin/sh
+echo "$*" >>"$SLDIR/sleep.log"
+[ "$(wc -l <"$SLDIR/sleep.log" | tr -d ' ')" -lt 3 ] || kill -TERM "$PPID"
+EOF
+chmod +x "$SL2/tmux" "$SL2/sleep"
+export SLDIR="$ROOT/sldir"; mkdir -p "$SLDIR"
+sl_run() {  # <code> — runs it as pane %2 under the shims, killed after 20 seconds
+  : >"$SLDIR/tmux.log"; : >"$SLDIR/sleep.log"; : >"$SLDIR/out"; : >"$SLDIR/unparked"
+  ( TMUX_PANE=%2 PATH="$SL2:$PATH" fn "$1" >"$SLDIR/out" 2>/dev/null ) &
+  sl_pid=$!
+  ( sleep 20; pkill -P "$sl_pid" 2>/dev/null; kill "$sl_pid" 2>/dev/null ) >/dev/null 2>&1 &
+  sl_wd=$!
+  wait "$sl_pid" 2>/dev/null
+  kill "$sl_wd" 2>/dev/null; wait "$sl_wd" 2>/dev/null
+  return 0
+}
+SLSTUB='unpark() { echo "unpark $1" >>"$SLDIR/unparked"; }; '
+# %8 is marked and dead, %9 is marked and alive, %2 (the placeholder) sits in the live one's window.
+printf '%%8 @7 1 2147483000 - 0\n%%9 @1 1 %s - 0\n%%2 @1 - - - 0\n' "$$" >"$SLDIR/panes"
+printf '@5 1\n' >"$SLDIR/wins"
+sl_run "$SLSTUB"'slot'
+has "first marked pane dead, second alive: slot picks the live one's window" "pick an agent" "$(cat "$SLDIR/out")"
+ok "...and it cleared no marker" 0 "$(grep -c 'set -up' "$SLDIR/tmux.log")"
+printf '%%8 1 2147483000\n%%9 1 %s\n' "$$" >"$SLDIR/panes3"
+sl_run 'dash_pane'
+ok "dash_pane picks the live pane" "%9" "$(cat "$SLDIR/out")"
+ok "...and clears the dead one's marker" 1 "$(grep -c '^set -up -t %8 @tagents_dash' "$SLDIR/tmux.log")"
+# Nobody alive: the dashboard session's window (@5) is the answer, and %2 sits in it.
+printf '%%8 @7 1 2147483000 - 0\n%%2 @5 - - - 0\n' >"$SLDIR/panes"
+sl_run "$SLSTUB"'slot'
+has "no live list: slot falls back to the dashboard session's window" "pick an agent" "$(cat "$SLDIR/out")"
+# Parked and active: the focus belt-and-braces calls unpark for this pane.
+printf '%%9 @1 1 %s - 0\n%%2 @1 - - %%9 1\n' "$$" >"$SLDIR/panes"
+sl_run "$SLSTUB"'slot'
+has "a parked, active placeholder still calls unpark" "unpark %2" "$(cat "$SLDIR/unparked")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
