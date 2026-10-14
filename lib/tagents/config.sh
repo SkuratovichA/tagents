@@ -279,9 +279,15 @@ cfg_top_of() {  # <path> -> CFG_TOP
 # Overlay lines go FIRST: cfg_get takes the first match and cfg_children keeps
 # file order, so no lookup needs to know an overlay exists. TA_HOST stands in
 # for the hostname so a test can have one.
+# The real hostname, asked of the system once per process: HOST_S is what the
+# list's host column and the window-name sweep read too. TA_HOST is not in it.
+host_once() {
+  [ -n "${HOST_S+x}" ] || HOST_S=$(hostname -s 2>/dev/null)
+}
 cfg_overlay() {
   local host over top k v
-  host=${TA_HOST:-$(hostname -s 2>/dev/null)}
+  host_once
+  host=${TA_HOST:-$HOST_S}
   [ -n "$host" ] || return 0
   over="${CONFIG_FILE%.yaml}.$host.yaml"
   { [ -f "$over" ] && [ -r "$over" ]; } || return 0

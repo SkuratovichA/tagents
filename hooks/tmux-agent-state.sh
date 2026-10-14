@@ -74,7 +74,7 @@ case "$pane" in %[0-9]*) ;; *) pane= ;; esac
 [ -n "$cpid" ] || cpid=${PPID:-}
 
 dir=${TA_STATE_DIR:-$HOME/.claude/agent-state}
-mkdir -p "$dir/sub" "$dir/prompt" 2>/dev/null || exit 0
+{ [ -d "$dir/sub" ] && [ -d "$dir/prompt" ]; } || mkdir -p "$dir/sub" "$dir/prompt" 2>/dev/null || exit 0
 
 payload=$(cat 2>/dev/null) || exit 0
 [ -n "$payload" ] || exit 0

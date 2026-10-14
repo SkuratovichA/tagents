@@ -182,16 +182,18 @@ sync_window_names() {
     # because it is the one field that carries arbitrary text — the same rule
     # collect() follows, for the same reason.
     tmux list-panes -a -F "P|@|#{pane_id}|@|#{window_id}|@|#{pane_index}|@|#{window_name}|@|#{automatic-rename}|@|#{@tagents}|@|#{@tagents_docked}|@|#{@tagents_name}|@|#{pane_title}" 2>/dev/null
-    live_panes | sort -u | sed 's/^/L|@|/'
+    live_panes | awk '!s[$0]++ { print "L|@|" $0 }'
     # The pid in @tagents_list is what tells a list that is running from a
     # marker left behind by one that is gone, so this is asked in shell.
-    list_windows | sort -u | sed 's/^/X|@|/'
+    list_windows | awk '!s[$0]++ { print "X|@|" $0 }'
     [ -e "$LABELS" ] && awk -F"$TAB" '{ print "N|@|" $1 "|@|" $2 }' "$LABELS"
-    state_files | while IFS= read -r f; do
-      b=${f##*/}; b=${b%.tsv}
-      awk -F"$TAB" -v k="%$b" 'NR == 1 { print "S|@|" k "|@|" $1 "|@|" $3; exit }' "$f"
-    done
-  } | awk -v host="$(hostname -s 2>/dev/null)" -v OFS="$TAB" '
+    # One awk for every state file, not one per file; the first record of each.
+    set --
+    while IFS= read -r f; do set -- "$@" "$f"; done < <(state_files)
+    [ $# -gt 0 ] && awk -F"$TAB" "$AWK_SKIP_GONE"' FNR == 1 {
+      k = FILENAME; sub(/^.*\//, "", k); sub(/\.tsv$/, "", k)
+      print "S|@|%" k "|@|" $1 "|@|" $3 }' "$@" </dev/null 2>/dev/null
+  } | awk -v host="${HOST_S:-$(hostname -s 2>/dev/null)}" -v OFS="$TAB" '
     # Claude prefixes the terminal title with a spinner glyph; the rest is the
     # session title it maintains itself. Same rule as the list — and the same
     # rule untitle_of applies in shell, because the row, this window name and the
