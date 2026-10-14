@@ -530,5 +530,35 @@ ok "...of which none is the port's" "0" "$(grep -c "^\.refresher\.$PORT" "$D/ls.
 ok "...and its own are gone again when it ends (the three of the live pid stay)" "3" "$(markers)"
 rm -f "$STATE"/.refresher.* "$STATE"/.counts.*.[0-9]*
 
+# ---------------------------------------------------------------------------
+t "11. every kind of path collect() and list() read reloads the list when written"
+# ---------------------------------------------------------------------------
+# refresh_changed (refresh.sh) is a hand copy of what collect() and list() open.
+# One write of each kind, on its own tick with a quiet tick in between, to files
+# the count of state files cannot explain: the existing ones are rewritten, so a
+# reload on the next tick is the gate's alone.
+export TA_HOST=ovlhost
+newrun paths
+printf 'x: 1\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf 'y: 1\n' >"$OVLF"; touch -t 200001010000 "$OVLF"
+printf '%s\t%s\t%s\n' 100 working sid-s >"$STATE/s-1.tsv"; touch -t 200001010000 "$STATE/s-1.tsv"
+act 2  'printf "%s\t%s\t%s\n" 101 working sid-a >"$RF_STATE/9.tsv"'
+act 4  'printf "%s\t%s\t%s\n" 101 working sid-s >"$RF_STATE/s-1.tsv"'
+act 7  'printf "sid-a\tother\n" >"$RF_STATE/origin.tsv"'
+act 9  'printf "9\tnamed\n" >"$RF_STATE/labels.tsv"'
+act 12 'printf "cost\n" >"$RF_STATE/cols"'
+act 14 ': >"$RF_STATE/.flat"'
+act 17 'echo y >"$RF_STATE/sub/9.b"'
+act 19 'printf "sid-b\tm\t\tSonnet\n" >"$RF_STATE/model/sid-b.tsv"'
+act 22 'echo 200 >"$RF_STATE/prompt/9"'
+act 24 'echo "x: 2" >"$RF_CFG"'
+act 27 'echo "y: 2" >"${RF_CFG%.yaml}.ovlhost.yaml"'
+go 28
+ok "state file, s- file, origins, labels, cols, .flat, sub, model, prompt, config and overlay each reload on the next tick" \
+   "1 2 4 5 7 9 10 12 14 15 17 19 20 22 24 25 27" "$(reloads)"
+ok "and every other tick stays quiet" "3 6 8 11 13 16 18 21 23 26 28" "$(ignores)"
+rm -f "$OVLF"
+unset TA_HOST
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
