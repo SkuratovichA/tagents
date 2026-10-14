@@ -181,10 +181,25 @@ unpark() {  # <pane-id> — if this is a placeholder, bring its agent back here
 # also stands in for an agent while that agent is docked, so it says where the
 # agent went when it finds itself outside the dashboard window.
 slot() {
-  local dwin last="" win parked stray=0
+  local dwin last="" win parked active stray=0 out ids p w d l pk ac mylist me=${TMUX_PANE:-}
   while :; do
-    dwin=$(dash_window)
-    win=$(tmux display -p -t "${TMUX_PANE:-}" '#{window_id}' 2>/dev/null)
+    # ONE QUESTION TO TMUX PER LAP, not six: every pane with the four things this
+    # loop wants to know about it. An option that is not set is "-", so the line
+    # always has six fields. dwin is dash_pane's rule (the first pane marked as
+    # the dashboard whose list is alive, the pane's own list first of all) read
+    # off the same lines; dead markers are left for the callers that clear them.
+    out=$(tmux list-panes -a -F '#{pane_id} #{window_id} #{?@tagents_dash,#{@tagents_dash},-} #{?@tagents_list,#{@tagents_list},-} #{?@tagents_parked,#{@tagents_parked},-} #{&&:#{pane_active},#{&&:#{window_active},#{session_attached}}}' 2>/dev/null)
+    dwin=""; win=""; parked=""; active=0; mylist="-"; ids=" "
+    while read -r p w d l pk ac; do
+      [ -n "$p" ] || continue
+      ids="$ids$p "
+      if [ "$p" = "$me" ]; then win=$w; mylist=$l; [ "$pk" = - ] || parked=$pk; active=$ac; fi
+      if [ -z "$dwin" ] && [ "$d" = 1 ] && [ "$l" != - ] && kill -0 "$l" 2>/dev/null; then dwin=$w; fi
+    done <<EOF
+$out
+EOF
+    if [ "$mylist" != - ] && kill -0 "$mylist" 2>/dev/null; then dwin=$win; fi
+    [ -n "$dwin" ] || dwin=$(dash_session_window)
     # NOBODY'S SEAT LEFT TO KEEP WARM. A placeholder outside the dashboard window
     # is standing in for one docked agent, and @tagents_parked names it. When that
     # agent is gone — its Claude exited, or the pane was killed while docked in the
@@ -196,11 +211,7 @@ slot() {
     # The marker is not enough on its own: unpark only clears it while the user is
     # actually looking at this pane, so a killed agent leaves it pointing at a pane
     # id that no longer exists. Ask tmux, not the marker.
-    parked=$(tmux display -p -t "${TMUX_PANE:-}" '#{@tagents_parked}' 2>/dev/null)
-    if [ -n "$parked" ] &&
-       ! tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx -- "$parked"; then
-      parked=""
-    fi
+    case "$ids" in *" $parked "*) ;; *) parked="" ;; esac
     # Two ticks, not one: at birth the pane exists a moment before its markers do.
     if [ -n "$win" ] && [ "$win" != "${dwin:-}" ] && [ -z "$parked" ]; then
       stray=$((stray + 1))
@@ -224,8 +235,7 @@ slot() {
     # user is actually looking at, hand the agent back without waiting for an
     # event that may never arrive (focus-events off, an older tmux, a hook
     # someone else overwrote).
-    if [ "$(tmux display -p -t "${TMUX_PANE:-}" \
-              '#{&&:#{pane_active},#{&&:#{window_active},#{session_attached}}}' 2>/dev/null)" = 1 ]; then
+    if [ "$active" = 1 ]; then
       unpark "${TMUX_PANE:-}"
     fi
     sleep 2
