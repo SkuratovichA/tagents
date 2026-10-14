@@ -147,3 +147,6 @@ The fork-storm fix turned four per-file loops into one awk per directory and gav
 
 ## `tests/panes.sh` section 18 is a timing check, and on a loaded box it fails on main too (14.10.2026)
 "focusing a seat pokes the list at once" waits 0.6 s for a poke whose `follow_cursor` alone takes ~0.45 s, and the port checks wait on the refresher's 2 s tick. With the endpoint agent inspecting every exec, a logged run put the poke at 0.57 s on average on main and 0.55 s on the fork-storm fix, and each tree failed section 18 in one run and passed it in another. A red section 18 is compared with a control run of main in a scratch worktree (`git worktree add --detach`) before it counts against a change; `tests/notes.sh` nests a panes run and inherits the same failures.
+
+## A test variable named like a module global is overwritten the moment the modules load (14.10.2026)
+The refresher test kept its config path in `CFG`, the name `lib/tagents/config.sh` uses for the parsed config text, so a write to `"$CFG"` where the two shared a shell put a file called `usage.watch<TAB>me` into the worktree root. The test's own paths get a prefix of their own (`RFCFG`), and a grep of the test for the module globals (`CFG`, `CFG_LOADED`, `USAGE_ON`, `STATE_DIR`, `LABELS`, `ORIGINS`, `COLS_FILE`, `SELF`, `HOST_S`) comes back empty before it is trusted.
