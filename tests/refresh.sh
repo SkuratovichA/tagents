@@ -379,12 +379,14 @@ t "12. the stamp is renewed straight after the sleep on the 5th tick, before the
 newrun slow
 printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
 act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\""
-act 4 'cat "$RF_STATE/.counts.ts" >"$RF_DIR/ts.4"'
-act 5 ':'
+# Read as the 5th tick begins: tick 4 has stamped by then, tick 5 has not. The act
+# is followed by a sleep of 1.1 s, so a stamp that tick 5 itself puts on before
+# the update is a second newer, and one that it does not is the same.
+act 5 'cat "$RF_STATE/.counts.ts" >"$RF_DIR/ts.5"'
 go 5
 ok "tusage --update ran on the 5th tick" yes "$([ -e "$D/ts.update.5" ] && echo yes || echo no)"
-ok "the stamp it found is newer than the one tick 4 left (a slow update cannot age it)" 1 \
-   "$(( $(num "$D/ts.4") > 0 && $(num "$D/ts.update.5") > $(num "$D/ts.4") ? 1 : 0 ))"
+ok "the stamp it found is newer than the one the 5th tick began with (a slow update cannot age it)" 1 \
+   "$(( $(num "$D/ts.5") > 0 && $(num "$D/ts.update.5") > $(num "$D/ts.5") ? 1 : 0 ))"
 
 t "13. the burn and the month are taken again on the 5th tick"
 newrun burn
