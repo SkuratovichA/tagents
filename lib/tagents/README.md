@@ -14,20 +14,20 @@ others are built on `STATE_DIR` and `TAB`.
 
 | file | lines | what is in it |
 |---|---:|---|
-| `core.sh` | 123 | constants, and the plumbing every dialog is built on |
-| `config.sh` | 607 | config.yaml, flattened — and what is wrong with it |
+| `core.sh` | 133 | constants, and the plumbing every dialog is built on |
+| `config.sh` | 626 | config.yaml, flattened — and what is wrong with it |
 | `accounts.sh` | 361 | which Claude login an agent runs on, and whether it is there |
-| `usage.sh` | 322 | the monthly limit, on screen |
-| `state.sh` | 308 | the raw data every view reads |
-| `names.sh` | 392 | what an agent is called, and the window it names |
+| `usage.sh` | 324 | the monthly limit, on screen |
+| `state.sh` | 311 | the raw data every view reads |
+| `names.sh` | 393 | what an agent is called, and the window it names |
 | `columns.sh` | 134 | which columns are on screen |
-| `list.sh` | 830 | the rows — and the tally the status bar shows |
+| `list.sh` | 836 | the rows — and the tally the status bar shows |
 | `timeline.sh` | 160 | which agent worked when |
 | `preview.sh` | 176 | a row, up close |
 | `actions.sh` | 259 | what a key actually does |
-| `refresh.sh` | 446 | keeping a list current |
-| `sidebar.sh` | 247 | which pane is the dashboard right now |
-| `seats.sh` | 300 | seats: what they are and which one is current |
+| `refresh.sh` | 494 | keeping a list current |
+| `sidebar.sh` | 257 | which pane is the dashboard right now |
+| `seats.sh` | 305 | seats: what they are and which one is current |
 | `dock.sh` | 371 | docking: the pane swapped into a seat, and sent home again |
 | `closed.sh` | 252 | the sessions that stopped running |
 | `resurrect.sh` | 312 | every chat back where it was after a reboot |
