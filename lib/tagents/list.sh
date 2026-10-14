@@ -738,10 +738,8 @@ case $COUNTS_EVERY in ''|*[!0-9]*) COUNTS_EVERY=5 ;; esac
 counts() {
   local tmpf x=""
   if [ "$COUNTS_EVERY" -ne 0 ] && ! due_every "$COUNTS_STAMP" "$COUNTS_EVERY"; then
-    # Whole file, every byte of it, trailing newlines included: -d '' reads to the
-    # end, IFS= keeps the edges, and the braces keep the error of a missing file
-    # away from the bar (the redirection fails before a 2>/dev/null on read does).
-    { IFS= read -r -d '' x <"$COUNTS_OUT"; } 2>/dev/null
+    # Whole file, every byte of it, trailing newlines included (slurp).
+    slurp x "$COUNTS_OUT"
     printf '%s' "$x"
     return 0
   fi
@@ -753,7 +751,7 @@ counts() {
   tmpf="$COUNTS_OUT.$$"
   counts_now >"$tmpf" 2>/dev/null
   mv -f "$tmpf" "$COUNTS_OUT" 2>/dev/null || rm -f "$tmpf"
-  { IFS= read -r -d '' x <"$COUNTS_OUT"; } 2>/dev/null
+  slurp x "$COUNTS_OUT"
   printf '%s' "$x"
 }
 
