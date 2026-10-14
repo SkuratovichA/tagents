@@ -78,6 +78,21 @@ refresh_changed() {  # <marker> <overlay config path> — 0 when something chang
 # never finds itself due and it serves the cache for the price of a date. The
 # stamp stops with the answers (a refused post clears `live`), and the bar is then
 # due again within COUNTS_EVERY seconds and computes for itself. See refresher_counts.
+# WHAT A KILLED PROCESS LEFT IN THE STATE DIRECTORY: the refresher's markers
+# (.refresher.<pid>, .cfg, .start) and the temp files the list and the bar write
+# before a rename (.counts.tally.<pid>, .counts.out.<pid>). Each is removed when
+# its pid fails kill -0, one rm per stale file, and only at a refresher's start.
+refresher_sweep() {
+  local f n pid
+  for f in "$STATE_DIR"/.refresher.[0-9]* "$STATE_DIR"/.counts.tally.[0-9]* "$STATE_DIR"/.counts.out.[0-9]*; do
+    [ -e "$f" ] || continue
+    n=${f##*/}; n=${n#.refresher.}; n=${n#.counts.tally.}; n=${n#.counts.out.}
+    pid=${n%%.*}
+    case $pid in ''|*[!0-9]*) continue ;; esac
+    kill -0 "$pid" 2>/dev/null || rm -f "$f" 2>/dev/null
+  done
+}
+
 refresher() {
   local port=${TA_PORT:-} tick=0 dp seat last="" fails=0 fl pub=""
   local snap="" rsnap="" ssnap="" pending=1 due body first mark cfgmark ovl
@@ -86,19 +101,21 @@ refresher() {
   [ -z "$port" ] && return 0
   # One marker per refresher, in the state directory every writer already uses:
   # its time is "when the last reload was posted", and the second one is "when
-  # the config was last read" (see below). A refresher that is killed leaves
-  # them behind, and the next one on the same port overwrites them.
-  mark="$STATE_DIR/.refresher.$port"; cfgmark="$mark.cfg"
+  # the config was last read" (see below). They are named by the refresher's own
+  # pid. One that is killed (kill -9, a reboot) leaves them behind, and so the
+  # start sweeps what a dead pid left, before touching its own.
+  refresher_sweep
+  mark="$STATE_DIR/.refresher.$$"; cfgmark="$mark.cfg"
   # "When this refresher started": a tally older than it belongs to some earlier
   # picker, hours ago perhaps, and is never served (see refresher_counts).
   startmark="$mark.start"
-  : >"$startmark" 2>/dev/null
+  { : >"$startmark"; } 2>/dev/null
   # The per-host overlay is read by cfg_overlay from this same path.
   host_once
   ovl="${CONFIG_FILE%.yaml}.${TA_HOST:-$HOST_S}.yaml"
   # Touched before the first read of the config, so a write that lands while it
   # is being read is not older than the marker.
-  : >"$cfgmark" 2>/dev/null
+  { : >"$cfgmark"; } 2>/dev/null
   # Whether each of the two files was there at this read, for the re-read on the
   # 5th tick: see the test there.
   [ -e "$CONFIG_FILE" ] && cfgseen=1
@@ -164,7 +181,7 @@ refresher() {
       [ -e "$ovl" ] && ovlnow=1
       if ! [ "$cfgmark" -nt "$CONFIG_FILE" ] || ! [ "$cfgmark" -nt "$ovl" ] ||
          [ "$cfgnow" != "$cfgseen" ] || [ "$ovlnow" != "$ovlseen" ]; then
-        : >"$cfgmark" 2>/dev/null
+        { : >"$cfgmark"; } 2>/dev/null
         cfgseen=$cfgnow; ovlseen=$ovlnow
         cfg_reset; USAGE_ON=
         cfg_load
@@ -231,7 +248,7 @@ refresher() {
     if [ -n "$pending" ] || [ "$tick" = 0 ] || [ "$snap" != "$rsnap" ] ||
        [ "$nstate" != "$rstate" ] || refresh_changed "$mark" "$ovl"; then
       due=1
-      : >"$mark" 2>/dev/null
+      { : >"$mark"; } 2>/dev/null
       body="reload-sync($SELF --list)"
     else
       body=ignore
