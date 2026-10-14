@@ -194,6 +194,9 @@ dir_roots() {
   done
 }
 
+# EVERY FILE READ BELOW (and in list()) HAS A TWIN in refresh_changed (refresh.sh),
+# the refresher's list of the paths whose change reloads the picker: a new kind of
+# path read here belongs there too, and tests/refresh.sh section 11 pins the two.
 collect() {
   # A literal tab must not go into a tmux format string. Outside a UTF-8 locale
   # tmux renders it as "_", so all five fields merge into one, no pane is ever

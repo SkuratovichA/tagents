@@ -37,6 +37,11 @@ REFRESH_SNAP_FMT='#{pane_id}|@|#{session_name}:#{window_index}.#{pane_index}|@|#
 # checking, a deleted state file is seen by the refresher's count of them, and
 # the forced reload of the 5th tick catches the rest.
 #
+# THIS LIST IS A HAND COPY of what collect() (state.sh) and list() (list.sh) read:
+# a path added there and not here is a change the picker only shows on the 5th
+# tick. tests/refresh.sh section 11 writes one of each kind between two idle ticks
+# and expects a reload on the next, so the two cannot drift silently.
+#
 # The paths are what collect() and list() open: the state files (history.tsv is
 # not one), the origin cache, the labels, the hidden-columns file and the .flat
 # marker; the sub/, model/ and prompt/ files and the directories that hold them,
