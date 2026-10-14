@@ -767,8 +767,15 @@ counts() {
 counts_parts() {
   local x
   CP_PREFIX=""; CP_BURN=""; CP_STATUS=""; CP_FOOTER=""
-  cfg_count_cached
-  [ "$CFG_NPROBLEMS" -gt 0 ] && printf -v CP_PREFIX '#[fg=magenta]cfg!%d ' "$CFG_NPROBLEMS"
+  # THE PROBLEM COUNT IS WORKED OUT THE WAY A FRESH PROCESS WORKS IT OUT, in a
+  # subshell that starts from a check not yet made: cfg_check adds to
+  # CFG_NPROBLEMS and does nothing at all once CFG_CHECKED is set, and
+  # cfg_count_cached sets the count from the cache without setting that flag, so
+  # in this long-lived shell a verdict that aged would be counted on top of the
+  # last one, and a config fixed or broken under it would never be counted again.
+  # One fork on a 5th tick; nothing it sets stays behind.
+  CP_PREFIX=$(CFG_CHECKED=0; CFG_NPROBLEMS=0; CFG_NOTES=''; cfg_count_cached
+              [ "$CFG_NPROBLEMS" -gt 0 ] && printf '#[fg=magenta]cfg!%d ' "$CFG_NPROBLEMS")
   if usage_on; then
     { x=$(tusage --no-update --burn 2>/dev/null; printf .); } 2>/dev/null
     CP_BURN=${x%.}
