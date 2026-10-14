@@ -14,24 +14,24 @@ others are built on `STATE_DIR` and `TAB`.
 
 | file | lines | what is in it |
 |---|---:|---|
-| `core.sh` | 94 | constants, and the plumbing every dialog is built on |
-| `config.sh` | 572 | config.yaml, flattened — and what is wrong with it |
+| `core.sh` | 123 | constants, and the plumbing every dialog is built on |
+| `config.sh` | 607 | config.yaml, flattened — and what is wrong with it |
 | `accounts.sh` | 361 | which Claude login an agent runs on, and whether it is there |
-| `usage.sh` | 273 | the monthly limit, on screen |
-| `state.sh` | 212 | the raw data every view reads |
-| `names.sh` | 369 | what an agent is called, and the window it names |
-| `columns.sh` | 123 | which columns are on screen |
-| `list.sh` | 672 | the rows — and the tally the status bar shows |
-| `timeline.sh` | 162 | which agent worked when |
+| `usage.sh` | 322 | the monthly limit, on screen |
+| `state.sh` | 308 | the raw data every view reads |
+| `names.sh` | 392 | what an agent is called, and the window it names |
+| `columns.sh` | 134 | which columns are on screen |
+| `list.sh` | 830 | the rows — and the tally the status bar shows |
+| `timeline.sh` | 160 | which agent worked when |
 | `preview.sh` | 176 | a row, up close |
-| `actions.sh` | 254 | what a key actually does |
-| `refresh.sh` | 225 | keeping a list current |
-| `sidebar.sh` | 211 | which pane is the dashboard right now |
-| `seats.sh` | 290 | seats: what they are and which one is current |
-| `dock.sh` | 381 | docking: the pane swapped into a seat, and sent home again |
-| `closed.sh` | 254 | the sessions that stopped running |
-| `resurrect.sh` | 273 | every chat back where it was after a reboot |
-| `launch.sh` | 293 | starting an agent |
+| `actions.sh` | 259 | what a key actually does |
+| `refresh.sh` | 446 | keeping a list current |
+| `sidebar.sh` | 247 | which pane is the dashboard right now |
+| `seats.sh` | 300 | seats: what they are and which one is current |
+| `dock.sh` | 371 | docking: the pane swapped into a seat, and sent home again |
+| `closed.sh` | 252 | the sessions that stopped running |
+| `resurrect.sh` | 312 | every chat back where it was after a reboot |
+| `launch.sh` | 298 | starting an agent |
 | `keys.sh` | 285 | every key, and where it comes from |
 | `dash.sh` | 251 | the dashboard itself |
 
