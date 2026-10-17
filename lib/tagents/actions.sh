@@ -189,6 +189,63 @@ forget_agent() {  # <pane-key> — drop a closed session's record from the list
   return 0
 }
 
+# A notice stays on screen until it is dismissed, so its click arrives long after
+# the pane id in it was true: the chat may have been killed since, or tmux may
+# have restarted and given that id to another chat. The session id is what still
+# names the chat, so for a non-empty one the pane is settled against the records
+# before anything docks. "A pane exists" is not "the chat runs" (a chat that
+# exited leaves its shell), so the test is the dashboard's own: the pane is in
+# live_panes, taken once per click. The ordinary click (the named pane runs a
+# Claude and its record names this session) costs that one walk and one read.
+open_chat() {  # <open_agent|open_beside> <pane> <sid> <dir>
+  local dockfn=$1 pane=$2 sid=${3:-} dir=${4:-} recsid="" msg live k ts key newest="" newestts=-1 locked=0 rc
+  if [ -n "$sid" ] && [ "$pane" != "-" ]; then
+    live=" $(live_panes 2>/dev/null | tr '\n' ' ') "
+    IFS="$US" read -r recsid _ < <(rec_row "$pane")
+    case "$live" in
+      *" $pane "*) [ "$recsid" = "$sid" ] && key=$pane || key="" ;;
+      *) key="" ;;
+    esac
+    if [ -z "$key" ]; then
+      # Several records can name one session (a chat resumed by hand elsewhere
+      # leaves the old one behind): one that runs a Claude is the running chat;
+      # when none does the session is over, and it comes back from the NEWEST
+      # record, whose account is the one it last ran on. A headless record has
+      # no pane to dock or resume into.
+      while IFS="$TAB" read -r k ts; do
+        [ -n "$k" ] || continue
+        case $k in %s-*) continue ;; esac
+        case "$live" in *" $k "*) key=$k; break ;; esac
+        case $ts in ''|*[!0-9]*) ts=0 ;; esac
+        if [ "$ts" -gt "$newestts" ]; then newest=$k; newestts=$ts; fi
+      done < <(panes_for_sid "$sid")
+      if [ -z "$key" ] && [ -z "$newest" ]; then
+        # Also on stderr: the notice helper logs a click's stderr, which is the
+        # only trace of why this click docked nothing.
+        msg="tagents: that chat has ended and left no record — ctrl-y lists closed sessions"
+        tmux display-message "$msg" 2>/dev/null
+        printf '%s\n' "$msg" >&2
+        return 0
+      fi
+      if [ -z "$key" ]; then
+        # The session has ended: Enter on its dead row, from the record that names it.
+        resume_agent "$newest" "$sid" "$dir"
+        return
+      fi
+    fi
+    pane=$key
+  fi
+  # Two notices clicked together would run two docks over the same seat. A lock
+  # that cannot be had is not a reason to do nothing: a click that
+  # does nothing is worse than a race. 36 tries is about 3 s of wall time, each
+  # try costing more than its 0.05 s sleep (60 measured 5 s); the helper that
+  # runs this gives it 8 s.
+  lock_dir "$STATE_DIR/.dock.lock" 10 36 && locked=1
+  "$dockfn" "$pane"; rc=$?
+  [ "$locked" = 1 ] && unlock_dir "$STATE_DIR/.dock.lock"
+  return "$rc"
+}
+
 # Every key runs through here as a short-lived child of fzf, so fzf itself never
 # has to exit and restart. That is what keeps the list from repainting on each
 # action — execute-silent does not touch the screen.
@@ -224,7 +281,7 @@ act() {
       if [ "$state" = dead ]; then
         resume_agent "$pane" "$sid" "$dir"
       else
-        open_agent "$pane"
+        open_chat open_agent "$pane" "$sid" "$dir"
       fi ;;
     beside)
       # A closed session has no pane to put anywhere yet, so bring it back first —
@@ -233,7 +290,7 @@ act() {
       if [ "$state" = dead ]; then
         resume_agent "$pane" "$sid" "$dir"
       else
-        open_beside "$pane"
+        open_chat open_beside "$pane" "$sid" "$dir"
       fi ;;
     borrow) borrow "$pane" "${TA_HOME:-}" ;;
     goto)   goto "$pane" ;;

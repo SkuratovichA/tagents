@@ -1,0 +1,5 @@
+disabled services = {
+		"com.example.other" => enabled
+		"io.github.skuratovicha.tagents-notify" => disabled
+		"io.github.skuratovicha.tagents-notify.other" => enabled
+}

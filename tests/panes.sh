@@ -132,6 +132,59 @@ cur_opt() { tm show -vw -t "$DWIN" @tagents_cur 2>/dev/null; }
 term_ok() { ok "the user terminal is untouched ($1)" \
                "yes $TWIN" "$(lives "$TERM1") $(where "$TERM1")"; }
 
+# A RESUME YOU CAN WATCH. The stub agent is a copy of sleep, which dies on the
+# arguments a real resume carries, so a resume would race its own dock. This
+# wrapper takes the place of `claude --resume <sid>` (TA_RESUME_CMD): it writes
+# down which pane it runs in and for which session, then becomes a live stub.
+RESUMED="$ROOT/resumed.log"; : >"$RESUMED"
+cat >"$BIN/rec" <<WRAP
+#!/bin/sh
+printf '%s %s\n' "\$TMUX_PANE" "\$*" >>"$RESUMED"
+exec "$BIN/claude" 600
+WRAP
+chmod +x "$BIN/rec"
+resume_run() { TA_RESUME_CMD="$BIN/rec" run "$@"; }
+# The pane the last resume of a session ran in; waits up to ~3 s for it.
+resumed_pane() {  # <sid>
+  local i=0 p
+  while [ "$i" -lt 30 ]; do
+    p=$(awk -v s="$1" '$2 == s { p = $1 } END { print p }' "$RESUMED" 2>/dev/null)
+    [ -n "$p" ] && { printf '%s' "$p"; return 0; }
+    i=$((i + 1)); sleep 0.1
+  done
+  return 1
+}
+resumed_count() { awk -v s="$1" '$2 == s { n++ } END { print n + 0 }' "$RESUMED" 2>/dev/null; }
+reap_resumed() {  # kill every pane a resume made, and forget them
+  local p
+  for p in $(awk '{ print $1 }' "$RESUMED" 2>/dev/null); do tm kill-pane -t "$p" 2>/dev/null; done
+  : >"$RESUMED"
+}
+# Tmux hooks start background mutators (--collapse, --unpark, --poke) after a
+# click returns, so a check waits for the state it expects instead of sleeping.
+wait_eq() {  # <expected> <cmd...> — polls ~3 s, prints the last value seen
+  local want=$1 got i=0
+  shift
+  while :; do
+    got=$("$@")
+    [ "$got" = "$want" ] && break
+    i=$((i + 1)); [ "$i" -ge 30 ] && break
+    sleep 0.1
+  done
+  printf '%s' "$got"
+}
+# ...and for a check that something did NOT happen: wait until the sidebar's
+# seats stop changing (three equal samples), bounded.
+settle() {
+  local a b="" i=0 same=0
+  while [ "$i" -lt 30 ]; do
+    a="$(kinds)|$(npanes "$DWIN")|$(nwins)"
+    if [ "$a" = "$b" ]; then same=$((same + 1)); [ "$same" -ge 3 ] && return 0; else same=0; fi
+    b=$a; i=$((i + 1)); sleep 0.15
+  done
+  return 0
+}
+
 # A row of the list, by pane id — never the group header, which carries its most
 # urgent member's pane id as well.
 row_of() {
@@ -199,8 +252,9 @@ t "1. a terminal split below the list is not the docked chat"
 # into a third column.
 run --act open "$A" live sid-A "$REPO"; sleep 0.4
 wins=$(nwins)
-run --act open "$B" live sid-B "$REPO"; sleep 0.4
-ok "the chosen agent is docked"          "$DWIN"  "$(where "$B")"
+run --act open "$B" live sid-B "$REPO"
+ok "the chosen agent is docked"          "$DWIN"  "$(wait_eq "$DWIN" where "$B")"
+settle
 ok "the one it replaced went home"       "$AHOME" "$(where "$A")"
 ok "the terminal is still there"         yes      "$(lives "$TERM1")"
 ok "...in the same window"               "$TWIN"  "$(where "$TERM1")"
@@ -398,21 +452,39 @@ term_ok 12
 # ---------------------------------------------------------------------------
 t "13. a row whose pane died between the render and the keypress"
 # ---------------------------------------------------------------------------
-# The row says "working" for up to two seconds after its claude exits, which is
-# the window ask_kill has always guarded against. Enter used to stamp the
-# placeholder as standing in for a pane that was already gone — a seat parked for
-# nobody, which collapse_seat refuses for ever — and ctrl-s used to split a fresh
-# placeholder first, leaking one pane per keypress.
+# The row says "working" for up to two seconds after its claude exits. Enter
+# there used to stamp the placeholder as standing in for a pane that was already
+# gone (a seat parked for nobody, which collapse_seat refuses for ever), and
+# ctrl-s used to split a fresh placeholder first, leaking one pane per keypress.
+# Now the click is settled by session id: D's pane is gone and its record still
+# names sid-D, so Enter opens that conversation again, exactly as Enter on a
+# dead row does, instead of doing nothing. The resume runs through a wrapper that
+# stays alive, so what it leaves behind is the same every run: the resumed chat
+# in the seat, the record it came from consumed, and no seat or placeholder
+# standing for the pane that died.
 D=$(mkagent D)
 tm kill-pane -t "$D" 2>/dev/null; sleep 0.4
-before=$(kinds); beforen=$(npanes "$DWIN")
-run --act open "$D" live sid-D "$REPO" >/dev/null 2>&1; sleep 0.4
-ok "enter on it leaves the seats alone" "$before"  "$(kinds)"
-ok "...and opens no pane"               "$beforen" "$(npanes "$DWIN")"
-run --act beside "$D" live sid-D "$REPO" >/dev/null 2>&1; sleep 0.4
-ok "ctrl-s on it leaves the seats alone" "$before"  "$(kinds)"
-ok "...and leaks no seat"                "$beforen" "$(npanes "$DWIN")"
+beforen=$(npanes "$DWIN")
+resume_run --act open "$D" live sid-D "$REPO" >/dev/null 2>&1
+D1=$(resumed_pane sid-D)
+ok "enter on it resumes sid-D" 1 "$(resumed_count sid-D)"
+ok "...from D's record, which it consumes" no "$([ -e "$STATE/${D#%}.tsv" ] && echo yes || echo no)"
+ok "...and the resumed chat is the one in the seat" "$D1:docked" "$(wait_eq "$D1:docked" kinds)"
+ok "...with no pane added to the sidebar" "$beforen" "$(npanes "$DWIN")"
+ok "no placeholder is parked for the pane that died" "" "$(parked_for "$D")"
+# The first half consumed the record; ctrl-s needs one to act on.
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$(date +%s)" working "sid-D" "$REPO" "" "agent D" "" >"$STATE/${D#%}.tsv"
+resume_run --act beside "$D" live sid-D "$REPO" >/dev/null 2>&1
+ok "ctrl-s on it resumes it as well" 2 "$(wait_eq 2 resumed_count sid-D)"
+D2=$(resumed_pane sid-D)
+# ...into the current seat, as ctrl-s on a dead row does: a chat that has to come
+# back first has no pane to put beside anything yet.
+ok "...into the current seat, like a dead row" "$D2:docked" "$(wait_eq "$D2:docked" kinds)"
+ok "...and leaks no seat" "$beforen" "$(npanes "$DWIN")"
 ok "no placeholder is parked for a pane that is gone" "" "$(parked_for "$D")"
+run --undock-window "$DWIN" >/dev/null 2>&1; settle
+reap_resumed; settle
 term_ok 13
 
 # ---------------------------------------------------------------------------
@@ -627,6 +699,174 @@ term_ok 18
 run --undock-window "$DWIN" >/dev/null 2>&1; sleep 0.5
 ok "undocking the last chat takes the title bar off" "" \
    "$(tm show -wv -t "$DWIN" pane-border-status 2>/dev/null)"
+
+# ---------------------------------------------------------------------------
+t "19. a click names the chat by its session, wherever the pane is now"
+# ---------------------------------------------------------------------------
+# A notice stays on screen until dismissed, so its click arrives minutes or hours
+# after the pane id in it was true: the pane may be gone, or tmux may have
+# restarted and given the same id to another chat. The session id is what still
+# names the chat.
+run --undock-window "$DWIN" >/dev/null 2>&1; settle
+E=$(mkagent E); EHOME=$(where "$E")
+F=$(mkagent F); FHOME=$(where "$F")
+nolock() { [ -e "$STATE/.dock.lock" ] && echo yes || echo no; }
+
+err=$(run --act open "%9999" live sid-E "$REPO" 2>&1 >/dev/null)
+ok "a pane that is gone: the chat that holds the session is docked" "$DWIN" "$(wait_eq "$DWIN" where "$E")"
+ok "a docking click prints nothing to stderr" "" "$err"
+settle
+ok "...and nothing else is"            "$FHOME" "$(where "$F")"
+ok "no dock lock is left behind"       no "$(nolock)"
+run --undock-window "$DWIN" >/dev/null 2>&1; settle
+
+run --act open "$F" live sid-E "$REPO"
+ok "a pane holding another session: the named session is docked" "$DWIN" "$(wait_eq "$DWIN" where "$E")"
+settle
+ok "...and the pane that was named is not"                       "$FHOME" "$(where "$F")"
+run --undock-window "$DWIN" >/dev/null 2>&1; settle
+
+run --act beside "$F" live sid-E "$REPO"
+ok "ctrl-s resolves the pane the same way" "$DWIN" "$(wait_eq "$DWIN" where "$E")"
+settle
+ok "...and leaves the named pane at home"  "$FHOME" "$(where "$F")"
+ok "no dock lock is left behind after it"  no "$(nolock)"
+run --undock-window "$DWIN" >/dev/null 2>&1; settle
+
+# A session nobody has a record of: nothing to dock, nothing to resume.
+before=$(kinds); beforep=$(npanes "$DWIN"); beforew=$(nwins)
+err=$(resume_run --act open "$E" live sid-nobody "$REPO" 2>&1 >/dev/null); rc=$?
+settle
+ok "an unknown session exits 0"               0 "$rc"
+has "...and says why on stderr"               "left no record" "$err"
+ok "...docks nothing"                         "$before"  "$(kinds)"
+ok "...opens no pane and no window"           "$beforep/$beforew" "$(npanes "$DWIN")/$(nwins)"
+ok "...resumes nothing"                       0 "$(resumed_count sid-nobody)"
+ok "...and the chat it named stays home"      "$EHOME" "$(where "$E")"
+ok "no dock lock is left behind after that"   no "$(nolock)"
+term_ok 19
+
+# Two records name one session: a chat resumed by hand elsewhere leaves the old
+# record behind. The click must dock the one that has a pane and resume nothing.
+G=$(mkagent G)
+# A key that no pane has and that state_files lists before every real one.
+DEADKEY=0009
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$(date +%s)" done "sid-G" "$REPO" "" closed "" >"$STATE/$DEADKEY.tsv"
+resume_run --act open "%9999" live sid-G "$REPO"
+ok "two records, one live: the live chat is docked" "$DWIN" "$(wait_eq "$DWIN" where "$G")"
+settle
+ok "...and the dead record was not resumed (it is still there)" yes \
+   "$([ -e "$STATE/$DEADKEY.tsv" ] && echo yes || echo no)"
+ok "...and nothing was resumed" 0 "$(resumed_count sid-G)"
+rm -f "$STATE/$DEADKEY.tsv"
+run --undock-window "$DWIN" >/dev/null 2>&1; settle
+
+# A pane that is there is not a chat that runs: a claude that exited leaves its
+# shell, and the record stays as a closed row.
+H=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" 2>/dev/null)
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$(date +%s)" done "sid-H" "$REPO" "" closed "" >"$STATE/${H#%}.tsv"
+sleep 0.3
+resume_run --act open "$H" live sid-H "$REPO"
+ok "a record whose pane is an idle shell is resumed" "$H" "$(resumed_pane sid-H)"
+ok "...from that record, which it consumes" no "$([ -e "$STATE/${H#%}.tsv" ] && echo yes || echo no)"
+run --undock-window "$DWIN" >/dev/null 2>&1; settle
+reap_resumed; tm kill-pane -t "$H" 2>/dev/null; settle
+
+# Two records, the first an idle shell and the second a live chat: the live one.
+# The shell is made first, so its key sorts first, which is the order state_files
+# (and so the old first-record rule) would have used.
+SH=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" 2>/dev/null)
+LV=$(mkagent LV)
+if [ "${#SH}" -eq "${#LV}" ]; then
+  sed -i.bak 's/sid-LV/sid-J/' "$STATE/${LV#%}.tsv"; rm -f "$STATE/${LV#%}.tsv.bak"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(date +%s)" done "sid-J" "$REPO" "" closed "" >"$STATE/${SH#%}.tsv"
+  SHHOME=$(where "$SH")
+  sleep 0.3
+  resume_run --act open "%9999" live sid-J "$REPO"
+  ok "idle shell first, live chat second: the live chat is docked" "$DWIN" "$(wait_eq "$DWIN" where "$LV")"
+  settle
+  ok "...the shell stays where it was" "$SHHOME" "$(where "$SH")"
+  ok "...nothing was resumed" 0 "$(resumed_count sid-J)"
+  ok "...and the shell's record is untouched" yes "$([ -e "$STATE/${SH#%}.tsv" ] && echo yes || echo no)"
+  tm kill-pane -t "$SH" 2>/dev/null
+else
+  printf '  --   the shell key does not sort first here, not checked\n'
+fi
+run --undock-window "$DWIN" >/dev/null 2>&1; settle
+
+# Two dead records of one session: the NEWEST is resumed, since its account is
+# the one the conversation last ran on. The older one is first in glob order.
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$(( $(date +%s) - 500 ))" done "sid-K" "$REPO" "" closed "" >"$STATE/0007.tsv"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$(date +%s)" done "sid-K" "$REPO" "" closed "" >"$STATE/0008.tsv"
+resume_run --act open "%9999" live sid-K "$REPO"
+resumed_pane sid-K >/dev/null
+ok "two dead records: the newest is resumed" no "$([ -e "$STATE/0008.tsv" ] && echo yes || echo no)"
+ok "...and the older one is left alone"      yes "$([ -e "$STATE/0007.tsv" ] && echo yes || echo no)"
+rm -f "$STATE/0007.tsv" "$STATE/0008.tsv"
+run --undock-window "$DWIN" >/dev/null 2>&1; settle
+reap_resumed; settle
+
+# THE DOCK LOCK. A fresh lock held by somebody else makes the click wait for the
+# tries (about 3 s) and then dock anyway; a click that does nothing is worse
+# than a race. The lock is not ours, so it is not released either.
+mkdir "$STATE/.dock.lock"
+t0=$(date +%s)
+run --act open "$E" live sid-E "$REPO"
+t1=$(date +%s)
+printf "  --   the click took %ss\n" "$((t1 - t0))"
+ok "a held lock: the click waited for it" yes "$([ $((t1 - t0)) -ge 2 ] && [ $((t1 - t0)) -le 6 ] && echo yes || echo no)"
+ok "...and docked anyway" "$DWIN" "$(wait_eq "$DWIN" where "$E")"
+ok "...leaving the other holder's lock alone" yes "$(nolock)"
+rmdir "$STATE/.dock.lock"
+run --undock-window "$DWIN" >/dev/null 2>&1; settle
+
+# A dock that fails still releases the lock. dock() is replaced in a private
+# copy of the program: nothing in a real sidebar fails on demand.
+ALT="$ROOT/alt"; mkdir -p "$ALT/lib"
+cp "$TA" "$ALT/tagents"; cp -R "$HERE/../lib/tagents" "$ALT/lib/tagents"
+printf '\ndock() { return 1; }\n' >>"$ALT/lib/tagents/dock.sh"
+env TMUX="$SOCK,0,0" bash "$ALT/tagents" --act open "$E" live sid-E "$REPO" >/dev/null 2>&1; rc=$?
+ok "a dock that fails is reported" 1 "$rc"
+ok "...and the lock is released" no "$(nolock)"
+term_ok 19b
+
+# ---------------------------------------------------------------------------
+t "20. a focus trigger older than the dock does not undo it"
+# ---------------------------------------------------------------------------
+# The reported race: a hook fires while the placeholder is still the empty seat
+# in the sidebar window and only SCHEDULES --unpark. The dock then moves the
+# placeholder home and parks it for the chat, and the late --unpark, finding a
+# parked placeholder outside the sidebar, sent the fresh dock straight back.
+# The hook now passes the window it fired in, and a placeholder that is no
+# longer there is not an arrival.
+run --undock-window "$DWIN" >/dev/null 2>&1; settle
+HK=$(tm show-hooks -g -w 2>/dev/null | grep '^pane-focus-in' | grep -- '--unpark')
+has "the focus hook hands --unpark the window it fired in" "#{window_id}" "$HK"
+run --act open "$A" live sid-A "$REPO"
+ok "a chat is docked" "$DWIN" "$(wait_eq "$DWIN" where "$A")"
+settle
+PA=$(parked_for "$A")
+ok "...and its placeholder went home, parked for it" "$AHOME" "$(where "$PA")"
+run --unpark "$PA" "$DWIN"; settle
+ok "a stale trigger (from when it was the seat) moves nothing" "$DWIN" "$(where "$A")"
+ok "...the placeholder keeps its marker"  "$A" "$(tm show -pv -t "$PA" @tagents_parked 2>/dev/null)"
+ok "...and the chat is still the docked seat" "$A:docked" "$(kinds)"
+run --unpark "$PA" "$AHOME"
+ok "an arrival at the placeholder's own window brings the chat home" "$AHOME" "$(wait_eq "$AHOME" where "$A")"
+settle
+run --act open "$A" live sid-A "$REPO"
+ok "docked again" "$DWIN" "$(wait_eq "$DWIN" where "$A")"
+settle
+PA=$(parked_for "$A")
+run --unpark "$PA"
+ok "without a window it behaves as it always did" "$AHOME" "$(wait_eq "$AHOME" where "$A")"
+settle
+term_ok 20
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

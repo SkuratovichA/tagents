@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import type { TurnClock } from './turn-scope.ts';
 
 export interface FakeToolCall {
   readonly name: string;
@@ -210,5 +211,96 @@ export async function drained(
     if (await check()) return;
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
     await sleep(everyMs);
+  }
+}
+
+/**
+ * Time that moves only when told to, firing what falls due on the way, in order.
+ *
+ * `advance` is a running process: time walks forward and each timer runs at its
+ * own moment. The machine sleeping has three spellings here, because a test is
+ * about one of them and the other two would pass it by accident:
+ *  - `jump` moves the wall clock and runs nothing, so every timer behind the new
+ *    time is overdue and `advance(0)` runs them, as the OS does on wake;
+ *  - `sleepFiringOverdue` is that jump followed by `advance(0)`;
+ *  - `sleepPausingTimers` is the real thing under Node on macOS.
+ */
+export class FakeClock implements TurnClock {
+  private wall: number;
+  private seq = 0;
+  private readonly timers = new Map<number, { at: number; fn: () => void }>();
+
+  constructor(start = 0) {
+    this.wall = start;
+  }
+
+  now(): number {
+    return this.wall;
+  }
+
+  after(ms: number, fn: () => void): () => void {
+    const id = this.seq++;
+    this.timers.set(id, { at: this.wall + ms, fn });
+    return () => {
+      this.timers.delete(id);
+    };
+  }
+
+  /** Timers scheduled and neither fired nor cancelled. */
+  get pending(): number {
+    return this.timers.size;
+  }
+
+  /** Milliseconds until the earliest timer, or null when none waits. */
+  nextDelay(): number | null {
+    const next = this.earliest();
+    return next === null ? null : next[1].at - this.wall;
+  }
+
+  /** Walk time forward by `ms`, running the timers that fall inside it in order. */
+  advance(ms: number): void {
+    const end = this.wall + ms;
+    for (;;) {
+      const next = this.earliest();
+      if (next === null || next[1].at > end) break;
+      this.timers.delete(next[0]);
+      this.wall = Math.max(this.wall, next[1].at);
+      next[1].fn();
+    }
+    this.wall = end;
+  }
+
+  /** Move the wall clock by `ms` without running a timer: every timer behind the new time is overdue. */
+  jump(ms: number): void {
+    this.wall += ms;
+  }
+
+  /**
+   * The machine sleeps for `ms` and every timer that fell due meanwhile fires
+   * late, at the wake. This models a deadline that is checked against the wall
+   * clock by something the OS runs at wake, or a timer implementation that counts
+   * sleep.
+   */
+  sleepFiringOverdue(ms: number): void {
+    this.jump(ms);
+    this.advance(0);
+  }
+
+  /**
+   * The Mac sleeps for `ms`: the wall clock moves and no timer runs, and a timer
+   * keeps the awake time it still had to wait. This is what a Node timer does on
+   * macOS, where the monotonic clock behind it stops during sleep, so a timer
+   * set for five minutes just before a lid close fires five awake minutes after
+   * the wake, however late that is by the wall clock.
+   */
+  sleepPausingTimers(ms: number): void {
+    this.wall += ms;
+    for (const t of this.timers.values()) t.at += ms;
+  }
+
+  private earliest(): [number, { at: number; fn: () => void }] | null {
+    let best: [number, { at: number; fn: () => void }] | null = null;
+    for (const entry of this.timers) if (best === null || entry[1].at < best[1].at) best = entry;
+    return best;
   }
 }

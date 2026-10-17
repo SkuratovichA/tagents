@@ -602,7 +602,7 @@ case "${1:-}" in
   # never docks anything.
   --focus-hooks)  install_focus_hooks ;;
   --slot)         slot ;;
-  --unpark)       unpark "${2:-}" ;;
+  --unpark)       unpark "${2:-}" "${3:-}" ;;
   # What the focus hooks call so the ▶ marker moves with the switch rather than
   # with the refresher's next tick. Debounced on the seat — see poke.
   --poke)         poke "${2:-}" ;;

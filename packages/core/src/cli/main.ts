@@ -31,10 +31,11 @@ import { readAgentState, stateDir } from '../agent-state.ts';
 import { configFile } from '../host.ts';
 import { createT, coreT, type CoreT } from '../i18n/index.ts';
 import { isAlive } from '../pid.ts';
+import { findOnPath } from '../path-lookup.ts';
 import { parseSessionRef } from '../session-ref.ts';
 import { renderRecent, renderSearch, renderShow, SESSIONS_PROGRAM } from '../transcripts.ts';
 import { formatAttemptError, type TurnOutcome } from '../turn-outcome.ts';
-import { EXIT, json, type Io } from './exit.ts';
+import { EXIT, json, stdio, type Io } from './exit.ts';
 import { plugin } from './plugin.ts';
 import { runPluginCommand } from './plugin-run.ts';
 import { SESSION_LIST, SESSION_OPEN, SESSION_PROMPT } from './spec.ts';
@@ -250,16 +251,7 @@ function sessions(argv: string[], io: Io): number {
 
 /** Is there a `claude` on PATH? Answered by looking, not by running it. */
 function claudeOnPath(env: NodeJS.ProcessEnv = process.env): string | null {
-  for (const dir of (env['PATH'] ?? '').split(path.delimiter).filter(Boolean)) {
-    const candidate = path.join(dir, 'claude');
-    try {
-      fs.accessSync(candidate, fs.constants.X_OK);
-      return candidate;
-    } catch {
-      continue;
-    }
-  }
-  return null;
+  return findOnPath('claude', env['PATH']);
 }
 
 function doctor(io: Io, t: CoreT): number {
@@ -298,29 +290,6 @@ export async function main(argv: string[], io: Io = stdio()): Promise<number> {
     io.err(`${err.message}\n`);
     return usage ? EXIT.usage : EXIT.error;
   }
-}
-
-/**
- * `tagents-core sessions recent | head` closes the pipe while we are still
- * writing, and an unhandled EPIPE turns that into a stack trace on a command
- * that did nothing wrong. Reading half the output is a legitimate thing to do
- * to a CLI, so the writes are best-effort.
- */
-function stdio(): Io {
-  const ignore = (): void => undefined;
-  process.stdout.on('error', ignore);
-  process.stderr.on('error', ignore);
-  const write = (stream: NodeJS.WriteStream, text: string): void => {
-    try {
-      stream.write(text);
-    } catch {
-      // The reader is gone; there is nobody left to tell.
-    }
-  };
-  return {
-    out: (s) => write(process.stdout, s),
-    err: (s) => write(process.stderr, s),
-  };
 }
 
 // Run only as a program, never on import: a test imports main() directly.

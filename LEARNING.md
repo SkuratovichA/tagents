@@ -156,3 +156,33 @@ The refresher test kept its config path in `CFG`, the name `lib/tagents/config.s
 
 ## `tests/panes.sh`'s port-claim checks fail on main too, reading an earlier port (14.10.2026)
 "an overwritten port is reclaimed on the next tick" and "a refresher whose posts are refused never claims the port" failed in 2 of 3 runs on unchanged main and 1 of 3 on the branch, each time reading a lower port than the live list's (63474 for 63501, 63560 for 63700, 62719 for 62870): an earlier refresher of the test's own dashboard still holds the claim. Judge them like section 18 — against a control run of main — and do not chase them as a regression of the change under test.
+
+## Claude Code fires Stop before it writes the turn's last assistant record (17.10.2026)
+The hook read the answer for the answer-ready notice from the transcript at Stop and got the previous turn's text. A probe showed the record lands after the hook has run; the Stop payload's `last_assistant_message` carries it, and the hook reads that.
+
+## tmux 3.7: `display -p -t %gone` exits 0 (17.10.2026)
+A pane that no longer exists prints empty fields and exits 0, so the exit code proves nothing. The notify probe treats empty fields as `NO_SUCH_PANE`.
+
+## `launchctl bootstrap` of a disabled label says "5: Input/output error" (17.10.2026)
+Nothing in the error names the cause. `launchctl print-disabled gui/$(id -u)` lists the label as disabled and `launchctl enable gui/$(id -u)/<label>` fixes it; `install` prints that hint now.
+
+## os.Logger: `.info` is not persisted, and interpolated strings are `<private>` (17.10.2026)
+The helper's click lines were missing from `log show` without `--info`, and their argv showed as `<private>`. Lines worth keeping are logged at `.notice` with `privacy: .public`.
+
+## KeepAlive with `SuccessfulExit=false` never restarts an exit 0 (17.10.2026)
+`run` exited 0 when its start threw, so launchd left the service dead. It exits 1 now, and `ThrottleInterval` 300 keeps a broken start from looping.
+
+## `ps -o lstart` prints local time in the locale's format (17.10.2026)
+The lock compared a holder's start time read with `ps` against a UTC time. `ps` runs with `TZ=UTC` and `LC_ALL=C`.
+
+## `fs.watch` on something that may appear: arm the watch, then look (17.10.2026)
+A directory created between the existence check and the watch was never watched. The service arms the watch first and re-reads the state after it.
+
+## BSD `sed -i` takes the next argument as the backup suffix (17.10.2026)
+`sed -i 's/a/b/' f` is GNU syntax; on macOS it is `sed -i '' 's/a/b/' f`.
+
+## A notice click runs the script it names, and that script re-points tmux's global hooks at itself (17.10.2026)
+The notices pointed at the worktree's `tagents`, so the owner's clicks ran code that was being rewritten, and every click re-installed the dashboard's focus hooks from the worktree. `install` gives the service the `tagents` on the installing shell's PATH; a live service is never pointed at a tree being edited.
+
+## A hook's `run-shell -b` runs against a later state than the one it tested (17.10.2026)
+The focus hook's `if-shell -F '#{@tagents_slot}'` passed while the placeholder was the empty seat, but the unpark it scheduled ran after a dock had moved that placeholder home, and handed the dock back. The hook passes `#{window_id}`, and unpark acts only while the placeholder is still in that window, re-checked inside its atomic command list.

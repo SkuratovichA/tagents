@@ -1,0 +1,59 @@
+gui/502/io.github.skuratovicha.tagents-notify.test-24186-once = {
+	active count = 0
+	path = /private/tmp/claude-502/-Users-demo-git-personal/session/scratchpad/lc/io.github.skuratovicha.tagents-notify.test-24186-once.plist
+	type = LaunchAgent
+	state = not running
+
+	program = /bin/sh
+	arguments = {
+		/bin/sh
+		-c
+		exit 1
+	}
+
+	inherited environment = {
+		SSH_AUTH_SOCK => /var/run/com.apple.launchd.XXXX/Listeners
+	}
+
+	default environment = {
+		PATH => /usr/bin:/bin:/usr/sbin:/sbin
+	}
+
+	environment = {
+		OSLogRateLimit => 64
+		XPC_SERVICE_NAME => io.github.skuratovicha.tagents-notify.test-24186-once
+	}
+
+	domain = gui/502 [100017]
+	asid = 100017
+	minimum runtime = 10
+	exit timeout = 5
+	runs = 1
+	last exit code = 1
+
+	resource coalition = {
+		ID = 59065
+		type = resource
+		state = active
+		active count = 1
+		name = io.github.skuratovicha.tagents-notify.test-24186-once
+	}
+
+	jetsam coalition = {
+		ID = 59066
+		type = jetsam
+		state = active
+		active count = 1
+		name = io.github.skuratovicha.tagents-notify.test-24186-once
+	}
+
+	spawn type = daemon (3)
+	jetsam priority = 40
+	jetsam memory limit (active) = (unlimited)
+	jetsam memory limit (inactive) = (unlimited)
+	jetsamproperties category = daemon
+	jetsam thread limit = 32
+	cpumon = default
+
+	properties = runatload | inferred program
+}
