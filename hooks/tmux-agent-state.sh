@@ -21,10 +21,17 @@
 # permission prompt, a finished turn, a session start or end) are also appended,
 # one line each, to <state dir>/events.tsv, which the notify plugin follows. With
 # the switch absent the cost is one `[ -e ]`; with it present, one builtin printf.
+# SessionStart is the one exception: it first checks the size of history.tsv and
+# of events.tsv for rotation, one `wc` for each file that exists (two at most).
 #
 # Runs on every tool call, so it stays deliberately cheap: one jq, one tmux.
 
 set -u
+
+# Every file this hook creates is read by the same user only; without this, a
+# rotated events.tsv is recreated by the next append with the default umask while
+# the plugin creates it 0600.
+umask 077
 
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -130,20 +137,24 @@ line=$(printf '%s' "$payload" | jq -r --arg us "$us" '
   | [$e, ($h.agent_id // ""), $state,
      ($h.session_id // ""), ($h.cwd // ""), ($h.transcript_path // ""),
      ($detail | one),
-     (if $e == "PreToolUse" then ($h.tool_name // "") else "" end),
-     (if   $e == "Notification" then ($h.notification_type // $h.notificationType // "")
-      elif $e == "SessionStart" then ($h.source // "")
-      elif $e == "SessionEnd"   then ($h.reason // "")
-      elif $e == "SubagentStop" then ($h.agent_type // "")
-      else "" end),
+     (if $e == "PreToolUse" or $e == "PostToolUse" then ($h.tool_name // "") else "" end),
+     ((if   $e == "Notification" then ($h.notification_type // $h.notificationType // "")
+       elif $e == "SessionStart" then ($h.source // "")
+       elif $e == "SessionEnd"   then ($h.reason // "")
+       elif $e == "SubagentStop" then ($h.agent_type // "")
+       else "" end) | txt),
      (if   $e == "Notification" then (try ($h.message // "" | txt) catch "")
       elif $e == "PreToolUse" and $h.tool_name == "AskUserQuestion"
            then (try ($h.tool_input.questions[0].question // "" | txt) catch "")
       elif $e == "PreToolUse" and $h.tool_name == "ExitPlanMode"
-           then (try ($h.tool_input.plan | split("\n") | map(fld) | map(select(. != ""))
-                      | (.[0] // "") | sub("^#+ "; "") | txt) catch "")
+           then (try ($h.tool_input.plan | split("\n")
+                      | first(.[] | fld | select(. != "")) // "" | .[0:1000]
+                      | sub("^#+ "; "") | txt) catch "")
+      elif $e == "Stop"
+           then (try ($h.last_assistant_message | split("\n")
+                      | first(.[] | fld | select(. != "")) // "" | .[0:1000] | txt) catch "")
       else "" end),
-     (env.TA_LABEL // ""), (env.CLAUDE_CONFIG_DIR // "")]
+     (env.TA_LABEL // "" | txt), (env.CLAUDE_CONFIG_DIR // "")]
   | map(tostring | gsub("[\\r\\n\\t]"; " ") | gsub($us; " "))
   | join($us)
 ' 2>/dev/null) || exit 0
@@ -199,6 +210,15 @@ if [ "$event" = UserPromptSubmit ] && [ -z "${agent:-}" ]; then
   printf '%s\n' "$now" >"$dir/prompt/$key" 2>/dev/null
 fi
 
+# Move a log over 5 MiB aside to <file>.1 (replacing the one there). Used on
+# SessionStart only, which is rare enough that the size check costs nothing.
+rotate() {
+  [ -e "$1" ] || return 0
+  rsz=$(wc -c <"$1" 2>/dev/null || echo 0)
+  if [ "${rsz:-0}" -gt 5242880 ]; then mv -f "$1" "$1.1"; fi
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # Append-only history, read by `tagents --timeline`. Only three event kinds get
 # logged, so this stays a handful of lines per session instead of one per tool
@@ -213,11 +233,7 @@ if [ -z "${agent:-}" ]; then
     SessionEnd)   hist=end ;;
   esac
   if [ -n "$hist" ]; then
-    if [ "$hist" = start ] && [ -e "$dir/history.tsv" ]; then
-      # Rotate on start only: rare enough that the size check costs nothing.
-      sz=$(wc -c <"$dir/history.tsv" 2>/dev/null || echo 0)
-      [ "${sz:-0}" -gt 5242880 ] && mv -f "$dir/history.tsv" "$dir/history.tsv.1"
-    fi
+    [ "$hist" = start ] && rotate "$dir/history.tsv"
     # TA_LABEL is optional: export it before starting claude and the timeline
     # has a name for the session from its first line, without waiting for one to
     # be typed in the dashboard.
@@ -231,30 +247,37 @@ fi
 # THE EVENT STREAM, for the notify plugin: one line per event worth reacting to,
 # appended to events.tsv while the switch events.on exists. The plugin creates
 # the switch when it starts following the file and removes it when it stops, so
-# an idle machine pays one `[ -e ]` per hook call and nothing else. [ -e ] rather
-# than [ -f ] so the switch works as a file or as a directory. Placed before the
+# an idle machine pays one `[ -e ]` per hook call and nothing else. The switch is
+# a plain file (the plugin creates it by opening it for append). Placed before the
 # subagent block on purpose: a SubagentStop with an agent_id exits there.
 # Every notification type is written, idle ones included, because telling them
 # apart is the plugin's job. A PreToolUse is written only for the two tools that
-# ask the owner something; every other tool call would be noise at this rate.
+# ask the owner something; every other tool call would be noise at this rate. The
+# PostToolUse of those same two tools is written as well, with the tool in the
+# tool column and no text: Claude Code fires it when the owner answers the form
+# or approves the plan, and that is how the plugin knows to withdraw the notice
+# it posted for the question.
+# The text column (12) holds, per event: a Notification's message, a question's
+# first question, an ExitPlanMode plan's first line, and for Stop the first
+# non-empty line of last_assistant_message. Stop carries its own text because
+# Claude Code fires the hook before it writes the final assistant record to the
+# transcript, so a reader of the transcript at that moment sees an older turn.
+# The text goes into this line only, never into the state or history record.
 # The pane column is empty for an s-<sid> key: a background job re-keyed above
 # still holds its PARENT's pane in $pane, and a click on its notification must
 # never dock the parent's chat. All sanitising was done by the jq call above,
 # so nothing here can cost the state record below. The rotation mirrors the
-# history one: normally the follower trims the file itself, so this only fires
-# when a follower died and left the switch on.
+# history one (the shared rotate function): normally the follower trims the file
+# itself, so this only fires when a follower died and left the switch on.
 # ---------------------------------------------------------------------------
 if [ -e "$dir/events.on" ]; then
   ev=
   case "$event" in
     SessionStart|UserPromptSubmit|Stop|SubagentStop|SessionEnd|Notification) ev=1 ;;
-    PreToolUse) case "$etool" in AskUserQuestion|ExitPlanMode) ev=1 ;; esac ;;
+    PreToolUse|PostToolUse) case "$etool" in AskUserQuestion|ExitPlanMode) ev=1 ;; esac ;;
   esac
   if [ -n "$ev" ]; then
-    if [ "$event" = SessionStart ] && [ -e "$dir/events.tsv" ]; then
-      sz=$(wc -c <"$dir/events.tsv" 2>/dev/null || echo 0)
-      [ "${sz:-0}" -gt 5242880 ] && mv -f "$dir/events.tsv" "$dir/events.tsv.1"
-    fi
+    [ "$event" = SessionStart ] && rotate "$dir/events.tsv"
     case "$key" in s-*) epane= ;; *) epane=$pane ;; esac
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$now" "$event" "$key" "${sid:-}" "${agent:-}" "$epane" "${cwd:-}" "${transcript:-}" \
