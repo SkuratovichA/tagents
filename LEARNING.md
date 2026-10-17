@@ -186,3 +186,6 @@ The notices pointed at the worktree's `tagents`, so the owner's clicks ran code 
 
 ## A hook's `run-shell -b` runs against a later state than the one it tested (17.10.2026)
 The focus hook's `if-shell -F '#{@tagents_slot}'` passed while the placeholder was the empty seat, but the unpark it scheduled ran after a dock had moved that placeholder home, and handed the dock back. The hook passes `#{window_id}`, and unpark acts only while the placeholder is still in that window, re-checked inside its atomic command list.
+
+## An apostrophe in a comment inside `list.sh`'s awk program ends the program (17.10.2026)
+The awk program in `lib/tagents/list.sh` is one single-quoted shell string, so a `don't` or `it's` in a comment inside it closes the quote and the rest of the program is parsed as shell. Write comments there without apostrophes ("does not", "it is").
