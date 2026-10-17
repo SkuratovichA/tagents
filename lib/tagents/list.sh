@@ -425,7 +425,11 @@ list() {
     $1=="B" { if (now - $3 < ttl) subs[$2]++; next }
     # tusage --sessions: sid, cost, reqs, ctx, last, slug, subagent cost, live
     # subagents, cost in the last 5h, model, $, $ in the last 5h, $ subagents,
-    # unpriced-request count. The dollar figures are priced per request at the
+    # unpriced-request count. ctx is the context of the newest main-chain request
+    # of the session, so it drops at once after a /compact; it used to be the
+    # largest context of the last hour, which answered "how big did this chat
+    # get" and kept the pre-compaction size on screen for up to an hour. The
+    # dollar figures are priced per request at the
     # model that produced it, so they stay right across a mid-session /model and
     # across subagents deliberately run on a cheaper tier; umdl is only what the
     # session is on NOW, and is never used to compute money.
@@ -530,9 +534,11 @@ list() {
         pre = (islive && subs[p] > 0) ? sprintf("⑂%d ", subs[p]) : ""
         nm = nameof(p, rsid[n], dir)
 
-        # Cost columns. ctx is the live context size — the thing that decides
-        # whether this session should be compacted; burn is what it has spent in
-        # the last five hours, which is the window the plan limit rolls over.
+        # Cost columns. ctx is the live context size — the context of the newest
+        # main-chain request, which is what decides whether this session should
+        # be compacted, and is why it falls the moment a compaction is done
+        # instead of holding the peak; burn is what it has spent in the last
+        # five hours, which is the window the plan limit rolls over.
         # Both are joined on the session id, so they follow a resumed session.
         sq = rsid[n]
         cx = (sq in uctx) ? uctx[sq] : 0
