@@ -178,7 +178,7 @@ export function createNotifyPlugin(deps: CommandDeps = {}): PluginDef {
     if (osName === 'darwin') {
       const app = appPath(env, home);
       try {
-        kv('app', `${app} (${await appState(app, deps.exec)})`);
+        kv('app', `${app} (${await appState(app, undefined, deps.exec)})`);
       } catch (e) {
         kv('app', `${app} (unknown: ${describe(e)})`);
       }
