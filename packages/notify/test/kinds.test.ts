@@ -1,7 +1,7 @@
 // node --test kinds.test.ts
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { classify, countsSession } from '../src/kinds.ts';
+import { QUESTION_TOOLS, classify, countsSession } from '../src/kinds.ts';
 import { event } from './fakes.ts';
 
 const off = { headless: false };
@@ -19,6 +19,14 @@ test('ExitPlanMode is a question that carries the plan subtitle flag', () => {
 
 test('any other tool before it runs is nothing', () => {
   assert.equal(classify(event({ event: 'PreToolUse', tool: 'Bash' }), off), null);
+});
+
+test('PostToolUse of the two question tools is the answer: it withdraws and cancels, with no notice', () => {
+  for (const tool of ['AskUserQuestion', 'ExitPlanMode']) {
+    const v = classify(event({ event: 'PostToolUse', tool }), off);
+    assert.deepEqual(v, { kind: null, plan: false, arms: false, withdraw: true, cancel: true }, tool);
+  }
+  assert.equal(classify(event({ event: 'PostToolUse', tool: 'Bash' }), off), null);
 });
 
 test('Notification: the subtype decides, and a text with an unknown subtype is a permission', () => {
@@ -60,9 +68,17 @@ test('UserPromptSubmit withdraws and cancels without a notice of its own', () =>
   assert.deepEqual(v, { kind: null, plan: false, arms: false, withdraw: true, cancel: true });
 });
 
-test('SessionStart only cancels', () => {
+test('SessionStart withdraws and cancels without a notice of its own: the old session\'s question is moot', () => {
   const v = classify(event({ event: 'SessionStart' }), off);
-  assert.deepEqual(v, { kind: null, plan: false, arms: false, withdraw: false, cancel: true });
+  assert.deepEqual(v, { kind: null, plan: false, arms: false, withdraw: true, cancel: true });
+});
+
+test('QUESTION_TOOLS is the list both ends of a question go by', () => {
+  assert.deepEqual([...QUESTION_TOOLS], ['AskUserQuestion', 'ExitPlanMode']);
+  for (const tool of QUESTION_TOOLS) {
+    assert.equal(classify(event({ event: 'PreToolUse', tool }), off)?.kind, 'question', tool);
+    assert.equal(classify(event({ event: 'PostToolUse', tool }), off)?.cancel, true, tool);
+  }
 });
 
 test('a session without a pane counts only with sessions.headless', () => {

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Exec } from '../src/exec.ts';
-import { parseScreen, tmuxScreen } from '../src/screen.ts';
+import { NO_SUCH_PANE, parseScreen, tmuxScreen } from '../src/screen.ts';
 
 test('a client looking at the pane\'s window: visible, with that client\'s pid', () => {
   const out = [
@@ -92,8 +92,22 @@ test('tmuxScreen asks tmux once, with two commands and no tab in a format', asyn
   for (const a of calls[0]?.args ?? []) assert.ok(!a.includes('\t'), 'a literal tab in a tmux format renders as _ without a UTF-8 locale');
 });
 
+test('a pane line with no window id is the pane tmux 3.7 answers with for one that does not exist', () => {
+  assert.equal(parseScreen('P|@||@|\nC|@|5|@|9|@|@3\n'), NO_SUCH_PANE);
+  assert.equal(parseScreen('C|@|5|@|9|@|@3\n'), null, 'no pane line at all says nothing');
+});
+
+test('tmuxScreen: tmux saying the pane is not there is NO_SUCH_PANE, and only that', async () => {
+  assert.equal(await tmuxScreen(fakeExec(ok('P|@||@|\n')).exec)('%99'), NO_SUCH_PANE);
+  assert.equal(await tmuxScreen(fakeExec({ code: 1, stdout: '', stderr: "can't find pane: %99", timedOut: false }).exec)('%99'), NO_SUCH_PANE);
+  const nothing = await tmuxScreen(fakeExec({ code: 1, stdout: '', stderr: 'no server running on /tmp/tmux-501/default', timedOut: false }).exec)('%99');
+  assert.equal(nothing, null, 'no server could be the wrong socket, not a closed pane');
+  const slow = await tmuxScreen(fakeExec({ code: null, stdout: '', stderr: "can't find pane: %99", timedOut: true }).exec)('%99');
+  assert.equal(slow, null, 'a timeout is not an answer');
+});
+
 test('tmuxScreen: a failing tmux, a timeout and a tmux that cannot start are all null', async () => {
-  assert.equal(await tmuxScreen(fakeExec({ code: 1, stdout: '', stderr: "can't find pane: %99", timedOut: false }).exec)('%99'), null);
+  assert.equal(await tmuxScreen(fakeExec({ code: 1, stdout: '', stderr: 'unknown option', timedOut: false }).exec)('%99'), null);
   assert.equal(await tmuxScreen(fakeExec({ code: null, stdout: '', stderr: '', timedOut: true }).exec)('%12'), null);
   assert.equal(await tmuxScreen(fakeExec(new Error('spawn tmux ENOENT')).exec)('%12'), null);
   assert.equal(await tmuxScreen(fakeExec(ok('')).exec)('%12'), null);

@@ -131,15 +131,164 @@ test('asking for a service a plugin does not have throws with both names', async
   });
 });
 
-test('with signals:true a SIGTERM stops the service, and the listener leaves with it', async () => {
-  const { def, calls } = trackedPlugin();
-  const before = process.listenerCount('SIGTERM');
-  const svc = await runService(def, 'daemon', createContext({ plugin: def }), { signals: true });
-  assert.equal(process.listenerCount('SIGTERM'), before + 1);
+// SIGINT is not emitted here: the test runner may listen to it as well.
+for (const sig of ['SIGTERM', 'SIGHUP'] as const) {
+  test(`with signals:true a ${sig} stops the service, and the listeners leave with it`, async () => {
+    const { def, calls } = trackedPlugin();
+    const watched = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+    const before = watched.map((s) => process.listenerCount(s));
+    const svc = await runService(def, 'daemon', createContext({ plugin: def }), { signals: true });
+    assert.deepEqual(
+      watched.map((s) => process.listenerCount(s)),
+      before.map((n) => n + 1),
+      'a daemon handles the interrupt, the terminate and the hang-up the same way'
+    );
+    process.emit(sig, sig);
+    await svc.done;
+    assert.deepEqual(calls, ['start:claude-headless', `stop:${sig}`], 'the signal name is what the service logs');
+    assert.deepEqual(
+      watched.map((s) => process.listenerCount(s)),
+      before,
+      'a stopped service leaves the process as it found it'
+    );
+  });
+}
+
+/** A service whose start() waits for `release()`, then resolves with a handle that logs. */
+function slowStart(o: { stopThrows?: boolean } = {}): { def: PluginDef; calls: string[]; release: () => void; fail: (e: Error) => void } {
+  const calls: string[] = [];
+  let release: () => void = () => undefined;
+  let fail: (e: Error) => void = () => undefined;
+  const gate = new Promise<void>((resolve, reject) => {
+    release = resolve;
+    fail = reject;
+  });
+  const def = definePlugin({
+    name: 'slow',
+    apiVersion: 1,
+    services: [
+      {
+        name: 'daemon',
+        start: async (): Promise<ServiceHandle> => {
+          calls.push('start:begin');
+          await gate;
+          calls.push('start:end');
+          return {
+            drain: async (): Promise<void> => undefined,
+            stop: (reason?: string): void => {
+              calls.push(`stop:${reason ?? ''}`);
+              if (o.stopThrows) throw new Error('stop failed');
+            },
+          };
+        },
+      },
+    ],
+  });
+  return { def, calls, release, fail };
+}
+
+test('with signals:true a signal that arrives while start() is still running stops the service once start has resolved', async () => {
+  const { def, calls, release } = slowStart();
+  const watched = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+  const before = watched.map((s) => process.listenerCount(s));
+  const starting = runService(def, 'daemon', createContext({ plugin: def }), { signals: true });
+  assert.deepEqual(
+    watched.map((s) => process.listenerCount(s)),
+    before.map((n) => n + 1),
+    'the handlers are in before start() has returned, or the default action would kill the process'
+  );
+
   process.emit('SIGTERM', 'SIGTERM');
+  process.emit('SIGHUP', 'SIGHUP');
+  assert.deepEqual(calls, ['start:begin'], 'nothing to stop yet: the signal is remembered, not acted on');
+
+  release();
+  const svc = await starting;
   await svc.done;
-  assert.deepEqual(calls, ['start:claude-headless', 'stop:SIGTERM'], 'the signal name is what the service logs');
-  assert.equal(process.listenerCount('SIGTERM'), before, 'a stopped service leaves the process as it found it');
+  assert.deepEqual(calls, ['start:begin', 'start:end', 'stop:SIGTERM'], 'stopped once, after start, by the first signal');
+  assert.deepEqual(
+    watched.map((s) => process.listenerCount(s)),
+    before,
+    'a stopped service leaves the process as it found it'
+  );
+});
+
+test('with signals:true a start() that rejects leaves no handler behind and stops nothing', async () => {
+  const { def, calls, fail } = slowStart();
+  const watched = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+  const before = watched.map((s) => process.listenerCount(s));
+  const starting = runService(def, 'daemon', createContext({ plugin: def }), { signals: true });
+  process.emit('SIGTERM', 'SIGTERM');
+  fail(new Error('the lock is held'));
+  await assert.rejects(starting, { message: 'the lock is held' });
+  assert.deepEqual(calls, ['start:begin'], 'there was nothing to stop');
+  assert.deepEqual(
+    watched.map((s) => process.listenerCount(s)),
+    before
+  );
+});
+
+test('with signals:true a second signal while the stop is still draining is swallowed, and the handlers go when the service is done', async () => {
+  const calls: string[] = [];
+  let drained: () => void = () => undefined;
+  const done = new Promise<void>((resolve) => {
+    drained = resolve;
+  });
+  const def = definePlugin({
+    name: 'held',
+    apiVersion: 1,
+    services: [
+      {
+        name: 'daemon',
+        start: async (): Promise<ServiceHandle> => ({
+          drain: async (): Promise<void> => undefined,
+          // The stop begins at once and is over only when `done` resolves, as a
+          // real service's is once its in-flight work has settled.
+          stop: (reason?: string): void => {
+            calls.push(`stop:${reason ?? ''}`);
+          },
+          done,
+        }),
+      },
+    ],
+  });
+  const watched = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+  const before = watched.map((s) => process.listenerCount(s));
+  const svc = await runService(def, 'daemon', createContext({ plugin: def }), { signals: true });
+
+  process.emit('SIGTERM', 'SIGTERM');
+  process.emit('SIGHUP', 'SIGHUP');
+  process.emit('SIGTERM', 'SIGTERM');
+  assert.deepEqual(calls, ['stop:SIGTERM'], 'one stop, by the first signal');
+  assert.deepEqual(
+    watched.map((s) => process.listenerCount(s)),
+    before.map((n) => n + 1),
+    'the handlers stay while the stop drains: with none, a second signal would take the default action and kill the process with its lock held'
+  );
+
+  drained();
+  await svc.done;
+  assert.deepEqual(
+    watched.map((s) => process.listenerCount(s)),
+    before,
+    'a stopped service leaves the process as it found it'
+  );
+  assert.deepEqual(calls, ['stop:SIGTERM']);
+});
+
+test('with signals:true a stop that throws for a signal received during start() rejects runService and leaves no handler behind', async () => {
+  const { def, release } = slowStart({ stopThrows: true });
+  const watched = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+  const before = watched.map((s) => process.listenerCount(s));
+  const starting = runService(def, 'daemon', createContext({ plugin: def }), { signals: true });
+  process.emit('SIGTERM', 'SIGTERM');
+  release();
+  await assert.rejects(starting, { message: 'stop failed' });
+  assert.deepEqual(
+    watched.map((s) => process.listenerCount(s)),
+    before,
+    'nobody holds the handle, so nothing is left to swallow the next signal'
+  );
 });
 
 test('without signals:true the process keeps its own SIGTERM handling', async () => {

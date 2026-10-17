@@ -40,16 +40,21 @@ test('the env option replaces the environment', async () => {
 });
 
 test('a program that outlives the timeout is killed, and nothing is left running', async () => {
-  const pidFile = path.join(tmpDir('notify-exec'), 'pid');
-  const t0 = Date.now();
-  // `exec` keeps the shell's pid for the sleep, so the pid in the file is the one that must die.
-  const r = await execText('/bin/sh', ['-c', 'echo $$ > "$1"; exec /bin/sleep 10', '_', pidFile], { timeoutMs: 200 });
-  assert.equal(r.timedOut, true);
-  assert.equal(r.code, null);
-  assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
-  const pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
-  assert.ok(Number.isInteger(pid) && pid > 1);
-  assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+  const dir = tmpDir('notify-exec');
+  const pidFile = path.join(dir, 'pid');
+  try {
+    const t0 = Date.now();
+    // `exec` keeps the shell's pid for the sleep, so the pid in the file is the one that must die.
+    const r = await execText('/bin/sh', ['-c', 'echo $$ > "$1"; exec /bin/sleep 10', '_', pidFile], { timeoutMs: 200 });
+    assert.equal(r.timedOut, true);
+    assert.equal(r.code, null);
+    assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
+    const pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
+    assert.ok(Number.isInteger(pid) && pid > 1);
+    assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('a program that cannot be started rejects', async () => {

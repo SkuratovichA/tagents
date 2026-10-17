@@ -15,9 +15,12 @@ tagents notify install
 On macOS this builds the helper app if it is stale, asks for permission, then writes and starts a LaunchAgent that runs the engine in the background. Allowing notifications:
 
 1. `tagents notify install` makes macOS ask whether "tagents" may send notifications: Allow.
-2. If the prompt was missed: System Settings → Notifications → tagents → Allow notifications. "Banners" is the default style; "Alerts" keeps a notice until it is dismissed.
-3. Focus and Do Not Disturb hide banners; the notices still land in Notification Center.
-4. `tagents notify status` must say `permission: authorized`.
+2. If the prompt was missed: System Settings → Notifications → tagents → Allow notifications.
+3. Alert Style, in System Settings → Notifications → tagents: "Persistent" keeps a notice on screen until you dismiss it, "Temporary" lets it disappear on its own (before macOS 26 they were called "Alerts" and "Banners").
+4. Focus and Do Not Disturb hide banners; the notices still land in Notification Center.
+5. `tagents notify status` must say `permission: authorized`.
+
+macOS leaves the choice of Alert Style to the person. When it is Temporary (called Banners before macOS 26), `install` and `status` print a hint naming the setting, with a link that opens it: `open "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=io.github.skuratovicha.tagents-notify"`. When it is off, the hint says that nothing is shown on screen at all. Nothing is printed when it is Persistent. The hint appears only once the permission is `authorized`: before that, the permission line is what to fix.
 
 macOS may announce a new background item in System Settings → General → Login Items & Extensions; it must stay allowed or launchd will not start the service.
 
@@ -30,6 +33,7 @@ Elsewhere `install` refuses with "no notification backend for <os> yet" and exit
 ```yaml
 backend: auto      # auto | macos | log | none — auto: macos on darwin, none elsewhere
 click: dock        # dock: like Enter in the list · goto: the agent's own window · focus: terminal only
+# icon: ~/pics/tagents.png   # a PNG for the notices' icon, unset by default; see below
 sessions:
   headless: false  # sessions with no tmux pane: claude -p from a daemon, IDE sessions
 events:
@@ -45,25 +49,50 @@ Durations are `<n>s|m|h`, combined like `1h30m`, or a bare number of seconds, an
 
 `skip_visible`: when the agent's tmux pane is in some client's current window and that terminal is the frontmost app, the notice is dropped.
 
-An invalid file is logged once per problem and the engine runs on the defaults; `tagents notify status` prints the problems. The file is reloaded when it changes, so there is nothing to restart.
+`icon` is an absolute path, a `~/` path, or a path relative to the directory of the options file. Unset, the icon is `notify-icon.png` next to the helper app (`~/Library/Application Support/tagents/`, or next to `TA_NOTIFY_APP`) when that file exists, and the app has no icon of its own otherwise. The icon is part of the helper app, so run `tagents notify install` after changing it: `install` rebuilds an app that is stale and prints `icon: <path>` or `icon: none`, as `status` does. An `icon` that names no file is a problem line in both, and the app is built without it.
+
+An invalid file is logged once per problem and the engine runs on the defaults; `tagents notify status` prints the problems. The file is reloaded when it changes, so there is nothing to restart. What is watched is the real path of the `plugins` directory, filtered on the name `notify.yaml`: a config directory that is a symlink, such as `~/.config/tagents` pointing into a dotfiles repository, works in full. A `notify.yaml` that is itself a symlink is seen only when the link is replaced, not when its target is edited.
 
 ## Clicking a notice
 
-`click: dock` runs `tagents --act open <pane> live <sid> <cwd>`, the same as Enter in the dashboard list. `click: goto` runs `tagents --goto <pane>`. `click: focus`, or a session with no pane, only raises the terminal.
+`click: dock` runs `tagents --act open <pane> live <sid> <cwd>`, the same as Enter in the dashboard list. The `tagents` it runs is the first one on the PATH of the shell that ran `install` (the one your dashboard runs, a symlink stays the symlink), else the checkout's own, and `TA_NOTIFY_TAGENTS` overrides both: tagents re-points the global tmux focus hooks at whichever script ran, so a click running another one would move them away from the dashboard's. `click: goto` runs `tagents --goto <pane>`. `click: focus`, or a session with no pane, only raises the terminal.
 
 ## Commands
 
 | | |
 | --- | --- |
-| `tagents notify run` | the engine in the foreground until SIGTERM or SIGINT; this is what the LaunchAgent runs |
-| `tagents notify install` | on macOS: build the app if stale, ask for permission, write and bootstrap the LaunchAgent, print the status and the steps |
-| `tagents notify uninstall [--purge]` | boot the service out, delete the plist, switch the event stream off; `--purge` deletes the app too |
-| `tagents notify status` | platform, backend, app (built or stale), permission, LaunchAgent (installed, running, pid), stream on or off, the options file and its problems, the service's memory |
+| `tagents notify run` | the engine in the foreground until SIGTERM, SIGINT or SIGHUP (a closed terminal); this is what the LaunchAgent runs. Exit 0 when it deliberately does not run (another service holds the lock, backend `none`, an unsupported OS) and when a signal stops it; exit 1 when it fails to start, which launchd retries at most every 5 minutes |
+| `tagents notify install` | on macOS: build the app if stale, ask for permission, write and bootstrap the LaunchAgent, wait up to 5 s for it to run and the stream to be on, print the status and the steps; exit 1, naming the cause, when the permission is not `authorized`, the options file is invalid, or the service is not running (and the pid that holds the lock in its place, if there is one) |
+| `tagents notify uninstall [--purge]` | boot the service out, delete the plist, switch the event stream off unless a `tagents notify run` in a terminal still holds the lock; `--purge` deletes the app too |
+| `tagents notify status` | platform, backend, app (up to date, stale or missing), icon, permission and alert style, the script a click runs (ok or missing; with `click: focus` it says the script is not used), LaunchAgent (installed, running, pid), stream on or off, the options file and its problems, the service's memory |
 | `tagents notify test [--kind <kind>]` | post one sample notice now through the platform notifier; a click docks `$TMUX_PANE` when it is set |
+
+## Troubleshooting
+
+`tagents notify status` says what is wrong with the setup: the permission, the alert style, the script a click runs, the service and the options file.
+
+To see what a click did, read the helper's log. Use the full path, because zsh has a `log` builtin that shadows the tool:
+
+```sh
+/usr/bin/log show --last 10m --predicate 'subsystem == "io.github.skuratovicha.tagents-notify"'
+```
+
+Each click shows the command it ran, the app it raised, the child's exit status and, when there is one, the child's stderr.
+
+After the icon changes, Notification Center may keep showing the old one. `killall NotificationCenter` clears it; it restarts on its own, and notices already delivered stay.
 
 ## Resources
 
-No polling. One `fs.watch` on the state directory, one on the options directory, and at most one timer, which exists only while a cache deadline is armed and sleeps 5 minutes at most. One tmux exec and one helper exec per notice; the helper exits after every verb, so no helper process exists while idle.
+No polling. One `fs.watch` on the state directory, one on the options directory, and at most two timers: the cache deadline's, which exists only while a deadline is armed and sleeps 5 minutes at most, and the follower's re-follow timer, which exists only while the follower is dead. One tmux exec and one helper exec per notice; the helper exits after every verb, so no helper process exists while idle.
+
+Measured on <chip, macOS version>, service running with the stream on:
+
+| | |
+| --- | --- |
+| resident memory, idle | <MB> |
+| CPU, idle | <% over N minutes> |
+| one notice, event written to helper exited | <ms> |
+| wake-ups per minute, idle | <n> |
 
 ## Adding a backend
 

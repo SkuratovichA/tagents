@@ -1,6 +1,7 @@
 // node --test options.test.ts
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import * as api from '../src/index.ts';
 import { NotifyOptionsSchema, parseDuration } from '../src/options.ts';
 
 const MIN = 60_000;
@@ -92,4 +93,17 @@ test('the enums reject a value they do not list', () => {
   for (const backend of ['auto', 'macos', 'log', 'none']) {
     assert.equal(NotifyOptionsSchema.parse({ backend }).backend, backend);
   }
+});
+
+test('icon is an optional non-empty string and has no default', () => {
+  assert.equal(NotifyOptionsSchema.parse({}).icon, undefined);
+  assert.equal(NotifyOptionsSchema.parse({ icon: '~/pics/tagents.png' }).icon, '~/pics/tagents.png');
+  assert.equal(NotifyOptionsSchema.safeParse({ icon: '' }).success, false);
+  assert.equal(NotifyOptionsSchema.safeParse({ icon: 3 }).success, false);
+});
+
+test('the package exports the schema beside the type derived from it', () => {
+  assert.equal(api.NotifyOptionsSchema, NotifyOptionsSchema);
+  const o: api.NotifyOptions = api.NotifyOptionsSchema.parse({ click: 'goto' });
+  assert.equal(o.click, 'goto');
 });

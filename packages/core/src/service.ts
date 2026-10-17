@@ -89,11 +89,15 @@ export interface RunningService {
   readonly done: Promise<void>;
 }
 
+const STOP_SIGNALS: readonly NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGHUP'];
+
 export interface RunServiceOptions {
   /**
-   * Wire SIGINT/SIGTERM to `stop(<signal>)`. OFF by default: a library must not
-   * take a process's signals away from whoever owns it. An entry point that IS
-   * the daemon passes true and gets the wiring it would otherwise write itself.
+   * Wire SIGINT, SIGTERM and SIGHUP to `stop(<signal>)`. SIGHUP is what a closed
+   * terminal sends, and without a handler it kills node outright, with the
+   * service's lock still held. OFF by default: a library must not take a
+   * process's signals away from whoever owns it. An entry point that IS the
+   * daemon passes true and gets the wiring it would otherwise write itself.
    */
   readonly signals?: boolean;
 }
@@ -114,7 +118,36 @@ export async function runService(
     const known = (plugin.services ?? []).map((s) => s.name).join(', ') || 'none';
     throw new Error(`plugin "${plugin.name}" has no service "${serviceName}" (it has: ${known})`);
   }
-  const handle: ServiceHandle = await def.start(ctx);
+
+  // The handlers go in BEFORE start() is awaited: a start can take a while (a lock,
+  // a follower, a first scan), and a SIGTERM from launchd in that time would
+  // otherwise meet node's default action, which kills the process with the lock
+  // held and nothing stopped. The first signal is the one that counts: during
+  // start it is remembered and acted on as soon as start has settled, after it
+  // it stops the service at once. Later ones are swallowed, and the handlers stay
+  // until the service is done (see `done` below), because a stop can take a
+  // while to drain and a second SIGTERM in that time must not kill the process
+  // with the lock still held.
+  let started = false;
+  let first: NodeJS.Signals | null = null;
+  const onSignal = (sig: NodeJS.Signals): void => {
+    if (first) return;
+    first = sig;
+    if (started) running.stop(sig);
+  };
+  const off = (): void => {
+    for (const sig of STOP_SIGNALS) process.removeListener(sig, onSignal);
+  };
+  if (o.signals) for (const sig of STOP_SIGNALS) process.on(sig, onSignal);
+
+  let handle: ServiceHandle;
+  try {
+    handle = await def.start(ctx);
+  } catch (e) {
+    // Nothing started, so nothing to stop; only the handlers have to go.
+    off();
+    throw e;
+  }
 
   // Only used when the service carries no `done` of its own: then "over" means
   // "somebody asked it to stop and it did".
@@ -124,12 +157,6 @@ export async function runService(
   });
   const done = handle.done ?? asked;
 
-  const onSignal = (sig: NodeJS.Signals): void => running.stop(sig);
-  const off = (): void => {
-    process.removeListener('SIGINT', onSignal);
-    process.removeListener('SIGTERM', onSignal);
-  };
-
   const running: RunningService = {
     done,
     drain: async (): Promise<void> => {
@@ -137,7 +164,6 @@ export async function runService(
         await handle.drain();
       } finally {
         settle();
-        off();
       }
     },
     stop: (reason?: string): void => {
@@ -145,15 +171,23 @@ export async function runService(
         handle.stop(reason);
       } finally {
         settle();
-        off();
       }
     },
   };
 
-  if (o.signals) {
-    process.on('SIGINT', onSignal);
-    process.on('SIGTERM', onSignal);
-  }
+  // The handlers leave when the service is over, not when a stop is asked for: a
+  // service with a `done` of its own resolves it once it has really drained.
   void done.then(off, off);
+  started = true;
+  if (first) {
+    try {
+      running.stop(first);
+    } catch (e) {
+      // runService rejects, so nobody holds the handle to wait on `done`: the
+      // handlers go now, and a further signal takes the default action again.
+      off();
+      throw e;
+    }
+  }
   return running;
 }

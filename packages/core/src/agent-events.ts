@@ -145,15 +145,17 @@ export interface FollowOptions {
   /** Default stateDir(). */
   readonly dir?: string;
   /**
-   * Where a failed read, a watcher error and an exception thrown by onEvent go.
-   * Without it they are dropped: a follower that dies on one bad wake is worse
-   * than one that misses it.
+   * Where a failed read, an exception thrown by onEvent or by onDead, and the
+   * death of the follower when there is no onDead go. Without it they are
+   * dropped: a follower that dies on one bad wake is worse than one that misses it.
    */
   readonly onError?: (e: Error) => void;
   /**
-   * Called once when the follower can no longer hear the file: its watch failed
-   * and could not be set up again. It has closed itself by then, and the caller
-   * decides whether and when to follow again.
+   * Called once when the follower can no longer hear the file: it could not open
+   * the path again after a rename or a rotation, fs.watch threw when it watched
+   * the new file, or the watcher emitted 'error'. It has closed itself by then, exactly as close() would, and
+   * the caller decides whether and when to follow again. Never called after an
+   * explicit close(), and never twice. Without it the death goes to onError.
    */
   readonly onDead?: (e: Error) => void;
   /** Default EVENTS_ROTATE_BYTES. */
@@ -215,6 +217,42 @@ export function followAgentEvents(onEvent: (e: AgentEvent) => void, o: FollowOpt
     o.onError?.(e instanceof Error ? e : new Error(String(e)));
   };
 
+  /** Release everything the follower holds. Idempotent; nothing is delivered after it. */
+  function shutdown(): void {
+    if (closed) return;
+    closed = true;
+    watcher?.close();
+    watcher = null;
+    if (old) {
+      clearTimeout(old.timer);
+      closeQuietly(old.cursor.fd);
+      old = null;
+    }
+    closeQuietly(cur.fd);
+  }
+
+  /**
+   * The follower can no longer hear the file: close, then say so once. `closed`
+   * is what makes it once, and what keeps a death after close() silent. The only
+   * timer a follower ever has is the grace one, and shutdown() clears it, so a
+   * dead follower holds nothing; a retry timer here would be a second timer, and
+   * the policy for when to follow again belongs to whoever called.
+   */
+  function die(e: unknown): void {
+    if (closed) return;
+    shutdown();
+    const dead = e instanceof Error ? e : new Error(String(e));
+    if (!o.onDead) {
+      report(dead);
+      return;
+    }
+    try {
+      o.onDead(dead);
+    } catch (thrown) {
+      report(thrown);
+    }
+  }
+
   function openCursor(fromEnd: boolean): Cursor {
     fs.mkdirSync(dir, { recursive: true });
     const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_CREAT, 0o600);
@@ -268,15 +306,16 @@ export function followAgentEvents(onEvent: (e: AgentEvent) => void, o: FollowOpt
     watcher?.close();
     watcher = null;
     const w = fs.watch(file, drain);
-    w.on('error', report);
+    w.on('error', die);
     watcher = w;
   }
 
+  /** Watch the path again; a follower that cannot is deaf for good, so it dies. */
   function rewatch(): void {
     try {
       watch();
     } catch (e) {
-      report(e);
+      die(e);
     }
   }
 
@@ -290,11 +329,26 @@ export function followAgentEvents(onEvent: (e: AgentEvent) => void, o: FollowOpt
   // An append between the open above and the watcher arming raised no wake.
   queueMicrotask(drain);
 
+  /**
+   * Open the path afresh, from 0, or die. Both callers get here because `cur` is
+   * a file the path no longer names, and the watcher is still on that file: if the
+   * open fails (EMFILE, EACCES, ENOSPC) nothing will ever wake the follower again,
+   * so it is as deaf as after a failed re-watch.
+   */
+  function openFresh(): Cursor | null {
+    try {
+      return openCursor(false);
+    } catch (e) {
+      die(e);
+      return null;
+    }
+  }
+
   /** The path is gone or is a different file: finish the old one, follow the new one from 0. */
   function reopen(): void {
-    const prev = cur;
-    const next = openCursor(false);
-    closeQuietly(prev.fd);
+    const next = openFresh();
+    if (!next) return;
+    closeQuietly(cur.fd);
     cur = next;
     rewatch();
     drain();
@@ -302,9 +356,8 @@ export function followAgentEvents(onEvent: (e: AgentEvent) => void, o: FollowOpt
 
   function rotate(): void {
     fs.renameSync(file, `${file}.1`);
-    // If this throws, `cur` is the renamed file and the next wake sees a new
-    // inode at the path and reopens.
-    const fresh = openCursor(false);
+    const fresh = openFresh();
+    if (!fresh) return;
     old = { cursor: cur, timer: setTimeout(finishOld, ROTATE_GRACE_MS) };
     cur = fresh;
     rewatch();
@@ -345,20 +398,7 @@ export function followAgentEvents(onEvent: (e: AgentEvent) => void, o: FollowOpt
     }
   }
 
-  return {
-    close(): void {
-      if (closed) return;
-      closed = true;
-      watcher?.close();
-      watcher = null;
-      if (old) {
-        clearTimeout(old.timer);
-        closeQuietly(old.cursor.fd);
-        old = null;
-      }
-      closeQuietly(cur.fd);
-    },
-  };
+  return { close: shutdown };
 }
 
 export interface AgentFeed {
@@ -370,45 +410,84 @@ export interface AgentFeed {
    * any follower in this process is open: it flips on when the first one starts
    * and off when the last one closes. One follower process per machine is the
    * design (a lock in the notify plugin sees to it), so the count is per process.
+   * A follower that dies (see FollowOptions.onDead) is counted out first, as its
+   * close() would, and then onDead is called; without one the death goes to
+   * onError. close() never throws: a switch that cannot be removed goes to onError.
    */
   follow(onEvent: (e: AgentEvent) => void, onError?: (e: Error) => void, onDead?: (e: Error) => void): EventFollower;
 }
 
-/** Open followers per state dir, across every feed of this process. */
+/**
+ * Open followers per state dir, across every feed of this process. Keyed by
+ * dirKey(): two spellings of one directory must share a count, or the first
+ * group to close would remove the switch under the other.
+ */
 const followersByDir = new Map<string, number>();
+
+/** The directory itself, whatever it is called: absolute, symlinks resolved once it exists. */
+function dirKey(dir: string): string {
+  const abs = path.resolve(dir);
+  try {
+    return fs.realpathSync(abs);
+  } catch {
+    return abs;
+  }
+}
 
 export function createAgentFeed(dir: string = stateDir()): AgentFeed {
   return {
     dir,
     states: () => readAgentState(dir),
-    follow(onEvent, onError) {
+    follow(onEvent, onError, onDead) {
+      // Counted out once, whether the follower is closed or dies first. The
+      // switch comes off with the last one, and a switch that cannot be removed
+      // is reported, not thrown: close() promises not to throw.
+      let key: string; // set below, before any wake can reach release()
+      let open = true;
+      const release = (): void => {
+        if (!open) return;
+        open = false;
+        const left = (followersByDir.get(key) ?? 1) - 1;
+        if (left > 0) {
+          followersByDir.set(key, left);
+          return;
+        }
+        followersByDir.delete(key);
+        try {
+          setEventsOn(false, dir);
+        } catch (e) {
+          onError?.(e instanceof Error ? e : new Error(String(e)));
+        }
+      };
       // The follower first: it creates the directory and the file, and starts at
       // the end of it, so nothing the hook writes once the switch is on is missed.
-      const inner = followAgentEvents(onEvent, onError ? { dir, onError } : { dir });
-      const count = followersByDir.get(dir) ?? 0;
-      followersByDir.set(dir, count + 1);
+      const inner = followAgentEvents(onEvent, {
+        dir,
+        ...(onError ? { onError } : {}),
+        onDead: (e) => {
+          release();
+          (onDead ?? onError)?.(e);
+        },
+      });
+      // After the follower, because it is what creates the directory the key is
+      // read from.
+      key = dirKey(dir);
+      const count = followersByDir.get(key) ?? 0;
+      followersByDir.set(key, count + 1);
       if (count === 0) {
         try {
           setEventsOn(true, dir);
         } catch (e) {
-          followersByDir.delete(dir);
+          followersByDir.delete(key);
           inner.close();
           throw e;
         }
       }
-      let open = true;
       return {
         close(): void {
           if (!open) return;
-          open = false;
           inner.close();
-          const left = (followersByDir.get(dir) ?? 1) - 1;
-          if (left > 0) {
-            followersByDir.set(dir, left);
-            return;
-          }
-          followersByDir.delete(dir);
-          setEventsOn(false, dir);
+          release();
         },
       };
     },

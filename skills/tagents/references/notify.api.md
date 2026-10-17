@@ -58,6 +58,53 @@ export interface Notifier {
 export type NotifyOptions = z.output<typeof NotifyOptionsSchema>;
 
 // @public (undocumented)
+export const NotifyOptionsSchema: z.ZodObject<{
+    backend: z.ZodDefault<z.ZodEnum<{
+        auto: "auto";
+        macos: "macos";
+        log: "log";
+        none: "none";
+    }>>;
+    click: z.ZodDefault<z.ZodEnum<{
+        dock: "dock";
+        goto: "goto";
+        focus: "focus";
+    }>>;
+    icon: z.ZodOptional<z.ZodString>;
+    sessions: z.ZodPrefault<z.ZodObject<{
+        headless: z.ZodDefault<z.ZodBoolean>;
+    }, z.core.$strict>>;
+    events: z.ZodPrefault<z.ZodObject<{
+        question: z.ZodPrefault<z.ZodObject<{
+            enabled: z.ZodDefault<z.ZodBoolean>;
+            skip_visible: z.ZodDefault<z.ZodBoolean>;
+        }, z.core.$strict>>;
+        permission: z.ZodPrefault<z.ZodObject<{
+            enabled: z.ZodDefault<z.ZodBoolean>;
+            skip_visible: z.ZodDefault<z.ZodBoolean>;
+        }, z.core.$strict>>;
+        turn_done: z.ZodPrefault<z.ZodObject<{
+            enabled: z.ZodDefault<z.ZodBoolean>;
+            skip_visible: z.ZodDefault<z.ZodBoolean>;
+        }, z.core.$strict>>;
+        cache_expiring: z.ZodPrefault<z.ZodObject<{
+            after: z.ZodPrefault<z.ZodPipe<z.ZodUnion<readonly [z.ZodString, z.ZodNumber]>, z.ZodTransform<number, string | number>>>;
+            ttl: z.ZodPrefault<z.ZodPipe<z.ZodUnion<readonly [z.ZodString, z.ZodNumber]>, z.ZodTransform<number, string | number>>>;
+            enabled: z.ZodDefault<z.ZodBoolean>;
+            skip_visible: z.ZodDefault<z.ZodBoolean>;
+        }, z.core.$strict>>;
+        subagent_done: z.ZodPrefault<z.ZodObject<{
+            enabled: z.ZodDefault<z.ZodBoolean>;
+            skip_visible: z.ZodDefault<z.ZodBoolean>;
+        }, z.core.$strict>>;
+        session_end: z.ZodPrefault<z.ZodObject<{
+            enabled: z.ZodDefault<z.ZodBoolean>;
+            skip_visible: z.ZodDefault<z.ZodBoolean>;
+        }, z.core.$strict>>;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+
+// @public (undocumented)
 export interface Platform {
     // (undocumented)
     readonly name: string;

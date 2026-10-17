@@ -5,7 +5,10 @@
 // loaded exits 3 with "Boot-out failed: 3: No such process", and `print` of one
 // exits 113 with "Could not find service". A bootstrap right after a bootout can
 // fail with "5: Input/output error" while the old process is still exiting, so
-// it is retried; this file is the one place besides `clock.ts` with a timer.
+// it is retried; the timers outside `clock.ts` are this retry delay and the settle wait of `install` in `plugin.ts`.
+// The three launchctl-print-disabled*.txt fixtures are not captures: they use the
+// format `print-disabled` prints on macOS 13+ (and, in the legacy one, the `=> true`
+// spelling of older systems) with made-up labels.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,7 +16,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { writeAtomic } from '@tagents/core';
 import { execText, type Exec } from '../../exec.ts';
 import type { RunSpec, ServiceManager, ServiceStatus } from '../../notifier.ts';
-import { LAUNCHD_LABEL, plistPath as defaultPlistPath } from '../../paths.ts';
+import { BUNDLE_ID, plistPath as defaultPlistPath } from '../../paths.ts';
 
 const LAUNCHCTL = '/bin/launchctl';
 const TIMEOUT_MS = 15_000;
@@ -29,7 +32,10 @@ function esc(s: string): string {
     .replaceAll("'", '&apos;');
 }
 
-export function renderPlist(run: RunSpec, label: string = LAUNCHD_LABEL): string {
+// ThrottleInterval is the least time launchd leaves between two starts of the job, counted from the last start: a crash
+// after a long run restarts at once, a crash loop at most every 5 minutes. `run` exits 1 only when it fails to start,
+// and 0 when it deliberately does not run, which `SuccessfulExit: false` never restarts.
+export function renderPlist(run: RunSpec, label: string = BUNDLE_ID): string {
   const env = Object.entries(run.env)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([k, v]) => `    <key>${esc(k)}</key>\n    <string>${esc(v)}</string>`)
@@ -57,14 +63,14 @@ ${env}
     <false/>
   </dict>
   <key>ThrottleInterval</key>
-  <integer>30</integer>
+  <integer>300</integer>
   <key>StandardOutPath</key>
   <string>${esc(run.logFile)}</string>
   <key>StandardErrorPath</key>
   <string>${esc(run.logFile)}</string>
   <key>AssociatedBundleIdentifiers</key>
   <array>
-    <string>io.github.skuratovicha.tagents-notify</string>
+    <string>${esc(BUNDLE_ID)}</string>
   </array>
 </dict>
 </plist>
@@ -94,6 +100,18 @@ export function parsePrint(out: string): {
   };
 }
 
+/**
+ * Whether `launchctl print-disabled gui/<uid>` lists the label as switched off: `"<label>" => disabled`, or
+ * `=> true` on older systems. A label that is not listed is on.
+ */
+function listedDisabled(out: string, label: string): boolean {
+  for (const line of out.split('\n')) {
+    const m = /^\s*"([^"]+)"\s*=>\s*(\S+)\s*$/.exec(line);
+    if (m?.[1] === label) return m[2] === 'disabled' || m[2] === 'true';
+  }
+  return false;
+}
+
 function notLoaded(r: { code: number | null; stdout: string; stderr: string }): boolean {
   return r.code === 3 || /No such process|Could not find service/.test(r.stderr + r.stdout);
 }
@@ -105,11 +123,14 @@ export function createLaunchd(
     readonly exec?: Exec;
     readonly label?: string;
     readonly plist?: string;
+    /** The wait between bootstrap attempts; tests pass 0. */
+    readonly retryDelayMs?: number;
   } = {}
 ): ServiceManager {
   const exec = o.exec ?? execText;
   const uid = o.uid ?? process.getuid?.() ?? 0;
-  const label = o.label ?? LAUNCHD_LABEL;
+  const label = o.label ?? BUNDLE_ID;
+  const retryDelayMs = o.retryDelayMs ?? BOOTSTRAP_RETRY_MS;
   const plist = o.plist ?? defaultPlistPath(o.home ?? os.homedir());
   const domain = `gui/${uid}`;
   const target = `${domain}/${label}`;
@@ -118,6 +139,18 @@ export function createLaunchd(
     const r = await exec(LAUNCHCTL, ['bootout', target], { timeoutMs: TIMEOUT_MS });
     if (r.code !== 0 && !notLoaded(r)) {
       throw new Error(`launchctl bootout failed: ${(r.stderr || r.stdout).trim()}`);
+    }
+  }
+
+  // A label switched off with `launchctl disable` (or in Login Items) fails to bootstrap with the same
+  // "5: Input/output error" as the transient failure, so the text cannot tell the two apart: ask launchd.
+  // The question only picks the hint, so a failure to ask must not hide the bootstrap error.
+  async function switchedOff(): Promise<boolean> {
+    try {
+      const r = await exec(LAUNCHCTL, ['print-disabled', domain], { timeoutMs: TIMEOUT_MS });
+      return r.code === 0 && listedDisabled(r.stdout, label);
+    } catch {
+      return false;
     }
   }
 
@@ -134,9 +167,12 @@ export function createLaunchd(
         last = (r.stderr || r.stdout).trim();
         const retryable = /Input\/output error/.test(last);
         if (!retryable || attempt === BOOTSTRAP_ATTEMPTS) break;
-        await delay(BOOTSTRAP_RETRY_MS);
+        await delay(retryDelayMs);
       }
-      throw new Error(`launchctl bootstrap failed: ${last}\nCheck the file with: plutil -lint ${plist}`);
+      const hint = (await switchedOff())
+        ? `The agent is switched off. Switch it on with: launchctl enable ${target} (or in System Settings, General, Login Items)`
+        : `Check the file with: plutil -lint ${plist}`;
+      throw new Error(`launchctl bootstrap failed: ${last}\n${hint}`);
     },
 
     async uninstall() {

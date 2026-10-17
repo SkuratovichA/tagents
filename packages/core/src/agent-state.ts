@@ -170,7 +170,9 @@ export function labelsBySession(dir = stateDir()): Map<string, string> {
  * session, and this one is what its owner renamed it to, which the dashboard
  * puts first (nameof, lib/tagents/list.sh:351). lib/tagents/names.sh owns the
  * file — set_label writes it, label_of reads one key the same way: the second
- * tab-separated field of the first line with that key.
+ * tab-separated field of the first line with that key, even when that field is
+ * empty. An empty name is therefore the answer for its key, and a later line for
+ * the same key cannot replace it; the reader of the map treats it as no label.
  */
 export function readLabels(dir = stateDir()): Map<string, string> {
   const m = new Map<string, string>();
@@ -184,7 +186,7 @@ export function readLabels(dir = stateDir()): Map<string, string> {
     const f = line.split(TAB);
     const key = f[0] ?? '';
     const name = f[1] ?? '';
-    if (key && name && !m.has(key)) m.set(key, name);
+    if (key && !m.has(key)) m.set(key, name);
   }
   return m;
 }

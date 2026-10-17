@@ -7,7 +7,7 @@
 // rejection with a sentence a person can act on.
 import path from 'node:path';
 import { z } from 'zod';
-import { execText, type Exec } from '../../exec.ts';
+import { execText, type Exec, type ExecResult } from '../../exec.ts';
 import type { Notice, Notifier, PostResult } from '../../notifier.ts';
 
 export const HELPER_TIMEOUT_MS = 5000;
@@ -36,7 +36,7 @@ async function runHelper(
   exec: Exec
 ): Promise<HelperLine> {
   const bin = helperBinary(app);
-  let r;
+  let r: ExecResult;
   try {
     r = await exec(bin, args, o);
   } catch (e) {

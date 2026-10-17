@@ -16,12 +16,12 @@ function rig() {
 
 test('nothing is pending until something is armed, and again once it is cancelled', () => {
   const { clock, d } = rig();
-  assert.equal(clock.pending(), 0);
+  assert.equal(clock.pending, 0);
   d.arm('12', T0, T0 + 50 * MIN);
-  assert.equal(clock.pending(), 1);
+  assert.equal(clock.pending, 1);
   assert.equal(d.armed(), 1);
   d.cancel('12');
-  assert.equal(clock.pending(), 0);
+  assert.equal(clock.pending, 0);
   assert.equal(d.armed(), 0);
 });
 
@@ -30,7 +30,7 @@ test('one timer serves every key, set for the earliest, and never longer than 5 
   d.arm('a', T0, T0 + 50 * MIN);
   d.arm('b', T0, T0 + 2 * MIN);
   d.arm('c', T0, T0 + 30 * MIN);
-  assert.equal(clock.pending(), 1);
+  assert.equal(clock.pending, 1);
   assert.equal(clock.nextDelay(), 2 * MIN);
   d.cancel('b');
   assert.equal(clock.nextDelay(), 5 * MIN);
@@ -45,7 +45,7 @@ test('a key fires once, at its time, with the idle-since it was armed with', () 
   assert.deepEqual(fired, [['12', T0 - MIN]]);
   clock.advance(60 * MIN);
   assert.equal(fired.length, 1);
-  assert.equal(clock.pending(), 0);
+  assert.equal(clock.pending, 0);
   assert.equal(d.armed(), 0);
 });
 
@@ -101,9 +101,9 @@ test('close stops everything: no timer, nothing fires, arming again does nothing
   const { clock, fired, d } = rig();
   d.arm('12', T0, T0 + 10 * MIN);
   d.close();
-  assert.equal(clock.pending(), 0);
+  assert.equal(clock.pending, 0);
   d.arm('13', T0, T0 + 10 * MIN);
-  assert.equal(clock.pending(), 0);
+  assert.equal(clock.pending, 0);
   clock.advance(60 * MIN);
   assert.deepEqual(fired, []);
   d.close();
@@ -123,7 +123,7 @@ test('closing from inside a callback stops the keys still waiting in the same wa
   d.arm('b', T0, T0 + 6 * MIN);
   clock.advance(7 * MIN);
   assert.equal(fired.length, 1);
-  assert.equal(clock.pending(), 0);
+  assert.equal(clock.pending, 0);
 });
 
 test('cancelling a key from inside another key\'s callback keeps it from firing', () => {
@@ -140,4 +140,50 @@ test('cancelling a key from inside another key\'s callback keeps it from firing'
   d.arm('b', T0, T0 + 6 * MIN);
   clock.advance(7 * MIN);
   assert.equal(fired.length, 1);
+});
+
+test('sweep fires what the wall clock says is due, without waiting for the timer a sleep put off', () => {
+  const { clock, fired, d } = rig();
+  d.arm('12', T0, T0 + 50 * MIN);
+  d.arm('13', T0, T0 + 58 * MIN);
+  clock.sleepPausingTimers(55 * MIN);
+  clock.advance(0);
+  assert.deepEqual(fired, [], 'the timers still have their awake time to wait');
+  d.sweep();
+  assert.deepEqual(fired, [['12', T0]], 'only the one that is due');
+  assert.equal(clock.pending, 1, 'one timer, for the other');
+  assert.equal(d.armed(), 1);
+});
+
+test('sweep with nothing due changes nothing, and after close it does nothing', () => {
+  const { clock, fired, d } = rig();
+  d.sweep();
+  assert.equal(clock.pending, 0);
+  d.arm('12', T0, T0 + 50 * MIN);
+  d.sweep();
+  assert.deepEqual(fired, []);
+  assert.equal(clock.pending, 1);
+  assert.equal(clock.nextDelay(), 5 * MIN);
+  d.close();
+  d.sweep();
+  assert.equal(clock.pending, 0);
+});
+
+test('one armed key wakes the process at most 12 times in any hour, however often it is armed again', () => {
+  const { clock, fired, d } = rig();
+  const wakes: number[] = [];
+  let lives = 0;
+  d.arm('12', clock.now(), clock.now() + 50 * MIN);
+  for (let next = clock.nextDelay(); next !== null && wakes.length < 500; next = clock.nextDelay()) {
+    clock.advance(next);
+    wakes.push(clock.now());
+    if (fired.length > lives) {
+      lives = fired.length;
+      if (lives < 8) d.arm('12', clock.now(), clock.now() + 50 * MIN);
+    }
+  }
+  assert.equal(lives, 8);
+  let worst = 0;
+  for (const [i, from] of wakes.entries()) worst = Math.max(worst, wakes.filter((t, j) => j >= i && t < from + 60 * MIN).length);
+  assert.ok(worst <= 12, `${worst} wakes in one hour`);
 });

@@ -67,7 +67,10 @@ const CacheExpiring = z
 export const NotifyOptionsSchema = z.strictObject({
   backend: z.enum(['auto', 'macos', 'log', 'none']).default('auto'),
   click: z.enum(['dock', 'goto', 'focus']).default('dock'),
-  /** A PNG for the notices' icon. Unset: `notify-icon.png` next to the app, when there is one. */
+  /**
+   * A PNG for the notices' icon: an absolute path, `~/`, or relative to this file's directory (`resolveIcon` in
+   * paths.ts). Unset: `notify-icon.png` next to the app, when there is one.
+   */
   icon: z.string().min(1).optional(),
   sessions: z.strictObject({ headless: z.boolean().default(false) }).prefault({}),
   events: z

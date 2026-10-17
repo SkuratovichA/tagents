@@ -266,6 +266,21 @@ export interface FakeClaude {
 // @public
 export function fakeClaude(script?: FakeScript, dir?: string): FakeClaude;
 
+// @public
+export class FakeClock implements TurnClock {
+    constructor(start?: number);
+    advance(ms: number): void;
+    // (undocumented)
+    after(ms: number, fn: () => void): () => void;
+    jump(ms: number): void;
+    nextDelay(): number | null;
+    // (undocumented)
+    now(): number;
+    get pending(): number;
+    sleepFiringOverdue(ms: number): void;
+    sleepPausingTimers(ms: number): void;
+}
+
 // @public (undocumented)
 export interface FakeResult {
     // (undocumented)
@@ -376,6 +391,9 @@ export interface Io {
 
 // @public (undocumented)
 export function isAlive(pid: number): boolean;
+
+// @public
+export function isExecutableFile(file: string): boolean;
 
 // @public (undocumented)
 export function isLocale(v: string | undefined): v is Locale;

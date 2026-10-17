@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { tmpDir } from '@tagents/core';
 import { agentName, compose, untitle } from '../src/compose.ts';
 import { phrasesFor } from '../src/phrases.ts';
@@ -76,8 +76,15 @@ test('agentName: a session with no pane looks nothing up by pane', () => {
   assert.equal(agentName({ ...nameArgs, pane: '', paneTitle: '', labels }), 'ticket-agent');
 });
 
+const dirs: string[] = [];
+after(() => {
+  for (const dir of dirs) fs.rmSync(dir, { recursive: true, force: true });
+});
+
 function transcript(text: string): string {
-  const file = path.join(tmpDir('notify-compose'), 't.jsonl');
+  const dir = tmpDir('notify-compose');
+  dirs.push(dir);
+  const file = path.join(dir, 't.jsonl');
   const line = { type: 'assistant', message: { content: [{ type: 'text', text }] } };
   fs.writeFileSync(file, `${JSON.stringify(line)}\n`);
   return file;
@@ -147,4 +154,50 @@ test('the Russian table speaks Russian and has the same shape', () => {
   assert.match(c.subtitle, /[а-я]/i);
   assert.match(c.body, /50/);
   assert.match(c.body, /10/);
+});
+
+test('cache_expiring: minutes left below one read "within a minute", never "~0 min", in both languages', () => {
+  const e = event({});
+  const ru = phrasesFor('ru');
+  assert.equal(
+    compose('cache_expiring', e, 'p', { idleMin: 55, leftMin: 0 }, en).body,
+    'Idle 55 min — send anything within a minute to keep the prompt cache'
+  );
+  assert.equal(
+    compose('cache_expiring', e, 'p', { idleMin: 55, leftMin: 0 }, ru).body,
+    'Простой 55 мин — отправьте что угодно в течение минуты, чтобы сохранить кэш промпта'
+  );
+  assert.match(compose('cache_expiring', e, 'p', { idleMin: 55, leftMin: 1 }, en).body, /within ~1 min/);
+  assert.match(compose('cache_expiring', e, 'p', { idleMin: 55, leftMin: 5 }, ru).body, /в течение ~5 мин/);
+});
+
+test('permission: an empty message falls back to a phrase, in both languages', () => {
+  const e = event({ text: '' });
+  assert.equal(compose('permission', e, 'p', {}, en).body, 'Waiting for your permission');
+  assert.equal(compose('permission', e, 'p', {}, phrasesFor('ru')).body, 'Ждёт вашего разрешения');
+  assert.equal(compose('permission', event({ text: 'Run rm?' }), 'p', {}, en).body, 'Run rm?');
+});
+
+test('session_end: an empty reason falls back to a phrase, in both languages', () => {
+  const e = event({ sub: '' });
+  assert.equal(compose('session_end', e, 'p', {}, en).body, 'No reason given');
+  assert.equal(compose('session_end', e, 'p', {}, phrasesFor('ru')).body, 'Причина не указана');
+  assert.equal(compose('session_end', event({ sub: 'logout' }), 'p', {}, en).body, 'logout');
+});
+
+test('turn_done: the event text wins over the transcript, and is clipped; empty text reads the transcript', () => {
+  const file = transcript('Older answer');
+  assert.equal(compose('turn_done', event({ text: 'Fresh answer', transcript: file }), 'p', {}, en).body, 'Fresh answer');
+  const long = compose('turn_done', event({ text: 'z'.repeat(500), transcript: file }), 'p', {}, en).body;
+  assert.equal([...long].length, 200);
+  assert.equal(compose('turn_done', event({ text: '', transcript: file }), 'p', {}, en).body, 'Older answer');
+});
+
+test('subagent_done: no agent type gives its own phrase, not the subtitle again, in both languages', () => {
+  const e = event({ sub: '' });
+  const ru = phrasesFor('ru');
+  assert.equal(compose('subagent_done', e, 'p', {}, en).body, 'A background task is done');
+  assert.equal(compose('subagent_done', e, 'p', {}, ru).body, 'Фоновая задача завершена');
+  assert.notEqual(compose('subagent_done', e, 'p', {}, en).body, compose('subagent_done', e, 'p', {}, en).subtitle);
+  assert.equal(compose('subagent_done', event({ sub: 'Explore' }), 'p', {}, en).body, 'Explore finished');
 });

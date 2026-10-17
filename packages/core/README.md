@@ -252,7 +252,7 @@ await svc.done;                                          // drain() / stop(reaso
 `createContext` binds `t` to core's catalogue with the plugin's laid over it
 (its own namespaces, so neither shadows the other) and gives it a
 `ClaudeHeadlessDriver` — a plugin never spawns `claude` itself. `signals: true`
-wires SIGINT/SIGTERM to `stop(<signal>)`; without it the process keeps its own
+wires SIGINT, SIGTERM and SIGHUP to `stop(<signal>)`; without it the process keeps its own
 signal handling, because a library must not take that away from whoever owns
 the process.
 

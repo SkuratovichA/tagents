@@ -8,6 +8,13 @@
 // close. A short sleep bounds the lateness to one tick after the machine
 // wakes, and reading `clock.now()` instead of counting ticks means the due
 // check is right whatever happened in between.
+//
+// A timer set before a sleep still has its awake time to wait after the wake, so
+// a Mac that wakes late in the cache's life can fire after it is over. A shorter
+// tick near the end would cure that at the price of more wakes while a deadline
+// is armed, which the five-minute cap is there to bound (12 an hour at most).
+// The engine closes the gap another way: `sweep` runs on every event the
+// follower delivers, and an awake process is a free moment to look.
 import type { Clock } from './clock.ts';
 
 export const MAX_SLEEP_MS = 5 * 60_000;
@@ -16,6 +23,8 @@ export interface Deadlines {
   /** Wake `onDue` for `key` at `dueAt`; arming a key again replaces its deadline. */
   arm(key: string, idleSince: number, dueAt: number): void;
   cancel(key: string): void;
+  /** Fire every key whose time has passed by the wall clock now, without waiting for the timer. */
+  sweep(): void;
   /** Stop for good: no timer is left, and nothing fires or arms afterwards. */
   close(): void;
   /** How many keys are waiting. */
@@ -79,6 +88,10 @@ export function createDeadlines(o: {
     },
     cancel(key) {
       if (waiting.delete(key)) schedule();
+    },
+    sweep() {
+      clearTimer();
+      wake();
     },
     close() {
       closed = true;

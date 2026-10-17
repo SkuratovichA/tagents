@@ -100,22 +100,49 @@ test('history carries the labels, latest start wins', () => {
 // label_of itself rather than to a copy of its rule: every key, a missing one
 // included, must give what the dashboard's own lookup gives.
 test('labels.tsv is read per key exactly as label_of reads it', () => {
-  const ldir = path.join(tmpDir('agent-state-labels'), 'agent-state');
-  fs.mkdirSync(ldir, { recursive: true });
-  const lines = ['sess-a\tRenamed agent', '%12\tpane name', 'no-tab-here', '\tno key', 'sess-b\t', 'sess-a\tlater line', 'sess-c\tname\textra'];
-  fs.writeFileSync(path.join(ldir, 'labels.tsv'), `${lines.join('\n')}\n`);
-  const labels = readLabels(ldir);
-  assert.deepEqual([...labels], [['sess-a', 'Renamed agent'], ['%12', 'pane name'], ['sess-c', 'name']]);
-  const root = fileURLToPath(new URL('../../..', import.meta.url));
-  for (const key of ['sess-a', '%12', 'sess-b', 'sess-c', 'no-tab-here', 'missing']) {
-    const r = spawnSync('bash', ['-c', `TAB=$'\\t'; . "$1/lib/tagents/names.sh" && label_of "$2"`, '_', root, key], {
-      encoding: 'utf8',
-      env: { ...process.env, STATE_DIR: ldir },
-    });
-    assert.equal(r.status, 0, r.stderr);
-    assert.equal(labels.get(key) ?? '', r.stdout.replace(/\n$/, ''), key);
+  const tmp = tmpDir('agent-state-labels');
+  try {
+    const ldir = path.join(tmp, 'agent-state');
+    fs.mkdirSync(ldir, { recursive: true });
+    // `k` has an empty name on its first line and a real one on a later line: the
+    // shell answers with the first line, empty or not.
+    const lines = [
+      'sess-a\tRenamed agent',
+      '%12\tpane name',
+      'no-tab-here',
+      '\tno key',
+      'sess-b\t',
+      'sess-a\tlater line',
+      'sess-c\tname\textra',
+      'k\t',
+      'k\tx',
+    ];
+    fs.writeFileSync(path.join(ldir, 'labels.tsv'), `${lines.join('\n')}\n`);
+    const labels = readLabels(ldir);
+    assert.deepEqual(
+      [...labels],
+      [
+        ['sess-a', 'Renamed agent'],
+        ['%12', 'pane name'],
+        ['no-tab-here', ''],
+        ['sess-b', ''],
+        ['sess-c', 'name'],
+        ['k', ''],
+      ]
+    );
+    const root = fileURLToPath(new URL('../../..', import.meta.url));
+    for (const key of ['sess-a', '%12', 'sess-b', 'sess-c', 'no-tab-here', 'k', 'missing']) {
+      const r = spawnSync('bash', ['-c', `TAB=$'\\t'; . "$1/lib/tagents/names.sh" && label_of "$2"`, '_', root, key], {
+        encoding: 'utf8',
+        env: { ...process.env, STATE_DIR: ldir },
+      });
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(labels.get(key) ?? '', r.stdout.replace(/\n$/, ''), key);
+    }
+    assert.equal(readLabels(path.join(ldir, 'missing')).size, 0);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
-  assert.equal(readLabels(path.join(ldir, 'missing')).size, 0);
 });
 
 test('the driver lists what the hook published, filtered by label and state', async () => {
