@@ -76,9 +76,29 @@ export function readPluginList(file = configFile()): PluginListing[] {
   return Object.entries(parsed.data.plugins ?? {}).map(([name, e]) => ({ name, from: e.from }));
 }
 
-/** Where `from` lives on disk: a path (relative to the config) or a package. */
+/**
+ * Where `from` lives on disk: a path (relative to the config) or a package.
+ *
+ * A relative path is resolved lexically first, so nothing that resolves today
+ * changes. When that has no package.json and `base` is a symlink, it is tried
+ * once more from the real directory: ~/.config/tagents is a symlink into
+ * dotfiles, and a committed config can say `from: ../../tagents/packages/notify`
+ * to mean its own repository on every machine, which only the real location
+ * can answer. A miss on both keeps the lexical path, so the error still names
+ * what the person wrote.
+ */
 export function resolvePackageDir(from: string, base: string): string {
-  if (from.startsWith('.') || path.isAbsolute(from)) return path.resolve(base, from);
+  if (from.startsWith('.') || path.isAbsolute(from)) {
+    const lexical = path.resolve(base, from);
+    if (fs.existsSync(path.join(lexical, 'package.json'))) return lexical;
+    try {
+      const real = path.resolve(fs.realpathSync(base), from);
+      if (fs.existsSync(path.join(real, 'package.json'))) return real;
+    } catch {
+      // base is not on disk: there is no real directory to try.
+    }
+    return lexical;
+  }
   const require_ = createRequire(path.join(base, CONFIG_BASENAME));
   return path.dirname(require_.resolve(`${from}/package.json`));
 }

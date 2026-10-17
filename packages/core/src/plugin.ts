@@ -10,6 +10,7 @@
 // in a way a plugin must know about, and the host refuses the ones still on 1.
 import type { z } from 'zod';
 import type { TFunction } from 'i18next';
+import type { AgentFeed } from './agent-events.ts';
 import type { SessionDriver } from './driver.ts';
 
 export interface PluginContext {
@@ -20,6 +21,8 @@ export interface PluginContext {
   readonly log: (...parts: string[]) => void;
   /** The tagents config dir the host is running out of (~/.config/tagents). */
   readonly configDir: string;
+  /** The agents the hook publishes: the state rows and the event stream. */
+  readonly agents: AgentFeed;
 }
 
 /** One CLI verb. `args` validates argv-derived input before `run` sees it. */

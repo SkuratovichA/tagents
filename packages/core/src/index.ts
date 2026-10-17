@@ -109,6 +109,9 @@ export type {
   ServiceHandle,
 } from './plugin.ts';
 
+export { PLUGIN_OPTIONS_DIR, loadPluginOptions, pluginOptionsFile } from './plugin-options.ts';
+export type { OptionsResult } from './plugin-options.ts';
+
 export { createContext, mergeLocales, runService } from './service.ts';
 export type { ContextOptions, RunServiceOptions, RunningService } from './service.ts';
 
@@ -134,6 +137,7 @@ export type { AddOutcome, PackageProblem, PluginPackage, RemoveOutcome, ResolveR
 export { DEFAULT_LOCALE, createI18n, createT, isLocale, resources } from './i18n/index.ts';
 export type { CoreResource, Locale } from './i18n/index.ts';
 export type { CliContract, CommandSpec } from './cli/spec.ts';
+export { runPluginBin } from './cli/plugin-run.ts';
 
 export { drained, fakeClaude, sleep, tmpDir } from './testkit.ts';
 export type { FakeClaude, FakeResult, FakeScript, FakeStdin, FakeToolCall } from './testkit.ts';

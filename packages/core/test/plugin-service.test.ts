@@ -9,6 +9,8 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
+import { createAgentFeed } from '../src/agent-events.ts';
+import { stateDir } from '../src/agent-state.ts';
 import { loadPlugins } from '../src/host.ts';
 import { definePlugin, type PluginDef, type ServiceHandle } from '../src/plugin.ts';
 import { createContext, mergeLocales, runService } from '../src/service.ts';
@@ -163,4 +165,26 @@ test('a plugin loaded from disk runs through the same two calls', async () => {
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+test('a context without agents follows the default state dir and touches nothing there', () => {
+  const dir = tmpDir('ctx-agents');
+  const saved = process.env['TA_STATE_DIR'];
+  process.env['TA_STATE_DIR'] = dir;
+  try {
+    const ctx = createContext({ plugin: definePlugin({ name: 'x', apiVersion: 1 }) });
+    assert.equal(ctx.agents.dir, stateDir());
+    assert.equal(ctx.agents.dir, dir);
+    assert.deepEqual(fs.readdirSync(dir), []);
+  } finally {
+    if (saved === undefined) delete process.env['TA_STATE_DIR'];
+    else process.env['TA_STATE_DIR'] = saved;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a context given an agent feed passes it through', () => {
+  const agents = createAgentFeed('/somewhere/else');
+  const ctx = createContext({ plugin: definePlugin({ name: 'x', apiVersion: 1 }), agents });
+  assert.equal(ctx.agents, agents);
 });

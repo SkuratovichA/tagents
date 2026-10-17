@@ -34,7 +34,7 @@ import { isAlive } from '../pid.ts';
 import { parseSessionRef } from '../session-ref.ts';
 import { renderRecent, renderSearch, renderShow, SESSIONS_PROGRAM } from '../transcripts.ts';
 import { formatAttemptError, type TurnOutcome } from '../turn-outcome.ts';
-import { EXIT, json, type Io } from './exit.ts';
+import { EXIT, json, stdio, type Io } from './exit.ts';
 import { plugin } from './plugin.ts';
 import { runPluginCommand } from './plugin-run.ts';
 import { SESSION_LIST, SESSION_OPEN, SESSION_PROMPT } from './spec.ts';
@@ -298,29 +298,6 @@ export async function main(argv: string[], io: Io = stdio()): Promise<number> {
     io.err(`${err.message}\n`);
     return usage ? EXIT.usage : EXIT.error;
   }
-}
-
-/**
- * `tagents-core sessions recent | head` closes the pipe while we are still
- * writing, and an unhandled EPIPE turns that into a stack trace on a command
- * that did nothing wrong. Reading half the output is a legitimate thing to do
- * to a CLI, so the writes are best-effort.
- */
-function stdio(): Io {
-  const ignore = (): void => undefined;
-  process.stdout.on('error', ignore);
-  process.stderr.on('error', ignore);
-  const write = (stream: NodeJS.WriteStream, text: string): void => {
-    try {
-      stream.write(text);
-    } catch {
-      // The reader is gone; there is nobody left to tell.
-    }
-  };
-  return {
-    out: (s) => write(process.stdout, s),
-    err: (s) => write(process.stderr, s),
-  };
 }
 
 // Run only as a program, never on import: a test imports main() directly.
