@@ -21,6 +21,7 @@ import {
   type ServiceHandle,
 } from '@tagents/core';
 import { systemClock, type Clock } from './clock.ts';
+import { describe } from './errors.ts';
 import { createEngine } from './engine.ts';
 import type { Platform } from './notifier.ts';
 import { NotifyOptionsSchema, type NotifyOptions } from './options.ts';
@@ -47,7 +48,6 @@ export interface ServiceDeps {
   readonly bootTime?: () => number;
 }
 
-const describe = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 const codeOf = (err: unknown): string | undefined => (err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined);
 
 type LockResult = { readonly taken: true } | { readonly taken: false; readonly holder: number };

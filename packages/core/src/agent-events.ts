@@ -23,17 +23,34 @@ export const EVENTS_FILE = 'events.tsv';
 export const EVENTS_SWITCH = 'events.on';
 export const EVENTS_ROTATE_BYTES = 1_048_576;
 
+/**
+ * The hook events the stream carries. PreToolUse and PostToolUse come only for
+ * the two tools that put a question to the person, AskUserQuestion and
+ * ExitPlanMode: the PostToolUse is the answer.
+ */
+export type AgentHookEvent =
+  | 'SessionStart'
+  | 'UserPromptSubmit'
+  | 'PreToolUse'
+  | 'PostToolUse'
+  | 'Notification'
+  | 'Stop'
+  | 'SubagentStop'
+  | 'SessionEnd';
+
 const HOOK_EVENTS = [
   'SessionStart',
   'UserPromptSubmit',
   'PreToolUse',
+  'PostToolUse',
   'Notification',
   'Stop',
   'SubagentStop',
   'SessionEnd',
-] as const;
-
-export type AgentHookEvent = (typeof HOOK_EVENTS)[number];
+] as const satisfies readonly AgentHookEvent[];
+// Fails to compile when AgentHookEvent gains a member the parser would reject.
+const HOOK_EVENTS_COVER_THE_TYPE: Exclude<AgentHookEvent, (typeof HOOK_EVENTS)[number]> extends never ? true : never = true;
+void HOOK_EVENTS_COVER_THE_TYPE;
 
 const HOOK_EVENT_NAMES: ReadonlySet<string> = new Set(HOOK_EVENTS);
 
@@ -133,6 +150,12 @@ export interface FollowOptions {
    * than one that misses it.
    */
   readonly onError?: (e: Error) => void;
+  /**
+   * Called once when the follower can no longer hear the file: its watch failed
+   * and could not be set up again. It has closed itself by then, and the caller
+   * decides whether and when to follow again.
+   */
+  readonly onDead?: (e: Error) => void;
   /** Default EVENTS_ROTATE_BYTES. */
   readonly rotateBytes?: number;
 }
@@ -348,7 +371,7 @@ export interface AgentFeed {
    * and off when the last one closes. One follower process per machine is the
    * design (a lock in the notify plugin sees to it), so the count is per process.
    */
-  follow(onEvent: (e: AgentEvent) => void, onError?: (e: Error) => void): EventFollower;
+  follow(onEvent: (e: AgentEvent) => void, onError?: (e: Error) => void, onDead?: (e: Error) => void): EventFollower;
 }
 
 /** Open followers per state dir, across every feed of this process. */

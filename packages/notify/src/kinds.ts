@@ -54,6 +54,9 @@ export function classify(e: AgentEvent, o: { readonly headless: boolean }): Verd
       if (e.tool === 'AskUserQuestion') return asks('question', { arms: true });
       if (e.tool === 'ExitPlanMode') return asks('question', { arms: true, plan: true });
       return null;
+    case 'PostToolUse':
+      // The person answered the question or the plan: the session works again.
+      return e.tool === 'AskUserQuestion' || e.tool === 'ExitPlanMode' ? { ...NOTHING, withdraw: true, cancel: true } : null;
     case 'Notification':
       return fromNotification(e);
     case 'Stop':

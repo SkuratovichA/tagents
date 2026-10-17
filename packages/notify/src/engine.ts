@@ -11,6 +11,7 @@ import {
   type EventFollower,
 } from '@tagents/core';
 import type { Clock } from './clock.ts';
+import { describe } from './errors.ts';
 import { agentName, compose } from './compose.ts';
 import { createDeadlines } from './deadlines.ts';
 import { classify, countsSession, type NoticeKind } from './kinds.ts';
@@ -50,7 +51,6 @@ const MINUTE = 60_000;
 // agent's name is often not ASCII.
 const CLICK_ENV = ['PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMUX_TMPDIR', 'TA_STATE_DIR', 'TAGENTS_CONFIG_DIR'] as const;
 
-const describe = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 function clickEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   const out: Record<string, string> = {};
