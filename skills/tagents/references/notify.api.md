@@ -5,10 +5,113 @@
 ```ts
 
 import { PluginDef } from '@tagents/core';
+import { z } from 'zod';
+
+// @public (undocumented)
+export interface ClickAction {
+    // (undocumented)
+    readonly argv: readonly string[];
+    // (undocumented)
+    readonly env: Readonly<Record<string, string>>;
+}
 
 // @public (undocumented)
 const _default: PluginDef;
 export default _default;
+
+// @public (undocumented)
+export interface Notice {
+    // (undocumented)
+    readonly body: string;
+    // (undocumented)
+    readonly click: ClickAction;
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly kind: NoticeKind;
+    // (undocumented)
+    readonly skipIfFrontmost?: boolean;
+    // (undocumented)
+    readonly subtitle: string;
+    // (undocumented)
+    readonly terminalPid?: number;
+    // (undocumented)
+    readonly thread: string;
+    // (undocumented)
+    readonly title: string;
+}
+
+// @public (undocumented)
+export type NoticeKind = 'question' | 'permission' | 'turn_done' | 'cache_expiring' | 'subagent_done' | 'session_end';
+
+// @public (undocumented)
+export interface Notifier {
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    post(n: Notice): Promise<PostResult>;
+    // (undocumented)
+    withdraw(id: string): Promise<void>;
+}
+
+// @public (undocumented)
+export type NotifyOptions = z.output<typeof NotifyOptionsSchema>;
+
+// @public (undocumented)
+export interface Platform {
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly notifier: Notifier;
+    // (undocumented)
+    permission?(): Promise<string>;
+    // (undocumented)
+    readonly service: ServiceManager | null;
+    // (undocumented)
+    setup?(log: (...parts: string[]) => void): Promise<string>;
+}
+
+// @public (undocumented)
+export interface PostResult {
+    // (undocumented)
+    readonly shown: boolean;
+    // (undocumented)
+    readonly why?: string;
+}
+
+// @public (undocumented)
+export interface RunSpec {
+    // (undocumented)
+    readonly args: readonly string[];
+    // (undocumented)
+    readonly env: Readonly<Record<string, string>>;
+    // (undocumented)
+    readonly logFile: string;
+    // (undocumented)
+    readonly program: string;
+}
+
+// @public (undocumented)
+export interface ServiceManager {
+    // (undocumented)
+    install(run: RunSpec): Promise<void>;
+    // (undocumented)
+    status(): Promise<ServiceStatus>;
+    // (undocumented)
+    uninstall(): Promise<void>;
+}
+
+// @public (undocumented)
+export interface ServiceStatus {
+    // (undocumented)
+    readonly detail: string;
+    // (undocumented)
+    readonly installed: boolean;
+    // (undocumented)
+    readonly pid?: number;
+    // (undocumented)
+    readonly running: boolean;
+}
 
 // (No @packageDocumentation comment for this package)
 

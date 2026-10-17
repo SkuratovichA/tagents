@@ -50,7 +50,7 @@ function rig(o: RigOptions = {}) {
     clock,
     log: (...parts) => logs.push(parts.join(' ')),
     tagents: TAGENTS,
-    hostname: 'mbp.local',
+    hostname: () => 'mbp.local',
     env: o.env ?? BASE_ENV,
   });
   return {
@@ -170,7 +170,7 @@ test('a probe that rejects costs the pid, not the notice', async () => {
     clock: r.clock,
     log: (...p) => r.logs.push(p.join(' ')),
     tagents: TAGENTS,
-    hostname: 'mbp',
+    hostname: () => 'mbp',
     env: BASE_ENV,
   });
   await failing.handle(r.now());
@@ -239,20 +239,56 @@ test('the click: focus is the terminal only, and so is a session with no pane', 
   assert.deepEqual(h.screen.probed, [], 'there is no pane to ask tmux about');
 });
 
-test('the click env is PATH and HOME, plus the three that matter when they are set', async () => {
+test('the click env is PATH and HOME, plus the locale and the three that matter when they are set', async () => {
   const bare = rig({ env: { ...BASE_ENV, SHELL: '/bin/zsh', SECRET: 'no' } });
   await bare.engine.handle(bare.now());
   assert.deepEqual(bare.notifier.posts[0]?.click.env, BASE_ENV);
   const full = rig({
-    env: { ...BASE_ENV, TMUX_TMPDIR: '/tmp/tm', TA_STATE_DIR: '/tmp/st', TAGENTS_CONFIG_DIR: '/tmp/cfg', SECRET: 'no' },
+    env: {
+      ...BASE_ENV,
+      LANG: 'ru_RU.UTF-8',
+      LC_ALL: 'en_US.UTF-8',
+      LC_CTYPE: 'UTF-8',
+      TMUX_TMPDIR: '/tmp/tm',
+      TA_STATE_DIR: '/tmp/st',
+      TAGENTS_CONFIG_DIR: '/tmp/cfg',
+      SECRET: 'no',
+    },
   });
   await full.engine.handle(full.now());
   assert.deepEqual(full.notifier.posts[0]?.click.env, {
     ...BASE_ENV,
+    LANG: 'ru_RU.UTF-8',
+    LC_ALL: 'en_US.UTF-8',
+    LC_CTYPE: 'UTF-8',
     TMUX_TMPDIR: '/tmp/tm',
     TA_STATE_DIR: '/tmp/st',
     TAGENTS_CONFIG_DIR: '/tmp/cfg',
   });
+  const empty = rig({ env: { ...BASE_ENV, LANG: '' } });
+  await empty.engine.handle(empty.now());
+  assert.deepEqual(empty.notifier.posts[0]?.click.env, BASE_ENV, 'an empty variable stays absent');
+});
+
+test('the hostname is read for each notice: a title that was the host is a name once the host is renamed', async () => {
+  let host = 'untitled.local';
+  const r = rig({ screens: { '%12': { visible: false, paneTitle: 'untitled.local' } } });
+  const e = createEngine({
+    feed: r.feed,
+    notifier: r.notifier,
+    options: () => options({}),
+    screen: r.screen,
+    clock: r.clock,
+    log: () => undefined,
+    tagents: TAGENTS,
+    hostname: () => host,
+    env: BASE_ENV,
+  });
+  await e.handle(r.now());
+  host = 'renamed.local';
+  await e.handle(r.now());
+  assert.equal(r.notifier.posts[0]?.title, 'proj', 'the pane title is the host: the directory names the agent');
+  assert.equal(r.notifier.posts[1]?.title, 'untitled.local', 'the host changed: the title is a name now');
 });
 
 test('a session with no pane is ignored unless sessions.headless is on', async () => {
