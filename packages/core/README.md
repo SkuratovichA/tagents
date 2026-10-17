@@ -252,9 +252,32 @@ await svc.done;                                          // drain() / stop(reaso
 `createContext` binds `t` to core's catalogue with the plugin's laid over it
 (its own namespaces, so neither shadows the other) and gives it a
 `ClaudeHeadlessDriver` — a plugin never spawns `claude` itself. `signals: true`
-wires SIGINT/SIGTERM to `stop(<signal>)`; without it the process keeps its own
+wires SIGINT, SIGTERM and SIGHUP to `stop(<signal>)`; without it the process keeps its own
 signal handling, because a library must not take that away from whoever owns
 the process.
+
+### Agent events and plugin options
+
+A plugin that wants to react to agents — a notification when one finishes, say — does not poll the state dir.
+
+The agent hook appends one line per event to `events.tsv` in the state dir, but only while the switch file `events.on` exists, so a machine nobody follows pays nothing for it.
+
+`PluginContext.agents` is the feed: `agents.states()` reads the current state rows, and `agents.follow(onEvent)` streams the events and flips the switch on for as long as someone follows.
+
+A plugin's options live in a file of its own, `<configDir>/plugins/<name>.yaml`, the way neovim keeps the enable list apart from each plugin's settings: `loadPluginOptions(configDir, name, schema)` returns the schema's defaults when the file is missing, and one problem line per issue (the same `path: message` wording the verbs use for their arguments) when it does not parse or does not fit, so a caller can print them and stop instead of guessing.
+
+A relative `from:` in config.yaml is resolved against the config dir first, and, when that finds no `package.json`, against the config dir's real location.
+
+`~/.config/tagents` is a symlink into a dotfiles repository, so a committed config can say `from: ../../tagents/packages/notify` and mean the plugin's own repository on every machine.
+
+A plugin that ships its own bin, so that a LaunchAgent can start it with no config.yaml registration, ends its `main.ts` with one call, and its verbs run exactly as they do under `tagents-core <plugin> <verb>`:
+
+```ts
+import { runPluginBin } from '@tagents/core';
+import plugin from './plugin.ts';
+
+process.exitCode = await runPluginBin(plugin);
+```
 
 ## Testing against it
 

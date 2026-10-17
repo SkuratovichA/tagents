@@ -392,5 +392,32 @@ ev "{\"hook_event_name\":\"SessionEnd\",\"session_id\":\"sid-$PP\",\"cwd\":\"$PE
 ok "and the session ending takes it with the record" no \
    "$([ -e "$STATE/prompt/$PP" ] && echo yes || echo no)"
 
+# ---------------------------------------------------------------------------
+t "A click on a notice names the chat by its session id"
+# ---------------------------------------------------------------------------
+# The notice was posted for a pane that has since been killed; the click still
+# says "live" and carries that pane. The record is what remains, and the session
+# id in it is what the click is about.
+clear_out
+GP=$(tm new-window -d -t tatest-proj: -P -F '#{pane_id}' -c "$PERS" 2>/dev/null)
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$(date +%s)" working "sid-gone" "$PERS" "" "closed" "$HOME/.claude-personal" \
+  >"$STATE/${GP#%}.tsv"
+tm kill-pane -t "$GP" 2>/dev/null; sleep 0.3
+run --act open "$GP" live sid-gone "$PERS"
+f=$(waitout) || { echo "  FAIL nothing resumed"; fail=$((fail+1)); f=/dev/null; }
+ok "a live click for a pane that is gone resumes from its record" \
+   "$HOME/.claude-personal" "$(field CFG "$f")"
+has "...as a resume of that session" "--resume sid-gone" "$(field ARGS "$f")"
+ok "no dock lock is left behind" no "$([ -e "$STATE/.dock.lock" ] && echo yes || echo no)"
+
+# A session no record names: nothing is resumed, and the click still succeeds.
+clear_out
+run --act open "%9998" live sid-nobody "$PERS"; rc=$?
+sleep 1.5
+ok "a session no record names exits 0" 0 "$rc"
+ok "...and resumes nothing" 0 "$(ls "$OUT" 2>/dev/null | wc -l | tr -d ' ')"
+rm -f "$STATE/${GP#%}.tsv"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

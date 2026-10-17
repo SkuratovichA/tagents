@@ -26,6 +26,41 @@ export type AddOutcome = 'added' | 'exists';
 export function addPluginEntry(file: string, name: string, from: string): AddOutcome;
 
 // @public (undocumented)
+export interface AgentEvent {
+    readonly agentId: string;
+    readonly at: number;
+    readonly configDir: string;
+    // (undocumented)
+    readonly cwd: string;
+    // (undocumented)
+    readonly event: AgentHookEvent;
+    readonly key: string;
+    readonly label: string;
+    readonly pane: string;
+    // (undocumented)
+    readonly sessionId: string;
+    // (undocumented)
+    readonly sub: string;
+    // (undocumented)
+    readonly text: string;
+    // (undocumented)
+    readonly tool: string;
+    // (undocumented)
+    readonly transcript: string;
+}
+
+// @public (undocumented)
+export interface AgentFeed {
+    // (undocumented)
+    readonly dir: string;
+    follow(onEvent: (e: AgentEvent) => void, onError?: (e: Error) => void, onDead?: (e: Error) => void): EventFollower;
+    states(): AgentStateRow[];
+}
+
+// @public
+export type AgentHookEvent = 'SessionStart' | 'UserPromptSubmit' | 'PreToolUse' | 'PostToolUse' | 'Notification' | 'Stop' | 'SubagentStop' | 'SessionEnd';
+
+// @public (undocumented)
 export interface AgentStateRow {
     // (undocumented)
     readonly at: number;
@@ -145,6 +180,7 @@ export function configFile(env?: NodeJS.ProcessEnv): string;
 
 // @public (undocumented)
 export interface ContextOptions {
+    readonly agents?: AgentFeed;
     readonly configDir?: string;
     readonly driver?: SessionDriver;
     readonly locale?: string;
@@ -155,6 +191,9 @@ export interface ContextOptions {
 
 // @public (undocumented)
 export type CoreResource = typeof en;
+
+// @public (undocumented)
+export function createAgentFeed(dir?: string): AgentFeed;
 
 // @public
 export function createContext(o: ContextOptions): PluginContext;
@@ -193,6 +232,23 @@ export function drained(check: () => boolean | Promise<boolean>, input?: {
     everyMs?: number;
 }): Promise<void>;
 
+// @public (undocumented)
+export interface EventFollower {
+    close(): void;
+}
+
+// @public (undocumented)
+export const EVENTS_FILE = "events.tsv";
+
+// @public (undocumented)
+export const EVENTS_ROTATE_BYTES = 1048576;
+
+// @public (undocumented)
+export const EVENTS_SWITCH = "events.on";
+
+// @public (undocumented)
+export function eventsOn(dir?: string): boolean;
+
 // @public
 export function evidence(o: TurnOutcome): TurnEvidence;
 
@@ -209,6 +265,21 @@ export interface FakeClaude {
 
 // @public
 export function fakeClaude(script?: FakeScript, dir?: string): FakeClaude;
+
+// @public
+export class FakeClock implements TurnClock {
+    constructor(start?: number);
+    advance(ms: number): void;
+    // (undocumented)
+    after(ms: number, fn: () => void): () => void;
+    jump(ms: number): void;
+    nextDelay(): number | null;
+    // (undocumented)
+    now(): number;
+    get pending(): number;
+    sleepFiringOverdue(ms: number): void;
+    sleepPausingTimers(ms: number): void;
+}
 
 // @public (undocumented)
 export interface FakeResult {
@@ -269,7 +340,21 @@ export interface FakeToolCall {
 export function findByPrefix(prefix: string): SessionRow | undefined;
 
 // @public
+export function findOnPath(name: string, pathVar?: string | undefined): string | null;
+
+// @public
 export function firstPrompt(file: string): string;
+
+// @public
+export function followAgentEvents(onEvent: (e: AgentEvent) => void, o?: FollowOptions): EventFollower;
+
+// @public (undocumented)
+export interface FollowOptions {
+    readonly dir?: string;
+    readonly onDead?: (e: Error) => void;
+    readonly onError?: (e: Error) => void;
+    readonly rotateBytes?: number;
+}
 
 // @public
 export function formatAttemptError(o: TurnOutcome): string | null;
@@ -297,7 +382,18 @@ export interface HistoryRow {
 export function holdAwake(pid: number, log: (line: string) => void, spawn?: Spawner): () => void;
 
 // @public (undocumented)
+export interface Io {
+    // (undocumented)
+    err: (s: string) => void;
+    // (undocumented)
+    out: (s: string) => void;
+}
+
+// @public (undocumented)
 export function isAlive(pid: number): boolean;
+
+// @public
+export function isExecutableFile(file: string): boolean;
 
 // @public (undocumented)
 export function isLocale(v: string | undefined): v is Locale;
@@ -340,6 +436,9 @@ export interface LoadedPlugin extends PluginListing {
 export function loadPlugin(listing: PluginListing, base: string): Promise<LoadedPlugin>;
 
 // @public
+export function loadPluginOptions<S extends z.ZodType>(configDir: string, name: string, schema: S): OptionsResult<z.infer<S>>;
+
+// @public
 export function loadPlugins(file?: string): Promise<LoadResult>;
 
 // @public (undocumented)
@@ -380,6 +479,18 @@ export const MIN_TRANSCRIPT_BYTES = 2000;
 export type OkOutcome = z.infer<typeof Ok>;
 
 // @public (undocumented)
+export type OptionsResult<T> = {
+    readonly ok: true;
+    readonly value: T;
+    readonly file: string;
+    readonly found: boolean;
+} | {
+    readonly ok: false;
+    readonly file: string;
+    readonly problems: readonly string[];
+};
+
+// @public (undocumented)
 export function outcomeSessionId(o: TurnOutcome): string | null;
 
 // @public
@@ -390,6 +501,9 @@ export function outcomeToolUses(o: TurnOutcome): number;
 
 // @public
 export type PackageProblem = 'not-found' | 'bad-manifest' | 'no-entry';
+
+// @public
+export function parseEventLine(line: string): AgentEvent | null;
 
 // @public (undocumented)
 export function parseStateLine(key: string, line: string): AgentStateRow | null;
@@ -411,7 +525,11 @@ export const PIPE_DRAIN_MS: number;
 export const PLUGIN_API_VERSION = 1;
 
 // @public (undocumented)
+export const PLUGIN_OPTIONS_DIR = "plugins";
+
+// @public (undocumented)
 export interface PluginContext {
+    readonly agents: AgentFeed;
     readonly configDir: string;
     readonly driver: SessionDriver;
     // (undocumented)
@@ -451,6 +569,9 @@ export interface PluginListing {
     readonly name: string;
 }
 
+// @public
+export function pluginOptionsFile(configDir: string, name: string): string;
+
 // @public (undocumented)
 export interface PluginPackage {
     readonly dir: string;
@@ -483,7 +604,13 @@ export function readAgentState(dir?: string): AgentStateRow[];
 export function readHistory(dir?: string): HistoryRow[];
 
 // @public
+export function readLabels(dir?: string): Map<string, string>;
+
+// @public
 export function readPluginList(file?: string): PluginListing[];
+
+// @public (undocumented)
+export const realClock: TurnClock;
 
 // @public (undocumented)
 export type RemoveOutcome = 'removed' | 'absent';
@@ -581,6 +708,9 @@ export interface RunningService {
     drain(): Promise<void>;
     stop(reason?: string): void;
 }
+
+// @public
+export function runPluginBin(def: PluginDef, argv?: readonly string[], io?: Io): Promise<number>;
 
 // @public
 export function runService(plugin: PluginDef, serviceName: string, ctx: PluginContext, o?: RunServiceOptions): Promise<RunningService>;
@@ -686,6 +816,9 @@ export interface SessionSpec {
 // @public
 export type SessionState = 'new' | 'working' | 'blocked' | 'done' | 'gone';
 
+// @public
+export function setEventsOn(on: boolean, dir?: string): void;
+
 // @public (undocumented)
 export const sleep: (ms: number) => Promise<void>;
 
@@ -757,6 +890,13 @@ export function tmpDir(prefix?: string): string;
 
 // @public (undocumented)
 export function tryCatch<T, E = Error>(promise: T | Promise<T>): Promise<readonly [Awaited<T>, null] | readonly [null, E]>;
+
+// @public
+export interface TurnClock {
+    after(ms: number, fn: () => void): () => void;
+    // (undocumented)
+    now(): number;
+}
 
 // @public
 export interface TurnEvidence {

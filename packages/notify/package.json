@@ -1,0 +1,41 @@
+{
+  "name": "@tagents/notify",
+  "version": "0.1.0",
+  "description": "Desktop notifications for tagents: a question, a permission prompt, a finished turn or a prompt cache about to expire posts a banner, and a click docks that chat",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "tagents-notify": "./dist/main.js"
+  },
+  "tagents": {
+    "entry": "./dist/plugin.js"
+  },
+  "files": [
+    "dist",
+    "macos"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "postbuild": "chmod +x dist/main.js",
+    "prepare": "pnpm build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@tagents/core": "workspace:*",
+    "zod": "^4.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "5.9.3"
+  }
+}

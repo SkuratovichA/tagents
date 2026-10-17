@@ -54,14 +54,20 @@ untitle_of() {  # <pane title>
     { print untitle($0) }'
 }
 
-pane_for_sid() {
-  local sid=$1 f b
-  state_files | while IFS= read -r f; do
-    b=${f##*/}
-    awk -F"$TAB" -v s="$sid" -v p="%${b%.tsv}" \
-        'NR == 1 && $3 == s { print p; exit }' "$f"
-  done | head -1
+# Every record whose first line names the session, as "%<key> TAB <timestamp>",
+# in state_files order. More than one happens when a chat is resumed by hand in
+# another pane and the old record lingers. One awk over all of them: closed
+# records persist, so a process per file would fork hundreds on one click.
+panes_for_sid() {  # <sid>
+  local f files=()
+  while IFS= read -r f; do files[${#files[@]}]=$f; done < <(state_files)
+  [ "${#files[@]}" -gt 0 ] || return 0
+  awk -F"$TAB" -v OFS="$TAB" -v s="$1" '
+    FNR == 1 && $3 == s { n = FILENAME; sub(/.*\//, "", n); sub(/\.tsv$/, "", n); print "%" n, $1 }
+  ' "${files[@]}"
 }
+
+pane_for_sid() { panes_for_sid "$1" | head -1 | cut -f1; }
 
 # The --label entry point: same as ctrl-r, for scripts and for naming an agent from
 # somewhere other than the dashboard.
