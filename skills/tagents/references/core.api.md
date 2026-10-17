@@ -180,6 +180,7 @@ export function configFile(env?: NodeJS.ProcessEnv): string;
 
 // @public (undocumented)
 export interface ContextOptions {
+    readonly agents?: AgentFeed;
     readonly configDir?: string;
     readonly driver?: SessionDriver;
     readonly locale?: string;
@@ -405,6 +406,9 @@ export interface LoadedPlugin extends PluginListing {
 export function loadPlugin(listing: PluginListing, base: string): Promise<LoadedPlugin>;
 
 // @public
+export function loadPluginOptions<S extends z.ZodType>(configDir: string, name: string, schema: S): OptionsResult<z.infer<S>>;
+
+// @public
 export function loadPlugins(file?: string): Promise<LoadResult>;
 
 // @public (undocumented)
@@ -445,6 +449,18 @@ export const MIN_TRANSCRIPT_BYTES = 2000;
 export type OkOutcome = z.infer<typeof Ok>;
 
 // @public (undocumented)
+export type OptionsResult<T> = {
+    readonly ok: true;
+    readonly value: T;
+    readonly file: string;
+    readonly found: boolean;
+} | {
+    readonly ok: false;
+    readonly file: string;
+    readonly problems: readonly string[];
+};
+
+// @public (undocumented)
 export function outcomeSessionId(o: TurnOutcome): string | null;
 
 // @public
@@ -479,7 +495,11 @@ export const PIPE_DRAIN_MS: number;
 export const PLUGIN_API_VERSION = 1;
 
 // @public (undocumented)
+export const PLUGIN_OPTIONS_DIR = "plugins";
+
+// @public (undocumented)
 export interface PluginContext {
+    readonly agents: AgentFeed;
     readonly configDir: string;
     readonly driver: SessionDriver;
     // (undocumented)
@@ -518,6 +538,9 @@ export interface PluginListing {
     // (undocumented)
     readonly name: string;
 }
+
+// @public
+export function pluginOptionsFile(configDir: string, name: string): string;
 
 // @public (undocumented)
 export interface PluginPackage {
@@ -652,6 +675,9 @@ export interface RunningService {
     drain(): Promise<void>;
     stop(reason?: string): void;
 }
+
+// @public
+export function runPluginBin(def: PluginDef, argv?: readonly string[], io?: Io): Promise<number>;
 
 // @public
 export function runService(plugin: PluginDef, serviceName: string, ctx: PluginContext, o?: RunServiceOptions): Promise<RunningService>;

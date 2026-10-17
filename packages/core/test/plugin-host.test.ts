@@ -93,3 +93,39 @@ test('definePlugin is the identity, and it types what it returns', () => {
   const def = definePlugin({ name: 'x', apiVersion: 1 });
   assert.deepEqual(def, { name: 'x', apiVersion: 1 });
 });
+
+test('a relative from: that misses lexically resolves through a symlinked config dir', () => {
+  const real = path.join(tmp, 'sym-real', 'dotfiles', 'config');
+  const link = path.join(tmp, 'sym-home', 'tagents');
+  fs.mkdirSync(real, { recursive: true });
+  fs.mkdirSync(path.join(tmp, 'sym-real', 'dotfiles', 'pkg'));
+  fs.writeFileSync(path.join(tmp, 'sym-real', 'dotfiles', 'pkg', 'package.json'), '{}');
+  fs.mkdirSync(path.dirname(link), { recursive: true });
+  fs.symlinkSync(real, link);
+  assert.equal(
+    fs.realpathSync(resolvePackageDir('../pkg', link)),
+    fs.realpathSync(path.join(tmp, 'sym-real', 'dotfiles', 'pkg'))
+  );
+  assert.equal(resolvePackageDir('../pkg', link), path.join(fs.realpathSync(tmp), 'sym-real', 'dotfiles', 'pkg'));
+});
+
+test('a lexical hit still wins over the real directory', () => {
+  const real = path.join(tmp, 'both-real', 'dot', 'config');
+  const link = path.join(tmp, 'both-home', 'tagents');
+  fs.mkdirSync(real, { recursive: true });
+  fs.mkdirSync(path.join(tmp, 'both-real', 'dot', 'pkg'), { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'both-real', 'dot', 'pkg', 'package.json'), '{}');
+  fs.mkdirSync(path.join(tmp, 'both-home', 'pkg'), { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'both-home', 'pkg', 'package.json'), '{}');
+  fs.symlinkSync(real, link);
+  assert.equal(resolvePackageDir('../pkg', link), path.join(tmp, 'both-home', 'pkg'));
+});
+
+test('a miss on both sides keeps the lexical path the person wrote', () => {
+  assert.equal(resolvePackageDir('./nowhere', tmp), path.join(tmp, 'nowhere'));
+});
+
+test('a package name resolves as before', () => {
+  const dir = resolvePackageDir('zod', path.join(PLUGINS, 'good'));
+  assert.equal(path.basename(dir), 'zod');
+});

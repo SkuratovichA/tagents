@@ -12,6 +12,7 @@
 // back the supervisor's three handles. Nothing here scans, reads YAML or
 // imports anything: the caller already has the definition object.
 import { createInstance, type Resource } from 'i18next';
+import { createAgentFeed, type AgentFeed } from './agent-events.ts';
 import { ClaudeHeadlessDriver } from './claude-driver.ts';
 import type { SessionDriver } from './driver.ts';
 import { configDir as defaultConfigDir } from './host.ts';
@@ -45,6 +46,8 @@ export interface ContextOptions {
   readonly locale?: string;
   /** A backend other than headless `claude` — the tests pass their own. */
   readonly driver?: SessionDriver;
+  /** A feed on another state dir — the tests pass their own. */
+  readonly agents?: AgentFeed;
 }
 
 /**
@@ -72,6 +75,7 @@ export function createContext(o: ContextOptions): PluginContext {
     t: i18n.t,
     log,
     configDir: o.configDir ?? defaultConfigDir(),
+    agents: o.agents ?? createAgentFeed(),
   };
 }
 
