@@ -1,0 +1,2 @@
+Bad request.
+Could not find service "io.github.skuratovicha.tagents-notify.test-24186" in domain for user gui: 502
