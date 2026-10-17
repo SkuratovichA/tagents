@@ -1,0 +1,12 @@
+{
+  "name": "tagents",
+  "owner": { "name": "Aliaksandr Skuratovich" },
+  "metadata": { "description": "The tagents plugin: the contract of the tagents CLIs, MCP tools and TypeScript API, regenerated from the code." },
+  "plugins": [
+    {
+      "name": "tagents",
+      "source": "./",
+      "description": "Every tagents-core and tagents-knowledge verb and flag, every MCP tool schema and the public TypeScript API, regenerated from the code, plus the tagents-knowledge MCP server."
+    }
+  ]
+}

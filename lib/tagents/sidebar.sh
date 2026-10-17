@@ -46,22 +46,32 @@ list_in_pane() {  # <pane-id>
 # that are not a list themselves (a popup, which has no pane of its own; a tmux
 # hook; the status bar).
 dash_pane() {
-  local p pid
+  local pick
   if [ -n "${TMUX_PANE:-}" ] && list_in_pane "$TMUX_PANE"; then
     printf '%s\n' "$TMUX_PANE"
     return 0
   fi
-  while read -r p pid; do
-    [ -n "$p" ] || continue
-    if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-      printf '%s\n' "$p"
+  pick=$(tmux list-panes -a -F '#{pane_id} #{?@tagents_dash,#{@tagents_dash},-} #{?@tagents_list,#{@tagents_list},-}' 2>/dev/null |
+    dash_pane_pick clear)
+  [ -z "$pick" ] || printf '%s\n' "${pick%% *}"
+  return 0
+}
+# THE RULE FOR "WHICH MARKED PANE IS THE LIST", in one place for dash_pane and for
+# slot(), which reads it off the list-panes output it already has. Lines of
+# "pane_id dash list [more...]" on stdin, an unset option written "-"; the first
+# pane marked dash=1 whose list pid passes kill -0 is printed as "pane_id more...".
+# With "clear", every dead marker met on the way is cleared (tmux set -up), as
+# dash_pane always did; slot() leaves them for the callers that clear them.
+dash_pane_pick() {  # [clear]
+  local p d l rest
+  while read -r p d l rest; do
+    [ "$d" = 1 ] || continue
+    if [ "$l" != - ] && [ -n "$l" ] && kill -0 "$l" 2>/dev/null; then
+      printf '%s %s\n' "$p" "$rest"
       return 0
     fi
-    tmux set -up -t "$p" @tagents_dash 2>/dev/null
-  done <<EOF
-$(tmux list-panes -a -F '#{pane_id} #{@tagents_dash} #{@tagents_list}' 2>/dev/null |
-    awk '$2 == "1" { print $1, $3 }')
-EOF
+    [ -z "${1:-}" ] || tmux set -up -t "$p" @tagents_dash 2>/dev/null
+  done
   return 0
 }
 dash_window() {   # the window the list sits in — the sidebar, wherever that is

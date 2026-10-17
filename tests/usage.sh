@@ -81,6 +81,7 @@ for a in "$@"; do
   prev=$a
 done
 for a in "$@"; do
+  if [ "$a" = --burn ]; then cat "$TU_ROWS.burn" 2>/dev/null; exit 0; fi
   if [ "$a" = --daily ]; then
     if [ -n "$UNTIL" ]; then
       u=$(date -r "$UNTIL" +%Y-%m-%d 2>/dev/null || date -d "@$UNTIL" +%Y-%m-%d)
@@ -163,7 +164,7 @@ run() {  # <config> <args...> — the environment every check needs, never expor
   local cfg=$1
   shift
   env TMUX="$TMUXV" PATH="$BIN:$PATH" TA_CONFIG="$cfg" TA_STATE_DIR="$STATE" \
-      TA_COLS=140 TA_MARKS=0 TU_ROWS="$ROWS" TU_ENVOUT="$ENVOUT" \
+      TA_COUNTS_EVERY=0 TA_COLS=140 TA_MARKS=0 TU_ROWS="$ROWS" TU_ENVOUT="$ENVOUT" \
       bash "$TA" "$@" 2>/dev/null
 }
 
@@ -367,6 +368,83 @@ C=$(run "$MCFG" --counts)
 has "the configured reading wins"  "w ~\$$SCALED/850" "$C"
 has "...and the footer names it"   "~meter $MLABEL"   "$(run "$MCFG" --ask-usage </dev/null | strip)"
 rm -f "$MTSV"
+
+# ---------------------------------------------------------------------------
+t "9. what the refresher keeps for the bar is what the bar would have computed"
+# ---------------------------------------------------------------------------
+# counts_parts captures the burn and the month line with their trailing newlines,
+# counts_compose puts them around a tally, and the bytes have to be counts_now's.
+# The functions are reached in a bash that has loaded the modules the way the
+# entry point loads them.
+LIBD="$HERE/../lib/tagents"
+FN_MODS=$(sed -n '/for ta_mod in/,/; do/p' "$TA" | sed 's/.*for ta_mod in//; s/; do.*//' | tr -d '\\' | tr -s ' \n' '  ')
+fnrun() {  # <config> <code> — the same environment as run, and the modules loaded
+  env TMUX="$TMUXV" PATH="$BIN:$PATH" TA_CONFIG="$1" TA_STATE_DIR="$STATE" \
+      TA_COUNTS_EVERY=0 TA_COLS=140 TU_ROWS="$ROWS" TU_ENVOUT="$ENVOUT" \
+      SELF="$TA" FN_LIB="$LIBD" FN_MODS="$FN_MODS" /bin/bash -c \
+      'set -uo pipefail; for m in $FN_MODS; do . "$FN_LIB/$m.sh"; done; cfg_load; eval "$1"' fnrun "$2"
+}
+rm -f "$STATE"/s-sid-*.tsv; : >"$STATE/origin.tsv"
+i=0; for st in blocked done working working; do
+  i=$((i + 1))
+  printf '%s\t%s\tsid-%s\t%s\t\t\t\t%s\t\tlabel %s\n' "$(date +%s)" "$st" "$i" "$REPO" "$$" "$i" >"$STATE/s-sid-$i.tsv"
+  printf 'sid-%s\t%s\n' "$i" "$REPO" >>"$STATE/origin.tsv"
+done
+mkrows 400
+# A burn line that ends in a newline, as a line printed by a script may.
+printf '#[fg=#665c54]5h #[fg=#928374]$12.34 \n' >"$ROWS.burn"
+fnrun "$CFG" 'counts_now' >"$ROOT/now.out" 2>/dev/null
+fnrun "$CFG" 'counts_parts; tl=$(TA_MARKS=0 TA_TALLY=1 list; printf .); counts_compose "${tl%.}"' >"$ROOT/compose.out" 2>/dev/null
+has "the bar has the tally, the burn and the month in it" "5h " "$(cat "$ROOT/now.out")"
+has "...with the month figure" "w \$400/850" "$(cat "$ROOT/now.out")"
+has "...and the tally" "⚠1 " "$(cat "$ROOT/now.out")"
+cmp -s "$ROOT/now.out" "$ROOT/compose.out"
+ok "usage on: counts_compose of counts_parts and the tally is counts_now, byte for byte" 0 "$?"
+rm -f "$ROWS.burn"
+fnrun "$CFG" 'counts_now' >"$ROOT/now.out" 2>/dev/null
+fnrun "$CFG" 'counts_parts; tl=$(TA_MARKS=0 TA_TALLY=1 list; printf .); counts_compose "${tl%.}"' >"$ROOT/compose.out" 2>/dev/null
+cmp -s "$ROOT/now.out" "$ROOT/compose.out"
+ok "...and with a burn that prints nothing" 0 "$?"
+fnrun "$NOWATCH" 'counts_now' >"$ROOT/now.out" 2>/dev/null
+fnrun "$NOWATCH" 'counts_parts; tl=$(TA_MARKS=0 TA_TALLY=1 list; printf .); counts_compose "${tl%.}"' >"$ROOT/compose.out" 2>/dev/null
+cmp -s "$ROOT/now.out" "$ROOT/compose.out"
+ok "usage off: the same" 0 "$?"
+rm -f "$STATE"/s-sid-*.tsv
+
+# ---------------------------------------------------------------------------
+t "10. both is the status text and the footer from one run, with one date"
+# ---------------------------------------------------------------------------
+# usage_line both prints the status text, a \036 byte and the footer text. Split
+# at the byte, the halves are, byte for byte, what status and footer print.
+splitpart() {  # <1|2> <file> — one half of a both output
+  awk -v want="$1" 'BEGIN { RS = "\036" } NR == want { printf "%s", $0 }' "$2"
+}
+bothcase() {  # <label> <config>
+  fnrun "$2" 'usage_line both'   >"$ROOT/both.out" 2>/dev/null
+  fnrun "$2" 'usage_line status' >"$ROOT/st.out"   2>/dev/null
+  fnrun "$2" 'usage_line footer' >"$ROOT/ft.out"   2>/dev/null
+  splitpart 1 "$ROOT/both.out" >"$ROOT/both.1"; splitpart 2 "$ROOT/both.out" >"$ROOT/both.2"
+  cmp -s "$ROOT/both.1" "$ROOT/st.out"; ok "$1: the first half is the status text" 0 "$?"
+  cmp -s "$ROOT/both.2" "$ROOT/ft.out"; ok "$1: the second half is the footer text" 0 "$?"
+  ok "$1: the footer half is not empty" 1 "$([ -s "$ROOT/both.2" ] && echo 1 || echo 0)"
+}
+mkrows 400
+bothcase "a month with data" "$CFG"
+bothcase "a calibration note" "$(mkmeter "2000-01-02 10:00" 360)"
+mkmrow ok "$MNOW"
+bothcase "a meter row" "$CFG"
+rm -f "$MTSV"
+: >"$ROWS"
+bothcase "no data" "$CFG"
+ok "...the status half of no data is empty" 0 "$(splitpart 1 "$ROOT/both.out" | wc -c | tr -d ' ')"
+mkrows 400
+
+# date is a process, and the month line is drawn every few seconds.
+printf '#!/bin/sh\necho x >>"$DATELOG"\nexec /bin/date "$@"\n' >"$BIN/date"; chmod +x "$BIN/date"
+: >"$ROOT/date.log"
+DATELOG="$ROOT/date.log" fnrun "$CFG" 'usage_line footer' >/dev/null 2>&1
+ok "usage_line footer starts one date" 1 "$(wc -l <"$ROOT/date.log" | tr -d ' ')"
+rm -f "$BIN/date"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -123,14 +123,24 @@ prompt_at() {  # <width> <height> <args for $SELF...>
   return 0
 }
 
+# A whole file into the variable named by $1, every byte of it, trailing newlines
+# included: -d '' reads to the end, IFS= keeps the edges, and the braces keep the
+# error of a missing file away from the caller (the redirection fails before a
+# 2>/dev/null on read does). A missing file leaves the variable empty. No process
+# is started.
+slurp() {  # <variable name> <file>
+  local _slurp_c=""
+  { IFS= read -r -d '' _slurp_c <"$2"; } 2>/dev/null
+  printf -v "$1" '%s' "$_slurp_c"
+}
+
 # Telling the list that runs this picker to redraw. fzf takes actions on its
 # --listen port, and FZF_PORT is exported to the children of its own bindings —
 # but a tmux popup is spawned by the SERVER and inherits nothing of that, so the
 # port travels as an argument, like the row fields do. No port (a bare --list
 # from a script, or a test) is not an error: the toggle still happens, it is
 # just not seen until the next refresher tick.
-post_fzf() {  # <port> <fzf action>
+post_fzf() {  # <port> <fzf action> — curl's exit status; 0 when there is no port
   [ -n "${1:-}" ] || return 0
   curl -s -XPOST "http://127.0.0.1:$1" -d "$2" >/dev/null 2>&1
-  return 0
 }

@@ -147,3 +147,69 @@ remove X once and run the suite before calling it a test.
 
 ## A suite written on main while a branch was out misses that branch's setup (11.10.2026)
 `tests/resurrect.sh` landed on main after child-sessions branched, so it never got the `unset CLAUDE_PID` the branch gave every suite that plays the hook from a stub; rebased, 42 of its checks failed because the hook classified the stubs against the real Claude session running the suite. A clean textual rebase proves nothing about files only one side knew: run every suite afterwards, and run the failing one on main as the control — ten other checks there fail on main too, and were not this branch's. Also: the root `pnpm typecheck` nests a second pnpm that resolves 9.1.4 on this machine and stops on `ERR_PNPM_BAD_PM_VERSION`; `pnpm -r typecheck` and `pnpm -r test` run the same gates.
+
+## API Extractor reads any `.d.ts` under a `node_modules` path as someone else's package (12.10.2026)
+The declarations for the API reports were first emitted into `packages/<name>/node_modules/.cache/`, because it is git-ignored and keeps `@tagents/core` resolvable. API Extractor treats every file under a `node_modules` segment as external, so each export came out as a bare re-export and the report held no API at all. The cache lives in `packages/contract/.cache/` instead, one `mkdtemp` directory per call: two test files run as parallel processes, and a shared directory let one delete the other's declarations.
+
+## API Extractor resolves `types` from the working directory when it is only given a tsconfig path (12.10.2026)
+With `compiler.tsconfigFilePath`, `types: ["node"]` was looked up from `process.cwd()`: the test passed from `packages/contract` and the generator, started from the repo root, died with `Unable to follow symbol for "AbortSignal"`. `compiler.overrideTsconfig` with an explicit `typeRoots` makes it independent of where it is started, and the test now runs the call from two other working directories in child processes. A tool that runs from a hook, from CI and from a test has three working directories, and the test has to use more than one of them.
+
+## `tusage --help` creates its state directory and needs jq before it prints anything (12.10.2026)
+The generator ran the three scripts for their help with the real `HOME`, so a check that promised to write nothing ran `mkdir -p ~/.claude/agent-state/usage` on every commit, and with a hand-made `PATH=/usr/bin:/bin` it would have failed on a machine whose jq lives elsewhere. A script run only for its text gets a throwaway `HOME` and the caller's own `PATH`.
+
+## In zsh an unquoted variable holding a command line is one word (12.10.2026)
+A scratch test of the pre-commit hook kept `G="git -c user.name=… commit"` and ran `$G -qam …`; zsh does not split it, so every commit exited 127 and the lines after it reported the previous commit as if it were the new one. A shell function does what the variable was meant to, and its name must not be an alias already defined in the profile (`g` is).
+
+## A once-per-process guard set inside `$(…)` guards nothing: the subshell takes the flag with it (01.10.2026)
+`cfg_load` set `CFG_LOADED=1` and parsed the file once, as its comment promised, but every caller reached it through `$(cfg_get …)`, so the flag and `$CFG` died with each subshell and one `--counts` parsed the config eleven times and ran `hostname` eleven times. A lazy load has to happen in the parent shell before the first substitution; the dispatch arm now calls `cfg_load` ahead of `list`, `counts` and `dash`. The same shape hides anywhere a function memoises into a global and is called for its output.
+
+## One awk per file is one process per record, and the agent inspecting every process is the bill (01.10.2026)
+The model loop read the first line of each of 133 `model/*.tsv` with its own awk, `dir_roots` and the state-record loop did the same per state file, and `cfg_get` ran an awk per lookup: 206 programs per `--list` and 254 per `--counts`, started once or twice a second from the status bar and the refresher, which was ~490 new pids a second on the box and a full core of CrowdStrike Falcon working through its exec queue. One awk over the directory with `FNR == 1` and the key taken off `FILENAME` prints the same records for one process. Measured, not guessed: a `bash -x` trace with `PS4='+|${BASH_SOURCE##*/}:${LINENO}|'` counted the external commands per source line; `$BASHPID` in that prefix aborts every traced line under bash 3.2 and `set -u`, so it stays out.
+
+## macOS awk stops dead at an argument it cannot open, so one awk over a glob needs the glob probed first (01.10.2026)
+A state file deleted between `state_files` and the awk that reads them all would have ended that awk at the missing file and dropped every record after it for that repaint, where the old one-awk-per-file loop lost only that row. The BEGIN block now does `(getline junk < ARGV[i]) < 0` on each argument and blanks the ones that fail; gawk would only warn, the awk on this machine is BWK's and does not.
+
+## A guard written for one site of a pattern belongs at every site of it (14.10.2026)
+The fork-storm fix turned four per-file loops into one awk per directory and gave only `collect`'s awk the probe for a file that vanished between the glob and the read; `dir_roots`, `sub/` and `model/` have the same glob-then-awk shape and would have dropped every later record, with an awk error on stderr, the first time a file went in that window. A review caught it two weeks later. When a hazard is fixed at one call site, grep for the shape and fix every site in the same change, through one shared piece (`AWK_SKIP_GONE`) so the next site cannot be missed either; `tests/forks.sh` now makes the middle file of each directory unreadable and checks that the record after it still comes out.
+
+## `tests/panes.sh` section 18 is a timing check, and on a loaded box it fails on main too (14.10.2026)
+"focusing a seat pokes the list at once" waits 0.6 s for a poke whose `follow_cursor` alone takes ~0.45 s, and the port checks wait on the refresher's 2 s tick. With the endpoint agent inspecting every exec, a logged run put the poke at 0.57 s on average on main and 0.55 s on the fork-storm fix, and each tree failed section 18 in one run and passed it in another. A red section 18 is compared with a control run of main in a scratch worktree (`git worktree add --detach`) before it counts against a change; `tests/notes.sh` nests a panes run and inherits the same failures.
+
+## A test variable named like a module global is overwritten the moment the modules load (14.10.2026)
+The refresher test kept its config path in `CFG`, the name `lib/tagents/config.sh` uses for the parsed config text, so a write to `"$CFG"` where the two shared a shell put a file called `usage.watch<TAB>me` into the worktree root. The test's own paths get a prefix of their own (`RFCFG`), and a grep of the test for the module globals (`CFG`, `CFG_LOADED`, `USAGE_ON`, `STATE_DIR`, `LABELS`, `ORIGINS`, `COLS_FILE`, `SELF`, `HOST_S`) comes back empty before it is trusted.
+
+## A fresh process computes once; in a long-lived one that is wrong (14.10.2026)
+`cfg_check` guards itself with `CFG_CHECKED`, `cfg_note` adds to `CFG_NPROBLEMS` instead of setting it, `cfg_count_cached` sets the count from its cache without setting the guard, and `usage_env` exports `TU_ACCOUNT_RULES` only when there is something to export. Each was right for a process that runs once and exits, and the refresher that now calls them for a day made them wrong in three ways found by review: a verdict that aged was counted on top of the cached one (`cfg!1` became `cfg!2`), a config fixed or broken under it kept the marker it had (the guard was already set), and a rule removed from the config stayed in the environment of every `tusage --update`. A function written for a fresh process and moved into a loop needs its memos reset (`cfg_reset`) before each pass, or to run in a subshell that starts from a fresh state; `tests/refresh.sh` section 15 changes the config under the running loop and reads what the bar and `tusage` were given.
+
+## `tests/panes.sh`'s port-claim checks fail on main too, reading an earlier port (14.10.2026)
+"an overwritten port is reclaimed on the next tick" and "a refresher whose posts are refused never claims the port" failed in 2 of 3 runs on unchanged main and 1 of 3 on the branch, each time reading a lower port than the live list's (63474 for 63501, 63560 for 63700, 62719 for 62870): an earlier refresher of the test's own dashboard still holds the claim. Judge them like section 18 — against a control run of main — and do not chase them as a regression of the change under test.
+
+## Claude Code fires Stop before it writes the turn's last assistant record (17.10.2026)
+The hook read the answer for the answer-ready notice from the transcript at Stop and got the previous turn's text. A probe showed the record lands after the hook has run; the Stop payload's `last_assistant_message` carries it, and the hook reads that.
+
+## tmux 3.7: `display -p -t %gone` exits 0 (17.10.2026)
+A pane that no longer exists prints empty fields and exits 0, so the exit code proves nothing. The notify probe treats empty fields as `NO_SUCH_PANE`.
+
+## `launchctl bootstrap` of a disabled label says "5: Input/output error" (17.10.2026)
+Nothing in the error names the cause. `launchctl print-disabled gui/$(id -u)` lists the label as disabled and `launchctl enable gui/$(id -u)/<label>` fixes it; `install` prints that hint now.
+
+## os.Logger: `.info` is not persisted, and interpolated strings are `<private>` (17.10.2026)
+The helper's click lines were missing from `log show` without `--info`, and their argv showed as `<private>`. Lines worth keeping are logged at `.notice` with `privacy: .public`.
+
+## KeepAlive with `SuccessfulExit=false` never restarts an exit 0 (17.10.2026)
+`run` exited 0 when its start threw, so launchd left the service dead. It exits 1 now, and `ThrottleInterval` 300 keeps a broken start from looping.
+
+## `ps -o lstart` prints local time in the locale's format (17.10.2026)
+The lock compared a holder's start time read with `ps` against a UTC time. `ps` runs with `TZ=UTC` and `LC_ALL=C`.
+
+## `fs.watch` on something that may appear: arm the watch, then look (17.10.2026)
+A directory created between the existence check and the watch was never watched. The service arms the watch first and re-reads the state after it.
+
+## BSD `sed -i` takes the next argument as the backup suffix (17.10.2026)
+`sed -i 's/a/b/' f` is GNU syntax; on macOS it is `sed -i '' 's/a/b/' f`.
+
+## A notice click runs the script it names, and that script re-points tmux's global hooks at itself (17.10.2026)
+The notices pointed at the worktree's `tagents`, so the owner's clicks ran code that was being rewritten, and every click re-installed the dashboard's focus hooks from the worktree. `install` gives the service the `tagents` on the installing shell's PATH; a live service is never pointed at a tree being edited.
+
+## A hook's `run-shell -b` runs against a later state than the one it tested (17.10.2026)
+The focus hook's `if-shell -F '#{@tagents_slot}'` passed while the placeholder was the empty seat, but the unpark it scheduled ran after a dock had moved that placeholder home, and handed the dock back. The hook passes `#{window_id}`, and unpark acts only while the placeholder is still in that window, re-checked inside its atomic command list.

@@ -1,12 +1,143 @@
 # lib/tagents/refresh.sh — keeping a list current
 #
-# Everything that reacts to time or to focus: the refresher loop (2 s reload post, 10 s usage/names/notes/seat repair, the five-failed-posts exit), claim_port's per-tick re-assertion, follow_cursor, poke with its (pane, seat) debounce — one pane switch can fire three hooks — and install_focus_hooks, which wires the four tmux events lazily on the first dock.
+# Everything that reacts to time or to focus: the refresher loop (a 2 s tick that posts a reload to the picker only when something it draws changed, and a bare ignore otherwise, looks at the seats only when tmux changed, and every 5th tick reloads regardless, repairs the usage figure, window names, seats and notes, re-reads a changed config, and takes the resurrect snapshot; five failed posts end it), and keeps the status bar's cache from the tally the list writes, claim_port's re-assertion, follow_cursor, poke with its (pane, seat) debounce — one pane switch can fire three hooks — and install_focus_hooks, which wires the four tmux events lazily on the first dock.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
+# WHAT ONE TICK ASKS TMUX, in a single question. Every pane, with every attribute
+# and option that list() and the seat helpers read, joined with a printable
+# separator: a literal tab does not survive tmux outside a UTF-8 locale (see
+# collect). The snapshot is only ever compared with the one before it, so the
+# fields are never parsed back — except the last, which is global and so the same
+# on every line. What each one serves:
+#   pane_id, session:window.pane, pane_current_path   collect's P lines and dir_roots, the rows and their groups
+#   pane_current_command, pane_pid                    live_panes' fallback and the process walk's pane map
+#   window_id                                         dash_window, seat_border and seats: which window the list is in
+#   pane_active, pane_last                            current_seat's answer when no hook stamped one
+#   @tagents_list, @tagents_dash                      dash_pane and list_in_pane: which pane is the list
+#   @tagents_docked, @tagents_slot, @tagents_parked   seats, is_docked, seat_border: who sits where
+#   @tagents_cur                                      current_seat: the seat the cursor was last in
+#   @tagents_port                                     claim_port: whose port the list pane carries
+#   pane-border-status                                seat_border: the title bar it keeps
+#   @ta_notes_any                                     whether there are notes editors for tnotes sync to look after
+# THE PANE TITLE IS LEFT OUT ON PURPOSE. Claude's spinner retitles a working pane
+# several times a second, so a title in the snapshot would make every tick of a
+# busy session a reload — the very thing this exists to stop. A title-only change
+# waits for the forced reload of the 5th tick.
+REFRESH_SNAP_FMT='#{pane_id}|@|#{session_name}:#{window_index}.#{pane_index}|@|#{window_id}|@|#{pane_current_path}|@|#{pane_current_command}|@|#{pane_pid}|@|#{pane_active}|@|#{pane_last}|@|#{@tagents_list}|@|#{@tagents_dash}|@|#{@tagents_docked}|@|#{@tagents_slot}|@|#{@tagents_cur}|@|#{@tagents_parked}|@|#{@tagents_port}|@|#{pane-border-status}|@|#{@ta_notes_any}'
+
+# HAS ANYTHING THE LIST DRAWS FROM DISK BEEN WRITTEN SINCE THE MARKER WAS TOUCHED?
+# Answered with the shell's own file-time test and globs, nothing else: this runs
+# on every idle tick and a process started for it is exactly what it is here to
+# save. A path counts as changed when it is NOT OLDER than the marker, so a write
+# in the same second as the touch counts — bash 3.2 compares whole seconds, and a
+# spare reload costs a little where a missed one loses a change. A path that does
+# not exist is never newer than anything, which is also why a file that was
+# DELETED is not seen here: its directory is checked where it has one worth
+# checking, a deleted state file is seen by the refresher's count of them, and
+# the forced reload of the 5th tick catches the rest.
+#
+# THIS LIST IS A HAND COPY of what collect() (state.sh) and list() (list.sh) read:
+# a path added there and not here is a change the picker only shows on the 5th
+# tick. tests/refresh.sh section 11 writes one of each kind between two idle ticks
+# and expects a reload on the next, so the two cannot drift silently.
+#
+# The paths are what collect() and list() open: the state files (history.tsv is
+# not one), the origin cache, the labels, the hidden-columns file and the .flat
+# marker; the sub/, model/ and prompt/ files and the directories that hold them,
+# since an added or removed file changes only its directory; and the config with
+# its per-host overlay. $STATE_DIR itself is NOT among them: the status bar
+# renames .counts.out into it every few seconds, so its time moves whether or not
+# a session did.
+refresh_changed() {  # <marker> <overlay config path> — 0 when something changed
+  local mark=${1:-} ovl=${2:-} f
+  [ -e "$mark" ] || return 0
+  for f in "$STATE_DIR"/[0-9]*.tsv "$STATE_DIR"/s-*.tsv "$LABELS" "$ORIGINS" "$COLS_FILE" \
+           "$STATE_DIR/.flat" "$STATE_DIR/sub" "$STATE_DIR"/sub/* \
+           "$STATE_DIR/model" "$STATE_DIR"/model/*.tsv \
+           "$STATE_DIR/prompt" "$STATE_DIR"/prompt/* "$CONFIG_FILE" "$ovl"; do
+    ! [ "$mark" -nt "$f" ] && return 0
+  done
+  return 1
+}
+
+# THE LOOP IS QUIET WHEN NOTHING MOVED. Each tick used to post a reload and ask
+# tmux about the seats, whatever had happened since the last one, and a reload is
+# a few dozen programs the endpoint security agent inspects one by one — most of
+# the churn this machine had left, for a picture that had not changed. Now a tick
+# starts one tmux (the snapshot above) and one curl, and the rest only when the
+# snapshot says tmux changed or a file the list reads is newer than the marker:
+#   reload   the first tick; every 5th (the forced one — it carries what the
+#            snapshot cannot see: the age column, the pane titles, a process that
+#            died, the usage index tusage --update has just rebuilt); a changed
+#            snapshot; a changed file; a reload that was refused last time
+#   ignore   fzf's no-op action, posted otherwise, so that an idle tick still
+#            proves the list is listening and a dead one still ends the loop
+#   seats    the block at the foot of the loop, when the snapshot changed, when
+#            no claim is held, and on every 5th tick as a backstop
+# AND THE STATUS BAR IS FED FROM HERE while this loop is answered. tmux runs
+# `tagents --counts` every few seconds, and each run that is due is a whole list
+# (about 38 programs and 75 forks) to count rows the list this loop reloads has
+# already counted: list() leaves its tally in .counts.tally, and every answered
+# tick turns it into .counts.out and stamps .counts.ts, so the bar's own throttle
+# never finds itself due and it serves the cache for the price of a date. The
+# stamp stops with the answers (a refused post clears `live`), and the bar is then
+# due again within COUNTS_EVERY seconds and computes for itself. See refresher_counts.
+# WHAT A KILLED PROCESS LEFT IN THE STATE DIRECTORY: the refresher's markers
+# (.refresher.<pid>, .cfg, .start) and the temp files the list and the bar write
+# before a rename (.counts.tally.<pid>, .counts.out.<pid>). Each is removed when
+# its pid fails kill -0, one rm per stale file, and only at a refresher's start.
+refresher_sweep() {
+  local f n pid
+  for f in "$STATE_DIR"/.refresher.[0-9]* "$STATE_DIR"/.counts.tally.[0-9]* "$STATE_DIR"/.counts.out.[0-9]*; do
+    [ -e "$f" ] || continue
+    n=${f##*/}; n=${n#.refresher.}; n=${n#.counts.tally.}; n=${n#.counts.out.}
+    pid=${n%%.*}
+    case $pid in ''|*[!0-9]*) continue ;; esac
+    kill -0 "$pid" 2>/dev/null || rm -f "$f" 2>/dev/null
+  done
+}
+
 refresher() {
   local port=${TA_PORT:-} tick=0 dp seat last="" fails=0 fl pub=""
+  local snap="" rsnap="" ssnap="" pending=1 due body first mark cfgmark ovl
+  local startmark t0 live="" lasttl="" lasttext="" cdirty=1
+  local cfgseen="" ovlseen="" cfgnow ovlnow nstate rstate="" sf
   [ -z "$port" ] && return 0
+  # One marker per refresher, in the state directory every writer already uses:
+  # its time is "when the last reload was posted", and the second one is "when
+  # the config was last read" (see below). They are named by the refresher's own
+  # pid. One that is killed (kill -9, a reboot) leaves them behind, and so the
+  # start sweeps what a dead pid left, before touching its own.
+  refresher_sweep
+  mark="$STATE_DIR/.refresher.$$"; cfgmark="$mark.cfg"
+  # "When this refresher started": a tally older than it belongs to some earlier
+  # picker, hours ago perhaps, and is never served (see refresher_counts).
+  startmark="$mark.start"
+  { : >"$startmark"; } 2>/dev/null
+  # The per-host overlay is read by cfg_overlay from this same path.
+  host_once
+  ovl="${CONFIG_FILE%.yaml}.${TA_HOST:-$HOST_S}.yaml"
+  # Touched before the first read of the config, so a write that lands while it
+  # is being read is not older than the marker.
+  { : >"$cfgmark"; } 2>/dev/null
+  # Whether each of the two files was there at this read, for the re-read on the
+  # 5th tick: see the test there.
+  [ -e "$CONFIG_FILE" ] && cfgseen=1
+  [ -e "$ovl" ] && ovlseen=1
+  # THE CONFIG IS LOADED IN THIS SHELL, not left to the first lookup. --refresher
+  # is dispatched without a cfg_load, and cfg_get is almost always called inside
+  # a $(...): the load it triggers there dies with the subshell, so every lookup
+  # parsed the YAML again (an awk and a hostname each) while usage_on, which
+  # memoises in THIS shell, answered once from whatever the file said at its first
+  # call. A config edited under a running refresher then turned the footer on and
+  # the tusage update off at the same time. Loaded here, both read the one copy,
+  # and the re-read on the 5th tick below replaces it for both at once.
+  cfg_load
+  # THE CLOCK, READ ONCE. The stamp on the bar's cache is written on every tick
+  # and a date per tick is a program per tick; SECONDS counts for free, so the
+  # epoch of any later moment is t0 + SECONDS.
+  t0=$(( $(date +%s) - SECONDS ))
   # THE PORT IS ONLY KNOWN IN HERE. fzf hands $FZF_PORT to the start: bind and
   # to nothing else, so --poke — fired from a tmux hook in a window that has
   # never heard of this list — has no way to ask for it. It is published on the
@@ -22,22 +153,62 @@ refresher() {
   # config-dir labels (`default`, `d`), the next read rebuilt it back, and the
   # meter was fetched a second time under a name nothing reads.
   usage_on && usage_env
+  # The pieces of the bar's text that move slowly, read once here and again on
+  # every 5th tick (see counts_parts). After usage_env: the month line needs it.
+  counts_parts
   while sleep 2; do
     # Advance the token index out here, not in list(): parsing the tail of every
     # transcript costs a few hundred milliseconds, and a keystroke must never
     # wait on it. Every 5th tick is ~10s of lag on a number that moves slowly.
     tick=$(( (tick + 1) % 5 ))
     if [ "$tick" = 0 ]; then
+      # THE STAMP IS RENEWED BEFORE THE SLOW WORK OF THIS TICK, not after it: a
+      # tusage --update can take longer than COUNTS_EVERY, and a stamp that aged
+      # past it in there would make the bar compute for itself in the middle of
+      # a loop that is keeping it. Only while the stamp is being kept at all.
+      [ -n "$live" ] && counts_stamp
+      # A CONFIG CHANGED UNDER A RUNNING REFRESHER IS READ AGAIN. The config is
+      # memoised for the life of a process, and a refresher lives as long as its
+      # list — one started before usage was turned off went on running tusage
+      # for a day. Not older than the marker is "changed", as above; the marker
+      # is its own, because the one for the list is touched on every reload.
+      # A file that is NOT THERE is never newer than anything, so a config or an
+      # overlay that was deleted is not seen by the time test (`-nt` is true when
+      # its right-hand file does not exist): whether each existed at the last read
+      # is remembered, and a change of that is a change too. Deleting the overlay
+      # that holds the usage: block is how usage gets turned off, and the update
+      # went on running.
+      # The memos are cleared with it: the usage switch is asked once per
+      # process, and a config that has gone away must read as empty, not as the
+      # last one that was there.
+      cfgnow=""; ovlnow=""
+      [ -e "$CONFIG_FILE" ] && cfgnow=1
+      [ -e "$ovl" ] && ovlnow=1
+      if ! [ "$cfgmark" -nt "$CONFIG_FILE" ] || ! [ "$cfgmark" -nt "$ovl" ] ||
+         [ "$cfgnow" != "$cfgseen" ] || [ "$ovlnow" != "$ovlseen" ]; then
+        { : >"$cfgmark"; } 2>/dev/null
+        cfgseen=$cfgnow; ovlseen=$ovlnow
+        cfg_reset; USAGE_ON=
+        cfg_load
+        usage_on && usage_env
+      fi
       usage_on && tusage --update >/dev/null 2>&1
+      # What the update moved is in the burn and the month line, and the config
+      # that was just read again may have gained or lost its problem.
+      counts_parts; cdirty=1
       # The footer is one of fzf's own frames, not a row, so reload-sync leaves
       # it alone — it has to be pushed. On this tick and no other: the figure it
       # carries only moves when the index it is read from does.
-      fl=$(usage_line footer) && [ -n "$fl" ] &&
-        post_fzf "$port" "change-footer($fl)"
+      [ -n "$CP_FOOTER" ] && post_fzf "$port" "change-footer($CP_FOOTER)" || :
       # Windows named after their agents. Unthrottled here — this is already the
       # every-5th-tick branch, and there is one refresher per list — while the
       # status bar path throttles itself, since it has no tick of its own.
       sync_window_names >/dev/null 2>&1
+      # The resurrect snapshot, which the status bar used to take whenever it
+      # computed the counts. While this loop keeps the stamp it does not compute
+      # them, so the snapshot rides the tick that already sweeps the names; its own
+      # throttle (resurrect.every) still decides whether it is due.
+      if resurrect_due; then resurrect_save >/dev/null 2>&1 & fi
       # Self-heal the sidebar. When a docked agent's Claude exits, its pane dies
       # inside the dashboard window and that seat is simply gone until something
       # docks again. Put it back rather than making the user notice and work out
@@ -48,20 +219,58 @@ refresher() {
       if [ -n "$dp" ] && [ -z "$(seats "$dp")" ]; then
         ensure_seat "$dp" >/dev/null 2>&1
       fi
+    fi
+    # THE SNAPSHOT IS TAKEN AFTER THE REPAIRS ABOVE, so a seat they put back is
+    # already in it and does not cost a reload on the next tick for something
+    # the forced one below has just drawn.
+    snap=$(tmux list-panes -a -F "$REFRESH_SNAP_FMT" 2>/dev/null)
+    if [ "$tick" = 0 ]; then
       # The notes editors, for the same reason the seats are repaired here: the
       # focus hooks all fire on ARRIVAL, so nothing at all notices a chat pane
-      # that simply died with its editor still parked beside it.
-      [ -x "${SELF%/*}/tnotes" ] && "${SELF%/*}/tnotes" sync >/dev/null 2>&1 &
+      # that simply died with its editor still parked beside it. Only while there
+      # are editors: @ta_notes_any is set by tnotes when it makes the first one
+      # and unset when the last goes (the focus hooks are guarded by the same
+      # flag), and it is global, so any line of the snapshot carries it.
+      first=${snap%%$'\n'*}
+      if [ -x "${SELF%/*}/tnotes" ] && [ "${first##*|@|}" = 1 ]; then
+        "${SELF%/*}/tnotes" sync >/dev/null 2>&1 &
+      fi
+    fi
+    # WHETHER THERE IS ANYTHING TO DRAW. The marker is touched immediately BEFORE
+    # the post, not after: a write that lands while the list is running is then
+    # not older than it, and is seen on the next tick. A reload that was refused
+    # has already touched the marker, so it is remembered in $pending instead.
+    # A DELETED STATE FILE is invisible to refresh_changed (and $STATE_DIR itself
+    # is left out of it), and forget_agent removes <key>.tsv without a reload, so
+    # the files are counted: a count other than the one at the last answered
+    # reload is a change. A glob that matched nothing stays a literal and is not
+    # counted.
+    nstate=0
+    for sf in "$STATE_DIR"/[0-9]*.tsv "$STATE_DIR"/s-*.tsv; do
+      [ -e "$sf" ] && nstate=$((nstate + 1))
+    done
+    due=""
+    if [ -n "$pending" ] || [ "$tick" = 0 ] || [ "$snap" != "$rsnap" ] ||
+       [ "$nstate" != "$rstate" ] || refresh_changed "$mark" "$ovl"; then
+      due=1
+      { : >"$mark"; } 2>/dev/null
+      body="reload-sync($SELF --list)"
+    else
+      body=ignore
     fi
     # ONE FAILED POST IS NOT A DEAD LIST. curl comes back non-zero for a refused
     # connection, and fzf refuses one whenever it is between reloads or busy with
     # a child of its own — so breaking on the first failure left a live dashboard
     # with no refresher behind it and nothing to say why. Five in a row is ten
     # seconds of a list that never answers, which is a list that has really gone;
-    # anything short of that resets the count.
-    if ! curl -s -XPOST "http://127.0.0.1:$port" -d "reload-sync($SELF --list)" \
-           >/dev/null 2>&1; then
+    # anything short of that resets the count. An idle tick counts the same: its
+    # ignore is there to find out.
+    if ! post_fzf "$port" "$body"; then
       fails=$((fails + 1))
+      # A list that does not answer is not one whose tally is current: the stamp
+      # stops here, and the bar takes the counting back within COUNTS_EVERY.
+      live=""
+      [ -n "$due" ] && pending=1
       # A LIST THAT DOES NOT ANSWER HAS NO CLAIM TO MAKE. The five-strike grace
       # keeps the loop alive through a busy fzf, but a refresher whose fzf is
       # already gone was re-publishing its dead port on the pane the NEXT list
@@ -78,24 +287,38 @@ refresher() {
       continue
     fi
     fails=0
+    refresher_counts
+    # What the reload saw is what the next snapshot is compared with.
+    if [ -n "$due" ]; then rsnap=$snap; rstate=$nstate; pending=""; fi
 
-    # THE CURSOR FOLLOWS THE SEAT. With two chats side by side, clicking into the
-    # other one leaves the list still pointing at the row you left — and that row
-    # is what enter and ctrl-x act on. Only when it CHANGES: moving the cursor
-    # under somebody who is scrolling the list is an interruption, and once is a
-    # very different thing from twice a second.
-    dp=$(dash_pane)
-    seat_border "$dp"   # the backstop for the paths that move seats without asking
-    seat=""
-    [ -n "$dp" ] && seat=$(current_seat "$dp")
-    is_docked "$seat" || seat=""
-    if [ "$seat" != "$last" ]; then
-      last=$seat
-      [ -n "$seat" ] && follow_cursor "$port" "$dp"
+    # THE SEATS ARE ONLY LOOKED AT WHEN TMUX MOVED. Every pane, option and seat
+    # stamp they read is in the snapshot, so an unchanged snapshot means the same
+    # answers as last time — and each of these is a tmux round-trip or several.
+    # The claim counts as tmux state: another refresher overwriting it changes
+    # the snapshot, and claim_port makes it again within the tick. Run anyway when
+    # no claim is held (it was never made, or was given up above), and on the 5th
+    # tick for whatever a snapshot cannot show (a list process that has died).
+    if [ "$snap" != "$ssnap" ] || [ -z "$pub" ] || [ "$tick" = 0 ]; then
+      ssnap=$snap
+      # THE CURSOR FOLLOWS THE SEAT. With two chats side by side, clicking into the
+      # other one leaves the list still pointing at the row you left — and that row
+      # is what enter and ctrl-x act on. Only when it CHANGES: moving the cursor
+      # under somebody who is scrolling the list is an interruption, and once is a
+      # very different thing from twice a second.
+      dp=$(dash_pane)
+      seat_border "$dp"   # the backstop for the paths that move seats without asking
+      seat=""
+      [ -n "$dp" ] && seat=$(current_seat "$dp")
+      is_docked "$seat" || seat=""
+      if [ "$seat" != "$last" ]; then
+        last=$seat
+        [ -n "$seat" ] && follow_cursor "$port" "$dp"
+      fi
+      # Re-made whenever the pane moves or the option changes: see claim_port.
+      claim_port
     fi
-    # Re-made every tick, not only when the pane moves: see claim_port.
-    claim_port
   done
+  rm -f "$mark" "$cfgmark" "$startmark" 2>/dev/null
   # Only ever taken down by its owner. A refresher outlived by its fzf — the
   # list respawned, five posts refused — must not wipe the claim the NEXT
   # refresher has already made on the same pane: that is how a live dashboard
@@ -103,6 +326,46 @@ refresher() {
   [ -n "$pub" ] && [ "$(tmux show -pv -t "$pub" @tagents_port 2>/dev/null)" = "$port" ] &&
     tmux set -up -t "$pub" @tagents_port 2>/dev/null
   return 0
+}
+
+# THE STAMP ON THE BAR'S CACHE, in the epoch the refresher's own clock says. The
+# braces are for a state directory that is gone: the error of a failed redirection
+# is printed before a 2>/dev/null on the printf could apply. Uses t0.
+counts_stamp() {
+  { printf '%s\n' "$((t0 + SECONDS))" >"$COUNTS_STAMP"; } 2>/dev/null
+}
+
+# THE BAR'S CACHE FROM THE LIST'S TALLY, on every tick whose post was answered.
+# The reload is asynchronous, so the tally read here is the one the previous
+# reload left: at most one tick old, which is far inside COUNTS_EVERY. It is only
+# served when it is not older than this refresher (a tally left by a picker that
+# closed hours ago says nothing about now); until the first list has written one
+# the stamp stays where it was and the bar counts for itself. Everything is the
+# shell's own: on an idle tick nothing here starts a program, and the cache is
+# rewritten, by a rename, only when its text is not the one already there. Uses
+# the refresher's startmark, t0, live, lasttl, lasttext and cdirty.
+refresher_counts() {
+  local f="$STATE_DIR/.counts.tally" tl="" text
+  [ -e "$f" ] && ! [ "$startmark" -nt "$f" ] || return 0
+  slurp tl "$f"
+  [ -n "$tl" ] || return 0
+  if [ -n "$cdirty" ] || [ "$tl" != "$lasttl" ] || [ ! -e "$COUNTS_OUT" ]; then
+    # The trailing newlines of the burn and the month line belong to the text,
+    # and a command substitution would eat them: a character goes after, and off.
+    text=$(counts_compose "$tl"; printf .); text=${text%.}
+    if [ "$text" != "$lasttext" ] || [ ! -e "$COUNTS_OUT" ]; then
+      if { printf '%s' "$text" >"$COUNTS_OUT.$$"; } 2>/dev/null &&
+         mv -f "$COUNTS_OUT.$$" "$COUNTS_OUT" 2>/dev/null; then
+        lasttext=$text
+      else
+        rm -f "$COUNTS_OUT.$$" 2>/dev/null
+        return 0   # nothing was written, so nothing is vouched for
+      fi
+    fi
+    lasttl=$tl; cdirty=""
+  fi
+  counts_stamp
+  live=1
 }
 
 # THE PORT IS A CLAIM THAT HAS TO BE KEPT, not a note left once. The list pane
@@ -205,7 +468,7 @@ install_focus_hooks() {
   # Four commands per event and no more however often this runs — the first
   # set-hook resets the event, the other three append to it.
   local ev cmd cur pk nts
-  cmd="if-shell -F '#{@tagents_slot}' \"run-shell -b \\\"'$SELF' --unpark '#{pane_id}'\\\"\""
+  cmd="if-shell -F '#{@tagents_slot}' \"run-shell -b \\\"'$SELF' --unpark '#{pane_id}' '#{window_id}'\\\"\""
   # Single quotes around the inner command so tmux stores it rather than
   # expanding it now; the "#{pane_id}" inside is expanded when the hook fires,
   # against the pane it fired for.

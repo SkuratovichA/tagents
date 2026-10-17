@@ -18,12 +18,13 @@
 // positionals, and a command that does not has them REFUSED rather than
 // silently dropped, because an argument nobody reads is an argument the caller
 // thinks was understood.
-import type { CoreT } from '../i18n/index.ts';
 import { z } from 'zod';
-import { configDir, configFile, loadPlugins, type LoadedPlugin } from '../host.ts';
-import type { CliCommandDef } from '../plugin.ts';
+import { configDir, configFile, loadPlugins } from '../host.ts';
+import { coreT, createT, type CoreT } from '../i18n/index.ts';
+import type { CliCommandDef, PluginDef } from '../plugin.ts';
 import { createContext } from '../service.ts';
-import { EXIT, type Io } from './exit.ts';
+import { issueLines } from '../zod-issues.ts';
+import { EXIT, stdio, type Io } from './exit.ts';
 
 /** The key the positionals arrive under, when the schema asks for them. */
 export const POSITIONALS = '_';
@@ -85,14 +86,6 @@ export function takesPositionals(schema: z.ZodType): boolean {
   return Object.hasOwn(shape, POSITIONALS);
 }
 
-/** One line per issue, `path: message`, the way a compiler lists them. */
-export function issueLines(error: z.ZodError): string[] {
-  return error.issues.map((issue) => {
-    const where = issue.path.map(String).join('.');
-    return where ? `${where}: ${issue.message}` : issue.message;
-  });
-}
-
 /** `<plugin> <command> — describe`, for a caller who has to pick one. */
 function listCommands(name: string, commands: readonly CliCommandDef[], io: Io, t: CoreT): number {
   if (!commands.length) {
@@ -105,7 +98,8 @@ function listCommands(name: string, commands: readonly CliCommandDef[], io: Io, 
 }
 
 async function runCommand(
-  found: LoadedPlugin,
+  name: string,
+  def: PluginDef,
   command: CliCommandDef,
   argv: readonly string[],
   io: Io,
@@ -122,7 +116,7 @@ async function runCommand(
   else if (parsed.value.positionals.length) {
     io.err(
       `${t('pluginNoPositionals', {
-        plugin: found.name,
+        plugin: name,
         command: command.name,
         args: parsed.value.positionals.join(' '),
       })}\n`
@@ -139,7 +133,7 @@ async function runCommand(
   // The plugin's own output is a person's, not a contract: stdout belongs to
   // the JSON verbs, so ctx.log appends lines to stderr.
   const ctx = createContext({
-    plugin: found.def,
+    plugin: def,
     log: (...parts: string[]): void => io.err(`${parts.join(' ')}\n`),
     configDir: configDir(),
   });
@@ -149,6 +143,30 @@ async function runCommand(
     io.err(`${e instanceof Error ? e.message : String(e)}\n`);
     return EXIT.error;
   }
+}
+
+/**
+ * Find the command argv[0] names among `def`'s and run it, or say what the plugin
+ * does have. `shown` is the name the caller typed and the messages repeat;
+ * `registered` is the name the plugin is known by, which runCommand quotes. They
+ * differ when a config key is not the definition's own name.
+ */
+async function dispatch(
+  shown: string,
+  registered: string,
+  def: PluginDef,
+  argv: readonly string[],
+  io: Io,
+  t: CoreT
+): Promise<number> {
+  const commands = def.commands ?? [];
+  const wanted = argv[0];
+  const command = wanted === undefined ? undefined : commands.find((c) => c.name === wanted);
+  if (!command) {
+    if (wanted !== undefined) io.err(`${t('unknownCommand', { command: `${shown} ${wanted}` })}\n`);
+    return listCommands(shown, commands, io, t);
+  }
+  return await runCommand(registered, def, command, argv.slice(1), io, t);
 }
 
 /**
@@ -169,12 +187,19 @@ export async function runPluginCommand(name: string, argv: readonly string[], io
     return EXIT.error;
   }
 
-  const commands = found.def.commands ?? [];
-  const wanted = argv[0];
-  const command = wanted === undefined ? undefined : commands.find((c) => c.name === wanted);
-  if (!command) {
-    if (wanted !== undefined) io.err(`${t('unknownCommand', { command: `${name} ${wanted}` })}\n`);
-    return listCommands(name, commands, io, t);
-  }
-  return await runCommand(found, command, argv.slice(1), io, t);
+  return await dispatch(name, found.name, found.def, argv, io, t);
+}
+
+/**
+ * A plugin's own bin: `process.exitCode = await runPluginBin(plugin)`. The verbs
+ * run with no config.yaml registration, which is what lets a LaunchAgent start
+ * one. Otherwise exactly runPluginCommand, down to the same runCommand.
+ */
+export async function runPluginBin(
+  def: PluginDef,
+  argv: readonly string[] = process.argv.slice(2),
+  io: Io = stdio()
+): Promise<number> {
+  const t = coreT(createT());
+  return await dispatch(def.name, def.name, def, argv, io, t);
 }

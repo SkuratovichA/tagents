@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Install the dependencies and build the packages
+        run: pnpm install --frozen-lockfile
+      - name: The plugin contract matches the code
+        run: pnpm plugin:check
+      - name: Install the Claude Code CLI
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Validate the manifests and the skill
+        run: |
+          for target in . .claude-plugin/plugin.json skills; do
+            claude plugin validate "$target" --strict || exit 1
+          done

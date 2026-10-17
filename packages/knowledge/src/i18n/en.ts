@@ -38,4 +38,10 @@ export const en = {
   issueStale: 'updated {{updated}} is older than the newest commit touching the file ({{commit}})',
   issueGenerated: 'generated_from {{source}} changed on {{changed}}, after updated {{updated}}',
   issueDeadLink: 'dead link [[{{target}}]]',
+  summaryIndex: 'brings the index in line with the folder; --full rebuilds it from nothing',
+  summarySearch: 'prints one line per hit: id#heading, score and snippet',
+  summaryShow: 'prints the markdown of a document, or of one section of it',
+  summaryList: 'prints one line per document: id, kind, updated, title and tags',
+  summaryLint: 'checks the claims each document makes about itself',
+  summaryMcp: 'serves the knowledge tools over stdio as an MCP server',
 } as const;

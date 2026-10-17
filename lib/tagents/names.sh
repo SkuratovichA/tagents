@@ -54,14 +54,20 @@ untitle_of() {  # <pane title>
     { print untitle($0) }'
 }
 
-pane_for_sid() {
-  local sid=$1 f b
-  state_files | while IFS= read -r f; do
-    b=${f##*/}
-    awk -F"$TAB" -v s="$sid" -v p="%${b%.tsv}" \
-        'NR == 1 && $3 == s { print p; exit }' "$f"
-  done | head -1
+# Every record whose first line names the session, as "%<key> TAB <timestamp>",
+# in state_files order. More than one happens when a chat is resumed by hand in
+# another pane and the old record lingers. One awk over all of them: closed
+# records persist, so a process per file would fork hundreds on one click.
+panes_for_sid() {  # <sid>
+  local f files=()
+  while IFS= read -r f; do files[${#files[@]}]=$f; done < <(state_files)
+  [ "${#files[@]}" -gt 0 ] || return 0
+  awk -F"$TAB" -v OFS="$TAB" -v s="$1" '
+    FNR == 1 && $3 == s { n = FILENAME; sub(/.*\//, "", n); sub(/\.tsv$/, "", n); print "%" n, $1 }
+  ' "${files[@]}"
 }
+
+pane_for_sid() { panes_for_sid "$1" | head -1 | cut -f1; }
 
 # The --label entry point: same as ctrl-r, for scripts and for naming an agent from
 # somewhere other than the dashboard.
@@ -174,6 +180,7 @@ name_window() {
 # ---------------------------------------------------------------------------
 sync_window_names() {
   local plan line wid nm cur b f
+  host_once   # in this shell, not in the subshell below: a failing hostname would run once per call
   plan=$({
     # One list-panes for the lot: window options resolve in a pane format, so
     # the window name, its automatic-rename and both markers come back per pane.
@@ -182,16 +189,18 @@ sync_window_names() {
     # because it is the one field that carries arbitrary text — the same rule
     # collect() follows, for the same reason.
     tmux list-panes -a -F "P|@|#{pane_id}|@|#{window_id}|@|#{pane_index}|@|#{window_name}|@|#{automatic-rename}|@|#{@tagents}|@|#{@tagents_docked}|@|#{@tagents_name}|@|#{pane_title}" 2>/dev/null
-    live_panes | sort -u | sed 's/^/L|@|/'
+    live_panes | awk '!s[$0]++ { print "L|@|" $0 }'
     # The pid in @tagents_list is what tells a list that is running from a
     # marker left behind by one that is gone, so this is asked in shell.
-    list_windows | sort -u | sed 's/^/X|@|/'
+    list_windows | awk '!s[$0]++ { print "X|@|" $0 }'
     [ -e "$LABELS" ] && awk -F"$TAB" '{ print "N|@|" $1 "|@|" $2 }' "$LABELS"
-    state_files | while IFS= read -r f; do
-      b=${f##*/}; b=${b%.tsv}
-      awk -F"$TAB" -v k="%$b" 'NR == 1 { print "S|@|" k "|@|" $1 "|@|" $3; exit }' "$f"
-    done
-  } | awk -v host="$(hostname -s 2>/dev/null)" -v hostf="$(hostname 2>/dev/null)" -v OFS="$TAB" '
+    # One awk for every state file, not one per file; the first record of each.
+    set --
+    while IFS= read -r f; do set -- "$@" "$f"; done < <(state_files)
+    [ $# -gt 0 ] && awk -F"$TAB" "$AWK_SKIP_GONE"' FNR == 1 {
+      k = FILENAME; sub(/^.*\//, "", k); sub(/\.tsv$/, "", k)
+      print "S|@|%" k "|@|" $1 "|@|" $3 }' "$@" </dev/null 2>/dev/null
+  } | awk -v host="$HOST_S" -v hostf="$HOST_F" -v OFS="$TAB" '
     # Claude prefixes the terminal title with a spinner glyph; the rest is the
     # session title it maintains itself. Same rule as the list — and the same
     # rule untitle_of applies in shell, because the row, this window name and the
@@ -322,7 +331,10 @@ due_every() {  # <stamp file> <seconds> — 0 at most once every <seconds>, and 
   local now last
   [ "${2:-0}" -gt 0 ] 2>/dev/null || return 1
   now=$(date +%s)
-  last=$(cat "$1" 2>/dev/null)
+  # The shell's own read, not cat: the status bar asks this on every redraw. The
+  # braces are for a stamp that is not there, whose error is printed before a
+  # 2>/dev/null on the read itself could apply.
+  last=; { read -r last <"$1"; } 2>/dev/null
   case ${last:-x} in ''|*[!0-9]*) last=0 ;; esac
   [ "$(( now - last ))" -ge "$2" ] || return 1
   mkdir -p "${1%/*}" 2>/dev/null
