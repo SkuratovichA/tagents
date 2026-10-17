@@ -28,8 +28,9 @@ export interface EngineDeps {
   readonly log: (...parts: string[]) => void;
   /** The absolute path of the `tagents` script a click runs. */
   readonly tagents: string;
-  readonly hostname: string;
-  /** Where the click's PATH, HOME, TMUX_TMPDIR, TA_STATE_DIR and TAGENTS_CONFIG_DIR come from. */
+  /** A function: macOS renames the host with the network, so each notice reads it afresh. */
+  readonly hostname: () => string;
+  /** Where the click's PATH, HOME, locale, TMUX_TMPDIR, TA_STATE_DIR and TAGENTS_CONFIG_DIR come from. */
   readonly env: NodeJS.ProcessEnv;
 }
 
@@ -44,10 +45,100 @@ const MINUTE = 60_000;
 
 // What a click needs to find the same tmux server, state and config the engine
 // was started with: a click runs under the notification center, not under this
-// process, so it inherits none of it. Nothing else is passed on.
-const CLICK_ENV = ['PATH', 'HOME', 'TMUX_TMPDIR', 'TA_STATE_DIR', 'TAGENTS_CONFIG_DIR'] as const;
+// process, so it inherits none of it. Nothing else is passed on. The locale is
+// on the list because tmux renders non-ASCII as `_` outside a UTF-8 one, and an
+// agent's name is often not ASCII.
+const CLICK_ENV = ['PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMUX_TMPDIR', 'TA_STATE_DIR', 'TAGENTS_CONFIG_DIR'] as const;
 
 const describe = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+function clickEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of CLICK_ENV) {
+    const v = env[k];
+    if (v !== undefined && v !== '') out[k] = v;
+  }
+  return out;
+}
+
+export function clickFor(e: AgentEvent, mode: NotifyOptions['click'], tagents: string, env: NodeJS.ProcessEnv): ClickAction {
+  const clickEnvOf = clickEnv(env);
+  // No pane, nothing to dock or go to: the click only raises the terminal.
+  if (e.pane === '' || mode === 'focus') return { argv: [], env: clickEnvOf };
+  if (mode === 'goto') return { argv: [tagents, '--goto', e.pane], env: clickEnvOf };
+  return { argv: [tagents, '--act', 'open', e.pane, 'live', e.sessionId, e.cwd], env: clickEnvOf };
+}
+
+export interface NoticeDeps {
+  readonly screen: ScreenProbe;
+  /** Where the session labels live: the feed's directory. */
+  readonly labelsDir: string;
+  readonly tagents: string;
+  readonly hostname: () => string;
+  readonly env: NodeJS.ProcessEnv;
+  readonly log: (...parts: string[]) => void;
+}
+
+async function probe(pane: string, d: NoticeDeps): Promise<Screen | null> {
+  if (pane === '') return null;
+  try {
+    return await d.screen(pane);
+  } catch (err) {
+    // Losing the click's terminal is cheaper than losing the notice.
+    d.log('screen probe failed', pane, describe(err));
+    return null;
+  }
+}
+
+/** The one place a Notice is assembled: the engine posts it and the `test` verb shows it. */
+export async function buildNotice(
+  kind: NoticeKind,
+  e: AgentEvent,
+  extra: { readonly plan?: boolean; readonly idleMin?: number; readonly leftMin?: number },
+  o: { readonly skipVisible: boolean; readonly click: NotifyOptions['click'] },
+  d: NoticeDeps
+): Promise<Notice> {
+  const screen = await probe(e.pane, d);
+  const name = agentName({
+    sessionId: e.sessionId,
+    pane: e.pane,
+    paneTitle: screen?.paneTitle ?? '',
+    label: e.label,
+    cwd: e.cwd,
+    hostname: d.hostname(),
+    labels: readLabels(d.labelsDir),
+  });
+  return {
+    id: `tagents-${e.key}`,
+    thread: e.sessionId,
+    kind,
+    ...compose(kind, e, name, extra),
+    click: clickFor(e, o.click, d.tagents, d.env),
+    ...(screen?.clientPid !== undefined ? { terminalPid: screen.clientPid } : {}),
+    ...(o.skipVisible && screen?.visible === true ? { skipIfFrontmost: true } : {}),
+  };
+}
+
+// The state row carries what an event would: enough to compose the notice and
+// to click through to the right pane. Its `at` is epoch seconds, while an
+// event's is milliseconds (the hook writes seconds and the parser multiplies).
+export function eventFromRow(row: AgentStateRow, labels: ReadonlyMap<string, string>): AgentEvent {
+  return {
+    at: row.at * 1000,
+    event: row.state === 'blocked' ? 'Notification' : 'Stop',
+    key: row.key,
+    sessionId: row.sessionId,
+    agentId: '',
+    pane: /^\d+$/.test(row.key) ? `%${row.key}` : '',
+    cwd: row.cwd,
+    transcript: row.transcript,
+    configDir: row.configDir ?? '',
+    tool: '',
+    sub: '',
+    text: row.detail,
+    label: labels.get(row.sessionId) ?? '',
+  };
+}
 
 export function createEngine(d: EngineDeps): Engine {
   /** Keys with a notice on screen, as far as the backend told us. */
@@ -60,6 +151,14 @@ export function createEngine(d: EngineDeps): Engine {
       void enqueue(() => due(key, idleSince));
     },
   });
+  const noticeDeps: NoticeDeps = {
+    screen: d.screen,
+    labelsDir: d.feed.dir,
+    tagents: d.tagents,
+    hostname: d.hostname,
+    env: d.env,
+    log: d.log,
+  };
   let follower: EventFollower | null = null;
   let stopped = false;
   // Events and due deadlines run one at a time, in the order they arrived: a
@@ -71,34 +170,6 @@ export function createEngine(d: EngineDeps): Engine {
     return chain;
   }
 
-  function clickEnv(): Record<string, string> {
-    const env: Record<string, string> = {};
-    for (const k of CLICK_ENV) {
-      const v = d.env[k];
-      if (v !== undefined && v !== '') env[k] = v;
-    }
-    return env;
-  }
-
-  function clickFor(e: AgentEvent, mode: NotifyOptions['click']): ClickAction {
-    const env = clickEnv();
-    // No pane, nothing to dock or go to: the click only raises the terminal.
-    if (e.pane === '' || mode === 'focus') return { argv: [], env };
-    if (mode === 'goto') return { argv: [d.tagents, '--goto', e.pane], env };
-    return { argv: [d.tagents, '--act', 'open', e.pane, 'live', e.sessionId, e.cwd], env };
-  }
-
-  async function probe(pane: string): Promise<Screen | null> {
-    if (pane === '') return null;
-    try {
-      return await d.screen(pane);
-    } catch (err) {
-      // Losing the click's terminal is cheaper than losing the notice.
-      d.log('screen probe failed', pane, describe(err));
-      return null;
-    }
-  }
-
   async function post(
     kind: NoticeKind,
     e: AgentEvent,
@@ -106,27 +177,9 @@ export function createEngine(d: EngineDeps): Engine {
     skipVisible: boolean,
     opts: NotifyOptions
   ): Promise<void> {
-    const screen = await probe(e.pane);
+    const notice = await buildNotice(kind, e, extra, { skipVisible, click: opts.click }, noticeDeps);
     // Dispose before you drain: a probe that was in flight when stop() ran must not post.
     if (stopped) return;
-    const name = agentName({
-      sessionId: e.sessionId,
-      pane: e.pane,
-      paneTitle: screen?.paneTitle ?? '',
-      label: e.label,
-      cwd: e.cwd,
-      hostname: d.hostname,
-      labels: readLabels(d.feed.dir),
-    });
-    const notice: Notice = {
-      id: `tagents-${e.key}`,
-      thread: e.sessionId,
-      kind,
-      ...compose(kind, e, name, extra),
-      click: clickFor(e, opts.click),
-      ...(screen?.clientPid !== undefined ? { terminalPid: screen.clientPid } : {}),
-      ...(skipVisible && screen?.visible === true ? { skipIfFrontmost: true } : {}),
-    };
     try {
       const r = await d.notifier.post(notice);
       if (r.shown) up.add(e.key);
@@ -201,27 +254,6 @@ export function createEngine(d: EngineDeps): Engine {
       c.skip_visible,
       opts
     );
-  }
-
-  // The state row carries what an event would: enough to compose the notice and
-  // to click through to the right pane. Its `at` is epoch seconds, while an
-  // event's is milliseconds (the hook writes seconds and the parser multiplies).
-  function eventFromRow(row: AgentStateRow, labels: ReadonlyMap<string, string>): AgentEvent {
-    return {
-      at: row.at * 1000,
-      event: row.state === 'blocked' ? 'Notification' : 'Stop',
-      key: row.key,
-      sessionId: row.sessionId,
-      agentId: '',
-      pane: /^\d+$/.test(row.key) ? `%${row.key}` : '',
-      cwd: row.cwd,
-      transcript: row.transcript,
-      configDir: row.configDir ?? '',
-      tool: '',
-      sub: '',
-      text: row.detail,
-      label: labels.get(row.sessionId) ?? '',
-    };
   }
 
   // A restart must not forget the sessions that were already idle: arm every

@@ -1,11 +1,392 @@
-// The notify plugin: what the host sees.
+// The notify plugin: what the host sees, and the five verbs a person types.
 //
-// Registering it in config.yaml gives `tagents notify <verb>`. The service that
-// actually posts notifications runs under its own LaunchAgent (see service.ts),
-// so a host that merely lists plugins never starts it.
-import { definePlugin } from '@tagents/core';
+// Registering it in config.yaml gives `tagents notify <verb>`; the same verbs
+// run from the package's own bin (main.ts), which is what the LaunchAgent
+// starts. The service that actually posts notifications is `run`: under launchd
+// it is the process, and a host that merely lists plugins never starts it.
+//
+// Every verb takes its directories from `deps.env` and not from the context, so
+// a test points it at a temporary config and state dir without touching the
+// process's own environment. In production `deps.env` is the process's, and the
+// two agree.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { z } from 'zod';
+import {
+  configDir as configDirOf,
+  definePlugin,
+  eventsOn,
+  labelsBySession,
+  loadPluginOptions,
+  readAgentState,
+  runService,
+  setEventsOn,
+  stateDir as stateDirOf,
+  type AgentEvent,
+  type CliCommand,
+  type CliCommandDef,
+  type OptionsResult,
+  type PluginContext,
+  type PluginDef,
+} from '@tagents/core';
+import { buildNotice, eventFromRow } from './engine.ts';
+import { execText, type Exec } from './exec.ts';
+import type { NoticeKind } from './kinds.ts';
+import type { Platform, RunSpec } from './notifier.ts';
+import { NotifyOptionsSchema, type NotifyOptions } from './options.ts';
+import { MAIN_JS, appPath, logPath, tagentsScript } from './paths.ts';
+import { pickPlatform } from './platform/index.ts';
+import { appState } from './platform/macos/app.ts';
+import { helperStatus } from './platform/macos/helper.ts';
+import { tmuxScreen } from './screen.ts';
+import { SERVICE_NAME, createNotifyService } from './service.ts';
 
-export default definePlugin({
-  name: 'notify',
-  apiVersion: 1,
-});
+type Log = (...parts: string[]) => void;
+
+export interface CommandDeps {
+  readonly os?: NodeJS.Platform;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly home?: string;
+  readonly exec?: Exec;
+  readonly platform?: (backend: NotifyOptions['backend'], log: Log) => Platform | null;
+  /** Where a verb's answer goes: stdout, which a test replaces. The log lines go to stderr through the context. */
+  readonly out?: (s: string) => void;
+  /** The built entry the LaunchAgent runs: `dist/main.js` unless a test says otherwise. */
+  readonly mainJs?: string;
+}
+
+/** The README's "Allowing notifications" steps, word for word; a test pins the two together. */
+export const ALLOWING_NOTIFICATIONS: readonly string[] = [
+  '`tagents notify install` makes macOS ask whether "tagents" may send notifications: Allow.',
+  'If the prompt was missed: System Settings → Notifications → tagents → Allow notifications. "Banners" is the default style; "Alerts" keeps a notice until it is dismissed.',
+  'Focus and Do Not Disturb hide banners; the notices still land in Notification Center.',
+  '`tagents notify status` must say `permission: authorized`.',
+];
+
+const KINDS = ['question', 'permission', 'turn_done', 'cache_expiring', 'subagent_done', 'session_end'] as const;
+// Fails to compile when NoticeKind gains a member the `test` verb cannot pick.
+const KINDS_COVER_EVERY_KIND: NoticeKind extends (typeof KINDS)[number] ? true : never = true;
+
+const SAMPLE_TEXT: Readonly<Record<NoticeKind, string>> = {
+  question: 'Which of the two approaches should I take?',
+  permission: 'Claude needs your permission to use Bash',
+  turn_done: 'The change is done and the tests pass.',
+  cache_expiring: '',
+  subagent_done: 'The subagent finished its search.',
+  session_end: '',
+};
+
+/** Keeps each verb's own argument type inside its `run`, then stores it in the host's uniform shape. */
+const verb = <S extends z.ZodType>(c: CliCommand<S>): CliCommandDef => c;
+
+const describe = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+const DEFAULT_OPTIONS = NotifyOptionsSchema.parse({});
+
+/** The directory on `pathVar` holding an executable `name`, first match, as the shell would pick it. */
+function dirWithExecutable(name: string, pathVar: string | undefined): string | null {
+  for (const dir of (pathVar ?? '').split(path.delimiter)) {
+    if (dir === '') continue;
+    const file = path.join(dir, name);
+    try {
+      fs.accessSync(file, fs.constants.X_OK);
+      if (fs.statSync(file).isFile()) return dir;
+    } catch {
+      // not here
+    }
+  }
+  return null;
+}
+
+// What launchd runs, with the little environment it will have: it inherits
+// nothing from the shell that ran `install`, so what the service needs (node,
+// tmux, a UTF-8 locale, the state and config the shell used) is written down.
+function runSpecFor(env: NodeJS.ProcessEnv, home: string, mainJs: string): { readonly spec: RunSpec; readonly tmux: string | null } {
+  const tmux = dirWithExecutable('tmux', env['PATH']);
+  const dirs = [path.dirname(process.execPath), ...(tmux === null ? [] : [tmux]), '/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+  const set = (k: string): string | undefined => {
+    const v = env[k];
+    return v !== undefined && v !== '' ? v : undefined;
+  };
+  const out: Record<string, string> = {
+    PATH: [...new Set(dirs)].join(path.delimiter),
+    HOME: set('HOME') ?? home,
+    LANG: set('LANG') ?? 'en_US.UTF-8',
+  };
+  for (const k of [
+    'LC_ALL',
+    'LC_CTYPE',
+    'TA_STATE_DIR',
+    'TAGENTS_CONFIG_DIR',
+    'XDG_CONFIG_HOME',
+    'TMUX_TMPDIR',
+    'TAGENTS_LOCALE',
+    'TA_NOTIFY_APP',
+    'TA_NOTIFY_TAGENTS',
+  ]) {
+    const v = set(k);
+    if (v !== undefined) out[k] = v;
+  }
+  return { spec: { program: process.execPath, args: [mainJs, 'run'], env: out, logFile: logPath(home) }, tmux };
+}
+
+interface StatusReport {
+  readonly lines: readonly string[];
+  readonly ok: boolean;
+  readonly permission: string;
+}
+
+export function createNotifyPlugin(deps: CommandDeps = {}): PluginDef {
+  const osName = deps.os ?? process.platform;
+  const env = deps.env ?? process.env;
+  const home = deps.home ?? os.homedir();
+  const exec = deps.exec ?? execText;
+  const mainJs = deps.mainJs ?? MAIN_JS;
+  const out = deps.out ?? ((s: string): void => void process.stdout.write(s));
+  const say = (...lines: readonly string[]): void => out(lines.map((l) => `${l}\n`).join(''));
+
+  const make = (backend: NotifyOptions['backend'], log: Log): Platform | null =>
+    (deps.platform ?? ((b, l) => pickPlatform(osName, b, { log: l, env, home, ...(deps.exec !== undefined ? { exec: deps.exec } : {}) })))(
+      backend,
+      log
+    );
+  const load = (): OptionsResult<NotifyOptions> => loadPluginOptions(configDirOf(env), SERVICE_NAME, NotifyOptionsSchema);
+  const effective = (r: OptionsResult<NotifyOptions>): NotifyOptions => (r.ok ? r.value : DEFAULT_OPTIONS);
+  /** The service manager does not depend on the backend: `none` must not make an installed LaunchAgent unreachable. */
+  const serviceOf = (o: NotifyOptions, log: Log): Platform | null => make(o.backend, log) ?? make('log', log);
+
+  async function rssMb(pid: number): Promise<string> {
+    try {
+      const r = await exec('ps', ['-o', 'rss=', '-p', String(pid)], { timeoutMs: 3000 });
+      const kb = Number.parseInt(r.stdout.trim(), 10);
+      return Number.isInteger(kb) ? `, rss ${Math.round(kb / 1024)} MB` : '';
+    } catch {
+      return '';
+    }
+  }
+
+  // What `status` prints and `install` ends with: the same function, so the two cannot disagree.
+  async function statusReport(log: Log): Promise<StatusReport> {
+    const r = load();
+    const o = effective(r);
+    const platform = make(o.backend, log);
+    const lines: string[] = [];
+    const kv = (k: string, v: string): void => void lines.push(`${k}: ${v}`);
+    kv('platform', osName);
+    kv('backend', `${o.backend} (resolved to ${platform?.name ?? 'none'})`);
+
+    if (osName === 'darwin') {
+      const app = appPath(env, home);
+      try {
+        kv('app', `${app} (${await appState(app, deps.exec)})`);
+      } catch (e) {
+        kv('app', `${app} (unknown: ${describe(e)})`);
+      }
+    }
+
+    let permission = 'not needed';
+    let permissionOk = true;
+    try {
+      if (platform?.name === 'macos') {
+        const h = await helperStatus(appPath(env, home), deps.exec);
+        permission = h.status;
+        kv('permission', `${h.status} (alert style: ${h.alertStyle})`);
+      } else if (platform?.permission !== undefined) {
+        permission = await platform.permission();
+        kv('permission', permission);
+      } else {
+        kv('permission', permission);
+      }
+      permissionOk = platform?.permission === undefined && platform?.name !== 'macos' ? true : permission === 'authorized';
+    } catch (e) {
+      permission = `unknown: ${describe(e)}`;
+      permissionOk = false;
+      kv('permission', permission);
+    }
+
+    let running = false;
+    const service = serviceOf(o, log)?.service ?? null;
+    if (service === null) {
+      kv('service', `no service manager on ${osName}`);
+    } else {
+      try {
+        const s = await service.status();
+        running = s.running;
+        kv('service', s.detail + (s.running && s.pid !== undefined ? await rssMb(s.pid) : ''));
+      } catch (e) {
+        kv('service', `unknown: ${describe(e)}`);
+      }
+    }
+
+    kv('stream', eventsOn(stateDirOf(env)) ? 'on' : 'off');
+    if (r.ok) {
+      kv('options', `${r.file} ${r.found ? 'found' : 'not found (defaults)'}`);
+    } else {
+      kv('options', `${r.file} invalid`);
+      for (const p of r.problems) lines.push(`  ${p}`);
+    }
+    return { lines, ok: running && permissionOk && r.ok, permission };
+  }
+
+  function installSteps(permission: string): readonly string[] {
+    // The prompt appears once, so a person who is not yet authorized is past step 1: Settings is what helps.
+    const order = permission === 'authorized' ? [0, 1, 2, 3] : [1, 0, 2, 3];
+    return [
+      'Allowing notifications:',
+      ...order.map((i, n) => `${n + 1}. ${ALLOWING_NOTIFICATIONS[i] ?? ''}`),
+    ];
+  }
+
+  async function sampleEvent(kind: NoticeKind): Promise<AgentEvent> {
+    const dir = stateDirOf(env);
+    const pane = env['TMUX_PANE'] ?? '';
+    const text = SAMPLE_TEXT[kind];
+    const row = pane === '' ? undefined : readAgentState(dir).find((x) => x.key === pane.replace(/^%/, ''));
+    if (row !== undefined) return { ...eventFromRow(row, labelsBySession(dir)), at: Date.now(), text };
+    return {
+      at: Date.now(),
+      event: 'Stop',
+      key: 's-test',
+      sessionId: 'test',
+      agentId: '',
+      pane: '',
+      cwd: process.cwd(),
+      transcript: '',
+      configDir: '',
+      tool: '',
+      sub: '',
+      text,
+      label: '',
+    };
+  }
+
+  const plugin: PluginDef = definePlugin({
+    name: 'notify',
+    apiVersion: 1,
+    services: [
+      createNotifyService({
+        os: osName,
+        env,
+        ...(deps.platform !== undefined ? { platform: deps.platform } : {}),
+      }),
+    ],
+    commands: [
+      verb({
+        name: 'run',
+        describe: 'Run the notification service in the foreground.',
+        args: z.object({}),
+        async run(_a, ctx: PluginContext): Promise<number> {
+          const running = await runService(plugin, SERVICE_NAME, ctx, { signals: true });
+          await running.done;
+          return 0;
+        },
+      }),
+      verb({
+        name: 'install',
+        describe: 'Install the service, build the helper app and ask for permission.',
+        args: z.object({}),
+        async run(_a, ctx): Promise<number> {
+          if (osName !== 'darwin') {
+            ctx.log(`no notification backend for ${osName} yet`);
+            return 2;
+          }
+          if (!fs.existsSync(mainJs)) {
+            ctx.log(`${mainJs} does not exist; run pnpm build first`);
+            return 1;
+          }
+          const r = load();
+          if (!r.ok) for (const p of r.problems) ctx.log(`options: ${p}`);
+          const o = effective(r);
+          const platform = make(o.backend, ctx.log);
+          if (platform === null) {
+            ctx.log(`backend is none in ${r.file}: nothing to install`);
+            return 1;
+          }
+          if (platform.service === null) {
+            ctx.log(`the ${platform.name} backend has no service manager on ${osName}`);
+            return 1;
+          }
+          const permission = platform.setup !== undefined ? await platform.setup(ctx.log) : 'not needed';
+          say(`permission: ${permission}`);
+
+          const { spec, tmux } = runSpecFor(env, home, mainJs);
+          if (tmux === null) ctx.log('no tmux on PATH: the service cannot tell whether a pane is on screen');
+          await platform.service.install(spec);
+
+          const report = await statusReport(ctx.log);
+          say(...report.lines, ...installSteps(permission));
+          return 0;
+        },
+      }),
+      verb({
+        name: 'uninstall',
+        describe: 'Stop and remove the service.',
+        args: z.object({ purge: z.boolean().default(false) }),
+        async run(a, ctx): Promise<number> {
+          const service = osName === 'darwin' ? (serviceOf(effective(load()), ctx.log)?.service ?? null) : null;
+          if (service === null) {
+            say(`nothing to uninstall on ${osName}`);
+            return 0;
+          }
+          await service.uninstall();
+          say('service: removed');
+          setEventsOn(false, stateDirOf(env));
+          say('stream: off');
+          if (a.purge) {
+            const app = appPath(env, home);
+            fs.rmSync(app, { recursive: true, force: true });
+            say(`app: removed ${app}`);
+          }
+          return 0;
+        },
+      }),
+      verb({
+        name: 'status',
+        describe: 'Show whether notifications will arrive.',
+        args: z.object({}),
+        async run(_a, ctx): Promise<number> {
+          const report = await statusReport(ctx.log);
+          say(...report.lines);
+          return report.ok ? 0 : 1;
+        },
+      }),
+      verb({
+        name: 'test',
+        describe: 'Post one sample notice through the backend.',
+        args: z.object({ kind: z.enum(KINDS).default('turn_done') }),
+        async run(a, ctx): Promise<number> {
+          void KINDS_COVER_EVERY_KIND;
+          const r = load();
+          if (!r.ok) for (const p of r.problems) ctx.log(`options: ${p}`);
+          const o = effective(r);
+          const platform = make(o.backend, ctx.log);
+          if (platform === null) {
+            say('error: backend is none, nothing posts');
+            return 1;
+          }
+          const e = await sampleEvent(a.kind);
+          const extra = a.kind === 'cache_expiring' ? { idleMin: 50, leftMin: 10 } : {};
+          try {
+            const notice = await buildNotice(a.kind, e, extra, { skipVisible: false, click: o.click }, {
+              screen: tmuxScreen(deps.exec),
+              labelsDir: stateDirOf(env),
+              tagents: tagentsScript(env),
+              hostname: os.hostname,
+              env,
+              log: ctx.log,
+            });
+            const posted = await platform.notifier.post(notice);
+            say(posted.shown ? 'shown' : `dropped: ${posted.why ?? 'no reason given'}`);
+            return posted.shown ? 0 : 1;
+          } catch (e2) {
+            say(`error: ${describe(e2)}`);
+            return 1;
+          }
+        },
+      }),
+    ],
+  });
+  return plugin;
+}
+
+export default createNotifyPlugin();
