@@ -53,12 +53,12 @@ export interface AgentEvent {
 export interface AgentFeed {
     // (undocumented)
     readonly dir: string;
-    follow(onEvent: (e: AgentEvent) => void, onError?: (e: Error) => void): EventFollower;
+    follow(onEvent: (e: AgentEvent) => void, onError?: (e: Error) => void, onDead?: (e: Error) => void): EventFollower;
     states(): AgentStateRow[];
 }
 
-// @public (undocumented)
-export type AgentHookEvent = (typeof HOOK_EVENTS)[number];
+// @public
+export type AgentHookEvent = 'SessionStart' | 'UserPromptSubmit' | 'PreToolUse' | 'PostToolUse' | 'Notification' | 'Stop' | 'SubagentStop' | 'SessionEnd';
 
 // @public (undocumented)
 export interface AgentStateRow {
@@ -325,6 +325,9 @@ export interface FakeToolCall {
 export function findByPrefix(prefix: string): SessionRow | undefined;
 
 // @public
+export function findOnPath(name: string, pathVar?: string | undefined): string | null;
+
+// @public
 export function firstPrompt(file: string): string;
 
 // @public
@@ -333,6 +336,7 @@ export function followAgentEvents(onEvent: (e: AgentEvent) => void, o?: FollowOp
 // @public (undocumented)
 export interface FollowOptions {
     readonly dir?: string;
+    readonly onDead?: (e: Error) => void;
     readonly onError?: (e: Error) => void;
     readonly rotateBytes?: number;
 }
@@ -361,6 +365,14 @@ export interface HistoryRow {
 
 // @public
 export function holdAwake(pid: number, log: (line: string) => void, spawn?: Spawner): () => void;
+
+// @public (undocumented)
+export interface Io {
+    // (undocumented)
+    err: (s: string) => void;
+    // (undocumented)
+    out: (s: string) => void;
+}
 
 // @public (undocumented)
 export function isAlive(pid: number): boolean;
@@ -578,6 +590,9 @@ export function readLabels(dir?: string): Map<string, string>;
 
 // @public
 export function readPluginList(file?: string): PluginListing[];
+
+// @public (undocumented)
+export const realClock: TurnClock;
 
 // @public (undocumented)
 export type RemoveOutcome = 'removed' | 'absent';
@@ -857,6 +872,13 @@ export function tmpDir(prefix?: string): string;
 
 // @public (undocumented)
 export function tryCatch<T, E = Error>(promise: T | Promise<T>): Promise<readonly [Awaited<T>, null] | readonly [null, E]>;
+
+// @public
+export interface TurnClock {
+    after(ms: number, fn: () => void): () => void;
+    // (undocumented)
+    now(): number;
+}
 
 // @public
 export interface TurnEvidence {

@@ -31,6 +31,7 @@ import {
   type PluginDef,
 } from '@tagents/core';
 import { buildNotice, eventFromRow } from './engine.ts';
+import { describe } from './errors.ts';
 import { execText, type Exec } from './exec.ts';
 import type { NoticeKind } from './kinds.ts';
 import type { Platform, RunSpec } from './notifier.ts';
@@ -80,7 +81,6 @@ const SAMPLE_TEXT: Readonly<Record<NoticeKind, string>> = {
 /** Keeps each verb's own argument type inside its `run`, then stores it in the host's uniform shape. */
 const verb = <S extends z.ZodType>(c: CliCommand<S>): CliCommandDef => c;
 
-const describe = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 const DEFAULT_OPTIONS = NotifyOptionsSchema.parse({});
 
 /** The directory on `pathVar` holding an executable `name`, first match, as the shell would pick it. */

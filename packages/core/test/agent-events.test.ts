@@ -167,7 +167,7 @@ test('parseEventLine: twelve fields, an unknown event and a non-numeric at give 
   const twelve = lineOf({}, '').split('\t').slice(0, 12).join('\t');
   assert.equal(parseEventLine(twelve), null);
   assert.equal(parseEventLine(''), null);
-  assert.equal(parseEventLine(lineOf({ event: 'PostToolUse' }, '')), null);
+  assert.equal(parseEventLine(lineOf({ event: 'PreCompact' }, '')), null);
   assert.equal(parseEventLine(lineOf({ event: '' }, '')), null);
   assert.equal(parseEventLine(lineOf({ at: 'soon' }, '')), null);
   assert.equal(parseEventLine(lineOf({ at: '' }, '')), null);
@@ -225,7 +225,7 @@ test('follow: a line appended after the start is delivered, lines present before
 test('follow: a malformed line is skipped and the next one still arrives', async () => {
   const { dir, file } = fixture();
   const run = follow(dir);
-  fs.appendFileSync(file, 'not an event\n\n' + lineOf({ event: 'PostToolUse' }) + lineOf({ text: 'good' }));
+  fs.appendFileSync(file, 'not an event\n\n' + lineOf({ event: 'PreCompact' }) + lineOf({ text: 'good' }));
   await run.until(1, 'the good line after the malformed ones');
   assert.deepEqual(run.texts(), ['good']);
 });

@@ -31,6 +31,7 @@ import { readAgentState, stateDir } from '../agent-state.ts';
 import { configFile } from '../host.ts';
 import { createT, coreT, type CoreT } from '../i18n/index.ts';
 import { isAlive } from '../pid.ts';
+import { findOnPath } from '../path-lookup.ts';
 import { parseSessionRef } from '../session-ref.ts';
 import { renderRecent, renderSearch, renderShow, SESSIONS_PROGRAM } from '../transcripts.ts';
 import { formatAttemptError, type TurnOutcome } from '../turn-outcome.ts';
@@ -250,16 +251,7 @@ function sessions(argv: string[], io: Io): number {
 
 /** Is there a `claude` on PATH? Answered by looking, not by running it. */
 function claudeOnPath(env: NodeJS.ProcessEnv = process.env): string | null {
-  for (const dir of (env['PATH'] ?? '').split(path.delimiter).filter(Boolean)) {
-    const candidate = path.join(dir, 'claude');
-    try {
-      fs.accessSync(candidate, fs.constants.X_OK);
-      return candidate;
-    } catch {
-      continue;
-    }
-  }
-  return null;
+  return findOnPath('claude', env['PATH']);
 }
 
 function doctor(io: Io, t: CoreT): number {

@@ -4,6 +4,8 @@
 export { tryCatch } from './result.ts';
 export { writeAtomic } from './atomic.ts';
 export { isAlive } from './pid.ts';
+export { findOnPath } from './path-lookup.ts';
+export { realClock, type TurnClock } from './turn-scope.ts';
 
 export type {
   PromptOptions,
@@ -138,6 +140,7 @@ export { DEFAULT_LOCALE, createI18n, createT, isLocale, resources } from './i18n
 export type { CoreResource, Locale } from './i18n/index.ts';
 export type { CliContract, CommandSpec } from './cli/spec.ts';
 export { runPluginBin } from './cli/plugin-run.ts';
+export type { Io } from './cli/exit.ts';
 
 export { drained, fakeClaude, sleep, tmpDir } from './testkit.ts';
 export type { FakeClaude, FakeResult, FakeScript, FakeStdin, FakeToolCall } from './testkit.ts';
