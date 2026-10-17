@@ -10,6 +10,9 @@
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "plugin:gen": "node packages/contract/src/main.ts",
+    "plugin:check": "node packages/contract/src/main.ts --check",
+    "prepare": "git rev-parse --git-dir > /dev/null 2>&1 && [ -z \"$(git config --get core.hooksPath)\" ] && git config core.hooksPath .githooks || true"
   }
 }

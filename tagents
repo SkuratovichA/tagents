@@ -478,7 +478,12 @@ set -uo pipefail
 # with the usual `export CDPATH` and a relative invocation this came back as two
 # lines and every fzf binding built from it was a syntax error. `--` for a
 # directory whose name starts with a dash.
-SELF=$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")
+# Parameter expansion in place of dirname and basename (two processes a run);
+# a path without a slash is the current directory, as dirname says.
+_src=${BASH_SOURCE[0]}
+case $_src in */*) _srcdir=${_src%/*} ;; *) _srcdir=. ;; esac
+SELF=$(CDPATH= cd -- "${_srcdir:-/}" && pwd)/${_src##*/}
+unset _src _srcdir
 
 # THE REST OF THE PROGRAM IS lib/tagents/*.sh, SOURCED HERE. Those files hold
 # function definitions and their own constants and run nothing, so this list
@@ -550,8 +555,13 @@ forward_core() {  # <verb> [args…]
 }
 
 case "${1:-}" in
-  --list)         list ;;
-  --flat)         TA_FLAT=1 list ;;
+  # cfg_load here, in the process itself: the first lookup happens inside a
+  # $(…), where the parse would be lost with the subshell and repeated for every
+  # later one. Loaded before that, all of them inherit it. Verbs that never read
+  # the config do not get this line.
+  # --counts does it inside counts(), after its cache check.
+  --list)         cfg_load; list ;;
+  --flat)         cfg_load; TA_FLAT=1 list ;;
   --toggle-group) toggle_group ;;
   --timeline)     timeline ;;
   --label)        label_cmd "${2:-}" "${3:-}" ;;
@@ -611,7 +621,7 @@ case "${1:-}" in
   # never docks anything.
   --focus-hooks)  install_focus_hooks ;;
   --slot)         slot ;;
-  --unpark)       unpark "${2:-}" ;;
+  --unpark)       unpark "${2:-}" "${3:-}" ;;
   # What the focus hooks call so the ▶ marker moves with the switch rather than
   # with the refresher's next tick. Debounced on the seat — see poke.
   --poke)         poke "${2:-}" ;;
@@ -638,7 +648,7 @@ case "${1:-}" in
   # than a fixed line range: the block keeps growing and a stale range silently
   # cuts the help in half.
   -h|--help)      awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$SELF" ;;
-  "")            dash ;;
+  "")            cfg_load; dash ;;
   # An unknown --flag is a typo in the dashboard's own vocabulary and stays an
   # error here. A bare verb is not the dashboard's vocabulary at all: it is
   # tagents-core's, and goes there with everything after it.

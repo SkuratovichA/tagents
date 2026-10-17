@@ -4,8 +4,8 @@
 // turn.test.ts pins what each outcome IS, on real timers where nothing races
 // them and on this clock where something does; this file pins the timing itself
 // and what is left behind. The child is still a real process — only time is
-// fake, so a kill here is a real SIGKILL. FakeClock lives in helpers.ts: both
-// files steer a turn with it.
+// fake, so a kill here is a real SIGKILL. FakeClock is in the testkit and helpers.ts
+// passes it on: both files steer a turn with it.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -110,7 +110,7 @@ test('an hour asleep under the turn is not counted: the warning and the kill wai
   await turn.seen('tool_use');
 
   turn.clock.advance(30 * MIN);
-  turn.clock.sleep(60 * MIN);
+  turn.clock.sleepFiringOverdue(60 * MIN);
   // Ninety wall minutes: a wall-clock timer would have warned at 45:00 and killed at 50:00.
   assert.match(turn.log.join('\n'), /^turn: machine slept ~60 min, not counted$/m);
   assert.doesNotMatch(turn.log.join('\n'), /timed out/);
@@ -143,7 +143,7 @@ test('a warning that lands late still reports leftMs as warnBeforeMs, the figure
   const warnAt = DEFAULT_TIMEOUT_MS - TIMEOUT_WARN_BEFORE_MS;
   turn.clock.advance(warnAt - AWAKE_TICK_MS);
   // The tick due at 45:00 fires at 45:25 and counts two ticks of the gap.
-  turn.clock.sleep(35 * 1000);
+  turn.clock.sleepFiringOverdue(35 * 1000);
   assert.deepEqual(warns, [{ elapsedMs: warnAt + AWAKE_TICK_MS, leftMs: TIMEOUT_WARN_BEFORE_MS }]);
   assert.match(turn.log.join('\n'), /^turn: machine slept ~15 s, not counted$/m);
 

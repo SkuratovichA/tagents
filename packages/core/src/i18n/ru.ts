@@ -1,5 +1,8 @@
 // Русские строки CLI. Машинный вывод (JSON и текст sessions.*) не переводится.
-export const ru = {
+import type { en } from './en.ts';
+
+// Typed by its keys only: the table is exported through `resources`, and literal types would make every Russian string part of the package's public type.
+export const ru: Partial<Record<keyof typeof en, string>> = {
   usage: [
     'использование: tagents-core <команда>',
     '',
@@ -52,4 +55,4 @@ export const ru = {
   doctorClaude: 'claude: {{status}}',
   present: 'есть',
   missing: 'нет',
-} as const;
+};

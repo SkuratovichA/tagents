@@ -122,6 +122,9 @@ unset CLAUDE_PID
 # The capture a restore leaves behind lands a second later instead of fifteen, so a test can wait for it rather than have it land in the middle of a later one.
 # A server the suite starts stays "young" for the whole run however slow the box is, so the one "not a boot" check sets its own TA_RESURRECT_YOUNG inline.
 export TA_RESURRECT_RETAKE=1 TA_RESURRECT_YOUNG=3600
+# --counts is cached for 5 s by default, and the snapshot throttle it drives is
+# what the "due" checks below exercise on every call.
+export TA_COUNTS_EVERY=0
 
 tm() { tmux -L "$S" "$@"; }
 

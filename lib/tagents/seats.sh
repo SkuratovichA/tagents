@@ -106,11 +106,11 @@ seat_here() {  # <the output of seats> <pane> — is that pane one of them?
 # before a chat is evicted from one, and finally the leftmost chat. Every answer
 # is checked against the seats of THIS window, so a marker that names a pane
 # which has stopped being a seat is skipped rather than believed.
-current_seat() {  # <list pane> -> the seat, nothing when the window has none
+current_seat() {  # <list pane> [<the output of seats>] -> the seat, nothing when the window has none
   local dp=${1:-} win ss cur
   win=$(tmux display -p -t "$dp" '#{window_id}' 2>/dev/null)
   [ -n "$win" ] || return 0
-  ss=$(seats "$dp")
+  if [ $# -ge 2 ]; then ss=$2; else ss=$(seats "$dp"); fi
   [ -n "$ss" ] || return 0
   cur=$(tmux show -vw -t "$win" @tagents_cur 2>/dev/null)
   if [ -n "$cur" ] && seat_here "$ss" "$cur"; then printf '%s' "$cur"; return 0; fi
@@ -143,9 +143,21 @@ current_seat() {  # <list pane> -> the seat, nothing when the window has none
 # into. Without this guard ctrl-u could not work: it swaps the chat home, leaving
 # the placeholder focused in the seat, and two seconds later this dragged the
 # chat straight back in.
-unpark() {  # <pane-id> — if this is a placeholder, bring its agent back here
-  local sp=${1:-} agent
+# A TRIGGER IS OLDER THAN THE RUN IT STARTS. The focus hooks only schedule this
+# (`run-shell -b`), so by the time it runs, a dock may have moved the placeholder
+# out of the seat it was focused in and home, parked for the chat it just
+# docked: the test below then passes and would hand that fresh dock straight
+# back. The hook therefore passes the window the event happened in, and the
+# placeholder must still be in it, checked again inside the atomic command list.
+# slot() passes the window of its own snapshot for the same reason. Without it
+# (hooks installed by an older script) the behaviour is what it always was.
+unpark() {  # <pane-id> [window-at-event] — if this is a placeholder, bring its agent back here
+  local sp=${1:-} seen=${2:-} agent cond='#{@tagents_parked}'
   [ -n "$sp" ] || return 0
+  if [ -n "$seen" ]; then
+    [ "$(tmux display -p -t "$sp" '#{window_id}' 2>/dev/null)" = "$seen" ] || return 0
+    cond="#{&&:#{@tagents_parked},#{==:#{window_id},$seen}}"
+  fi
   [ "$(tmux display -p -t "$sp" '#{@tagents_slot}' 2>/dev/null)" = 1 ] || return 0
   [ "$(tmux display -p -t "$sp" '#{window_id}' 2>/dev/null)" = "$(dash_window)" ] && return 0
   agent=$(tmux display -p -t "$sp" '#{@tagents_parked}' 2>/dev/null)
@@ -171,7 +183,7 @@ unpark() {  # <pane-id> — if this is a placeholder, bring its agent back here
   # is NOT covered by the atomicity above — two of them really do run at once,
   # one per window you walked through. collapse_seat takes a lock of its own for
   # precisely that, and the reason is written up there.
-  tmux if-shell -F -t "$sp" '#{@tagents_parked}' \
+  tmux if-shell -F -t "$sp" "$cond" \
     "set -up -t $sp @tagents_parked ; set -up -t $agent @tagents_docked ; \
      swap-pane -d -s $agent -t $sp ; select-pane -t $agent ; \
      run-shell -b \"'$SELF' --collapse $sp\"" 2>/dev/null
@@ -181,10 +193,30 @@ unpark() {  # <pane-id> — if this is a placeholder, bring its agent back here
 # also stands in for an agent while that agent is docked, so it says where the
 # agent went when it finds itself outside the dashboard window.
 slot() {
-  local dwin last="" win parked stray=0
+  local dwin marked last="" win parked active stray=0 out ids p w d l pk ac mylist me=${TMUX_PANE:-}
   while :; do
-    dwin=$(dash_window)
-    win=$(tmux display -p -t "${TMUX_PANE:-}" '#{window_id}' 2>/dev/null)
+    # ONE QUESTION TO TMUX PER LAP, not six: every pane with the four things this
+    # loop wants to know about it. An option that is not set is "-", so the line
+    # always has six fields. dwin is dash_pane's rule (dash_pane_pick, fed the marked
+    # panes of these lines, the pane's own list first of all); dead markers are left for the callers that clear them.
+    out=$(tmux list-panes -a -F '#{pane_id} #{window_id} #{?@tagents_dash,#{@tagents_dash},-} #{?@tagents_list,#{@tagents_list},-} #{?@tagents_parked,#{@tagents_parked},-} #{&&:#{pane_active},#{&&:#{window_active},#{session_attached}}}' 2>/dev/null)
+    dwin=""; win=""; parked=""; active=0; mylist="-"; ids=" "; marked=""
+    while read -r p w d l pk ac; do
+      [ -n "$p" ] || continue
+      ids="$ids$p "
+      if [ "$p" = "$me" ]; then win=$w; mylist=$l; [ "$pk" = - ] || parked=$pk; active=$ac; fi
+      [ "$d" != 1 ] || marked="$marked$p $d $l $w
+"
+    done <<EOF
+$out
+EOF
+    dwin=$(dash_pane_pick <<EOF
+$marked
+EOF
+)
+    dwin=${dwin#* }
+    if [ "$mylist" != - ] && kill -0 "$mylist" 2>/dev/null; then dwin=$win; fi
+    [ -n "$dwin" ] || dwin=$(dash_session_window)
     # NOBODY'S SEAT LEFT TO KEEP WARM. A placeholder outside the dashboard window
     # is standing in for one docked agent, and @tagents_parked names it. When that
     # agent is gone — its Claude exited, or the pane was killed while docked in the
@@ -196,11 +228,7 @@ slot() {
     # The marker is not enough on its own: unpark only clears it while the user is
     # actually looking at this pane, so a killed agent leaves it pointing at a pane
     # id that no longer exists. Ask tmux, not the marker.
-    parked=$(tmux display -p -t "${TMUX_PANE:-}" '#{@tagents_parked}' 2>/dev/null)
-    if [ -n "$parked" ] &&
-       ! tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx -- "$parked"; then
-      parked=""
-    fi
+    case "$ids" in *" $parked "*) ;; *) parked="" ;; esac
     # Two ticks, not one: at birth the pane exists a moment before its markers do.
     if [ -n "$win" ] && [ "$win" != "${dwin:-}" ] && [ -z "$parked" ]; then
       stray=$((stray + 1))
@@ -224,9 +252,8 @@ slot() {
     # user is actually looking at, hand the agent back without waiting for an
     # event that may never arrive (focus-events off, an older tmux, a hook
     # someone else overwrote).
-    if [ "$(tmux display -p -t "${TMUX_PANE:-}" \
-              '#{&&:#{pane_active},#{&&:#{window_active},#{session_attached}}}' 2>/dev/null)" = 1 ]; then
-      unpark "${TMUX_PANE:-}"
+    if [ "$active" = 1 ]; then
+      unpark "${TMUX_PANE:-}" "$win"
     fi
     sleep 2
   done

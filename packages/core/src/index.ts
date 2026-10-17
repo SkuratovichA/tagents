@@ -4,6 +4,8 @@
 export { tryCatch } from './result.ts';
 export { writeAtomic } from './atomic.ts';
 export { isAlive } from './pid.ts';
+export { findOnPath, isExecutableFile } from './path-lookup.ts';
+export { realClock, type TurnClock } from './turn-scope.ts';
 
 export type {
   PromptOptions,
@@ -80,9 +82,22 @@ export {
   parseStateLine,
   readAgentState,
   readHistory,
+  readLabels,
   stateDir,
 } from './agent-state.ts';
 export type { AgentStateRow, HistoryRow } from './agent-state.ts';
+
+export {
+  EVENTS_FILE,
+  EVENTS_ROTATE_BYTES,
+  EVENTS_SWITCH,
+  createAgentFeed,
+  eventsOn,
+  followAgentEvents,
+  parseEventLine,
+  setEventsOn,
+} from './agent-events.ts';
+export type { AgentEvent, AgentFeed, AgentHookEvent, EventFollower, FollowOptions } from './agent-events.ts';
 
 export { PLUGIN_API_VERSION, definePlugin } from './plugin.ts';
 export type {
@@ -95,6 +110,9 @@ export type {
   ServiceDef,
   ServiceHandle,
 } from './plugin.ts';
+
+export { PLUGIN_OPTIONS_DIR, loadPluginOptions, pluginOptionsFile } from './plugin-options.ts';
+export type { OptionsResult } from './plugin-options.ts';
 
 export { createContext, mergeLocales, runService } from './service.ts';
 export type { ContextOptions, RunServiceOptions, RunningService } from './service.ts';
@@ -120,6 +138,9 @@ export type { AddOutcome, PackageProblem, PluginPackage, RemoveOutcome, ResolveR
 
 export { DEFAULT_LOCALE, createI18n, createT, isLocale, resources } from './i18n/index.ts';
 export type { CoreResource, Locale } from './i18n/index.ts';
+export type { CliContract, CommandSpec } from './cli/spec.ts';
+export { runPluginBin } from './cli/plugin-run.ts';
+export type { Io } from './cli/exit.ts';
 
-export { drained, fakeClaude, sleep, tmpDir } from './testkit.ts';
+export { FakeClock, drained, fakeClaude, sleep, tmpDir } from './testkit.ts';
 export type { FakeClaude, FakeResult, FakeScript, FakeStdin, FakeToolCall } from './testkit.ts';

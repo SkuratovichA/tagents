@@ -11,7 +11,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { StreamEvent } from '../src/driver.ts';
-import type { TurnClock } from '../src/turn-scope.ts';
 
 export const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PKG = path.resolve(HERE, '..');
@@ -183,49 +182,8 @@ export function writeHistory(
 
 // ------------------------------------------------------------------- timing ---
 
-/** Time that moves only when told to, firing what falls due on the way, in order. */
-export class FakeClock implements TurnClock {
-  private t = 0;
-  private queue: Array<{ readonly at: number; readonly fn: () => void }> = [];
-
-  now(): number {
-    return this.t;
-  }
-
-  after(ms: number, fn: () => void): () => void {
-    const entry = { at: this.t + ms, fn };
-    this.queue.push(entry);
-    return () => {
-      this.queue = this.queue.filter((x) => x !== entry);
-    };
-  }
-
-  /** Timers scheduled and neither fired nor cancelled. */
-  get pending(): number {
-    return this.queue.length;
-  }
-
-  advance(ms: number): void {
-    this.fire(this.t + ms);
-  }
-
-  /** The machine asleep for `ms`: time jumps, and every timer that fell due meanwhile fires late, at the wake. */
-  sleep(ms: number): void {
-    this.t += ms;
-    this.fire(this.t);
-  }
-
-  private fire(end: number): void {
-    for (;;) {
-      const due = this.queue.filter((x) => x.at <= end).sort((a, b) => a.at - b.at)[0];
-      if (!due) break;
-      this.queue = this.queue.filter((x) => x !== due);
-      this.t = Math.max(this.t, due.at);
-      due.fn();
-    }
-    this.t = end;
-  }
-}
+// The fake clock lives in the testkit, where a plugin's tests can reach it too.
+export { FakeClock } from '../src/testkit.ts';
 
 /**
  * The onEvent sink a fake-clock turn is steered by. The child is a real

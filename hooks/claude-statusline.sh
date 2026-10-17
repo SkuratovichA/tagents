@@ -32,7 +32,8 @@ payload=$(cat 2>/dev/null) || exit 0
 
 # Same unit-separator join as the state hook: tab is IFS whitespace, so an empty
 # field would collapse and shift every later value one slot left.
-us=$(printf '\037')
+# The escape byte comes out of the same fork: one printf, split by the shell.
+ctl=$(printf '\033\037'); ESC=${ctl%?}; us=${ctl#?}
 
 line=$(printf '%s' "$payload" | jq -r --arg us "$us" '
   [ (.session_id // "")
@@ -64,9 +65,21 @@ if [ -n "${sid:-}" ] && [ -n "${mid:-}" ]; then
   # prices the transcript instead, which is the only way to answer "what did
   # the subagents cost" or "what did the last five hours cost", but where the
   # two disagree this one is right.
-  tmpf="$d/.$sid.$$"
-  if printf '%s\t%s\t%s\t%s\n' "$(date +%s)" "$mid" "$mname" "${cost:-0}" >"$tmpf" 2>/dev/null; then
-    mv -f "$tmpf" "$d/$sid.tsv" 2>/dev/null || rm -f "$tmpf"
+  # Claude Code runs this every 30 s per open session, and a rewrite of an
+  # unchanged file makes the picker reload for nothing: the file is written only
+  # when what the readers use (the model, its name and the cost; field 1, the
+  # time, is read by nothing) differs from what is there. The tab is held in a
+  # variable and the line is cut with ${old#*TAB}, not split with read, because
+  # tab is IFS whitespace and an empty field would collapse.
+  tab=$(printf '\t')
+  new="$mid$tab$mname$tab${cost:-0}"
+  old=
+  [ -r "$d/$sid.tsv" ] && IFS= read -r old <"$d/$sid.tsv" 2>/dev/null
+  if [ ! -e "$d/$sid.tsv" ] || [ "${old#*"$tab"}" != "$new" ]; then
+    tmpf="$d/.$sid.$$"
+    if printf '%s\t%s\n' "$(date +%s)" "$new" >"$tmpf" 2>/dev/null; then
+      mv -f "$tmpf" "$d/$sid.tsv" 2>/dev/null || rm -f "$tmpf"
+    fi
   fi
 fi
 
@@ -77,10 +90,10 @@ fi
 # prompt they were only a duplicate. Everything above still runs regardless:
 # the model file is what tagents reads, the printed line is not.
 # ---------------------------------------------------------------------------
-DIM=$(printf '\033[90m'); R=$(printf '\033[0m')
+DIM="${ESC}[90m"; R="${ESC}[0m"
 ctxcol=$DIM
-[ "${ctx:-0}" -ge 60 ] 2>/dev/null && ctxcol=$(printf '\033[33m')
-[ "${ctx:-0}" -ge 85 ] 2>/dev/null && ctxcol=$(printf '\033[1;31m')
+[ "${ctx:-0}" -ge 60 ] 2>/dev/null && ctxcol="${ESC}[33m"
+[ "${ctx:-0}" -ge 85 ] 2>/dev/null && ctxcol="${ESC}[1;31m"
 
 fastmark=
 [ "${fast:-false}" = true ] && fastmark=' ⚡'

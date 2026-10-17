@@ -229,6 +229,25 @@ cfg_load() {
   return 0
 }
 
+# EVERYTHING THE LOAD AND THE CHECK REMEMBER, PUT BACK TO WHAT A PROCESS STARTS
+# WITH. Each of those memos is written for a process that lives for one run: the
+# load is parsed once, cfg_check guards itself with CFG_CHECKED and adds to
+# CFG_NPROBLEMS and CFG_NOTES rather than setting them, and the parse and
+# overlay notes only ever grow. A refresher lives as long as its list, so when it
+# reads the config again it clears them here first — otherwise the old load's
+# refusals and overlay stay in, a problem count is never worked out again, and
+# the next check adds to the last one's. usage_env's exports go too: it sets them
+# only when there is something to set, so a rule removed from the config would
+# otherwise stay in the environment of every tusage the refresher starts.
+cfg_reset() {
+  CFG=''; CFG_LOADED=0
+  CFG_PARSE_NOTES=''; CFG_OVER_FILE=''; CFG_OVER_TOPS=' '
+  CFG_NOTES=''; CFG_NPROBLEMS=0; CFG_SUMMARY=''; CFG_CHECKED=0
+  # resolve_keys is run by cfg_check and remembers its own verdict (keys.sh).
+  KEYS_RESOLVED=''
+  unset TU_ACCOUNTS TU_ACCOUNT_RULES
+}
+
 # THE PARSER'S REFUSALS, TAKEN BACK OUT OF ITS STREAM. Each goes to stderr in
 # the line it has always been — a scripted --config reads it there — and into
 # CFG_PARSE_NOTES for cfg_check, which is how it reaches a dashboard that has no
@@ -279,9 +298,18 @@ cfg_top_of() {  # <path> -> CFG_TOP
 # Overlay lines go FIRST: cfg_get takes the first match and cfg_children keeps
 # file order, so no lookup needs to know an overlay exists. TA_HOST stands in
 # for the hostname so a test can have one.
+# The real hostname, asked of the system once per process: HOST_S is what the
+# list's host column and the window-name sweep read too. TA_HOST is not in it.
+# HOST_F is the FULL name, which is what tmux puts in a default pane title (see
+# host_title): a title equal to either one names nothing.
+host_once() {
+  [ -n "${HOST_S+x}" ] || HOST_S=$(hostname -s 2>/dev/null)
+  [ -n "${HOST_F+x}" ] || HOST_F=$(hostname 2>/dev/null)
+}
 cfg_overlay() {
   local host over top k v
-  host=${TA_HOST:-$(hostname -s 2>/dev/null)}
+  host_once
+  host=${TA_HOST:-$HOST_S}
   [ -n "$host" ] || return 0
   over="${CONFIG_FILE%.yaml}.$host.yaml"
   { [ -f "$over" ] && [ -r "$over" ]; } || return 0
@@ -313,13 +341,22 @@ EOF
 # Return 1 for "absent", 0 with empty output for "present and empty" — the two
 # are different answers, and `config_dir:` written blank must not read as
 # ~/.claude-personal having been left out.
+#
+# A loop over the parsed text in the shell, not an awk over it: callers ask for
+# one key after another inside $(…), and a process per lookup is what one status
+# bar tick used to pay a dozen times over. The value stops at a tab, as awk's $2
+# did, and the first match wins.
 cfg_get() {  # <path>
-  local out
+  local k v
   cfg_load
-  out=$(printf '%s\n' "$CFG" | awk -F"$TAB" -v k="$1" '$1 == k { print "=" $2; exit }')
-  [ -n "$out" ] || return 1
-  printf '%s' "${out#=}"
-  return 0
+  while IFS="$TAB" read -r k v; do
+    [ "$k" = "$1" ] || continue
+    printf '%s' "${v%%"$TAB"*}"
+    return 0
+  done <<EOF
+$CFG
+EOF
+  return 1
 }
 
 cfg_children() {  # <path> -> direct child names, file order, no repeats
@@ -447,10 +484,11 @@ cfg_note() {  # <key, or empty> <what is wrong — and what to do>
 # nothing changed. So the count is remembered against the config's own identity
 # — is any config*.yaml in that directory newer than the stamp — which is a
 # glob and a file test. The config's mtime is the main key: a config you have
-# just fixed clears the marker on the very next tick rather than when a timer
-# gets round to it. An age ceiling sits behind it because a problem can be fixed
-# WITHOUT touching the config — creating the login directory the profile names
-# is the obvious one — and a marker that outlives its problem is its own lie.
+# just fixed clears the marker the next time the bar is recomputed (COUNTS_EVERY
+# seconds at most) rather than when a timer gets round to it. An age ceiling sits
+# behind it because a problem can be fixed WITHOUT touching the config — creating
+# the login directory the profile names is the obvious one — and a marker that
+# outlives its problem is its own lie.
 cfg_count_cached() {  # sets CFG_NPROBLEMS, cheaply, for the status bar
   local f n when now path stale=0
   # No file at all is no problem, and the stamp of a config that has been

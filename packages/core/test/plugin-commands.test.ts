@@ -11,7 +11,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
-import { parseArgv, takesPositionals } from '../src/cli/plugin-run.ts';
+import { parseArgv, runPluginBin, takesPositionals } from '../src/cli/plugin-run.ts';
+import { definePlugin, type PluginDef } from '../src/plugin.ts';
 import { tmpDir } from '../src/testkit.ts';
 import { z } from 'zod';
 import { FIXTURES, runCli } from './helpers.ts';
@@ -183,4 +184,65 @@ test('only a schema that declares `_` is handed the positionals', () => {
   assert.equal(takesPositionals(z.object({ _: z.array(z.string()) })), true);
   assert.equal(takesPositionals(z.object({ text: z.string() })), false);
   assert.equal(takesPositionals(z.string()), false);
+});
+
+// runPluginBin: a plugin's own bin, with no config.yaml in the way.
+function capture(): { io: { out: (s: string) => void; err: (s: string) => void }; out: string[]; err: string[] } {
+  const out: string[] = [];
+  const err: string[] = [];
+  return { io: { out: (s) => out.push(s), err: (s) => err.push(s) }, out, err };
+}
+
+const binPlugin = (seen: unknown[]): PluginDef =>
+  definePlugin({
+    name: 'bin',
+    apiVersion: 1,
+    commands: [
+      {
+        name: 'go',
+        describe: 'goes',
+        args: z.object({ n: z.coerce.number().default(0) }),
+        run: async (a) => {
+          seen.push(a);
+          return 7;
+        },
+      },
+      {
+        name: 'boom',
+        describe: 'throws',
+        args: z.object({}),
+        run: async () => {
+          throw new Error('kaboom');
+        },
+      },
+    ],
+  });
+
+test('runPluginBin runs a known verb with its parsed args and returns its exit code', async () => {
+  const seen: unknown[] = [];
+  const c = capture();
+  assert.equal(await runPluginBin(binPlugin(seen), ['go', '--n', '3'], c.io), 7);
+  assert.deepEqual(seen, [{ n: 3 }]);
+});
+
+test('runPluginBin lists the commands for no verb and for an unknown one, exit 2', async () => {
+  const none = capture();
+  assert.equal(await runPluginBin(binPlugin([]), [], none.io), 2);
+  assert.ok(none.err.join('').includes('go'));
+  assert.ok(none.err.join('').includes('boom'));
+  const unknown = capture();
+  assert.equal(await runPluginBin(binPlugin([]), ['nope'], unknown.io), 2);
+  assert.ok(unknown.err[0]?.includes('nope'));
+  assert.ok(unknown.err.join('').includes('goes'));
+});
+
+test('runPluginBin refuses a bad flag with exit 2', async () => {
+  const c = capture();
+  assert.equal(await runPluginBin(binPlugin([]), ['go', '--=x'], c.io), 2);
+});
+
+test('runPluginBin turns a throwing verb into exit 1 with its message', async () => {
+  const c = capture();
+  assert.equal(await runPluginBin(binPlugin([]), ['boom'], c.io), 1);
+  assert.ok(c.err.join('').includes('kaboom'));
 });
