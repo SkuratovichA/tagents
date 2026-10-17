@@ -166,6 +166,73 @@ ok "still 14 fields" 14 "$(printf '%s\n' "$line" | awk -F"$TAB" '{ print NF }')"
 ok "still the same dollars" "30.000000" "$(printf '%s\n' "$line" | cut -f11)"
 
 # ---------------------------------------------------------------------------
+t "4b. --sessions ctx is the context of the newest main-chain request"
+# The dashboard's ctx column answers "how big is this chat now". The largest
+# context of the last hour answered another question: after a /compact it kept
+# the pre-compaction size for an hour, and a subagent's big context could show
+# as the session's. Its own index, so the fixtures above stay as they are.
+# ---------------------------------------------------------------------------
+
+SAVE_STATE=$TU_STATE
+export TU_STATE="$ROOT/ctx/usage"
+mkdir -p "$TU_STATE"
+
+# <sid> <bucket> <agentid> <model> <maxctx> [<lastctx>] — one facts row. Without
+# the last argument the row has 14 fields, the format an index written before
+# the newest-request column carries; with it, 15.
+frow() {
+  printf '%s\tx-slug\t%s\t%s\t-\t-\t%s\t1\t%s\t0\t0\t0\t0\t%s' "$2" "$1" "$3" "$4" "$5" "$5"
+  [ $# -ge 6 ] && printf '\t%s' "$6"
+  printf '\n'
+}
+ctx_of() {  # <sid> -> field 4 of --sessions
+  bash "$TU" --no-update --sessions --since 30d 2>/dev/null | awk -F"$TAB" -v s="$1" '$1 == s { print $4 }'
+}
+OPUS=claude-opus-5
+B0=$(( T2 - 1200 )); B1=$(( T2 - 600 ))
+
+{
+  # A compaction: the chat sat at 900k, then the next request landed in B1,
+  # whose peak is still the 900k of the request before it but whose newest
+  # request is only 80k.
+  frow s-compact "$B0" - $OPUS 900000 900000
+  frow s-compact "$B1" - $OPUS 900000 80000
+  # A subagent with a bigger context than the main chain, in the newest bucket.
+  frow s-sub "$B0" - $OPUS 120000 120000
+  frow s-sub "$T2" ag1 $OPUS 700000 700000
+  # A session that only ever ran subagents has no main-chain request to report.
+  frow s-subonly "$T2" ag1 $OPUS 700000 700000
+  # The zero-token placeholder is the newest row but is not a request that
+  # carried any context, so it must not zero the column.
+  frow s-synth "$T2" - $OPUS 60000 60000
+  frow s-synth "$T2" - '<synthetic>' 0 0
+  # An idle session still holds the context of its last request: a day-old chat
+  # that was compacted is small, not "unknown" and not the peak it once had.
+  frow s-idle "$(( T2 - 7200 - 600 ))" - $OPUS 500000 500000
+  frow s-idle "$(( T2 - 7200 ))" - $OPUS 90000 40000
+  # An index row from before the column existed: 14 fields, maxctx stands in for
+  # the newest request's context. The newest main bucket decides, not the peak
+  # of the session.
+  frow s-old "$B0" - $OPUS 600000
+  frow s-old "$B1" - $OPUS 200000
+  # Both formats in one session: the 15-field row is the newer one.
+  frow s-mixed "$B0" - $OPUS 800000
+  frow s-mixed "$B1" - $OPUS 800000 70000
+} >"$TU_STATE/facts.tsv"
+
+ok "after a compaction the column shows the new size, not the peak" 80000 "$(ctx_of s-compact)"
+ok "a subagent with a bigger context does not set it"               120000 "$(ctx_of s-sub)"
+ok "a session of subagents only has no main-chain context"           0     "$(ctx_of s-subonly)"
+ok "a zero-token placeholder does not zero it"                       60000 "$(ctx_of s-synth)"
+ok "an idle session keeps its last context, not its peak"            40000 "$(ctx_of s-idle)"
+ok "an index row in the old format falls back to its maxctx"         200000 "$(ctx_of s-old)"
+ok "...a 15-field row after a 14-field one wins"                     70000 "$(ctx_of s-mixed)"
+ok "--sessions still has 14 fields" 14 \
+   "$(bash "$TU" --no-update --sessions --since 30d | awk -F"$TAB" 'NR == 1 { print NF }')"
+
+export TU_STATE="$SAVE_STATE"
+
+# ---------------------------------------------------------------------------
 t "5. a changed spec is a stale map"
 # ---------------------------------------------------------------------------
 
@@ -479,6 +546,66 @@ cy --calibrate "aя" 0.25 >/dev/null
 cy --calibrate "aю" 0.25 >/dev/null
 ok "both accounts keep their own factor" 2 "$(cut -f1 "$CY/state/factor.tsv" 2>/dev/null | grep -c .)"
 SID=$SID_CY
+
+# ---------------------------------------------------------------------------
+t "10. the updater records the newest request's context, and an old index survives it"
+# Transcripts through the real updater: the newest request of a bucket is picked
+# by timestamp, not by its place in the file, and a facts file written before
+# the column existed keeps working without a --rebuild.
+# ---------------------------------------------------------------------------
+SAVE_STATE=$TU_STATE; SAVE_PROJ=$TU_PROJECTS
+SAVE_ACCT=$TU_ACCOUNTS; SAVE_RULES=$TU_ACCOUNT_RULES
+export TU_STATE="$ROOT/lc/usage" TU_PROJECTS="$ROOT/lc/projects"
+export TU_ACCOUNTS="work=$ROOT/lc/acct/work" TU_ACCOUNT_RULES=""
+mkdir -p "$TU_STATE" "$TU_PROJECTS/-lc-proj" "$ROOT/lc/acct/work"
+
+S1=e1e1e1e1-2222-3333-4444-555555555555
+S2=e2e2e2e2-2222-3333-4444-555555555555
+lrec() {  # <sid> <requestId> <epoch> <input tokens> [<agentId>] [<model>]
+  local who=""
+  [ -n "${5:-}" ] && who=",\"agentId\":\"$5\""
+  printf '{"type":"assistant","requestId":"%s","timestamp":"%s","sessionId":"%s"%s,"message":{"model":"%s","usage":{"input_tokens":%s,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0}}}\n' \
+    "$2" "$(isoof "$3")" "$1" "$who" "${6:-claude-opus-5}" "$4"
+}
+lctx() {  # <sid> -> field 4 of --sessions
+  bash "$TU" --no-update --sessions --since 30d 2>/dev/null | awk -F"$TAB" -v s="$1" '$1 == s { print $4 }'
+}
+
+# One bucket: 900k, a subagent at 700k, then the /compact answer at 60k, then
+# the zero-token placeholder Claude Code writes after an interruption.
+mkdir -p "$TU_PROJECTS/-lc-proj/$S1/subagents"
+{ lrec $S1 m1 $((T2 + 10)) 900000
+  lrec $S1 m2 $((T2 + 100)) 60000
+  lrec $S1 m3 $((T2 + 200)) 0 "" "<synthetic>"; } >"$TU_PROJECTS/-lc-proj/$S1.jsonl"
+lrec $S1 a1 $((T2 + 150)) 700000 ag1 >"$TU_PROJECTS/-lc-proj/$S1/subagents/agent-ag1.jsonl"
+# The newer request written above the older one.
+{ lrec $S2 n2 $((T2 + 100)) 50000
+  lrec $S2 n1 $((T2 + 10)) 800000; } >"$TU_PROJECTS/-lc-proj/$S2.jsonl"
+
+bash "$TU" --update >/dev/null 2>&1
+ok "ctx is the newest main-chain request, not the bucket's peak or a subagent's" 60000 "$(lctx $S1)"
+ok "...by timestamp, not by position in the file" 50000 "$(lctx $S2)"
+ok "the main row carries both the peak and the newest" "15:900000:60000" \
+   "$(awk -F"$TAB" -v s=$S1 '$3 == s && $4 == "-" && $7 == "claude-opus-5" { print NF ":" $14 ":" $15 }' "$TU_STATE/facts.tsv")"
+ok "...and the placeholder's row, of the same bucket, the same newest" "15:60000" \
+   "$(awk -F"$TAB" -v s=$S1 '$3 == s && $4 == "-" && $7 == "<synthetic>" { print NF ":" $15 }' "$TU_STATE/facts.tsv")"
+ok "the subagent row keeps its own newest" "15:700000:700000" \
+   "$(awk -F"$TAB" -v s=$S1 '$3 == s && $4 == "ag1" { print NF ":" $14 ":" $15 }' "$TU_STATE/facts.tsv")"
+
+# The index as the previous version wrote it: 14 fields, offsets untouched.
+cut -f1-14 "$TU_STATE/facts.tsv" >"$TU_STATE/facts.old" && mv -f "$TU_STATE/facts.old" "$TU_STATE/facts.tsv"
+ok "the old index has 14 fields" 14 "$(awk -F"$TAB" '{ print NF }' "$TU_STATE/facts.tsv" | sort -u | tr '\n' ' ' | sed 's/ $//')"
+ok "...and is still read, by maxctx" 900000 "$(lctx $S1)"
+
+# The next request arrives: an incremental update, no --rebuild.
+lrec $S1 m4 $((T2 + 300)) 40000 >>"$TU_PROJECTS/-lc-proj/$S1.jsonl"
+bash "$TU" --update >/dev/null 2>&1
+ok "an old index takes the next request without a rebuild" 40000 "$(lctx $S1)"
+ok "...the new row has the new format, the old rows are left alone" "14 15" \
+   "$(awk -F"$TAB" -v s=$S1 '$3 == s { print NF }' "$TU_STATE/facts.tsv" | sort -un | tr '\n' ' ' | sed 's/ $//')"
+
+export TU_STATE="$SAVE_STATE" TU_PROJECTS="$SAVE_PROJ"
+export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
