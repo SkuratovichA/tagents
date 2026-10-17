@@ -6,11 +6,13 @@
 // account"). The dashboard tests `NF >= 7` for exactly this reason, and so does
 // the reader.
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
-import { labelsBySession, parseStateLine, readAgentState, readHistory, stateDir } from '../src/agent-state.ts';
+import { fileURLToPath } from 'node:url';
+import { labelsBySession, parseStateLine, readAgentState, readHistory, readLabels, stateDir } from '../src/agent-state.ts';
 import { ClaudeHeadlessDriver } from '../src/claude-driver.ts';
 import { tmpDir } from '../src/testkit.ts';
 import { writeHistory, writeStateRow } from './helpers.ts';
@@ -92,6 +94,28 @@ test('history carries the labels, latest start wins', () => {
   assert.equal(labels.get('sess-a'), 'dashboard');
   assert.equal(labels.get('sess-b'), 'tg-orchestrator');
   assert.equal(readHistory(dir).length, 3);
+});
+
+// The shell owns labels.tsv (lib/tagents/names.sh), so the reader is pinned to
+// label_of itself rather than to a copy of its rule: every key, a missing one
+// included, must give what the dashboard's own lookup gives.
+test('labels.tsv is read per key exactly as label_of reads it', () => {
+  const ldir = path.join(tmpDir('agent-state-labels'), 'agent-state');
+  fs.mkdirSync(ldir, { recursive: true });
+  const lines = ['sess-a\tRenamed agent', '%12\tpane name', 'no-tab-here', '\tno key', 'sess-b\t', 'sess-a\tlater line', 'sess-c\tname\textra'];
+  fs.writeFileSync(path.join(ldir, 'labels.tsv'), `${lines.join('\n')}\n`);
+  const labels = readLabels(ldir);
+  assert.deepEqual([...labels], [['sess-a', 'Renamed agent'], ['%12', 'pane name'], ['sess-c', 'name']]);
+  const root = fileURLToPath(new URL('../../..', import.meta.url));
+  for (const key of ['sess-a', '%12', 'sess-b', 'sess-c', 'no-tab-here', 'missing']) {
+    const r = spawnSync('bash', ['-c', `TAB=$'\\t'; . "$1/lib/tagents/names.sh" && label_of "$2"`, '_', root, key], {
+      encoding: 'utf8',
+      env: { ...process.env, STATE_DIR: ldir },
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(labels.get(key) ?? '', r.stdout.replace(/\n$/, ''), key);
+  }
+  assert.equal(readLabels(path.join(ldir, 'missing')).size, 0);
 });
 
 test('the driver lists what the hook published, filtered by label and state', async () => {

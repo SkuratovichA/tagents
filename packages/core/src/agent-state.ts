@@ -15,6 +15,24 @@
 //   history.tsv   append-only: at, kind (start|turn|end), sessionId, pane,
 //                 label (TA_LABEL), cwd
 //   sub/<key>.<agent_id>   one subagent, at + detail
+//   events.on     the switch, an empty file: while it exists the hook also appends
+//                 every event the notify plugin wants to events.tsv (agent-events.ts
+//                 creates and removes it)
+//   events.tsv    append-only, one line per event, 13 tab separated fields:
+//                   1 at         epoch seconds (AgentEvent.at is this times 1000)
+//                   2 event      SessionStart | UserPromptSubmit | PreToolUse |
+//                                Notification | Stop | SubagentStop | SessionEnd
+//                   3 key        pane number or 's-<sid>', as for <key>.tsv
+//                   4 sessionId
+//                   5 agent      agent_id, '' for the main agent
+//                   6 pane       '%12', or '' when the session has no pane
+//                   7 cwd
+//                   8 transcript
+//                   9 config     CLAUDE_CONFIG_DIR of the session
+//                  10 tool       11 sub       12 text       13 label (TA_LABEL)
+//                 The hook rotates it to events.tsv.1 with mv -f at 5 MiB, on a
+//                 SessionStart; the follower in agent-events.ts rotates it itself
+//                 at 1 MiB and survives the hook's rename.
 //
 // Two field-count subtleties, both deliberate in the hook and both preserved
 // here. A record with only SIX fields was written before the account column
@@ -25,8 +43,8 @@
 //
 // A `.tsv` key is either a tmux pane id without its '%' (digits) or 's-<sid>'
 // for a session that had no pane of its own. Anything else in the directory —
-// history.tsv, the sub/ dir, a half-written '.<key>.<pid>' temp file — is not a
-// record and is skipped.
+// history.tsv, events.tsv, the sub/ dir, a half-written '.<key>.<pid>' temp file —
+// is not a record and is skipped.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -142,5 +160,31 @@ export function readHistory(dir = stateDir()): HistoryRow[] {
 export function labelsBySession(dir = stateDir()): Map<string, string> {
   const m = new Map<string, string>();
   for (const h of readHistory(dir)) if (h.sessionId && h.label) m.set(h.sessionId, h.label);
+  return m;
+}
+
+/**
+ * The names typed on ctrl-r (or given to `tagents --label`): labels.tsv, key →
+ * name, where the key is a session id or a pane id ('%12'). This is not the
+ * TA_LABEL of labelsBySession above: that one is what a launcher called the
+ * session, and this one is what its owner renamed it to, which the dashboard
+ * puts first (nameof, lib/tagents/list.sh:351). lib/tagents/names.sh owns the
+ * file — set_label writes it, label_of reads one key the same way: the second
+ * tab-separated field of the first line with that key.
+ */
+export function readLabels(dir = stateDir()): Map<string, string> {
+  const m = new Map<string, string>();
+  let text: string;
+  try {
+    text = fs.readFileSync(path.join(dir, 'labels.tsv'), 'utf8');
+  } catch {
+    return m;
+  }
+  for (const line of text.split('\n')) {
+    const f = line.split(TAB);
+    const key = f[0] ?? '';
+    const name = f[1] ?? '';
+    if (key && name && !m.has(key)) m.set(key, name);
+  }
   return m;
 }

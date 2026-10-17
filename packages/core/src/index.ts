@@ -80,9 +80,22 @@ export {
   parseStateLine,
   readAgentState,
   readHistory,
+  readLabels,
   stateDir,
 } from './agent-state.ts';
 export type { AgentStateRow, HistoryRow } from './agent-state.ts';
+
+export {
+  EVENTS_FILE,
+  EVENTS_ROTATE_BYTES,
+  EVENTS_SWITCH,
+  createAgentFeed,
+  eventsOn,
+  followAgentEvents,
+  parseEventLine,
+  setEventsOn,
+} from './agent-events.ts';
+export type { AgentEvent, AgentFeed, AgentHookEvent, EventFollower, FollowOptions } from './agent-events.ts';
 
 export { PLUGIN_API_VERSION, definePlugin } from './plugin.ts';
 export type {
