@@ -85,14 +85,14 @@ After the icon changes, Notification Center may keep showing the old one. `killa
 
 No polling. One `fs.watch` on the state directory, one on the options directory, and at most two timers: the cache deadline's, which exists only while a deadline is armed and sleeps 5 minutes at most, and the follower's re-follow timer, which exists only while the follower is dead. One tmux exec and one helper exec per notice; the helper exits after every verb, so no helper process exists while idle.
 
-Measured on <chip, macOS version>, service running with the stream on:
+Measured on an Apple M4 Pro with macOS 26.7.1, the service running with the stream on. Idle is a quiet 10.8-minute window of ordinary use, in which the hook still wrote 18 events (13 of them SubagentStop), so it is the cost of a quiet stretch rather than of a stream that never moves.
 
 | | |
 | --- | --- |
-| resident memory, idle | <MB> |
-| CPU, idle | <% over N minutes> |
-| one notice, event written to helper exited | <ms> |
-| wake-ups per minute, idle | <n> |
+| resident memory, idle | 22.5 MiB (physical footprint 26.6 MiB); about 60 MiB right after start, before the heap settles |
+| CPU, idle | 0.03 s over 10.8 minutes, 0.005 % |
+| one notice, event written to helper exited | 67 ms, the median of three (67 to 76 ms) |
+| wake-ups per minute, idle | 2.4, none of them from package idle |
 
 ## Adding a backend
 
