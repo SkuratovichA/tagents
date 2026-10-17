@@ -468,7 +468,7 @@ install_focus_hooks() {
   # Four commands per event and no more however often this runs — the first
   # set-hook resets the event, the other three append to it.
   local ev cmd cur pk nts
-  cmd="if-shell -F '#{@tagents_slot}' \"run-shell -b \\\"'$SELF' --unpark '#{pane_id}'\\\"\""
+  cmd="if-shell -F '#{@tagents_slot}' \"run-shell -b \\\"'$SELF' --unpark '#{pane_id}' '#{window_id}'\\\"\""
   # Single quotes around the inner command so tmux stores it rather than
   # expanding it now; the "#{pane_id}" inside is expanded when the hook fires,
   # against the pane it fired for.
