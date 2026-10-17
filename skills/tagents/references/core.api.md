@@ -26,6 +26,41 @@ export type AddOutcome = 'added' | 'exists';
 export function addPluginEntry(file: string, name: string, from: string): AddOutcome;
 
 // @public (undocumented)
+export interface AgentEvent {
+    readonly agentId: string;
+    readonly at: number;
+    readonly configDir: string;
+    // (undocumented)
+    readonly cwd: string;
+    // (undocumented)
+    readonly event: AgentHookEvent;
+    readonly key: string;
+    readonly label: string;
+    readonly pane: string;
+    // (undocumented)
+    readonly sessionId: string;
+    // (undocumented)
+    readonly sub: string;
+    // (undocumented)
+    readonly text: string;
+    // (undocumented)
+    readonly tool: string;
+    // (undocumented)
+    readonly transcript: string;
+}
+
+// @public (undocumented)
+export interface AgentFeed {
+    // (undocumented)
+    readonly dir: string;
+    follow(onEvent: (e: AgentEvent) => void, onError?: (e: Error) => void): EventFollower;
+    states(): AgentStateRow[];
+}
+
+// @public (undocumented)
+export type AgentHookEvent = (typeof HOOK_EVENTS)[number];
+
+// @public (undocumented)
 export interface AgentStateRow {
     // (undocumented)
     readonly at: number;
@@ -156,6 +191,9 @@ export interface ContextOptions {
 // @public (undocumented)
 export type CoreResource = typeof en;
 
+// @public (undocumented)
+export function createAgentFeed(dir?: string): AgentFeed;
+
 // @public
 export function createContext(o: ContextOptions): PluginContext;
 
@@ -192,6 +230,23 @@ export function drained(check: () => boolean | Promise<boolean>, input?: {
     timeoutMs?: number;
     everyMs?: number;
 }): Promise<void>;
+
+// @public (undocumented)
+export interface EventFollower {
+    close(): void;
+}
+
+// @public (undocumented)
+export const EVENTS_FILE = "events.tsv";
+
+// @public (undocumented)
+export const EVENTS_ROTATE_BYTES = 1048576;
+
+// @public (undocumented)
+export const EVENTS_SWITCH = "events.on";
+
+// @public (undocumented)
+export function eventsOn(dir?: string): boolean;
 
 // @public
 export function evidence(o: TurnOutcome): TurnEvidence;
@@ -270,6 +325,16 @@ export function findByPrefix(prefix: string): SessionRow | undefined;
 
 // @public
 export function firstPrompt(file: string): string;
+
+// @public
+export function followAgentEvents(onEvent: (e: AgentEvent) => void, o?: FollowOptions): EventFollower;
+
+// @public (undocumented)
+export interface FollowOptions {
+    readonly dir?: string;
+    readonly onError?: (e: Error) => void;
+    readonly rotateBytes?: number;
+}
 
 // @public
 export function formatAttemptError(o: TurnOutcome): string | null;
@@ -391,6 +456,9 @@ export function outcomeToolUses(o: TurnOutcome): number;
 // @public
 export type PackageProblem = 'not-found' | 'bad-manifest' | 'no-entry';
 
+// @public
+export function parseEventLine(line: string): AgentEvent | null;
+
 // @public (undocumented)
 export function parseStateLine(key: string, line: string): AgentStateRow | null;
 
@@ -481,6 +549,9 @@ export function readAgentState(dir?: string): AgentStateRow[];
 
 // @public
 export function readHistory(dir?: string): HistoryRow[];
+
+// @public
+export function readLabels(dir?: string): Map<string, string>;
 
 // @public
 export function readPluginList(file?: string): PluginListing[];
@@ -685,6 +756,9 @@ export interface SessionSpec {
 
 // @public
 export type SessionState = 'new' | 'working' | 'blocked' | 'done' | 'gone';
+
+// @public
+export function setEventsOn(on: boolean, dir?: string): void;
 
 // @public (undocumented)
 export const sleep: (ms: number) => Promise<void>;

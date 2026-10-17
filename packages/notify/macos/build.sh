@@ -1,0 +1,37 @@
+#!/bin/sh
+# Build the tagents notification helper app: build.sh <app path>.
+# Prints the app path on stdout and progress on stderr. Rebuilds only when the sources changed.
+set -eu
+
+[ $# -eq 1 ] || { echo "usage: build.sh <app path>" >&2; exit 2; }
+app=${1%/}
+here=$(cd "$(dirname "$0")" && pwd)
+lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+
+hash=$(cat "$here/TagentsNotify.swift" "$here/Info.plist" "$here/build.sh" | shasum -a 256 | cut -d ' ' -f 1)
+
+if [ -x "$app/Contents/MacOS/tagents-notify" ] && [ "$(cat "$app/Contents/Resources/source.sha256" 2>/dev/null)" = "$hash" ]; then
+  echo "up to date: $app" >&2
+  printf '%s\n' "$app"
+  exit 0
+fi
+
+# Build next to the real path and move into place, so a half-built app never sits there.
+mkdir -p "$(dirname "$app")"
+tmp=$(mktemp -d "$app.build.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT
+trap 'exit 1' INT TERM
+
+echo "building $app" >&2
+mkdir -p "$tmp/Contents/MacOS" "$tmp/Contents/Resources"
+swiftc -O -target "$(uname -m)-apple-macosx13.0" -framework AppKit -framework UserNotifications \
+  -o "$tmp/Contents/MacOS/tagents-notify" "$here/TagentsNotify.swift" >&2
+cp "$here/Info.plist" "$tmp/Contents/Info.plist"
+printf '%s\n' "$hash" > "$tmp/Contents/Resources/source.sha256"
+codesign --force --sign - "$tmp" >&2
+
+rm -rf "$app"
+mv "$tmp" "$app"
+"$lsregister" -f "$app" >&2
+
+printf '%s\n' "$app"
