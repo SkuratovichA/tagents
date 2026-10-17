@@ -16,6 +16,12 @@
 # used to be where those sessions were dropped, which is why the busiest agents
 # on the machine were invisible in the dashboard.
 #
+# AN EVENT STREAM FOR WHATEVER FOLLOWS THE SESSIONS. While the file
+# <state dir>/events.on exists, the events worth reacting to (a question, a
+# permission prompt, a finished turn, a session start or end) are also appended,
+# one line each, to <state dir>/events.tsv, which the notify plugin follows. With
+# the switch absent the cost is one `[ -e ]`; with it present, one builtin printf.
+#
 # Runs on every tool call, so it stays deliberately cheap: one jq, one tmux.
 
 set -u
@@ -88,6 +94,13 @@ line=$(printf '%s' "$payload" | jq -r --arg us "$us" '
   def clip: if (length > 90) then (.[0:89] + "…") else . end;
   def one:  tostring | gsub("[\\r\\n\\t]+"; " ") | gsub($us; " ")
             | gsub("^ +| +$"; "") | clip;
+  # The event stream carries more text than the dashboard detail, so it has its
+  # own, longer clip. Whitespace runs collapse to one space and the ellipsis
+  # counts toward the 240 characters.
+  def clipt: if (length > 240) then (.[0:239] + "…") else . end;
+  def fld:  (. // "") | tostring | gsub("[\\r\\n\\t]"; " ") | gsub($us; " ")
+            | gsub("^ +| +$"; "");
+  def txt:  fld | gsub(" +"; " ") | clipt;
   def arg:  (.tool_input // {})
             | (.command // .file_path // .pattern // .path // .url
                // .description // .prompt // "") | tostring;
@@ -116,13 +129,27 @@ line=$(printf '%s' "$payload" | jq -r --arg us "$us" '
      else                               ["working", $e] end) as [$state, $detail]
   | [$e, ($h.agent_id // ""), $state,
      ($h.session_id // ""), ($h.cwd // ""), ($h.transcript_path // ""),
-     ($detail | one)]
+     ($detail | one),
+     (if $e == "PreToolUse" then ($h.tool_name // "") else "" end),
+     (if   $e == "Notification" then ($h.notification_type // $h.notificationType // "")
+      elif $e == "SessionStart" then ($h.source // "")
+      elif $e == "SessionEnd"   then ($h.reason // "")
+      elif $e == "SubagentStop" then ($h.agent_type // "")
+      else "" end),
+     (if   $e == "Notification" then (try ($h.message // "" | txt) catch "")
+      elif $e == "PreToolUse" and $h.tool_name == "AskUserQuestion"
+           then (try ($h.tool_input.questions[0].question // "" | txt) catch "")
+      elif $e == "PreToolUse" and $h.tool_name == "ExitPlanMode"
+           then (try ($h.tool_input.plan | split("\n") | map(fld) | map(select(. != ""))
+                      | (.[0] // "") | sub("^#+ "; "") | txt) catch "")
+      else "" end),
+     (env.TA_LABEL // ""), (env.CLAUDE_CONFIG_DIR // "")]
   | map(tostring | gsub("[\\r\\n\\t]"; " ") | gsub($us; " "))
   | join($us)
 ' 2>/dev/null) || exit 0
 [ -n "$line" ] || exit 0
 
-IFS="$us" read -r event agent state sid cwd transcript detail <<EOF
+IFS="$us" read -r event agent state sid cwd transcript detail etool esub etext elabel econfig <<EOF
 $line
 EOF
 
@@ -197,6 +224,42 @@ if [ -z "${agent:-}" ]; then
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$now" "$hist" "${sid:-}" "$pane" "${TA_LABEL:-}" "${cwd:-}" \
       >>"$dir/history.tsv" 2>/dev/null
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# THE EVENT STREAM, for the notify plugin: one line per event worth reacting to,
+# appended to events.tsv while the switch events.on exists. The plugin creates
+# the switch when it starts following the file and removes it when it stops, so
+# an idle machine pays one `[ -e ]` per hook call and nothing else. [ -e ] rather
+# than [ -f ] so the switch works as a file or as a directory. Placed before the
+# subagent block on purpose: a SubagentStop with an agent_id exits there.
+# Every notification type is written, idle ones included, because telling them
+# apart is the plugin's job. A PreToolUse is written only for the two tools that
+# ask the owner something; every other tool call would be noise at this rate.
+# The pane column is empty for an s-<sid> key: a background job re-keyed above
+# still holds its PARENT's pane in $pane, and a click on its notification must
+# never dock the parent's chat. All sanitising was done by the jq call above,
+# so nothing here can cost the state record below. The rotation mirrors the
+# history one: normally the follower trims the file itself, so this only fires
+# when a follower died and left the switch on.
+# ---------------------------------------------------------------------------
+if [ -e "$dir/events.on" ]; then
+  ev=
+  case "$event" in
+    SessionStart|UserPromptSubmit|Stop|SubagentStop|SessionEnd|Notification) ev=1 ;;
+    PreToolUse) case "$etool" in AskUserQuestion|ExitPlanMode) ev=1 ;; esac ;;
+  esac
+  if [ -n "$ev" ]; then
+    if [ "$event" = SessionStart ] && [ -e "$dir/events.tsv" ]; then
+      sz=$(wc -c <"$dir/events.tsv" 2>/dev/null || echo 0)
+      [ "${sz:-0}" -gt 5242880 ] && mv -f "$dir/events.tsv" "$dir/events.tsv.1"
+    fi
+    case "$key" in s-*) epane= ;; *) epane=$pane ;; esac
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$now" "$event" "$key" "${sid:-}" "${agent:-}" "$epane" "${cwd:-}" "${transcript:-}" \
+      "${econfig:-}" "${etool:-}" "${esub:-}" "${etext:-}" "${elabel:-}" \
+      >>"$dir/events.tsv" 2>/dev/null
   fi
 fi
 
