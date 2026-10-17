@@ -10,8 +10,12 @@ export type AppState = 'up to date' | 'stale' | 'missing';
 const CHECK_TIMEOUT_MS = 10_000;
 const BUILD_TIMEOUT_MS = 300_000;
 
-export async function appState(app: string, exec: Exec = execText): Promise<AppState> {
-  const r = await exec('/bin/sh', [BUILD_SCRIPT, '--check', app], { timeoutMs: CHECK_TIMEOUT_MS });
+// `icon` is the PNG the app's icon is made from, or undefined for none; the
+// build script counts its bytes in the digest that `--check` compares.
+const iconArgs = (icon: string | undefined): readonly string[] => (icon === undefined ? [] : ['--icon', icon]);
+
+export async function appState(app: string, icon: string | undefined, exec: Exec = execText): Promise<AppState> {
+  const r = await exec('/bin/sh', [BUILD_SCRIPT, '--check', ...iconArgs(icon), app], { timeoutMs: CHECK_TIMEOUT_MS });
   const out = r.stdout.trim();
   if (out === 'up to date' || out === 'stale' || out === 'missing') return out;
   throw new Error(`cannot tell whether the helper app is built: ${r.stderr.trim().slice(0, 200) || out}`);
@@ -19,11 +23,12 @@ export async function appState(app: string, exec: Exec = execText): Promise<AppS
 
 export async function buildApp(
   app: string,
+  icon: string | undefined,
   log: (...parts: string[]) => void,
   exec: Exec = execText
 ): Promise<void> {
   log('building the notification helper', app);
-  const r = await exec('/bin/sh', [BUILD_SCRIPT, app], { timeoutMs: BUILD_TIMEOUT_MS });
+  const r = await exec('/bin/sh', [BUILD_SCRIPT, ...iconArgs(icon), app], { timeoutMs: BUILD_TIMEOUT_MS });
   if (!r.timedOut && r.code === 0) return;
   if (r.timedOut) throw new Error(`building the helper app timed out after ${BUILD_TIMEOUT_MS / 1000} s`);
   const tail = r.stderr.trimEnd().split('\n').slice(-20).join('\n');

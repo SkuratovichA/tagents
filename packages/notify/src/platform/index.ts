@@ -17,6 +17,8 @@ export interface PlatformDeps {
   readonly env?: NodeJS.ProcessEnv;
   readonly uid?: number;
   readonly home?: string;
+  /** The PNG the helper app's icon is made from; unset: the app has no icon of its own. */
+  readonly icon?: string;
 }
 
 function launchd(deps: PlatformDeps) {
@@ -34,7 +36,7 @@ function macos(deps: PlatformDeps): Platform {
     notifier: createHelperNotifier({ app, ...(deps.exec !== undefined ? { exec: deps.exec } : {}) }),
     service: launchd(deps),
     async setup(log) {
-      if ((await appState(app, deps.exec)) !== 'up to date') await buildApp(app, log, deps.exec);
+      if ((await appState(app, deps.icon, deps.exec)) !== 'up to date') await buildApp(app, deps.icon, log, deps.exec);
       return helperAuthorize(app, deps.exec);
     },
     async permission() {
