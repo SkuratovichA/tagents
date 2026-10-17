@@ -33,6 +33,11 @@ t()    { printf '\n%s\n' "$1"; }
 
 TAB=$(printf '\t')
 
+# The suite runs inside a real Claude session, which exports this; the hook
+# reads it as "the claude I am running inside" and would classify these runs
+# against that session's ancestry.
+unset CLAUDE_PID
+
 SHIM="$ROOT/shim"; mkdir -p "$SHIM"
 cat >"$SHIM/tmux" <<'SH'
 #!/bin/sh
@@ -243,9 +248,11 @@ step "PostToolUse of AskUserQuestion" "$(payload PostToolUse '{"tool_name":"AskU
 
 t "l. no new process, SessionStart excepted"
 # Two kinds of check: absolute ones from the logged calls (exactly one jq, at most
-# one tmux, which hold whatever the reference is), and comparisons with the
-# merge-base hook, which print SKIP without one.
-[ "$HAVE_REF" = 1 ] || echo "  SKIP the process comparisons against the merge-base hook"
+# one tmux), and comparisons with this same hook run with the switch off, which
+# is what "the stream costs no process" means. The merge-base hook is no
+# reference for this: once child sessions were merged it already starts the awk
+# that reads the record on every event, and at SessionStart the `ps` and the
+# pane map of the ancestry walk, none of which the stream has anything to do with.
 # Every external program the hook can run, logged by name and then exec'd for
 # real; the real paths are resolved before PATH changes.
 LSHIM="$ROOT/lshim"; mkdir -p "$LSHIM"; CALLS="$ROOT/calls.log"
@@ -269,12 +276,10 @@ while IFS= read -r p; do
   ok "exactly one jq: $lbl" 1 "$(ncall "$new" jq)"
   ok "at most one tmux: $lbl" 1 "$(atmost1 "$(ncall "$new" tmux)")"
   ok "no wc: $lbl" 0 "$(ncall "$new" wc)"
-  if [ "$HAVE_REF" = 1 ]; then
-    rm -rf "$ROOT/lb$i"; mkdir -p "$ROOT/lb$i"
-    old=$(count "$HOOK_MAIN" "$ROOT/lb$i" "$p")
-    ok "same programs: $lbl" "$old" "$new"
-    ok "...and some were started at all" 1 "$([ -n "$old" ] && echo 1 || echo 0)"
-  fi
+  rm -rf "$ROOT/lb$i"; mkdir -p "$ROOT/lb$i"
+  old=$(count "$HOOK" "$ROOT/lb$i" "$p")
+  ok "same programs as with the switch off: $lbl" "$old" "$new"
+  ok "...and some were started at all" 1 "$([ -n "$old" ] && echo 1 || echo 0)"
 done <<EOP
 $(payload PreToolUse '{"tool_name":"Bash","tool_input":{"command":"ls"}}')
 $(payload PreToolUse '{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Pick?"}]}}')
@@ -284,31 +289,29 @@ $(payload PostToolUse '{"tool_name":"AskUserQuestion","tool_response":{}}')
 EOP
 ok "the AskUserQuestion run really wrote an event" 1 "$(lines "$ROOT/la2/events.tsv")"
 ok "the answer run really wrote an event" 1 "$(lines "$ROOT/la5/events.tsv")"
-# SessionStart is the one event that starts a program the reference does not: the
-# size check for the rotation of events.tsv is a wc, and only when the file exists.
-# Pinned here so the exception is stated, not hidden: exactly one more wc.
+# SessionStart is the one event that starts a program the switch-off run does
+# not: the size check for the rotation of events.tsv is a wc, and only when the
+# file exists. Pinned here so the exception is stated, not hidden: exactly one
+# more wc. Its tmux calls are the ancestry walk's pane map plus the pane option,
+# so the bound there is "no more than with the switch off", not one.
 nwc() { printf '%s' "$1" | tr ' ' '\n' | grep -c '^wc$'; }
 SS=$(payload SessionStart '{"source":"startup"}')
 fresh "$ROOT/lsa"; printf '1\n' >"$ROOT/lsa/events.tsv"; printf '1\n' >"$ROOT/lsa/history.tsv"
 rm -rf "$ROOT/lsb"; mkdir -p "$ROOT/lsb"; printf '1\n' >"$ROOT/lsb/history.tsv"
 new=$(count "$HOOK" "$ROOT/lsa" "$SS")
 ok "SessionStart with both files: exactly one jq" 1 "$(ncall "$new" jq)"
-ok "...at most one tmux" 1 "$(atmost1 "$(ncall "$new" tmux)")"
 ok "...and exactly two wc, one per file" 2 "$(nwc "$new")"
-if [ "$HAVE_REF" = 1 ]; then
-  old=$(count "$HOOK_MAIN" "$ROOT/lsb" "$SS")
-  ok "...exactly one more wc than the reference" "$(($(nwc "$old") + 1))" "$(nwc "$new")"
-fi
+old=$(count "$HOOK" "$ROOT/lsb" "$SS")
+ok "...no more tmux than with the switch off" "$(ncall "$old" tmux)" "$(ncall "$new" tmux)"
+ok "...exactly one more wc than with the switch off" "$(($(nwc "$old") + 1))" "$(nwc "$new")"
 fresh "$ROOT/lsa"; printf '1\n' >"$ROOT/lsa/events.tsv"
 new=$(count "$HOOK" "$ROOT/lsa" "$SS")
 ok "SessionStart with only events.tsv: exactly one wc" 1 "$(nwc "$new")"
 fresh "$ROOT/lsa"; rm -rf "$ROOT/lsb"; mkdir -p "$ROOT/lsb"
 new=$(count "$HOOK" "$ROOT/lsa" "$SS")
 ok "SessionStart with no events.tsv yet: no wc" 0 "$(nwc "$new")"
-if [ "$HAVE_REF" = 1 ]; then
-  old=$(count "$HOOK_MAIN" "$ROOT/lsb" "$SS")
-  ok "...same programs as the reference" "$old" "$new"
-fi
+old=$(count "$HOOK" "$ROOT/lsb" "$SS")
+ok "...same programs as with the switch off" "$old" "$new"
 
 t "m. a file over 5 MiB is rotated on SessionStart, a smaller one is not"
 for f in events history; do
