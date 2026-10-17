@@ -31,6 +31,11 @@ const NOTHING: Verdict = { kind: null, plan: false, arms: false, withdraw: false
 
 const asks = (kind: NoticeKind, over: Partial<Verdict> = {}): Verdict => ({ ...NOTHING, kind, ...over });
 
+/** The tools whose PreToolUse is a question put to the person, and whose PostToolUse is the answer. */
+export const QUESTION_TOOLS = ['AskUserQuestion', 'ExitPlanMode'] as const;
+
+const isQuestionTool = (tool: string): boolean => (QUESTION_TOOLS as readonly string[]).includes(tool);
+
 /** A session with no tmux pane (`s-<id>`: `claude -p` from a daemon, an IDE) is only counted when asked for. */
 export function countsSession(key: string, headless: boolean): boolean {
   return headless || !key.startsWith('s-');
@@ -51,12 +56,10 @@ export function classify(e: AgentEvent, o: { readonly headless: boolean }): Verd
   if (!countsSession(e.key, o.headless)) return null;
   switch (e.event) {
     case 'PreToolUse':
-      if (e.tool === 'AskUserQuestion') return asks('question', { arms: true });
-      if (e.tool === 'ExitPlanMode') return asks('question', { arms: true, plan: true });
-      return null;
+      return isQuestionTool(e.tool) ? asks('question', { arms: true, plan: e.tool === 'ExitPlanMode' }) : null;
     case 'PostToolUse':
       // The person answered the question or the plan: the session works again.
-      return e.tool === 'AskUserQuestion' || e.tool === 'ExitPlanMode' ? { ...NOTHING, withdraw: true, cancel: true } : null;
+      return isQuestionTool(e.tool) ? { ...NOTHING, withdraw: true, cancel: true } : null;
     case 'Notification':
       return fromNotification(e);
     case 'Stop':
@@ -70,6 +73,7 @@ export function classify(e: AgentEvent, o: { readonly headless: boolean }): Verd
     case 'UserPromptSubmit':
       return { ...NOTHING, withdraw: true, cancel: true };
     case 'SessionStart':
-      return { ...NOTHING, cancel: true };
+      // A new session in the pane makes whatever the old one asked moot.
+      return { ...NOTHING, withdraw: true, cancel: true };
   }
 }

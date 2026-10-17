@@ -2,24 +2,24 @@
 // records, a clock whose time the test sets, and a screen probe that answers
 // from a table.
 //
-// The clock is the one worth reading. A real `setTimeout` does not count the
-// time the Mac spent asleep, while the prompt cache's TTL does, so the engine
-// re-reads the wall clock on every wake. To test that, the fake clock keeps two
-// things apart: `advance` walks time forward and runs the timers that fall
-// inside it, in order, the way a running process would see it, while `jump`
-// moves the wall clock without running anything, the way a sleep does. After a
-// jump, `advance(0)` runs what is overdue, which is what the OS does on wake.
+// The clock is core's `FakeClock`, from its testkit, and its sleeps are the ones
+// worth reading. A real `setTimeout` does not count the time the Mac spent
+// asleep, while the prompt cache's TTL does, so the engine re-reads the wall
+// clock on every wake. `sleepPausingTimers` is that sleep, with a timer keeping
+// the awake time it had left; `jump` and `sleepFiringOverdue` are the kind case,
+// where every timer is overdue at the wake.
+import fs from 'node:fs';
 import {
+  FakeClock,
   tmpDir,
   type AgentEvent,
   type AgentFeed,
   type AgentStateRow,
   type EventFollower,
 } from '@tagents/core';
-import type { Clock } from '../src/clock.ts';
 import type { Notice, Notifier, PostResult } from '../src/notifier.ts';
 import { NotifyOptionsSchema, type NotifyOptions } from '../src/options.ts';
-import type { Screen, ScreenProbe } from '../src/screen.ts';
+import type { NO_SUCH_PANE, Screen, ScreenProbe } from '../src/screen.ts';
 
 /** A round number of epoch milliseconds, so row seconds convert without a remainder. */
 export const T0 = 1_700_000_000_000;
@@ -67,22 +67,53 @@ export function options(raw: unknown = {}): NotifyOptions {
 
 export interface FakeFeed extends AgentFeed {
   rows: AgentStateRow[];
+  /** Followers opened so far. */
   followers: number;
+  /** The latest follower is closed, by its caller or by dying. */
   closed: boolean;
+  /** The next `n` calls to `follow` throw. */
+  failFollows(n: number): void;
   emit(e: AgentEvent): void;
+  /** The latest follower dies the way core's does: it closes itself, then reports once. */
+  kill(reason?: string): void;
 }
 
-export function fakeFeed(dir: string = tmpDir('notify-feed')): FakeFeed {
+// A feed dir per rig keeps one test's labels and history out of the next one's,
+// and a process per test file means the exit of this one is where they all go.
+const feedDirs: string[] = [];
+process.once('exit', () => {
+  for (const dir of feedDirs) fs.rmSync(dir, { recursive: true, force: true });
+});
+
+function ownFeedDir(): string {
+  const dir = tmpDir('notify-feed');
+  feedDirs.push(dir);
+  return dir;
+}
+
+/** A feed over `dir`, or over a temp dir of its own that is removed when the process exits. */
+export function fakeFeed(dir: string = ownFeedDir()): FakeFeed {
   let listener: ((e: AgentEvent) => void) | null = null;
+  let onDead: ((e: Error) => void) | null = null;
+  let failing = 0;
   const feed: FakeFeed = {
     dir,
     rows: [],
     followers: 0,
     closed: false,
     states: () => [...feed.rows],
-    follow(onEvent): EventFollower {
+    failFollows(n) {
+      failing = n;
+    },
+    follow(onEvent, _onError, dead): EventFollower {
+      if (failing > 0) {
+        failing--;
+        throw new Error('the events file cannot be watched');
+      }
       listener = onEvent;
+      onDead = dead ?? null;
       feed.followers++;
+      feed.closed = false;
       return {
         close() {
           feed.closed = true;
@@ -91,6 +122,13 @@ export function fakeFeed(dir: string = tmpDir('notify-feed')): FakeFeed {
     },
     emit(e) {
       listener?.(e);
+    },
+    kill(reason = 'the watch failed') {
+      feed.closed = true;
+      listener = null;
+      const report = onDead;
+      onDead = null;
+      report?.(new Error(reason));
     },
   };
   return feed;
@@ -106,14 +144,15 @@ export interface RecordingNotifier extends Notifier {
   readonly withdrawn: string[];
   /** What the next posts answer. */
   result: PostResult;
-  /** The next `n` posts throw instead of answering. */
-  failPosts(n: number): void;
+  /** The next `n` posts throw `message` instead of answering. */
+  failPosts(n: number, message?: string): void;
   /** Hold every post until `release()`: a notifier that is slow to answer. */
   hold(): { release(): void };
 }
 
 export function recordingNotifier(): RecordingNotifier {
   let failing = 0;
+  let failure = 'the notification center is not answering';
   let gate: Promise<void> | null = null;
   const n: RecordingNotifier = {
     name: 'recording',
@@ -121,8 +160,9 @@ export function recordingNotifier(): RecordingNotifier {
     posts: [],
     withdrawn: [],
     result: { shown: true },
-    failPosts(count) {
+    failPosts(count, message = 'the notification center is not answering') {
       failing = count;
+      failure = message;
     },
     hold() {
       let release!: () => void;
@@ -140,7 +180,7 @@ export function recordingNotifier(): RecordingNotifier {
       if (gate) await gate;
       if (failing > 0) {
         failing--;
-        throw new Error('the notification center is not answering');
+        throw new Error(failure);
       }
       n.calls.push({ op: 'post', notice });
       n.posts.push(notice);
@@ -154,67 +194,40 @@ export function recordingNotifier(): RecordingNotifier {
   return n;
 }
 
-export interface FakeClock extends Clock {
-  /** Timers waiting to fire. */
-  pending(): number;
-  /** Milliseconds until the earliest timer, or null when none waits. */
-  nextDelay(): number | null;
-  /** Walk time forward by `ms`, running the timers that fall inside it in order. */
-  advance(ms: number): void;
-  /** Move the wall clock by `ms` without running a timer: the Mac slept. */
-  jump(ms: number): void;
-}
-
-export function fakeClock(start: number = T0): FakeClock {
-  let now = start;
-  let seq = 0;
-  const timers = new Map<number, { at: number; fn: () => void }>();
-  const earliest = (): [number, { at: number; fn: () => void }] | null => {
-    let best: [number, { at: number; fn: () => void }] | null = null;
-    for (const entry of timers) if (best === null || entry[1].at < best[1].at) best = entry;
-    return best;
-  };
-  return {
-    now: () => now,
-    after(ms, fn) {
-      const id = seq++;
-      timers.set(id, { at: now + ms, fn });
-      return () => {
-        timers.delete(id);
-      };
-    },
-    pending: () => timers.size,
-    nextDelay() {
-      const e = earliest();
-      return e === null ? null : e[1].at - now;
-    },
-    advance(ms) {
-      const target = now + ms;
-      for (;;) {
-        const e = earliest();
-        if (e === null || e[1].at > target) break;
-        timers.delete(e[0]);
-        now = Math.max(now, e[1].at);
-        e[1].fn();
-      }
-      now = target;
-    },
-    jump(ms) {
-      now += ms;
-    },
-  };
-}
+/** Core's fake clock, started at T0 so a state row's seconds convert without a remainder. */
+export const fakeClock = (start: number = T0): FakeClock => new FakeClock(start);
 
 export interface FakeScreen extends ScreenProbe {
   readonly probed: string[];
+  /** Hold every probe until `release()`: a tmux that is slow to answer. */
+  hold(): { release(): void };
 }
 
-/** A probe answering from `table`; a pane that is not in it is "no such pane". */
-export function fakeScreen(table: Readonly<Record<string, Screen | null>> = {}): FakeScreen {
+/**
+ * A probe answering from `table`. A pane that is not in it is one tmux did not
+ * answer for (null); `NO_SUCH_PANE` is tmux saying the pane is gone.
+ */
+export function fakeScreen(table: Readonly<Record<string, Screen | null | typeof NO_SUCH_PANE>> = {}): FakeScreen {
   const probed: string[] = [];
-  const probe = (pane: string): Promise<Screen | null> => {
+  let gate: Promise<void> | null = null;
+  const probe = async (pane: string): Promise<Screen | null | typeof NO_SUCH_PANE> => {
     probed.push(pane);
-    return Promise.resolve(table[pane] ?? null);
+    if (gate) await gate;
+    return table[pane] ?? null;
   };
-  return Object.assign(probe, { probed });
+  return Object.assign(probe, {
+    probed,
+    hold() {
+      let release!: () => void;
+      gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return {
+        release: () => {
+          gate = null;
+          release();
+        },
+      };
+    },
+  });
 }

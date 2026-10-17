@@ -4,7 +4,7 @@
 export { tryCatch } from './result.ts';
 export { writeAtomic } from './atomic.ts';
 export { isAlive } from './pid.ts';
-export { findOnPath } from './path-lookup.ts';
+export { findOnPath, isExecutableFile } from './path-lookup.ts';
 export { realClock, type TurnClock } from './turn-scope.ts';
 
 export type {
@@ -142,5 +142,5 @@ export type { CliContract, CommandSpec } from './cli/spec.ts';
 export { runPluginBin } from './cli/plugin-run.ts';
 export type { Io } from './cli/exit.ts';
 
-export { drained, fakeClaude, sleep, tmpDir } from './testkit.ts';
+export { FakeClock, drained, fakeClaude, sleep, tmpDir } from './testkit.ts';
 export type { FakeClaude, FakeResult, FakeScript, FakeStdin, FakeToolCall } from './testkit.ts';

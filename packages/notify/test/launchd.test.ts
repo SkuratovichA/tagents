@@ -37,6 +37,19 @@ test('renderPlist sorts env keys and escapes & < > " \'', () => {
   assert.ok(x.includes('<string>io.github.skuratovicha.tagents-notify</string>'));
 });
 
+test('renderPlist pins the exit-code contract: restart only after a failure, 5 minutes apart, at load, logs to the log file', () => {
+  const x = renderPlist(run());
+  // A clean exit (0, which is what the run verb returns for a held lock, backend none, an unsupported OS and a stop
+  // signal) must not respawn the service: SuccessfulExit false means "restart only when the exit was not successful".
+  // A start that throws exits 1 and is restarted, at most every 5 minutes: a crash after a long run restarts at once.
+  assert.ok(/<key>KeepAlive<\/key>\s*<dict>\s*<key>SuccessfulExit<\/key>\s*<false\/>\s*<\/dict>/.test(x));
+  assert.ok(/<key>ThrottleInterval<\/key>\s*<integer>300<\/integer>/.test(x));
+  assert.ok(/<key>RunAtLoad<\/key>\s*<true\/>/.test(x));
+  const log = '<string>/h/Library/Logs/tagents/notify.log</string>';
+  assert.ok(new RegExp(`<key>StandardOutPath</key>\\s*${log}`).test(x));
+  assert.ok(new RegExp(`<key>StandardErrorPath</key>\\s*${log}`).test(x));
+});
+
 test('renderPlist passes plutil -lint, with hostile characters', { skip: process.platform !== 'darwin' }, () => {
   const dir = tmpDir('launchd-plist');
   const f = path.join(dir, 'x.plist');
@@ -63,7 +76,7 @@ test('install: bootout, write, bootstrap, in that order', async () => {
 test('install retries a bootstrap that fails with error 5, then succeeds', async () => {
   const dir = tmpDir('launchd-retry');
   const f = fake([{}, { code: 5, stderr: 'Bootstrap failed: 5: Input/output error' }, {}]);
-  await createLaunchd({ uid: 1, label: 'L', plist: path.join(dir, 'x.plist'), exec: f.exec }).install(
+  await createLaunchd({ uid: 1, label: 'L', plist: path.join(dir, 'x.plist'), exec: f.exec, retryDelayMs: 0 }).install(
     run({ logFile: path.join(dir, 'n.log') })
   );
   assert.equal(f.calls.filter((c) => c[1] === 'bootstrap').length, 2);
@@ -75,10 +88,68 @@ test('install gives up after 3 bootstraps and points at plutil', async () => {
   const f = fake([{}, bad, bad, bad]);
   const plist = path.join(dir, 'x.plist');
   await assert.rejects(
-    createLaunchd({ uid: 1, label: 'L', plist, exec: f.exec }).install(run({ logFile: path.join(dir, 'n.log') })),
+    createLaunchd({ uid: 1, label: 'L', plist, exec: f.exec, retryDelayMs: 0 }).install(
+      run({ logFile: path.join(dir, 'n.log') })
+    ),
     (e: Error) => e.message.includes('Input/output error') && e.message.includes(`plutil -lint ${plist}`)
   );
   assert.equal(f.calls.filter((c) => c[1] === 'bootstrap').length, 3);
+});
+
+const BAD_BOOTSTRAP = { code: 5, stderr: 'Bootstrap failed: 5: Input/output error' };
+const LABEL = 'io.github.skuratovicha.tagents-notify';
+// The launchctl-print-disabled*.txt fixtures are not captures: the format is what `print-disabled` prints on
+// macOS 13+ (the legacy one has `=> true`), the labels are made up. The `-enabled` one also lists a longer label that
+// begins with ours as disabled, which must not count as ours.
+
+test('install: after the retries fail for a label that print-disabled lists as disabled, the hint is launchctl enable', async () => {
+  for (const out of ['launchctl-print-disabled.txt', 'launchctl-print-disabled-legacy.txt']) {
+    const dir = tmpDir('launchd-disabled');
+    const f = fake([{}, BAD_BOOTSTRAP, BAD_BOOTSTRAP, BAD_BOOTSTRAP, { stdout: fixture(out) }]);
+    await assert.rejects(
+      createLaunchd({ uid: 501, label: LABEL, plist: path.join(dir, 'x.plist'), exec: f.exec, retryDelayMs: 0 }).install(
+        run({ logFile: path.join(dir, 'n.log') })
+      ),
+      (e: Error) =>
+        e.message.includes('Input/output error') &&
+        e.message.includes(`launchctl enable gui/501/${LABEL}`) &&
+        e.message.includes('Login Items') &&
+        !e.message.includes('plutil')
+    );
+    assert.deepEqual(f.calls.at(-1), ['/bin/launchctl', 'print-disabled', 'gui/501']);
+  }
+});
+
+test('install: a label that is not disabled, or a print-disabled that fails, keeps the plutil hint', async () => {
+  for (const second of [
+    { stdout: fixture('launchctl-print-disabled-enabled.txt') },
+    { code: 1, stderr: 'nope' },
+    { stdout: '' },
+  ]) {
+    const dir = tmpDir('launchd-notdisabled');
+    const plist = path.join(dir, 'x.plist');
+    const f = fake([{}, BAD_BOOTSTRAP, BAD_BOOTSTRAP, BAD_BOOTSTRAP, second]);
+    await assert.rejects(
+      createLaunchd({ uid: 501, label: LABEL, plist, exec: f.exec, retryDelayMs: 0 }).install(
+        run({ logFile: path.join(dir, 'n.log') })
+      ),
+      (e: Error) => e.message.includes(`plutil -lint ${plist}`) && !e.message.includes('launchctl enable')
+    );
+  }
+});
+
+test('install: a print-disabled that cannot even start leaves the bootstrap error and the plutil hint', async () => {
+  const dir = tmpDir('launchd-printdisabled-throws');
+  const plist = path.join(dir, 'x.plist');
+  const answers = [{}, BAD_BOOTSTRAP, BAD_BOOTSTRAP, BAD_BOOTSTRAP];
+  const exec: Exec = async (_file, args) => {
+    if (args[0] === 'print-disabled') throw new Error('spawn /bin/launchctl EAGAIN');
+    return { code: 0, stdout: '', stderr: '', timedOut: false, ...(answers.shift() ?? {}) };
+  };
+  await assert.rejects(
+    createLaunchd({ uid: 501, label: LABEL, plist, exec, retryDelayMs: 0 }).install(run({ logFile: path.join(dir, 'n.log') })),
+    (e: Error) => e.message.includes('Input/output error') && e.message.includes(`plutil -lint ${plist}`) && !e.message.includes('EAGAIN')
+  );
 });
 
 test('install does not retry an error that is not error 5', async () => {
@@ -147,4 +218,23 @@ test('parsePrint on every real fixture', () => {
     lastExit: '1',
   });
   assert.deepEqual(parsePrint(fixture('launchctl-print-not-loaded.txt')), { running: false });
+});
+
+test('parsePrint reads the top-level field when a nested block repeats its name', () => {
+  const real = fixture('launchctl-print-running.txt');
+  // The real output already repeats `state` one level down; hoist that block above the top-level fields as well,
+  // so a match that is not anchored to the top level would find the nested value first.
+  assert.ok(real.includes('\t\tstate = active\n'), 'the fixture must hold a nested state');
+  const [head, ...rest] = real.split('\n');
+  const nestedFirst = [
+    head,
+    '\tresource coalition = {',
+    '\t\tstate = active',
+    '\t\tpid = 1',
+    '\t\tlast exit code = 99',
+    '\t}',
+    ...rest,
+  ].join('\n');
+  assert.deepEqual(parsePrint(nestedFirst), parsePrint(real));
+  assert.deepEqual(parsePrint(nestedFirst), { running: true, pid: 24192, state: 'running', lastExit: '(never exited)' });
 });

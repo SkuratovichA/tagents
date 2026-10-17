@@ -20,7 +20,14 @@ export interface Phrases {
   readonly questionBody: string;
   /** Body of a finished turn whose answer could not be read. */
   readonly turnDoneBody: string;
+  /** Body of a permission prompt that came with no message. */
+  readonly permissionBody: string;
+  /** Body of a session end that came with no reason. */
+  readonly sessionEndBody: string;
+  /** `leftMin` is whole minutes; below one the sentence says "within a minute", never "~0 min". */
   readonly cacheBody: (idleMin: number, leftMin: number) => string;
+  /** Body of a finished subagent whose type the hook did not report. */
+  readonly subagentUnnamedBody: string;
   readonly subagentBody: (agentType: string) => string;
 }
 
@@ -34,8 +41,11 @@ const en: Phrases = {
   kindSessionEnd: 'Session ended',
   questionBody: 'Asking you something',
   turnDoneBody: 'Your move',
+  permissionBody: 'Waiting for your permission',
+  sessionEndBody: 'No reason given',
   cacheBody: (idleMin, leftMin) =>
-    `Idle ${idleMin} min — send anything within ~${leftMin} min to keep the prompt cache`,
+    `Idle ${idleMin} min — send anything within ${leftMin < 1 ? 'a minute' : `~${leftMin} min`} to keep the prompt cache`,
+  subagentUnnamedBody: 'A background task is done',
   subagentBody: (agentType) => `${agentType} finished`,
 };
 
@@ -49,8 +59,11 @@ const ru: Phrases = {
   kindSessionEnd: 'Сессия завершена',
   questionBody: 'Хочет что-то спросить',
   turnDoneBody: 'Ваш ход',
+  permissionBody: 'Ждёт вашего разрешения',
+  sessionEndBody: 'Причина не указана',
   cacheBody: (idleMin, leftMin) =>
-    `Простой ${idleMin} мин — отправьте что угодно в течение ~${leftMin} мин, чтобы сохранить кэш промпта`,
+    `Простой ${idleMin} мин — отправьте что угодно в течение ${leftMin < 1 ? 'минуты' : `~${leftMin} мин`}, чтобы сохранить кэш промпта`,
+  subagentUnnamedBody: 'Фоновая задача завершена',
   subagentBody: (agentType) => `${agentType}: работа завершена`,
 };
 

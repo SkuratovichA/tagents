@@ -14,8 +14,11 @@ export interface Screen {
   readonly paneTitle: string;
 }
 
-/** null: no such pane, or tmux did not answer. */
-export type ScreenProbe = (pane: string) => Promise<Screen | null>;
+/** tmux answered, and the pane is not there: a pane closed without a SessionEnd. */
+export const NO_SUCH_PANE = 'no-such-pane';
+
+/** null: tmux did not answer (or answered with nothing to read), so nothing is known about the pane. */
+export type ScreenProbe = (pane: string) => Promise<Screen | null | typeof NO_SUCH_PANE>;
 
 // The fields are joined with this and never with a tab: a literal tab in a tmux
 // format renders as "_" outside a UTF-8 locale, and the LaunchAgent that runs
@@ -24,6 +27,7 @@ export type ScreenProbe = (pane: string) => Promise<Screen | null>;
 // and is rejoined from everything after the second separator.
 const SEP = '|@|';
 const DIGITS = /^\d+$/;
+const NO_PANE_MESSAGE = /can't find pane/;
 
 interface Client {
   readonly activity: number;
@@ -37,8 +41,13 @@ function mostActive(clients: readonly Client[]): Client | undefined {
   return best;
 }
 
-/** Parses the output of the probe's tmux command; null when it holds no pane line. */
-export function parseScreen(out: string): Screen | null {
+/**
+ * Parses the output of the probe's tmux command; null when it holds no pane line.
+ * tmux 3.7 answers for a pane that does not exist with exit 0 and a pane line
+ * whose window id is empty, where older ones fail with "can't find pane": both
+ * are NO_SUCH_PANE.
+ */
+export function parseScreen(out: string): Screen | null | typeof NO_SUCH_PANE {
   let pane: { windowId: string; title: string } | null = null;
   const clients: Client[] = [];
   for (const line of out.split('\n')) {
@@ -50,7 +59,8 @@ export function parseScreen(out: string): Screen | null {
       if (DIGITS.test(activity) && DIGITS.test(pid)) clients.push({ activity: Number(activity), pid: Number(pid), windowId });
     }
   }
-  if (pane === null || pane.windowId === '') return null;
+  if (pane === null) return null;
+  if (pane.windowId === '') return NO_SUCH_PANE;
   const showing = mostActive(clients.filter((c) => c.windowId === pane.windowId));
   const client = showing ?? mostActive(clients);
   return {
@@ -79,7 +89,10 @@ export function tmuxScreen(exec: Exec = execText): ScreenProbe {
         ],
         { timeoutMs: 2000 }
       );
-      return r.code === 0 && !r.timedOut ? parseScreen(r.stdout) : null;
+      if (r.timedOut) return null;
+      if (r.code === 0) return parseScreen(r.stdout);
+      // Only tmux saying so counts (older tmux): a missing server or a failed spawn says nothing about the pane.
+      return NO_PANE_MESSAGE.test(r.stderr) ? NO_SUCH_PANE : null;
     } catch {
       // tmux is not installed or not on this service's PATH: the same as it not answering.
       return null;

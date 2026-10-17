@@ -97,8 +97,12 @@ function bodyFor(
     case 'question':
       return e.text !== '' ? e.text : p.questionBody;
     case 'permission':
-      return e.text;
+      return e.text !== '' ? e.text : p.permissionBody;
     case 'turn_done': {
+      // The event's own text comes first: Claude Code runs the Stop hook before it
+      // writes the final assistant record, so the transcript's last answer at that
+      // moment can be an older one.
+      if (e.text !== '') return clip(e.text, BODY_CLIP);
       const line = e.transcript === '' ? '' : firstLine(lastAnswer(e.transcript));
       return line === '' ? p.turnDoneBody : clip(line, BODY_CLIP);
     }
@@ -106,10 +110,11 @@ function bodyFor(
       return p.cacheBody(extra.idleMin ?? 0, extra.leftMin ?? 0);
     case 'subagent_done':
       // SubagentStop's `sub` is the agent type; a hook that did not report one
-      // would otherwise read "finished finished".
-      return e.sub === '' ? p.kindSubagentDone : p.subagentBody(e.sub);
+      // would otherwise read "finished finished", and the subtitle already says
+      // "Subagent finished".
+      return e.sub === '' ? p.subagentUnnamedBody : p.subagentBody(e.sub);
     case 'session_end':
-      return e.sub;
+      return e.sub !== '' ? e.sub : p.sessionEndBody;
   }
 }
 

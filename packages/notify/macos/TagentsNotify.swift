@@ -11,10 +11,12 @@ import os
 //   authorize           asks for alert and badge, waits up to 60 s for the answer
 //   status | delivered
 //   terminal <pid>      the terminal app above a pid, the walk `post` uses
+//   icon <in> <out>     draws the PNG <in> onto the app-icon plate and writes the PNG <out>; build.sh's tool,
+//                       run before any NSApplication exists
 //   (no arguments)      LaunchServices relaunching the app for a notification click
 
 private let logger = Logger(subsystem: "io.github.skuratovicha.tagents-notify", category: "helper")
-private let usage = "usage: tagents-notify post | withdraw <id>... | authorize | status | delivered | terminal <pid> | (no arguments: handle a notification click)"
+private let usage = "usage: tagents-notify post | withdraw <id>... | authorize | status | delivered | terminal <pid> | icon <in.png> <out.png> | (no arguments: handle a notification click)"
 private let outputLock = NSLock()
 
 // Prints one JSON line and exits. The lock is never released, so a second caller racing the first waits for the exit.
@@ -104,6 +106,119 @@ func terminalApp(above pid: pid_t) -> NSRunningApplication? {
 
 func isFrontmost(_ app: NSRunningApplication) -> Bool {
     NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
+}
+
+// MARK: icon
+
+// The macOS app-icon grid: a 824 pt body inside the 1024 pt canvas, the rest transparent. macOS 26 puts an icon
+// that is not this shape into a grey plate, so the owner's picture is drawn onto a plate of the right shape.
+private let iconCanvas = 1024
+private let iconBody = 824.0
+// Apple's icon outline is a continuous-corner rounded square, which a superellipse of exponent 5 follows closely.
+private let iconExponent = 5.0
+// The picture fills this share of the plate's side, so it keeps a margin.
+private let iconArtShare = 0.74
+
+func plateOutline(side: Double, center: Double) -> NSBezierPath {
+    let half = side / 2
+    let steps = 720
+    let path = NSBezierPath()
+    for step in 0..<steps {
+        let angle = 2 * Double.pi * Double(step) / Double(steps)
+        let (c, s) = (cos(angle), sin(angle))
+        let point = NSPoint(
+            x: center + half * (c < 0 ? -1 : 1) * pow(abs(c), 2 / iconExponent),
+            y: center + half * (s < 0 ? -1 : 1) * pow(abs(s), 2 / iconExponent))
+        if step == 0 { path.move(to: point) } else { path.line(to: point) }
+    }
+    path.close()
+    return path
+}
+
+// Writes a 1024 x 1024 PNG: the input scaled to fit, aspect ratio kept, centred on a light plate.
+func drawIcon(from input: String, to output: String) -> String? {
+    guard let art = NSImage(contentsOfFile: input), art.size.width > 0, art.size.height > 0 else {
+        return "cannot read an image from \(input)"
+    }
+    // The canvas is empty, so tagging it sRGB (no conversion) makes everything drawn on it, and the PNG that is
+    // written, sRGB instead of whatever the display's profile is.
+    guard let blank = NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: iconCanvas, pixelsHigh: iconCanvas, bitsPerSample: 8, samplesPerPixel: 4,
+        hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+        let canvas = blank.retagging(with: .sRGB),
+        let context = NSGraphicsContext(bitmapImageRep: canvas)
+    else { return "cannot create the icon canvas" }
+    // One point is one pixel, whatever the density of the input.
+    canvas.size = NSSize(width: iconCanvas, height: iconCanvas)
+    let middle = Double(iconCanvas) / 2
+
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = context
+    context.imageInterpolation = .high
+    NSColor(srgbRed: 0.97, green: 0.97, blue: 0.97, alpha: 1).setFill()
+    plateOutline(side: iconBody, center: middle).fill()
+    let room = iconBody * iconArtShare
+    let scale = min(room / Double(art.size.width), room / Double(art.size.height))
+    let size = NSSize(width: Double(art.size.width) * scale, height: Double(art.size.height) * scale)
+    art.draw(in: NSRect(x: middle - size.width / 2, y: middle - size.height / 2, width: size.width, height: size.height),
+             from: .zero, operation: .sourceOver, fraction: 1)
+    NSGraphicsContext.restoreGraphicsState()
+
+    guard let png = canvas.representation(using: .png, properties: [:]) else { return "cannot encode the icon" }
+    do {
+        try png.write(to: URL(fileURLWithPath: output))
+    } catch {
+        return "cannot write \(output): \(error.localizedDescription)"
+    }
+    return nil
+}
+
+// MARK: click child's stderr
+
+// The first 2 KB a click's child writes to stderr, the rest read and thrown away so a chatty child never blocks on a
+// full pipe. Reads never wait: a grandchild (the tmux server a script starts) can keep the write end open for good,
+// so the end of the stream is not something to wait for.
+final class StderrTail {
+    let pipe = Pipe()
+    private let limit = 2048
+    private let lock = NSLock()
+    private var kept = Data()
+    private var dropped = false
+
+    init() {
+        let reader = pipe.fileHandleForReading
+        _ = fcntl(reader.fileDescriptor, F_SETFL, fcntl(reader.fileDescriptor, F_GETFL) | O_NONBLOCK)
+        reader.readabilityHandler = { [weak self] handle in
+            // At the end of the stream the handler would fire for ever.
+            if self?.drain() == true { handle.readabilityHandler = nil }
+        }
+    }
+
+    // Reads what the pipe holds now. True once the stream has ended.
+    @discardableResult
+    func drain() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        var chunk = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = read(pipe.fileHandleForReading.fileDescriptor, &chunk, chunk.count)
+            if count < 0 { return false }
+            if count == 0 { return true }
+            let room = max(0, limit - kept.count)
+            kept.append(contentsOf: chunk[0..<min(count, room)])
+            if count > room { dropped = true }
+        }
+    }
+
+    // What the child wrote, after one last read; the pipe is not used again.
+    func finish() -> String {
+        drain()
+        pipe.fileHandleForReading.readabilityHandler = nil
+        lock.lock()
+        defer { lock.unlock() }
+        let text = String(decoding: kept, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return dropped ? text + " [truncated]" : text
+    }
 }
 
 final class Helper: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -250,15 +365,21 @@ final class Helper: NSObject, NSApplicationDelegate, UNUserNotificationCenterDel
         let argv = info["argv"] as? [String] ?? []
         let env = info["env"] as? [String: String] ?? [:]
         let app = info["app"] as? String ?? ""
-        logger.info("click: app=\(app, privacy: .public) argv=\(argv.joined(separator: " "), privacy: .public)")
+        // Default level (notice), which the unified log keeps and `log show` prints without --info: a click that went
+        // wrong has to leave this behind.
+        logger.notice("click: app=\(app, privacy: .public) argv=\(argv.joined(separator: " "), privacy: .public)")
         let work = DispatchGroup()
         if !app.isEmpty { bringForward(app, work) }
         if !argv.isEmpty { runChild(argv, env, work) }
         work.notify(queue: .main) {
             if self.clickMode { finish(["ok": true, "click": true]) }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 14) {
-            if self.clickMode { fail("click handling timed out") }
+        // Child wait 8 s, then 2 s of grace after the terminate, so the helper never outlives about 10.5 s.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10.5) {
+            if self.clickMode {
+                logger.error("click handling timed out")
+                fail("click handling timed out")
+            }
         }
     }
 
@@ -278,6 +399,9 @@ final class Helper: NSObject, NSApplicationDelegate, UNUserNotificationCenterDel
                 if #available(macOS 14.0, *), let target = opened ?? running, !target.isActive {
                     target.activate(from: NSRunningApplication.current, options: [])
                 }
+                let raised = opened ?? running
+                // No `active` here: read right after the asynchronous activate it is usually still false.
+                logger.notice("raised: \(path, privacy: .public) pid=\(raised?.processIdentifier ?? 0)")
                 work.leave()
             }
         }
@@ -291,27 +415,53 @@ final class Helper: NSObject, NSApplicationDelegate, UNUserNotificationCenterDel
         process.environment = ProcessInfo.processInfo.environment.merging(env) { _, notice in notice }
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        let stderr = StderrTail()
+        process.standardError = stderr.pipe
         let exited = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in exited.signal() }
         do {
             try process.run()
         } catch {
             logger.error("cannot run \(argv[0], privacy: .public): \(error.localizedDescription, privacy: .public)")
+            // Nothing will write to the pipe now: drop the readability handler first, then close both ends.
+            _ = stderr.finish()
+            try? stderr.pipe.fileHandleForWriting.close()
+            try? stderr.pipe.fileHandleForReading.close()
             return
         }
+        // The write end is the child's now; this process keeps no copy of it.
+        try? stderr.pipe.fileHandleForWriting.close()
+        logger.notice("child started: pid=\(process.processIdentifier) \(argv[0], privacy: .public)")
         work.enter()
         DispatchQueue.global().async {
-            if exited.wait(timeout: .now() + 10) == .timedOut {
-                logger.error("child still running after 10 s, terminating: \(argv[0], privacy: .public)")
+            var ended = exited.wait(timeout: .now() + 8) == .success
+            if !ended {
+                logger.error("child still running after 8 s, terminating: \(argv[0], privacy: .public)")
                 process.terminate()
-                _ = exited.wait(timeout: .now() + 2)
-            } else {
-                logger.info("child exited with status \(process.terminationStatus)")
+                ended = exited.wait(timeout: .now() + 2) == .success
             }
+            if ended {
+                // A zero status with the reason `exit` is a success; a signal's number comes as the status with the
+                // reason `uncaughtSignal`, and tells a crash or a terminate from a failure of the script itself.
+                let reason = process.terminationReason == .exit ? "exit" : "uncaughtSignal"
+                logger.notice("child ended: status=\(process.terminationStatus) reason=\(reason, privacy: .public) \(argv[0], privacy: .public)")
+            } else {
+                logger.error("child ignored the terminate: \(argv[0], privacy: .public)")
+            }
+            let text = stderr.finish()
+            if !text.isEmpty { logger.notice("child stderr: \(text, privacy: .public)") }
             work.leave()
         }
     }
+}
+
+// The icon verb is a build step, not a notification verb: it needs no app, no notification center and no activation
+// policy, so it runs before NSApplication exists and exits through finish like the others.
+if CommandLine.arguments.dropFirst().first == "icon" {
+    let rest = Array(CommandLine.arguments.dropFirst(2))
+    guard rest.count == 2 else { fail(usage, 2) }
+    if let problem = drawIcon(from: rest[0], to: rest[1]) { fail(problem) }
+    finish(["ok": true])
 }
 
 let application = NSApplication.shared

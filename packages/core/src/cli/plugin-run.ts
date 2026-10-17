@@ -146,6 +146,30 @@ async function runCommand(
 }
 
 /**
+ * Find the command argv[0] names among `def`'s and run it, or say what the plugin
+ * does have. `shown` is the name the caller typed and the messages repeat;
+ * `registered` is the name the plugin is known by, which runCommand quotes. They
+ * differ when a config key is not the definition's own name.
+ */
+async function dispatch(
+  shown: string,
+  registered: string,
+  def: PluginDef,
+  argv: readonly string[],
+  io: Io,
+  t: CoreT
+): Promise<number> {
+  const commands = def.commands ?? [];
+  const wanted = argv[0];
+  const command = wanted === undefined ? undefined : commands.find((c) => c.name === wanted);
+  if (!command) {
+    if (wanted !== undefined) io.err(`${t('unknownCommand', { command: `${shown} ${wanted}` })}\n`);
+    return listCommands(shown, commands, io, t);
+  }
+  return await runCommand(registered, def, command, argv.slice(1), io, t);
+}
+
+/**
  * argv[0] was not a core verb: it may still be a plugin. Returns null when no
  * configured plugin answers to that name, so the caller can say what it always
  * said about a word it does not know.
@@ -163,14 +187,7 @@ export async function runPluginCommand(name: string, argv: readonly string[], io
     return EXIT.error;
   }
 
-  const commands = found.def.commands ?? [];
-  const wanted = argv[0];
-  const command = wanted === undefined ? undefined : commands.find((c) => c.name === wanted);
-  if (!command) {
-    if (wanted !== undefined) io.err(`${t('unknownCommand', { command: `${name} ${wanted}` })}\n`);
-    return listCommands(name, commands, io, t);
-  }
-  return await runCommand(found.name, found.def, command, argv.slice(1), io, t);
+  return await dispatch(name, found.name, found.def, argv, io, t);
 }
 
 /**
@@ -184,12 +201,5 @@ export async function runPluginBin(
   io: Io = stdio()
 ): Promise<number> {
   const t = coreT(createT());
-  const commands = def.commands ?? [];
-  const wanted = argv[0];
-  const command = wanted === undefined ? undefined : commands.find((c) => c.name === wanted);
-  if (!command) {
-    if (wanted !== undefined) io.err(`${t('unknownCommand', { command: `${def.name} ${wanted}` })}\n`);
-    return listCommands(def.name, commands, io, t);
-  }
-  return await runCommand(def.name, def, command, argv.slice(1), io, t);
+  return await dispatch(def.name, def.name, def, argv, io, t);
 }
