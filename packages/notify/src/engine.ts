@@ -124,11 +124,10 @@ async function probe(pane: string, d: NoticeDeps): Promise<Screen | null | typeo
 
 /**
  * The id a notice goes up under; a notice with the same id replaces the one on
- * screen. A subagent's has its own, so it never replaces the question or the
- * permission prompt that its session is still waiting on.
+ * screen, so an agent has one notice at a time, saying the latest thing.
  */
-export function noticeId(key: string, kind: NoticeKind): string {
-  return kind === 'subagent_done' ? `tagents-${key}-sub` : `tagents-${key}`;
+export function noticeId(key: string): string {
+  return `tagents-${key}`;
 }
 
 function assemble(
@@ -149,7 +148,7 @@ function assemble(
     labels: readLabels(d.labelsDir),
   });
   return {
-    id: noticeId(e.key, kind),
+    id: noticeId(e.key),
     thread: e.sessionId,
     kind,
     ...compose(kind, e, name, extra),
@@ -293,8 +292,7 @@ export function createEngine(d: EngineDeps): Engine {
   }
 
   async function withdraw(key: string): Promise<void> {
-    await takeDown(noticeId(key, 'turn_done'));
-    await takeDown(noticeId(key, 'subagent_done'));
+    await takeDown(noticeId(key));
   }
 
   function arm(e: AgentEvent, opts: NotifyOptions): void {
@@ -309,7 +307,7 @@ export function createEngine(d: EngineDeps): Engine {
   async function step(e: AgentEvent): Promise<void> {
     if (stopped) return;
     const opts = d.options();
-    const v = classify(e, { headless: opts.sessions.headless });
+    const v = classify(e);
     if (v === null) return;
     // That prompt's generic text would replace the question's, and the question
     // is the wait: the deadline it armed stays armed.
@@ -344,7 +342,7 @@ export function createEngine(d: EngineDeps): Engine {
     armedBy.delete(key);
     const opts = d.options();
     const c = opts.events.cache_expiring;
-    if (!c.enabled || !countsSession(key, opts.sessions.headless)) return;
+    if (!c.enabled || !countsSession(key)) return;
     const row = d.feed.states().find((r) => r.key === key);
     // The session is over, or a turn is running (its Stop re-arms). The hook
     // writes `working` for the question that armed this very deadline, so a
@@ -378,7 +376,7 @@ export function createEngine(d: EngineDeps): Engine {
     for (const row of d.feed.states()) {
       const waiting = row.state === 'done' || row.state === 'blocked' || (row.state === 'working' && OPEN_QUESTION.test(row.detail));
       if (!waiting) continue;
-      if (!countsSession(row.key, opts.sessions.headless)) continue;
+      if (!countsSession(row.key)) continue;
       const idleSince = row.at * 1000;
       if (now - idleSince >= c.ttl) continue;
       // Warned already for this idle period: a row nobody has written since the

@@ -19,6 +19,15 @@
 
 set -uo pipefail
 
+# The keeper client below attaches through `script`, and a tmux client with no
+# $TERM cannot open its terminal: a worker started without one (a launchd job,
+# an `env -i`) would run every check against a server nobody is attached to.
+# bash sets an unexported TERM=dumb when it starts without one, so "dumb" is
+# the missing case too: ${TERM:-...} kept it, and the keeper failed with
+# "open terminal failed: terminal does not support clear".
+[ "${TERM:-dumb}" = dumb ] && TERM=xterm-256color
+export TERM
+
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TA="$HERE/../tagents"
 HOOK="$HERE/../hooks/tmux-agent-state.sh"
@@ -103,6 +112,10 @@ export TA_SESSION=tatest-dash
 export TA_CONFIG="$CFG"
 unset TMUX TMUX_PANE TA_MODE TA_FLAT TA_COLS TA_NEW_CMD TA_RESUME_CMD TA_HOME
 unset CLAUDE_CONFIG_DIR
+# The suite runs inside a real Claude session, which exports this; the hook
+# reads it as "the claude I am running inside" and would classify these runs
+# against that session's ancestry.
+unset CLAUDE_PID
 
 tm() { tmux -L "$S" "$@"; }
 

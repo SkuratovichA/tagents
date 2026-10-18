@@ -7,7 +7,6 @@ export type NoticeKind =
   | 'permission'
   | 'turn_done'
   | 'cache_expiring'
-  | 'subagent_done'
   | 'session_end';
 
 export interface Verdict {
@@ -36,9 +35,21 @@ export const QUESTION_TOOLS = ['AskUserQuestion', 'ExitPlanMode'] as const;
 
 const isQuestionTool = (tool: string): boolean => (QUESTION_TOOLS as readonly string[]).includes(tool);
 
-/** A session with no tmux pane (`s-<id>`: `claude -p` from a daemon, an IDE) is only counted when asked for. */
-export function countsSession(key: string, headless: boolean): boolean {
-  return headless || !key.startsWith('s-');
+/**
+ * NOTICES COME ONLY FROM AGENTS: a session that sits in a tmux pane of its own,
+ * whose key is that pane's number. A key of `s-<id>` is a session with no pane of
+ * its own, and none of those is ever counted, whatever the options say:
+ *  - a child session, a `claude -p` that an agent started from its Bash tool. Its
+ *    agent is the one waiting on it, and the hook files it under its own session
+ *    for exactly that reason (it inherits the agent's $TMUX_PANE, never its key);
+ *  - a headless session with no pane anywhere, such as a daemon's `claude -p`
+ *    turn named through TA_LABEL. It reports where it was started from, and a
+ *    notice for it would have no pane to dock on a click.
+ * An Agent-tool subagent is no session at all: its events carry its agent_id under
+ * the agent's own key, and only SubagentStop and a subagent's Stop are its own.
+ */
+export function countsSession(key: string): boolean {
+  return !key.startsWith('s-');
 }
 
 function fromNotification(e: AgentEvent): Verdict | null {
@@ -52,8 +63,8 @@ function fromNotification(e: AgentEvent): Verdict | null {
 }
 
 /** The verdict on one event, or null when it is nothing to notify and nothing to track. */
-export function classify(e: AgentEvent, o: { readonly headless: boolean }): Verdict | null {
-  if (!countsSession(e.key, o.headless)) return null;
+export function classify(e: AgentEvent): Verdict | null {
+  if (!countsSession(e.key)) return null;
   switch (e.event) {
     case 'PreToolUse':
       return isQuestionTool(e.tool) ? asks('question', { arms: true, plan: e.tool === 'ExitPlanMode' }) : null;
@@ -63,11 +74,16 @@ export function classify(e: AgentEvent, o: { readonly headless: boolean }): Verd
     case 'Notification':
       return fromNotification(e);
     case 'Stop':
-      // A Stop with an agent id is a subagent's own turn ending, which
-      // SubagentStop reports separately.
+      // A Stop with an agent id is a subagent's own turn ending, and the agent
+      // that started it is still working.
       return e.agentId === '' ? asks('turn_done', { arms: true }) : null;
     case 'SubagentStop':
-      return asks('subagent_done');
+      // A subagent finishing is a step in its agent's turn, not something the
+      // person is waiting for: the agent's own Stop says when the turn is over.
+      // A question or a permission prompt a subagent raises is not here: those
+      // come as the agent's Notification or PreToolUse, and they block the agent,
+      // so they are posted under its key like any other.
+      return null;
     case 'SessionEnd':
       return asks('session_end', { withdraw: true, cancel: true });
     case 'UserPromptSubmit':

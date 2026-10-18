@@ -22,6 +22,15 @@
 
 set -uo pipefail
 
+# The keeper client below attaches through `script`, and a tmux client with no
+# $TERM cannot open its terminal: a worker started without one (a launchd job,
+# an `env -i`) would run every check against a server nobody is attached to.
+# bash sets an unexported TERM=dumb when it starts without one, so "dumb" is
+# the missing case too: ${TERM:-...} kept it, and the keeper failed with
+# "open terminal failed: terminal does not support clear".
+[ "${TERM:-dumb}" = dumb ] && TERM=xterm-256color
+export TERM
+
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TA="$HERE/../tagents"
 
@@ -235,6 +244,12 @@ DWIN=$(where "$LIST")
 # id would take that closed row off the list entirely.
 A=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" \
       "exec '$BIN/claude' 600" 2>/dev/null)
+# A title of its own. Nothing here sets one, and tmux then shows the machine
+# name — the FULL one, sukas-MacBook-Pro.local on a Mac — which names nothing
+# and is exactly what the name rule drops. The control run below compares this
+# tree byte for byte against the committed entry, so the name of this row must
+# not depend on what the machine is called.
+tm select-pane -T "live agent" -t "$A"
 AHOME=$(where "$A")
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$(date +%s)" working sid-live "$REPO" "" "on it" "$LOGIN" \

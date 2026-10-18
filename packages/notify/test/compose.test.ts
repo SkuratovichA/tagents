@@ -138,10 +138,7 @@ test('cache_expiring: the idle and the left minutes in the body', () => {
   assert.equal(c.body, 'Idle 50 min — send anything within ~10 min to keep the prompt cache');
 });
 
-test('subagent_done and session_end', () => {
-  const s = compose('subagent_done', event({ sub: 'Explore' }), 'proj', {}, en);
-  assert.equal(s.subtitle, 'Subagent finished');
-  assert.equal(s.body, 'Explore finished');
+test('session_end', () => {
   const end = compose('session_end', event({ sub: 'prompt_input_exit' }), 'proj', {}, en);
   assert.equal(end.subtitle, 'Session ended');
   assert.equal(end.body, 'prompt_input_exit');
@@ -193,11 +190,3 @@ test('turn_done: the event text wins over the transcript, and is clipped; empty 
   assert.equal(compose('turn_done', event({ text: '', transcript: file }), 'p', {}, en).body, 'Older answer');
 });
 
-test('subagent_done: no agent type gives its own phrase, not the subtitle again, in both languages', () => {
-  const e = event({ sub: '' });
-  const ru = phrasesFor('ru');
-  assert.equal(compose('subagent_done', e, 'p', {}, en).body, 'A background task is done');
-  assert.equal(compose('subagent_done', e, 'p', {}, ru).body, 'Фоновая задача завершена');
-  assert.notEqual(compose('subagent_done', e, 'p', {}, en).body, compose('subagent_done', e, 'p', {}, en).subtitle);
-  assert.equal(compose('subagent_done', event({ sub: 'Explore' }), 'p', {}, en).body, 'Explore finished');
-});

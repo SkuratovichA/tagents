@@ -120,6 +120,33 @@ A stub `claude` written as `exec sleep 600` turns the pane's current command int
 
 ## A variadic CLI option swallows the prompt that follows it (15.09.2026)
 `claude -p` declares `--disallowedTools <tools...>` and `--mcp-config <configs...>` as variadic: they keep taking argv words until the next option. buildArgs() put `--disallowedTools` last, so on every fresh session (no `--resume`) the prompt became one more "permission deny rule" and the CLI exited 1 with "Input must be provided either through stdin or as a prompt argument" — an earlier ticket agent lost every batch after the port and no test caught it because the argv test only pinned the resumed case. A variadic option goes in front of an option that is always present (`--output-format`), and the test now walks every spec × {resume, fresh} and asserts each variadic flag is followed by one value and then an option.
+## `perl -pi -e 's|…\|\|…|…|'`: an escaped delimiter is a bare `|`, i.e. an empty alternation (18.09.2026)
+
+With `|` as the substitution delimiter, `\|\|` in the pattern is un-escaped to `||` before the regex
+is compiled, which matches the empty string at every position — the replacement was splattered between
+every character of lib/tagents/list.sh (807 lines "changed", the file unreadable). Use `s{…}{…}` when
+the pattern contains a pipe, and check `git diff --stat` before running anything on the result.
+
+## tmux's default pane title is the FULL host name; every "that is just the hostname" check used `hostname -s` (18.09.2026)
+
+On a Mac `hostname` is `sukas-MacBook-Pro.local` and `hostname -s` is `sukas-MacBook-Pro`; tmux titles
+an untitled pane with the former, so the "names nothing" rule in preview_name, ask_kill, the list and the
+window names never fired here and the machine name became the agent's name. Found by D4 of
+tests/headless.sh, whose parent pane is a fake claude that sets no title. One rule now (`host_title` in
+core.sh, both forms), and a test fixture that is compared against the committed entry byte for byte must
+title its panes itself rather than depend on what the machine is called.
+
+## A test that cannot fail is not a test: take the code out and watch it go red (19.09.2026)
+
+Two post-review tests passed with the very code they claimed to pin removed: D4's `fromjson?` guard
+(jq carries on past a line it cannot parse either way; the `?` only quiets stderr, which `--preview`
+never shows) and D6c's live-over-dead rank in the session-id map (livesid had already dropped every
+corpse before the map was built, so the rank was dead code). The reviewer's mutation check caught both;
+the rank went, and the comments now say what each fixture actually pins. For every "this test pins X",
+remove X once and run the suite before calling it a test.
+
+## A suite written on main while a branch was out misses that branch's setup (11.10.2026)
+`tests/resurrect.sh` landed on main after child-sessions branched, so it never got the `unset CLAUDE_PID` the branch gave every suite that plays the hook from a stub; rebased, 42 of its checks failed because the hook classified the stubs against the real Claude session running the suite. A clean textual rebase proves nothing about files only one side knew: run every suite afterwards, and run the failing one on main as the control — ten other checks there fail on main too, and were not this branch's. Also: the root `pnpm typecheck` nests a second pnpm that resolves 9.1.4 on this machine and stops on `ERR_PNPM_BAD_PM_VERSION`; `pnpm -r typecheck` and `pnpm -r test` run the same gates.
 
 ## API Extractor reads any `.d.ts` under a `node_modules` path as someone else's package (12.10.2026)
 The declarations for the API reports were first emitted into `packages/<name>/node_modules/.cache/`, because it is git-ignored and keeps `@tagents/core` resolvable. API Extractor treats every file under a `node_modules` segment as external, so each export came out as a bare re-export and the report held no API at all. The cache lives in `packages/contract/.cache/` instead, one `mkdtemp` directory per call: two test files run as parallel processes, and a shared directory let one delete the other's declarations.
@@ -186,3 +213,18 @@ The notices pointed at the worktree's `tagents`, so the owner's clicks ran code 
 
 ## A hook's `run-shell -b` runs against a later state than the one it tested (17.10.2026)
 The focus hook's `if-shell -F '#{@tagents_slot}'` passed while the placeholder was the empty seat, but the unpark it scheduled ran after a dock had moved that placeholder home, and handed the dock back. The hook passes `#{window_id}`, and unpark acts only while the placeholder is still in that window, re-checked inside its atomic command list.
+
+## A worker started without TERM or LANG fails suites that pass in a terminal (18.10.2026)
+A `claude -p` worker resumed from a launcher had neither: `locale` said C and `$TERM` was unset. With TERM unset, tmux 3.4's server dies ("server exited unexpectedly") on the second `new-session -x 200 -y 50` of a fresh socket, so tests/resurrect.sh lost 10 checks; in the C locale the server stores every non-ASCII byte of a pane title as `_`, so tests/names.sh lost its Cyrillic ones. Main and the branch failed identically, which is what pointed at the environment rather than the merge. The suites now bring their own TERM and a UTF-8 LC_CTYPE when the caller has none; before calling a red suite a regression, compare `env | grep -E '^(TERM|LANG|LC_)'` with a terminal's.
+
+## A merge of two branches that each passed its own suites still owes the other's checks (18.10.2026)
+child-sessions added one awk per pane-less record (the title cache lookup) and a second `hostname` call; main had meanwhile landed tests/forks.sh, which pins both counts, and tests/events.sh, whose process checks compared against the merge base. Neither branch was wrong alone. After a merge, run every suite either side added, and read a reference of the form "the merge base's hook" again: once the base moves it compares something else.
+
+## bash without TERM has TERM=dumb, so `${TERM:-default}` keeps "dumb" (18.10.2026)
+bash 3.2 started with no TERM in its environment sets an unexported shell variable TERM=dumb, and `export TERM=${TERM:-xterm-256color}` then exports "dumb". A tmux client on it fails with "open terminal failed: terminal does not support clear", so the suites' keeper never attached and every check needing a client (switch-client, display-popup) failed. Three fixes that all kept "dumb" failed the same way; a five-line repro printing `#{client_termname}` and the client's stderr showed it at once. The suites treat "dumb" as missing.
+
+## `sleep 0.05` is 0.12 s at background priority, so a wait counted in sleeps is not a wait in seconds (18.10.2026)
+In a detached worker every short sleep overshot by ~70 ms (timer coalescing): the dock lock's 36 tries took 4.4 s on main and on the branch alike, while exec cost 2 ms. Timing each phase of the click (startup 0.07 s, lock 4.4–4.8 s, dock 0.2 s) on both trees showed the "slower merge" was the same loop on a busier box. A wait that a test bounds in seconds is bounded by the clock (`lock_dir ... 3`), not by a count of sleeps.
+
+## macOS fs.watch on a file can miss an append made right after an event (18.10.2026)
+libuv re-arms a file's kqueue watch only at the loop's next poll, so an append landing in between raises no event at all. A probe appending inside the watch callback saw 1 event for 2 appends in one run of three. The follower drains once more after the re-arm (two setImmediate hops); a longer wait in the test would not have helped, since the event never comes.

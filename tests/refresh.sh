@@ -292,6 +292,9 @@ t "7. the notes editors are looked after only while there are some"
 newrun notes
 tm set -g @ta_notes_any 1
 go 10
+# The refresher starts tnotes with `&`, so the last sync can write its line after
+# the loop has ended (one TERM-less run read an empty log): wait for two lines.
+i=0; while [ "$(grep -c . "$D/tnotes.log" 2>/dev/null)" -lt 2 ] && [ "$i" -lt 30 ]; do /bin/sleep 0.1; i=$((i + 1)); done
 ok "with @ta_notes_any set, tnotes sync is started on each of the two forced ticks" "sync sync" \
    "$(tr '\n' ' ' <"$D/tnotes.log" | sed 's/ $//')"
 tm set -gu @ta_notes_any

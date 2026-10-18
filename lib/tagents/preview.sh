@@ -5,19 +5,27 @@
 # Part of ./tagents; `tagents --help` is the model this implements.
 
 preview() {
-  local pane=$1 state=${2:-} f ts st sid cwd tr detail cfgd hascfg acct rprof log
+  local pane=$1 state=${2:-} f ts st sid cwd tr detail cfgd hascfg parkey acct rprof log
   [ "$pane" = "-" ] && return 0
   f="$STATE_DIR/${pane#%}.tsv"
   if [ -e "$f" ]; then
     # Not IFS=TAB: tab is IFS whitespace, so an empty field (no session id, no
     # detail) would collapse and shift every later value one slot left.
-    IFS="$US" read -r ts st sid cwd tr detail cfgd hascfg < <(
+    IFS="$US" read -r ts st sid cwd tr detail cfgd hascfg parkey < <(
       awk -F"$TAB" -v OFS="$US" \
-          'NR==1 { print $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0); exit }' "$f")
+          'NR==1 { print $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0), $11; exit }' "$f")
     printf '\033[1m%s\033[0m\n' "$(origin_of "${sid:-}" "${tr:-}" || printf '%s' "$cwd")"
     [ -n "$cwd" ] && printf '\033[90mcwd now: %s\033[0m\n' "$cwd"
     printf '\033[90m%s · %s\033[0m\n' "$st" "$detail"
     [ -n "$sid" ] && printf '\033[90msession %s\033[0m\n' "$sid"
+    # WHOSE SESSION THIS IS. A child was started by another agent and belongs
+    # with it — the row is already drawn under that agent, and this says which
+    # one it is by name rather than by key, the way every other heading here
+    # does. Named by preview_name so a parent that is itself pane-less resolves
+    # the same way as one sitting in a pane.
+    [ -n "${parkey:-}" ] &&
+      printf '\033[90mparent: %s  (%s)\033[0m\n' \
+             "$(preview_name "%${parkey}")" "$parkey"
     # Which login this conversation belongs to — the thing you cannot see from
     # the pane itself, and the thing that decides whether resuming it will find
     # anything. Silent for a record written before the hook recorded it.
@@ -42,6 +50,17 @@ preview() {
       if log=$(headless_log "$pane"); then
         printf '\033[90mheadless — no pane. log (ctrl-v follows it):\n%s\033[0m\n' "$log"
         tail -n 60 "$log" 2>/dev/null
+      elif [ -n "${tr:-}" ] && [ -e "${tr:-}" ]; then
+        # NO PANE AND NO LOG, which is every child session: whatever started it
+        # kept the output to itself. The transcript is the one thing left that
+        # says what the agent is doing, so the last few turns of it stand in for
+        # the capture-pane the row cannot have.
+        if [ -n "${parkey:-}" ]; then
+          printf '\033[90mchild session — no pane, no log. last of its transcript:\033[0m\n'
+        else
+          printf '\033[90mheadless session — no pane, no log. last of its transcript:\033[0m\n'
+        fi
+        transcript_tail "$tr" 20
       else
         printf '\033[90mheadless session — it runs in no pane, so there is nothing\n'
         printf 'to show here and nothing to dock. No readable $TA_LOG was\n'
@@ -92,24 +111,33 @@ preview() {
 
 # The heading of that page: the name the row shows for the agent, resolved the
 # way ask_kill resolves it — the label first, then the pane title with Claude
-# leading glyph off it, then the project. Deliberately NOT the way
+# leading glyph off it, then $TA_LABEL, then what the session called itself, and
+# the project last of all. Deliberately NOT the way
 # sync_window_names resolves it: a heading falling back to the project is
 # better than a heading with a bare pane id in it, while a WINDOW named after
 # its own directory is a rename tmux automatic-rename would only undo.
 preview_name() {  # <pane>
-  local pane=${1:-} sid dir lbl nm
-  IFS="$US" read -r sid dir lbl < <(
-    awk -F"$TAB" -v OFS="$US" 'NR==1 { print $3, $4, $10; exit }' \
+  local pane=${1:-} sid dir tr lbl nm
+  IFS="$US" read -r sid dir tr lbl < <(
+    awk -F"$TAB" -v OFS="$US" 'NR==1 { print $3, $4, $5, $10; exit }' \
         "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)
   nm=$(label_of "${sid:-$pane}")
   if [ -z "$nm" ]; then
     nm=$(untitle_of "$(tmux display -p -t "$pane" '#{pane_title}' 2>/dev/null)")
     # tmux default pane title is the host name, which names nothing.
-    [ "$nm" = "$(hostname -s 2>/dev/null)" ] && nm=""
+    host_title "$nm" && nm=""
   fi
   # $TA_LABEL — the same fallback the row itself uses, and the only name a
   # headless session has: no pane means no pane title to strip a glyph off.
   [ -n "$nm" ] || nm=$lbl
+  # WHAT THE SESSION CALLED ITSELF, before the directory it happens to run in —
+  # for a pane-less record only, the one kind the list reads the ai-title for
+  # (collect() emits it for those alone): the row above this heading and the
+  # heading must name the parent the same way, and a paned row never reaches for
+  # the title. The transcript comes out of the same read as the session id.
+  case ${pane#%} in
+    s-?*) [ -n "$nm" ] || nm=$(title_of "${sid:-}" "${tr:-}") || nm= ;;
+  esac
   [ -n "$nm" ] || nm=$(basename "${dir:-$pane}")
   printf '%s' "$nm"
 }

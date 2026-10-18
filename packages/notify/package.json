@@ -17,6 +17,7 @@
     "tagents-notify": "./dist/main.js"
   },
   "tagents": {
+    "apiVersion": 1,
     "entry": "./dist/plugin.js"
   },
   "files": [

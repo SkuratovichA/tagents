@@ -47,13 +47,16 @@ is_shell_cmd() {  # <pane_current_command> — an idle shell, the one thing safe
 
 # mkdir is the atomic primitive (macOS has no flock). A lock older than <stale> seconds belongs to a process that died holding it and is taken over. tnotes carries its own copy as take_lock (tnotes:216-228) — that script stands alone — still without the bound below.
 # Every pass costs a try, the takeover included: a mkdir that fails for any other reason (a parent nobody may write to) gives up after the tries instead of spinning on a takeover that never lands.
-lock_dir() {  # <dir> <stale seconds> [tries, 0.05 s apart; default 40]
-  local d=$1 stale=$2 tries=${3:-40}
+# A short sleep is not a short wait: a process at background priority (a detached worker, measured) has its timers coalesced, and there `sleep 0.05` took 0.12 s, so 36 tries were 4.4 s instead of 3. [seconds] bounds the wait by the clock as well; SECONDS counts whole seconds, so N waits between N-1 and N.
+lock_dir() {  # <dir> <stale seconds> [tries, 0.05 s apart; default 40] [seconds]
+  local d=$1 stale=$2 tries=${3:-40} end=
+  [ -n "${4:-}" ] && end=$((SECONDS + $4))
   mkdir -p "${d%/*}" 2>/dev/null
   while :; do
     mkdir "$d" 2>/dev/null && return 0
     [ "$(lock_age "$d")" -gt "$stale" ] && rm -rf "$d" 2>/dev/null
     tries=$((tries - 1)); [ "$tries" -gt 0 ] || return 1
+    [ -n "$end" ] && [ "$SECONDS" -ge "$end" ] && return 1
     sleep 0.05
   done
 }
@@ -65,6 +68,19 @@ lock_age() {  # <dir> -> seconds
 # The release, a statement of its own on every path out: never a `trap ...
 # RETURN`, which bash 3.2 fires again when the caller returns (see collapse_seat).
 unlock_dir() { rm -rf "${1:?}" 2>/dev/null; return 0; }
+
+# tmux default pane title is the machine name, which names nothing — and it is
+# the FULL name (`hostname`, sukas-MacBook-Pro.local) while the comparisons
+# here were all made against the short one (`hostname -s`), so on a Mac the
+# default title slipped through as the name of every agent that had not set a
+# title of its own. Both forms are "nothing"; anything else somebody chose.
+host_title() {  # <title> — true when it is only the host name
+  case ${1:-} in
+    '') return 1 ;;
+    "$(hostname -s 2>/dev/null)"|"$(hostname 2>/dev/null)") return 0 ;;
+  esac
+  return 1
+}
 
 # Prompts run in a tmux popup, not in the dashboard pane. fzf's `execute` hands
 # the terminal to the child, which puts the prompt under fzf's alternate screen

@@ -30,6 +30,15 @@
 
 set -uo pipefail
 
+# The keeper client below attaches through `script`, and a tmux client with no
+# $TERM cannot open its terminal: a worker started without one (a launchd job,
+# an `env -i`) would run every check against a server nobody is attached to.
+# bash sets an unexported TERM=dumb when it starts without one, so "dumb" is
+# the missing case too: ${TERM:-...} kept it, and the keeper failed with
+# "open terminal failed: terminal does not support clear".
+[ "${TERM:-dumb}" = dumb ] && TERM=xterm-256color
+export TERM
+
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TA="$HERE/../tagents"
 
@@ -79,6 +88,14 @@ export TA_CONFIG=/nonexistent/config.yaml   # no profiles: no dialog anywhere
 export TA_COUNTS_EVERY=0   # --counts is cached for 5 s by default; these checks expect fresh numbers
 unset TMUX TMUX_PANE TA_MODE TA_FLAT TA_COLS TA_NEW_CMD TA_RESUME_CMD TA_HOME
 unset TA_HIDE_COLS TA_NAMES_EVERY CLAUDE_CONFIG_DIR
+# The Cyrillic titles below reach tmux intact only in a UTF-8 locale: in the C
+# one the server stores every non-ASCII byte as "_". A shell started without
+# LANG (a launchd job, a bare `env -i`) has exactly that, so the suite brings
+# its own instead of failing on the caller's.
+case $(locale charmap 2>/dev/null) in
+  UTF-8) ;;
+  *) export LC_CTYPE=en_US.UTF-8 ;;
+esac
 
 tm() { tmux -L "$S" "$@"; }
 
