@@ -228,3 +228,6 @@ In a detached worker every short sleep overshot by ~70 ms (timer coalescing): th
 
 ## macOS fs.watch on a file can miss an append made right after an event (18.10.2026)
 libuv re-arms a file's kqueue watch only at the loop's next poll, so an append landing in between raises no event at all. A probe appending inside the watch callback saw 1 event for 2 appends in one run of three. The follower drains once more after the re-arm (two setImmediate hops); a longer wait in the test would not have helped, since the event never comes.
+
+## macOS keeps an app's notification icon from its first permission request (18.10.2026)
+The helper app first asked for permission before it had an icon, and every notice and its System Settings entry kept a generic icon. Restarting NotificationCenter and usernoted, bumping `CFBundleVersion` and re-registering with lsregister changed nothing, while a copy under a fresh bundle id showed the icon at once. The bundle id now follows the icon, so a new icon is a new registration.
