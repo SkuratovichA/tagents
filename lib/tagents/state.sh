@@ -262,6 +262,7 @@ origin_of() {  # <session-id> <transcript-path>
   fi
   [ -n "$d" ] || return 1
   printf '%s\t%s\n' "$sid" "$d" >>"$ORIGINS" 2>/dev/null
+  signal_ev   # the origin is drawn, and the file is not a tmux event
   printf '%s' "$d"
 }
 

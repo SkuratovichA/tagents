@@ -14,10 +14,11 @@ import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import { EXIT } from './exit.ts';
-import { INDEX, LINT, LIST, SEARCH, SHOW } from './spec.ts';
+import { INDEX, LINT, LIST, SEARCH, SERVE, SHOW } from './spec.ts';
 import { openDb, reindex, silenceSqliteWarning } from '../db.ts';
 import { createT, type Translate } from '../i18n/index.ts';
 import { lint } from '../lint.ts';
+import { DEFAULT_IDLE_SECONDS, defaultSocket, ensureDaemon, runDaemon } from '../mcp/daemon.ts';
 import { runMcp } from '../mcp/server.ts';
 import { resolveDb, resolveDir } from '../paths.ts';
 import { getDoc, getSection, listDocs, parseAddress, search, type Filters } from '../search.ts';
@@ -224,6 +225,34 @@ function cmdLint(argv: string[], io: Io, t: Translate): number {
   return EXIT.error;
 }
 
+/**
+ * `serve` prints the socket of the shared server for this environment, starting the server first when none answers. `--foreground` is the server itself, which `serve` starts detached.
+ */
+async function cmdServe(argv: string[], io: Io, t: Translate): Promise<number> {
+  const { values } = parseArgs({
+    args: argv,
+    options: SERVE.options,
+    strict: true,
+    allowPositionals: false,
+  });
+  const idle = values.idle === undefined ? DEFAULT_IDLE_SECONDS : Number(values.idle);
+  if (!Number.isFinite(idle) || idle <= 0) {
+    io.err(`${t('badIdle')}\n`);
+    return EXIT.usage;
+  }
+  try {
+    if (values.foreground === true) {
+      await runDaemon({ socket: values.socket ?? defaultSocket(), idleMs: idle * 1000 });
+      return EXIT.ok;
+    }
+    io.out(`${await ensureDaemon(process.env, idle)}\n`);
+    return EXIT.ok;
+  } catch (e) {
+    io.err(`${t('serveFailed', { reason: e instanceof Error ? e.message : String(e) })}\n`);
+    return EXIT.error;
+  }
+}
+
 export async function main(argv: string[], io: Io = stdio()): Promise<number> {
   // Before anything runs: importing node:sqlite queues Node's experimental
   // notice, and a verb that never opens the index (lint, help) would otherwise
@@ -237,6 +266,7 @@ export async function main(argv: string[], io: Io = stdio()): Promise<number> {
     if (verb === 'show') return cmdShow(rest, io, t);
     if (verb === 'list') return cmdList(rest, io, t);
     if (verb === 'lint') return cmdLint(rest, io, t);
+    if (verb === 'serve') return await cmdServe(rest, io, t);
     if (verb === 'mcp') {
       await runMcp();
       return EXIT.ok;

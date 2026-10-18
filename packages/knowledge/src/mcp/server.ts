@@ -1,9 +1,12 @@
 // The same knowledge, over MCP, for any client that speaks it.
 //
-// stdio only: the client spawns this process and owns its lifetime, which is
-// what `claude mcp add tagents -- tagents-knowledge mcp` sets up and what makes
-// the server usable from a headless `claude -p --strict-mcp-config` run with no
-// port, no token and no daemon to leave running.
+// The framing is stdio, newline-delimited JSON-RPC. `runMcp` below is one process
+// for one client: the client spawns it and owns its lifetime, which is what
+// `claude mcp add tagents -- tagents-knowledge mcp` sets up and what makes the
+// server usable from a headless `claude -p --strict-mcp-config` run with no
+// port and no token. The plugin does not use it directly any more: daemon.ts
+// serves the same `createServer` to many clients over a unix socket, and
+// bin/knowledge-mcp falls back to `runMcp` whenever that cannot be had.
 //
 // THERE ARE NO WRITE TOOLS, and that is a design decision, not an omission.
 // The documents are a git repository the owner edits; a tool that could write

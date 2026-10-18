@@ -126,6 +126,66 @@ prompt_at() {  # <width> <height> <args for $SELF...>
   return 0
 }
 
+# RINGING THE CHANNELS where tagents itself writes something the list draws.
+# The refresher no longer looks on a timer: it sleeps on the tmux channel
+# tagents-ev, and whatever changes the picture without a tmux command of its own
+# (a label, an origin, a hidden column, a forgotten row) has to say so. 'panes'
+# rings the slots' channel, tagents-panes, too. One tmux call, no output, and
+# nothing at all outside tmux: with no $TMUX the call would go to the default
+# server, which is somebody else's. A change made from a shell outside tmux is
+# seen at the refresher's next wake or at its idle timeout.
+#
+# THE SLOTS' CHANNEL IS RUNG TOGETHER WITH A COUNT. Two signals with no waiter
+# cancel each other (a signal nobody waits for is remembered, a second one clears
+# it), so a slot that is busy with a lap while two rings arrive would sleep through
+# both. Every ring of tagents-panes therefore also adds one to the global option
+# @tagents_gen, which is the same server-side command and starts no program; a
+# slot reads it in the list-panes it makes anyway, and waits only if it has not
+# moved since (see slot).
+GEN_BUMP='#{e|+|:#{@tagents_gen},1}'
+# THE REFRESHER'S CHANNEL IS RUNG WITH A COUNT TOO, for the same reason and the
+# same way: every ring of tagents-ev first adds one to the global option
+# @tagents_evgen, in the same tmux call and BEFORE the signal, so a ring that
+# lands while the refresher is between two waits is a number that moved, not a
+# signal that cancelled another one. The refresher reads the number in the call
+# that takes its snapshot and waits only while it has not moved (see refresher).
+# The hook (hooks/tmux-agent-state.sh) is POSIX sh and cannot source this file, so
+# it carries a copy of EV_BUMP; tests/refresh.sh pins the two against each other.
+#   EV_BUMP, GEN_BUMP   the format that adds one to the option it is set into
+#   EV_SIGNAL           the command text of a tmux hook: both channels, both counts
+#   RING_EV, RING_BOTH  the same as arguments to one tmux call, after a `\;`
+EV_BUMP='#{e|+|:#{@tagents_evgen},1}'
+EV_SIGNAL="set -gF @tagents_evgen '$EV_BUMP' ; wait-for -S tagents-ev ; wait-for -S tagents-panes ; set -gF @tagents_gen '$GEN_BUMP'"
+RING_EV=(set -gF @tagents_evgen "$EV_BUMP" ';' wait-for -S tagents-ev)
+RING_BOTH=("${RING_EV[@]}" ';' wait-for -S tagents-panes ';' set -gF @tagents_gen "$GEN_BUMP")
+signal_ev() {  # [panes]
+  [ -n "${TMUX:-}" ] || return 0
+  if [ "${1:-}" = panes ]; then
+    tmux "${RING_BOTH[@]}" 2>/dev/null
+  else
+    tmux "${RING_EV[@]}" 2>/dev/null
+  fi
+  return 0
+}
+
+# IS A REFRESHER ALIVE? By the start marker each one keeps (.refresher.<pid>.start,
+# see refresher), whose pid has to pass kill -0: a refresher that was killed with
+# -9 leaves its marker behind until the next one's sweep. Builtins only, no
+# program. The pid in $1 is left out, which is how a refresher asks "another one?"
+# (other_refresher); the status bar's --counts asks with no argument, to know that
+# the cache it prints is being kept (see counts).
+refresher_alive() {  # [pid to leave out]
+  local f n pid
+  for f in "$STATE_DIR"/.refresher.[0-9]*.start; do
+    [ -e "$f" ] || continue
+    n=${f##*/}; n=${n#.refresher.}; pid=${n%%.*}
+    case $pid in ''|*[!0-9]*) continue ;; esac
+    [ "$pid" = "${1:-}" ] && continue
+    kill -0 "$pid" 2>/dev/null && return 0
+  done
+  return 1
+}
+
 # A whole file into the variable named by $1, every byte of it, trailing newlines
 # included: -d '' reads to the end, IFS= keeps the edges, and the braces keep the
 # error of a missing file away from the caller (the redirection fails before a

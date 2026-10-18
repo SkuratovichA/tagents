@@ -70,7 +70,8 @@ that says how to set it.
 | `show <id[#heading]>` | the markdown of the document, or of one section (`id#` is the preamble) |
 | `list [--kind K] [--tag T] [--json]` | `id  kind  updated  title  #tags` |
 | `lint [--dir D]` | the claims each document makes about itself, checked |
-| `mcp` | serve the tools below over stdio |
+| `mcp` | serve the tools below over stdio, one process for this one client |
+| `serve [--idle S] [--foreground] [--socket P]` | make sure the shared MCP server for this environment is running and print the unix socket it listens on; `--idle S` is the quiet time in seconds before it exits (default 600); `--foreground` runs the server in this process instead, on `--socket P` |
 
 Exit codes: **0** ok · **1** error · **2** usage · **4** nothing found (a search
 with no hits, a `show` of an id or heading that does not exist, an empty
@@ -119,10 +120,7 @@ or, for a headless run that must see exactly these tools and nothing else:
 claude -p "where do the backups go?" --mcp-config mcp.json --strict-mcp-config
 ```
 
-Built on `@modelcontextprotocol/sdk` **1.x** (current stable major; input
-schemas are zod shapes the SDK turns into JSON Schema). Transport is stdio only:
-the client spawns the process and owns its lifetime, so there is no port, no
-token and no daemon left running.
+Built on `@modelcontextprotocol/sdk` **1.x** (current stable major; input schemas are zod shapes the SDK turns into JSON Schema). The framing is stdio, newline-delimited JSON-RPC, and there are two ways to reach it: `tagents-knowledge mcp` is a process of its own for one client, and the shared server below is one process for every client with the same environment.
 
 | tool | input | returns |
 | --- | --- | --- |
@@ -133,6 +131,18 @@ token and no daemon left running.
 | `sessions_search` | `{ words }` | sessions whose project or opening prompt contains every word |
 
 There are no write tools, and there will not be any.
+
+## The shared server
+
+A `tagents-knowledge mcp` process is about 30 MB resident, and a Claude session starts one of its own. The plugin therefore registers `packages/knowledge/bin/knowledge-mcp` instead (`sh ${CLAUDE_PLUGIN_ROOT}/packages/knowledge/bin/knowledge-mcp`), a two-line POSIX script: it asks `tagents-knowledge serve` for the socket of the shared server and `exec`s `nc -U` on it, so a session is left with one `nc` of about 1.4 MB. If `serve` fails, a checkout predates it, or there is no `nc`, the script runs `tagents-knowledge mcp` and the session gets a server of its own, as before.
+
+`serve` prints the socket and exits 0. If something already answers on it, that is all it does. Otherwise it starts the server detached (its own process group, so it outlives the session that happened to start it), waits until the socket accepts a connection and prints the path. The server gives every connection its own MCP server over the same stdio framing, and exits after 10 minutes without a connection: a one-shot timer, armed when the last connection closes and cleared by the next, so nothing polls.
+
+One server per environment, not per session. The socket is `$TMPDIR/tagents-<uid>/knowledge-<key>.sock` in a directory of mode 0700 (under `/tmp` when `$TMPDIR` is too long for a socket address), and `<key>` is a hash of `HOME`, `TAGENTS_CONFIG_DIR`, `XDG_CONFIG_HOME`, `TAGENTS_KNOWLEDGE_DIR`, `TAGENTS_KNOWLEDGE_DB` and `CLAUDE_HOMES`, the variables the server and the session renderers behind it read, plus a stamp of the running build, so a rebuilt checkout starts a server of its own instead of joining the previous build's. Relative paths in those variables are made absolute against the starter's directory, because the server starts elsewhere. `test/socket.test.ts` scans the sources and fails when they read a variable that is neither in the key nor on its list of reasons not to be. Beside each socket the server keeps `<socket>.pid`, written once it listens and removed when it leaves.
+
+Starters that race are settled by the kernel: the loser's `listen` fails with `EADDRINUSE`, it finds a live server and leaves. A socket file that refuses connections (its server was killed) is removed and replaced under a lock, in the same critical section as the new `listen`, so two servers that both see the dead file cannot unlink each other's fresh one.
+
+Two limits worth knowing. A session that connects in the few milliseconds when the server is already leaving gets a connection refused, and its MCP server fails to start for that session. And the build stamp is the modification time of `dist/cli/main.js`, which `pnpm build` rewrites; running from `src/` does not notice an edit to another file.
 
 ## The tokenizer decision
 
@@ -187,4 +197,6 @@ pnpm -r test
 No `any`, anywhere: `test/lint-no-any.test.ts` is the gate. Erasable syntax
 only. The suites are hermetic — a temp folder, a temp index, a fixture corpus in
 Russian and English under `test/fixtures/knowledge/`, and an MCP round trip that
-spawns the real binary and kills it again.
+spawns the real binary and kills it again. The shared-server suite
+(`test/shared-server.test.ts`) runs the bridge script against real daemons in a
+scratch `TMPDIR` and stops every process whose command line names that directory.

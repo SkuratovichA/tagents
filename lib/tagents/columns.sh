@@ -71,6 +71,7 @@ toggle_col() {  # <key> [fzf port of the list behind the picker]
     >"$tmpf" 2>/dev/null
   [ -n "$now" ] || printf '%s\n' "$key" >>"$tmpf"
   mv -f "$tmpf" "$COLS_FILE" 2>/dev/null || rm -f "$tmpf"
+  signal_ev   # the hidden columns are drawn, and the file is not a tmux event
   post_fzf "$port" "reload-sync($SELF --list)"
   return 0
 }

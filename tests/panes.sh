@@ -28,6 +28,8 @@ set -uo pipefail
 export TERM
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# A suite that is not run against a scratch default server aborts here, before it can reach the live one (tests/scratch-guard.sh).
+. "$HERE/scratch-guard.sh" && scratch_guard panes.sh || exit 1
 TA="$HERE/../tagents"
 
 command -v tmux >/dev/null 2>&1 || { echo "panes.sh: no tmux"; exit 1; }
@@ -94,6 +96,12 @@ unset CLAUDE_CONFIG_DIR
 unset CLAUDE_PID
 
 tm() { tmux -L "$S" "$@"; }
+
+# A RING THE WAY EVERY RINGER MAKES IT: the count first, then the signal (EV_BUMP in
+# core.sh). A bare signal is lost when the refresher happens to be between two waits.
+EVB=$(sed -n "s/^EV_BUMP='\(.*\)'\$/\1/p" "$HERE/../lib/tagents/core.sh")
+[ -n "$EVB" ] || { echo "panes.sh: no EV_BUMP in core.sh"; exit 1; }
+ring() { tm set -gF @tagents_evgen "$EVB" \; wait-for -S tagents-ev; }
 
 tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 "exec '$TA'" || exit 1
 tm set -g default-shell /bin/sh >/dev/null 2>&1
@@ -215,6 +223,9 @@ mkagent() {  # <name> -> the pane of a new agent window in the work session
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$(date +%s)" working "sid-$nm" "$REPO" "" "agent $nm" "" >"$STATE/${p#%}.tsv"
   printf '%s\t%s\n' "sid-$nm" "$nm" >>"$STATE/labels.tsv"
+  # What the agent-state hook does after it writes a record: the dashboard no
+  # longer polls for it, so the write is announced.
+  ring
   printf '%s' "$p"
 }
 
@@ -246,7 +257,18 @@ ok "the sidebar starts as the list and one free seat" \
 ok "...which is two panes" 2 "$(npanes "$DWIN")"
 has "the stub is a live agent, not a closed row" "working" \
     "$(run --list | awk -F'\t' -v p="$A" '$1 == p { print $3; exit }')"
-has "--counts still counts the live agents" "●" "$(run --counts)"
+# The counts are the refresher's, from the last list it drew, which is a pass of
+# its own after the ring above: waited for, not slept for.
+counts_with_agents() {
+  local i=0 c=""
+  while [ "$i" -lt 40 ]; do
+    c=$(run --counts)
+    case $c in *●*) break ;; esac
+    i=$((i + 1)); sleep 0.1
+  done
+  printf '%s' "$c"
+}
+has "--counts still counts the live agents" "●" "$(counts_with_agents)"
 HELP=$(run --help)
 has "--help documents the collapse entry" "--collapse"    "$HELP"
 has "...and the seat repair"              "--ensure-seat" "$HELP"
@@ -657,7 +679,12 @@ ok "the list pane carries the port while it runs" yes \
 # THE CLAIM IS KEPT, NOT LEFT: a stale refresher's cleanup (or anything else)
 # taking the option away is undone on the next tick by the one that owns it.
 if [ -n "$PORT" ]; then
-  tm set -p -t "$LIST" @tagents_port 1 >/dev/null 2>&1; sleep 2.8
+  # What takes the option away in real life is another refresher on its way out, which
+  # rings; a bare `set` is not an event, so the ring is made here with it.
+  tm set -p -t "$LIST" @tagents_port 1 >/dev/null 2>&1; ring
+  i=0; while [ "$i" -lt 60 ] && [ "$(tm display -p -t "$LIST" '#{@tagents_port}' 2>/dev/null)" != "$PORT" ]; do
+    i=$((i + 1)); sleep 0.1
+  done
   ok "an overwritten port is reclaimed on the next tick" "$PORT" \
      "$(tm display -p -t "$LIST" '#{@tagents_port}' 2>/dev/null)"
   # A REFRESHER WHOSE LIST IS GONE MAKES NO CLAIM: one started against a port
@@ -676,10 +703,12 @@ fi
 # The hook end of it, witnessed by the stamp file: poke writes down the seat it
 # repainted for, and only when a live list took the reload.
 rm -f "$STATE/.poke"
-tm select-pane -t "$A" 2>/dev/null; sleep 0.6
+# waited for, up to 4 s: the hook runs a shell of its own, and a loaded machine is slow to start it
+await_poke() { local i=0; while [ "$i" -lt 40 ] && [ "$(cat "$STATE/.poke" 2>/dev/null)" != "$1" ]; do i=$((i + 1)); sleep 0.1; done; }
+tm select-pane -t "$A" 2>/dev/null; await_poke "$LIST $A"
 ok "focusing a seat pokes the list at once" "$LIST $A" \
    "$(cat "$STATE/.poke" 2>/dev/null)"
-tm select-pane -t "$C" 2>/dev/null; sleep 0.6
+tm select-pane -t "$C" 2>/dev/null; await_poke "$LIST $C"
 ok "...and the switch back the other way"   "$LIST $C" \
    "$(cat "$STATE/.poke" 2>/dev/null)"
 

@@ -62,8 +62,30 @@
 #
 # Runs on every tool call, so it stays deliberately cheap: one jq, one tmux, and
 # on every event but SessionStart one awk read of the record instead of a `ps`.
+# The payload goes straight from stdin into jq, which also reads the clock, so
+# there is no cat and no date.
+#
+# AND THE TMUX CALL IS ALSO THE DOORBELL. The dashboard no longer polls: its
+# refresher sleeps on the tmux channel tagents-ev (see refresher in lib/tagents/
+# refresh.sh) and this is what wakes it. The signal is the FIRST command of the
+# call, ahead of the option write, because a failed command in a tmux command
+# list skips the ones after it (a pane that has just closed is a failed set), and
+# a record that was written must be announced. An event with no pane (a headless
+# session, a child), or one that only touched a subagent's file, makes the same
+# signal on its own. With no server running it fails quietly, and nothing is
+# lost: a refresher that is not there is not waiting.
+#
+# THE RING IS COUNTED. Two signals sent while nobody waits on a channel cancel
+# each other, so the same call first adds one to the global option @tagents_evgen
+# (EV_BUMP below), and the refresher waits only while that number has not moved
+# since its last look (see refresher). The bump is a format the server evaluates:
+# it starts no program, and it cannot fail, so the signal is still ahead of every
+# command that can. EV_BUMP is a copy of the one in lib/tagents/core.sh, which this
+# POSIX sh script cannot source; tests/refresh.sh pins the two to each other.
 
 set -u
+
+EV_BUMP='#{e|+|:#{@tagents_evgen},1}'
 
 # Every file this hook creates is read by the same user only; without this, a
 # rotated events.tsv is recreated by the next append with the default umask while
@@ -75,15 +97,12 @@ command -v jq >/dev/null 2>&1 || exit 0
 dir=${TA_STATE_DIR:-$HOME/.claude/agent-state}
 { [ -d "$dir/sub" ] && [ -d "$dir/prompt" ]; } || mkdir -p "$dir/sub" "$dir/prompt" 2>/dev/null || exit 0
 
-payload=$(cat 2>/dev/null) || exit 0
-[ -n "$payload" ] || exit 0
-
 # Fields are joined with the unit separator rather than a tab: tab counts as IFS
 # whitespace, so `read` would collapse the (usually empty) agent_id field and
 # shift every remaining value one slot to the left.
 us=$(printf '\037')
 
-line=$(printf '%s' "$payload" | jq -r --arg us "$us" '
+line=$(jq -r --arg us "$us" '
   def clip: if (length > 90) then (.[0:89] + "…") else . end;
   def one:  tostring | gsub("[\\r\\n\\t]+"; " ") | gsub($us; " ")
             | gsub("^ +| +$"; "") | clip;
@@ -120,7 +139,7 @@ line=$(printf '%s' "$payload" | jq -r --arg us "$us" '
      elif $e == "SessionEnd"       then ["gone",    ""]
      elif $e == "SubagentStop"     then ["subdone", ""]
      else                               ["working", $e] end) as [$state, $detail]
-  | [$e, ($h.agent_id // ""), $state,
+  | [(now|floor), $e, ($h.agent_id // ""), $state,
      ($h.session_id // ""), ($h.cwd // ""), ($h.transcript_path // ""),
      ($detail | one),
      (if $e == "PreToolUse" or $e == "PostToolUse" then ($h.tool_name // "") else "" end),
@@ -146,11 +165,9 @@ line=$(printf '%s' "$payload" | jq -r --arg us "$us" '
 ' 2>/dev/null) || exit 0
 [ -n "$line" ] || exit 0
 
-IFS="$us" read -r event agent state sid cwd transcript detail etool esub etext elabel econfig <<EOF
+IFS="$us" read -r now event agent state sid cwd transcript detail etool esub etext elabel econfig <<EOF
 $line
 EOF
-
-now=$(date +%s)
 
 # ---------------------------------------------------------------------------
 # WHOSE RECORD THIS EVENT BELONGS TO
@@ -523,9 +540,18 @@ fi
 # child's key is its own, so its subagents no longer wipe the parent's.
 # ---------------------------------------------------------------------------
 if [ -n "${agent:-}" ]; then
+  had=; [ -e "$dir/sub/$key.$agent" ] && had=1
   case "$state" in
     subdone|gone) rm -f "$dir/sub/$key.$agent" ;;
     *) printf '%s\t%s\n' "$now" "${detail:-}" >"$dir/sub/$key.$agent" 2>/dev/null ;;
+  esac
+  # The dashboard draws how many subagents a session has, so a file that appeared
+  # or went is announced. A rewrite of one that was already there is not: a busy
+  # subagent calls a tool several times a second, and none of those changes the
+  # count, so the line stays what it was (a program per tool call, for nothing).
+  case "$state" in
+    subdone|gone) [ -n "$had" ] && tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev 2>/dev/null ;;
+    *)            [ -n "$had" ] || tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev 2>/dev/null ;;
   esac
   exit 0
 fi
@@ -568,7 +594,11 @@ EOF
     rm -f "$dir/prompt/$key" 2>/dev/null
     # No pane, no pane option to unset — and `-t ""` is not a no-op to tmux, it
     # is "the current pane", i.e. somebody else's. A child never has one.
-    [ -n "$pane" ] && tmux set -up -t "$pane" @agent 2>/dev/null
+    if [ -n "$pane" ]; then
+      tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev \; set -up -t "$pane" @agent 2>/dev/null
+    else
+      tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev 2>/dev/null
+    fi
   fi
   exit 0
 fi
@@ -621,8 +651,14 @@ elif printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   mv -f "$tmpf" "$dir/$key.tsv" 2>/dev/null || rm -f "$tmpf"
 fi
 
-# Nothing to mirror the state onto without a pane; the dashboard reads the file.
+# Nothing to mirror the state onto without a pane; the dashboard reads the file,
+# and is told there is something to read by the signal alone. With a pane the two
+# are one tmux call, the signal first (see the top of this file).
 # A child has none on purpose: the pane it inherited belongs to its parent, and
 # writing this session's state there is what made the parent's row lie.
-[ -n "$pane" ] && tmux set -p -t "$pane" @agent "$state" 2>/dev/null
+if [ -n "$pane" ]; then
+  tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev \; set -p -t "$pane" @agent "$state" 2>/dev/null
+else
+  tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev 2>/dev/null
+fi
 exit 0

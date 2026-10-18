@@ -344,6 +344,25 @@
           "options": {},
           "required": [],
           "summary": "serves the knowledge tools over stdio as an MCP server"
+        },
+        {
+          "path": [
+            "serve"
+          ],
+          "positionals": [],
+          "options": {
+            "idle": {
+              "type": "string"
+            },
+            "foreground": {
+              "type": "boolean"
+            },
+            "socket": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "summary": "starts the shared MCP server for this environment if it is not running and prints its unix socket; --idle S is how many seconds without a client before it exits (default 600); --foreground runs the server in this process, on --socket P"
         }
       ]
     }
@@ -462,7 +481,7 @@
   },
   "api": {
     "@tagents/core": "sha256:c127f03b660a5ff59bfc2a3a99ad3b0ecbc25ebba324442ae187beb7dca0fcbd",
-    "@tagents/knowledge": "sha256:a842bc4e2e064fefd291cd43ffe926a64309ecb6c40ab0a5f93052b2fe0017e2",
+    "@tagents/knowledge": "sha256:4eed805cc62428dba060d00688c436e3280670ada617a8a6aadcb20778c1ea69",
     "@tagents/notify": "sha256:82378079b87af196363505cb138618ae0e84223fea9f92d4eaa01ec4981564bf",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"
   }

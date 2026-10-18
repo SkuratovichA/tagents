@@ -14,6 +14,8 @@
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# A suite that is not run against a scratch default server aborts here, before it can reach the live one (tests/scratch-guard.sh).
+. "$HERE/scratch-guard.sh" && scratch_guard notes-freshness.sh || exit 1
 HOOK="$HERE/../hooks/notes-freshness.sh"
 ROOT=$(mktemp -d "${TMPDIR:-/tmp}/notes-freshness-t.XXXXXX") || exit 1
 trap 'rm -rf "$ROOT"' EXIT INT TERM

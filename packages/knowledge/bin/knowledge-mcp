@@ -1,0 +1,10 @@
+#!/bin/sh
+# knowledge-mcp — the MCP server entry the plugin registers (plugin.json, mcpServers.knowledge).
+#
+# A Claude session expects an MCP server to be a process it can talk to over stdin and stdout. Started as `tagents-knowledge mcp`, that is a node process of about 30 MB per session. Here the server is shared: `tagents-knowledge serve` makes sure one daemon runs for this environment and prints the unix socket it listens on, and `nc -U` joins this session's stdin and stdout to that socket. The session is left with one `nc`, a few hundred kilobytes, and the daemon exits by itself when no session is connected.
+#
+# `exec` so that nc IS the process Claude started: closing its stdin ends the connection and nc, and killing it needs no shell in between.
+#
+# The second line is the old arrangement, kept as the way out: a checkout that predates `serve` prints "unknown command" and exits 2, a machine without a usable `nc` has nothing to exec, and a daemon that cannot start leaves no socket. In each the session still gets its own server.
+sock=$(tagents-knowledge serve 2>/dev/null) && [ -S "$sock" ] && command -v nc >/dev/null 2>&1 && exec nc -U "$sock"
+exec tagents-knowledge mcp

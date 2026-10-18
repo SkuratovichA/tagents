@@ -95,7 +95,11 @@ This repo is also a Claude Code plugin, and its own marketplace:
 
 That one line needs Claude Code 2.1.275 or later; before it, `/plugin marketplace add SkuratovichA/tagents` and then `/plugin install tagents@tagents`.
 
-It gives a session the `tagents` skill, which is the contract described below, and registers `tagents-knowledge mcp` as the `knowledge` MCP server, so `tagents-knowledge` has to be on `$PATH`. If that server is already registered by hand with `claude mcp add`, remove the hand-made entry or its tools appear twice. The plugin registers no hooks: the state hook and the status line stay steps 3 and 4 of [Install](#install), because a plugin cannot set a status line.
+It gives a session the `tagents` skill, which is the contract described below, and the `knowledge` MCP server.
+
+The plugin registers `packages/knowledge/bin/knowledge-mcp` as the `knowledge` MCP server. It asks `tagents-knowledge serve` for the unix socket of one shared knowledge server per environment and joins the session to it with `nc -U`, which keeps a session at about 1.4 MB instead of a 30 MB node process. The server starts on demand and exits after 10 minutes without a client. If `serve` fails, a checkout predates it, or there is no `nc`, the script runs `tagents-knowledge mcp` as before. `tagents-knowledge` has to be on `$PATH`.
+
+If that server is already registered by hand with `claude mcp add`, remove the hand-made entry or its tools appear twice. The plugin registers no hooks: the state hook and the status line stay steps 3 and 4 of [Install](#install), because a plugin cannot set a status line.
 
 **The contract is generated, never written.** `pnpm plugin:gen` reads four things out of the code and rewrites `contract.json` and `skills/tagents/references/`:
 
@@ -198,6 +202,30 @@ ended up, and the `?` window in the list shows the same thing live.
 
 `tagents --help` is the real documentation — the script's header explains the
 model, and every non-obvious decision in it is commented with the reason.
+
+## How the dashboard stays current
+
+**It waits; it does not poll.** The refresher beside the list sleeps on a tmux channel, `tagents-ev`, and does nothing at all until something rings it: no timer ticks, no program started on a quiet minute. A second channel, `tagents-panes`, wakes the placeholder panes (the slots) the same way. `tmux wait-for -S <channel>` is the ring, and it wakes every waiter. Two signals with nobody waiting cancel each other, so every ring is also a count: it first adds one to a global option (`@tagents_evgen` for the refresher, `@tagents_gen` for the slots) in the same tmux call, and a waiter sleeps only while that number is the one it saw with its last look (`tmux if-shell -F` decides and waits in one step, inside the server). A ring that lands between two waits is a number that moved, never a lost signal.
+
+**Who rings.**
+
+- The agent-state hook, in the one `tmux` call it already makes: `tmux set -gF @tagents_evgen '#{e|+|:#{@tagents_evgen},1}' \; wait-for -S tagents-ev \; set -p -t "$pane" @agent "$state"`, the count and the signal first, so a pane that has just closed (a failed `set`) still announces the record that was written. An event with no pane rings on its own: a headless session or a child has no pane to set an option on, so it rings the default tmux server, one `tmux` program per event, and the list shows it at once. A subagent's file that appears or goes rings too; a rewrite of one that is already there does not.
+- tmux itself, through hooks that `tagents` puts at array index **42** (`set-hook -g after-new-window[42] …`): `after-new-window`, `after-split-window`, `after-new-session`, `after-kill-pane`, `pane-exited`, `pane-died`, `window-linked`, `window-unlinked`, `session-closed`, `window-renamed`, `session-renamed`, `window-layout-changed`, `client-attached`, `client-detached` and the four focus events (`pane-focus-in`, `after-select-pane`, `after-select-window`, `client-session-changed`). The index is fixed so that a hook of your own (`set-hook -g` without an index replaces the event's whole list, and `[0]` is somebody's) is left alone, and so that installing them again is installing them once. They are put in at every refresher start, every slot start, every dock and every slow pass, so a `.tmux.conf` that sets one of those events without an index (which wipes the event's list, ours with it) is healed within `TA_REFRESH_SLOW` seconds. tmux 3.7 has no `after-swap-pane`, `after-join-pane`, `after-break-pane`, `after-move-window` or `after-respawn-pane`; `window-layout-changed` fires for a swap, a join and a break (for both windows when they differ), and a respawned pane changes nothing the list draws until the slow pass. The focus events run the seat stamp and the poke at `[0]` to `[3]` and the ring last, at `[42]`: tmux runs an event's entries in index order, and a focus change rings once.
+- `tagents` itself, wherever it writes something the list draws without a tmux command of its own: a label, an origin, a hidden column, a forgotten row, a closed pane; the swaps and breaks that dock and undock chain the rings onto the same tmux call.
+
+**What a wake does.** One `tmux list-panes` for the snapshot, with the ring count read in the same call; a reload is posted into the list only if the snapshot moved, a file the list reads is newer than the marker, a state file was added or removed, or an earlier post was refused (retried every 2 s, the one place left that polls; five in a row end the loop). A burst of rings is one pass: the loop lets a second go by after a wake. **At most one reload is posted every `TA_REFRESH_MIN` seconds** (2, a whole number, one at the least): a single change after a quiet spell is posted at once, one that comes within the interval of a post is owed and made when the interval is over, with no ring needed. A pass that posted is looked at once more a second later; that second look is there for the marker (file times are compared in whole seconds, so a write in the second of a reload's touch would otherwise be drawn twice), not for a lost ring. A quiet wake starts two programs, that snapshot and one `tmux if-shell` for the next wait: one of each per pass and nothing per ring, and never more than one wait outstanding.
+
+**The slow pass** is what every fifth tick used to carry: the config re-read, `tusage --update` and the footer, window names, the resurrect snapshot, seat repair, `tnotes sync`, and a reload whether or not anything moved (the age column, the pane titles and dead processes need that). It runs on the first wake after `TA_REFRESH_SLOW` seconds (10) since the last one, and always at the idle timeout `TA_REFRESH_IDLE` (60 s, two at the least), which is also how often a loop with no rings at all still looks. A config edited by hand is therefore seen within `TA_REFRESH_SLOW` of the next ring, or within `TA_REFRESH_IDLE` of none. The slow pass also puts the `[42]` hooks back. A seat that dies does not wait for a ring after the interval or for the idle timeout: a pane gone moves the snapshot, and a wake that finds the dashboard window without a seat owes the slow pass, which then runs at the end of its interval.
+
+**The loop ends with its list.** It watches fzf itself (the start bind hands it `$PPID` of the shell fzf starts, not the bash that restarts fzf after an abort), checked at every wake, at every timeout and again after the delay, and closing the list rings the channel on the way out. A refresher that is killed, not asked, leaves its markers in the state directory; the next one sweeps them, and the list that closes takes `@tagents_counts` down if no refresher is left to.
+
+**The status bar is fed from the same loop.** While a refresher answers, it sets the global tmux option `@tagents_counts` to the text the bar prints (only when the text changes), on every pass, so the second look after a reload picks up the tally that reload wrote (a reload that is slower than that leaves the bar one pass behind until the next pass), and unsets it when the last refresher ends. A status line that prints the option and runs `tagents --counts` only when it is not set costs nothing per redraw:
+
+```tmux
+set -g status-right '#{?@tagents_counts,#{@tagents_counts},#(~/.local/bin/tagents --counts)}'
+```
+
+The `#()` in the branch that is not taken never runs. Without a refresher the option is not set, and the bar computes the counts itself, throttled by `TA_COUNTS_EVERY` as before. With a refresher alive, a bar that still runs `tagents --counts` (the old line) prints the cache whatever its age and starts no program.
 
 ## Closed sessions
 
@@ -774,7 +802,14 @@ records in the state directory, that `--counts` reads its config once and
 reuses its output for five seconds (`TA_COUNTS_EVERY=0` turns that off), and
 that a record which cannot be read does not take the ones after it down —
 because the status bar and the refresher run these hundreds of times a minute
-and the endpoint security agent inspects every process they start. Each runs
+and the endpoint security agent inspects every process they start.
+`tests/refresh.sh` runs the real refresher loop with shims for its network and
+counts what a wake posts and which programs it starts, and `tests/events.sh`
+covers the hook's event stream and what the hook starts. Each runs
 against a throwaway tmux server of its
-own (`tmux -L tatest-$$`), never the default socket. All of them are bash 3.2,
+own (`tmux -L tatest-$$`), never the default socket, and refuses to start unless
+it is run with a default socket of its own too, so that no stray `tmux` call
+reaches the server you are working in:
+`env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/<suite>.sh`
+(`tests/scratch-guard.sh`). All of them are bash 3.2,
 run every check, and exit non-zero when any of them fails.
