@@ -188,8 +188,12 @@ transcript_tail() {  # <transcript file> [lines]
 TITLES="$STATE_DIR/title.tsv"
 TITLE_MAXSZ=65536   # past this the first 200 lines are long behind us
 TITLE_STEP=8192     # and below it, re-read only after this much new text
-title_of() {  # <session-id> <transcript-path>
-  local sid=${1:-} tr=${2:-} sz=0 hit= hsz= t= tmp=
+# A caller that has read the cache already passes the row it found (an empty
+# title for "no row"), and no awk is started to look it up again: collect()
+# does that for every pane-less record in its one awk.
+title_of() {  # <session-id> <transcript-path> [<cached title> <cached size>]
+  local sid=${1:-} tr=${2:-} sz=0 hit= hsz= t= tmp= have=0
+  [ $# -ge 3 ] && { have=1; hit=${3:-}; hsz=${4:-}; }
   [ -n "$sid" ] || return 1
   if [ -n "$tr" ] && [ -e "$tr" ]; then
     # wc -c, as the hook's history rotation does it; it pads, so strip the pad.
@@ -197,10 +201,10 @@ title_of() {  # <session-id> <transcript-path>
     sz=${sz// /}
   fi
   case ${sz:-0} in ''|*[!0-9]*) sz=0 ;; esac
-  if [ -e "$TITLES" ]; then
+  if [ "$have" = 1 ] || [ -e "$TITLES" ]; then
     # The LAST line for the id, not the first: a cache written before the rows
     # were rewritten in place may still hold several, and the newest one counts.
-    IFS="$US" read -r hit hsz < <(
+    [ "$have" = 1 ] || IFS="$US" read -r hit hsz < <(
       awk -F"$TAB" -v OFS="$US" -v k="$sid" \
           '$1 == k { t = $2; s = $3 } END { if (t != "") print t, s }' \
           "$TITLES" 2>/dev/null)
@@ -306,7 +310,7 @@ collect() {
   dir_roots
   [ -e "$LABELS" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "N", $1, $2 }' "$LABELS"
 
-  local f key ts st sid cwd tr det cfgd hascfg orig hlbl hpar hpsid hl pid ttl
+  local f key ts st sid cwd tr det cfgd hascfg orig hlbl hpar hpsid hl pid ttl th tz
   # ONE AWK FOR ALL THE STATE FILES, and for the origin cache beside them: a
   # process per record — two, with the cache lookup — is what a repaint used to
   # cost per session, thrice a second, and the endpoint security agent inspects
@@ -326,7 +330,8 @@ collect() {
   while IFS= read -r f; do set -- "$@" "$f"; done < <(state_files)
   if [ $# -gt 0 ]; then
     [ -e "$ORIGINS" ] && set -- "$ORIGINS" "$@"
-    while IFS="$US" read -r f orig ts st sid cwd tr det cfgd hascfg pid hpar hpsid hlbl; do
+    [ -e "$TITLES" ] && set -- "$TITLES" "$@"
+    while IFS="$US" read -r f orig ts st sid cwd tr det cfgd hascfg pid hpar hpsid th tz hlbl; do
       key=${f##*/}; key=${key%.tsv}
       [ -z "$orig" ] && [ -n "$sid" ] && orig=$(origin_of "$sid" "$tr")
       printf 'S\t%%%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
@@ -354,11 +359,11 @@ collect() {
           # not T: T is the prompt clock below, one line per file in prompt/, and
           # two kinds of record sharing a tag is two readers quietly reading the
           # wrong one.
-          ttl=$(title_of "${sid:-}" "${tr:-}") &&
+          ttl=$(title_of "${sid:-}" "${tr:-}" "${th:-}" "${tz:-}") &&
             printf 'A\t%s\t%s\n' "${sid:-}" "$ttl" ;;
       esac
-    done < <(awk -F"$TAB" -v OFS="$US" -v orig="$ORIGINS" '
-      function blank(p) { print p, "", "", "", "", "", "", "", "", "0", "", "", "", "" }
+    done < <(awk -F"$TAB" -v OFS="$US" -v orig="$ORIGINS" -v titles="$TITLES" '
+      function blank(p) { print p, "", "", "", "", "", "", "", "", "0", "", "", "", "", "", "" }
       BEGIN {
         # A record deleted between the glob and here must not take the rest of
         # the list down with it: this awk stops dead at a file it cannot open,
@@ -367,15 +372,18 @@ collect() {
         for (i = 1; i < ARGC; i++) {
           if ((getline junk < ARGV[i]) < 0) { ARGV[i] = ""; continue }
           close(ARGV[i])
-          if (ARGV[i] != orig) sf[++ns] = ARGV[i]
+          if (ARGV[i] != orig && ARGV[i] != titles) sf[++ns] = ARGV[i]
         }
         nx = 1
       }
       FILENAME == orig { if (!($1 in o)) o[$1] = $2; next }
+      # The title cache: the LAST row for an id counts, as in title_of.
+      FILENAME == titles { th[$1] = $2; tz[$1] = $3; next }
       FNR == 1 {
         while (nx <= ns && sf[nx] != FILENAME) blank(sf[nx++])
         nx++
-        print FILENAME, o[$3], $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0), $8, $11, $12, $10
+        t = th[$3]; gsub(OFS, " ", t)
+        print FILENAME, o[$3], $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0), $8, $11, $12, t, tz[$3], $10
       }
       END { while (nx <= ns) blank(sf[nx++]) }' "$@" </dev/null 2>/dev/null)
   fi
