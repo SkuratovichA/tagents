@@ -237,10 +237,10 @@ open_chat() {  # <open_agent|open_beside> <pane> <sid> <dir>
   fi
   # Two notices clicked together would run two docks over the same seat. A lock
   # that cannot be had is not a reason to do nothing: a click that
-  # does nothing is worse than a race. 36 tries is about 3 s of wall time, each
-  # try costing more than its 0.05 s sleep (60 measured 5 s); the helper that
-  # runs this gives it 8 s.
-  lock_dir "$STATE_DIR/.dock.lock" 10 36 && locked=1
+  # does nothing is worse than a race. The wait is 3 s of wall time, whatever a
+  # try costs (at background priority 36 tries took 4.4 s, see lock_dir); the
+  # helper that runs this gives it 8 s.
+  lock_dir "$STATE_DIR/.dock.lock" 10 100 3 && locked=1
   "$dockfn" "$pane"; rc=$?
   [ "$locked" = 1 ] && unlock_dir "$STATE_DIR/.dock.lock"
   return "$rc"
