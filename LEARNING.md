@@ -213,3 +213,9 @@ The notices pointed at the worktree's `tagents`, so the owner's clicks ran code 
 
 ## A hook's `run-shell -b` runs against a later state than the one it tested (17.10.2026)
 The focus hook's `if-shell -F '#{@tagents_slot}'` passed while the placeholder was the empty seat, but the unpark it scheduled ran after a dock had moved that placeholder home, and handed the dock back. The hook passes `#{window_id}`, and unpark acts only while the placeholder is still in that window, re-checked inside its atomic command list.
+
+## A worker started without TERM or LANG fails suites that pass in a terminal (18.10.2026)
+A `claude -p` worker resumed from a launcher had neither: `locale` said C and `$TERM` was unset. With TERM unset, tmux 3.4's server dies ("server exited unexpectedly") on the second `new-session -x 200 -y 50` of a fresh socket, so tests/resurrect.sh lost 10 checks; in the C locale the server stores every non-ASCII byte of a pane title as `_`, so tests/names.sh lost its Cyrillic ones. Main and the branch failed identically, which is what pointed at the environment rather than the merge. The suites now bring their own TERM and a UTF-8 LC_CTYPE when the caller has none; before calling a red suite a regression, compare `env | grep -E '^(TERM|LANG|LC_)'` with a terminal's.
+
+## A merge of two branches that each passed its own suites still owes the other's checks (18.10.2026)
+child-sessions added one awk per pane-less record (the title cache lookup) and a second `hostname` call; main had meanwhile landed tests/forks.sh, which pins both counts, and tests/events.sh, whose process checks compared against the merge base. Neither branch was wrong alone. After a merge, run every suite either side added, and read a reference of the form "the merge base's hook" again: once the base moves it compares something else.
