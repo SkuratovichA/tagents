@@ -301,10 +301,13 @@ cfg_top_of() {  # <path> -> CFG_TOP
 # The real hostname, asked of the system once per process: HOST_S is what the
 # list's host column and the window-name sweep read too. TA_HOST is not in it.
 # HOST_F is the FULL name, which is what tmux puts in a default pane title (see
-# host_title): a title equal to either one names nothing.
+# host_title): a title equal to either one names nothing. One `hostname` for
+# both: the short name is the full one up to its first dot, which is all that
+# `hostname -s` does.
 host_once() {
-  [ -n "${HOST_S+x}" ] || HOST_S=$(hostname -s 2>/dev/null)
-  [ -n "${HOST_F+x}" ] || HOST_F=$(hostname 2>/dev/null)
+  [ -n "${HOST_S+x}" ] && [ -n "${HOST_F+x}" ] && return 0
+  HOST_F=$(hostname 2>/dev/null)
+  HOST_S=${HOST_F%%.*}
 }
 cfg_overlay() {
   local host over top k v
