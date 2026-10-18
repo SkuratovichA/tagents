@@ -129,6 +129,18 @@ release_dash() {
   # My own stamp goes unconditionally: a list that has since lost the shared
   # marker to a newer one still has to say it is not running any more.
   tmux set -up -t "$me" @tagents_list 2>/dev/null
+  # THE REFRESHER OF THIS LIST HAS NOTHING TO TICK ON, so it is told: it wakes,
+  # and the list process it watches (kill -0) is gone a moment later, which it
+  # sees when its delay after the wake is over. Without this a closed list's
+  # refresher would live until its idle timeout.
+  signal_ev
+  # THE BAR'S TEXT DOES NOT OUTLIVE THE REFRESHERS. A refresher takes its own
+  # @tagents_counts down when it is the last, and one that is killed with -9 cannot:
+  # the bar would print the last tally for good. Whoever sees that no refresher is
+  # left (a marker whose pid fails kill -0 is not one) takes it down for it. The
+  # refresher of this very list is still alive at this moment and is not counted
+  # out here; it does the same on its way out.
+  other_refresher || tmux set -gu @tagents_counts 2>/dev/null
   # And so does the seat this list was last in. Nothing else clears it, and
   # "which seat is current" is a question only a list has any business asking:
   # with the list gone it describes a cursor position in a window that no longer

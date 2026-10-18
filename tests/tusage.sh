@@ -389,5 +389,76 @@ ok "...and the original table still gets its factor" "0.2500" "$(cr_usd)"
 export TU_STATE="$SAVE_STATE" TU_PROJECTS="$SAVE_PROJ"
 export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
 
+# ---------------------------------------------------------------------------
+t "8. --update does nothing when no transcript was written"
+# Its own state, on the real updater. The sleeps keep the steps in separate
+# seconds where a step needs it; the same-second step (8b) deliberately has none.
+SAVE_STATE=$TU_STATE; SAVE_PROJ=$TU_PROJECTS
+SAVE_ACCT=$TU_ACCOUNTS; SAVE_RULES=$TU_ACCOUNT_RULES
+export TU_STATE="$ROOT/ed/usage" TU_PROJECTS="$ROOT/ed/projects"
+export TU_ACCOUNTS="work=$ROOT/ed/acct/work" TU_ACCOUNT_RULES=""
+mkdir -p "$TU_STATE" "$TU_PROJECTS/-ed" "$ROOT/ed/acct/work"
+
+mt() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
+sums() { cksum "$TU_STATE/offsets.tsv" "$TU_STATE/facts.tsv" "$TU_STATE/meta.tsv" 2>&1; }
+SID_SAVE=$SID
+SID=e1e1e1e1-2222-3333-4444-555555555555
+SID2=e2e2e2e2-2222-3333-4444-555555555555
+rec q1 "$T2" >"$TU_PROJECTS/-ed/$SID.jsonl"
+bash "$TU" --update >/dev/null 2>&1
+sleep 2; bash "$TU" --update >/dev/null 2>&1
+ok "the first pass counts the transcript" "0.500000" "$(usd_of)"
+
+# 8a. nothing written: no rebuild, the index file untouched in bytes and mtime.
+before="$(sums)|$(mt "$TU_STATE/offsets.tsv")|$(mt "$TU_STATE/facts.tsv")|$(mt "$TU_STATE/.stamp")"
+sleep 1.1
+out=$(bash "$TU" --update 2>&1); rc=$?
+after="$(sums)|$(mt "$TU_STATE/offsets.tsv")|$(mt "$TU_STATE/facts.tsv")|$(mt "$TU_STATE/.stamp")"
+ok "no change: same output and status as an update that found nothing" "|0" "$out|$rc"
+ok "no change: index bytes, mtimes and the stamp untouched" "$before" "$after"
+
+# 8b. one record appended — immediately, in the same second as the last update.
+rec q2 $((T2 + 60)) >>"$TU_PROJECTS/-ed/$SID.jsonl"
+bash "$TU" --update >/dev/null 2>&1
+ok "a transcript that grew by one record is counted, same second" "1.000000" "$(usd_of)"
+
+# 8c. a new transcript.
+sleep 1.1
+SID_E=$SID; SID=$SID2
+rec q3 $((T2 + 120)) >"$TU_PROJECTS/-ed/$SID2.jsonl"
+bash "$TU" --update >/dev/null 2>&1
+ok "a new transcript is counted" "0.500000" "$(usd_of)"
+SID=$SID_E
+
+# 8d. no change again: the rows stay put, nothing is read twice.
+bash "$TU" --update >/dev/null 2>&1; sleep 2; bash "$TU" --update >/dev/null 2>&1
+ok "an update that finds nothing leaves the totals alone" "1.000000" "$(usd_of)"
+
+# 8e. deletions: the directory changes, and nothing `-newer` on a file sees it.
+# The rule: a directory not older than the stamp lets the update run.
+sleep 1.1; s0=$(mt "$TU_STATE/.stamp")
+rm "$TU_PROJECTS/-ed/$SID2.jsonl"
+sleep 1.1
+bash "$TU" --update >/dev/null 2>&1
+ok "a deleted transcript lets the update run (stamp moved)" "moved" \
+   "$([ "$(mt "$TU_STATE/.stamp")" != "$s0" ] && echo moved || echo stuck)"
+ok "...and the surviving transcript is still counted once" "1.000000" "$(usd_of)"
+
+# 8f. a transcript moved in with an OLD mtime (mv keeps it): only its directory
+# changed, and the update still finds it.
+SID_E=$SID; SID=e3e3e3e3-2222-3333-4444-555555555555
+mkdir -p "$ROOT/ed/stage"
+rec q4 $((T2 + 180)) >"$ROOT/ed/stage/$SID.jsonl"
+touch -t 202001010000 "$ROOT/ed/stage/$SID.jsonl"
+sleep 2; bash "$TU" --update >/dev/null 2>&1
+mv "$ROOT/ed/stage/$SID.jsonl" "$TU_PROJECTS/-ed/"
+bash "$TU" --update >/dev/null 2>&1
+ok "a moved-in transcript with an old mtime is counted" "0.500000" "$(usd_of)"
+SID=$SID_E
+
+export TU_STATE="$SAVE_STATE" TU_PROJECTS="$SAVE_PROJ"
+export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
+SID=$SID_SAVE
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

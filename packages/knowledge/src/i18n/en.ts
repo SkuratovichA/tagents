@@ -10,6 +10,7 @@ export const en = {
     '  list [--kind K] [--tag T] [--json]',
     '  lint [--dir D]',
     '  mcp',
+    '  serve [--idle S] [--foreground] [--socket P]',
     '',
     'exit: 0 ok · 1 error · 2 usage · 4 nothing found',
   ].join('\n'),
@@ -44,4 +45,8 @@ export const en = {
   summaryList: 'prints one line per document: id, kind, updated, title and tags',
   summaryLint: 'checks the claims each document makes about itself',
   summaryMcp: 'serves the knowledge tools over stdio as an MCP server',
+  summaryServe:
+    'starts the shared MCP server for this environment if it is not running and prints its unix socket; --idle S is how many seconds without a client before it exits (default 600); --foreground runs the server in this process, on --socket P',
+  badIdle: '--idle must be a positive number of seconds',
+  serveFailed: 'could not start the shared knowledge server: {{reason}}',
 } as const;

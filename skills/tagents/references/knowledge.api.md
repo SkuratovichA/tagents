@@ -302,10 +302,13 @@ export const resources: {
             readonly summaryList: "prints one line per document: id, kind, updated, title and tags";
             readonly summaryLint: "checks the claims each document makes about itself";
             readonly summaryMcp: "serves the knowledge tools over stdio as an MCP server";
+            readonly summaryServe: "starts the shared MCP server for this environment if it is not running and prints its unix socket; --idle S is how many seconds without a client before it exits (default 600); --foreground runs the server in this process, on --socket P";
+            readonly badIdle: "--idle must be a positive number of seconds";
+            readonly serveFailed: "could not start the shared knowledge server: {{reason}}";
         };
     };
     readonly ru: {
-        readonly knowledge: Partial<Record<"usage" | "unknownCommand" | "missingOption" | "noDir" | "missingDir" | "indexed" | "indexErrors" | "notIndexed" | "noHits" | "unknownId" | "unknownHeading" | "noDocs" | "lintClean" | "lintProblems" | "issueFrontmatter" | "issueStem" | "issueDuplicateId" | "issueStale" | "issueGenerated" | "issueDeadLink" | "summaryIndex" | "summarySearch" | "summaryShow" | "summaryList" | "summaryLint" | "summaryMcp", string>>;
+        readonly knowledge: Partial<Record<"usage" | "unknownCommand" | "missingOption" | "noDir" | "missingDir" | "indexed" | "indexErrors" | "notIndexed" | "noHits" | "unknownId" | "unknownHeading" | "noDocs" | "lintClean" | "lintProblems" | "issueFrontmatter" | "issueStem" | "issueDuplicateId" | "issueStale" | "issueGenerated" | "issueDeadLink" | "summaryIndex" | "summarySearch" | "summaryShow" | "summaryList" | "summaryLint" | "summaryMcp" | "summaryServe" | "badIdle" | "serveFailed", string>>;
     };
 };
 

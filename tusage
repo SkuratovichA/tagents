@@ -369,8 +369,33 @@ fold_rows() {  # <project-slug> <carried ids> <origin> ; extracted TSV on stdin
 LOCK="$STATE/.update.lock"
 LOCK_STALE_MIN=${TU_LOCK_STALE_MIN:-5}
 
+# NOTHING WRITTEN SINCE THE LAST COMPLETED UPDATE, NOTHING TO DO. The dashboard
+# calls --update after Claude events and once a minute when idle, and an update
+# that finds nothing used to cost ~130 programs. One find answers it: is any
+# transcript, or any directory under the projects tree, not older than the
+# stamp? A directory counts because a rename, a delete or a copy that kept its
+# mtime (mv, cp -p) touches the directory and nothing else `-newer` can see, and
+# the full pass below is what learns about a path the index has never seen.
+# The stamp is an ordinary touch, to the nanosecond APFS keeps: find compares
+# those, not whole seconds as bash 3.2 does, so a write in the same second as the
+# touch but after it is newer than it and counts. (A filesystem with one-second
+# mtimes would tie and miss such a write; this machine has none.)
+#
+# THE GUARD SITS BEFORE THE LOCK and only reads. It is safe against a running
+# updater: that one writes its stamp to a side file and moves it into place only
+# when it is done, so until then this guard compares against the old stamp and
+# sees every change the running updater may yet miss.
+update_has_work() {
+  [ -n "$(find "$PROJECTS" \( -name '*.jsonl' -o -type d \) -newer "$STAMP" \
+            -print -quit 2>/dev/null)" ]
+}
+
 update() {
   local rebuild=${1:-0} loud=${2:-0} f sz off end slug seen tmp work newoff key state dups n=0
+
+  if [ "$rebuild" != 1 ] && [ -e "$STAMP" ] && [ -s "$OFFSETS" ]; then
+    update_has_work || return 0
+  fi
 
   mkdir -p "$STATE" 2>/dev/null || return 1
   # A background refresh that loses the race just returns — the winner is
@@ -398,17 +423,28 @@ update() {
 
   [ "$rebuild" = 1 ] && rm -f "$OFFSETS" "$FACTS" "$META" "$STAMP"
 
+  # The stamp is taken BEFORE anything is read and only moved into place when the
+  # update completes: a transcript written during the scan is newer than it and
+  # counts next time, and an update that dies leaves the old stamp, so the next
+  # one covers the same ground again.
+  touch "$STAMP.new" || return 1
+
   # Candidates: everything on a rebuild or a first run, otherwise only what has
   # been touched since the last update (plus anything the index never saw).
   if [ -e "$STAMP" ] && [ -s "$OFFSETS" ]; then
     find "$PROJECTS" -name '*.jsonl' -newer "$STAMP" 2>/dev/null >"$tmp/cand"
-    awk -F"$TAB" 'NR==FNR { known[$1]=1; next } !($0 in known)' "$OFFSETS" \
-      <(find "$PROJECTS" -name '*.jsonl' 2>/dev/null) >>"$tmp/cand" 2>/dev/null
+    # A path the index has never seen can only have arrived through a directory
+    # entry (create, move, copy), which moves that directory's mtime. When none
+    # moved, only files that grew are read and the whole-tree listing is skipped.
+    if [ -n "$(find "$PROJECTS" -type d -newer "$STAMP" -print -quit 2>/dev/null)" ]; then
+      awk -F"$TAB" 'NR==FNR { known[$1]=1; next } !($0 in known)' "$OFFSETS" \
+        <(find "$PROJECTS" -name '*.jsonl' 2>/dev/null) >>"$tmp/cand" 2>/dev/null
+    fi
     sort -u "$tmp/cand" -o "$tmp/cand"
   else
     find "$PROJECTS" -name '*.jsonl' 2>/dev/null >"$tmp/cand"
   fi
-  [ -s "$tmp/cand" ] || { : >"$STAMP"; return 0; }
+  [ -s "$tmp/cand" ] || { mv -f "$STAMP.new" "$STAMP"; return 0; }
 
   # The offsets table, keyed. Rows written before the key column existed are
   # migrated here, not rewritten in place: the key is a pure function of the
@@ -522,7 +558,7 @@ update() {
     awk -F"$TAB" -v cut="$(( $(date +%s) - KEEP_DAYS * 86400 ))" '$1 + 0 >= cut' \
       "$FACTS" >"$tmp/facts.trim" 2>/dev/null && mv -f "$tmp/facts.trim" "$FACTS"
   fi
-  : >"$STAMP"
+  mv -f "$STAMP.new" "$STAMP"
   return 0
 }
 

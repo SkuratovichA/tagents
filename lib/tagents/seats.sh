@@ -186,6 +186,7 @@ unpark() {  # <pane-id> [window-at-event] — if this is a placeholder, bring it
   tmux if-shell -F -t "$sp" "$cond" \
     "set -up -t $sp @tagents_parked ; set -up -t $agent @tagents_docked ; \
      swap-pane -d -s $agent -t $sp ; select-pane -t $agent ; \
+     $EV_SIGNAL ; \
      run-shell -b \"'$SELF' --collapse $sp\"" 2>/dev/null
 }
 
@@ -193,16 +194,20 @@ unpark() {  # <pane-id> [window-at-event] — if this is a placeholder, bring it
 # also stands in for an agent while that agent is docked, so it says where the
 # agent went when it finds itself outside the dashboard window.
 slot() {
-  local dwin marked last="" win parked active stray=0 out ids p w d l pk ac mylist me=${TMUX_PANE:-}
+  # Hooks installed again, in case this slot was started in a server that has
+  # none (a restored session): see install_event_hooks. The first lap follows.
+  install_event_hooks
+  local dwin marked last="" win parked active stray=0 out ids p w d l pk ac g gen=0 mylist me=${TMUX_PANE:-}
   while :; do
     # ONE QUESTION TO TMUX PER LAP, not six: every pane with the four things this
     # loop wants to know about it. An option that is not set is "-", so the line
     # always has six fields. dwin is dash_pane's rule (dash_pane_pick, fed the marked
     # panes of these lines, the pane's own list first of all); dead markers are left for the callers that clear them.
-    out=$(tmux list-panes -a -F '#{pane_id} #{window_id} #{?@tagents_dash,#{@tagents_dash},-} #{?@tagents_list,#{@tagents_list},-} #{?@tagents_parked,#{@tagents_parked},-} #{&&:#{pane_active},#{&&:#{window_active},#{session_attached}}}' 2>/dev/null)
-    dwin=""; win=""; parked=""; active=0; mylist="-"; ids=" "; marked=""
-    while read -r p w d l pk ac; do
+    out=$(tmux list-panes -a -F '#{pane_id} #{window_id} #{?@tagents_dash,#{@tagents_dash},-} #{?@tagents_list,#{@tagents_list},-} #{?@tagents_parked,#{@tagents_parked},-} #{&&:#{pane_active},#{&&:#{window_active},#{session_attached}}} #{?@tagents_gen,#{@tagents_gen},0}' 2>/dev/null)
+    dwin=""; win=""; parked=""; active=0; mylist="-"; ids=" "; marked=""; gen=0
+    while read -r p w d l pk ac g; do
       [ -n "$p" ] || continue
+      gen=${g:-0}
       ids="$ids$p "
       if [ "$p" = "$me" ]; then win=$w; mylist=$l; [ "$pk" = - ] || parked=$pk; active=$ac; fi
       [ "$d" != 1 ] || marked="$marked$p $d $l $w
@@ -229,7 +234,8 @@ EOF
     # actually looking at this pane, so a killed agent leaves it pointing at a pane
     # id that no longer exists. Ask tmux, not the marker.
     case "$ids" in *" $parked "*) ;; *) parked="" ;; esac
-    # Two ticks, not one: at birth the pane exists a moment before its markers do.
+    # Two looks, not one: at birth the pane exists a moment before its markers do.
+    # The second is a second later (the bottom of the loop), not on the next ring.
     if [ -n "$win" ] && [ "$win" != "${dwin:-}" ] && [ -z "$parked" ]; then
       stray=$((stray + 1))
       [ "$stray" -ge 2 ] && return 0
@@ -255,7 +261,20 @@ EOF
     if [ "$active" = 1 ]; then
       unpark "${TMUX_PANE:-}" "$win"
     fi
-    sleep 2
+    # WAITS FOR TMUX TO SAY SOMETHING MOVED, not for two seconds: the hooks of
+    # install_event_hooks and the focus hooks ring tagents-panes, and so do the
+    # swaps and splits tagents makes itself. What this lap saw is therefore
+    # looked at again on the next ring, and not before. A stray placeholder is the
+    # one exception, since "a second look" is a look in time and not an event:
+    # see above.
+    if [ "$stray" -gt 0 ]; then
+      sleep 1
+    else
+      # Only if the count has not moved since this lap's look (see GEN_BUMP): a ring
+      # that came in during the lap, or two that cancelled each other, moved it,
+      # and the next lap is the answer. One tmux call, evaluated inside the server.
+      tmux if-shell -F "#{==:#{?@tagents_gen,#{@tagents_gen},0},$gen}" 'wait-for tagents-panes' 2>/dev/null || return 0
+    fi
   done
 }
 

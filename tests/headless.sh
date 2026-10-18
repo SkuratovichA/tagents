@@ -38,6 +38,8 @@ set -uo pipefail
 export TERM
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# A suite that is not run against a scratch default server aborts here, before it can reach the live one (tests/scratch-guard.sh).
+. "$HERE/scratch-guard.sh" && scratch_guard headless.sh || exit 1
 TA="$HERE/../tagents"
 HOOK="$HERE/../hooks/tmux-agent-state.sh"
 
@@ -148,8 +150,9 @@ ok "the ninth is TA_LOG" "$LOG" "$(field 9 "$F")"
 ok "the tenth is TA_LABEL" ticket-agent "$(field 10 "$F")"
 
 ok "no pane option is set for a pane that does not exist" 0 \
-   "$(grep -c '^set ' "$TMUXLOG")"
-has "the only thing asked of tmux is the pane map" "list-panes" "$(cat "$TMUXLOG")"
+   "$(grep -Ec '(^|; )set -u?p ' "$TMUXLOG")"
+has "tmux is asked for the pane map" "list-panes" "$(cat "$TMUXLOG")"
+has "...and rung, with the count first, the one thing a paneless event may say" "set -gF @tagents_evgen #{e|+|:#{@tagents_evgen},1} ; wait-for -S tagents-ev" "$(cat "$TMUXLOG")"
 
 # ---------------------------------------------------------------------------
 t "2. the timeline gets its lines"
@@ -187,7 +190,7 @@ printf '%s' "{\"hook_event_name\":\"UserPromptSubmit\",\"session_id\":\"sid-p1\"
 ok "a paned record still has seven fields and no more" 7 "$(nf "$STATE/9101.tsv")"
 ok "...none of them TA_LOG" "" "$(field 9 "$STATE/9101.tsv")"
 ok "...and the pane option is still set" 1 \
-   "$(grep -c '^set -p -t %9101 @agent working$' "$TMUXLOG")"
+   "$(grep -cxF 'set -gF @tagents_evgen #{e|+|:#{@tagents_evgen},1} ; wait-for -S tagents-ev ; set -p -t %9101 @agent working' "$TMUXLOG")"
 ok "the pane map is not even asked for when TMUX_PANE is set" 0 \
    "$(grep -c 'list-panes' "$TMUXLOG")"
 rm -f "$STATE/9101.tsv"

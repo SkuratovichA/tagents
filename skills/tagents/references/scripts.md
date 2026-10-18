@@ -125,7 +125,7 @@ stays worth reacting to.
                           which one enter would use. Debugging aids
   tagents --ensure-seat [PANE]
                           repair that window's seats and print the current one
-                          — the same repair the refresher runs on a tick
+                          — the same repair the refresher runs on its slow pass
   tagents --collapse PANE close an empty seat the sidebar no longer needs.
                           This is what unpark's own command list calls after a
                           chat it sent home leaves its placeholder behind

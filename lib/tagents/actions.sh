@@ -173,6 +173,7 @@ end_agent() {  # <pane> — hang up the agent running in it
   # claiming this session has work fanned out under it. Its own record is kept
   # on purpose — that is what leaves the row as "closed, enter resumes it".
   [ -n "$key" ] && rm -f "$STATE_DIR/sub/$key".* 2>/dev/null
+  signal_ev   # the pane's own death rang once already, before these files went
   # A chat hung up on purpose must not come back after the next reboot: the
   # snapshot is retaken now rather than at the next status-bar tick.
   resurrect_soon
@@ -186,6 +187,7 @@ forget_agent() {  # <pane-key> — drop a closed session's record from the list
   rm -f "$STATE_DIR/sub/$key".* 2>/dev/null
   # ...and when you last typed into it, which is what the row was ordered on.
   rm -f "$STATE_DIR/prompt/$key" 2>/dev/null
+  signal_ev   # a deleted record is not a tmux event, and the row has to go
   return 0
 }
 
