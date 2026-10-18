@@ -19,6 +19,11 @@
 
 set -uo pipefail
 
+# The keeper client below attaches through `script`, and a tmux client with no
+# $TERM cannot open its terminal: a worker started without one (a launchd job,
+# an `env -i`) would run every check against a server nobody is attached to.
+export TERM=${TERM:-xterm-256color}
+
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TA="$HERE/../tagents"
 HOOK="$HERE/../hooks/tmux-agent-state.sh"

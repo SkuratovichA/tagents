@@ -26,6 +26,11 @@
 
 set -uo pipefail
 
+# The keeper client below attaches through `script`, and a tmux client with no
+# $TERM cannot open its terminal: a worker started without one (a launchd job,
+# an `env -i`) would run every check against a server nobody is attached to.
+export TERM=${TERM:-xterm-256color}
+
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TA="$HERE/../tagents"
 HOOK="$HERE/../hooks/tmux-agent-state.sh"
@@ -386,7 +391,10 @@ clear_out
 tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 'sleep 600' || exit 1
 tm set -g default-shell /bin/sh >/dev/null 2>&1
 tm set -g default-command '' >/dev/null 2>&1
-tm set -gw window-size manual >/dev/null 2>&1
+# The size every window of this fresh server gets, with no client attached to
+# size it. Not `set -gw window-size manual`: under tmux 3.4 that makes the
+# next new-session or new-window kill the server ("server exited unexpectedly").
+tm set -g default-size 200x50 >/dev/null 2>&1
 tm new-session -d -s tatest-proj -x 200 -y 50 -c "$PERS"
 tm new-window -d -t tatest-proj: -n Alpha -c "$PERS"
 tm new-session -d -s tatest-other -x 200 -y 50 -c "$NOR"
@@ -717,7 +725,10 @@ sleep 1
 tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 'sleep 600' || exit 1
 tm set -g default-shell /bin/sh >/dev/null 2>&1
 tm set -g default-command '' >/dev/null 2>&1
-tm set -gw window-size manual >/dev/null 2>&1
+# The size every window of this fresh server gets, with no client attached to
+# size it. Not `set -gw window-size manual`: under tmux 3.4 that makes the
+# next new-session or new-window kill the server ("server exited unexpectedly").
+tm set -g default-size 200x50 >/dev/null 2>&1
 SOCK=$(tm display -p '#{socket_path}' 2>/dev/null)
 DW=$(tm new-window -d -t tatest-dash: -n dash -P -F '#{window_id}' -c "$NOR")
 tm resize-window -t "$DW" -x 200 -y 50 >/dev/null 2>&1
