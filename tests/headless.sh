@@ -539,6 +539,28 @@ ok "no state was mirrored onto the parent's pane" 0 \
 ok "...and nothing was unset on it either" 0 "$(grep -c 'set -up' "$TMUXLOG2")"
 
 # ---------------------------------------------------------------------------
+t "H2d. a child's lines in the event stream are its own, with no pane"
+# ---------------------------------------------------------------------------
+# The notify plugin posts only for a key that is a pane number, so a child must
+# reach events.tsv under s-<its own sid> with the pane column empty: under the
+# pane it inherited, its Stop would be read as the agent's own finished turn.
+rm -f "$STATE"/s-*.tsv "$STATE/events.tsv"
+: >"$STATE/events.on"
+for ev in SessionStart Stop; do
+  mkpay "$ev" sid-c3e
+  kidrun TMUX_PANE="$PN2"
+done
+EV="$STATE/events.tsv"
+ok "both of the child's events are in the stream" 2 "$(wc -l <"$EV" | tr -d ' ')"
+ok "the Stop is keyed by the child's own session" s-sid-c3e \
+   "$(awk -F"$TAB" '$2 == "Stop" { print $3 }' "$EV")"
+ok "...and names no pane, not even the one it inherited" "" \
+   "$(awk -F"$TAB" '$2 == "Stop" { print $6 }' "$EV")"
+ok "no line in the stream is the inherited pane's" 0 \
+   "$(awk -F"$TAB" -v k="$K2" '$3 == k' "$EV" | wc -l | tr -d ' ')"
+rm -f "$STATE/events.on" "$EV" "$STATE"/s-*.tsv
+
+# ---------------------------------------------------------------------------
 t "H2b. an orphan is still a child of the pane it was handed"
 # ---------------------------------------------------------------------------
 # Rule 2 is about THIS session's chain, not about who is still alive in there.
