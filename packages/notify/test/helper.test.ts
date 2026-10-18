@@ -102,8 +102,10 @@ test('withdraw passes the id as an argument', async () => {
 
 test('status, delivered and authorize', async () => {
   const s = fake({ stdout: '{"alertStyle":"banner","ok":true,"status":"authorized"}' });
-  assert.deepEqual(await helperStatus(APP, s.exec), { status: 'authorized', alertStyle: 'banner' });
+  assert.deepEqual(await helperStatus(APP, s.exec), { status: 'authorized', alertStyle: 'banner', bundleId: '' });
   assert.deepEqual(s.calls[0]?.args, ['status']);
+  const withId = fake({ stdout: '{"alertStyle":"alert","bundleId":"a.b.c.i12345678","ok":true,"status":"authorized"}' });
+  assert.deepEqual(await helperStatus(APP, withId.exec), { status: 'authorized', alertStyle: 'alert', bundleId: 'a.b.c.i12345678' });
 
   const d = fake({ stdout: '{"ok":true,"ids":["a","b"]}' });
   assert.deepEqual(await helperDelivered(APP, d.exec), ['a', 'b']);

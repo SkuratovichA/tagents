@@ -262,7 +262,7 @@ final class Helper: NSObject, NSApplicationDelegate, UNUserNotificationCenterDel
         case "post" where rest.isEmpty: post()
         case "withdraw" where !rest.isEmpty: withdraw(rest)
         case "authorize" where rest.isEmpty: authorize()
-        case "status" where rest.isEmpty: settings { ["status": statusName($0.authorizationStatus), "alertStyle": styleName($0.alertStyle)] }
+        case "status" where rest.isEmpty: settings { ["status": statusName($0.authorizationStatus), "alertStyle": styleName($0.alertStyle), "bundleId": Bundle.main.bundleIdentifier ?? ""] }
         case "delivered" where rest.isEmpty: delivered()
         case "terminal":
             guard rest.count == 1, let pid = Int32(rest[0]), pid > 0 else { fail(usage, 2) }

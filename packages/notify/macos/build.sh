@@ -8,6 +8,8 @@
 # --icon <png> (in both modes) makes the app's icon from that picture: the helper's `icon` verb draws it onto
 # the rounded-square plate macOS expects, and sips and iconutil turn the result into Contents/Resources/AppIcon.icns.
 # The picture's digest is part of the one `--check` compares, so a changed, added or removed icon is stale.
+# An icon also gives the app its own bundle id, <base>.i<first 8 hex of the digest>, because macOS keeps an app's icon
+# from its first notification-permission request: a changed icon needs a fresh registration to show.
 # TA_NOTIFY_NO_LSREGISTER=1 skips registering the built app with LaunchServices: a build in a scratch directory
 # (the tests) carries the real app's bundle id and must not become the app a notification click opens.
 set -eu
@@ -31,9 +33,11 @@ app=${1%/}
 here=$(cd "$(dirname "$0")" && pwd)
 lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
+icon_digest=
+[ -z "$icon" ] || icon_digest=$(shasum -a 256 < "$icon" | cut -d ' ' -f 1)
 hash=$({
   cat "$here/TagentsNotify.swift" "$here/Info.plist" "$here/build.sh"
-  if [ -n "$icon" ]; then printf 'icon %s\n' "$(shasum -a 256 < "$icon" | cut -d ' ' -f 1)"; else printf 'no icon\n'; fi
+  if [ -n "$icon" ]; then printf 'icon %s\n' "$icon_digest"; else printf 'no icon\n'; fi
 } | shasum -a 256 | cut -d ' ' -f 1)
 
 if [ -x "$app/Contents/MacOS/tagents-notify" ] && [ "$(cat "$app/Contents/Resources/source.sha256" 2>/dev/null)" = "$hash" ]; then
@@ -86,6 +90,8 @@ if [ -n "$icon" ]; then
   done
   iconutil -c icns -o "$tmp/Contents/Resources/AppIcon.icns" "$work/AppIcon.iconset" >&2
   plutil -replace CFBundleIconFile -string AppIcon "$tmp/Contents/Info.plist"
+  base_id=$(plutil -extract CFBundleIdentifier raw "$here/Info.plist")
+  plutil -replace CFBundleIdentifier -string "$base_id.i$(printf '%s' "$icon_digest" | cut -c 1-8)" "$tmp/Contents/Info.plist"
 fi
 printf '%s\n' "$hash" > "$tmp/Contents/Resources/source.sha256"
 codesign --force --sign - "$tmp" >&2

@@ -1,6 +1,7 @@
 // node --test app.test.ts
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -254,6 +255,29 @@ test('build.sh --icon: AppIcon.icns, the key, the plate, and an icon that is par
   assert.notEqual(lost.code, 0);
   assert.ok(lost.stderr.includes('simulated failure'), `expected the icon scratch directory to be the failure: ${lost.stderr.slice(-300)}`);
   assert.deepEqual(fs.readdirSync(dir).filter((n) => n.startsWith('lost')), [], 'no <app>.build.* is left beside the app');
+});
+
+test('build.sh: the bundle id follows the icon, and stays the base without one', { skip: skipBuild }, async (t) => {
+  const dir = tmpDir('app-iconid');
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const red = path.join(dir, 'red.png');
+  const blue = path.join(dir, 'blue.png');
+  fs.writeFileSync(red, solidPng(16, 16, [220, 20, 20]));
+  fs.writeFileSync(blue, solidPng(16, 16, [20, 20, 220]));
+  const idOf = (app: string): string => plistValue(app, 'CFBundleIdentifier').stdout.trim();
+  const suffix = (png: string): string => `.i${createHash('sha256').update(fs.readFileSync(png)).digest('hex').slice(0, 8)}`;
+
+  const plain = path.join(dir, 'plain.app');
+  assert.equal((await sh([plain])).code, 0);
+  const base = idOf(plain);
+  assert.ok(base.length > 0 && !/\.i[0-9a-f]{8}$/.test(base), base);
+  const a = path.join(dir, 'a.app');
+  const b = path.join(dir, 'b.app');
+  assert.equal((await sh(['--icon', red, a])).code, 0);
+  assert.equal((await sh(['--icon', blue, b])).code, 0);
+  assert.equal(idOf(a), `${base}${suffix(red)}`);
+  assert.equal(idOf(b), `${base}${suffix(blue)}`);
+  assert.notEqual(idOf(a), idOf(b));
 });
 
 test('build.sh refuses an icon that is not a readable file, before it builds anything', async (t) => {
