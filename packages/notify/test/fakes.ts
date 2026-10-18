@@ -56,6 +56,10 @@ export function stateRow(over: Partial<AgentStateRow> = {}): AgentStateRow {
     configDir: null,
     hasConfigDir: false,
     pid: null,
+    logFile: null,
+    label: null,
+    parentKey: null,
+    parentSid: null,
     ...over,
   };
 }
