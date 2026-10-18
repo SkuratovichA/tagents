@@ -80,7 +80,7 @@ const ALERT_STYLE_URL = `x-apple.systempreferences:com.apple.Notifications-Setti
 const SETTLE_MS = 5000;
 const SETTLE_STEP_MS = 100;
 
-const KINDS = ['question', 'permission', 'turn_done', 'cache_expiring', 'subagent_done', 'session_end'] as const;
+const KINDS = ['question', 'permission', 'turn_done', 'cache_expiring', 'session_end'] as const;
 // Fails to compile when NoticeKind gains a member the `test` verb cannot pick.
 const KINDS_COVER_EVERY_KIND: NoticeKind extends (typeof KINDS)[number] ? true : never = true;
 
@@ -89,7 +89,6 @@ const SAMPLE_TEXT: Readonly<Record<NoticeKind, string>> = {
   permission: 'Claude needs your permission to use Bash',
   turn_done: 'The change is done and the tests pass.',
   cache_expiring: '',
-  subagent_done: 'The subagent finished its search.',
   session_end: '',
 };
 
