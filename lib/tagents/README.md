@@ -3,7 +3,7 @@
 `tagents` at the root of the checkout is the entry point and nothing else: the
 manual it prints for `--help`, `SELF`, the lookup that finds this directory,
 `forward_core`, and the `case` that maps a flag to a function. It is
-614 lines, 448 of them the manual. Everything the dashboard does is
+657 lines, 473 of them the manual. Everything the dashboard does is
 here, one file per part, sourced in the order of the table before the dispatch
 runs.
 
@@ -14,26 +14,26 @@ others are built on `STATE_DIR` and `TAB`.
 
 | file | lines | what is in it |
 |---|---:|---|
-| `core.sh` | 149 | constants, and the plumbing every dialog is built on |
-| `config.sh` | 629 | config.yaml, flattened — and what is wrong with it |
+| `core.sh` | 176 | constants, and the plumbing every dialog is built on |
+| `config.sh` | 632 | config.yaml, flattened — and what is wrong with it |
 | `accounts.sh` | 361 | which Claude login an agent runs on, and whether it is there |
 | `usage.sh` | 324 | the monthly limit, on screen |
-| `state.sh` | 418 | the raw data every view reads |
-| `names.sh` | 399 | what an agent is called, and the window it names |
-| `columns.sh` | 134 | which columns are on screen |
-| `list.sh` | 991 | the rows — and the tally the status bar shows |
+| `state.sh` | 427 | the raw data every view reads |
+| `names.sh` | 400 | what an agent is called, and the window it names |
+| `columns.sh` | 135 | which columns are on screen |
+| `list.sh` | 992 | the rows — and the tally the status bar shows |
 | `timeline.sh` | 166 | which agent worked when |
 | `preview.sh` | 204 | a row, up close |
-| `actions.sh` | 327 | what a key actually does |
-| `refresh.sh` | 494 | keeping a list current |
-| `sidebar.sh` | 257 | which pane is the dashboard right now |
-| `seats.sh` | 317 | seats: what they are and which one is current |
+| `actions.sh` | 329 | what a key actually does |
+| `refresh.sh` | 706 | keeping a list current |
+| `sidebar.sh` | 262 | which pane is the dashboard right now |
+| `seats.sh` | 337 | seats: what they are and which one is current |
 | `dock.sh` | 371 | docking: the pane swapped into a seat, and sent home again |
 | `closed.sh` | 262 | the sessions that stopped running |
 | `resurrect.sh` | 312 | every chat back where it was after a reboot |
 | `launch.sh` | 298 | starting an agent |
 | `keys.sh` | 285 | every key, and where it comes from |
-| `dash.sh` | 251 | the dashboard itself |
+| `dash.sh` | 255 | the dashboard itself |
 
 ## How it fits together
 
@@ -61,15 +61,24 @@ state directory.
 re-enters the program through `$SELF`:
 
 1. the fzf dashboard (`dash` in `dash.sh`), which owns the terminal;
-2. a `--refresher` loop beside it (`refresh.sh`), reposting a reload into fzf's
-   `--listen` port every 2 s, with housekeeping every fifth tick — usage, window
-   names, seat repair, notes — and an exit after five failed posts;
+2. a `--refresher` loop beside it (`refresh.sh`), which sleeps on the tmux
+   channel `tagents-ev` and, on each wake, reposts a reload into fzf's `--listen`
+   port only if something the list draws moved, and at most once per
+   `TA_REFRESH_MIN` seconds (2). Its housekeeping — usage, window
+   names, seat repair, notes, the `[42]` hooks — is the slow pass: the first wake
+   after `TA_REFRESH_SLOW` seconds (10) since the last (or the end of that interval,
+   when a wake found the dashboard window without a seat), and always at the idle timeout
+   `TA_REFRESH_IDLE` (60 s). It exits with its fzf (`TA_LIST_PID` is fzf's pid), or
+   after five failed posts;
 3. one short-lived child per keypress: fzf's `execute-silent($SELF --act …)`;
 4. popups (`tmux display-popup -E "$SELF --ask-…"`), which are independent
    terminals because a blocking child under fzf's alternate screen wedges it;
 5. tmux hooks: focus events fire `--poke` and `--unpark`, the kill bindings fire
-   `--undock-pane` / `--undock-window`, the status bar fires `--counts`;
-6. each placeholder pane, running `$SELF --slot` for as long as it holds a seat.
+   `--undock-pane` / `--undock-window`; the hooks `install_event_hooks` puts at
+   array index 42 ring the two channels; the status bar prints `@tagents_counts`
+   and fires `--counts` only when that option is not set;
+6. each placeholder pane, running `$SELF --slot` for as long as it holds a seat,
+   asleep on the channel `tagents-panes` between laps.
 
 That is why `SELF` appears some fifty times, and why it stays the path the
 program was INVOKED by rather than the real file behind the symlink: those
@@ -83,6 +92,38 @@ have a file each: `sidebar.sh` answers "which pane is the list, right now"
 is a marked pane and never a position, `dock.sh` swaps an agent's pane into a
 seat and sends it home again, and `refresh.sh` is everything that reacts to time
 or focus.
+
+**The channels.** Nothing in here polls. `tagents-ev` wakes the refresher and
+`tagents-panes` wakes the slots; `tmux wait-for -S` rings, and wakes every waiter.
+Four things ring: the agent-state hook (the count and the signal are the first
+commands of the `tmux` call that sets `@agent`; an event with no pane rings the
+default server with one `tmux` program of its own), the tmux hooks at index 42
+(`EV_EVENTS` in `refresh.sh`, the four focus events among them, whose seat stamp and
+poke are at `[0]` to `[3]` and run first; tmux 3.7 has no `after-swap-pane` and its
+kin, so `window-layout-changed` stands in for them), tagents' own writers through
+`signal_ev` in `core.sh`, and the swaps and breaks of `dock.sh` and `seats.sh`,
+which chain the rings onto their own tmux call (`RING_BOTH`). Two things to know
+before touching it. Two signals with no waiter cancel each other, so nothing may
+rely on being back in a wait in time; and for that reason every ring is also a
+count: `tagents-ev` adds one to the global option `@tagents_evgen` (`EV_BUMP`)
+before it signals, `tagents-panes` to `@tagents_gen` (`GEN_BUMP`). The refresher
+reads `@tagents_evgen` in the `list-panes` of its snapshot (as a line apart, which
+the snapshot compared by the passes leaves out) and a slot reads `@tagents_gen` in
+the one it makes anyway; each waits with `tmux if-shell -F` on "the count is still
+the one I saw", which the server evaluates and waits on as one step, so a ring
+between two waits has moved the number and the wait does not happen. The
+refresher has one waiter outstanding at most, a background `tmux if-shell` per
+wait that writes its exit status into a FIFO the loop reads with a timeout. The
+agent-state hook is POSIX sh and carries a copy of `EV_BUMP`; `tests/refresh.sh`
+pins it to core.sh's.
+
+**What the status bar prints.** The refresher keeps the global option
+`@tagents_counts` and unsets it when the last refresher ends, so the fragment
+
+    #{?@tagents_counts,#{@tagents_counts},#(~/.local/bin/tagents --counts)}
+
+costs nothing while a dashboard is open (the `#()` in the branch not taken never
+runs) and computes the counts itself otherwise.
 
 ## Working on it
 

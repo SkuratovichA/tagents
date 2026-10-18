@@ -12,6 +12,7 @@ export const ru: Partial<Record<keyof typeof en, string>> = {
     '  list [--kind K] [--tag T] [--json]',
     '  lint [--dir D]',
     '  mcp',
+    '  serve [--idle S] [--foreground] [--socket P]',
     '',
     'коды выхода: 0 ок · 1 ошибка · 2 использование · 4 ничего не найдено',
   ].join('\n'),
@@ -40,4 +41,6 @@ export const ru: Partial<Record<keyof typeof en, string>> = {
   issueStale: 'updated {{updated}} старее последнего коммита по файлу ({{commit}})',
   issueGenerated: 'источник generated_from {{source}} изменён {{changed}}, позже updated {{updated}}',
   issueDeadLink: 'битая ссылка [[{{target}}]]',
+  badIdle: '--idle — положительное число секунд',
+  serveFailed: 'не удалось запустить общий сервер знаний: {{reason}}',
 };

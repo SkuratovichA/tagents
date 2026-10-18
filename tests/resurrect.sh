@@ -36,6 +36,8 @@ set -uo pipefail
 export TERM
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# A suite that is not run against a scratch default server aborts here, before it can reach the live one (tests/scratch-guard.sh).
+. "$HERE/scratch-guard.sh" && scratch_guard resurrect.sh || exit 1
 TA="$HERE/../tagents"
 HOOK="$HERE/../hooks/tmux-agent-state.sh"
 

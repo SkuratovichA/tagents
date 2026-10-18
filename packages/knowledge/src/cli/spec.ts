@@ -64,7 +64,15 @@ export const MCP = {
   summary: 'summaryMcp',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
-export const KNOWLEDGE_COMMANDS = [INDEX, SEARCH, SHOW, LIST, LINT, MCP] as const satisfies readonly CommandSpec<KnowledgeKey>[];
+export const SERVE = {
+  path: ['serve'],
+  positionals: [],
+  options: { idle: { type: 'string' }, foreground: { type: 'boolean' }, socket: { type: 'string' } },
+  required: [],
+  summary: 'summaryServe',
+} as const satisfies CommandSpec<KnowledgeKey>;
+
+export const KNOWLEDGE_COMMANDS = [INDEX, SEARCH, SHOW, LIST, LINT, MCP, SERVE] as const satisfies readonly CommandSpec<KnowledgeKey>[];
 
 /** English whatever the machine's locale is: the contract is read by tools, not people. */
 export function knowledgeCliContract(): CliContract {

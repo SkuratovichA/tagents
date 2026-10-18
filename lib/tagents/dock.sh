@@ -35,7 +35,7 @@ send_home() {  # <docked chat> -> the placeholder that took its place
   [ -n "$pane" ] || return 1
   sp=$(parked_slot "$pane")
   { [ -n "$sp" ] && [ "$sp" != "$pane" ]; } || return 1
-  tmux swap-pane -d -s "$pane" -t "$sp" 2>/dev/null || return 1
+  tmux swap-pane -d -s "$pane" -t "$sp" \; "${RING_BOTH[@]}" 2>/dev/null || return 1
   # Both markers are about a pane being away from its seat, and it no longer is.
   # Leaving them set points the placeholder at a chat that is already home.
   tmux set -up -t "$pane" @tagents_docked 2>/dev/null
@@ -50,7 +50,7 @@ break_home() {  # <docked chat with nowhere to go back to>
   local pane=${1:-}
   [ -n "$pane" ] || return 1
   tmux set -up -t "$pane" @tagents_docked 2>/dev/null
-  tmux break-pane -d -s "$pane" 2>/dev/null
+  tmux break-pane -d -s "$pane" \; "${RING_BOTH[@]}" 2>/dev/null
 }
 
 # THE SEAT CLOSES BEHIND THE CHAT THAT LEAVES IT, so undocking one of two chats
@@ -238,7 +238,7 @@ dock() {  # <pane> — into the current seat, replacing whatever is in it
   # sidebar with nothing to say it is standing in for anybody, which is exactly
   # what slot() treats as stranded and closes.
   tmux set -p -t "$sp" @tagents_parked "$pane" 2>/dev/null
-  tmux swap-pane -d -s "$pane" -t "$sp" 2>/dev/null || {
+  tmux swap-pane -d -s "$pane" -t "$sp" \; "${RING_BOTH[@]}" 2>/dev/null || {
     # The marker says this placeholder is standing in for a chat, and the swap
     # that would have made that true did not happen. Left set, it is a seat
     # collapse_seat refuses for ever — parked means somebody's way home — over a
@@ -299,7 +299,7 @@ dock_beside() {  # <pane>
   # that reaches the agent's window before it can say whose seat it is keeping is
   # what slot() reads as stranded and closes.
   tmux set -p -t "$sp" @tagents_parked "$pane" 2>/dev/null
-  tmux swap-pane -d -s "$pane" -t "$sp" 2>/dev/null || {
+  tmux swap-pane -d -s "$pane" -t "$sp" \; "${RING_BOTH[@]}" 2>/dev/null || {
     tmux set -up -t "$sp" @tagents_parked 2>/dev/null
     # Only what this call created. A seat that was already there is somebody
     # else's empty seat and closing it would break the invariant.

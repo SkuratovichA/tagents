@@ -26,6 +26,8 @@
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# A suite that is not run against a scratch default server aborts here, before it can reach the live one (tests/scratch-guard.sh).
+. "$HERE/scratch-guard.sh" && scratch_guard forks.sh || exit 1
 TA="$HERE/../tagents"
 
 ROOT=$(mktemp -d "${TMPDIR:-/tmp}/tagents-forks.XXXXXX") || exit 1
@@ -352,6 +354,28 @@ PATH="$ALLSHIM:$PATH" /bin/bash "$TA" --counts >"$ROOT/cached.out" 2>/dev/null
 ok "the programs one cached --counts starts" "date" "$(tr '\n' ' ' <"$CNT/all" | sed 's/ $//')"
 cmp -s "$STATE/.counts.out" "$ROOT/cached.out"
 ok "...and what it prints is the cache, byte for byte" 0 "$?"
+
+# WHILE A REFRESHER IS ALIVE THE CACHE IS TRUSTED, whatever the stamp says: the
+# refresher waits for events and no longer stamps every few seconds, so an old stamp
+# is a quiet dashboard and not a dead one (see counts in list.sh). A bar still running
+# the old status-right line would otherwise count the whole list again every
+# COUNTS_EVERY seconds. The marker is the refresher's own start file, named by its pid.
+t "--counts: with a refresher alive the cache is printed whatever its age, and nothing is started"
+printf '%s\n' 1000 >"$STATE/.counts.ts"
+sleep 300 & LIVE=$!
+: >"$STATE/.refresher.$LIVE.start"
+: >"$CNT/all"
+PATH="$ALLSHIM:$PATH" /bin/bash "$TA" --counts >"$ROOT/alive.out" 2>/dev/null
+ok "no program at all, though the stamp is from 1970" "" "$(tr '\n' ' ' <"$CNT/all" | sed 's/ $//')"
+cmp -s "$STATE/.counts.out" "$ROOT/alive.out"
+ok "...and what it prints is the cache, byte for byte" 0 "$?"
+ok "...and the stamp is left where it was" "1000" "$(cat "$STATE/.counts.ts")"
+# The marker of a refresher that is gone is not one: the age test is what applies.
+kill "$LIVE" 2>/dev/null; wait "$LIVE" 2>/dev/null
+: >"$CNT/all"
+PATH="$ALLSHIM:$PATH" /bin/bash "$TA" --counts >/dev/null 2>&1
+has "a marker whose pid is dead does not count: the bar counts for itself again" "date" "$(tr '\n' ' ' <"$CNT/all")"
+rm -f "$STATE"/.refresher.*
 export TA_COUNTS_EVERY=0
 
 # ---------------------------------------------------------------------------
@@ -371,7 +395,7 @@ ok "...and none of those started a cat" 0 "$(grep -c '^cat$' "$CNT/all")"
 ok "...while the shim did log the date calls (so a silent shim cannot pass)" 1 "$([ "$(grep -c '^date$' "$CNT/all")" -ge 1 ] && echo 1 || echo 0)"
 
 # ---------------------------------------------------------------------------
-t "slot: a lap asks tmux once and sleeps once"
+t "slot: a lap asks tmux once and sleeps once (hooks aside)"
 SLSHIM="$ROOT/slshim"; mkdir -p "$SLSHIM"
 cat >"$SLSHIM/tmux" <<EOF
 #!/bin/sh
@@ -387,7 +411,9 @@ chmod +x "$SLSHIM/tmux" "$SLSHIM/sleep"
 # The pane is outside the dashboard window and parks nobody: the second lap ends the loop.
 TMUX_PANE=%2 PATH="$SLSHIM:$PATH" fn 'slot; echo "rc=$?"' >"$ROOT/slot.out" 2>/dev/null
 ok "slot returned after two laps" 1 "$(grep -c 'rc=0$' "$ROOT/slot.out")"
-ok "...with one tmux call per lap" 2 "$(wc -l <"$CNT/sl.tmux" | tr -d ' ')"
+ok "...with one question to tmux per lap" 2 "$(grep -c '^list-panes' "$CNT/sl.tmux")"
+ok "...and the event hooks put in once, by one call, before the first" 1 "$(grep -c '^set-hook' "$CNT/sl.tmux")"
+ok "...and no other call: a stray placeholder is looked at again by the clock, not by waiting" 3 "$(wc -l <"$CNT/sl.tmux" | tr -d ' ')"
 ok "...and one sleep" 1 "$(wc -l <"$CNT/sl.sleep" | tr -d ' ')"
 
 # ---------------------------------------------------------------------------
@@ -404,6 +430,8 @@ case "$*" in
   list-panes*) cat "$SLDIR/panes3" ;;
   list-windows*) cat "$SLDIR/wins" ;;
   display*window_id*) echo @1 ;;
+  # The wait for the next ring: the third one is "the server is gone", which ends the slot.
+  if-shell*) echo x >>"$SLDIR/waits"; [ "$(wc -l <"$SLDIR/waits" | tr -d ' ')" -lt 3 ] || exit 1 ;;
 esac
 EOF
 cat >"$SL2/sleep" <<'EOF'
@@ -414,7 +442,7 @@ EOF
 chmod +x "$SL2/tmux" "$SL2/sleep"
 export SLDIR="$ROOT/sldir"; mkdir -p "$SLDIR"
 sl_run() {  # <code> — runs it as pane %2 under the shims, killed after 20 seconds
-  : >"$SLDIR/tmux.log"; : >"$SLDIR/sleep.log"; : >"$SLDIR/out"; : >"$SLDIR/unparked"
+  : >"$SLDIR/tmux.log"; : >"$SLDIR/sleep.log"; : >"$SLDIR/out"; : >"$SLDIR/unparked"; : >"$SLDIR/waits"
   ( TMUX_PANE=%2 PATH="$SL2:$PATH" fn "$1" >"$SLDIR/out" 2>/dev/null ) &
   sl_pid=$!
   ( sleep 20; pkill -P "$sl_pid" 2>/dev/null; kill "$sl_pid" 2>/dev/null ) >/dev/null 2>&1 &
@@ -438,6 +466,17 @@ ok "...and clears the dead one's marker" 1 "$(grep -c '^set -up -t %8 @tagents_d
 printf '%%8 @7 1 2147483000 - 0\n%%2 @5 - - - 0\n' >"$SLDIR/panes"
 sl_run "$SLSTUB"'slot'
 has "no live list: slot falls back to the dashboard session's window" "pick an agent" "$(cat "$SLDIR/out")"
+# THE WAIT IS CONDITIONAL ON THE COUNT THE LAP SAW: the seventh field is @tagents_gen, and the
+# wait is one if-shell that holds only while the option still says that. A ring that came in
+# during the lap moves the option and the wait does not happen (see GEN_BUMP in core.sh).
+printf '%%9 @1 1 %s - 0 7\n%%2 @1 - - - 0 7\n' "$$" >"$SLDIR/panes"
+sl_run "$SLSTUB"'slot'
+has "the wait is conditional on the count the lap read (7)" \
+    'if-shell -F #{==:#{?@tagents_gen,#{@tagents_gen},0},7} wait-for tagents-panes' "$(cat "$SLDIR/tmux.log")"
+printf '%%9 @1 1 %s - 0\n%%2 @1 - - - 0\n' "$$" >"$SLDIR/panes"
+sl_run "$SLSTUB"'slot'
+has "...and with no count in the answer it is the count 0" \
+    'if-shell -F #{==:#{?@tagents_gen,#{@tagents_gen},0},0} wait-for tagents-panes' "$(cat "$SLDIR/tmux.log")"
 # Parked and active: the focus belt-and-braces calls unpark for this pane.
 printf '%%9 @1 1 %s - 0\n%%2 @1 - - %%9 1\n' "$$" >"$SLDIR/panes"
 sl_run "$SLSTUB"'slot'

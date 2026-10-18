@@ -36,6 +36,8 @@ set -uo pipefail
 export TERM
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# A suite that is not run against a scratch default server aborts here, before it can reach the live one (tests/scratch-guard.sh).
+. "$HERE/scratch-guard.sh" && scratch_guard notes.sh || exit 1
 TA="$HERE/../tagents"
 TN="$HERE/../tnotes"
 
@@ -480,7 +482,15 @@ ok "and still has its window to itself" 1 "$(npanes "$SWIN")"
 # The seat logic must not have noticed any of this: an editor pane carries no
 # @tagents_* marker, so seats() cannot see it and nothing in panes.sh can change.
 bash "$HERE/panes.sh" >"$ROOT/panes.log" 2>&1
-ok "tests/panes.sh is unaffected" 0 "$?"
+PRC=$?
+ok "tests/panes.sh is unaffected" 0 "$PRC"
+# The nested log goes with $ROOT, so what failed in it is printed here, while it exists:
+# a check that fails only in this nested run cannot be looked at afterwards.
+if [ "$PRC" -ne 0 ]; then
+  printf '       the nested panes.sh ended with %s; the checks it failed:\n' "$PRC"
+  grep -A3 'FAIL' "$ROOT/panes.log" | head -60 | cut -c1-240 | sed 's/^/       | /'
+  printf '       its last line: %s\n' "$(tail -1 "$ROOT/panes.log")"
+fi
 has "and says so" " 0 failed" "$(tail -1 "$ROOT/panes.log")"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

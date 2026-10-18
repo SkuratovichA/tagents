@@ -16,6 +16,8 @@
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# A suite that is not run against a scratch default server aborts here, before it can reach the live one (tests/scratch-guard.sh).
+. "$HERE/scratch-guard.sh" && scratch_guard usage.sh || exit 1
 TA="$HERE/../tagents"
 
 command -v tmux >/dev/null 2>&1 || { echo "usage.sh: no tmux"; exit 1; }
@@ -270,11 +272,14 @@ has "...and so do the directory rules" "RULES=$REPO=work"                       
 
 # The refresher is the one WRITER: its --update rebuilds the account map, and
 # a rebuild under different labels than the readers use flips the map on every
-# tick. Driven against a dead port it updates on its 5th tick and leaves after
-# five refused posts — about ten seconds.
+# wake. Driven against a dead port it updates on a wake that is a slow pass (every
+# one is, with TA_REFRESH_SLOW=0) and leaves after five refused posts — about ten
+# seconds. The wake is a ring of tagents-ev, sent until the update shows.
 : >"$ENVOUT"
-( TA_PORT=1 run "$CFG" --refresher >/dev/null 2>&1 & ); i=0
-while [ "$i" -lt 60 ] && ! grep -q -- '--update' "$ENVOUT" 2>/dev/null; do sleep 0.25; i=$((i+1)); done
+( TA_PORT=1 TA_REFRESH_SLOW=0 run "$CFG" --refresher >/dev/null 2>&1 & ); i=0
+while [ "$i" -lt 40 ] && ! grep -q -- '--update' "$ENVOUT" 2>/dev/null; do
+  sleep 0.5; tm wait-for -S tagents-ev; i=$((i+1))
+done
 sleep 0.3
 UPD=$(awk '/^ACCOUNTS=/{a=$0} /^ARGS=.*--update/{print a; exit}' "$ENVOUT")
 ok "the refresher hands tusage --update the same accounts" "ACCOUNTS=personal=$ROOT/claude-personal;work=" "$UPD"

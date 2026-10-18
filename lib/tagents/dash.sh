@@ -131,6 +131,10 @@ dash() {
     trap release_dash EXIT INT TERM
     enter_lbl='open here'
     sidebar=1
+  elif [ "$mode" = popup ]; then
+    # A popup claims nothing, so release_dash has nothing to say for it, but its
+    # refresher still has to hear that the list has gone: see refresher.
+    trap signal_ev EXIT INT TERM
   fi
 
   # CTRL-V IS A MODAL WHEREVER ONE CAN BE HAD, and fzf own preview is then not
@@ -183,7 +187,14 @@ dash() {
   kb "$K_TREE"    "execute-silent($SELF --toggle-group)+reload-sync($SELF --list)"
   kb "$K_REFRESH" "reload-sync($SELF --list)"
   kb resize       "reload-sync($SELF --list)"
-  kb start        "execute-silent(TA_PORT=\$FZF_PORT nohup $SELF --refresher >/dev/null 2>&1 &)"
+  # THE REFRESHER WATCHES FZF, NOT THE BASH AROUND IT. This function's own pid ($$)
+  # is the shell that starts fzf again after an abort, and it lives on while fzf
+  # comes and goes, so a refresher that watched it outlived every fzf it was
+  # started for. The shell fzf starts for an execute-silent is fzf's own child, so
+  # its parent is fzf (checked with ps -o comm= -p, on a scratch server), and the
+  # parent is what the refresher gets, expanded in that shell and not here. A
+  # popup's list comes through this same bind.
+  kb start        "execute-silent(TA_PORT=\$FZF_PORT TA_LIST_PID=\$PPID nohup $SELF --refresher >/dev/null 2>&1 &)"
   # --expect is the one route quit has, and it is a flag rather than a bind, so
   # it needs the same "not there at all" shape the array gives everything else.
   xp=()
