@@ -79,6 +79,14 @@ export TA_CONFIG=/nonexistent/config.yaml   # no profiles: no dialog anywhere
 export TA_COUNTS_EVERY=0   # --counts is cached for 5 s by default; these checks expect fresh numbers
 unset TMUX TMUX_PANE TA_MODE TA_FLAT TA_COLS TA_NEW_CMD TA_RESUME_CMD TA_HOME
 unset TA_HIDE_COLS TA_NAMES_EVERY CLAUDE_CONFIG_DIR
+# The Cyrillic titles below reach tmux intact only in a UTF-8 locale: in the C
+# one the server stores every non-ASCII byte as "_". A shell started without
+# LANG (a launchd job, a bare `env -i`) has exactly that, so the suite brings
+# its own instead of failing on the caller's.
+case $(locale charmap 2>/dev/null) in
+  UTF-8) ;;
+  *) export LC_CTYPE=en_US.UTF-8 ;;
+esac
 
 tm() { tmux -L "$S" "$@"; }
 
