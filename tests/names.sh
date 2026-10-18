@@ -33,7 +33,11 @@ set -uo pipefail
 # The keeper client below attaches through `script`, and a tmux client with no
 # $TERM cannot open its terminal: a worker started without one (a launchd job,
 # an `env -i`) would run every check against a server nobody is attached to.
-export TERM=${TERM:-xterm-256color}
+# bash sets an unexported TERM=dumb when it starts without one, so "dumb" is
+# the missing case too: ${TERM:-...} kept it, and the keeper failed with
+# "open terminal failed: terminal does not support clear".
+[ "${TERM:-dumb}" = dumb ] && TERM=xterm-256color
+export TERM
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TA="$HERE/../tagents"
