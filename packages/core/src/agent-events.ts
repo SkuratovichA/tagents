@@ -301,13 +301,28 @@ export function followAgentEvents(onEvent: (e: AgentEvent) => void, o: FollowOpt
     }
   }
 
+  /**
+   * On macOS libuv arms a file's kqueue watch, and re-arms it after every
+   * event, only at the loop's next poll: an append that lands before that
+   * raises nothing, and its line waited for the next append (the follow test
+   * lost its second line in 5 of 24 parallel runs). One more drain after that
+   * poll reads it: the first setImmediate runs before the poll, the second after.
+   */
+  function drainAfterArm(): void {
+    setImmediate(() => setImmediate(drain));
+  }
+
   /** Watch the path, which must already name the file `cur` holds. */
   function watch(): void {
     watcher?.close();
     watcher = null;
-    const w = fs.watch(file, drain);
+    const w = fs.watch(file, () => {
+      drain();
+      drainAfterArm();
+    });
     w.on('error', die);
     watcher = w;
+    drainAfterArm();
   }
 
   /** Watch the path again; a follower that cannot is deaf for good, so it dies. */
