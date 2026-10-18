@@ -17,6 +17,8 @@
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# A suite that is not run against a scratch default server aborts here, before it can reach the live one (tests/scratch-guard.sh).
+. "$HERE/scratch-guard.sh" && scratch_guard events.sh || exit 1
 HOOK="$HERE/../hooks/tmux-agent-state.sh"
 
 command -v jq >/dev/null 2>&1 || { echo "events.sh: no jq"; exit 1; }
@@ -202,6 +204,22 @@ t "k. the state record and history.tsv are byte for byte the same"
 # the reference is no longer a different hook.
 FIXED="$ROOT/fixed"; mkdir -p "$FIXED"
 printf '#!/bin/sh\necho 1700000000\n' >"$FIXED/date"; chmod +x "$FIXED/date"
+# The reference reads the clock with `date`; this branch's hook reads it inside the
+# one jq it runs, as (now|floor), so the same moment is fixed there: a jq that
+# puts the epoch in place of that expression in the program it is given, and is
+# the real jq in every other respect. The reference's program has no such
+# expression and goes through untouched.
+REALJQ=$(command -v jq)
+cat >"$FIXED/jq" <<SH
+#!/bin/sh
+for a in "\$@"; do
+  shift
+  case \$a in *'(now|floor)'*) a=\$(printf '%s' "\$a" | sed 's/(now|floor)/1700000000/') ;; esac
+  set -- "\$@" "\$a"
+done
+exec "$REALJQ" "\$@"
+SH
+chmod +x "$FIXED/jq"
 A="$ROOT/ka"; B="$ROOT/kb"; C="$ROOT/kc"; fresh "$A"; rm -rf "$B" "$C"; mkdir -p "$B" "$C"
 same=1
 [ "$HAVE_REF" = 1 ] || echo "  SKIP the comparisons against the merge-base hook: it cannot be resolved here"
@@ -276,6 +294,8 @@ while IFS= read -r p; do
   ok "exactly one jq: $lbl" 1 "$(ncall "$new" jq)"
   ok "at most one tmux: $lbl" 1 "$(atmost1 "$(ncall "$new" tmux)")"
   ok "no wc: $lbl" 0 "$(ncall "$new" wc)"
+  # The payload goes into jq on stdin and jq reads the clock: no cat, no date.
+  ok "no cat and no date: $lbl" 0 "$(( $(ncall "$new" cat) + $(ncall "$new" date) ))"
   rm -rf "$ROOT/lb$i"; mkdir -p "$ROOT/lb$i"
   old=$(count "$HOOK" "$ROOT/lb$i" "$p")
   ok "same programs as with the switch off: $lbl" "$old" "$new"

@@ -118,7 +118,7 @@
 #                           which one enter would use. Debugging aids
 #   tagents --ensure-seat [PANE]
 #                           repair that window's seats and print the current one
-#                           — the same repair the refresher runs on a tick
+#                           — the same repair the refresher runs on its slow pass
 #   tagents --collapse PANE close an empty seat the sidebar no longer needs.
 #                           This is what unpark's own command list calls after a
 #                           chat it sent home leaves its placeholder behind
@@ -623,7 +623,7 @@ case "${1:-}" in
   --slot)         slot ;;
   --unpark)       unpark "${2:-}" "${3:-}" ;;
   # What the focus hooks call so the ▶ marker moves with the switch rather than
-  # with the refresher's next tick. Debounced on the seat — see poke.
+  # with the refresher's next wake. Debounced on the seat — see poke.
   --poke)         poke "${2:-}" ;;
   # What a kill binding asks before it kills anything, so closing a pane or a
   # window in the sidebar sends the chat home instead of hanging it up. A

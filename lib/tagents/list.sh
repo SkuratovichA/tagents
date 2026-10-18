@@ -12,6 +12,7 @@ grouped() {  # tree by directory unless explicitly turned off
 
 toggle_group() {
   if [ -e "$STATE_DIR/.flat" ]; then rm -f "$STATE_DIR/.flat"; else : >"$STATE_DIR/.flat"; fi
+  signal_ev   # the grouping is drawn, and the marker is not a tmux event
 }
 
 list() {
@@ -868,10 +869,11 @@ list() {
 # inspects every one of them. So the bar reads a cache, and the cache has two
 # keepers.
 #   The refresher, while a picker is open. It already has the tally: the list it
-#   posts every few seconds counts the rows as it draws them (see the end of
-#   list()), and refresher_counts turns the last tally into the cache and stamps
-#   it on every tick the list answers. With that stamp fresh counts() below never
-#   finds itself due, so the bar costs one `date` and no list of its own.
+#   posts counts the rows as it draws them (see the end of list()), and
+#   refresher_counts turns the last tally into the cache on every pass. While one
+#   is alive counts() below prints that cache, whatever its age, and starts no
+#   program at all (the stamp is only for when none is: it was once renewed every
+#   tick, and a refresher that waits for events leaves it as old as its last pass).
 #   The bar itself, whenever nobody keeps the stamp: no picker, a picker that
 #   stopped answering, a tally that was never written. Then it is due again after
 #   COUNTS_EVERY seconds and counts_now computes the lot, as it always did.
@@ -892,6 +894,19 @@ case $COUNTS_EVERY in ''|*[!0-9]*) COUNTS_EVERY=5 ;; esac
 
 counts() {
   local tmpf x=""
+  # WHILE A REFRESHER IS ALIVE THE CACHE IS TRUSTED, WHATEVER ITS AGE. The age test
+  # below assumed a refresher that stamped every 2 s; the refresher now waits for
+  # events, and a quiet dashboard leaves the stamp as old as the last pass. With the
+  # old status-right line still in place (which is what a bar not yet updated runs)
+  # every call after COUNTS_EVERY seconds would then count the whole list again, about
+  # 38 programs, for a text the refresher keeps current anyway. A refresher that is
+  # gone, or has not written the cache yet, is the case the age test is for.
+  # TA_COUNTS_EVERY=0 still means "count on every call".
+  if [ "$COUNTS_EVERY" -ne 0 ] && [ -e "$COUNTS_OUT" ] && refresher_alive; then
+    slurp x "$COUNTS_OUT"
+    printf '%s' "$x"
+    return 0
+  fi
   if [ "$COUNTS_EVERY" -ne 0 ] && ! due_every "$COUNTS_STAMP" "$COUNTS_EVERY"; then
     # Whole file, every byte of it, trailing newlines included (slurp).
     slurp x "$COUNTS_OUT"

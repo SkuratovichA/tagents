@@ -19,6 +19,8 @@
 set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# A suite that is not run against a scratch default server aborts here, before it can reach the live one (tests/scratch-guard.sh).
+. "$HERE/scratch-guard.sh" && scratch_guard dispatch.sh || exit 1
 TA="$HERE/../tagents"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/tagents-dispatch.XXXXXX") || exit 1
 TMP=$(cd "$TMP" && pwd -P) || exit 1

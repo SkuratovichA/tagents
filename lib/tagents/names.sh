@@ -21,6 +21,7 @@ set_label() {
   { [ -e "$LABELS" ] && awk -F"$TAB" -v k="$keyv" '$1 != k' "$LABELS"; } >"$tmpf" 2>/dev/null
   [ -n "$name" ] && printf '%s\t%s\n' "$keyv" "$name" >>"$tmpf"
   mv -f "$tmpf" "$LABELS" 2>/dev/null || rm -f "$tmpf"
+  signal_ev   # labels are drawn, and the file is not a tmux event
 }
 
 label_of() {
