@@ -329,6 +329,7 @@ test('uninstall still reaches the service when the backend is none', async () =>
 // nothing builds, nothing posts and nothing reaches launchd. Every call is kept, in order, `[file, ...args]`.
 interface MacosExecOptions {
   readonly alertStyle?: string;
+  readonly bundleId?: string;
   readonly permission?: string;
   /** What `build.sh --check` answers. */
   readonly app?: 'up to date' | 'stale' | 'missing';
@@ -346,7 +347,7 @@ function macosExec(o: MacosExecOptions = {}): { readonly exec: Exec; readonly ca
     }
     if (file === '/usr/bin/xcrun') return result();
     if (file.endsWith('/tagents-notify')) {
-      return result({ stdout: `${JSON.stringify({ ok: true, status: o.permission ?? 'authorized', alertStyle: o.alertStyle ?? 'alert' })}\n` });
+      return result({ stdout: `${JSON.stringify({ ok: true, status: o.permission ?? 'authorized', alertStyle: o.alertStyle ?? 'alert', ...(o.bundleId === undefined ? {} : { bundleId: o.bundleId }) })}\n` });
     }
     if (file === '/bin/launchctl') return args[0] === 'print' ? result({ stdout: '\tstate = running\n\tpid = 4242\n' }) : result();
     if (file === 'ps') return result({ stdout: '  20480\n' });
@@ -410,7 +411,8 @@ test('a configured icon that is not a file is a problem line in status and in in
   assert.deepEqual(installed.builds(), [['--check', installed.app], [installed.app], ['--check', installed.app]]);
 });
 
-const ALERT_SETTINGS_URL = 'x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=io.github.skuratovicha.tagents-notify';
+const settingsUrl = (id: string): string => `x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=${id}`;
+const ALERT_SETTINGS_URL = settingsUrl('io.github.skuratovicha.tagents-notify');
 const hintOf = (out: string): string | undefined => lines(out).find((l) => l.startsWith('hint: '));
 
 test('alert style banner: status and install say how to make notices stay, with the Settings link', async () => {
@@ -423,6 +425,17 @@ test('alert style banner: status and install say how to make notices stay, with 
     assert.ok(hint.includes('Alert Style') && hint.includes('"Persistent" (called Alerts before macOS 26)'), hint);
     assert.ok(hint.includes(ALERT_SETTINGS_URL), hint);
   }
+});
+
+test('the hint links to the bundle id the helper reported, and to the base id when it reported none', async () => {
+  const reported = macosRig({ alertStyle: 'banner', bundleId: 'io.github.skuratovicha.tagents-notify.i0a1b2c3d' });
+  await reported.run('status');
+  const hint = hintOf(reported.out());
+  assert.ok(hint !== undefined && hint.includes(settingsUrl('io.github.skuratovicha.tagents-notify.i0a1b2c3d')), hint);
+  assert.ok(!hint.includes(`${ALERT_SETTINGS_URL}"`), hint);
+  const silent = macosRig({ alertStyle: 'banner' });
+  await silent.run('status');
+  assert.ok(hintOf(silent.out())?.includes(`${ALERT_SETTINGS_URL}"`), silent.out());
 });
 
 test('alert style none: the hint says nothing is shown on screen at all', async () => {
