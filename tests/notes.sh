@@ -151,6 +151,12 @@ wait_file() { local i=0; while [ "$i" -lt 60 ]; do [ -e "$1" ] && return 0
                 sleep 0.1; i=$((i+1)); done; return 1; }
 wait_gone() { local i=0; while [ "$i" -lt 80 ]; do [ "$(lives "$1")" = no ] && return 0
                 sleep 0.1; i=$((i+1)); done; return 1; }
+# The focus hooks start `tnotes sync` in the background (run-shell -b), and every
+# sync takes the lock. Quiet is the lock free for five samples in a row: a sync
+# waiting for it polls every 0.1 s and would have taken it. Bounded at ~12 s.
+wait_syncs() { local i=0 free=0; while [ "$i" -lt 60 ] && [ "$free" -lt 5 ]; do
+                 if [ -d "$STATE/.tnotes.lock" ]; then free=0; else free=$((free+1)); fi
+                 sleep 0.2; i=$((i+1)); done; }
 
 # THE USER'S TERMINAL, ASSERTED AT THE END. tnotes splits, breaks out and joins
 # panes in windows the user also keeps their own things in; a pane carrying none
@@ -228,6 +234,13 @@ ok "with the width it had before parking (±2)" yes "$([ "$d" -le 2 ] && echo ye
 # ---------------------------------------------------------------------------
 t "5. toggling it away is a decision sync does not overrule"
 # ---------------------------------------------------------------------------
+# Section 4's window switches started hook syncs of their own, and one that lost
+# the lock race to the test's sync still arrives from the other window and parks
+# the editor again: the toggle then brought it back, and five checks failed. Let
+# them finish, and arrive at the chat once more, so the toggle starts from the
+# editor beside it.
+wait_syncs
+run sync "$CHAT" >/dev/null 2>&1
 run toggle "$CHAT" >/dev/null 2>&1
 ok "toggle parked it" ta-notes "$(sess "$ED")"
 ok "and marked it closed" 0 "$(popt @ta_notes_open "$ED")"
