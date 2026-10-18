@@ -219,3 +219,12 @@ A `claude -p` worker resumed from a launcher had neither: `locale` said C and `$
 
 ## A merge of two branches that each passed its own suites still owes the other's checks (18.10.2026)
 child-sessions added one awk per pane-less record (the title cache lookup) and a second `hostname` call; main had meanwhile landed tests/forks.sh, which pins both counts, and tests/events.sh, whose process checks compared against the merge base. Neither branch was wrong alone. After a merge, run every suite either side added, and read a reference of the form "the merge base's hook" again: once the base moves it compares something else.
+
+## bash without TERM has TERM=dumb, so `${TERM:-default}` keeps "dumb" (18.10.2026)
+bash 3.2 started with no TERM in its environment sets an unexported shell variable TERM=dumb, and `export TERM=${TERM:-xterm-256color}` then exports "dumb". A tmux client on it fails with "open terminal failed: terminal does not support clear", so the suites' keeper never attached and every check needing a client (switch-client, display-popup) failed. Three fixes that all kept "dumb" failed the same way; a five-line repro printing `#{client_termname}` and the client's stderr showed it at once. The suites treat "dumb" as missing.
+
+## `sleep 0.05` is 0.12 s at background priority, so a wait counted in sleeps is not a wait in seconds (18.10.2026)
+In a detached worker every short sleep overshot by ~70 ms (timer coalescing): the dock lock's 36 tries took 4.4 s on main and on the branch alike, while exec cost 2 ms. Timing each phase of the click (startup 0.07 s, lock 4.4–4.8 s, dock 0.2 s) on both trees showed the "slower merge" was the same loop on a busier box. A wait that a test bounds in seconds is bounded by the clock (`lock_dir ... 3`), not by a count of sleeps.
+
+## macOS fs.watch on a file can miss an append made right after an event (18.10.2026)
+libuv re-arms a file's kqueue watch only at the loop's next poll, so an append landing in between raises no event at all. A probe appending inside the watch callback saw 1 event for 2 appends in one run of three. The follower drains once more after the re-arm (two setImmediate hops); a longer wait in the test would not have helped, since the event never comes.
