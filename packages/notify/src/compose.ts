@@ -80,8 +80,6 @@ function subtitleFor(kind: NoticeKind, plan: boolean, p: Phrases): string {
       return p.kindTurnDone;
     case 'cache_expiring':
       return p.kindCacheExpiring;
-    case 'subagent_done':
-      return p.kindSubagentDone;
     case 'session_end':
       return p.kindSessionEnd;
   }
@@ -108,11 +106,6 @@ function bodyFor(
     }
     case 'cache_expiring':
       return p.cacheBody(extra.idleMin ?? 0, extra.leftMin ?? 0);
-    case 'subagent_done':
-      // SubagentStop's `sub` is the agent type; a hook that did not report one
-      // would otherwise read "finished finished", and the subtitle already says
-      // "Subagent finished".
-      return e.sub === '' ? p.subagentUnnamedBody : p.subagentBody(e.sub);
     case 'session_end':
       return e.sub !== '' ? e.sub : p.sessionEndBody;
   }

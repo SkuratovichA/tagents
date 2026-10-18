@@ -1,6 +1,6 @@
 # lib/tagents/state.sh — the raw data every view reads
 #
-# Where the dashboard's facts come from: live_panes (the ps ancestry walk that proves a Claude is really running; live_pane_pids is the walk with the pid kept), rec_row/live_sids (a record's resume fields, and the session ids running right now), repo_root/dir_roots (grouping by the nearest .git), state_files (why a naive *.tsv glob once produced panes called %history), headless_alive/headless_log (a `claude -p` run has no pane, only a pid and a $TA_LOG), origin_of (the transcript's first cwd, cached in ORIGINS, because the live cwd drifts), and collect() — the single pass that emits the P/L/R/N/S/H/B/M/U stream list(), counts() and the pickers all read. The 'rows' banner heads the file.
+# Where the dashboard's facts come from: live_panes (the ps ancestry walk that proves a Claude is really running; live_pane_pids is the walk with the pid kept), rec_row/live_sids (a record's resume fields, and the session ids running right now), repo_root/dir_roots (grouping by the nearest .git), state_files (why a naive *.tsv glob once produced panes called %history), headless_alive/headless_log (a `claude -p` run has no pane, only a pid and a $TA_LOG), transcript_tail/title_of (what a session with neither shows and calls itself, cached in TITLES), origin_of (the transcript's first cwd, cached in ORIGINS, because the live cwd drifts), and collect() — the single pass that emits the P/L/R/N/S/H/T/B/M/U stream list(), counts() and the pickers all read. The 'rows' banner heads the file.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -141,6 +141,104 @@ headless_log() {  # <pane key %s-<sid>>
   printf '%s' "$log"
 }
 
+# THE LAST FEW TURNS OF A TRANSCRIPT, for a session with neither a pane to
+# capture nor a readable $TA_LOG — which is every child session, since whatever
+# started it kept its output to itself. Data, not view: the preview prints it,
+# ctrl-v pages it, and both want the same lines.
+#
+# Tail-bounded on purpose. A transcript reaches tens of megabytes and this is
+# re-run on every cursor move, so only the last few records are ever read — four
+# lines per wanted line, since tool results and meta records outnumber the turns.
+# `fromjson?` rather than a plain parse: a half-written last line is the normal
+# state of a file being appended to, and it must skip that line rather than take
+# the whole output with it (the lesson closed.sh already learned).
+transcript_tail() {  # <transcript file> [lines]
+  local f=${1:-} n=${2:-20}
+  [ -n "$f" ] && [ -r "$f" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  tail -n $(( n * 4 )) -- "$f" 2>/dev/null |
+    jq -R -r '
+      fromjson? | select(.type == "user" or .type == "assistant")
+      | .message.content
+      | if type == "array" then .[] else empty end
+      | if .type == "tool_use"
+        then "▸ " + .name + " " + ((.input | tostring) | gsub("\\s+"; " ") | .[0:120])
+        elif .type == "text" then (.text | gsub("\\s+"; " ") | .[0:300])
+        else empty end' 2>/dev/null |
+    tail -n "$n"
+}
+
+# WHAT A SESSION CALLS ITSELF. Claude Code writes one {"type":"ai-title"} record
+# near the top of a transcript — the name it gave the conversation — and for a
+# session with no pane and no $TA_LABEL that is the only name there is: the
+# alternative is the basename of a directory, which every agent in a repo shares.
+#
+# Resolved once per session and cached beside the origins, three columns:
+# session id, the title or "-" for "there is none", and how big the transcript
+# was when we looked. A MISS IS CACHED TOO, or every repaint would re-read 200
+# lines of every transcript that has no title yet.
+#
+# A LIVE transcript is bigger on every repaint, so "re-check once it grew" would
+# re-check a titleless session every two seconds — and, appending, would grow the
+# cache by a line each time. So: one row per session id, rewritten in place, and
+# a miss is re-checked only when the growth could plausibly have brought a title
+# with it. The record sits near the top of the file, within the 200 lines we
+# read: a transcript that was already 64 KiB without one never gains one, and
+# below that we wait for a full 8 KiB of new text before looking again.
+TITLES="$STATE_DIR/title.tsv"
+TITLE_MAXSZ=65536   # past this the first 200 lines are long behind us
+TITLE_STEP=8192     # and below it, re-read only after this much new text
+# A caller that has read the cache already passes the row it found (an empty
+# title for "no row"), and no awk is started to look it up again: collect()
+# does that for every pane-less record in its one awk.
+title_of() {  # <session-id> <transcript-path> [<cached title> <cached size>]
+  local sid=${1:-} tr=${2:-} sz=0 hit= hsz= t= tmp= have=0
+  [ $# -ge 3 ] && { have=1; hit=${3:-}; hsz=${4:-}; }
+  [ -n "$sid" ] || return 1
+  if [ -n "$tr" ] && [ -e "$tr" ]; then
+    # wc -c, as the hook's history rotation does it; it pads, so strip the pad.
+    sz=$(wc -c <"$tr" 2>/dev/null) || sz=0
+    sz=${sz// /}
+  fi
+  case ${sz:-0} in ''|*[!0-9]*) sz=0 ;; esac
+  if [ "$have" = 1 ] || [ -e "$TITLES" ]; then
+    # The LAST line for the id, not the first: a cache written before the rows
+    # were rewritten in place may still hold several, and the newest one counts.
+    [ "$have" = 1 ] || IFS="$US" read -r hit hsz < <(
+      awk -F"$TAB" -v OFS="$US" -v k="$sid" \
+          '$1 == k { t = $2; s = $3 } END { if (t != "") print t, s }' \
+          "$TITLES" 2>/dev/null)
+    if [ -n "${hit:-}" ]; then
+      [ "$hit" != - ] && { printf '%s' "$hit"; return 0; }
+      case ${hsz:-0} in ''|*[!0-9]*) hsz=0 ;; esac
+      [ "$hsz" -ge "$TITLE_MAXSZ" ] && return 1
+      [ "$sz" -lt $(( hsz + TITLE_STEP )) ] && return 1
+    fi
+  fi
+  if [ -n "$tr" ] && [ -e "$tr" ] && command -v jq >/dev/null 2>&1; then
+    # Clipped and scrubbed by jq rather than by cut: .[0:60] counts characters,
+    # and a title cut by bytes ends in half a glyph.
+    t=$(head -200 -- "$tr" 2>/dev/null |
+          jq -R -r 'fromjson? | select(.type == "ai-title")
+                    | ((.aiTitle // "") | tostring
+                       | gsub("[\\t\\r\\n]+"; " ") | .[0:60])' 2>/dev/null | head -1)
+  fi
+  # Rewrite the row rather than append one: the file holds one line per session
+  # and is small by construction, so a copy beside it and a mv are cheap.
+  tmp="$TITLES.$$"
+  if [ -e "$TITLES" ]; then
+    awk -F"$TAB" -v k="$sid" '$1 != k' "$TITLES" >"$tmp" 2>/dev/null || :
+  else
+    : >"$tmp" 2>/dev/null || :
+  fi
+  if [ -e "$tmp" ]; then
+    printf '%s\t%s\t%s\n' "$sid" "${t:--}" "$sz" >>"$tmp" 2>/dev/null
+    mv -f "$tmp" "$TITLES" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+  fi
+  [ -n "${t:-}" ] || return 1
+  printf '%s' "$t"
+}
+
 # WHERE AN AGENT LIVES is where it was launched — and the hook cannot tell us
 # that. Its payload carries the *live* cwd, which follows the Bash tool's `cd`:
 # one session was observed under five different directories inside a single turn
@@ -212,7 +310,7 @@ collect() {
   dir_roots
   [ -e "$LABELS" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "N", $1, $2 }' "$LABELS"
 
-  local f key ts st sid cwd tr det cfgd hascfg orig hlbl hl pid
+  local f key ts st sid cwd tr det cfgd hascfg orig hlbl hpar hpsid hl pid ttl th tz
   # ONE AWK FOR ALL THE STATE FILES, and for the origin cache beside them: a
   # process per record — two, with the cache lookup — is what a repaint used to
   # cost per session, thrice a second, and the endpoint security agent inspects
@@ -232,7 +330,8 @@ collect() {
   while IFS= read -r f; do set -- "$@" "$f"; done < <(state_files)
   if [ $# -gt 0 ]; then
     [ -e "$ORIGINS" ] && set -- "$ORIGINS" "$@"
-    while IFS="$US" read -r f orig ts st sid cwd tr det cfgd hascfg pid hlbl; do
+    [ -e "$TITLES" ] && set -- "$TITLES" "$@"
+    while IFS="$US" read -r f orig ts st sid cwd tr det cfgd hascfg pid hpar hpsid th tz hlbl; do
       key=${f##*/}; key=${key%.tsv}
       [ -z "$orig" ] && [ -n "$sid" ] && orig=$(origin_of "$sid" "$tr")
       printf 'S\t%%%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
@@ -241,17 +340,30 @@ collect() {
       # A PANE-LESS SESSION NEEDS ITS OWN LINE, because the two things the renderer
       # reads off a pane it cannot read here: whether the agent is running (the
       # recorded pid, which only the shell can kill -0) and what to call it (there
-      # is no pane title, so $TA_LABEL is the name). The log is not in it — only
-      # the preview wants that, and it reads the record itself (headless_log). The
-      # pid is field 8 of the record, brought along by the awk above, so asking
-      # after it costs no process of its own.
+      # is no pane title, so $TA_LABEL is the name). Plus, for a child, whose it
+      # is — the parent's record key and session id, which is what the row is
+      # nested under. Those two come BEFORE the label for the reason the pane
+      # format above gives: the label is the one field carrying arbitrary text, so
+      # it goes last. The log is not in it — only the preview wants that, and it
+      # reads the record itself (headless_log). The pid is field 8 of the record,
+      # brought along by the awk above, so asking after it costs no process of its
+      # own.
       case $key in
         s-?*)
           hl=0; pid_alive "$pid" && hl=1
-          printf 'H\t%%%s\t%s\t%s\n' "$key" "$hl" "${hlbl:-}" ;;
+          printf 'H\t%%%s\t%s\t%s\t%s\t%s\n' \
+            "$key" "$hl" "${hpar:-}" "${hpsid:-}" "${hlbl:-}"
+          # ...and the name the session gave itself, for the rows that have no
+          # other. Emitted for pane-less rows only: everybody else has a pane
+          # title, which is the same answer without reading a file. Tagged A and
+          # not T: T is the prompt clock below, one line per file in prompt/, and
+          # two kinds of record sharing a tag is two readers quietly reading the
+          # wrong one.
+          ttl=$(title_of "${sid:-}" "${tr:-}" "${th:-}" "${tz:-}") &&
+            printf 'A\t%s\t%s\n' "${sid:-}" "$ttl" ;;
       esac
-    done < <(awk -F"$TAB" -v OFS="$US" -v orig="$ORIGINS" '
-      function blank(p) { print p, "", "", "", "", "", "", "", "", "0", "", "" }
+    done < <(awk -F"$TAB" -v OFS="$US" -v orig="$ORIGINS" -v titles="$TITLES" '
+      function blank(p) { print p, "", "", "", "", "", "", "", "", "0", "", "", "", "", "", "" }
       BEGIN {
         # A record deleted between the glob and here must not take the rest of
         # the list down with it: this awk stops dead at a file it cannot open,
@@ -260,15 +372,18 @@ collect() {
         for (i = 1; i < ARGC; i++) {
           if ((getline junk < ARGV[i]) < 0) { ARGV[i] = ""; continue }
           close(ARGV[i])
-          if (ARGV[i] != orig) sf[++ns] = ARGV[i]
+          if (ARGV[i] != orig && ARGV[i] != titles) sf[++ns] = ARGV[i]
         }
         nx = 1
       }
       FILENAME == orig { if (!($1 in o)) o[$1] = $2; next }
+      # The title cache: the LAST row for an id counts, as in title_of.
+      FILENAME == titles { th[$1] = $2; tz[$1] = $3; next }
       FNR == 1 {
         while (nx <= ns && sf[nx] != FILENAME) blank(sf[nx++])
         nx++
-        print FILENAME, o[$3], $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0), $8, $10
+        t = th[$3]; gsub(OFS, " ", t)
+        print FILENAME, o[$3], $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0), $8, $11, $12, t, tz[$3], $10
       }
       END { while (nx <= ns) blank(sf[nx++]) }' "$@" </dev/null 2>/dev/null)
   fi

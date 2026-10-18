@@ -2,7 +2,11 @@
 
 Desktop notifications for tagents: a banner when an agent needs you, and a click that docks that chat.
 
-It watches the agents' event stream and posts one notice when something wants your attention. The kinds are `question` (AskUserQuestion, plan approval, MCP elicitation), `permission` (a permission prompt), `turn_done` (the answer is ready, your move), `cache_expiring` (the prompt cache is about to run out), `subagent_done` and `session_end`. The first four are on by default; the last two are off. Each session has one notice at a time: a later notice replaces the earlier one instead of stacking, and a notice that is no longer true is withdrawn.
+It watches the agents' event stream and posts one notice when something wants your attention. The kinds are `question` (AskUserQuestion, plan approval, MCP elicitation), `permission` (a permission prompt), `turn_done` (the answer is ready, your move), `cache_expiring` (the prompt cache is about to run out) and `session_end`. The first four are on by default; `session_end` is off.
+
+Notices come only from agents, meaning a Claude session in a tmux pane of its own. Three kinds of session never post one, and no option turns them on: an Agent-tool subagent (its SubagentStop and its own Stop post nothing; a question or a permission prompt it raises blocks the agent that started it, so that one is posted as the agent's), a child session (a `claude -p` an agent started from its Bash tool, which the dashboard draws under that agent), and a headless session with no pane at all (a daemon's `claude -p` turn, which reports wherever it was started from and would leave a click nothing to dock). The hook files the last two under `s-<session id>`, and every event with such a key is left alone.
+
+Each session has one notice at a time: a later notice replaces the earlier one instead of stacking, and a notice that is no longer true is withdrawn.
 
 The engine only knows a `Notifier`. What posts the banner is the platform layer under `src/platform/`, and macOS is the one backend today.
 
@@ -34,14 +38,11 @@ Elsewhere `install` refuses with "no notification backend for <os> yet" and exit
 backend: auto      # auto | macos | log | none — auto: macos on darwin, none elsewhere
 click: dock        # dock: like Enter in the list · goto: the agent's own window · focus: terminal only
 # icon: ~/pics/tagents.png   # a PNG for the notices' icon, unset by default; see below
-sessions:
-  headless: false  # sessions with no tmux pane: claude -p from a daemon, IDE sessions
 events:
   question:       { enabled: true,  skip_visible: true }   # AskUserQuestion, plan approval, MCP elicitation
   permission:     { enabled: true,  skip_visible: true }   # a permission prompt
   turn_done:      { enabled: true,  skip_visible: true }   # the answer is ready, your move
   cache_expiring: { enabled: true,  skip_visible: false, after: 50m, ttl: 60m }
-  subagent_done:  { enabled: false, skip_visible: true }
   session_end:    { enabled: false, skip_visible: true }
 ```
 

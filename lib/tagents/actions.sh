@@ -128,7 +128,7 @@ ask_kill() {  # the confirmation itself — normally the body of the popup
     [ -z "$dir" ] && dir=$(tmux display -p -t "$pane" '#{pane_current_path}' 2>/dev/null)
     if [ -z "$nm" ]; then
       nm=$(untitle_of "$(tmux display -p -t "$pane" '#{pane_title}' 2>/dev/null)")
-      [ "$nm" = "$(hostname -s 2>/dev/null)" ] && nm=""
+      host_title "$nm" && nm=""
     fi
     [ -z "$nm" ] && nm=$(basename "${dir:-?}")
     where=$(tmux display -p -t "$pane" \
@@ -237,10 +237,10 @@ open_chat() {  # <open_agent|open_beside> <pane> <sid> <dir>
   fi
   # Two notices clicked together would run two docks over the same seat. A lock
   # that cannot be had is not a reason to do nothing: a click that
-  # does nothing is worse than a race. 36 tries is about 3 s of wall time, each
-  # try costing more than its 0.05 s sleep (60 measured 5 s); the helper that
-  # runs this gives it 8 s.
-  lock_dir "$STATE_DIR/.dock.lock" 10 36 && locked=1
+  # does nothing is worse than a race. The wait is 3 s of wall time, whatever a
+  # try costs (at background priority 36 tries took 4.4 s, see lock_dir); the
+  # helper that runs this gives it 8 s.
+  lock_dir "$STATE_DIR/.dock.lock" 10 100 3 && locked=1
   "$dockfn" "$pane"; rc=$?
   [ "$locked" = 1 ] && unlock_dir "$STATE_DIR/.dock.lock"
   return "$rc"
@@ -268,9 +268,20 @@ act() {
     %s-*)
       case "$what" in
         open|beside|borrow|goto|send|rename)
-          tmux display-message \
-            "tagents: headless session — no pane to dock, type into or rename (ctrl-v follows its log)" \
-            2>/dev/null
+          # A CHILD IS THE SAME REFUSAL FOR A DIFFERENT REASON, and the reason
+          # is what the notice is for: it is not a daemon nobody is watching,
+          # it is a `claude -p` the agent above it started, and there is no log
+          # to follow either — ctrl-v shows its transcript instead.
+          if [ -n "$(awk -F"$TAB" 'NR==1 { print $11; exit }' \
+                       "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)" ]; then
+            tmux display-message \
+              "tagents: child session — no pane to dock, type into or rename (ctrl-v shows its transcript)" \
+              2>/dev/null
+          else
+            tmux display-message \
+              "tagents: headless session — no pane to dock, type into or rename (ctrl-v follows its log)" \
+              2>/dev/null
+          fi
           return 0 ;;
       esac ;;
   esac

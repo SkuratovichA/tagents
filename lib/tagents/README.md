@@ -3,7 +3,7 @@
 `tagents` at the root of the checkout is the entry point and nothing else: the
 manual it prints for `--help`, `SELF`, the lookup that finds this directory,
 `forward_core`, and the `case` that maps a flag to a function. It is
-573 lines, 410 of them the manual. Everything the dashboard does is
+614 lines, 448 of them the manual. Everything the dashboard does is
 here, one file per part, sourced in the order of the table before the dispatch
 runs.
 
@@ -14,22 +14,22 @@ others are built on `STATE_DIR` and `TAB`.
 
 | file | lines | what is in it |
 |---|---:|---|
-| `core.sh` | 133 | constants, and the plumbing every dialog is built on |
-| `config.sh` | 626 | config.yaml, flattened — and what is wrong with it |
+| `core.sh` | 149 | constants, and the plumbing every dialog is built on |
+| `config.sh` | 629 | config.yaml, flattened — and what is wrong with it |
 | `accounts.sh` | 361 | which Claude login an agent runs on, and whether it is there |
 | `usage.sh` | 324 | the monthly limit, on screen |
-| `state.sh` | 311 | the raw data every view reads |
-| `names.sh` | 393 | what an agent is called, and the window it names |
+| `state.sh` | 418 | the raw data every view reads |
+| `names.sh` | 399 | what an agent is called, and the window it names |
 | `columns.sh` | 134 | which columns are on screen |
-| `list.sh` | 836 | the rows — and the tally the status bar shows |
-| `timeline.sh` | 160 | which agent worked when |
-| `preview.sh` | 176 | a row, up close |
-| `actions.sh` | 259 | what a key actually does |
+| `list.sh` | 991 | the rows — and the tally the status bar shows |
+| `timeline.sh` | 166 | which agent worked when |
+| `preview.sh` | 204 | a row, up close |
+| `actions.sh` | 327 | what a key actually does |
 | `refresh.sh` | 494 | keeping a list current |
 | `sidebar.sh` | 257 | which pane is the dashboard right now |
-| `seats.sh` | 305 | seats: what they are and which one is current |
+| `seats.sh` | 317 | seats: what they are and which one is current |
 | `dock.sh` | 371 | docking: the pane swapped into a seat, and sent home again |
-| `closed.sh` | 252 | the sessions that stopped running |
+| `closed.sh` | 262 | the sessions that stopped running |
 | `resurrect.sh` | 312 | every chat back where it was after a reboot |
 | `launch.sh` | 298 | starting an agent |
 | `keys.sh` | 285 | every key, and where it comes from |
@@ -39,8 +39,9 @@ others are built on `STATE_DIR` and `TAB`.
 
 **Where the facts come from.** The Claude Code hook
 (`hooks/tmux-agent-state.sh`) writes one record per pane into `$STATE_DIR`
-(`<pane>.tsv`, or `s-<session id>.tsv` for a headless `claude -p` that has no
-pane at all), appends start/turn/end lines to `history.tsv`, and keeps the
+(`<pane>.tsv`, `s-<session id>.tsv` for a headless `claude -p` that has no pane
+at all, or the same key with two fields more for a CHILD — a `claude -p` an
+agent started from its own Bash tool, which names the agent it belongs to), appends start/turn/end lines to `history.tsv`, and keeps the
 per-subagent records under `sub/`. `labels.tsv` beside them is the dashboard's
 own: the names you type on ctrl-r, keyed by session id so they survive docking,
 moving and resuming. `collect()` in `state.sh` is the one pass that joins those

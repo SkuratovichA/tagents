@@ -72,6 +72,10 @@ export interface AgentStateRow {
     // (undocumented)
     readonly hasConfigDir: boolean;
     readonly key: string;
+    readonly label: string | null;
+    readonly logFile: string | null;
+    readonly parentKey: string | null;
+    readonly parentSid: string | null;
     readonly pid: number | null;
     // (undocumented)
     readonly sessionId: string;
@@ -374,6 +378,7 @@ export interface HistoryRow {
     readonly label: string;
     // (undocumented)
     readonly pane: string;
+    readonly parentSid: string;
     // (undocumented)
     readonly sessionId: string;
 }

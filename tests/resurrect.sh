@@ -26,6 +26,15 @@
 
 set -uo pipefail
 
+# The keeper client below attaches through `script`, and a tmux client with no
+# $TERM cannot open its terminal: a worker started without one (a launchd job,
+# an `env -i`) would run every check against a server nobody is attached to.
+# bash sets an unexported TERM=dumb when it starts without one, so "dumb" is
+# the missing case too: ${TERM:-...} kept it, and the keeper failed with
+# "open terminal failed: terminal does not support clear".
+[ "${TERM:-dumb}" = dumb ] && TERM=xterm-256color
+export TERM
+
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TA="$HERE/../tagents"
 HOOK="$HERE/../hooks/tmux-agent-state.sh"
@@ -117,6 +126,8 @@ export TA_SESSION=tatest-dash
 export TA_CONFIG="$CFG"
 unset TMUX TMUX_PANE TA_MODE TA_FLAT TA_COLS TA_NEW_CMD TA_RESUME_CMD TA_HOME
 unset CLAUDE_CONFIG_DIR TA_RESURRECT_EVERY TA_RESURRECT_KEEP TA_RESURRECT_YOUNG TA_RESURRECT_SOON
+# The suite runs inside a real Claude session, which exports this; the hook reads it as "the claude I am running inside" and would classify the stubs against that session's ancestry (see tests/launch.sh).
+unset CLAUDE_PID
 # The capture a restore leaves behind lands a second later instead of fifteen, so a test can wait for it rather than have it land in the middle of a later one.
 # A server the suite starts stays "young" for the whole run however slow the box is, so the one "not a boot" check sets its own TA_RESURRECT_YOUNG inline.
 export TA_RESURRECT_RETAKE=1 TA_RESURRECT_YOUNG=3600
@@ -384,7 +395,10 @@ clear_out
 tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 'sleep 600' || exit 1
 tm set -g default-shell /bin/sh >/dev/null 2>&1
 tm set -g default-command '' >/dev/null 2>&1
-tm set -gw window-size manual >/dev/null 2>&1
+# The size every window of this fresh server gets, with no client attached to
+# size it. Not `set -gw window-size manual`: under tmux 3.4 that makes the
+# next new-session or new-window kill the server ("server exited unexpectedly").
+tm set -g default-size 200x50 >/dev/null 2>&1
 tm new-session -d -s tatest-proj -x 200 -y 50 -c "$PERS"
 tm new-window -d -t tatest-proj: -n Alpha -c "$PERS"
 tm new-session -d -s tatest-other -x 200 -y 50 -c "$NOR"
@@ -660,9 +674,10 @@ ok "a lock left by a restore that died holds no capture off" 1 "$(resurrect_file
 rmdir "$STATE/.resurrect.lock" 2>/dev/null
 
 # lock_dir itself, on a lock nobody else touches: a mkdir that fails for another reason than a holder must not spin.
+# Five tries, not ten: at background priority each 0.05 s sleep took 0.12 s, so ten were 1.3 s and lost to the watcher's second.
 CORE="$HERE/../lib/tagents/core.sh"
 LK="$ROOT/lk"; mkdir -p "$LK/ro"; chmod 555 "$LK/ro"
-( . "$CORE"; lock_dir "$LK/ro/lock" 120 10 ) & lp=$!
+( . "$CORE"; lock_dir "$LK/ro/lock" 120 5 ) & lp=$!
 i=0; while kill -0 "$lp" 2>/dev/null && [ "$i" -lt 10 ]; do sleep 0.1; i=$((i + 1)); done
 if kill -0 "$lp" 2>/dev/null; then kill "$lp" 2>/dev/null; rc=spinning; else wait "$lp"; rc=$?; fi
 ok "a lock whose parent cannot be written: gives up within a second" 1 "$rc"
@@ -715,7 +730,10 @@ sleep 1
 tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 'sleep 600' || exit 1
 tm set -g default-shell /bin/sh >/dev/null 2>&1
 tm set -g default-command '' >/dev/null 2>&1
-tm set -gw window-size manual >/dev/null 2>&1
+# The size every window of this fresh server gets, with no client attached to
+# size it. Not `set -gw window-size manual`: under tmux 3.4 that makes the
+# next new-session or new-window kill the server ("server exited unexpectedly").
+tm set -g default-size 200x50 >/dev/null 2>&1
 SOCK=$(tm display -p '#{socket_path}' 2>/dev/null)
 DW=$(tm new-window -d -t tatest-dash: -n dash -P -F '#{window_id}' -c "$NOR")
 tm resize-window -t "$DW" -x 200 -y 50 >/dev/null 2>&1

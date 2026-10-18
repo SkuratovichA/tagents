@@ -70,7 +70,10 @@ $(prof_pairs | tr "$RS" '\n')
 EOF
     for f in "$STATE_DIR/history.tsv.1" "$STATE_DIR/history.tsv"; do
       [ -e "$f" ] || continue
-      awk -F"$TAB" -v OFS="$TAB" '{ print "H", $1, $2, $3, $4, $5, $6 }' "$f"
+      # The seventh column is the parent session of a CHILD, and only a child
+      # ever writes one — it arrives here as the eighth field, the tag taking
+      # the first.
+      awk -F"$TAB" -v OFS="$TAB" '{ print "H", $1, $2, $3, $4, $5, $6, $7 }' "$f"
     done
     # ONE jq PER FILE, not one per session: history.jsonl is a line per prompt
     # ever typed on that account, and walking it once for everything is the
@@ -116,6 +119,12 @@ EOF
         # somewhere else lives where it ran last, not where it was born.
         if ($7 != "" && (!(s in cwdts) || e >= cwdts[s])) { cwdts[s] = e; cwd[s] = $7 }
         if ($6 != "" && !(s in halbl)) halbl[s] = $6
+        # A CHILD IS NOT A CONVERSATION TO COME BACK TO. It was started by an
+        # agent with a prompt of its own and finished with it; resuming it would
+        # start a second conversation on the same transcript with nobody to type
+        # at it. The flag is per session id, so a prompt line in some accounts
+        # history.jsonl cannot put it back on the list.
+        if ($8 != "") kid[s] = 1
         next
       }
       $1 == "P" {
@@ -131,6 +140,7 @@ EOF
       END {
         for (s in seen) {
           if (s in livesid) continue
+          if (s in kid) continue
           nm = (s in lab) ? lab[s] : ((s in halbl) ? halbl[s] : "")
           if (nm == "") nm = ((s in disp) && disp[s] != "") ? disp[s] : s
           pr = (s in pprof) ? pprof[s] : ((s in rprof) ? rprof[s] : "?")

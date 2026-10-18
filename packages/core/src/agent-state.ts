@@ -11,9 +11,14 @@
 //                   5 transcript path of the .jsonl
 //                   6 detail     what it is doing, already clipped to 90 chars
 //                   7 configDir  CLAUDE_CONFIG_DIR of the session ('' = default)
-//                   8 pid        the headless child, when the row has one
+//                   8 pid        the claude process, for a row with no pane
+//                   9 logFile    $TA_LOG, where that session's output went
+//                  10 label      $TA_LABEL, the name it was started under
+//                  11 parentKey  the record key of the agent that started it
+//                  12 parentSid  the session id of that agent
 //   history.tsv   append-only: at, kind (start|turn|end), sessionId, pane,
-//                 label (TA_LABEL), cwd
+//                 label (TA_LABEL), cwd — plus, for a child and nobody else, a
+//                 seventh column with the parent's session id
 //   sub/<key>.<agent_id>   one subagent, at + detail
 //   events.on     the switch, an empty file: while it exists the hook also appends
 //                 every event the notify plugin wants to events.tsv (agent-events.ts
@@ -64,8 +69,16 @@ export interface AgentStateRow {
   /** '' means the default account; null means the row predates the column. */
   readonly configDir: string | null;
   readonly hasConfigDir: boolean;
-  /** The headless child's pid, when the row carries one. */
+  /** The pid of the session's own claude, for a row with no pane to check. */
   readonly pid: number | null;
+  /** $TA_LOG as the hook saw it; null when the row is too short to say. */
+  readonly logFile: string | null;
+  /** $TA_LABEL, the name the session was started under; null when absent. */
+  readonly label: string | null;
+  /** The record key of the agent that started this one — a child only. */
+  readonly parentKey: string | null;
+  /** The session id of that agent, which is the same answer joined on ids. */
+  readonly parentSid: string | null;
 }
 
 export interface HistoryRow {
@@ -75,6 +88,8 @@ export interface HistoryRow {
   readonly pane: string;
   readonly label: string;
   readonly cwd: string;
+  /** The session that started this one; '' for everybody but a child. */
+  readonly parentSid: string;
 }
 
 /** $TA_STATE_DIR wins, exactly as the hook and the dashboard read it. */
@@ -103,6 +118,10 @@ export function parseStateLine(key: string, line: string): AgentStateRow | null 
     configDir: f.length >= 7 ? (f[6] ?? '') : null,
     hasConfigDir: f.length >= 7,
     pid: Number.isInteger(pid) && pid > 0 ? pid : null,
+    logFile: f.length >= 9 ? (f[8] ?? '') : null,
+    label: f.length >= 10 ? (f[9] ?? '') : null,
+    parentKey: f.length >= 11 ? (f[10] ?? '') : null,
+    parentSid: f.length >= 12 ? (f[11] ?? '') : null,
   };
 }
 
@@ -151,7 +170,15 @@ export function readHistory(dir = stateDir()): HistoryRow[] {
     const at = Number(f[0]);
     const kind = f[1] ?? '';
     if (!Number.isFinite(at) || (kind !== 'start' && kind !== 'turn' && kind !== 'end')) continue;
-    rows.push({ at, kind, sessionId: f[2] ?? '', pane: f[3] ?? '', label: f[4] ?? '', cwd: f[5] ?? '' });
+    rows.push({
+      at,
+      kind,
+      sessionId: f[2] ?? '',
+      pane: f[3] ?? '',
+      label: f[4] ?? '',
+      cwd: f[5] ?? '',
+      parentSid: f[6] ?? '',
+    });
   }
   return rows;
 }
