@@ -6,17 +6,20 @@ import { NotifyOptionsSchema, parseDuration } from '../src/options.ts';
 
 const MIN = 60_000;
 
+test('no option lets a subagent, a child session or a headless one post: the old switches are problems', () => {
+  assert.equal(NotifyOptionsSchema.safeParse({ sessions: { headless: true } }).success, false);
+  assert.equal(NotifyOptionsSchema.safeParse({ events: { subagent_done: { enabled: true } } }).success, false);
+});
+
 test('every default is the one the documentation shows', () => {
   assert.deepEqual(NotifyOptionsSchema.parse({}), {
     backend: 'auto',
     click: 'dock',
-    sessions: { headless: false },
     events: {
       question: { enabled: true, skip_visible: true },
       permission: { enabled: true, skip_visible: true },
       turn_done: { enabled: true, skip_visible: true },
       cache_expiring: { enabled: true, skip_visible: false, after: 3_000_000, ttl: 3_600_000 },
-      subagent_done: { enabled: false, skip_visible: true },
       session_end: { enabled: false, skip_visible: true },
     },
   });

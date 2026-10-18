@@ -463,7 +463,7 @@
   "api": {
     "@tagents/core": "sha256:c127f03b660a5ff59bfc2a3a99ad3b0ecbc25ebba324442ae187beb7dca0fcbd",
     "@tagents/knowledge": "sha256:a842bc4e2e064fefd291cd43ffe926a64309ecb6c40ab0a5f93052b2fe0017e2",
-    "@tagents/notify": "sha256:c5ae5f39d49fca78d5fb554cf42f2adc853d9cc520e2b4e224caa5583656b470",
+    "@tagents/notify": "sha256:82378079b87af196363505cb138618ae0e84223fea9f92d4eaa01ec4981564bf",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"
   }
 }

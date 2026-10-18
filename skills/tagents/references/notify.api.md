@@ -42,7 +42,7 @@ export interface Notice {
 }
 
 // @public (undocumented)
-export type NoticeKind = 'question' | 'permission' | 'turn_done' | 'cache_expiring' | 'subagent_done' | 'session_end';
+export type NoticeKind = 'question' | 'permission' | 'turn_done' | 'cache_expiring' | 'session_end';
 
 // @public (undocumented)
 export interface Notifier {
@@ -71,9 +71,6 @@ export const NotifyOptionsSchema: z.ZodObject<{
         focus: "focus";
     }>>;
     icon: z.ZodOptional<z.ZodString>;
-    sessions: z.ZodPrefault<z.ZodObject<{
-        headless: z.ZodDefault<z.ZodBoolean>;
-    }, z.core.$strict>>;
     events: z.ZodPrefault<z.ZodObject<{
         question: z.ZodPrefault<z.ZodObject<{
             enabled: z.ZodDefault<z.ZodBoolean>;
@@ -90,10 +87,6 @@ export const NotifyOptionsSchema: z.ZodObject<{
         cache_expiring: z.ZodPrefault<z.ZodObject<{
             after: z.ZodPrefault<z.ZodPipe<z.ZodUnion<readonly [z.ZodString, z.ZodNumber]>, z.ZodTransform<number, string | number>>>;
             ttl: z.ZodPrefault<z.ZodPipe<z.ZodUnion<readonly [z.ZodString, z.ZodNumber]>, z.ZodTransform<number, string | number>>>;
-            enabled: z.ZodDefault<z.ZodBoolean>;
-            skip_visible: z.ZodDefault<z.ZodBoolean>;
-        }, z.core.$strict>>;
-        subagent_done: z.ZodPrefault<z.ZodObject<{
             enabled: z.ZodDefault<z.ZodBoolean>;
             skip_visible: z.ZodDefault<z.ZodBoolean>;
         }, z.core.$strict>>;

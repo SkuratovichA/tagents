@@ -14,7 +14,6 @@ export interface Phrases {
   readonly kindPermission: string;
   readonly kindTurnDone: string;
   readonly kindCacheExpiring: string;
-  readonly kindSubagentDone: string;
   readonly kindSessionEnd: string;
   /** Body of a question that came with no text. */
   readonly questionBody: string;
@@ -26,9 +25,6 @@ export interface Phrases {
   readonly sessionEndBody: string;
   /** `leftMin` is whole minutes; below one the sentence says "within a minute", never "~0 min". */
   readonly cacheBody: (idleMin: number, leftMin: number) => string;
-  /** Body of a finished subagent whose type the hook did not report. */
-  readonly subagentUnnamedBody: string;
-  readonly subagentBody: (agentType: string) => string;
 }
 
 const en: Phrases = {
@@ -37,7 +33,6 @@ const en: Phrases = {
   kindPermission: 'Needs your permission',
   kindTurnDone: 'Answer ready',
   kindCacheExpiring: 'Prompt cache expiring',
-  kindSubagentDone: 'Subagent finished',
   kindSessionEnd: 'Session ended',
   questionBody: 'Asking you something',
   turnDoneBody: 'Your move',
@@ -45,8 +40,6 @@ const en: Phrases = {
   sessionEndBody: 'No reason given',
   cacheBody: (idleMin, leftMin) =>
     `Idle ${idleMin} min — send anything within ${leftMin < 1 ? 'a minute' : `~${leftMin} min`} to keep the prompt cache`,
-  subagentUnnamedBody: 'A background task is done',
-  subagentBody: (agentType) => `${agentType} finished`,
 };
 
 const ru: Phrases = {
@@ -55,7 +48,6 @@ const ru: Phrases = {
   kindPermission: 'Нужно ваше разрешение',
   kindTurnDone: 'Ответ готов',
   kindCacheExpiring: 'Кэш промпта истекает',
-  kindSubagentDone: 'Субагент завершил работу',
   kindSessionEnd: 'Сессия завершена',
   questionBody: 'Хочет что-то спросить',
   turnDoneBody: 'Ваш ход',
@@ -63,8 +55,6 @@ const ru: Phrases = {
   sessionEndBody: 'Причина не указана',
   cacheBody: (idleMin, leftMin) =>
     `Простой ${idleMin} мин — отправьте что угодно в течение ${leftMin < 1 ? 'минуты' : `~${leftMin} мин`}, чтобы сохранить кэш промпта`,
-  subagentUnnamedBody: 'Фоновая задача завершена',
-  subagentBody: (agentType) => `${agentType}: работа завершена`,
 };
 
 const TABLE: Readonly<Record<Locale, Phrases>> = { en, ru };

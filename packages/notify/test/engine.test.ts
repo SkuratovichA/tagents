@@ -120,15 +120,13 @@ test('a disabled kind posts nothing, yet its turn_done still arms the cache dead
   assert.deepEqual(r.notifier.posts.map((p) => p.kind), ['cache_expiring']);
 });
 
-test('the kinds that are off by default post nothing until they are turned on', async () => {
+test('the kind that is off by default posts nothing until it is turned on', async () => {
   const r = rig();
-  await r.engine.handle(r.now({ event: 'SubagentStop', agentId: 'a1', sub: 'Explore' }));
   await r.engine.handle(r.now({ event: 'SessionEnd', sub: 'logout' }));
   assert.equal(r.notifier.posts.length, 0);
-  const on = rig({ options: { events: { subagent_done: { enabled: true }, session_end: { enabled: true } } } });
-  await on.engine.handle(on.now({ event: 'SubagentStop', agentId: 'a1', sub: 'Explore' }));
+  const on = rig({ options: { events: { session_end: { enabled: true } } } });
   await on.engine.handle(on.now({ event: 'SessionEnd', sub: 'logout' }));
-  assert.deepEqual(on.notifier.posts.map((p) => [p.kind, p.body]), [['subagent_done', 'Explore finished'], ['session_end', 'logout']]);
+  assert.deepEqual(on.notifier.posts.map((p) => [p.kind, p.body]), [['session_end', 'logout']]);
 });
 
 test('skip_visible with the pane in some client\'s window: skip if frontmost, that client\'s pid', async () => {
@@ -231,15 +229,10 @@ test('the click: goto is the agent\'s own window', async () => {
   assert.deepEqual(r.notifier.posts[0]?.click.argv, [TAGENTS, '--goto', '%12']);
 });
 
-test('the click: focus is the terminal only, and so is a session with no pane', async () => {
+test('the click: focus is the terminal only', async () => {
   const r = rig({ options: { click: 'focus' } });
   await r.engine.handle(r.now());
   assert.deepEqual(r.notifier.posts[0]?.click.argv, []);
-  const h = rig({ options: { sessions: { headless: true } } });
-  await h.engine.handle(h.now({ key: 's-abc', pane: '', sessionId: 'abc' }));
-  assert.deepEqual(h.notifier.posts[0]?.click.argv, []);
-  assert.equal(h.notifier.posts[0]?.id, 'tagents-s-abc');
-  assert.deepEqual(h.screen.probed, [], 'there is no pane to ask tmux about');
 });
 
 test('the click env is PATH and HOME, plus the locale and the variables that pick the tmux server, state and config when they are set', async () => {
@@ -298,11 +291,82 @@ test('the hostname is read for each notice: a title that was the host is a name 
   assert.equal(r.notifier.posts[1]?.title, 'untitled.local', 'the host changed: the title is a name now');
 });
 
-test('a session with no pane is ignored unless sessions.headless is on', async () => {
-  const off = rig();
-  await off.engine.handle(off.now({ key: 's-abc', pane: '' }));
-  assert.equal(off.notifier.posts.length, 0);
-  assert.equal(off.clock.pending, 0);
+// ---------------------------------------------------------------------------
+// Notices come only from agents: never from a subagent, a child session or a
+// pane-less session, whatever the options say
+// ---------------------------------------------------------------------------
+
+/**
+ * A file that turns on every switch the schema has: each `enabled` and every
+ * other boolean set to true, `skip_visible` aside (it only ever holds a notice
+ * back). Built from the defaults rather than written out, so a switch added later
+ * that lets one of the sessions below post is caught here too.
+ */
+function everySwitchOn(): Record<string, unknown> {
+  const walk = (o: object): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(o)) {
+      if (typeof v === 'boolean' && k !== 'skip_visible') out[k] = true;
+      else if (typeof v === 'object' && v !== null) {
+        const inner = walk(v);
+        if (Object.keys(inner).length > 0) out[k] = inner;
+      }
+    }
+    return out;
+  };
+  return walk(options());
+}
+
+test('a SubagentStop posts nothing and arms nothing, with every switch on', async () => {
+  const r = rig({ options: everySwitchOn() });
+  await r.engine.handle(r.now({ event: 'SubagentStop', agentId: 'a1', sub: 'Explore' }));
+  await r.engine.handle(r.now({ event: 'SubagentStop', agentId: '', sub: '' }));
+  assert.deepEqual(r.notifier.posts, []);
+  assert.equal(r.clock.pending, 0);
+});
+
+test('a child session\'s Stop posts nothing, with every switch on', async () => {
+  // As the hook writes a child: keyed by its own session, with no pane, even
+  // though the agent that started it sits in pane %12.
+  const r = rig({ options: everySwitchOn() });
+  await r.engine.handle(r.now({ key: 's-kid', sessionId: 'kid', pane: '', cwd: '/work/elsewhere' }));
+  await r.engine.handle(r.now({ key: 's-kid', sessionId: 'kid', pane: '', event: 'Notification', sub: 'permission_prompt', text: 'Claude needs your permission to use Bash' }));
+  await r.engine.handle(r.now({ key: 's-kid', sessionId: 'kid', pane: '', event: 'SessionEnd', sub: 'other' }));
+  assert.deepEqual(r.notifier.posts, []);
+  assert.equal(r.clock.pending, 0);
+});
+
+test('a pane-less headless session\'s Stop posts nothing, with every switch on', async () => {
+  // A daemon's `claude -p` turn, named through TA_LABEL: it reports elsewhere.
+  const r = rig({ options: everySwitchOn() });
+  await r.engine.handle(r.now({ key: 's-daemon', sessionId: 'daemon', pane: '', label: 'ticket-agent' }));
+  assert.deepEqual(r.notifier.posts, []);
+  assert.equal(r.clock.pending, 0);
+});
+
+test('a pane-less row is never armed at start, with every switch on', async () => {
+  const r = rig({
+    options: everySwitchOn(),
+    rows: [stateRow({ key: 's-daemon', state: 'done', at: (T0 - 55 * MIN) / 1000, sessionId: 'daemon' })],
+  });
+  r.engine.start();
+  assert.equal(r.clock.pending, 0);
+  await r.engine.stop();
+});
+
+test('a pane agent\'s Stop posts turn_done, with every switch on', async () => {
+  const r = rig({ options: everySwitchOn() });
+  await r.engine.handle(r.now());
+  assert.deepEqual(r.notifier.posts.map((p) => [p.kind, p.id]), [['turn_done', 'tagents-12']]);
+});
+
+test('a question or a permission prompt raised inside a subagent is its agent\'s, under the agent\'s id', async () => {
+  // A subagent's tool events carry its agent_id, and they block the agent that
+  // started it: the notice is that agent's, not suppressed.
+  const r = rig();
+  await r.engine.handle(r.now({ event: 'Notification', agentId: 'a1', sub: 'permission_prompt', text: 'Claude needs your permission to use Bash' }));
+  await r.engine.handle(r.now({ key: '13', pane: '%13', sessionId: 'sess-2', event: 'PreToolUse', agentId: 'a2', tool: 'AskUserQuestion', text: 'Which one?' }));
+  assert.deepEqual(r.notifier.posts.map((p) => [p.kind, p.id]), [['permission', 'tagents-12'], ['question', 'tagents-13']]);
 });
 
 test('a notifier that throws is logged, and the next event still posts', async () => {
@@ -522,22 +586,6 @@ test('a deadline armed from a row is composed from the row, with the TA_LABEL hi
   assert.equal(n?.body, 'Idle 55 min — send anything within ~5 min to keep the prompt cache');
   assert.deepEqual(n?.click.argv, [TAGENTS, '--act', 'open', '%12', 'live', 'sess-1', '/work/proj']);
   assert.deepEqual(r.screen.probed, ['%12']);
-});
-
-test('a headless row has no pane to click or to probe', async () => {
-  const r = rig({
-    options: { sessions: { headless: true } },
-    rows: [stateRow({ key: 's-abc', state: 'done', at: (T0 - 55 * MIN) / 1000, sessionId: 'abc' })],
-  });
-  r.engine.start();
-  r.clock.advance(0);
-  await r.settle();
-  assert.equal(r.notifier.posts[0]?.id, 'tagents-s-abc');
-  assert.deepEqual(r.notifier.posts[0]?.click.argv, []);
-  assert.deepEqual(r.screen.probed, []);
-  const off = rig({ rows: [stateRow({ key: 's-abc', state: 'done', at: (T0 - 55 * MIN) / 1000 })] });
-  off.engine.start();
-  assert.equal(off.clock.pending, 0, 'headless sessions count only when asked for');
 });
 
 test('nothing is pending at start with no rows, and nothing fires after stop', async () => {
@@ -1014,17 +1062,6 @@ test('a tmux that did not answer is not a pane that is gone: the cache notice po
   assert.deepEqual(kindsOf(r), ['turn_done', 'cache_expiring']);
 });
 
-test('a session with no pane has no pane to be gone', async () => {
-  const r = rig({
-    options: { sessions: { headless: true } },
-    rows: [stateRow({ key: 's-abc', state: 'done', at: (T0 - 55 * MIN) / 1000, sessionId: 'abc' })],
-  });
-  r.engine.start();
-  r.clock.advance(0);
-  await r.settle();
-  assert.deepEqual(kindsOf(r), ['cache_expiring']);
-});
-
 // A wake late in the window
 
 test('a deadline that fell due while the Mac slept posts on the next event of another chat, before its own timer', async () => {
@@ -1062,27 +1099,6 @@ test('events that reach handle directly do not sweep: only what the follower del
   r.clock.sleepPausingTimers(55 * MIN);
   await r.engine.handle(r.now({ event: 'Stop', key: '13', pane: '%13' }));
   assert.deepEqual(kindsOf(r), ['turn_done', 'turn_done']);
-});
-
-// A subagent notice has its own id
-
-test('a subagent notice does not replace the question or the permission notice of its key', async () => {
-  const r = rig({ options: { events: { subagent_done: { enabled: true } } } });
-  await r.engine.handle(r.now(ASK));
-  await r.engine.handle(r.now({ event: 'SubagentStop', agentId: 'a1', sub: 'Explore' }));
-  assert.deepEqual(r.notifier.posts.map((p) => p.id), ['tagents-12', 'tagents-12-sub']);
-  assert.equal(r.notifier.posts[1]?.thread, 'sess-1');
-  await r.engine.handle(r.now({ event: 'UserPromptSubmit' }));
-  assert.deepEqual([...r.notifier.withdrawn].sort(), ['tagents-12', 'tagents-12-sub'], 'a prompt takes down both');
-});
-
-test('a dropped subagent notice takes down only an older subagent notice', async () => {
-  const r = rig({ options: { events: { subagent_done: { enabled: true } } } });
-  await r.engine.handle(r.now({ event: 'SubagentStop', agentId: 'a1', sub: 'Explore' }));
-  await r.engine.handle(r.now(PERMISSION));
-  r.notifier.result = { shown: false, why: 'frontmost' };
-  await r.engine.handle(r.now({ event: 'SubagentStop', agentId: 'a2', sub: 'Plan' }));
-  assert.deepEqual(r.notifier.withdrawn, ['tagents-12-sub'], 'the permission notice stays');
 });
 
 // A backend that keeps failing
@@ -1125,15 +1141,17 @@ test('a new session in the pane withdraws what the old one asked, and the questi
 
 test('a pane tmux says is gone drops the question it held back with, and leaves its notices up', async () => {
   const screens: Record<string, Screen | null | typeof NO_SUCH_PANE> = { '%12': null };
-  const r = rig({ screens, options: { events: { subagent_done: { enabled: true } } } });
+  const r = rig({ screens });
   await r.engine.handle(r.now(ASK));
   await r.engine.handle(r.now(PERMISSION));
   assert.deepEqual(kindsOf(r), ['question'], 'held back while the pane is there');
   screens['%12'] = NO_SUCH_PANE;
-  await r.engine.handle(r.now({ event: 'SubagentStop', agentId: 'a1', sub: 'Explore' }));
+  // The next post for the key is what finds the pane gone: a question asked
+  // again, which the question it replaces cannot hold back.
+  await r.engine.handle(r.now(ASK));
   assert.deepEqual(r.notifier.withdrawn, []);
   await r.engine.handle(r.now(PERMISSION));
-  assert.deepEqual(kindsOf(r), ['question', 'subagent_done', 'permission']);
+  assert.deepEqual(kindsOf(r), ['question', 'question', 'permission']);
 });
 
 // One warning for one idle period

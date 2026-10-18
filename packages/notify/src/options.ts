@@ -72,14 +72,12 @@ export const NotifyOptionsSchema = z.strictObject({
    * paths.ts). Unset: `notify-icon.png` next to the app, when there is one.
    */
   icon: z.string().min(1).optional(),
-  sessions: z.strictObject({ headless: z.boolean().default(false) }).prefault({}),
   events: z
     .strictObject({
       question: simple(true, true),
       permission: simple(true, true),
       turn_done: simple(true, true),
       cache_expiring: CacheExpiring,
-      subagent_done: simple(false, true),
       session_end: simple(false, true),
     })
     .prefault({}),
