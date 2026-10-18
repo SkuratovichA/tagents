@@ -674,9 +674,10 @@ ok "a lock left by a restore that died holds no capture off" 1 "$(resurrect_file
 rmdir "$STATE/.resurrect.lock" 2>/dev/null
 
 # lock_dir itself, on a lock nobody else touches: a mkdir that fails for another reason than a holder must not spin.
+# Five tries, not ten: at background priority each 0.05 s sleep took 0.12 s, so ten were 1.3 s and lost to the watcher's second.
 CORE="$HERE/../lib/tagents/core.sh"
 LK="$ROOT/lk"; mkdir -p "$LK/ro"; chmod 555 "$LK/ro"
-( . "$CORE"; lock_dir "$LK/ro/lock" 120 10 ) & lp=$!
+( . "$CORE"; lock_dir "$LK/ro/lock" 120 5 ) & lp=$!
 i=0; while kill -0 "$lp" 2>/dev/null && [ "$i" -lt 10 ]; do sleep 0.1; i=$((i + 1)); done
 if kill -0 "$lp" 2>/dev/null; then kill "$lp" 2>/dev/null; rc=spinning; else wait "$lp"; rc=$?; fi
 ok "a lock whose parent cannot be written: gives up within a second" 1 "$rc"
