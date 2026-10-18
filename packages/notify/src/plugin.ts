@@ -74,7 +74,8 @@ export const ALLOWING_NOTIFICATIONS: readonly string[] = [
 ];
 
 /** Where Settings opens on this app's notification settings, Alert Style among them. */
-const ALERT_STYLE_URL = `x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=${BUNDLE_ID}`;
+const alertStyleUrl = (bundleId: string): string =>
+  `x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=${bundleId}`;
 
 /** How long `install` waits for launchd to start the job it has just bootstrapped, and how often it looks. */
 const SETTLE_MS = 5000;
@@ -137,8 +138,8 @@ function runSpecFor(env: NodeJS.ProcessEnv, home: string, mainJs: string): { rea
  * What to tell a person whose notices go away by themselves (`banner`) or are never drawn (`none`). macOS leaves the
  * choice to the person, so the hint names the setting; `alert` stays until dismissed and needs none.
  */
-function alertStyleHint(style: string): string | null {
-  const where = `System Settings → Notifications → tagents, or open "${ALERT_STYLE_URL}"`;
+function alertStyleHint(style: string, bundleId: string): string | null {
+  const where = `System Settings → Notifications → tagents, or open "${alertStyleUrl(bundleId || BUNDLE_ID)}"`;
   if (style === 'banner') {
     return `hint: notices disappear on their own. To keep them on screen until you dismiss them, set Alert Style to "Persistent" (called Alerts before macOS 26) in ${where}`;
   }
@@ -227,7 +228,7 @@ export function createNotifyPlugin(deps: CommandDeps = {}): PluginDef {
         permission = h.status;
         kv('permission', `${h.status} (alert style: ${h.alertStyle})`);
         // Before authorization the style is none for a reason the permission line already gives.
-        const hint = h.status === 'authorized' ? alertStyleHint(h.alertStyle) : null;
+        const hint = h.status === 'authorized' ? alertStyleHint(h.alertStyle, h.bundleId) : null;
         if (hint !== null) lines.push(hint);
       } else if (platform?.permission !== undefined) {
         permission = await platform.permission();

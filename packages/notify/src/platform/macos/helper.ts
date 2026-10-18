@@ -25,6 +25,7 @@ const Line = z.looseObject({
   why: z.string().optional(),
   status: z.string().optional(),
   alertStyle: z.string().optional(),
+  bundleId: z.string().optional(),
   ids: z.array(z.string()).optional(),
 });
 type HelperLine = z.infer<typeof Line>;
@@ -86,9 +87,9 @@ export function createHelperNotifier(o: { readonly app: string; readonly exec?: 
 export async function helperStatus(
   app: string,
   exec: Exec = execText
-): Promise<{ readonly status: string; readonly alertStyle: string }> {
+): Promise<{ readonly status: string; readonly alertStyle: string; readonly bundleId: string }> {
   const r = await runHelper(app, ['status'], { timeoutMs: HELPER_TIMEOUT_MS }, exec);
-  return { status: r.status ?? 'unknown', alertStyle: r.alertStyle ?? 'unknown' };
+  return { status: r.status ?? 'unknown', alertStyle: r.alertStyle ?? 'unknown', bundleId: r.bundleId ?? '' };
 }
 
 /** Shows the macOS prompt when permission is undetermined; resolves with the status after the answer. */
