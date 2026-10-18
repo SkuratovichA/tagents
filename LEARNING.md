@@ -186,3 +186,6 @@ The notices pointed at the worktree's `tagents`, so the owner's clicks ran code 
 
 ## A hook's `run-shell -b` runs against a later state than the one it tested (17.10.2026)
 The focus hook's `if-shell -F '#{@tagents_slot}'` passed while the placeholder was the empty seat, but the unpark it scheduled ran after a dock had moved that placeholder home, and handed the dock back. The hook passes `#{window_id}`, and unpark acts only while the placeholder is still in that window, re-checked inside its atomic command list.
+
+## macOS keeps an app's notification icon from its first permission request (18.10.2026)
+The helper app first asked for permission before it had an icon, and every notice and its System Settings entry kept a generic icon. Restarting NotificationCenter and usernoted, bumping `CFBundleVersion` and re-registering with lsregister changed nothing, while a copy under a fresh bundle id showed the icon at once. The bundle id now follows the icon, so a new icon is a new registration.
