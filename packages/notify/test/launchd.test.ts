@@ -238,3 +238,54 @@ test('parsePrint reads the top-level field when a nested block repeats its name'
   assert.deepEqual(parsePrint(nestedFirst), parsePrint(real));
   assert.deepEqual(parsePrint(nestedFirst), { running: true, pid: 24192, state: 'running', lastExit: '(never exited)' });
 });
+
+const ICON_ID = 'io.github.skuratovicha.tagents-notify.i0123abcd';
+const BASE_ID = 'io.github.skuratovicha.tagents-notify';
+const associated = (x: string): string | undefined =>
+  /<key>AssociatedBundleIdentifiers<\/key>\s*<array>\s*<string>([^<]*)<\/string>/.exec(x)?.[1];
+
+test('renderPlist writes the associated id into AssociatedBundleIdentifiers and leaves Label at the base id', () => {
+  const x = renderPlist(run(), BASE_ID, ICON_ID);
+  assert.equal(associated(x), ICON_ID);
+  assert.ok(new RegExp(`<key>Label</key>\\s*<string>${BASE_ID}</string>`).test(x));
+  assert.equal(associated(renderPlist(run())), BASE_ID);
+});
+
+async function installedPlist(app: string | undefined, plutil: Partial<ExecResult>): Promise<{ text: string; calls: (readonly string[])[] }> {
+  const dir = tmpDir('launchd-appid');
+  const plist = path.join(dir, 'x.plist');
+  const calls: (readonly string[])[] = [];
+  const exec: Exec = async (file, args) => {
+    calls.push([file, ...args]);
+    const r = file === '/usr/bin/plutil' ? plutil : {};
+    return { code: 0, stdout: '', stderr: '', timedOut: false, ...r };
+  };
+  await createLaunchd({ uid: 1, plist, exec, ...(app !== undefined ? { app } : {}) }).install(
+    run({ logFile: path.join(dir, 'n.log') })
+  );
+  return { text: fs.readFileSync(plist, 'utf8'), calls };
+}
+
+test('install with an app: AssociatedBundleIdentifiers is the id plutil reads from the built Info.plist, Label stays', async () => {
+  const r = await installedPlist('/apps/N.app', { stdout: `${ICON_ID}\n` });
+  assert.equal(associated(r.text), ICON_ID);
+  assert.ok(new RegExp(`<key>Label</key>\\s*<string>${BASE_ID}</string>`).test(r.text));
+  assert.deepEqual(r.calls.find((c) => c[0] === '/usr/bin/plutil'), [
+    '/usr/bin/plutil',
+    '-extract',
+    'CFBundleIdentifier',
+    'raw',
+    '/apps/N.app/Contents/Info.plist',
+  ]);
+});
+
+test('install with an app whose plutil read fails: the base id', async () => {
+  const r = await installedPlist('/apps/N.app', { code: 1, stderr: 'No value at that key path' });
+  assert.equal(associated(r.text), BASE_ID);
+});
+
+test('install without an app: the base id, and plutil is not asked', async () => {
+  const r = await installedPlist(undefined, { stdout: `${ICON_ID}\n` });
+  assert.equal(associated(r.text), BASE_ID);
+  assert.ok(!r.calls.some((c) => c[0] === '/usr/bin/plutil'));
+});

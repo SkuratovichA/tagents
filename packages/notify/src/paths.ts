@@ -15,7 +15,9 @@ export const BUILD_SCRIPT: string = path.join(PACKAGE_DIR, 'macos', 'build.sh');
 export const MAIN_JS: string = path.join(PACKAGE_DIR, 'dist', 'main.js');
 /**
  * The helper app's CFBundleIdentifier (`macos/Info.plist`), which System Settings knows its notification settings by.
- * The LaunchAgent's label is the same string, so that Login Items files the job under the app.
+ * The LaunchAgent's label is this base id and stays put, so the plist's path and launchctl target do not move when the
+ * icon changes; a build with an icon gets a suffixed id of its own, and Login Items files the job under the app through
+ * the plist's `AssociatedBundleIdentifiers`, which names the built app's real id.
  */
 export const BUNDLE_ID = 'io.github.skuratovicha.tagents-notify';
 /** The icon an unset `icon` option looks for, in the directory that holds the app. */
