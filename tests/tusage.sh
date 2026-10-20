@@ -392,7 +392,7 @@ export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
 # ---------------------------------------------------------------------------
 t "8. --update does nothing when no transcript was written"
 # Its own state, on the real updater. The sleeps keep the steps in separate
-# seconds where a step needs it; the same-second step (8b) deliberately has none.
+# seconds where a step needs it; step 8b deliberately has none between its append and the update that must see it.
 SAVE_STATE=$TU_STATE; SAVE_PROJ=$TU_PROJECTS
 SAVE_ACCT=$TU_ACCOUNTS; SAVE_RULES=$TU_ACCOUNT_RULES
 export TU_STATE="$ROOT/ed/usage" TU_PROJECTS="$ROOT/ed/projects"
@@ -400,7 +400,7 @@ export TU_ACCOUNTS="work=$ROOT/ed/acct/work" TU_ACCOUNT_RULES=""
 mkdir -p "$TU_STATE" "$TU_PROJECTS/-ed" "$ROOT/ed/acct/work"
 
 mt() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
-sums() { cksum "$TU_STATE/offsets.tsv" "$TU_STATE/facts.tsv" "$TU_STATE/meta.tsv" 2>&1; }
+sums() { cksum "$TU_STATE/offsets.tsv" "$TU_STATE/facts.tsv" "$TU_STATE/sessions.tsv" 2>&1; }
 SID_SAVE=$SID
 SID=e1e1e1e1-2222-3333-4444-555555555555
 SID2=e2e2e2e2-2222-3333-4444-555555555555
@@ -417,10 +417,10 @@ after="$(sums)|$(mt "$TU_STATE/offsets.tsv")|$(mt "$TU_STATE/facts.tsv")|$(mt "$
 ok "no change: same output and status as an update that found nothing" "|0" "$out|$rc"
 ok "no change: index bytes, mtimes and the stamp untouched" "$before" "$after"
 
-# 8b. one record appended — immediately, in the same second as the last update.
+# 8b. one record appended and --update run at once, with no sleep between them (the stamp itself is about 1s old, from before 8a, so this is not the same second as the last update that wrote it).
 rec q2 $((T2 + 60)) >>"$TU_PROJECTS/-ed/$SID.jsonl"
 bash "$TU" --update >/dev/null 2>&1
-ok "a transcript that grew by one record is counted, same second" "1.000000" "$(usd_of)"
+ok "a transcript that grew by one record is counted, with no sleep" "1.000000" "$(usd_of)"
 
 # 8c. a new transcript.
 sleep 1.1
