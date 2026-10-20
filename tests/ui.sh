@@ -914,9 +914,21 @@ t "10b. the age column is time since YOUR last message"
 # for every working agent — useless for the one question it is asked: how long
 # since I last said anything, i.e. how much of the one-hour prompt cache is left.
 live "$A2" working sid-live2 "$REPO"     # record timestamp: now
+# The age is taken against `date +%s` in the list's own awk, which a test cannot set,
+# so a second that ticks between the setup and the render makes it 30:01 (it did, in
+# two gate runs). The clock is read before the setup and after the render, and the age
+# may be any whole second of 30:00 up to the seconds those two reads are apart: what
+# is pinned is still the thirty minutes since the prompt, and never the record's time.
+T0=$(date +%s)
 said "$A2" 1800                          # ...but the last prompt was 30m ago
-has "a working agent says how long its turn has been running" " 30:00  " \
-    "$(row_of "$A2" "$(rows_at 140)")"
+row=$(row_of "$A2" "$(rows_at 140)")
+T1=$(date +%s)
+want=" 30:00  "
+for s in $(seq 0 $(( T1 - T0 ))); do
+  d=$(( 1800 + s )); w=$(printf ' %d:%02d  ' $(( d / 60 )) $(( d % 60 )))
+  case $row in *"$w"*) want=$w; break ;; esac
+done
+has "a working agent says how long its turn has been running (30:00, plus the seconds the clock moved on the way)" "$want" "$row"
 said "$A2" 3660
 has "past the hour it reads in hours, which is the cache gone" " 1h01  " \
     "$(row_of "$A2" "$(rows_at 140)")"

@@ -235,8 +235,25 @@ start_ref() {
   done
   /bin/sleep 1.7   # the delay after the pass, and the second look
 }
+# THE LOOP IS BACK IN ITS WAIT before the next ring is sent. A wake is a pass, a nap of
+# one second and a second look, and under load that takes longer than the 1.7 s a tick
+# is given: the next ring then lands with nobody waiting, the pass in progress takes it
+# in with its snapshot (a ring is a count, see EV_BUMP), a third ring cancels the woken
+# flag of the second (two signals with no waiter between them), and the slow work of
+# the tick before is logged against the tick after. The 1.7 s are kept: this waits for
+# the loop's own next wait only when it is not there yet, which is never the case on a
+# machine that is keeping up (the wait comes about 1.3 s after a ring). The little
+# extra is for the wait that has been asked of tmux and not yet taken by the server.
+idle_ref() {
+  local t=0 late=""
+  while [ "$(evwaits)" -le "$EVMARK" ] && kill -0 "$RPID" 2>/dev/null && [ "$t" -lt 200 ]; do
+    late=1; /bin/sleep 0.1; t=$((t + 1))
+  done
+  [ -z "$late" ] || /bin/sleep 0.2
+}
 wake() {  # one ring, after the change filed for it
   local n=$1
+  idle_ref
   [ -f "$D/at.$n" ] && rf_env sh "$D/at.$n"
   echo "$n" >"$D/tick"
   EVMARK=$(evwaits)
@@ -275,6 +292,10 @@ go() {  # <ticks> — tick 1 is the first pass, each further tick one ring
   start_ref
   while [ "$n" -le "$1" ] && kill -0 "$RPID" 2>/dev/null; do wake "$n"; n=$((n + 1)); done
   /bin/sleep "${TAIL:-0.5}"
+  # The time the last tick was given, taken BEFORE settle: settle waits as long as the
+  # load needs, and a check of the age of a stamp the last slow pass renewed (section 9)
+  # is made against this and not against a clock that settle has moved on.
+  GO_S=$(date +%s)
   settle
   stop_ref 0
 }
@@ -444,7 +465,7 @@ act 4 "printf '%s' '$TALLY2' >\"\$RF_STATE/.counts.tally\""
 act 5 'cat "$RF_STATE/.counts.out" >"$RF_DIR/out.5"; ls -i "$RF_STATE/.counts.out" >"$RF_DIR/ino.5"; "$RF_TMUX" -L "$RF_S" show -gv @tagents_counts >"$RF_DIR/opt.5"'
 tm set -gu @tagents_counts
 go 5
-END_S=$(now_s)
+END_S=$GO_S
 ok "after the first answered pass .counts.out is the config marker and the tally" "$EXP1" "$(cat "$D/out.2" 2>/dev/null)"
 ok "...and the tmux option holds exactly that text" "$EXP1" "$(cat "$D/opt.2" 2>/dev/null)"
 ts_end=$(num "$STATE/.counts.ts")
