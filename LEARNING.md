@@ -249,3 +249,12 @@ Replacing the 2 s tick with rings kept everything the tick did on purpose and lo
 
 ## A requirement over 500 characters fails `openspec validate --strict` (18.10.2026)
 While the specs were written, every requirement that stated a rule in one long paragraph failed strict validation: the limit is on the requirement's text, the paragraph under `### Requirement:`. Split such a requirement into two, each with its own scenario, rather than cutting what it says. The same goes for a correction that makes an existing paragraph longer; seven of the review corrections on 20.10 needed a new requirement for that reason.
+
+## macOS awk counts bytes, so a letter test on non-ASCII text works from UTF-8 bytes (20.10.2026)
+`length("я")` is 2 and `[[:alpha:]]` rejects it in `/usr/bin/awk`, so "one character that is no letter or digit" cannot be written with a length or a class; it is a set of UTF-8 byte ranges, and in a UTF-8 locale awk also equates non-ASCII strings by collation (`"я иду" == "два слова"` is true), so name comparisons run under `LC_ALL=C`. The rule was written three times in awk and had drifted from its own comment, exempting only ASCII letters and digits; it now lives once in `AWK_UNTITLE` (`lib/tagents/names.sh`) and a test pins that `function untitle` occurs once.
+
+## The ledger hook read TA_STATE where everything else reads TA_STATE_DIR (20.10.2026)
+`hooks/ticket-ledger.sh` read `TA_STATE` and cached PRs in `~/.claude/agent-state` when only `TA_STATE_DIR` was set, and its test exported the same wrong variable, so the test agreed with the bug. A test that sets the variable the code reads proves nothing about the name; the suite now runs with a scratch `HOME` and checks that nothing lands under it.
+
+## The notify LaunchAgent named the base bundle id while an app with an icon ran under its own (20.10.2026)
+`packages/notify/macos/build.sh` gives a helper app built with an icon the bundle id `<base>.i<first 8 hex of the icon digest>`, and the LaunchAgent went on writing the base id into `AssociatedBundleIdentifiers`, the key System Settings files a job under its app by in Login Items; a doc comment said the `Label` did that filing. What a build produced is read back from the built artifact (`plutil -extract CFBundleIdentifier raw <app>/Contents/Info.plist`), not assumed as a constant or recomputed from the build's rule, and a comment that says which key does a job is checked against launchd.plist(5).
