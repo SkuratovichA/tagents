@@ -129,6 +129,12 @@ stays worth reacting to.
   tagents --collapse PANE close an empty seat the sidebar no longer needs.
                           This is what unpark's own command list calls after a
                           chat it sent home leaves its placeholder behind
+  tagents update [--check]
+                          move the managed copy (install.sh puts it in
+                          ~/.local/share/tagents) to the newest origin/main,
+                          rebuild it and rewrite the command and hook wrappers.
+                          --check only says whether main has moved. Takes the
+                          other install.sh options too; see install.sh --help
   tagents <verb> …        anything that is not one of the flags above — see
                           THE ECOSYSTEM
 
@@ -143,7 +149,8 @@ one name to type for the whole thing. tagents-core is looked for on $PATH and
 then beside this script, at packages/core/dist/cli/main.js, which is where a
 repo checkout has it after a build; with neither, an unknown verb says which
 of the two is missing and exits 2. Everything the dashboard answers itself is
-a --flag and is matched first, so nothing can be shadowed by forwarding.
+a --flag (and `update`) and is matched first, so nothing can be shadowed by
+forwarding.
 
 Agents are grouped into a tree by working directory, so several sessions in
 one repo sit under one header. Groups sort by their most urgent member, so a

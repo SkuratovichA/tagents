@@ -1,3 +1,11 @@
+## A shell script that updates the checkout it lives in must not still be reading itself (20.10.2026)
+
+`install.sh` lives inside the managed copy it moves to a new commit. `sh` reads a script command by command, by offset: when the file changes under it halfway, the next command comes from the middle of whatever is now at that offset. The whole program is therefore one function, called on the last line as `main "$@"; exit $?`; the last line is read in one piece before anything runs, and nothing after `exit` is ever read.
+
+## `ln -s` replaced by `printf > dest` writes through the symlink (20.10.2026)
+
+Turning a symlink into a wrapper file with a plain redirect writes the wrapper INTO the file the link pointed at: the old checkout's `tusage` would have become a three-line stub and the next `git status` in it would have been the first sign. `write_wrapper` removes a symlink first and builds the new file beside the destination, then `mv`s it over; `tests/install.sh` case 2 pins that the old target is untouched.
+
 ## Do not touch the working tree while the bash suite runs in the background (11.09.2026)
 
 The tests read `tagents`, `tnotes`, `tusage` from the checkout as they run. A `git stash` / `stash pop` issued while `tests/*.sh` were running in the background made half the suites exercise one tree and half another — every suite still said "passed", which is exactly why it is dangerous. Rule: while a background test run is in flight, no checkout/stash/apply/reset in that worktree; use a scratch worktree (`git worktree add`) for probes such as `git apply --check --3way`.
