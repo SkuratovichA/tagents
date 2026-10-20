@@ -565,6 +565,10 @@ tm select-pane -T 'Search index rebuild' -t "$A"
 ok "the heading names the agent, whole" "Search index rebuild" "$(heading "$A")"
 tm select-pane -T '✳ Search index rebuild' -t "$A"
 ok "...with Claude's spinner glyph off it" "Search index rebuild" "$(heading "$A")"
+# A one-letter non-ASCII first word is a word, not a glyph: the list row keeps it.
+tm select-pane -T 'я иду' -t "$A"
+has "the list row keeps a one-letter Cyrillic first word" "я иду" "$(row_of "$A" "$(rows_at 140)")"
+tm select-pane -T '✳ Search index rebuild' -t "$A"
 # ...and it agrees with the two other places the same agent is named.
 tm select-pane -T 'Search index rebuild' -t "$A"
 run --sync-names >/dev/null 2>&1

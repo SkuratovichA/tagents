@@ -22,7 +22,7 @@ The sweep SHALL rename a window that holds a live agent to that agent's display 
 - **THEN** a sweep does not rename it
 
 ### Requirement: The leading glyph is not part of the name
-The terminal title Claude sets starts with a spinner glyph. A first token of more than one character SHALL never be dropped, whatever alphabet it is written in, and a single ASCII letter or digit SHALL never be dropped; a single other character followed by a space, such as a spinner glyph, SHALL be dropped together with the spaces after it. Rows, window names, dialogs and the preview heading SHALL apply this one rule.
+The terminal title Claude sets starts with a spinner glyph. A leading token SHALL be dropped, together with the spaces after it, only when it is exactly one character and that character is a symbol: an ASCII character that is not a letter or digit, a character in U+2000 to U+2BFF, or a character in U+1F000 to U+1FFFF. Any other first token SHALL be kept. Rows, window names, dialogs and the preview heading SHALL apply this one rule.
 
 #### Scenario: The spinner glyph
 - **WHEN** the title is `✳ fix-login-bugs busy`
@@ -31,6 +31,18 @@ The terminal title Claude sets starts with a spinner glyph. A first token of mor
 #### Scenario: A Cyrillic title
 - **WHEN** the title is `два слова`
 - **THEN** the window is named `два слова`, and with `✳ ` in front the name is still `два слова`
+
+#### Scenario: A one-letter non-ASCII first word
+- **WHEN** the title is `я иду`
+- **THEN** the window is named `я иду`, and with `✳ ` in front the name is still `я иду`
+
+#### Scenario: A braille or emoji glyph
+- **WHEN** the title is `⠂ fix-login-bugs` or `🚀 launch`
+- **THEN** the window is named `fix-login-bugs` or `launch`
+
+#### Scenario: Other single characters are words
+- **WHEN** the title is `中 文`, `é bon` or `a b`
+- **THEN** the window name keeps the whole title
 
 ### Requirement: The newest agent names a shared window
 When a window holds several agents, the one with the newest state timestamp SHALL name it, with ties broken by the lowest pane index. A pane with no state record SHALL rank below every pane that has one. Shells and other panes with no name to give are never candidates.

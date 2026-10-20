@@ -37,21 +37,50 @@ label_of() {
 #
 # What the dialogs used to do was `${nm#* }`, which is not "strip the glyph" but
 # "drop the first WORD": `Search index rebuild` was announced as `index
-# rebuild` while the row and the window name kept all three. A glyph is one
-# character and no letter or digit; anything else is left alone.
+# rebuild` while the row and the window name kept all three. What counts as a
+# glyph is AWK_UNTITLE, below.
+# THE ONE COPY of the glyph rule, awk source spliced into every awk program that
+# names an agent from its pane title: untitle_of below, the window-name sweep in
+# sync_window_names and the list in list.sh. Three copies once drifted from the
+# rule they described, so there is exactly one.
+#
+# A leading token is dropped (with the spaces after it) only when it is ONE
+# CHARACTER and that character is a symbol: an ASCII character outside
+# [0-9A-Za-z], or a character in U+2000-U+2BFF (punctuation, arrows, technical
+# symbols, box drawing, shapes, dingbats such as the spinner star, braille
+# frames) or in U+1F000-U+1FFFF (emoji and pictographs). Every other single
+# character is a word and stays: Cyrillic, Greek, accented Latin, CJK, and the
+# middle dot U+00B7.
+#
+# It is written as byte ranges because macOS /usr/bin/awk counts bytes:
+# length("я") is 2 and [[:alpha:]] rejects it, so neither a length test nor a
+# letter class can tell a letter from a symbol. The character count skips UTF-8
+# continuation bytes (\200-\277); the lead byte \342 with a second byte in
+# \200-\257 is U+2000-U+2BFF, and the first two bytes \360\237 are U+1F000-U+1FFFF.
+# Every program that compares names with it runs under LC_ALL=C: in a UTF-8
+# locale macOS awk equates non-ASCII strings by collation, so "я иду" == "два
+# слова" is true there and a rename is silently skipped.
+# No apostrophe may appear in the source: it is spliced between single quotes.
+AWK_UNTITLE='
+function untitle(t,   utp, uti, utn, utf, ub1, ub2) {
+  utp = index(t, " ")
+  if (utp < 2) return t
+  utf = substr(t, 1, utp - 1)
+  utn = 0
+  for (uti = 1; uti <= length(utf); uti++)
+    if (substr(utf, uti, 1) < "\200" || substr(utf, uti, 1) > "\277") utn++
+  if (utn != 1) return t
+  ub1 = substr(utf, 1, 1)
+  ub2 = substr(utf, 2, 1)
+  if (ub1 < "\200") {
+    if (utf ~ /^[0-9A-Za-z]$/) return t
+  } else if (!((ub1 == "\342" && ub2 >= "\200" && ub2 <= "\257") || (ub1 == "\360" && ub2 == "\237"))) return t
+  sub(/^[^ ]+ +/, "", t)
+  return t
+}
+'
 untitle_of() {  # <pane title>
-  printf '%s\n' "${1:-}" | awk '
-    function untitle(t,   utp, uti, utn, utf) {
-      utp = index(t, " ")
-      if (utp < 2) return t
-      utf = substr(t, 1, utp - 1)
-      utn = 0
-      for (uti = 1; uti <= length(utf); uti++)
-        if (substr(utf, uti, 1) < "\200" || substr(utf, uti, 1) > "\277") utn++
-      if (utn != 1 || utf ~ /^[0-9A-Za-z]$/) return t
-      sub(/^[^ ]+ +/, "", t)
-      return t
-    }
+  printf '%s\n' "${1:-}" | LC_ALL=C awk "$AWK_UNTITLE"'
     { print untitle($0) }'
 }
 
@@ -201,31 +230,17 @@ sync_window_names() {
     [ $# -gt 0 ] && awk -F"$TAB" "$AWK_SKIP_GONE"' FNR == 1 {
       k = FILENAME; sub(/^.*\//, "", k); sub(/\.tsv$/, "", k)
       print "S|@|%" k "|@|" $1 "|@|" $3 }' "$@" </dev/null 2>/dev/null
-  } | awk -v host="$HOST_S" -v hostf="$HOST_F" -v OFS="$TAB" '
+  } | LC_ALL=C awk -v host="$HOST_S" -v hostf="$HOST_F" -v OFS="$TAB" "$AWK_UNTITLE"'
     # Claude prefixes the terminal title with a spinner glyph; the rest is the
     # session title it maintains itself. Same rule as the list — and the same
     # rule untitle_of applies in shell, because the row, this window name and the
     # modal heading are all about one agent.
     #
-    # THE GLYPH IS ONE CHARACTER, and that is the whole of the test. This used to
-    # strip a leading run of "not alphanumeric" BYTES, and macOS awk counts
-    # bytes: every byte of a Cyrillic or CJK word is outside [:alnum:], so
-    # "два слова" came back as "слова" — the first word of any non-ASCII title
-    # eaten, and here that is written into a window name and into @tagents_name,
-    # where it sticks. A leading token is a glyph when it is a single character
-    # and not a letter or a digit; anything longer is a word, in whatever
-    # alphabet it happens to be written.
-    function untitle(t,   utp, uti, utn, utf) {
-      utp = index(t, " ")
-      if (utp < 2) return t
-      utf = substr(t, 1, utp - 1)
-      utn = 0
-      for (uti = 1; uti <= length(utf); uti++)
-        if (substr(utf, uti, 1) < "\200" || substr(utf, uti, 1) > "\277") utn++
-      if (utn != 1 || utf ~ /^[0-9A-Za-z]$/) return t
-      sub(/^[^ ]+ +/, "", t)
-      return t
-    }
+    # The glyph rule is AWK_UNTITLE, spliced in above: the same function the
+    # list and untitle_of use, because the row, this window name and the modal
+    # heading are all about one agent. It used to strip "not alphanumeric"
+    # BYTES, which ate the first word of every non-ASCII title, and it is
+    # written once now so it cannot drift again.
     # THE DISPLAY NAME, exactly as the list resolves it: the label, by session id
     # first and pane second, else the cleaned pane title, and nothing at all when
     # that is empty or the host name (tmux default title, which names nothing).

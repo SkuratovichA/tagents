@@ -87,7 +87,7 @@ list() {
                 -v grp="$grp" -v home="$HOME" -v deadttl="$DEAD_TTL" -v cols="$cols" \
                 -v host="$HOST_S" -v hostf="$HOST_F" \
                 -v profs="$(prof_pairs)" -v USC="$US" -v RSC="$RS" \
-                -v hidecols="$hidecols" '
+                -v hidecols="$hidecols" "$AWK_UNTITLE"'
     # macOS awk counts bytes, so substr and %-Ns cut Cyrillic mid-character and
     # pad it to half width. Count characters instead, and never split one.
     function uclen(s,   i, n, c) {
@@ -126,22 +126,8 @@ list() {
     function dirname(p) { return (p == home) ? "~" : base(p) }
     # Claude prefixes the terminal title with a spinner glyph; the rest is the
     # session title it maintains itself, which makes a good default name. The
-    # twin of the one in sync_window_names, and of untitle_of in shell: one
-    # character that is neither letter nor digit is a glyph, anything longer is a
-    # word. Counting "not alphanumeric" BYTES instead — which is what this was —
-    # ate the first word of every Cyrillic and CJK title, macOS awk having no
-    # opinion about characters at all.
-    function untitle(t,   utp, uti, utn, utf) {
-      utp = index(t, " ")
-      if (utp < 2) return t
-      utf = substr(t, 1, utp - 1)
-      utn = 0
-      for (uti = 1; uti <= length(utf); uti++)
-        if (substr(utf, uti, 1) < "\200" || substr(utf, uti, 1) > "\277") utn++
-      if (utn != 1 || utf ~ /^[0-9A-Za-z]$/) return t
-      sub(/^[^ ]+ +/, "", t)
-      return t
-    }
+    # untitle() function is AWK_UNTITLE, spliced into this program: the one rule
+    # shared with sync_window_names and untitle_of (names.sh).
     function tok(v) {
       if (v <= 0)   return ""
       if (v >= 1e6) return sprintf("%.1fM", v/1e6)
