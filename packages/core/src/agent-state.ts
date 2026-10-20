@@ -34,7 +34,7 @@
 //                   7 cwd
 //                   8 transcript
 //                   9 config     CLAUDE_CONFIG_DIR of the session
-//                  10 tool       11 sub       12 text       13 label (TA_LABEL)
+//                  10 tool       11 sub       12 text       13 label (TA_LABEL; the record's for s-)
 //                 The hook rotates it to events.tsv.1 with mv -f at 5 MiB, on a
 //                 SessionStart; the follower in agent-events.ts rotates it itself
 //                 at 1 MiB and survives the hook's rename.

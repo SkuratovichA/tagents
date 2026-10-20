@@ -80,7 +80,7 @@ Each agent SHALL have at most one notice at a time. Every notice is posted under
 - **THEN** both carry the id `tagents-<key>`, so the second replaces the first on screen
 
 ### Requirement: The title of a notice
-The title SHALL be the agent's name as the dashboard shows it: the name typed for the session, else the name typed for the pane, else the pane title without Claude Code's leading status glyph; for a session with no title its `TA_LABEL`; and the working directory's name when that is still empty or is only the machine's hostname.
+The title SHALL be the agent's name as the dashboard shows it: the name typed for the session, else the name typed for the pane, else the pane title without Claude Code's leading status glyph; for a session with no title the label its events carry; and the working directory's name when that is still empty or is only the machine's hostname.
 
 #### Scenario: the title follows the dashboard's order
 - **WHEN** a name was typed for the session and another for the pane

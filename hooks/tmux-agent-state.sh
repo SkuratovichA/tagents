@@ -527,6 +527,8 @@ if [ -e "$dir/events.on" ]; then
   if [ -n "$ev" ]; then
     [ "$event" = SessionStart ] && rotate "$dir/events.tsv"
     case "$key" in s-*) epane= ;; *) epane=$pane ;; esac
+    # a pane-less session's label is its record's: an inherited one is blanked
+    case "$key" in s-*) elabel=$clbl ;; esac
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$now" "$event" "$key" "${sid:-}" "${agent:-}" "$epane" "${cwd:-}" "${transcript:-}" \
       "${econfig:-}" "${etool:-}" "${esub:-}" "${etext:-}" "${elabel:-}" \

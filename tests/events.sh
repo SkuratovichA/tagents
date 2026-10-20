@@ -376,5 +376,32 @@ ok "the job's pane column is empty" "" "$(field 6 "$E" 2)"
 ok "13 fields" 13 "$(nf "$E" 2)"
 ok "pane 9's record still belongs to the owner" sid-owner "$(field 3 "$S/9.tsv")"
 
+t "p. field 13 of a pane-less session is the label its record keeps"
+# A child inherits TA_LABEL from its parent; the hook blanks that in the child's
+# record (ta_disown), and the stream carries what the record says. The child's
+# record is written by hand with the field 10 the hook would have left in it.
+# Run without TMUX_PANE, so the hook takes the record of s-sid-kid (rule 1).
+kid() {  # <record field 10> [env assignments...] — one Stop of the child
+  local f10=$1; shift
+  fresh "$S"
+  printf '%s\t%s\t%s\t%s\t\t\t\t%s\t\t%s\t%s\t%s\n' 1 done sid-kid /work "$$" "$f10" s-sid-par sid-par \
+    >"$S/s-sid-kid.tsv"
+  printf '%s' "$(payload Stop '{"session_id":"sid-kid"}')" |
+    env -u TMUX_PANE PATH="$SHIM:$PATH" TMUX="$DEAD" TA_STATE_DIR="$S" "$@" sh "$HOOK" >/dev/null 2>&1
+}
+kid "" TA_LABEL=lbl
+ok "the child's key is s-<sid>" s-sid-kid "$(field 3 "$E")"
+ok "an inherited label gives an empty field 13" "" "$(field 13 "$E")"
+ok "...still 13 fields" 13 "$(nf "$E")"
+kid own TA_LABEL=own
+ok "a label of the child's own is kept in field 13" own "$(field 13 "$E")"
+fresh "$S"
+run_hook "$HOOK" "$S" "$(payload Stop)" TA_LABEL=lbl
+ok "the parent's own line still carries its label" lbl "$(field 13 "$E")"
+fresh "$S"
+printf '%s' "$(payload Stop '{"session_id":"sid-new"}')" |
+  env -u TMUX_PANE PATH="$SHIM:$PATH" TMUX="$DEAD" TA_STATE_DIR="$S" TA_LABEL=job sh "$HOOK" >/dev/null 2>&1
+ok "a new headless record keeps the label it starts with" job "$(field 13 "$E")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
