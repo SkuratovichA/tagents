@@ -104,6 +104,8 @@ cat >"$BIN/tmux" <<EOF
 #!/bin/sh
 n=0; read -r n <"\$RF_DIR/tick"
 echo "\$n \$1" >>"\$RF_DIR/tmux.log"
+# The waits the loop asks of tmux (ev_wait's if-shell), counted for settle.
+case "\$*" in *"wait-for tagents-ev"*) [ "\$1" = if-shell ] && echo "\$n" >>"\$RF_DIR/ev.waits" ;; esac
 # THE GAP: a wait (the old helper's wait-for, the new waiter's if-shell) that is held
 # back for as long as the file says, which is how long nothing is waiting on the channel.
 if [ -f "\$RF_DIR/gap" ]; then
@@ -118,6 +120,8 @@ cat >"$BIN/tusage" <<'EOF'
 #!/bin/sh
 n=0; read -r n <"$RF_DIR/tick"
 echo "$n $*" >>"$RF_DIR/tusage.log"
+# Opt-in: a slow month fetch, for the pin that a slow pass still lands on its tick.
+case "$*" in *--daily*) [ -n "${RF_SLOW_DAILY-}" ] && /bin/sleep "$RF_SLOW_DAILY" ;; esac
 # What the stamp said when the update began, and the burn a scenario files.
 case "$*" in
   --update*) cat "$RF_STATE/.counts.ts" >"$RF_DIR/ts.update.$n" 2>/dev/null
@@ -212,12 +216,14 @@ MINP=1
 # What a scenario files before a tick (`act`) runs with the variables the actions
 # are written against, which are the refresher's too.
 rf_env() {
-  env RF_DIR="$D" RF_TMUX="$REALTMUX" RF_S="$S" RF_STATE="$STATE" RF_CFG="$RFCFG" RF_DP="$DP" RF_SEAT="$SEAT" "$@"
+  env RF_DIR="$D" RF_TMUX="$REALTMUX" RF_S="$S" RF_STATE="$STATE" RF_CFG="$RFCFG" RF_DP="$DP" RF_SEAT="$SEAT" RF_SLOW_DAILY="${RF_SLOW_DAILY-}" "$@"
 }
+evwaits() { if [ -f "$D/ev.waits" ]; then wc -l <"$D/ev.waits" | tr -d ' '; else echo 0; fi; }
 start_ref() {
   [ -f "$D/at.1" ] && rf_env sh "$D/at.1"
   echo 1 >"$D/tick"
-  env RF_DIR="$D" RF_TMUX="$REALTMUX" RF_S="$S" RF_STATE="$STATE" RF_CFG="$RFCFG" RF_DP="$DP" RF_SEAT="$SEAT" \
+  EVMARK=$(evwaits)
+  env RF_DIR="$D" RF_TMUX="$REALTMUX" RF_S="$S" RF_STATE="$STATE" RF_CFG="$RFCFG" RF_DP="$DP" RF_SEAT="$SEAT" RF_SLOW_DAILY="${RF_SLOW_DAILY-}" \
       PATH="$BIN:$PATH" TMUX="$SOCK,0,0" TMUX_PANE="$DP" TA_PORT="$PORT" TA_LIST_PID="$LISTPID" \
       TA_REFRESH_SLOW="$SLOW" TA_REFRESH_IDLE="$IDLE" TA_REFRESH_MIN="$MINP" \
       TA_STATE_DIR="$STATE" TA_CONFIG="$RFCFG" TA_SESSION=tatest-dash \
@@ -233,8 +239,23 @@ wake() {  # one ring, after the change filed for it
   local n=$1
   [ -f "$D/at.$n" ] && rf_env sh "$D/at.$n"
   echo "$n" >"$D/tick"
-  tm wait-for -S tagents-ev
+  EVMARK=$(evwaits)
+  tm set -gF @tagents_evgen "$EVB" \; wait-for -S tagents-ev
   /bin/sleep 1.7
+}
+# Waits until the loop has finished the last tick: it has gone round to wait again
+# since the last ring (a) and nothing it writes has changed for 1.3 s (b), which is
+# longer than its 1 s nap and the second look after a post. One ceiling of 20 s.
+settle() {
+  local t=0 quiet=0 sum last=
+  while [ "$t" -lt 200 ] && kill -0 "$RPID" 2>/dev/null; do
+    sum=$(cat "$D"/*.log "$STATE/.counts.out" 2>/dev/null | cksum)
+    if [ "$sum" = "$last" ]; then quiet=$((quiet + 1)); else quiet=0; fi
+    last=$sum
+    [ "$(evwaits)" -gt "$EVMARK" ] && [ "$quiet" -ge 13 ] && return 0
+    /bin/sleep 0.1; t=$((t + 1))
+  done
+  return 0
 }
 stop_ref() {  # a loop that ends by itself is waited for (up to $1 tenths of a second); one that does not is ended the way a closing list ends it: the list process gone, the channel rung
   local i=0
@@ -254,6 +275,7 @@ go() {  # <ticks> — tick 1 is the first pass, each further tick one ring
   start_ref
   while [ "$n" -le "$1" ] && kill -0 "$RPID" 2>/dev/null; do wake "$n"; n=$((n + 1)); done
   /bin/sleep "${TAIL:-0.5}"
+  settle
   stop_ref 0
 }
 
@@ -498,6 +520,16 @@ act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\"; $TALLYNEW"
 go 2
 ok "tusage --daily ran once on the slow wake" 1 "$(awk '$1 == 2 && /--daily/' "$D/tusage.log" | wc -l | tr -d ' ')"
 has "...and the footer was posted on it" "change-footer(" "$(awk '$1 == 2' "$D/curl.log")"
+
+t "14b. a slow pass still lands on its tick"
+newrun slowmonth
+SLOW=0
+printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\"; $TALLYNEW"
+RF_SLOW_DAILY=3 go 2
+unset RF_SLOW_DAILY
+ok "tusage --daily ran on tick 2 although it took 3 s" 1 "$(awk '$1 == 2 && /--daily/' "$D/tusage.log" | wc -l | tr -d ' ')"
+has "...and the footer was posted on tick 2" "change-footer(" "$(awk '$1 == 2' "$D/curl.log")"
 
 t "15. the bar's config marker follows the config for as long as the refresher lives"
 export TA_CFG_CHECK_EVERY=3
