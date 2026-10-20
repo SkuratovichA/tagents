@@ -160,6 +160,10 @@ The name on a row SHALL be, in order: the label set with `ctrl-r` or `tagents --
 - **WHEN** the user has named the session `nightly`
 - **THEN** the row's name is `nightly` whatever the title says
 
+#### Scenario: A one-letter word is kept
+- **WHEN** the pane title is `я иду`
+- **THEN** the row's name is `я иду`
+
 ### Requirement: The account badge precedes the name
 When at least one Claude profile is configured, every row SHALL carry a dim badge immediately before the name, at every width, showing which account the session's record names. With no profiles configured there SHALL be no badge column and rows SHALL be exactly as without the feature.
 

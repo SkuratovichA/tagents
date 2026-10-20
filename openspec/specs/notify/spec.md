@@ -87,8 +87,12 @@ The title SHALL be the agent's name as the dashboard shows it: the name typed fo
 - **THEN** the title is the session's name
 
 #### Scenario: the pane title loses its glyph
-- **WHEN** the pane title is a single non-alphanumeric character, a space and then `build agent`
+- **WHEN** the pane title is a status glyph such as `✳`, a space and then `build agent`
 - **THEN** the title is `build agent`
+
+#### Scenario: a one-letter word is not a glyph
+- **WHEN** the pane title is `я иду`
+- **THEN** the title is `я иду`
 
 #### Scenario: a title that is the hostname
 - **WHEN** the pane title equals the machine's hostname, long or short
@@ -418,4 +422,3 @@ The service SHALL watch the real path of the `plugins` directory, so a config di
 #### Scenario: no config directory
 - **WHEN** the config directory does not exist
 - **THEN** the service runs and logs that options reload is off
-
