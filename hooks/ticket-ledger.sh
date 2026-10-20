@@ -49,7 +49,7 @@ EOF
 
 [ -n "${cwd:-}" ] && [ -d "$cwd" ] || exit 0
 
-STATE=${TA_STATE:-$HOME/.claude/agent-state}
+STATE=${TA_STATE_DIR:-$HOME/.claude/agent-state}
 PR_TTL=${TL_PR_TTL:-15}          # minutes a cached PR listing is served for
 KEY='[A-Z][A-Z0-9]*-[0-9][0-9]*'
 
