@@ -117,23 +117,24 @@ If that server is already registered by hand with `claude mcp add`, remove the h
 ## Install
 
 ```sh
-git clone git@github.com:SkuratovichA/tagents.git
-cd tagents
+git clone https://github.com/SkuratovichA/tagents.git ~/.local/share/tagents
+sh ~/.local/share/tagents/install.sh --hooks-dir ~/.claude/hooks
+```
 
-# 1. on $PATH
-ln -sf "$PWD/tagents" "$PWD/tusage" ~/.local/bin/
+`install.sh` keeps one managed copy in `~/.local/share/tagents` (`TAGENTS_HOME` moves it): a clone detached on `origin/main`, built, and never developed in. What the machine runs are small real files that `exec` into it, not symlinks: `tagents`, `tusage`, `tnotes`, `tagents-core` and `tagents-knowledge` in `~/.local/bin`, and one wrapper per `hooks/*.sh` in every `--hooks-dir` (give the flag once per Claude config directory; without it, `~/.claude/hooks`). A wrapper is only written over a symlink or over another wrapper; any other file with the name is left alone, with a warning and exit status 1.
 
-# 2. the hook scripts
-mkdir -p ~/.claude/hooks
-ln -sf "$PWD/hooks/tmux-agent-state.sh" "$PWD/hooks/claude-statusline.sh" ~/.claude/hooks/
+Running it again is the update, and so is `tagents update`: it fetches `origin/main`, moves the copy there, rebuilds, and rewrites the wrappers. A build that fails puts the copy back on the commit it was on. A copy with local changes is not moved, since the work belongs in a clone of its own. `tagents update --check` only says whether main has moved. `install.sh --launchd` adds a LaunchAgent that runs the update daily at 04:17 (macOS), remembering the `--hooks-dir` list and the `PATH` of the shell that installed, so node and pnpm are found. It needs git, node 22.18 or newer and pnpm.
 
-# 3. register the hook, so Claude actually calls it
+The last two steps are Claude Code's own settings and `install.sh` does not touch them:
+
+```sh
+# 1. register the hook, so Claude actually calls it
 #    add tmux-agent-state.sh to ~/.claude/settings.json under "hooks" for
 #    SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Notification,
 #    Stop, SubagentStop and SessionEnd. PreToolUse/PostToolUse/SubagentStop
 #    should be "async": true so they never sit in the tool-call critical path.
 
-# 4. the status line, which is what feeds the model column
+# 2. the status line, which is what feeds the model column
 #    "statusLine": {
 #      "type": "command",
 #      "command": "sh \"$HOME/.claude/hooks/claude-statusline.sh\"",
@@ -141,16 +142,11 @@ ln -sf "$PWD/hooks/tmux-agent-state.sh" "$PWD/hooks/claude-statusline.sh" ~/.cla
 #    }
 ```
 
-`tagents` is the entry point of a checkout, not a file to copy on its own: the
-rest of it is `lib/tagents/*.sh` beside it, which it finds by following the
-symlink back to the real file. Copied alone it says so and stops, rather than
-half-working.
+To work on tagents, clone it somewhere else (`~/git/.../tagents`) and run the suites from there; the installed copy stays on main. `tagents` is the entry point of a checkout, not a file to copy on its own: the rest of it is `lib/tagents/*.sh` beside it, which it finds by following a symlink back to the real file, or by being run from where it lives, as the wrapper does. Copied alone it says so and stops, rather than half-working.
 
-Needs `tmux`, `fzf`, `jq` and `awk`. Written for bash 3.2 on purpose — macOS
-ships nothing newer.
+Needs `tmux`, `fzf`, `jq` and `awk`. Written for bash 3.2 on purpose, since macOS ships nothing newer.
 
-As part of [.dotfiles](https://github.com/SkuratovichA/.dotfiles) this repo is a
-submodule at `tagents/`, and `scripts/bootstrap.sh` does all three steps above.
+[.dotfiles](https://github.com/SkuratovichA/.dotfiles) installs it this way: its bootstrap clones the copy and runs `install.sh` with the hook directories of both Claude accounts, and no longer carries tagents as a submodule.
 
 ## Using it
 
