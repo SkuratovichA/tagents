@@ -460,5 +460,25 @@ export TU_STATE="$SAVE_STATE" TU_PROJECTS="$SAVE_PROJ"
 export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
 SID=$SID_SAVE
 
+# ---------------------------------------------------------------------------
+t "9. accounts whose names differ only in a Cyrillic letter are two accounts"
+# ---------------------------------------------------------------------------
+# macOS awk under a UTF-8 locale weighs every Cyrillic letter the same ("я" == "ю"), so an unpinned awk takes the two names for one: calibrating the second account wipes the first one's factor. tusage pins its awk to bytes.
+CY="$ROOT/cy"
+mkdir -p "$CY/state" "$CY/proj/-cy" "$CY/acct/ya" "$CY/acct/yu"
+SID_CY=$SID
+for who in ya yu; do
+  SID=$who-0000-0000-0000-000000000000
+  hist "$SID" 1000 >"$CY/acct/$who/history.jsonl"
+  rec q1 "$T2" >"$CY/proj/-cy/$SID.jsonl"
+done
+cy() { TU_STATE="$CY/state" TU_PROJECTS="$CY/proj" TU_ACCOUNTS="aя=$CY/acct/ya;aю=$CY/acct/yu" TU_ACCOUNT_RULES="" \
+  LC_ALL=en_US.UTF-8 bash "$TU" "$@" 2>&1; }
+cy --update >/dev/null
+cy --calibrate "aя" 0.25 >/dev/null
+cy --calibrate "aю" 0.25 >/dev/null
+ok "both accounts keep their own factor" 2 "$(cut -f1 "$CY/state/factor.tsv" 2>/dev/null | grep -c .)"
+SID=$SID_CY
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

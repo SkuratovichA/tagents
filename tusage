@@ -317,7 +317,7 @@ mtime_of() {  # <abs path> -> epoch seconds, 0 if unknown
 # facts rows: bucket, project-slug, sid, agentid, agenttype, kind, model,
 #             reqs, in, cw5, cw1h, cr, out, maxctx
 fold_rows() {  # <project-slug> <carried ids> <origin> ; extracted TSV on stdin
-  awk -F"$TAB" -v OFS="$TAB" -v proj="$1" -v seen0="$2" -v origin="$3" -v bucket="$BUCKET" '
+  LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v proj="$1" -v seen0="$2" -v origin="$3" -v bucket="$BUCKET" '
     BEGIN { n = split(seen0, carry, ","); for (i = 1; i <= n; i++) if (carry[i] != "") seen[carry[i]] = 1 }
     {
       id = $1
@@ -437,7 +437,7 @@ update() {
     # entry (create, move, copy), which moves that directory's mtime. When none
     # moved, only files that grew are read and the whole-tree listing is skipped.
     if [ -n "$(find "$PROJECTS" -type d -newer "$STAMP" -print -quit 2>/dev/null)" ]; then
-      awk -F"$TAB" 'NR==FNR { known[$1]=1; next } !($0 in known)' "$OFFSETS" \
+      LC_ALL=C awk -F"$TAB" 'NR==FNR { known[$1]=1; next } !($0 in known)' "$OFFSETS" \
         <(find "$PROJECTS" -name '*.jsonl' 2>/dev/null) >>"$tmp/cand" 2>/dev/null
     fi
     sort -u "$tmp/cand" -o "$tmp/cand"
@@ -451,7 +451,7 @@ update() {
   # path, so deriving it once on the way in costs nothing and the old three-field
   # rows keep working until the table is next written out.
   : >"$tmp/offk"
-  [ -s "$OFFSETS" ] && awk -F"$TAB" -v OFS="$TAB" -v pref="$PROJECTS/" '
+  [ -s "$OFFSETS" ] && LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v pref="$PROJECTS/" '
       { k = $4
         if (k == "") {
           p = $1
@@ -471,7 +471,7 @@ update() {
     printf '%s\t%s\t%s\tnew\n' "$(transcript_key "$f")" "$(mtime_of "$f")" "$f"
   done <"$tmp/cand" >"$tmp/keyed"
   if [ -s "$tmp/offk" ]; then
-    awk -F"$TAB" 'NR==FNR { ck[$1] = 1; cp[$3] = 1; next }
+    LC_ALL=C awk -F"$TAB" 'NR==FNR { ck[$1] = 1; cp[$3] = 1; next }
                   ($4 in ck) && !($1 in cp) { print $4 "\t" $1 }' \
         "$tmp/keyed" "$tmp/offk" |
       while IFS="$TAB" read -r k f; do
@@ -482,7 +482,7 @@ update() {
   # Newest mtime wins the key; the losers are not parsed at all. A loser that is
   # already indexed keeps its row, so the copy on disk is simply invisible.
   sort -t"$TAB" -k1,1 -k2,2nr "$tmp/keyed" 2>/dev/null |
-    awk -F"$TAB" -v skip="$tmp/skipped" '
+    LC_ALL=C awk -F"$TAB" -v skip="$tmp/skipped" '
       { if (seen[$1]++) { print > skip; next } print }' >"$tmp/plan"
   dups=$(grep -c . "$tmp/skipped" 2>/dev/null); dups=${dups:-0}
 
@@ -495,7 +495,7 @@ update() {
     # BY KEY, NOT BY PATH: a known key under a new path is the same transcript
     # moved, so its offset and carried ids come along and only the tail is read.
     if [ -s "$tmp/offk" ]; then
-      IFS="$TAB" read -r _ off seen _ < <(awk -F"$TAB" -v k="$key" '$4==k { print; exit }' "$tmp/offk")
+      IFS="$TAB" read -r _ off seen _ < <(LC_ALL=C awk -F"$TAB" -v k="$key" '$4==k { print; exit }' "$tmp/offk")
       off=${off:-0}
     fi
     sz=$(wc -c <"$f" 2>/dev/null | tr -d ' '); sz=${sz:-0}
@@ -525,13 +525,13 @@ update() {
   # exactly one row — the new path's. The old path's row goes, or the next
   # update would offer the offset of a file that is no longer there.
   if [ -s "$tmp/offk" ]; then
-    awk -F"$TAB" -v OFS="$TAB" 'NR==FNR { up[$1] = 1; uk[$4] = 1; next }
+    LC_ALL=C awk -F"$TAB" -v OFS="$TAB" 'NR==FNR { up[$1] = 1; uk[$4] = 1; next }
                                 !($1 in up) && !($4 in uk)' \
         "$tmp/newoff" "$tmp/offk" >>"$tmp/newoff.merged" 2>/dev/null
   fi
   cat "$tmp/newoff" >>"$tmp/newoff.merged" 2>/dev/null
   sort -u "$tmp/newoff.merged" 2>/dev/null |
-    awk -F"$TAB" '!p[$1]++ && !k[$4]++' >"$tmp/off.final"
+    LC_ALL=C awk -F"$TAB" '!p[$1]++ && !k[$4]++' >"$tmp/off.final"
   mv -f "$tmp/off.final" "$OFFSETS" 2>/dev/null
   [ "$dups" -gt 0 ] && [ "$loud" = 1 ] &&
     echo "tusage: $dups duplicate transcript copies skipped" >&2
@@ -539,7 +539,7 @@ update() {
   [ -s "$tmp/newfacts" ] && cat "$tmp/newfacts" >>"$FACTS"
   if [ -s "$tmp/newmeta" ]; then
     cat "$META" "$tmp/newmeta" 2>/dev/null |
-      awk -F"$TAB" -v OFS="$TAB" '
+      LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '
         { if (!($1 in f) || $3 < f[$1]) f[$1] = $3
           if (!($1 in l) || $4 > l[$1]) l[$1] = $4
           p[$1] = $2; if ($5 != "" && $5 != "-") m[$1] = $5 }
@@ -555,7 +555,7 @@ update() {
 
   # keep facts bounded
   if [ -s "$FACTS" ]; then
-    awk -F"$TAB" -v cut="$(( $(date +%s) - KEEP_DAYS * 86400 ))" '$1 + 0 >= cut' \
+    LC_ALL=C awk -F"$TAB" -v cut="$(( $(date +%s) - KEEP_DAYS * 86400 ))" '$1 + 0 >= cut' \
       "$FACTS" >"$tmp/facts.trim" 2>/dev/null && mv -f "$tmp/facts.trim" "$FACTS"
   fi
   mv -f "$STAMP.new" "$STAMP"
@@ -658,14 +658,14 @@ prices_fp() { printf '%s' "$PRICES" | tr -s ' \n' ' ' | cksum | tr -d ' '; }
 factor_arg() {  # -> "acct=factor;..." for awk, empty when off or absent
   [ -z "${TU_NO_FACTOR:-}" ] || return 0
   [ -s "$FACTOR" ] || return 0
-  awk -F"$TAB" -v fp="$(prices_fp)" '$2 + 0 > 0 && $5 == fp { printf "%s=%s;", $1, $2 }' "$FACTOR"
+  LC_ALL=C awk -F"$TAB" -v fp="$(prices_fp)" '$2 + 0 > 0 && $5 == fp { printf "%s=%s;", $1, $2 }' "$FACTOR"
 }
 
 # Rows the fingerprint check is ignoring, so a caller can say why the dollars
 # moved instead of leaving it to be discovered on the status bar.
 factor_stale() {  # -> account names, space separated
   [ -s "$FACTOR" ] || return 0
-  awk -F"$TAB" -v fp="$(prices_fp)" '$2 + 0 > 0 && $5 != fp { printf "%s ", $1 }' "$FACTOR"
+  LC_ALL=C awk -F"$TAB" -v fp="$(prices_fp)" '$2 + 0 > 0 && $5 != fp { printf "%s ", $1 }' "$FACTOR"
 }
 
 calibrate() {  # <account> <amount> [at]
@@ -682,19 +682,19 @@ calibrate() {  # <account> <amount> [at]
   fi
   [ -n "${epoch:-}" ] || { echo "tusage: cannot read the time: $at" >&2; return 2; }
   mtd=$(TU_NO_FACTOR=1 daily month "$epoch" |
-          awk -F"$TAB" -v a="$acct" '$2 == a { s += $3 } END { printf "%.4f", s + 0 }')
-  if ! awk -v m="$mtd" 'BEGIN { exit !(m + 0 > 0) }'; then
+          LC_ALL=C awk -F"$TAB" -v a="$acct" '$2 == a { s += $3 } END { printf "%.4f", s + 0 }')
+  if ! LC_ALL=C awk -v m="$mtd" 'BEGIN { exit !(m + 0 > 0) }'; then
     echo "tusage: nothing indexed for $acct this month up to that instant — nothing to calibrate" >&2
     return 1
   fi
-  f=$(awk -v a="$amt" -v m="$mtd" 'BEGIN { printf "%.4f", a / m }')
-  if ! awk -v f="$f" 'BEGIN { exit !(f >= 0.3 && f <= 2.0) }'; then
+  f=$(LC_ALL=C awk -v a="$amt" -v m="$mtd" 'BEGIN { printf "%.4f", a / m }')
+  if ! LC_ALL=C awk -v f="$f" 'BEGIN { exit !(f >= 0.3 && f <= 2.0) }'; then
     echo "tusage: a factor of $f (meter $amt vs indexed $mtd) is not a price, refusing" >&2
     return 1
   fi
   mkdir -p "$STATE" 2>/dev/null || return 1
   tmp="$FACTOR.tmp.$$"
-  { [ -s "$FACTOR" ] && awk -F"$TAB" -v a="$acct" '$1 != a' "$FACTOR"
+  { [ -s "$FACTOR" ] && LC_ALL=C awk -F"$TAB" -v a="$acct" '$1 != a' "$FACTOR"
     printf '%s\t%s\t%s\t%s\t%s\n' "$acct" "$f" "$epoch" "$amt" "$(prices_fp)"; } >"$tmp" 2>/dev/null &&
     mv -f "$tmp" "$FACTOR"
   printf 'tusage: %s priced at x%s of list (meter $%s vs indexed $%s at %s)\n' \
@@ -725,7 +725,7 @@ account_dirs() {
     [ -n "$d" ] || d="$HOME/.claude"
     d=$(cd "$d" 2>/dev/null && pwd -P) || continue
     printf '%s\t%s\n' "$n" "$d"
-  done | awk -F"$TAB" '!seen[$2]++'
+  done | LC_ALL=C awk -F"$TAB" '!seen[$2]++'
 }
 
 # ---------------------------------------------------------------------------
@@ -759,9 +759,9 @@ meter_item() {  # <account> -> the keychain item holding its credentials, or 1
   # An explicit naming wins: a second login keeps its credentials under an item
   # only whoever set it up can know the name of.
   item=$(printf '%s' "${TU_METER_ITEMS:-}" | tr ';' '\n' |
-           awk -F= -v a="$acct" '$1 == a { sub(/^[^=]*=/, ""); print; exit }')
+           LC_ALL=C awk -F= -v a="$acct" '$1 == a { sub(/^[^=]*=/, ""); print; exit }')
   if [ -n "$item" ]; then printf '%s' "$item"; return 0; fi
-  dir=$(account_dirs | awk -F"$TAB" -v a="$acct" '$1 == a { print $2; exit }')
+  dir=$(account_dirs | LC_ALL=C awk -F"$TAB" -v a="$acct" '$1 == a { print $2; exit }')
   [ -n "$dir" ] || return 1
   home=$(cd "$HOME/.claude" 2>/dev/null && pwd -P) || return 1
   # Claude Code writes ONE keychain item, and it belongs to the default config
@@ -781,14 +781,14 @@ meter_token() {  # <account> -> its OAuth access token, or 1
 
 meter_field() {  # <account> <field number>
   [ -s "$METER" ] || return 1
-  awk -F"$TAB" -v a="${1:-}" -v n="${2:-1}" '$1 == a { print $n; exit }' "$METER"
+  LC_ALL=C awk -F"$TAB" -v a="${1:-}" -v n="${2:-1}" '$1 == a { print $n; exit }' "$METER"
 }
 
 meter_put() {  # <account> <used> <limit> <fetched at> <status> <next try>
   local tmp
   mkdir -p "$STATE" 2>/dev/null || return 1
   tmp="$METER.tmp.$$"
-  { [ -s "$METER" ] && awk -F"$TAB" -v a="$1" '$1 != a' "$METER"
+  { [ -s "$METER" ] && LC_ALL=C awk -F"$TAB" -v a="$1" '$1 != a' "$METER"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$5" "$6"; } >"$tmp" 2>/dev/null &&
     mv -f "$tmp" "$METER"
 }
@@ -833,10 +833,10 @@ meter_fetch() {  # <account> — one GET, one row, never more than one of either
     return 0 ;;
   esac
   case "${ue:-}" in ''|*[!0-9]*) ue=2 ;; esac
-  used=$(awk -v m="$um" -v e="$ue" 'BEGIN { printf "%.2f", m / (10 ^ e) }')
+  used=$(LC_ALL=C awk -v m="$um" -v e="$ue" 'BEGIN { printf "%.2f", m / (10 ^ e) }')
   lim=""
   case "${le:-}" in ''|*[!0-9]*) le=2 ;; esac
-  case "${lm:-}" in ''|*[!0-9]*) ;; *) lim=$(awk -v m="$lm" -v e="$le" 'BEGIN { printf "%.2f", m / (10 ^ e) }') ;; esac
+  case "${lm:-}" in ''|*[!0-9]*) ;; *) lim=$(LC_ALL=C awk -v m="$lm" -v e="$le" 'BEGIN { printf "%.2f", m / (10 ^ e) }') ;; esac
 
   ttl=${TU_METER_TTL:-900}
   case "$ttl" in ''|*[!0-9]*) ttl=900 ;; esac
@@ -897,7 +897,7 @@ meter_show() {  # the rows, for a person
   # A TAB IS IFS WHITESPACE EVEN WHEN IFS IS JUST A TAB, so `read` folds the
   # empty used/limit of a nometer row into one separator and hands the status to
   # the wrong variable. Fill the holes before reading them.
-  awk -F"$TAB" -v OFS="$TAB" '{ for (i = 1; i <= 6; i++) if ($i == "") $i = "-"; print }' "$METER" |
+  LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '{ for (i = 1; i <= 6; i++) if ($i == "") $i = "-"; print }' "$METER" |
   while IFS="$TAB" read -r acct used lim at st nt; do
     [ -n "$acct" ] || continue
     when="-"
@@ -948,10 +948,10 @@ EOF
 $(account_dirs)
 EOF
   slug_map | sed 's/^/P\t/' >>"$tmp.in" 2>/dev/null
-  [ -s "$META" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "S", $1, $2 }' "$META" >>"$tmp.in"
+  [ -s "$META" ] && LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '{ print "S", $1, $2 }' "$META" >>"$tmp.in"
 
   rules=${TU_ACCOUNT_RULES:-}
-  awk -F"$TAB" -v OFS="$TAB" -v rules="$rules" -v home="$HOME" '
+  LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v rules="$rules" -v home="$HOME" '
     BEGIN {
       n = split(rules, rr, ";")
       for (i = 1; i <= n; i++) {
@@ -1011,7 +1011,7 @@ EOF
 origin_dir() {
   local sid=$1 slug=${2:-} cache="$STATE/origin.tsv" d f
   if [ -e "$cache" ]; then
-    d=$(awk -F"$TAB" -v k="$sid" '$1==k { print $2; exit }' "$cache")
+    d=$(LC_ALL=C awk -F"$TAB" -v k="$sid" '$1==k { print $2; exit }' "$cache")
     [ -n "$d" ] && { printf '%s' "$d"; return 0; }
   fi
   f=$(ls -1 "$PROJECTS/$slug/$sid.jsonl" 2>/dev/null | head -1)
@@ -1072,7 +1072,7 @@ report_by() {
   [ -s "$FACTS" ] || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
 
   { slug_map | sed 's/^/P\t/'; cat "$FACTS"; } |
-  awk -F"$TAB" -v cut="$cut" -v dim="$dim" -v tz="$(date +%z)" -v home="$HOME" \
+  LC_ALL=C awk -F"$TAB" -v cut="$cut" -v dim="$dim" -v tz="$(date +%z)" -v home="$HOME" \
       "$AWK_FMT$AWK_DAY"'
     BEGIN { R = "\033[0m"; DIM = "\033[90m"; B = "\033[1m" }
     function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
@@ -1133,7 +1133,7 @@ report_by() {
 sessions() {
   [ -s "$FACTS" ] || return 0
   local now; now=$(date +%s)
-  awk -F"$TAB" -v OFS="$TAB" -v cut="$(( now - $(since_secs "${1:-7d}") ))" \
+  LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v cut="$(( now - $(since_secs "${1:-7d}") ))" \
       -v h1="$(( now - 3600 ))" -v h5="$(( now - 18000 ))" \
       -v prices="$(prices_arg)" "$AWK_PRICE"'
     function cost(i,c5,c1,cr,o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
@@ -1178,7 +1178,7 @@ daily() {
   # calibration in tagents needs the month AS OF the instant the meter was read.
   upto=${2:-0}; case "$upto" in ''|*[!0-9]*) upto=0 ;; esac
   { account_map | sed 's/^/A\t/'; cat "$FACTS"; } |
-  awk -F"$TAB" -v OFS="$TAB" -v cut="$cut" -v upto="$upto" -v tz="$(date +%z)" \
+  LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v cut="$cut" -v upto="$upto" -v tz="$(date +%z)" \
       -v prices="$(prices_arg)" -v factors="$(factor_arg)" "$AWK_PRICE$AWK_DAY"'
     BEGIN {
       nf = split(factors, fr, ";")
@@ -1208,7 +1208,7 @@ daily() {
 
 burn() {   # what the last 5h cost, for the tmux status bar
   [ -s "$FACTS" ] || return 0
-  awk -F"$TAB" -v cut="$(( $(date +%s) - 18000 ))" -v prices="$(prices_arg)" "$AWK_PRICE"'
+  LC_ALL=C awk -F"$TAB" -v cut="$(( $(date +%s) - 18000 ))" -v prices="$(prices_arg)" "$AWK_PRICE"'
     function human(x) { if (x >= 1e6) return sprintf("%.1fM", x/1e6)
                         if (x >= 1e3) return sprintf("%.0fk", x/1e3); return sprintf("%d", x) }
     $1 + 0 >= cut {
@@ -1227,11 +1227,11 @@ session_detail() {
   local sid=$1 full slug
   [ -s "$FACTS" ] || return 1
   # accept a short prefix; everything downstream needs the full id
-  full=$(awk -F"$TAB" -v k="$sid" 'index($1, k) == 1 { print $1; exit }' "$META" 2>/dev/null)
+  full=$(LC_ALL=C awk -F"$TAB" -v k="$sid" 'index($1, k) == 1 { print $1; exit }' "$META" 2>/dev/null)
   [ -n "$full" ] && sid=$full
-  slug=$(awk -F"$TAB" -v k="$sid" '$1 == k { print $2; exit }' "$META" 2>/dev/null)
+  slug=$(LC_ALL=C awk -F"$TAB" -v k="$sid" '$1 == k { print $2; exit }' "$META" 2>/dev/null)
   printf '\033[1m%s\033[0m  %s\n' "$sid" "$(origin_dir "$sid" "$slug")"
-  awk -F"$TAB" -v k="$sid" -v prices="$(prices_arg)" "$AWK_FMT$AWK_PRICE"'
+  LC_ALL=C awk -F"$TAB" -v k="$sid" -v prices="$(prices_arg)" "$AWK_FMT$AWK_PRICE"'
     $3 ~ "^" k {
       a = ($4 == "-" ? "· main" : ($6 ~ /^wf:/ ? "⑂ " $6 : "⑂ " $5 ($6 == "bg" ? " (bg)" : "")))
       REQ[a] += $8; IN[a] += $9; C5[a] += $10; C1[a] += $11; CR[a] += $12; OUT[a] += $13
@@ -1267,7 +1267,7 @@ summary() {
   local now; now=$(date +%s)
   [ -s "$FACTS" ] || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
   { slug_map | sed 's/^/P\t/'; cat "$FACTS"; } |
-  awk -F"$TAB" -v now="$now" -v home="$HOME" "$AWK_FMT"'
+  LC_ALL=C awk -F"$TAB" -v now="$now" -v home="$HOME" "$AWK_FMT"'
     BEGIN { R = "\033[0m"; DIM = "\033[90m"; B = "\033[1m" }
     function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
     # pad by CHARACTERS: macOS awk counts bytes, so a "⑂" would eat three of them
@@ -1342,16 +1342,16 @@ summary() {
   while IFS="$TAB" read -r sid c reqs ctx last slug subc nsub c5h; do
     printf '  \033[90m%-9.9s\033[0m %9s %6s req  ctx %5.0fk  sub %7s  \033[90m%s\033[0m\n' \
       "$sid" \
-      "$(awk -v v="$c" 'BEGIN{ if (v>=1e6) printf "%.1fM", v/1e6; else if (v>=1e3) printf "%.0fk", v/1e3; else printf "%d", v }')" \
+      "$(LC_ALL=C awk -v v="$c" 'BEGIN{ if (v>=1e6) printf "%.1fM", v/1e6; else if (v>=1e3) printf "%.0fk", v/1e3; else printf "%d", v }')" \
       "$reqs" "$(( ctx / 1000 ))" \
-      "$(awk -v v="$subc" 'BEGIN{ if (v>=1e6) printf "%.1fM", v/1e6; else if (v>=1e3) printf "%.0fk", v/1e3; else printf "%d", v }')" \
+      "$(LC_ALL=C awk -v v="$subc" 'BEGIN{ if (v>=1e6) printf "%.1fM", v/1e6; else if (v>=1e3) printf "%.0fk", v/1e3; else printf "%d", v }')" \
       "$(origin_dir "$sid" "$slug")"
   done
 }
 
 json() {
   [ -s "$FACTS" ] || { echo '{"error":"no data"}'; return 1; }
-  awk -F"$TAB" -v cut="$(( $(date +%s) - $(since_secs "${1:-7d}") ))" '
+  LC_ALL=C awk -F"$TAB" -v cut="$(( $(date +%s) - $(since_secs "${1:-7d}") ))" '
     function cost(i,c5,c1,cr,o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
     $1 + 0 >= cut { C[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += cost($9,$10,$11,$12,$13)
                     R[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += $8 }
@@ -1388,7 +1388,7 @@ while [ $# -gt 0 ]; do
     --no-update) DO_UPDATE=0; shift ;;
     # Print to the first non-comment line, never a hardcoded range: the header
     # grows, the range does not, and the help silently loses its tail.
-    -h|--help)  awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
+    -h|--help)  LC_ALL=C awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
     *)          echo "tusage: unknown option $1" >&2; exit 2 ;;
   esac
 done

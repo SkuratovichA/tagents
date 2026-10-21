@@ -80,14 +80,14 @@ ok "no function is defined in two modules" "" "${dupes% }"
 ok "the glyph rule is written once" 1 "$(cat "$LIB"/*.sh | grep -c 'function untitle')"
 
 # Under a UTF-8 locale macOS awk compares strings by the locale's collation, where every Cyrillic letter weighs the same ("я" == "ю", "aя" == "a"), so every awk this program runs is pinned to bytes. A call is the word awk followed by an option or a program, outside a comment; the pinned ones are cut out of the line before the rest is looked at, so a second, bare call on the same line still shows.
-unpinned=$(cd "$HERE/.." && for f in lib/tagents/*.sh hooks/*.sh bin/*; do
+unpinned=$(cd "$HERE/.." && for f in lib/tagents/*.sh hooks/*.sh tagents tnotes tusage; do
   [ -f "$f" ] || continue
   grep -nvE '^[[:space:]]*#' "$f" |
     sed -e 's/LC_ALL=C \(command \)\{0,1\}\(\/usr\/bin\/\)\{0,1\}awk//g' |
     grep -E "(^[0-9]+:|[^[:alnum:]_./-])(command )?(/usr/bin/)?awk[[:space:]]+(-[Fvfe]|'|\")" |
     sed "s|^|$f:|" | cut -c1-120
 done)
-ok "every awk call in lib/, hooks/ and bin/ runs as LC_ALL=C awk" "" "$unpinned"
+ok "every awk call in lib/, hooks/ and the tagents, tnotes and tusage scripts runs as LC_ALL=C awk" "" "$unpinned"
 
 # ---------------------------------------------------------------------------
 t "2. a module defines things and does nothing"
