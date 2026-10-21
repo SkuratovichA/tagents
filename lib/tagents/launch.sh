@@ -94,7 +94,7 @@ session_for_dir() {  # <dir> -> session name, empty when the project has no wind
   local dir=$1
   [ -n "$dir" ] || return 1
   tmux list-panes -a -F "#{session_name}$TAB#{pane_current_path}$TAB#{@tagents}" 2>/dev/null |
-    awk -F"$TAB" -v dir="$dir" -v dash="$DASH_SESSION" '
+    LC_ALL=C awk -F"$TAB" -v dir="$dir" -v dash="$DASH_SESSION" '
       $3 != "" { next }                                   # the dashboard window
       $2 == dir || index($2, dir "/") == 1 { c[$1]++ }
       END {

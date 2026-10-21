@@ -665,7 +665,7 @@ follow_cursor() {  # <port> <list pane> — put the cursor on the current seat's
   # A group header carries its most urgent member's pane id too, so the row
   # has to be the agent's own — the header is the one with the ▾ in it.
   n=$("$SELF" --list 2>/dev/null |
-    awk -F"$TAB" -v p="$seat" \
+    LC_ALL=C awk -F"$TAB" -v p="$seat" \
         '$1 == p && index($2, "\342\226\276") == 0 { print NR; exit }')
   [ -n "$n" ] && post_fzf "$port" "pos($n)"
   return 0
@@ -704,7 +704,7 @@ poke() {  # [pane] — repaint every live list now, rather than on the next tick
     follow_cursor "$port" "$p"
   done <<EOF
 $(tmux list-panes -a -F '#{pane_id} #{@tagents_list} #{@tagents_port}' 2>/dev/null |
-    awk 'NF == 3')
+    LC_ALL=C awk 'NF == 3')
 EOF
   # Written only when a list actually took it. A poke that found no port has
   # repainted nothing, and must not tell the next one the work is done.

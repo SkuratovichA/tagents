@@ -17,7 +17,7 @@ live_panes() {
 
   # Secondary signal, in case the process walk comes up empty.
   tmux list-panes -a -F '#{pane_id} #{pane_current_command}' 2>/dev/null |
-    awk '$2 ~ /^[0-9]+\.[0-9]+\.[0-9]+$/ || $2 == "claude" { print $1 }'
+    LC_ALL=C awk '$2 ~ /^[0-9]+\.[0-9]+\.[0-9]+$/ || $2 == "claude" { print $1 }'
 }
 
 # The walk itself, with the pid of the Claude it found beside each pane: the
@@ -30,7 +30,7 @@ live_pane_pids() {  # pane TAB claude pid, one line per Claude process
     # "no Claude is running anywhere".
     tmux list-panes -a -F 'MAP #{pane_pid} #{pane_id}' 2>/dev/null
     ps -eo pid=,ppid=,comm= 2>/dev/null
-  } | awk -v OFS="$TAB" '
+  } | LC_ALL=C awk -v OFS="$TAB" '
       $1 == "MAP" { pane[$2] = $3; next }
       {
         pid = $1; c = $0
@@ -55,7 +55,7 @@ live_pane_pids() {  # pane TAB claude pid, one line per Claude process
 # existed has six fields, and "no field" is not the same answer as "the
 # default login" (see resume_profile).
 rec_row() {  # <pane key> -> sid US cwd US transcript US cfgd US hascfg (hascfg: the record has the account field at all)
-  awk -F"$TAB" -v OFS="$US" 'NR == 1 { print $3, $4, $5, $7, (NF >= 7 ? 1 : 0); exit }' "$STATE_DIR/${1#%}.tsv" 2>/dev/null
+  LC_ALL=C awk -F"$TAB" -v OFS="$US" 'NR == 1 { print $3, $4, $5, $7, (NF >= 7 ? 1 : 0); exit }' "$STATE_DIR/${1#%}.tsv" 2>/dev/null
 }
 
 # Running right now, by session id: resuming re-registers a conversation under
@@ -63,7 +63,7 @@ rec_row() {  # <pane key> -> sid US cwd US transcript US cfgd US hascfg (hascfg:
 # conversation is already up — never the pane.
 live_sids() {  # the session id of every pane a Claude is running in, one per line
   local p sid rest
-  for p in $(live_panes | sort -u); do
+  for p in $(live_panes | LC_ALL=C sort -u); do
     IFS="$US" read -r sid rest < <(rec_row "$p"); [ -n "$sid" ] && printf '%s\n' "$sid"
   done
   return 0   # a last pane with no record is not a failure of the list
@@ -115,7 +115,7 @@ state_files() {
 # this is asked once per headless row on every repaint.
 headless_alive() {  # <state file>
   local pid
-  pid=$(awk -F"$TAB" 'NR==1 { print $8; exit }' "${1:-}" 2>/dev/null)
+  pid=$(LC_ALL=C awk -F"$TAB" 'NR==1 { print $8; exit }' "${1:-}" 2>/dev/null)
   pid_alive "$pid"
 }
 
@@ -135,7 +135,7 @@ pid_alive() {  # <pid>
 # capture-pane, so this log is the whole of what a preview can show.
 headless_log() {  # <pane key %s-<sid>>
   local log
-  log=$(awk -F"$TAB" 'NR==1 { print $9; exit }' \
+  log=$(LC_ALL=C awk -F"$TAB" 'NR==1 { print $9; exit }' \
           "$STATE_DIR/${1#%}.tsv" 2>/dev/null)
   [ -n "$log" ] && [ -r "$log" ] || return 1
   printf '%s' "$log"
@@ -205,7 +205,7 @@ title_of() {  # <session-id> <transcript-path> [<cached title> <cached size>]
     # The LAST line for the id, not the first: a cache written before the rows
     # were rewritten in place may still hold several, and the newest one counts.
     [ "$have" = 1 ] || IFS="$US" read -r hit hsz < <(
-      awk -F"$TAB" -v OFS="$US" -v k="$sid" \
+      LC_ALL=C awk -F"$TAB" -v OFS="$US" -v k="$sid" \
           '$1 == k { t = $2; s = $3 } END { if (t != "") print t, s }' \
           "$TITLES" 2>/dev/null)
     if [ -n "${hit:-}" ]; then
@@ -227,7 +227,7 @@ title_of() {  # <session-id> <transcript-path> [<cached title> <cached size>]
   # and is small by construction, so a copy beside it and a mv are cheap.
   tmp="$TITLES.$$"
   if [ -e "$TITLES" ]; then
-    awk -F"$TAB" -v k="$sid" '$1 != k' "$TITLES" >"$tmp" 2>/dev/null || :
+    LC_ALL=C awk -F"$TAB" -v k="$sid" '$1 != k' "$TITLES" >"$tmp" 2>/dev/null || :
   else
     : >"$tmp" 2>/dev/null || :
   fi
@@ -254,7 +254,7 @@ origin_of() {  # <session-id> <transcript-path>
   local sid=${1:-} tr=${2:-} d=
   [ -n "$sid" ] || return 1
   if [ -e "$ORIGINS" ]; then
-    d=$(awk -F"$TAB" -v k="$sid" '$1 == k { print $2; exit }' "$ORIGINS" 2>/dev/null)
+    d=$(LC_ALL=C awk -F"$TAB" -v k="$sid" '$1 == k { print $2; exit }' "$ORIGINS" 2>/dev/null)
     [ -n "$d" ] && { printf '%s' "$d"; return 0; }
   fi
   if [ -n "$tr" ] && [ -e "$tr" ] && command -v jq >/dev/null 2>&1; then
@@ -284,8 +284,8 @@ dir_roots() {
     # positional parameters set here are this subshell's own.
     set --
     while IFS= read -r d; do set -- "$@" "$d"; done < <(state_files)
-    [ $# -gt 0 ] && awk -F"$TAB" "$AWK_SKIP_GONE"' FNR == 1 { print $4 }' "$@" </dev/null 2>/dev/null
-  } | sort -u | while IFS= read -r d; do
+    [ $# -gt 0 ] && LC_ALL=C awk -F"$TAB" "$AWK_SKIP_GONE"' FNR == 1 { print $4 }' "$@" </dev/null 2>/dev/null
+  } | LC_ALL=C sort -u | while IFS= read -r d; do
     [ -n "$d" ] || continue
     repo_root_v "$d" || continue; r=$REPO_ROOT
     [ "$r" = "$d" ] && continue
@@ -303,13 +303,13 @@ collect() {
   # Printable ASCII survives either way; the title goes last because it is the
   # one field that carries arbitrary text.
   tmux list-panes -a -F "P|@|#{pane_id}|@|#{session_name}:#{window_index}.#{pane_index}|@|#{pane_current_path}|@|#{pane_title}" 2>/dev/null |
-    awk -v OFS="$TAB" '
+    LC_ALL=C awk -v OFS="$TAB" '
       { n = split($0, a, "\\|@\\|")
         t = a[5]; for (i = 6; i <= n; i++) t = t "|@|" a[i]
         print a[1], a[2], a[3], t, a[4] }'
   live_panes | sed "s/^/L${TAB}/"
   dir_roots
-  [ -e "$LABELS" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "N", $1, $2 }' "$LABELS"
+  [ -e "$LABELS" ] && LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '{ print "N", $1, $2 }' "$LABELS"
 
   local f key ts st sid cwd tr det cfgd hascfg orig hlbl hpar hpsid hl pid ttl th tz
   # ONE AWK FOR ALL THE STATE FILES, and for the origin cache beside them: a
@@ -363,7 +363,7 @@ collect() {
           ttl=$(title_of "${sid:-}" "${tr:-}" "${th:-}" "${tz:-}") &&
             printf 'A\t%s\t%s\n' "${sid:-}" "$ttl" ;;
       esac
-    done < <(awk -F"$TAB" -v OFS="$US" -v orig="$ORIGINS" -v titles="$TITLES" '
+    done < <(LC_ALL=C awk -F"$TAB" -v OFS="$US" -v orig="$ORIGINS" -v titles="$TITLES" '
       function blank(p) { print p, "", "", "", "", "", "", "", "", "0", "", "", "", "", "", "" }
       BEGIN {
         # A record deleted between the glob and here must not take the rest of
@@ -405,7 +405,7 @@ collect() {
   # One awk for the whole directory, like the state files above: the key is
   # already taken from FILENAME, so nothing about a file is needed from outside.
   set -- "$STATE_DIR"/sub/*
-  [ -e "$1" ] && awk -v OFS="$TAB" "$AWK_SKIP_GONE"'
+  [ -e "$1" ] && LC_ALL=C awk -v OFS="$TAB" "$AWK_SKIP_GONE"'
     FNR==1 { n=split(FILENAME,a,"/"); k=a[n]; sub(/\..*$/,"",k) }
     { print "B", "%" k, $0 }' "$@" </dev/null 2>/dev/null
 
@@ -416,7 +416,7 @@ collect() {
   # One awk for every file: the session id is the file name, taken off FILENAME,
   # and only the first line of each is read (FNR, since NR runs on across files).
   set -- "$STATE_DIR"/model/*.tsv
-  [ -e "$1" ] && awk -F"$TAB" -v OFS="$TAB" "$AWK_SKIP_GONE"'
+  [ -e "$1" ] && LC_ALL=C awk -F"$TAB" -v OFS="$TAB" "$AWK_SKIP_GONE"'
     FNR == 1 { s = FILENAME; sub(/.*\//, "", s); sub(/\.tsv$/, "", s); print "M", s, $2, $4 }' "$@" </dev/null 2>/dev/null
 
   # Token accounting, joined on session id. --no-update keeps this to one awk

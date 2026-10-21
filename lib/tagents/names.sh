@@ -18,7 +18,7 @@ set_label() {
   [ -z "$keyv" ] && return 1
   mkdir -p "$STATE_DIR" 2>/dev/null
   tmpf="$STATE_DIR/.labels.$$"
-  { [ -e "$LABELS" ] && awk -F"$TAB" -v k="$keyv" '$1 != k' "$LABELS"; } >"$tmpf" 2>/dev/null
+  { [ -e "$LABELS" ] && LC_ALL=C awk -F"$TAB" -v k="$keyv" '$1 != k' "$LABELS"; } >"$tmpf" 2>/dev/null
   [ -n "$name" ] && printf '%s\t%s\n' "$keyv" "$name" >>"$tmpf"
   mv -f "$tmpf" "$LABELS" 2>/dev/null || rm -f "$tmpf"
   signal_ev   # labels are drawn, and the file is not a tmux event
@@ -27,7 +27,7 @@ set_label() {
 label_of() {
   local keyv=$1
   [ -e "$LABELS" ] || return 0
-  awk -F"$TAB" -v k="$keyv" '$1 == k { print $2; exit }' "$LABELS"
+  LC_ALL=C awk -F"$TAB" -v k="$keyv" '$1 == k { print $2; exit }' "$LABELS"
 }
 
 # THE NAME A TITLE GIVES, in shell — the same rule untitle() applies in list()
@@ -92,7 +92,7 @@ panes_for_sid() {  # <sid>
   local f files=()
   while IFS= read -r f; do files[${#files[@]}]=$f; done < <(state_files)
   [ "${#files[@]}" -gt 0 ] || return 0
-  awk -F"$TAB" -v OFS="$TAB" -v s="$1" '
+  LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v s="$1" '
     FNR == 1 && $3 == s { n = FILENAME; sub(/.*\//, "", n); sub(/\.tsv$/, "", n); print "%" n, $1 }
   ' "${files[@]}"
 }
@@ -219,15 +219,15 @@ sync_window_names() {
     # because it is the one field that carries arbitrary text — the same rule
     # collect() follows, for the same reason.
     tmux list-panes -a -F "P|@|#{pane_id}|@|#{window_id}|@|#{pane_index}|@|#{window_name}|@|#{automatic-rename}|@|#{@tagents}|@|#{@tagents_docked}|@|#{@tagents_name}|@|#{pane_title}" 2>/dev/null
-    live_panes | awk '!s[$0]++ { print "L|@|" $0 }'
+    live_panes | LC_ALL=C awk '!s[$0]++ { print "L|@|" $0 }'
     # The pid in @tagents_list is what tells a list that is running from a
     # marker left behind by one that is gone, so this is asked in shell.
-    list_windows | awk '!s[$0]++ { print "X|@|" $0 }'
-    [ -e "$LABELS" ] && awk -F"$TAB" '{ print "N|@|" $1 "|@|" $2 }' "$LABELS"
+    list_windows | LC_ALL=C awk '!s[$0]++ { print "X|@|" $0 }'
+    [ -e "$LABELS" ] && LC_ALL=C awk -F"$TAB" '{ print "N|@|" $1 "|@|" $2 }' "$LABELS"
     # One awk for every state file, not one per file; the first record of each.
     set --
     while IFS= read -r f; do set -- "$@" "$f"; done < <(state_files)
-    [ $# -gt 0 ] && awk -F"$TAB" "$AWK_SKIP_GONE"' FNR == 1 {
+    [ $# -gt 0 ] && LC_ALL=C awk -F"$TAB" "$AWK_SKIP_GONE"' FNR == 1 {
       k = FILENAME; sub(/^.*\//, "", k); sub(/\.tsv$/, "", k)
       print "S|@|%" k "|@|" $1 "|@|" $3 }' "$@" </dev/null 2>/dev/null
   } | LC_ALL=C awk -v host="$HOST_S" -v hostf="$HOST_F" -v OFS="$TAB" "$AWK_UNTITLE"'

@@ -242,6 +242,13 @@ run --sync-names >/dev/null 2>&1
 ok "an agent with no display name renames nothing" "$NNNAME" "$(wname "$NNW")"
 ok "...and claims no name either"                  ""        "$(wrec "$NNW")"
 
+# A title that is the host name plus one Cyrillic letter is a name, not the host: awk under a UTF-8 locale called the two equal.
+NH=$(newagent tatest-work "$(hostname -s)я" sid-nh "$NOW")
+NHW=$(wof "$NH")
+run --sync-names >/dev/null 2>&1
+ok "a title that is the host name plus a Cyrillic letter names the window" "$(hostname -s)я" "$(wname "$NHW")"
+tm kill-window -t "$NHW" 2>/dev/null
+
 # ---------------------------------------------------------------------------
 t "(c) two agents in one window: the newer activity wins"
 # ---------------------------------------------------------------------------

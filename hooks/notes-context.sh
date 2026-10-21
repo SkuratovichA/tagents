@@ -142,7 +142,7 @@ case "$prompt" in
       [ "$fd" = "$dir_real" ] || continue
       grep -q '[^[:space:]]' "$dir/prompt.md" 2>/dev/null || continue
 
-      subj=$(awk 'NF { sub(/^[ \t]+/, ""); print substr($0, 1, 72); exit }' \
+      subj=$(LC_ALL=C awk 'NF { sub(/^[ \t]+/, ""); print substr($0, 1, 72); exit }' \
                "$dir/prompt.md" 2>/dev/null)
       [ -n "$subj" ] || subj='sent'
       # --allow-empty, and on purpose: tnotes already committed this text when
@@ -207,7 +207,7 @@ set -- ':!prompt.md' ':!archive/*' ':!*/archive/*'
 # the exclusion would miss it.
 tab=$(printf '\t')
 archived=$(git -C "$dir" -c core.quotePath=false diff -M --name-status "$base" HEAD -- . ':!prompt.md' 2>/dev/null |
-  awk -F'\t' '$1 ~ /^R/ && ($3 ~ /^archive\// || $3 ~ /\/archive\//) { print $2 "\t" $3 }')
+  LC_ALL=C awk -F'\t' '$1 ~ /^R/ && ($3 ~ /^archive\// || $3 ~ /\/archive\//) { print $2 "\t" $3 }')
 while IFS=$tab read -r old new; do
   [ -n "$old" ] || continue
   set -- "$@" ":(exclude,literal)$old"
@@ -217,7 +217,7 @@ EOF
 
 stat=$(git -C "$dir" diff --stat "$base" HEAD -- . "$@" 2>/dev/null)
 if [ -n "$archived" ]; then
-  moves=$(printf '%s\n' "$archived" | awk -F'\t' '{ print " archived: " $1 " => " $2 }')
+  moves=$(printf '%s\n' "$archived" | LC_ALL=C awk -F'\t' '{ print " archived: " $1 " => " $2 }')
   if [ -n "$stat" ]; then stat="$stat
 $moves"; else stat=$moves; fi
 fi

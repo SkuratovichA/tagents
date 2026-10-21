@@ -192,7 +192,7 @@ esac
 rec_parent() {  # <record file> — sets parsid and parlbl
   parsid=; parlbl=
   IFS="$us" read -r parsid parlbl <<EOF
-$(awk -F'	' -v OFS="$us" 'NR==1 { print $3, $10; exit }' "$1" 2>/dev/null)
+$(LC_ALL=C awk -F'	' -v OFS="$us" 'NR==1 { print $3, $10; exit }' "$1" 2>/dev/null)
 EOF
 }
 
@@ -212,7 +212,7 @@ ta_disown() {
   while [ -n "$dk" ] && [ "$di" -lt 8 ]; do
     [ -e "$dir/$dk.tsv" ] || break
     IFS="$us" read -r da9 da10 da11 <<EOF
-$(awk -F'	' -v OFS="$us" 'NR==1 { print $9, $10, $11; exit }' \
+$(LC_ALL=C awk -F'	' -v OFS="$us" 'NR==1 { print $9, $10, $11; exit }' \
        "$dir/$dk.tsv" 2>/dev/null)
 EOF
     [ -n "$clog" ] && [ "$clog" = "${da9:-}" ] && clog=
@@ -225,7 +225,7 @@ EOF
   # over a file this hook already touches, and off the hot path — classify() is
   # the expensive branch in any case.
   if [ -n "$clbl" ] && [ -n "${parsid:-}" ] && [ -e "$dir/history.tsv" ]; then
-    dhl=$(awk -F'	' -v s="$parsid" \
+    dhl=$(LC_ALL=C awk -F'	' -v s="$parsid" \
               '$2 == "start" && $3 == s { l = $5 } END { print l }' \
               "$dir/history.tsv" 2>/dev/null)
     [ -n "${dhl:-}" ] && [ "$dhl" = "$clbl" ] && clbl=
@@ -245,7 +245,7 @@ ta_walk() {
   walk=$({
     tmux list-panes -a -F 'MAP #{pane_pid} #{pane_id}' 2>/dev/null
     ps -eo pid=,ppid=,comm= 2>/dev/null
-  } | awk -v own="$own" -v claim="${TMUX_PANE:-}" '
+  } | LC_ALL=C awk -v own="$own" -v claim="${TMUX_PANE:-}" '
       $1 == "MAP" { pane[$2] = $3; nmap++; if ($3 == claim) known = 1; next }
       { pid = $1; up[pid] = $2; c = $0
         sub(/^[ \t]*[0-9]+[ \t]+[0-9]+[ \t]+/, "", c)
@@ -289,7 +289,7 @@ classify() {
       # child — so it is not in the pane map at all and only its own record
       # names its pid. set -u is on and the glob stays literal when nothing
       # matches it, which is what the redirect is for.
-      pfile=$(awk -F'	' -v p="$pclaude" 'FNR==1 && $8 == p { print FILENAME; exit }' \
+      pfile=$(LC_ALL=C awk -F'	' -v p="$pclaude" 'FNR==1 && $8 == p { print FILENAME; exit }' \
                 "$dir"/s-*.tsv 2>/dev/null)
       if [ -n "$pfile" ]; then
         parkey=${pfile##*/}; parkey=${parkey%.tsv}
@@ -361,7 +361,7 @@ else
     # earlier, crashed run of a conversation now resumed somewhere else, and
     # re-deciding is the only honest answer.
     IFS="$us" read -r c8 c9 c10 c11 c12 <<EOF
-$(awk -F'	' -v OFS="$us" 'NR==1 { print $8, $9, $10, $11, $12; exit }' \
+$(LC_ALL=C awk -F'	' -v OFS="$us" 'NR==1 { print $8, $9, $10, $11, $12; exit }' \
        "$dir/s-$sid.tsv" 2>/dev/null)
 EOF
     if [ "$hasown" = 0 ] || [ "$c8" = "$own" ]; then
@@ -426,7 +426,7 @@ fi
 # session above; this is the same rule for the cases no ancestry explains.)
 if [ "$headless" = 0 ] && [ -z "${TMUX_PANE:-}" ] && [ -n "${sid:-}" ] &&
    [ -e "$dir/$key.tsv" ]; then
-  owner=$(awk -F'	' 'NR==1 { print $3 }' "$dir/$key.tsv" 2>/dev/null)
+  owner=$(LC_ALL=C awk -F'	' 'NR==1 { print $3 }' "$dir/$key.tsv" 2>/dev/null)
   if [ -n "$owner" ] && [ "$owner" != "$sid" ]; then
     key="s-$sid"
     headless=1
@@ -572,7 +572,7 @@ if [ "$state" = "gone" ]; then
     for kidf in "$dir"/s-*.tsv; do
       [ -e "$kidf" ] || continue
       IFS="$us" read -r kpar kpid <<EOF
-$(awk -F'	' -v OFS="$us" 'NR==1 { print $12, $8; exit }' "$kidf" 2>/dev/null)
+$(LC_ALL=C awk -F'	' -v OFS="$us" 'NR==1 { print $12, $8; exit }' "$kidf" 2>/dev/null)
 EOF
       [ "$kpar" = "$sid" ] || continue
       case ${kpid:-} in
@@ -588,7 +588,7 @@ EOF
   # SID-GUARDED WHATEVER THIS SESSION TURNED OUT TO BE: a record that names
   # another conversation is somebody else's, and dropping it (and its subagent
   # counters, and its pane option) on our way out is the bug this hook had.
-  gowner=$(awk -F'	' 'NR==1 { print $3 }' "$dir/$key.tsv" 2>/dev/null)
+  gowner=$(LC_ALL=C awk -F'	' 'NR==1 { print $3 }' "$dir/$key.tsv" 2>/dev/null)
   if [ -z "$gowner" ] || [ "$gowner" = "${sid:-}" ]; then
     rm -f "$dir/$key.tsv"
     rm -f "$dir/sub/$key".* 2>/dev/null

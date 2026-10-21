@@ -10,7 +10,7 @@
 
 win_index_in() {  # <window_id> <session> -> index, empty if not linked there
   tmux list-windows -t "$2" -F '#{window_index} #{window_id}' 2>/dev/null |
-    awk -v w="$1" '$2==w { print $1; exit }'
+    LC_ALL=C awk -v w="$1" '$2==w { print $1; exit }'
 }
 
 borrow() {  # bring the agent's window into $home without moving it out of its own session
@@ -123,7 +123,7 @@ ask_kill() {  # the confirmation itself — normally the body of the popup
   # first, then the pane title with Claude Code leading glyph stripped, then the
   # project. A title that is just the hostname is tmux default and names nothing.
   nm=$(label_of "${sid:-$pane}")
-  dir=$(awk -F"$TAB" 'NR==1 { print $4 }' "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)
+  dir=$(LC_ALL=C awk -F"$TAB" 'NR==1 { print $4 }' "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)
   if [ "$alive" = 1 ]; then
     [ -z "$dir" ] && dir=$(tmux display -p -t "$pane" '#{pane_current_path}' 2>/dev/null)
     if [ -z "$nm" ]; then
@@ -274,7 +274,7 @@ act() {
           # is what the notice is for: it is not a daemon nobody is watching,
           # it is a `claude -p` the agent above it started, and there is no log
           # to follow either — ctrl-v shows its transcript instead.
-          if [ -n "$(awk -F"$TAB" 'NR==1 { print $11; exit }' \
+          if [ -n "$(LC_ALL=C awk -F"$TAB" 'NR==1 { print $11; exit }' \
                        "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)" ]; then
             tmux display-message \
               "tagents: child session — no pane to dock, type into or rename (ctrl-v shows its transcript)" \

@@ -140,7 +140,7 @@ undock_window() {  # <window-id>
   local win=${1:-} p
   [ -n "$win" ] || return 0
   tmux list-panes -t "$win" -F '#{pane_id} #{?@tagents_docked,docked,-}' 2>/dev/null |
-    awk '$2 == "docked" { print $1 }' |
+    LC_ALL=C awk '$2 == "docked" { print $1 }' |
     while IFS= read -r p; do undock_pane "$p"; done
   return 0
 }
@@ -152,7 +152,7 @@ undock() {  # ctrl-u — returns 1 when there was nothing docked to send home
   # The cursor may well be sitting in the empty placeholder — that is where it is
   # left after an undock — so fall back to whichever chat is docked here.
   if ! is_docked "$seat"; then
-    seat=$(seats "$dp" | awk -F"$TAB" '$2 == "docked" { print $1; exit }')
+    seat=$(seats "$dp" | LC_ALL=C awk -F"$TAB" '$2 == "docked" { print $1; exit }')
   fi
   [ -n "$seat" ] || return 1
   undock_pane "$seat"

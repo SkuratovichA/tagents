@@ -27,6 +27,18 @@ By default rows SHALL be grouped by project: one header line per project followe
 - **WHEN** a session runs in `~/projects/app/packages/client`
 - **THEN** it is listed under the `app` header and its detail text starts with `packages/client`
 
+#### Scenario: Two projects that differ only in a Cyrillic letter
+- **WHEN** sessions run in `~/projects/я` and `~/projects/ю`, two of them in the first
+- **THEN** the list has a header for each, the two rows of `я` sit together under its header, and the last row of each project is drawn with `└`
+
+#### Scenario: Two directories that differ only in a Cyrillic letter
+- **WHEN** sessions run in `~/projects/я/src` and `~/projects/ю/src`, each below its own repository
+- **THEN** the headers are `я` and `ю`, and no header is `src`
+
+#### Scenario: The home directory with a letter after it
+- **WHEN** a session runs in a project whose path is the home directory followed by `я`
+- **THEN** its header names the project after the directory, not `~`
+
 ### Requirement: ctrl-t switches between the tree and a flat list
 `ctrl-t` SHALL switch between the tree and a flat list without headers, and the choice SHALL persist across restarts in a marker file in the state directory; switching rings the refresher's channel. `TA_FLAT=1` SHALL force the flat list for one run. A flat row SHALL carry its project's directory name in a column of its own, which hiding the `loc` column does not remove.
 

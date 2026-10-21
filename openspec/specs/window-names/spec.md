@@ -21,6 +21,10 @@ The sweep SHALL rename a window that holds a live agent to that agent's display 
 - **WHEN** a window holds only shells
 - **THEN** a sweep does not rename it
 
+#### Scenario: A title that only begins with the host name
+- **WHEN** an agent's title is the host name followed by `я`
+- **THEN** the window is named after that title, since a title is the host name only when every byte is the same
+
 ### Requirement: The leading glyph is not part of the name
 The terminal title Claude sets starts with a spinner glyph. A leading token SHALL be dropped, together with the spaces after it, only when it is exactly one character and that character is a symbol: an ASCII character that is not a letter or digit, a character in U+2000 to U+2BFF, or a character in U+1F000 to U+1FFFF. Any other first token SHALL be kept. Rows, window names, dialogs and the preview heading SHALL apply this one rule.
 
