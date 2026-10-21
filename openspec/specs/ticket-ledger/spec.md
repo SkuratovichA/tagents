@@ -29,11 +29,12 @@ The hook SHALL name the session's ticket by the first match, in this order, of a
 - **AND** for a session id with no such label nothing is printed
 
 ### Requirement: The agent-state directory
-The agent-state directory the hook reads `labels.tsv` from and keeps its PR cache in SHALL be `$TA_STATE`, default `~/.claude/agent-state`.
+The agent-state directory the hook reads `labels.tsv` from and keeps its PR cache in SHALL be `$TA_STATE_DIR`, default `~/.claude/agent-state`.
 
 #### Scenario: Redirected state
-- **WHEN** `TA_STATE` points at another directory
+- **WHEN** `TA_STATE_DIR` points at another directory and no other variable is set
 - **THEN** labels and the PR cache are read from and written to that directory
+- **AND** nothing is created under `~/.claude/agent-state`
 
 ### Requirement: Where the ledger lives
 The ledger of a ticket SHALL be `.claude/notes/<ticket>/ledger.md` under the top level of the git repository containing `cwd` (or under `cwd` itself when it is not in a repository).

@@ -103,8 +103,8 @@ usage_calibration() {  # -> "<factor><TAB><label><TAB><note>"
   epoch=$(date -j -f '%Y-%m-%d %H:%M' "$when" +%s 2>/dev/null) ||
     epoch=$(date -d "$when" +%s 2>/dev/null) || epoch=""
   case "$epoch" in ''|*[!0-9]*) printf '1\t\tmeter reading unusable'; return 0 ;; esac
-  mtd=$(usage_days "$epoch" | awk -F"$TAB" -v w="$(usage_watch)" '$2 == w { s += $3 } END { printf "%.6f", s + 0 }')
-  out=$(awk -v a="$amt" -v m="$mtd" -v lbl="${when#*-}" '
+  mtd=$(usage_days "$epoch" | LC_ALL=C awk -F"$TAB" -v w="$(usage_watch)" '$2 == w { s += $3 } END { printf "%.6f", s + 0 }')
+  out=$(LC_ALL=C awk -v a="$amt" -v m="$mtd" -v lbl="${when#*-}" '
     BEGIN {
       if (m + 0 <= 0) { printf "1\t\tmeter reading unusable"; exit }
       f = a / m
@@ -125,7 +125,7 @@ usage_meter() {  # -> "<used><TAB><limit><TAB><fetched at>" for the watched acco
   w=$(usage_watch) || return 1
   f="$STATE_DIR/usage/meter.tsv"
   [ -s "$f" ] || return 1
-  awk -F"$TAB" -v w="$w" -v now="$(date +%s)" '
+  LC_ALL=C awk -F"$TAB" -v w="$w" -v now="$(date +%s)" '
     $1 == w && $5 == "ok" && $4 + 0 > 0 && now - ($4 + 0) < 172800 {
       printf "%s\t%s\t%s", $2, $3, $4; exit }' "$f"
 }
@@ -176,7 +176,7 @@ usage_line() {  # <status|footer|summary|both>
   IFS='|' read -r dy_y dy_mo dy_d dy_wd dy_mon <<EOF
 $(date '+%Y|%m|%d|%u|%b')
 EOF
-  usage_days | awk -F"$TAB" \
+  usage_days | LC_ALL=C awk -F"$TAB" \
     -v mode="$mode" -v watch="$watch" -v badge="$badge" \
     -v factor="${factor:-1}" -v meter="${label:-}" -v mnote="${note:-}" \
     -v limit="${limit:-0}" -v margin="${margin:-0}" -v workdays="$workdays" \
@@ -276,7 +276,7 @@ EOF
 usage_rows() {
   local watch
   watch=$(usage_watch) || return 0
-  usage_days | awk -F"$TAB" -v w="$watch" '
+  usage_days | LC_ALL=C awk -F"$TAB" -v w="$watch" '
     $1 != "" && $2 == w {
       if (!($1 in u)) o[++k] = $1
       u[$1] += $3; r[$1] += $4; n[$1] += $5

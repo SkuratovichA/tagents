@@ -90,7 +90,7 @@ dash_window() {   # the window the list sits in — the sidebar, wherever that i
 # pane's own window as the answer it is checking against.
 dash_session_window() {
   tmux list-windows -t "=$DASH_SESSION" -F '#{window_id} #{@tagents}' 2>/dev/null |
-    awk '$2 == "1" { print $1; exit }'
+    LC_ALL=C awk '$2 == "1" { print $1; exit }'
 }
 
 # The list claims the pane it is running in. Nothing else can know as reliably,
@@ -102,10 +102,10 @@ claim_dash() {
   win=$(tmux display -p -t "$me" '#{window_id}' 2>/dev/null)
   [ -n "$win" ] || return 1
   tmux list-panes -a -F '#{pane_id} #{@tagents_dash}' 2>/dev/null |
-    awk -v me="$me" '$2 == "1" && $1 != me { print $1 }' |
+    LC_ALL=C awk -v me="$me" '$2 == "1" && $1 != me { print $1 }' |
     while IFS= read -r old; do tmux set -up -t "$old" @tagents_dash 2>/dev/null; done
   tmux list-windows -a -F '#{window_id} #{@tagents}' 2>/dev/null |
-    awk -v w="$win" '$2 == "1" && $1 != w { print $1 }' |
+    LC_ALL=C awk -v w="$win" '$2 == "1" && $1 != w { print $1 }' |
     while IFS= read -r old; do tmux set -uw -t "$old" @tagents 2>/dev/null; done
   # Two different statements. @tagents_list says "a list with this pid is running
   # in this pane" and belongs to this list alone — it is never taken away, which
@@ -179,7 +179,7 @@ is_agent_pane() {  # <pane-id> — is a Claude actually running in it?
 adopt_dash_window() {
   local w p cur first=""
   w=$(tmux list-windows -t "=$DASH_SESSION" -F '#{window_id} #{window_name} #{@tagents}' 2>/dev/null |
-        awk '$2 == "dash" && $3 == "" { print $1; exit }')
+        LC_ALL=C awk '$2 == "dash" && $3 == "" { print $1; exit }')
   [ -n "$w" ] || return 1
   while read -r p cur; do
     [ -n "$p" ] || continue
@@ -190,7 +190,7 @@ adopt_dash_window() {
 $(tmux list-panes -t "$w" -F '#{pane_id} #{pane_current_command}' 2>/dev/null)
 EOF
   [ -n "$first" ] || return 1
-  tmux list-panes -t "$w" -F '#{pane_id}' 2>/dev/null | awk -v f="$first" '$1 != f' |
+  tmux list-panes -t "$w" -F '#{pane_id}' 2>/dev/null | LC_ALL=C awk -v f="$first" '$1 != f' |
     while IFS= read -r p; do tmux kill-pane -t "$p" 2>/dev/null; done
   tmux respawn-pane -k -t "$first" "exec '$SELF'" 2>/dev/null || return 1
   printf '%s' "$w"

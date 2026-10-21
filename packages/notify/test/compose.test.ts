@@ -26,6 +26,15 @@ test('untitle gives what the shell function gives, title by title', () => {
     '',
     '✳  two spaces after the glyph',
     '7 days',
+    'я иду',
+    'é tout',
+    'ω omega',
+    '中 文',
+    '· middle dot',
+    '- dash',
+    '⠂ braille spinner',
+    '→ arrow',
+    '🚀 rocket',
   ];
   for (const title of titles) {
     const shell = execFileSync(
@@ -35,6 +44,12 @@ test('untitle gives what the shell function gives, title by title', () => {
     ).replace(/\n$/, '');
     assert.equal(untitle(title), shell, JSON.stringify(title));
   }
+});
+
+test('untitle keeps a one-letter word and drops a symbol glyph', () => {
+  assert.equal(untitle('⠂ build agent'), 'build agent');
+  assert.equal(untitle('я иду'), 'я иду');
+  assert.equal(untitle('🚀 rocket'), 'rocket');
 });
 
 const nameArgs = {

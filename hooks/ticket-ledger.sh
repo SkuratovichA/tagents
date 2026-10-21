@@ -49,7 +49,7 @@ EOF
 
 [ -n "${cwd:-}" ] && [ -d "$cwd" ] || exit 0
 
-STATE=${TA_STATE:-$HOME/.claude/agent-state}
+STATE=${TA_STATE_DIR:-$HOME/.claude/agent-state}
 PR_TTL=${TL_PR_TTL:-15}          # minutes a cached PR listing is served for
 KEY='[A-Z][A-Z0-9]*-[0-9][0-9]*'
 
@@ -65,7 +65,7 @@ first_key() { grep -oE "$KEY" 2>/dev/null | head -n 1; }
 ticket=$(git -C "$cwd" branch --show-current 2>/dev/null | first_key)
 [ -n "$ticket" ] || ticket=$(basename "$cwd" | first_key)
 [ -n "$ticket" ] || [ -z "${sid:-}" ] || [ ! -s "$STATE/labels.tsv" ] ||
-  ticket=$(awk -F'\t' -v s="$sid" '$1 == s { print $2 }' "$STATE/labels.tsv" 2>/dev/null | first_key)
+  ticket=$(LC_ALL=C awk -F'\t' -v s="$sid" '$1 == s { print $2 }' "$STATE/labels.tsv" 2>/dev/null | first_key)
 [ -n "$ticket" ] || exit 0
 
 root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || root=
@@ -141,7 +141,7 @@ if grep -q '^<!-- derived' "$led" 2>/dev/null && grep -q '^<!-- /derived -->' "$
     [ -n "$spec_line" ] && printf '%s\n' "$spec_line"
     [ -n "$pr_line" ] && printf '%s\n' "$pr_line"
   } >"$tmp.block" 2>/dev/null
-  awk -v blockfile="$tmp.block" '
+  LC_ALL=C awk -v blockfile="$tmp.block" '
     /^<!-- derived/   { print; while ((getline l < blockfile) > 0) print l; skip = 1; next }
     /^<!-- \/derived -->/ { skip = 0 }
     !skip             { print }

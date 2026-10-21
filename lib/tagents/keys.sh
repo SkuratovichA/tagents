@@ -175,7 +175,7 @@ keys_table() {  # key<TAB>verb<TAB>what it does
 "$K_KEYS${TAB}:none${TAB}this window" \
 "$K_QUIT${TAB}:quit${TAB}quit the dashboard — from the list itself, not from here" \
 "esc${TAB}:quit${TAB}in the popup, close it — from the list itself, not from here" |
-    awk -F"$TAB" 'length($1) > 0'
+    LC_ALL=C awk -F"$TAB" 'length($1) > 0'
 }
 
 # ? — THE KEYS, AND ENTER RUNS THE ONE YOU PICK. Four rows of header for keys

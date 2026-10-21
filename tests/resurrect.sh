@@ -842,6 +842,8 @@ notes_park() {
   O2=$(tm new-window -d -t ta-notes: -P -F '#{window_id}' 'sleep 600')
   LW=$(tm new-window -d -t ta-notes: -P -F '#{window_id}' 'sleep 600')
   tm set -p -t "$LW" @ta_notes_for %1
+  # Named for the holder plus one Cyrillic letter: awk under a UTF-8 locale called it "hold", and the orphan stayed.
+  O3=$(tm new-window -d -t ta-notes: -n 'holdя' -P -F '#{window_id}' 'sleep 600')
 }
 # Not `display -t`: for a window id that is gone it prints nothing and exits 0.
 gone() {  # <window id> -> there | gone
@@ -867,6 +869,7 @@ ok "...in the pane it had" "$NP0" "$NP"
 ok "the unlinked editor beside it is gone" 0 "$(panes_named "$OP")"
 ok "the first orphan is gone"  gone "$(gone "$O1")"
 ok "the second orphan is gone" gone "$(gone "$O2")"
+ok "an orphan whose window name is the holder's plus a Cyrillic letter is gone too" gone "$(gone "$O3")"
 ok "the holder stays" 1 "$(tm list-windows -t =ta-notes -F '#{window_name}' 2>/dev/null | grep -c '^hold$')"
 ok "the linked editor stays" there "$(gone "$LW")"
 PP=$(tm display -p -t tatest-parked:0.0 '#{pane_id}' 2>/dev/null)

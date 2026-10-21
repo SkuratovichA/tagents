@@ -108,7 +108,7 @@ export function parseEventLine(line: string): AgentEvent | null {
     tool: f[9] ?? '',
     sub: f[10] ?? '',
     text: f[11] ?? '',
-    label: f[12] ?? '',
+    label: f[12] ?? '', // the label the session's record keeps; a pane line carries TA_LABEL
   };
 }
 

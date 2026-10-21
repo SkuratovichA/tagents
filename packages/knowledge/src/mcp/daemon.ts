@@ -7,7 +7,7 @@
 //
 // Races this has to survive: sessions that start together (a reboot resurrects many at once) all ask for a daemon in the same few milliseconds; and a daemon that died hard leaves a socket file behind that refuses connections. The first is settled by the kernel: bind() on a taken name fails with EADDRINUSE, and the loser finds a live server and leaves. The second is settled under a lock, so two daemons that both see the dead file do not unlink each other's fresh one.
 //
-// stdout and stderr of the daemon are /dev/null. Nothing in here may print, except the one line a fault leaves on stderr (see `fault`), which goes to /dev/null too when the daemon is detached and to the terminal under `serve --foreground`.
+// stdout and stderr of the daemon are /dev/null. Nothing in here may print, except what a fault leaves on stderr (see `fault`): a first line, `tagents-knowledge: <what>: <message or first stack line>`, followed by the rest of the error's stack, which goes to /dev/null too when the daemon is detached and to the terminal under `serve --foreground`.
 //
 // ONE BAD CONNECTION MUST NOT END THE DAEMON. It is shared: every session's tools go through it, since the bridge `exec`s into `nc` and has no server of its own to fall back on once the daemon is gone. So a failure while a connection is being set up destroys that connection and nothing else, and an exception that nothing caught (a late callback, a rejected promise) is logged and the daemon keeps serving. Two things stay as they are on purpose: the server does not set `allowHalfOpen`, so a peer that closes its writing side (which is what `nc -U` does when its stdin ends) is closed on the daemon's side at once and is released, and the idle timer then runs; and a signal still stops the daemon.
 import { spawn } from 'node:child_process';
@@ -161,7 +161,7 @@ export interface DaemonOptions {
   readonly makeServer?: (env: NodeJS.ProcessEnv) => McpServer;
 }
 
-/** One line on stderr for a fault the daemon survives; a stderr that cannot be written to is no reason to fail again. */
+/** A first line `tagents-knowledge: <what>: <error>` followed by the error's stack, on stderr, for a fault the daemon survives; a stderr that cannot be written to is no reason to fail again. */
 function fault(what: string, e: unknown): void {
   try {
     fs.writeSync(2, `tagents-knowledge: ${what}: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}\n`);

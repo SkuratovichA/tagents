@@ -216,6 +216,44 @@ ok "dir_roots forks nothing for 3 directories" 0 "$(grep -c '^++[0-9]*|dir_roots
 ok "dir_roots still walked 3 directories" 3 "$(grep -c '^+[0-9]*|dir_roots| repo_root' "$xt")"
 
 # ---------------------------------------------------------------------------
+t "--list: names that differ only in a Cyrillic letter are different names"
+# ---------------------------------------------------------------------------
+# Under a UTF-8 locale macOS awk and sort weigh every Cyrillic letter alike, so "я" and "ю" were one name to them: two projects shared a group, two directories shared a line of `sort -u`, and a project one letter longer than the home directory was the home directory. One letter each, because longer names can survive by luck.
+cy_list() { env -u LC_ALL LANG=en_US.UTF-8 bash "$TA" --list 2>/dev/null | sed "s/$(printf '\033')\[[0-9;]*m//g"; }
+cy_agent() {  # <sid> <dir> — a pane-less record of an agent in a repository
+  mkdir -p "$2/.git"
+  printf '%s\tworking\t%s\t%s\t\t\t\t0\t\tlabel %s\n' "$NOW" "$1" "$2" "$1" >"$STATE/s-$1.tsv"
+  printf '%s\t%s\n' "$1" "$2" >>"$STATE/origin.tsv"
+}
+fresh
+cy_agent cy-1 "$ROOT/cy/я"; cy_agent cy-2 "$ROOT/cy/ю"; cy_agent cy-3 "$ROOT/cy/я"
+runs=0; prev=; tees=0
+while IFS= read -r line; do
+  case $line in *'▾'*) continue ;; esac
+  case ${line%%$TAB*} in *cy-1|*cy-3) l=a ;; *cy-2) l=b ;; *) continue ;; esac
+  [ "$l" = "$prev" ] || { runs=$((runs + 1)); prev=$l; }
+  case $line in *'└─'*) tees=$((tees + 1)) ;; esac
+done < <(cy_list)
+ok "two projects that differ only in a Cyrillic letter are two groups: each keeps its rows together" 2 "$runs"
+ok "...and the last row of each closes its own tree" 2 "$tees"
+
+fresh
+mkdir -p "$ROOT/dr/я/.git" "$ROOT/dr/я/src" "$ROOT/dr/ю/.git" "$ROOT/dr/ю/src"
+for i in 1 2; do
+  case $i in 1) d="$ROOT/dr/я/src" ;; *) d="$ROOT/dr/ю/src" ;; esac
+  printf '%s\tworking\tdr-%s\t%s\t\t\t\t0\t\tlabel %s\n' "$NOW" "$i" "$d" "$i" >"$STATE/s-dr-$i.tsv"
+  printf 'dr-%s\t%s\n' "$i" "$d" >>"$STATE/origin.tsv"
+done
+heads=$(cy_list | grep '▾')
+ok "two directories that differ only in a Cyrillic letter are both found under their repository" 0 "$(printf '%s\n' "$heads" | grep -c '▾ src')"
+has "...the first as its own project" "▾ я" "$heads"
+has "...and the second as its own project" "▾ ю" "$heads"
+
+fresh
+cy_agent cy-h "${HOMED}я"
+has "a project named for the home directory plus a Cyrillic letter keeps its name" "▾ homeя" "$(cy_list | grep '▾')"
+
+# ---------------------------------------------------------------------------
 t "--list: the seats are asked once"
 TSHIM="$ROOT/tshim"; mkdir -p "$TSHIM"
 cat >"$TSHIM/tmux" <<EOF

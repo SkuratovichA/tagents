@@ -392,7 +392,7 @@ export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
 # ---------------------------------------------------------------------------
 t "8. --update does nothing when no transcript was written"
 # Its own state, on the real updater. The sleeps keep the steps in separate
-# seconds where a step needs it; the same-second step (8b) deliberately has none.
+# seconds where a step needs it; step 8b deliberately has none between its append and the update that must see it.
 SAVE_STATE=$TU_STATE; SAVE_PROJ=$TU_PROJECTS
 SAVE_ACCT=$TU_ACCOUNTS; SAVE_RULES=$TU_ACCOUNT_RULES
 export TU_STATE="$ROOT/ed/usage" TU_PROJECTS="$ROOT/ed/projects"
@@ -400,7 +400,7 @@ export TU_ACCOUNTS="work=$ROOT/ed/acct/work" TU_ACCOUNT_RULES=""
 mkdir -p "$TU_STATE" "$TU_PROJECTS/-ed" "$ROOT/ed/acct/work"
 
 mt() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
-sums() { cksum "$TU_STATE/offsets.tsv" "$TU_STATE/facts.tsv" "$TU_STATE/meta.tsv" 2>&1; }
+sums() { cksum "$TU_STATE/offsets.tsv" "$TU_STATE/facts.tsv" "$TU_STATE/sessions.tsv" 2>&1; }
 SID_SAVE=$SID
 SID=e1e1e1e1-2222-3333-4444-555555555555
 SID2=e2e2e2e2-2222-3333-4444-555555555555
@@ -417,10 +417,10 @@ after="$(sums)|$(mt "$TU_STATE/offsets.tsv")|$(mt "$TU_STATE/facts.tsv")|$(mt "$
 ok "no change: same output and status as an update that found nothing" "|0" "$out|$rc"
 ok "no change: index bytes, mtimes and the stamp untouched" "$before" "$after"
 
-# 8b. one record appended — immediately, in the same second as the last update.
+# 8b. one record appended and --update run at once, with no sleep between them (the stamp itself is about 1s old, from before 8a, so this is not the same second as the last update that wrote it).
 rec q2 $((T2 + 60)) >>"$TU_PROJECTS/-ed/$SID.jsonl"
 bash "$TU" --update >/dev/null 2>&1
-ok "a transcript that grew by one record is counted, same second" "1.000000" "$(usd_of)"
+ok "a transcript that grew by one record is counted, with no sleep" "1.000000" "$(usd_of)"
 
 # 8c. a new transcript.
 sleep 1.1
@@ -459,6 +459,26 @@ SID=$SID_E
 export TU_STATE="$SAVE_STATE" TU_PROJECTS="$SAVE_PROJ"
 export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
 SID=$SID_SAVE
+
+# ---------------------------------------------------------------------------
+t "9. accounts whose names differ only in a Cyrillic letter are two accounts"
+# ---------------------------------------------------------------------------
+# macOS awk under a UTF-8 locale weighs every Cyrillic letter the same ("я" == "ю"), so an unpinned awk takes the two names for one: calibrating the second account wipes the first one's factor. tusage pins its awk to bytes.
+CY="$ROOT/cy"
+mkdir -p "$CY/state" "$CY/proj/-cy" "$CY/acct/ya" "$CY/acct/yu"
+SID_CY=$SID
+for who in ya yu; do
+  SID=$who-0000-0000-0000-000000000000
+  hist "$SID" 1000 >"$CY/acct/$who/history.jsonl"
+  rec q1 "$T2" >"$CY/proj/-cy/$SID.jsonl"
+done
+cy() { TU_STATE="$CY/state" TU_PROJECTS="$CY/proj" TU_ACCOUNTS="aя=$CY/acct/ya;aю=$CY/acct/yu" TU_ACCOUNT_RULES="" \
+  LC_ALL=en_US.UTF-8 bash "$TU" "$@" 2>&1; }
+cy --update >/dev/null
+cy --calibrate "aя" 0.25 >/dev/null
+cy --calibrate "aю" 0.25 >/dev/null
+ok "both accounts keep their own factor" 2 "$(cut -f1 "$CY/state/factor.tsv" 2>/dev/null | grep -c .)"
+SID=$SID_CY
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

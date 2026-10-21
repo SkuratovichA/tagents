@@ -3,8 +3,8 @@
 The Telegram Bot API, typed and small.
 
 Two bots in this ecosystem talked to Telegram, and each carried its own client:
-`tg()` inside the orchestrator's `runner.ts`, and `makeTg()` in an earlier
-ticket agent's `lib/telegram.mjs`. They agreed on everything that matters — POST
+`tg()` inside the orchestrator's `runner.ts`, and `makeTg()` in the ticket agent
+this client was ported from, `lib/telegram.mjs`. They agreed on everything that matters — POST
 JSON, parse the envelope, throw the API's own words, abort on a deadline — and
 drifted on everything else: one split long messages with a 3500-character regex,
 the other with a paragraph-aware splitter that lived in a third bot. This

@@ -60,9 +60,9 @@ closed_rows() {  # sid last first profile badge name dir source — newest first
       [ -e "$f" ] || continue
       # A headless record (the hook's ten-field layout) and only its session id; a pane record is read through rec_row (state.sh).
       headless_alive "$f" &&
-        awk -F"$TAB" 'NR == 1 && $3 != "" { print "LIVE\t" $3 }' "$f"
+        LC_ALL=C awk -F"$TAB" 'NR == 1 && $3 != "" { print "LIVE\t" $3 }' "$f"
     done
-    [ -e "$LABELS" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "NAME", $1, $2 }' "$LABELS"
+    [ -e "$LABELS" ] && LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '{ print "NAME", $1, $2 }' "$LABELS"
     while IFS="$US" read -r p pd bd; do
       [ -n "$p" ] && printf 'B\t%s\t%s\n' "$p" "$bd"
     done <<EOF
@@ -73,7 +73,7 @@ EOF
       # The seventh column is the parent session of a CHILD, and only a child
       # ever writes one — it arrives here as the eighth field, the tag taking
       # the first.
-      awk -F"$TAB" -v OFS="$TAB" '{ print "H", $1, $2, $3, $4, $5, $6, $7 }' "$f"
+      LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '{ print "H", $1, $2, $3, $4, $5, $6, $7 }' "$f"
     done
     # ONE jq PER FILE, not one per session: history.jsonl is a line per prompt
     # ever typed on that account, and walking it once for everything is the
@@ -104,7 +104,7 @@ EOF
       prof=$(profile_claiming "$(cfg_expand_dir "${cfgd:-}")") || prof=""
       [ -n "$prof" ] && printf 'R\t%s\t%s\n' "$sid" "$prof"
     done
-  } | awk -F"$TAB" -v OFS="$TAB" '
+  } | LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '
       $1 == "LIVE" { livesid[$2] = 1; next }
       $1 == "NAME" { lab[$2] = $3; next }
       $1 == "B"    { badge[$2] = $3; next }
@@ -150,7 +150,7 @@ EOF
           src = ((s in hsrc) && (s in jsrc)) ? "both" : ((s in hsrc) ? "history" : "prompts")
           print s, last[s], fe, pr, bd, nm, d, src
         }
-      }' | sort -t"$TAB" -k2,2nr | awk -v cap="$CLOSED_MAX" 'NR <= cap'
+      }' | sort -t"$TAB" -k2,2nr | LC_ALL=C awk -v cap="$CLOSED_MAX" 'NR <= cap'
 }
 
 # The side of the picker: what that conversation actually was. The profile and
@@ -174,7 +174,7 @@ closed_preview() {  # <sid> [profile] [dir]
     done <<EOF
 $(closed_hist_files "$prof")
 EOF
-  } | sort -n | awk -F"$TAB" '
+  } | sort -n | LC_ALL=C awk -F"$TAB" '
       { p[++n] = $2 }
       END { s = (n > 10) ? n - 9 : 1; for (i = s; i <= n; i++) printf "  %s\n", p[i] }'
   # What it cost, when tusage is installed and the session is still inside its
@@ -217,7 +217,7 @@ ask_closed() {  # <port> — the picker itself, normally the body of the popup
   fi
   # Column 1 is the id and is never shown; column 2 is the line you read, built
   # here so the widths are decided over the whole set rather than per row.
-  disp=$(printf '%s\n' "$rows" | awk -F"$TAB" -v OFS="$TAB" -v now="$(date +%s)" -v home="$HOME" '
+  disp=$(printf '%s\n' "$rows" | LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v now="$(date +%s)" -v home="$HOME" '
       function agestr(t,   d) {
         d = now - t; if (d < 0) d = 0
         if (d < 3600)  return sprintf("%dm", int(d / 60))
@@ -247,7 +247,7 @@ ask_closed() {  # <port> — the picker itself, normally the body of the popup
   pick=${pick%%$nl*}
   sid=${pick%%$TAB*}
   [ -n "$sid" ] || return 0
-  line=$(printf '%s\n' "$rows" | awk -F"$TAB" -v OFS="$TAB" -v s="$sid" '$1 == s { print $4, $7; exit }')
+  line=$(printf '%s\n' "$rows" | LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v s="$sid" '$1 == s { print $4, $7; exit }')
   prof=${line%%$TAB*}
   dir=${line#*$TAB}
   resume_closed "$sid" "$dir" "$prof"

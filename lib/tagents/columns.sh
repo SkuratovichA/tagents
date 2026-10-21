@@ -36,7 +36,7 @@ loc${TAB}which pane the agent is in"
 # choice made while it was on.
 cols_table() {
   if usage_on; then printf '%s\n' "$COLS_TABLE"
-  else printf '%s\n' "$COLS_TABLE" | awk -F"$TAB" '$1 != "cost"'
+  else printf '%s\n' "$COLS_TABLE" | LC_ALL=C awk -F"$TAB" '$1 != "cost"'
   fi
 }
 
@@ -45,11 +45,11 @@ col_keys() { cols_table | cut -f1; }
 hidden_cols() {  # the effective hidden set, one key per line
   usage_on || echo cost
   if [ -n "${TA_HIDE_COLS:-}" ]; then
-    printf '%s' "$TA_HIDE_COLS" | tr ',' '\n' | awk 'NF { print $1 }'
+    printf '%s' "$TA_HIDE_COLS" | tr ',' '\n' | LC_ALL=C awk 'NF { print $1 }'
     return 0
   fi
   [ -e "$COLS_FILE" ] || return 0
-  awk 'NF { print $1 }' "$COLS_FILE" 2>/dev/null
+  LC_ALL=C awk 'NF { print $1 }' "$COLS_FILE" 2>/dev/null
 }
 
 # NOT `... | grep -q`: this script runs under pipefail and -q closes the pipe on
@@ -67,7 +67,7 @@ toggle_col() {  # <key> [fzf port of the list behind the picker]
   now=$(hidden_cols | grep -xF -- "$key")
   mkdir -p "$STATE_DIR" 2>/dev/null
   tmpf="$STATE_DIR/.cols.$$"
-  { [ -e "$COLS_FILE" ] && awk -v k="$key" 'NF && $1 != k { print $1 }' "$COLS_FILE"; } \
+  { [ -e "$COLS_FILE" ] && LC_ALL=C awk -v k="$key" 'NF && $1 != k { print $1 }' "$COLS_FILE"; } \
     >"$tmpf" 2>/dev/null
   [ -n "$now" ] || printf '%s\n' "$key" >>"$tmpf"
   mv -f "$tmpf" "$COLS_FILE" 2>/dev/null || rm -f "$tmpf"

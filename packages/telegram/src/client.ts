@@ -1,7 +1,7 @@
 // One Telegram client, shared by every plugin that has a bot token.
 //
 // Two copies of this existed before it: the orchestrator's `tg()` inside
-// runner.ts and an earlier ticket agent's `makeTg()` in an .mjs lib. They agreed
+// runner.ts and the ticket agent this client was ported from, `makeTg()` in an .mjs lib. They agreed
 // on everything that matters (POST JSON, parse the envelope, throw the API's own
 // words, abort on a deadline) and drifted on everything else. This is that
 // agreement, typed.

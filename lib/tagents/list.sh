@@ -25,7 +25,7 @@ list() {
   grouped || grp=0
   # Joined with $RS, never newlines: awk -v refuses a value with a newline in it
   # (BWK awk, and silently enough to look like "nothing is hidden").
-  hidecols=$(hidden_cols | awk -v rs="$RS" '{ printf "%s%s", $1, rs }')
+  hidecols=$(hidden_cols | LC_ALL=C awk -v rs="$RS" '{ printf "%s%s", $1, rs }')
 
   # HOW WIDE IS THE ROW. fzf exports FZF_COLUMNS to the children of its execute
   # and reload bindings, which is exactly how --list is re-run, so that is the
@@ -66,7 +66,7 @@ list() {
       seat=$(current_seat "$dp" "$ss")
       is_docked "$seat" && curseat=$seat
       dockedset=$(printf '%s\n' "$ss" |
-        awk -F"$TAB" -v rs="$RS" '$2 == "docked" { printf "%s%s", $1, rs }')
+        LC_ALL=C awk -F"$TAB" -v rs="$RS" '$2 == "docked" { printf "%s%s", $1, rs }')
     fi
   fi
 
@@ -83,11 +83,11 @@ list() {
   fi
 
   host_once   # in this shell: $(…) below is a subshell, and a failing hostname would run again on every call
-  collect | awk -F"$TAB" -v now="$(date +%s)" -v ttl="$SUB_TTL" \
+  collect | LC_ALL=C awk -F"$TAB" -v now="$(date +%s)" -v ttl="$SUB_TTL" \
                 -v grp="$grp" -v home="$HOME" -v deadttl="$DEAD_TTL" -v cols="$cols" \
                 -v host="$HOST_S" -v hostf="$HOST_F" \
                 -v profs="$(prof_pairs)" -v USC="$US" -v RSC="$RS" \
-                -v hidecols="$hidecols" '
+                -v hidecols="$hidecols" "$AWK_UNTITLE"'
     # macOS awk counts bytes, so substr and %-Ns cut Cyrillic mid-character and
     # pad it to half width. Count characters instead, and never split one.
     function uclen(s,   i, n, c) {
@@ -124,24 +124,12 @@ list() {
     function tailfit(s, w) { return (length(s) <= w) ? s : "…" substr(s, length(s)-w+2) }
     function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
     function dirname(p) { return (p == home) ? "~" : base(p) }
+    # A NUMBER PER GROUP, BY BYTES. The sort below puts a group by its name, and under a UTF-8 locale it weighs every Cyrillic letter alike, so two groups whose names differ only in such letters would be one key and their rows would interleave: this number, in field 15 right after the name, keeps the rows of each group together without changing the order of any two names the locale tells apart.
+    function gnum(g) { if (!(g in gno)) gno[g] = ++ngno; return gno[g] }
     # Claude prefixes the terminal title with a spinner glyph; the rest is the
     # session title it maintains itself, which makes a good default name. The
-    # twin of the one in sync_window_names, and of untitle_of in shell: one
-    # character that is neither letter nor digit is a glyph, anything longer is a
-    # word. Counting "not alphanumeric" BYTES instead — which is what this was —
-    # ate the first word of every Cyrillic and CJK title, macOS awk having no
-    # opinion about characters at all.
-    function untitle(t,   utp, uti, utn, utf) {
-      utp = index(t, " ")
-      if (utp < 2) return t
-      utf = substr(t, 1, utp - 1)
-      utn = 0
-      for (uti = 1; uti <= length(utf); uti++)
-        if (substr(utf, uti, 1) < "\200" || substr(utf, uti, 1) > "\277") utn++
-      if (utn != 1 || utf ~ /^[0-9A-Za-z]$/) return t
-      sub(/^[^ ]+ +/, "", t)
-      return t
-    }
+    # untitle() function is AWK_UNTITLE, spliced into this program: the one rule
+    # shared with sync_window_names and untitle_of (names.sh).
     function tok(v) {
       if (v <= 0)   return ""
       if (v >= 1e6) return sprintf("%.1fM", v/1e6)
@@ -751,9 +739,9 @@ list() {
             gbt = sprintf("%s%s/5h%s", DIM, money(gburn[g]), R)
           hdr = sprintf("%s▾ %s%s%s  %s%s",
                         (gmin[g] < prio["dead"] ? BOLD : DIM), dirname(g), R, gpath, badge, gbt)
-          printf "%d\t%s\t0\t0\t0\t%s\t%s\t%s\t%s\t%s\t0\t0\t0\t0\n",
+          printf "%d\t%s\t0\t0\t0\t%s\t%s\t%s\t%s\t%s\t0\t0\t0\t0\t%d\n",
                  (gmin[g] < prio["dead"] ? 0 : 1), g, gfirst[g], hdr,
-                 gstate[g], gsid[g], gdir[g]
+                 gstate[g], gsid[g], gdir[g], (grp ? gnum(g) : 0)
         }
       }
       # THE ORDER, and the two things it is deliberately NOT sensitive to:
@@ -784,16 +772,17 @@ list() {
           j = ridx[runder[i]]
           if (j != "") { fam = runder[i]; kid = 1; sd = rdead[j]; sa = rage[j] }
         }
-        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\n",
+        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\n",
                (grp ? (gmin[rg[i]] < prio["dead"] ? 0 : 1) : rdead[i]),
                (grp ? rg[i] : ""),
                sd, sa, rp[i], rbody[i], rs[i], rsid[i], rg[i],
-               fam, kid, rdead[i], rage[i]
+               fam, kid, rdead[i], rage[i],
+               (grp ? gnum(rg[i]) : 0)
       }
     }' |
-    sort -t"$TAB" -k1,1n -k2,2 -k3,3n -k4,4n -k5,5n \
+    sort -t"$TAB" -k1,1n -k2,2 -k15,15n -k3,3n -k4,4n -k5,5n \
          -k11,11 -k12,12n -k13,13n -k14,14n |
-    awk -F"$TAB" -v grp="$grp" -v cur="$curseat" -v dks="$dockedset" -v RSC="$RS" \
+    LC_ALL=C awk -F"$TAB" -v grp="$grp" -v cur="$curseat" -v dks="$dockedset" -v RSC="$RS" \
         -v tallyonly="${TA_TALLY:-0}" -v tallyto="$tallyto" '
       # The marker is drawn where the tee draws its dash, so a docked row is no
       # wider than any other and nothing shifts when a chat is docked. In flat

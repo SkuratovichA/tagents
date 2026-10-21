@@ -1,9 +1,10 @@
 # tests/statusline.sh — what hooks/claude-statusline.sh prints, and what it
 # writes, for a fixed payload: golden bytes embedded below, generated once from
-# the version at 63351d8 (before its escape bytes came from one printf instead
-# of five). And that an unchanged run leaves the model file alone: the picker
-# reloads when anything under model/ changes, and every open session runs this
-# hook every 30 s.
+# the version of the 14.10.2026 commit "perf(counts): the status bar serves a
+# cache the picker's refresher keeps from the list's own tally" (before its
+# escape bytes came from one printf instead of five). And that an unchanged run
+# leaves the model file alone: the picker reloads when anything under model/
+# changes, and every open session runs this hook every 30 s.
 #
 # bash 3.2, runnable from any cwd, non-zero exit on any failing check.
 
@@ -33,7 +34,7 @@ run_one() {  # <state dir> <payload>
   printf '%s' "$2" | TA_STATE_DIR="$1" /bin/sh "$HOOK" | od -An -c | tr -s ' \n' ' '
   cut -f2- "$1/model/sid-1.tsv" | od -An -c | tr -s ' \n' ' '
 }
-# Golden outputs, from the 63351d8 hook: <context %> <fast> <colour code>
+# Golden outputs, from that 14.10.2026 hook: <context %> <fast> <colour code>
 ESC=$(printf '\033')
 golden() {  # <colour sgr> <pct> <fast mark>
   printf '%s%s%%%s ctx%s%s\n' "${ESC}[$1" "$2" "${ESC}[90m" "$3" "${ESC}[0m" | od -An -c | tr -s ' \n' ' '

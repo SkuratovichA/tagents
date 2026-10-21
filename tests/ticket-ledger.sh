@@ -5,7 +5,7 @@
 #
 # No tmux, no Claude, no network: the hook is stdin-JSON in, stdout-JSON out,
 # so the whole contract is exercised by piping payloads at it over throwaway
-# git repos in a mktemp dir. $TA_STATE is redirected, PATH is stripped of `gh`
+# git repos in a mktemp dir. $TA_STATE_DIR is redirected, PATH is stripped of `gh`
 # for the run, and nothing here touches the real notes folders, the real
 # ~/.claude, or the running dashboard.
 #
@@ -20,8 +20,12 @@ HOOK="$HERE/../hooks/ticket-ledger.sh"
 ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ticket-ledger-t.XXXXXX") || exit 1
 trap 'rm -rf "$ROOT"' EXIT INT TERM
 
-export TA_STATE="$ROOT/state"
-mkdir -p "$TA_STATE"
+# A scratch HOME, so that a hook reading the wrong variable can never write into
+# a real one: the default $HOME/.claude/agent-state is under it.
+export HOME="$ROOT/home"
+mkdir -p "$HOME"
+export TA_STATE_DIR="$ROOT/state"
+mkdir -p "$TA_STATE_DIR"
 # `gh` must never be reached from a test: the PR block is a network call and
 # this suite has to pass on a laptop with no token and no wifi.
 export PATH="$ROOT/bin:$PATH"
@@ -85,7 +89,7 @@ repo "$ROOT/plain" main
 mkdir -p "$ROOT/plain/PROJ-3001-worktree" && (cd "$ROOT/plain/PROJ-3001-worktree" && git init -q && git config user.email t@t && git config user.name t)
 contains "a worktree directory names it when the branch does not" "like PROJ-3001," "$(ctx "$ROOT/plain/PROJ-3001-worktree")"
 
-printf 's9\tPROJ-4004 the label\n' >"$TA_STATE/labels.tsv"
+printf 's9\tPROJ-4004 the label\n' >"$TA_STATE_DIR/labels.tsv"
 ok "the dashboard label is the last resort" "" "$(ctx "$ROOT/plain" s-none)"
 contains "...and it does resolve when it matches" "like PROJ-4004," "$(ctx "$ROOT/plain" s9)"
 
@@ -162,8 +166,8 @@ contains "and says so when the change has moved since that stage" "STALE" "$(cat
 # ---------------------------------------------------------------------------
 t "7. PR state is served from cache and never waited on"
 
-mkdir -p "$TA_STATE/ledger"
-printf 'web-ui#77 open · common-lib#7 merged\n' >"$TA_STATE/ledger/prs.PROJ-2102.txt"
+mkdir -p "$TA_STATE_DIR/ledger"
+printf 'web-ui#77 open · common-lib#7 merged\n' >"$TA_STATE_DIR/ledger/prs.PROJ-2102.txt"
 ctx "$ROOT/a" >/dev/null
 contains "the cached listing lands in the block" "web-ui#77 open" "$(cat "$led")"
 
@@ -174,13 +178,23 @@ cat >"$ROOT/bin/gh" <<'EOF'
 sleep 30   # a hook that waits on this has already failed
 EOF
 chmod +x "$ROOT/bin/gh"
-touch -t 200001010000 "$TA_STATE/ledger/prs.PROJ-2102.txt"
+touch -t 200001010000 "$TA_STATE_DIR/ledger/prs.PROJ-2102.txt"
 start=$(date +%s)
 ctx "$ROOT/a" >/dev/null
 elapsed=$(( $(date +%s) - start ))
 if [ "$elapsed" -le 3 ]; then pass=$((pass+1)); printf '  ok   a slow gh does not delay the session (%ss)\n' "$elapsed"
 else fail=$((fail+1)); printf '  FAIL a slow gh delayed the session by %ss\n' "$elapsed"; fi
 rm -f "$ROOT/bin/gh"
+
+# ---------------------------------------------------------------------------
+t "8. the state directory is TA_STATE_DIR, the one every other part reads"
+
+FRESH="$ROOT/fresh-state"
+out=$(TA_STATE_DIR="$FRESH" run "$ROOT/a" s-fresh)
+ok "with only TA_STATE_DIR set, the PR cache directory lands under it" yes \
+   "$([ -d "$FRESH/ledger" ] && echo yes || echo no)"
+ok "...and nothing appears under \$HOME/.claude/agent-state" "" \
+   "$(ls -A "$HOME/.claude/agent-state" 2>/dev/null)$([ -e "$HOME/.claude/agent-state" ] && echo exists)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

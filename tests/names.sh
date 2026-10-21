@@ -242,6 +242,13 @@ run --sync-names >/dev/null 2>&1
 ok "an agent with no display name renames nothing" "$NNNAME" "$(wname "$NNW")"
 ok "...and claims no name either"                  ""        "$(wrec "$NNW")"
 
+# A title that is the host name plus one Cyrillic letter is a name, not the host: awk under a UTF-8 locale called the two equal.
+NH=$(newagent tatest-work "$(hostname -s)я" sid-nh "$NOW")
+NHW=$(wof "$NH")
+run --sync-names >/dev/null 2>&1
+ok "a title that is the host name plus a Cyrillic letter names the window" "$(hostname -s)я" "$(wname "$NHW")"
+tm kill-window -t "$NHW" 2>/dev/null
+
 # ---------------------------------------------------------------------------
 t "(c) two agents in one window: the newer activity wins"
 # ---------------------------------------------------------------------------
@@ -387,6 +394,29 @@ settitle "$CYR" '✳ два слова' || echo "  (settitle failed)"
 run --sync-names >/dev/null 2>&1
 ok "...and the spinner glyph in front of it still comes off" \
    'два слова' "$(wname "$CYRW")"
+
+# ONE-CHARACTER FIRST WORDS: a glyph is one character that is a symbol (ASCII
+# punctuation, U+2000-U+2BFF, U+1F000-U+1FFFF); a one-letter word in any
+# alphabet is a word and stays (AWK_UNTITLE, names.sh).
+glyph_case() {  # <title> <expected name>
+  settitle "$CYR" "$1" || echo "  (settitle failed)"
+  run --sync-names >/dev/null 2>&1
+  ok "window name: [$1] -> [$2]" "$2" "$(wname "$CYRW")"
+}
+glyph_case 'я иду' 'я иду'
+glyph_case '✳ я иду' 'я иду'
+glyph_case '⠂ fix-login-bugs' 'fix-login-bugs'
+glyph_case '🚀 launch' 'launch'
+glyph_case '中 文' '中 文'
+glyph_case 'é bon' 'é bon'
+glyph_case '* note' 'note'
+glyph_case 'a b' 'a b'
+uo() { bash -c '. "$1/core.sh"; . "$1/names.sh"; untitle_of "$2"' _ "$TA_LIB" "$1"; }
+TA_LIB="$(cd "$(dirname "$TA")" && pwd)/lib/tagents"
+for c in 'я иду|я иду' '✳ я иду|я иду' '⠂ fix-login-bugs|fix-login-bugs' '🚀 launch|launch' \
+         '中 文|中 文' 'é bon|é bon' '· mid|· mid' '* note|note' 'a b|a b' '7 b|7 b'; do
+  ok "untitle_of: [${c%%|*}] -> [${c##*|}]" "${c##*|}" "$(uo "${c%%|*}")"
+done
 
 # ---------------------------------------------------------------------------
 t "the plan is checked again before it is applied"

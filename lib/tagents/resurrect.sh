@@ -40,7 +40,7 @@ RESURRECT_RETAKE=${TA_RESURRECT_RETAKE:-15}   # the capture after a restore
 
 # One pane of the list-panes map resurrect_rows builds, US-joined: session, window index, pane index, command, slot, docked, notes, tagents' name, directory, window name. The window name goes last in the map and is rejoined the way collect() rejoins the pane title. Notes is 1 only when the pane's editor (@ta_notes) sits in the pane's own window — on screen, which is what a restore puts back — and empty when there is none or it is parked in ta-notes. A flag, not `exit`: the awk reads to the end of what printf writes, so no producer here is ever cut off under pipefail.
 resurrect_pane() {  # <map> <pane id>
-  printf '%s\n' "$1" | awk -F'\\|@\\|' -v OFS="$US" -v p="$2" '
+  printf '%s\n' "$1" | LC_ALL=C awk -F'\\|@\\|' -v OFS="$US" -v p="$2" '
     { win[$1] = $2 SUBSEP $3 }
     !d && $1 == p { s = $2; wi = $3; pi = $4; c = $5; sl = $7; dk = $8; e = $9; tn = $10; dr = $11
                     w = $12; for (i = 13; i <= NF; i++) w = w "|@|" $i; d = 1 }
@@ -59,11 +59,11 @@ resurrect_rows() {
   # #{@tagents} is the sidebar WINDOW's marker (ensure_dash sets it); a pane
   # format expands window options, so every pane of that window carries it.
   map=$(tmux list-panes -a -F "#{pane_id}|@|#{session_name}|@|#{window_index}|@|#{pane_index}|@|#{pane_current_command}|@|#{@tagents}|@|#{@tagents_slot}|@|#{@tagents_docked}|@|#{@ta_notes}|@|#{@tagents_name}|@|#{pane_current_path}|@|#{window_name}" 2>/dev/null)
-  printf '%s\n' "$map" | awk -F'\\|@\\|' -v OFS="$TAB" '!d && $6 == "1" { print "D", $2, $3; d = 1 }'
+  printf '%s\n' "$map" | LC_ALL=C awk -F'\\|@\\|' -v OFS="$TAB" '!d && $6 == "1" { print "D", $2, $3; d = 1 }'
   # Every pane the ps walk vouches for (with the claude pid) first, then the
   # ones only the command name vouches for (no pid, so no argv); awk keeps the
   # first line per pane, so a pane known both ways keeps its pid.
-  { live_pane_pids; live_panes | sed "s/\$/$TAB/"; } | awk -F"$TAB" '!s[$1]++' |
+  { live_pane_pids; live_panes | sed "s/\$/$TAB/"; } | LC_ALL=C awk -F"$TAB" '!s[$1]++' |
     while IFS="$TAB" read -r p pid; do
       IFS="$US" read -r sid cwd tr cfgd hascfg < <(rec_row "${p#%}")
       [ -n "$sid" ] || continue                     # no record yet: nothing to resume by
@@ -75,7 +75,7 @@ resurrect_rows() {
         IFS="$US" read -r sess widx pidx x x x x tname x wname < <(resurrect_pane "$map" "$home")
       fi
       [ "$tname" = "$wname" ] || tname=""
-      model=$(awk -F"$TAB" 'NR == 1 { print $2; exit }' "$STATE_DIR/model/$sid.tsv" 2>/dev/null)
+      model=$(LC_ALL=C awk -F"$TAB" 'NR == 1 { print $2; exit }' "$STATE_DIR/model/$sid.tsv" 2>/dev/null)
       argv=""; [ -n "$pid" ] && argv=$(ps -o args= -p "$pid" 2>/dev/null | tr '\t\n' '  ')
       printf 'A\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$sid" "$cfgd" "$hascfg" "$sess" "$widx" "$pidx" \
@@ -88,7 +88,7 @@ resurrect_rows() {
 resurrect_files() { ls -1 "$RESURRECT_DIR" 2>/dev/null | grep -E '^[0-9]+\.tsv$' | sort -rn; }
 
 resurrect_latest() {  # newest snapshot, or nothing (exit 1)
-  resurrect_files | awk -v d="$RESURRECT_DIR" 'NR == 1 { print d "/" $0 }' | grep .
+  resurrect_files | LC_ALL=C awk -v d="$RESURRECT_DIR" 'NR == 1 { print d "/" $0 }' | grep .
 }
 
 # This tmux server's #{start_time}, the signal continuum judges a boot by; non-zero when there is no server to ask.
@@ -106,7 +106,7 @@ resurrect_pick() {  # [start time] — the newest snapshot written BEFORE this t
   local start=${1:-}
   [ -n "$start" ] || start=$(resurrect_start) || return 1
   resurrect_files |
-    awk -F. -v s="$start" -v d="$RESURRECT_DIR" '!hit && $1 + 0 < s + 0 { print d "/" $0; hit = 1 }' | grep .
+    LC_ALL=C awk -F. -v s="$start" -v d="$RESURRECT_DIR" '!hit && $1 + 0 < s + 0 { print d "/" $0; hit = 1 }' | grep .
 }
 
 # Written aside and moved into place, so a restore never reads half a capture;
@@ -127,7 +127,7 @@ resurrect_save() {  # [ignored args: post-save-layout passes the state-file path
   mv -f "$tmpf" "$RESURRECT_DIR/$now.tsv" 2>/dev/null || { rm -f "$tmpf"; return 1; }
   # The one a restore on this server would read stays however old it is: a busy first hour must not push the pre-boot set out before anyone restored from it.
   keep=$(resurrect_pick "$st") || keep=""
-  resurrect_files | awk -v k="$RESURRECT_KEEP" 'NR > k' |
+  resurrect_files | LC_ALL=C awk -v k="$RESURRECT_KEEP" 'NR > k' |
     while IFS= read -r f; do [ "$RESURRECT_DIR/$f" = "$keep" ] || rm -f "$RESURRECT_DIR/$f"; done
   return 0
 }
@@ -229,7 +229,7 @@ resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
   [ -s "$file" ] || { echo "tagents: nothing recorded in $file"; return 0; }
   [ "$dry" = 1 ] || lock_dir "$RESURRECT_LOCK" "$RESURRECT_LOCK_STALE" || { echo "tagents: another resurrect is running"; return 1; }
   live=$(live_sids | tr '\n' ' ')
-  total=$(awk -F"$TAB" '$1 == "A"' "$file" | wc -l | tr -d ' ')
+  total=$(LC_ALL=C awk -F"$TAB" '$1 == "A"' "$file" | wc -l | tr -d ' ')
   # Not IFS=TAB on the raw line: an empty field would collapse (see collect()
   # in state.sh), so the rows are re-joined with US first.
   while IFS="$US" read -r t sid cfgd hascfg sess widx pidx wname tname dir docked notes model argv; do
@@ -249,7 +249,7 @@ resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
     # on the command line it was started with.
     [ -n "$model" ] && cmd="$cmd --model $(cfg_quote "$model")"
     # Both spellings, `--effort high` and `--effort=high`; a flag, not `exit` (resurrect_pane says why).
-    eff=$(printf '%s\n' "$argv" | awk '{ for (i = 1; i <= NF && !d; i++)
+    eff=$(printf '%s\n' "$argv" | LC_ALL=C awk '{ for (i = 1; i <= NF && !d; i++)
       if ($i == "--effort" && i < NF) { print $(i + 1); d = 1 }
       else if ($i ~ /^--effort=/) { sub(/^--effort=/, "", $i); print $i; d = 1 } }')
     [ -n "$eff" ] && cmd="$cmd --effort $(cfg_quote "$eff")"
@@ -268,9 +268,9 @@ resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
     elif [ -n "$wname" ] && [ "$(tmux display -p -t "$pane" '#{window_name}' 2>/dev/null)" != "$wname" ]; then rename_win "$wid" "$wname" plain; fi
     [ "$notes" = 1 ] && notes_panes="$notes_panes $pane"
     echo "✓ $sess:$widx.$pidx ${tname:-$wname} → $pane${prof:+ ($prof)}${model:+ $model}${note}"; n=$((n + 1))
-  done < <(awk -F"$TAB" -v OFS="$US" '$1 == "A" { $1 = $1; print }' "$file" | sort -t"$US" -k5,5 -k6,6n -k7,7n)
+  done < <(LC_ALL=C awk -F"$TAB" -v OFS="$US" '$1 == "A" { $1 = $1; print }' "$file" | sort -t"$US" -k5,5 -k6,6n -k7,7n)
   if [ "$dry" != 1 ]; then
-    [ -n "$(awk -F"$TAB" '$1 == "D"' "$file")" ] && ensure_dash >/dev/null 2>&1 && echo "✓ dashboard"
+    [ -n "$(LC_ALL=C awk -F"$TAB" '$1 == "D"' "$file")" ] && ensure_dash >/dev/null 2>&1 && echo "✓ dashboard"
     resurrect_notes $notes_panes
     unlock_dir "$RESURRECT_LOCK"
     # Every capture was held off while the chats were placed, and the newest snapshot still predates them: take it again once their records are written.
@@ -294,13 +294,13 @@ resurrect_notes() {  # <restored panes whose editor was on screen…> — after 
   # session and holder names are tnotes' own; tests/resurrect.sh pins them).
   # |@| like every other format here: a window name with a space in it, or none at all, would shift space-separated fields.
   tmux list-panes -s -t "=ta-notes" -F '#{window_id}|@|#{@ta_notes_for}|@|#{window_name}' 2>/dev/null |
-    awk -F'\\|@\\|' '$3 != "hold" && $2 == "" { print $1 }' | sort -u |
+    LC_ALL=C awk -F'\\|@\\|' '$3 != "hold" && $2 == "" { print $1 }' | LC_ALL=C sort -u |
     while IFS= read -r w; do tmux kill-window -t "$w" 2>/dev/null; done
   [ $# -gt 0 ] || return 0
   # An editor that was on screen comes back beside its chat instead, in the chat's own window: a pane in the notes directory that no chat links to, closed the same way before tnotes opens the fresh one.
   for p in "$@"; do
     tmux list-panes -t "$p" -F '#{pane_id}|@|#{@ta_notes_for}|@|#{pane_current_path}' 2>/dev/null |
-      awk -F'\\|@\\|' -v p="$p" '$1 != p && $2 == "" && $3 ~ /\/\.claude\/notes$/ { print $1 }' |
+      LC_ALL=C awk -F'\\|@\\|' -v p="$p" '$1 != p && $2 == "" && $3 ~ /\/\.claude\/notes$/ { print $1 }' |
       while IFS= read -r w; do tmux kill-pane -t "$w" 2>/dev/null; done
   done
   sleep 1   # tnotes recognises a chat by its command name or its record; both need a moment

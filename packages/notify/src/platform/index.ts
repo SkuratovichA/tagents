@@ -21,8 +21,9 @@ export interface PlatformDeps {
   readonly icon?: string;
 }
 
-function launchd(deps: PlatformDeps) {
+function launchd(deps: PlatformDeps, app?: string) {
   return createLaunchd({
+    ...(app !== undefined ? { app } : {}),
     ...(deps.uid !== undefined ? { uid: deps.uid } : {}),
     ...(deps.home !== undefined ? { home: deps.home } : {}),
     ...(deps.exec !== undefined ? { exec: deps.exec } : {}),
@@ -34,7 +35,7 @@ function macos(deps: PlatformDeps): Platform {
   return {
     name: 'macos',
     notifier: createHelperNotifier({ app, ...(deps.exec !== undefined ? { exec: deps.exec } : {}) }),
-    service: launchd(deps),
+    service: launchd(deps, app),
     async setup(log) {
       if ((await appState(app, deps.icon, deps.exec)) !== 'up to date') await buildApp(app, deps.icon, log, deps.exec);
       return helperAuthorize(app, deps.exec);

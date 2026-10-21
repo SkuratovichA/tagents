@@ -314,6 +314,10 @@ After the chats are up, the restore SHALL close the notes editors that tmux-resu
 - **THEN** the chats are still restored, the orphans are left and tnotes is not asked
 - **AND** any other value of `resurrect.notes`, or none, means `reopen`; a missing `tnotes` is not an error
 
+#### Scenario: A window named for the holder plus a Cyrillic letter
+- **WHEN** an unlinked editor in `ta-notes` sits in a window named `holdя`
+- **THEN** it is closed with the other orphans, since only the name `hold` itself marks the holder
+
 ### Requirement: The hook restore
 `tagents --resurrect --auto` is what tmux-resurrect's post-restore-all hook runs. It SHALL print nothing on the terminal and append its report to `resurrect.log` in the state directory, each run headed by a `== <date time> ==` line, keeping the last 2000 lines from earlier runs. It SHALL do nothing at all, silently, when `resurrect.auto` is false. After a restore it SHALL show `tagents: resurrected <n> agents, <k> skipped — <log path>` in the tmux status line.
 

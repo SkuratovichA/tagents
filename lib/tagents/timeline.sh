@@ -44,14 +44,14 @@ timeline() {
       [ -e "$f" ] || continue
       # A headless record (the hook's ten-field layout) and only its session id; a pane record is read through rec_row (state.sh).
       headless_alive "$f" &&
-        awk -F"$TAB" 'NR == 1 && $3 != "" { print "LIVE\t" $3 }' "$f"
+        LC_ALL=C awk -F"$TAB" 'NR == 1 && $3 != "" { print "LIVE\t" $3 }' "$f"
     done
-    [ -e "$LABELS" ] && awk -F"$TAB" -v OFS="$TAB" '{ print "NAME", $1, $2 }' "$LABELS"
+    [ -e "$LABELS" ] && LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '{ print "NAME", $1, $2 }' "$LABELS"
     for f in "$STATE_DIR/history.tsv.1" "$STATE_DIR/history.tsv"; do
       [ -e "$f" ] || continue
-      awk -F"$TAB" -v OFS="$TAB" '{ print "H", $1, $2, $3, $4, $5, $6, $7 }' "$f"
+      LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '{ print "H", $1, $2, $3, $4, $5, $6, $7 }' "$f"
     done
-  } | awk -F"$TAB" -v now="$now" -v hours="$hours" -v offsec="$offsec" \
+  } | LC_ALL=C awk -F"$TAB" -v now="$now" -v hours="$hours" -v offsec="$offsec" \
           -v barw="$barw" -v home="$HOME" -v namew="$namew" -v cwdw="$cwdw" '
       function base(p,   n, a) { n = split(p, a, "/"); return n ? a[n] : p }
       function hhmm(t,   lt) {

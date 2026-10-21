@@ -19,6 +19,7 @@ import type { RunSpec, ServiceManager, ServiceStatus } from '../../notifier.ts';
 import { BUNDLE_ID, plistPath as defaultPlistPath } from '../../paths.ts';
 
 const LAUNCHCTL = '/bin/launchctl';
+const PLUTIL = '/usr/bin/plutil';
 const TIMEOUT_MS = 15_000;
 const BOOTSTRAP_ATTEMPTS = 3;
 const BOOTSTRAP_RETRY_MS = 1000;
@@ -35,7 +36,7 @@ function esc(s: string): string {
 // ThrottleInterval is the least time launchd leaves between two starts of the job, counted from the last start: a crash
 // after a long run restarts at once, a crash loop at most every 5 minutes. `run` exits 1 only when it fails to start,
 // and 0 when it deliberately does not run, which `SuccessfulExit: false` never restarts.
-export function renderPlist(run: RunSpec, label: string = BUNDLE_ID): string {
+export function renderPlist(run: RunSpec, label: string = BUNDLE_ID, associatedId: string = BUNDLE_ID): string {
   const env = Object.entries(run.env)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([k, v]) => `    <key>${esc(k)}</key>\n    <string>${esc(v)}</string>`)
@@ -70,7 +71,7 @@ ${env}
   <string>${esc(run.logFile)}</string>
   <key>AssociatedBundleIdentifiers</key>
   <array>
-    <string>${esc(BUNDLE_ID)}</string>
+    <string>${esc(associatedId)}</string>
   </array>
 </dict>
 </plist>
@@ -123,6 +124,8 @@ export function createLaunchd(
     readonly exec?: Exec;
     readonly label?: string;
     readonly plist?: string;
+    /** The helper app's path: its built CFBundleIdentifier is what the plist associates the job with; unset: the base id. */
+    readonly app?: string;
     /** The wait between bootstrap attempts; tests pass 0. */
     readonly retryDelayMs?: number;
   } = {}
@@ -134,6 +137,20 @@ export function createLaunchd(
   const plist = o.plist ?? defaultPlistPath(o.home ?? os.homedir());
   const domain = `gui/${uid}`;
   const target = `${domain}/${label}`;
+
+  // build.sh gives an app built with an icon an id of its own, so the built Info.plist is the one source of it.
+  async function appId(): Promise<string> {
+    if (o.app === undefined) return BUNDLE_ID;
+    try {
+      const r = await exec(PLUTIL, ['-extract', 'CFBundleIdentifier', 'raw', path.join(o.app, 'Contents', 'Info.plist')], {
+        timeoutMs: TIMEOUT_MS,
+      });
+      const id = r.stdout.trim();
+      return r.code === 0 && id !== '' ? id : BUNDLE_ID;
+    } catch {
+      return BUNDLE_ID;
+    }
+  }
 
   async function bootout(): Promise<void> {
     const r = await exec(LAUNCHCTL, ['bootout', target], { timeoutMs: TIMEOUT_MS });
@@ -159,7 +176,7 @@ export function createLaunchd(
       fs.mkdirSync(path.dirname(plist), { recursive: true });
       fs.mkdirSync(path.dirname(run.logFile), { recursive: true });
       await bootout();
-      writeAtomic(plist, renderPlist(run, label));
+      writeAtomic(plist, renderPlist(run, label, await appId()));
       let last = '';
       for (let attempt = 1; attempt <= BOOTSTRAP_ATTEMPTS; attempt++) {
         const r = await exec(LAUNCHCTL, ['bootstrap', domain, plist], { timeoutMs: TIMEOUT_MS });

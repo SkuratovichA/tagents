@@ -9,17 +9,25 @@ const BODY_CLIP = 200;
 
 /**
  * The pane title without the status glyph Claude Code puts in front of it: the
- * TypeScript copy of `untitle_of` (lib/tagents/names.sh:41). A glyph is exactly
- * one code point that is no ASCII letter or digit and is followed by a space;
- * anything else is left alone, so `Search index rebuild` keeps all three
- * words. The test runs the shell function on the same inputs and compares.
+ * TypeScript copy of `untitle_of` (lib/tagents/names.sh:82), whose rule is the
+ * awk `AWK_UNTITLE` (lib/tagents/names.sh:64). The first word, with the spaces
+ * after it, is dropped only when it is exactly one code point and that is an
+ * ASCII character other than a letter or digit, one in U+2000-U+2BFF, or one
+ * in U+1F000-U+1FFFF. Every other title is left alone, so `Search index
+ * rebuild` keeps all three words and `я иду` keeps its one-letter word. The
+ * test runs the shell function on the same inputs and compares.
  */
 export function untitle(title: string): string {
   const space = title.indexOf(' ');
   if (space < 1) return title;
   const first = title.slice(0, space);
-  if ([...first].length !== 1 || /^[0-9A-Za-z]$/.test(first)) return title;
-  return title.replace(/^[^ ]+ +/, '');
+  if ([...first].length !== 1) return title;
+  const cp = first.codePointAt(0) ?? 0;
+  const glyph =
+    cp < 0x80
+      ? !/^[0-9A-Za-z]$/.test(first)
+      : (cp >= 0x2000 && cp <= 0x2bff) || (cp >= 0x1f000 && cp <= 0x1ffff);
+  return glyph ? title.replace(/^[^ ]+ +/, '') : title;
 }
 
 /**

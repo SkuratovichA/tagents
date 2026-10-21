@@ -21,7 +21,7 @@
 CONFIG_FILE=${TA_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/tagents/config.yaml}
 CFG=""          # the flattened config, parsed at most once per process
 CFG_LOADED=0
-RS=$'\036'      # record separator: awk -v cannot take a value with a newline in
+RS=$'\036'      # record separator: LC_ALL=C awk -v cannot take a value with a newline in
                 # it (BWK awk errors out and prints nothing), so the profile
                 # table handed to list() is joined with this instead
 CFG_NL='
@@ -45,7 +45,7 @@ CFG_EXPANDED=''     # cfg_expand_dir_v's answer
 CFG_TOP=''          # cfg_top_of's answer
 
 cfg_parse() {  # [file name for warnings] stdin: yaml -> stdout: path<TAB>value, refusals as !<TAB>file:line: why
-  awk -v FNAME="${1:-$CONFIG_FILE}" '
+  LC_ALL=C awk -v FNAME="${1:-$CONFIG_FILE}" '
     # A refusal travels IN the stream, on a line no key can begin with: the
     # stream is read out of a command substitution, and stderr is the one thing
     # a substitution cannot capture — which is how these went unseen for as
@@ -328,7 +328,7 @@ cfg_overlay() {
   done <<EOF
 $top
 EOF
-  CFG=$(printf '%s\n%s\n%s\n' "$top" "$RS" "$CFG" | awk -F"$TAB" -v rs="$RS" '
+  CFG=$(printf '%s\n%s\n%s\n' "$top" "$RS" "$CFG" | LC_ALL=C awk -F"$TAB" -v rs="$RS" '
     function sub2(p,   a, b) {       # the a.b prefix of a path
       a = index(p, ".")
       if (a == 0) return p
@@ -364,7 +364,7 @@ EOF
 
 cfg_children() {  # <path> -> direct child names, file order, no repeats
   cfg_load
-  printf '%s\n' "$CFG" | awk -F"$TAB" -v k="$1" '
+  printf '%s\n' "$CFG" | LC_ALL=C awk -F"$TAB" -v k="$1" '
     BEGIN { pre = k "."; pl = length(pre) }
     index($1, pre) == 1 {
       ch = substr($1, pl + 1)

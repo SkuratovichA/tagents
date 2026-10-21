@@ -10,7 +10,7 @@
 # good enough when the question is "where does THIS chat go home to".
 parked_slot() {  # <pane-id> -> the placeholder standing in for it
   tmux list-panes -a -F '#{pane_id} #{@tagents_slot} #{@tagents_parked}' 2>/dev/null |
-    awk -v a="$1" '$2 == "1" && $3 == a { print $1; exit }'
+    LC_ALL=C awk -v a="$1" '$2 == "1" && $3 == a { print $1; exit }'
 }
 # The windows a list is running in right now — the windows that have seats of
 # their own. The pid in @tagents_list is what tells a live claim from one left
@@ -37,7 +37,7 @@ slot_pane() {
   local ex
   ex=" $(list_windows | tr '\n' ' ')"
   tmux list-panes -a -F '#{pane_id} #{@tagents_slot} #{window_id}' 2>/dev/null |
-    awk -v ex="$ex" '$2 == "1" && index(ex, " " $3 " ") == 0 { print $1; exit }'
+    LC_ALL=C awk -v ex="$ex" '$2 == "1" && index(ex, " " $3 " ") == 0 { print $1; exit }'
 }
 # WHAT IS DOCKED IS ANSWERED BY MARKERS, NEVER BY POSITION. This used to be
 # "the first pane in the sidebar window that is not the list", which is only true
@@ -61,7 +61,7 @@ seats() {  # <list pane> -> pane_id<TAB>docked|free for each seat in its window
   [ -n "$win" ] || return 0
   tmux list-panes -t "$win" \
        -F '#{pane_id} #{?@tagents_docked,docked,-} #{?@tagents_slot,free,-}' 2>/dev/null |
-    awk -v me="$dp" -v OFS="$TAB" '
+    LC_ALL=C awk -v me="$dp" -v OFS="$TAB" '
       $1 == me { next }
       $2 == "docked" { print $1, "docked"; next }
       $3 == "free"   { print $1, "free" }'
@@ -83,7 +83,7 @@ is_docked_in() {  # <pane> <window-id>
 }
 
 seat_here() {  # <the output of seats> <pane> — is that pane one of them?
-  printf '%s\n' "${1:-}" | awk -F"$TAB" -v p="${2:-}" '$1 == p { f = 1 } END { exit !f }'
+  printf '%s\n' "${1:-}" | LC_ALL=C awk -F"$TAB" -v p="${2:-}" '$1 == p { f = 1 } END { exit !f }'
 }
 
 # THE SEAT ENTER USES IS THE ONE YOU WERE LAST IN, and @tagents_cur is what
@@ -119,11 +119,11 @@ current_seat() {  # <list pane> [<the output of seats>] -> the seat, nothing whe
   # default in a window whose active pane is the list.
   for cur in $(tmux list-panes -t "$win" \
                  -F '#{?pane_active,1,#{?pane_last,2,3}} #{pane_id}' 2>/dev/null |
-               sort | awk '$1 != "3" { print $2 }'); do
+               sort | LC_ALL=C awk '$1 != "3" { print $2 }'); do
     seat_here "$ss" "$cur" && { printf '%s' "$cur"; return 0; }
   done
-  cur=$(printf '%s\n' "$ss" | awk -F"$TAB" '$2 == "free" { print $1; exit }')
-  [ -n "$cur" ] || cur=$(printf '%s\n' "$ss" | awk -F"$TAB" 'NR == 1 { print $1; exit }')
+  cur=$(printf '%s\n' "$ss" | LC_ALL=C awk -F"$TAB" '$2 == "free" { print $1; exit }')
+  [ -n "$cur" ] || cur=$(printf '%s\n' "$ss" | LC_ALL=C awk -F"$TAB" 'NR == 1 { print $1; exit }')
   printf '%s' "$cur"
 }
 
@@ -303,7 +303,7 @@ ensure_seat() {  # <list pane> — repair this window's seats, print the current
   # anyway. Only ever a chat — the terminal somebody split off beside the list
   # carries no marker, so it is not a seat and is not considered here. Breaking
   # THAT out is precisely what this used to do.
-  seats "$dp" | awk -F"$TAB" '$2 == "docked" { print $1 }' |
+  seats "$dp" | LC_ALL=C awk -F"$TAB" '$2 == "docked" { print $1 }' |
     while IFS= read -r c; do
       [ -n "$(parked_slot "$c")" ] || break_home "$c"
     done

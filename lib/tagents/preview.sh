@@ -12,7 +12,7 @@ preview() {
     # Not IFS=TAB: tab is IFS whitespace, so an empty field (no session id, no
     # detail) would collapse and shift every later value one slot left.
     IFS="$US" read -r ts st sid cwd tr detail cfgd hascfg parkey < <(
-      awk -F"$TAB" -v OFS="$US" \
+      LC_ALL=C awk -F"$TAB" -v OFS="$US" \
           'NR==1 { print $1, $2, $3, $4, $5, $6, $7, (NF >= 7 ? 1 : 0), $11; exit }' "$f")
     printf '\033[1m%s\033[0m\n' "$(origin_of "${sid:-}" "${tr:-}" || printf '%s' "$cwd")"
     [ -n "$cwd" ] && printf '\033[90mcwd now: %s\033[0m\n' "$cwd"
@@ -119,7 +119,7 @@ preview() {
 preview_name() {  # <pane>
   local pane=${1:-} sid dir tr lbl nm
   IFS="$US" read -r sid dir tr lbl < <(
-    awk -F"$TAB" -v OFS="$US" 'NR==1 { print $3, $4, $5, $10; exit }' \
+    LC_ALL=C awk -F"$TAB" -v OFS="$US" 'NR==1 { print $3, $4, $5, $10; exit }' \
         "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)
   nm=$(label_of "${sid:-$pane}")
   if [ -z "$nm" ]; then

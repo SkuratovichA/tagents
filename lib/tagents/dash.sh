@@ -23,7 +23,7 @@ keyhdr() {  # <cols> <item>... -> the header, one item per line at worst
   shift
   case $cols in ''|*[!0-9]*) cols=80 ;; esac
   [ "$cols" -lt 24 ] && cols=24
-  printf '%s\n' "$@" | awk -v w="$((cols - 4))" '
+  printf '%s\n' "$@" | LC_ALL=C awk -v w="$((cols - 4))" '
     function uclen(s,   i, n, c) {
       n = 0
       for (i = 1; i <= length(s); i++) {
