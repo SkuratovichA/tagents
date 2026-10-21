@@ -21,6 +21,11 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: The plugin contract matches the code
         run: pnpm plugin:check
+      - name: The specs are valid OpenSpec
+        env:
+          DO_NOT_TRACK: '1'
+          OPENSPEC_TELEMETRY: '0'
+        run: pnpm spec:check
       - name: Install the Claude Code CLI
         run: |
           curl -fsSL https://claude.ai/install.sh | bash

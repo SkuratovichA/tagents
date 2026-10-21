@@ -42,6 +42,7 @@ all.
 | `packages/telegram/` | [`@tagents/telegram`](packages/telegram/README.md), the Telegram Bot API typed and small — one client for every plugin that has a bot token |
 | `packages/contract/` | `@tagents/contract`, private — generates the contract of the [Claude Code plugin](#the-claude-code-plugin) from the code and moves the plugin's version |
 | `.claude-plugin/`, `skills/tagents/`, `contract.json` | the [Claude Code plugin](#the-claude-code-plugin): its manifest, its skill, and the contract generated from the code |
+| `openspec/` | the [specs](#specs): what every part of tagents does, one capability per spec, and the changes proposed against them |
 
 They are one system. The hook writes a record per session into
 `~/.claude/agent-state/`; `tagents` joins that with the live tmux pane list and
@@ -809,3 +810,17 @@ reaches the server you are working in:
 `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/<suite>.sh`
 (`tests/scratch-guard.sh`). All of them are bash 3.2,
 run every check, and exit non-zero when any of them fails.
+
+## Specs
+
+What tagents does is written down in [OpenSpec](https://github.com/Fission-AI/OpenSpec) specs under `openspec/specs/`, one capability per spec: the list, the keys, docking, the refresher, the agent-state hook, notes, usage, resurrect, configuration, the headless sessions, the plugin system and each package. They describe behaviour someone can observe (keys, verbs, flags, exit codes, config keys, the files and tmux options other parts read), not how the code gets there, and they replace the dated changelog this repository used to keep; the history stays in git.
+
+A change starts as a proposal under `openspec/changes/<name>/` (why, what changes, the tasks, and the spec deltas it makes) and is archived into the specs once it has landed. In a Claude Code session in this repository the `/opsx:propose`, `/opsx:apply` and `/opsx:archive` commands drive that; from a shell, the CLI is a pinned dev dependency:
+
+```sh
+pnpm exec openspec list --specs        # the capabilities
+pnpm exec openspec show refresher      # one of them
+pnpm spec:check                        # every spec and change validates (CI runs this too)
+```
+
+`LEARNING.md` stays: it records mistakes and how they were fixed, which a spec does not.
