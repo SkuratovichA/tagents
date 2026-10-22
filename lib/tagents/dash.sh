@@ -118,15 +118,14 @@ dash() {
   if [ "$mode" = popup ]; then esc_act=abort; quit=''; after='+abort'; fi
 
   # A LIST RUNNING IN A PANE IS THE SIDEBAR. Not "is it running in the pane some
-  # marker points at" — it claims the pane, so enter docks the chat into the right
-  # half of this very window and the cursor lands in it, whichever window that
+  # marker points at" — it claims the pane, so enter selects the chat's window, the
+  # sidebar comes along and the cursor lands in the chat, whichever window that
   # happens to be. Reading the marker instead is what sent you to another window:
   # the marker had drifted onto a chat elsewhere, and enter followed the marker.
-  # The docked pane then stands in for fzf's preview — it is the live thing.
   #
   # A popup is the one list with no pane of its own (TMUX_PANE is empty inside
-  # display-popup) and nowhere to put a seat, so it keeps the text preview and
-  # hands the chat to the dedicated sidebar instead.
+  # display-popup) and nowhere for the sidebar to be moved from, so it keeps the
+  # text preview and hands the chat to the dedicated sidebar instead.
   if [ "$mode" != popup ] && [ -n "${TMUX_PANE:-}" ] && claim_dash; then
     trap release_dash EXIT INT TERM
     enter_lbl='open here'
@@ -166,10 +165,9 @@ dash() {
   # verbatim. Aliases nobody needs a row in the table for follow the verb they
   # alias: double-click is enter, f2 is the rename key.
   BINDS=()
-  kb "$K_OPEN"    "execute-silent($SELF --act open {1} {3} {4} {5})$after"
-  kb double-click "execute-silent($SELF --act open {1} {3} {4} {5})$after"
-  kb "$K_GOTO"    "execute-silent($SELF --act goto {1})$after"
-  kb "$K_BORROW"  "execute-silent($SELF --act borrow {1})$after"
+  kb "$K_OPEN"    "execute-silent($SELF --act open {1} {3} {4} {5} {2})$after"
+  kb double-click "execute-silent($SELF --act open {1} {3} {4} {5} {2})$after"
+  kb "$K_GOTO"    "execute-silent($SELF --act goto {1} {3} {4} {5} {2})$after"
   kb "$K_SEND"    "$ask($SELF --act send {1})$after"
   kb "$K_BESIDE"  "execute-silent($SELF --act beside {1} {3} {4} {5})$after"
   kb "$K_RENAME"  "$ask($SELF --act rename {1} {3} {4})"
