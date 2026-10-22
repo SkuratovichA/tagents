@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # tests/resurrect.sh — what comes back after a reboot: the snapshot of every
-# live chat, which snapshot a restore picks, and where a docked chat is filed;
+# live chat, which snapshot a restore picks, and where a joined chat is filed;
 # then the restore itself, on a second server standing in for the one a reboot
 # brings up: each chat back in its pane, on its login, with its model — and
 # every way a row can fail to come back without anything else going wrong;
@@ -272,7 +272,7 @@ ok "row 1: pane index"         0                  "$(col "$r1" 7)"
 ok "row 1: window name"        Alpha              "$(col "$r1" 8)"
 ok "row 1: tagents' own name"  Alpha              "$(col "$r1" 9)"
 ok "row 1: directory"          "$PERS"            "$(col "$r1" 10)"
-ok "row 1: not docked"         ""                 "$(col "$r1" 11)"
+ok "row 1: the docked column is empty" ""            "$(col "$r1" 11)"
 ok "row 1: no notes editor"    ""                 "$(col "$r1" 12)"
 ok "row 1: the model"          claude-opus-5-5    "$(col "$r1" 13)"
 has "row 1: argv keeps --effort" "--effort high"  "$(col "$r1" 14)"
@@ -328,49 +328,45 @@ ok "a named file is printed as it is" "$(row "$S1" "$SID2")" \
 rm -f "$STATE/resurrect/$((start - 10)).tsv" "$STATE/resurrect/$((start - 100)).tsv"
 
 # ---------------------------------------------------------------------------
-t "3. a docked chat is filed at its home seat, and the sidebar is noted"
+t "3. a joined chat is filed under its home session, and the sidebar is noted"
 # ---------------------------------------------------------------------------
-PH=$(tm split-window -d -t tatest-proj:1 -P -F '#{pane_id}' 'sleep 600')
-tm set -p -t "$PH" @tagents_slot 1
-tm set -p -t "$PH" @tagents_parked "$P1"
-tm set -p -t "$P1" @tagents_docked @1
-tm set -w -t tatest-dash:0 @tagents 1
+tm set -p -t "$P1" @tagents_joined tatest-proj
+# A sidebar the way a live list marks its pane: its pid, which is this suite's and so alive.
+tm set -p -t tatest-dash:0.0 @tagents_list "$$"; tm set -p -t tatest-dash:0.0 @tagents_dash 1
 
 sleep 1
 run --resurrect-save
 S3="$STATE/resurrect/$(newest)"
 ok "a changed set is a new file" 2 "$(resurrect_files)"
 r1=$(row "$S3" "$SID1")
-ok "docked: the placeholder's session"      tatest-proj "$(col "$r1" 5)"
-ok "docked: the placeholder's window index" 1           "$(col "$r1" 6)"
-ok "docked: the placeholder's pane index"   1           "$(col "$r1" 7)"
-ok "docked: marked as docked"               1           "$(col "$r1" 11)"
+ok "joined: the home session"              tatest-proj "$(col "$r1" 5)"
+ok "joined: no window index"               ""          "$(col "$r1" 6)"
+ok "joined: no pane index"                 ""          "$(col "$r1" 7)"
+ok "joined: the docked column stays empty" ""          "$(col "$r1" 11)"
 ok "the sidebar window is a D row" "D	tatest-dash	0" "$(awk -F'\t' '$1 == "D"' "$S3")"
 
-tm set -up -t "$P1" @tagents_docked
-tm set -uw -t tatest-dash:0 @tagents
-tm kill-pane -t "$PH" 2>/dev/null
+tm set -up -t "$P1" @tagents_joined
+tm set -up -t tatest-dash:0.0 @tagents_list; tm set -up -t tatest-dash:0.0 @tagents_dash
 rm -f "$S3"
 ok "...and cleaned up: S1 is the newest again" "${S1##*/}" "$(newest)"
 
 # ---------------------------------------------------------------------------
-t "3b. a notes editor counts only while it is on screen beside its chat"
+t "3b. a notes editor counts only while it is beside its chat"
 # ---------------------------------------------------------------------------
-# tnotes links both ways: @ta_notes on the chat names its editor, @ta_notes_for on the editor names its chat. A hidden editor is parked in ta-notes, and a restore does not bring one of those back.
+# tnotes links both ways: @ta_notes on the chat names its editor, @ta_notes_for on the editor names its chat. An editor the user moved out of the chat's window is not beside it, and a restore does not bring one of those back.
 E1=$(tm split-window -d -t "$P1" -P -F '#{pane_id}' 'sleep 600')
 tm set -p -t "$E1" @ta_notes_for "$P1"; tm set -p -t "$P1" @ta_notes "$E1"
-tm new-session -d -s ta-notes -n hold 'sleep 600'
-E2=$(tm new-window -d -t ta-notes: -P -F '#{pane_id}' 'sleep 600')
+E2=$(tm new-window -d -t tatest-other:3 -P -F '#{pane_id}' 'sleep 600')
 tm set -p -t "$E2" @ta_notes_for "$P2"; tm set -p -t "$P2" @ta_notes "$E2"
 
 sleep 1
 run --resurrect-save
 S4="$STATE/resurrect/$(newest)"
-ok "an editor on screen: the notes column is 1" 1  "$(col "$(row "$S4" "$SID1")" 12)"
-ok "a parked editor: the notes column is empty" "" "$(col "$(row "$S4" "$SID2")" 12)"
+ok "an editor in the chat's window: the notes column is 1" 1  "$(col "$(row "$S4" "$SID1")" 12)"
+ok "an editor in another window: the notes column is empty" "" "$(col "$(row "$S4" "$SID2")" 12)"
 
 tm kill-pane -t "$E1" 2>/dev/null
-tm kill-session -t =ta-notes >/dev/null 2>&1
+tm kill-pane -t "$E2" 2>/dev/null
 tm set -up -t "$P1" @ta_notes; tm set -up -t "$P2" @ta_notes
 [ "$S4" = "$S1" ] || rm -f "$S4"
 ok "...and cleaned up: S1 is the newest again" "${S1##*/}" "$(newest)"
@@ -616,8 +612,19 @@ t "13. a D row brings the dashboard back"
 printf 'D\ttatest-dash\t0\n' >"$SNAP/dash.tsv"
 out=$(run --resurrect --from "$SNAP/dash.tsv")
 has "the report says so" "✓ dashboard" "$out"
-ok "a window in tatest-dash carries the marker" 1 \
-   "$(tm list-windows -t =tatest-dash -F '#{@tagents}' 2>/dev/null | grep -c '^1$')"
+ok "a pane of tatest-dash is the sidebar" 1 \
+   "$(tm list-panes -a -F '#{session_name} #{pane_title}' 2>/dev/null | grep -c '^tatest-dash tagents-sidebar$')"
+
+# ---------------------------------------------------------------------------
+t "13b. a snapshot written by the seat-based version still restores"
+# ---------------------------------------------------------------------------
+# A 14-column row whose docked flag (column 11) is 1, and a D row of the old kind.
+transcript sid-old
+OLDSNAP="$SNAP/old-seat.tsv"
+{ printf 'D\ttatest-old\t0\n'; arow sid-old "" 1 tatest-old 0 0 old-w old-t "$NOR" 1 "" "" claude; } >"$OLDSNAP"
+out=$(run --resurrect --from "$OLDSNAP"); ok "--resurrect succeeds" 0 "$?"
+ok "the chat was started where its row says" yes "$(tm list-panes -a -F '#{session_name}' | grep -q '^tatest-old$' && echo yes || echo no)"
+ok "the docked flag was ignored: no pane carries a seat option" "" "$(tm list-panes -a -F '#{@tagents_slot}#{@tagents_docked}#{@tagents_parked}' | tr -d '\n')"
 
 # ---------------------------------------------------------------------------
 t "14. the status bar captures, throttled; every: 0 turns it off"
@@ -722,11 +729,9 @@ ok "the kill ended it" 0 "$(panes_named "%$LN")"
 waitsnap "sid-$LN" absent; ok "...and it is out of the snapshot within seconds" 0 "$?"
 
 # ---------------------------------------------------------------------------
-t "16. the dash window a reboot leaves is where the list starts, not beside it"
+t "16. the shell a reboot leaves where the sidebar was is closed, and the list starts in the D row's window"
 # ---------------------------------------------------------------------------
-# Server C is the sidebar as tmux-resurrect restores it: a window called dash
-# with no marker and an idle shell in each pane the list, its seat and a docked
-# chat used to hold.
+# Server C is the sidebar as tmux-resurrect restores it: its pane comes back an idle shell that still carries the title tagents-sidebar, in the window it was in.
 tm kill-server >/dev/null 2>&1
 sleep 1
 tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 'sleep 600' || exit 1
@@ -737,18 +742,19 @@ tm set -g default-command '' >/dev/null 2>&1
 # next new-session or new-window kill the server ("server exited unexpectedly").
 tm set -g default-size 200x50 >/dev/null 2>&1
 SOCK=$(tm display -p '#{socket_path}' 2>/dev/null)
-DW=$(tm new-window -d -t tatest-dash: -n dash -P -F '#{window_id}' -c "$NOR")
+DW=$(tm display -p -t tatest-dash:0 '#{window_id}')
 tm resize-window -t "$DW" -x 200 -y 50 >/dev/null 2>&1
-DP=$(tm display -p -t "$DW" '#{pane_id}')
-SP=$(tm split-window -d -t "$DW" -P -F '#{pane_id}' -c "$NOR")
+RUNP=$(tm display -p -t "$DW" '#{pane_id}')
+LEFT=$(tm split-window -d -t "$DW" -P -F '#{pane_id}' -c "$NOR")
+tm select-pane -T tagents-sidebar -t "$LEFT"
+USERSH=$(tm split-window -d -t "$DW" -P -F '#{pane_id}' -c "$NOR")
 
-dashes() { tm list-windows -t =tatest-dash -F '#{window_name}' 2>/dev/null | grep -c '^dash$'; }
 # The list is a bash script, so its pane's command reads as a shell whatever it
 # is doing; what tells it from the idle shell is the pid it stamps on its pane.
-waitlist() {  # <pane id> — a list has started in it and claimed it (~5 s)
+waitlists() {  # <window id> — a list has started in the window and claimed it (~5 s)
   local i=0 pid
   while [ "$i" -lt 50 ]; do
-    pid=$(tm display -p -t "$1" '#{@tagents_list}' 2>/dev/null)
+    pid=$(tm list-panes -t "$1" -F '#{@tagents_list}' 2>/dev/null | grep . | head -1)
     [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && return 0
     i=$((i + 1)); sleep 0.1
   done
@@ -763,79 +769,23 @@ pane=$(tm display -p -t tatest-ad:0.0 '#{pane_id}' 2>/dev/null)
 f=$(outof "$pane"); ok "the chat runs" 0 "$?"
 has "...resuming its conversation" "--resume sid-ad" "$(field ARGS "$f")"
 has "the dashboard comes back in the same run" "✓ dashboard" "$out"
-ok "one window named dash" 1 "$(dashes)"
-ok "...the one that was restored" "$DW" \
-   "$(tm list-windows -t =tatest-dash -F '#{window_id} #{window_name}' | awk '$2 == "dash" { print $1 }')"
-ok "...and it carries the marker" 1 "$(tm show -wv -t "$DW" @tagents 2>/dev/null)"
-waitlist "$DP"; ok "the list runs in its first pane" 0 "$?"
-has "...started there in place of the shell" tagents "$(tm display -p -t "$DP" '#{pane_start_command}')"
-ok "the spare shell is gone" "" "$(tm display -p -t "$SP" '#{pane_id}' 2>/dev/null)"
-# ensure_dash always gives the list a seat beside it; anything else would be a
-# leftover shell or a second list grown next to the first.
-ok "one pane besides the seat" 1 \
-   "$(tm list-panes -t "$DW" -F '#{@tagents_slot}' 2>/dev/null | grep -c -v '^1$')"
-ok "...and it is the one list" 1 \
-   "$(tm list-panes -t "$DW" -F '#{@tagents_list}' 2>/dev/null | grep -c .)"
-
-# A dash window with something running in it is somebody's, however it is
-# named: left as it is, and the sidebar gets a window of its own.
-tm kill-window -t "$DW" >/dev/null 2>&1
-BW=$(tm new-window -d -t tatest-dash: -n dash -P -F '#{window_id}' 'sleep 600')
-tm resize-window -t "$BW" -x 200 -y 50 >/dev/null 2>&1
-run --ensure-dash >/dev/null 2>&1
-ok "a dash window in use keeps what it runs" sleep "$(tm display -p -t "$BW" '#{pane_current_command}')"
-ok "...keeps its one pane" 1 "$(tm display -p -t "$BW" '#{window_panes}')"
-ok "...and gets no marker" "" "$(tm show -wv -t "$BW" @tagents 2>/dev/null)"
-ok "a second dash is made beside it" 2 "$(dashes)"
-ok "...and that one is the sidebar" 1 \
-   "$(tm list-windows -t =tatest-dash -F '#{window_id} #{window_name} #{@tagents}' |
-        awk -v b="$BW" '$1 != b && $2 == "dash" && $3 == "1"' | wc -l | tr -d ' ')"
-
-# The list is a bash script, so a pane still running one reads as an idle shell: an unmarked dash window with a live list in it is not a corpse either. A sleep stands in for the list, stamped the way claim_dash stamps its pane.
-killdashes() {
-  tm list-windows -t =tatest-dash -F '#{window_id} #{window_name}' 2>/dev/null |
-    awk '$2 == "dash" { print $1 }' | while IFS= read -r w; do tm kill-window -t "$w" >/dev/null 2>&1; done
-}
-killdashes
-LW2=$(tm new-window -d -t tatest-dash: -n dash -P -F '#{window_id}' -c "$NOR")
-LP=$(tm display -p -t "$LW2" '#{pane_id}')
-sleep 600 & LPID=$!
-tm set -p -t "$LP" @tagents_list "$LPID"
-lpid0=$(tm display -p -t "$LP" '#{pane_pid}')
-run --ensure-dash >/dev/null 2>&1
-ok "a dash window whose list still runs keeps its pane" "$lpid0" "$(tm display -p -t "$LP" '#{pane_pid}' 2>/dev/null)"
-ok "...and gets no marker" "" "$(tm show -wv -t "$LW2" @tagents 2>/dev/null)"
-ok "...and the sidebar gets a window of its own" 2 "$(dashes)"
-kill "$LPID" 2>/dev/null; wait "$LPID" 2>/dev/null
-
-# Every list in the dashboard session, counted by the pid each one stamps on its pane.
-lists() {
-  local n=0 p pid
-  while read -r p pid; do [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && n=$((n + 1)); done <<EOF
-$(tm list-panes -s -t =tatest-dash -F '#{pane_id} #{@tagents_list}' 2>/dev/null)
-EOF
-  echo "$n"
-}
-# A list started in a new window, or a new session, takes a moment to claim it; one grown beside it before then is a second sidebar.
-killdashes
-run --ensure-dash >/dev/null 2>&1
-sleep 2
-ok "a new dash window: one list in it" 1 "$(lists)"
-tm new-session -d -s tatest-keep 'sleep 600'
-tm kill-session -t =tatest-dash >/dev/null 2>&1
-run --ensure-dash >/dev/null 2>&1
-sleep 2
-ok "a new dashboard session: one list in it" 1 "$(lists)"
+waitlists "$DW"; ok "the list runs in the window the D row names" 0 "$?"
+SB=$(tm list-panes -t "$DW" -F '#{pane_id} #{@tagents_list}' | awk 'NF == 2 { print $1 }')
+has "...started there as a pane of its own" tagents "$(tm display -p -t "$SB" '#{pane_start_command}')"
+ok "...and it is the one list" 1 "$(tm list-panes -t "$DW" -F '#{@tagents_list}' 2>/dev/null | grep -c .)"
+ok "the idle shell that still said tagents-sidebar is closed" 0 "$(panes_named "$LEFT")"
+ok "the user's own shell beside it stays" 1 "$(panes_named "$USERSH")"
+ok "...and so does the pane that was running something" 1 "$(panes_named "$RUNP")"
+ok "exactly one pane carries the title tagents-sidebar" 1 "$(tm list-panes -a -F '#{pane_title}' | grep -c '^tagents-sidebar$')"
 
 # ---------------------------------------------------------------------------
-t "17. the editors tmux-resurrect orphaned go; a restored chat's editor comes back"
+t "17. the editors tmux-resurrect orphaned go, the ta-notes session of an older version with them; a restored chat's editor comes back"
 # ---------------------------------------------------------------------------
 # ta-notes as a reboot leaves it: the holder, two editors nothing links to a
 # chat any more, and one that still names its chat (an editor opened since).
 # The session and holder names are tnotes' own; a rename there must fail here.
-ok "tnotes parks editors in the session the restore cleans" ta-notes \
+ok "tnotes still names the session an older version parked editors in" ta-notes \
    "$(sed -n 's/^NOTES_SESSION=//p' "$HERE/../tnotes")"
-has "...under a holder window called hold" "-n hold" "$(grep 'new-session' "$HERE/../tnotes")"
 notes_park() {
   tm new-session -d -s ta-notes -n hold 'sleep 600'
   O1=$(tm new-window -d -t ta-notes: -P -F '#{window_id}' 'sleep 600')
@@ -870,8 +820,9 @@ ok "the unlinked editor beside it is gone" 0 "$(panes_named "$OP")"
 ok "the first orphan is gone"  gone "$(gone "$O1")"
 ok "the second orphan is gone" gone "$(gone "$O2")"
 ok "an orphan whose window name is the holder's plus a Cyrillic letter is gone too" gone "$(gone "$O3")"
-ok "the holder stays" 1 "$(tm list-windows -t =ta-notes -F '#{window_name}' 2>/dev/null | grep -c '^hold$')"
-ok "the linked editor stays" there "$(gone "$LW")"
+ok "the holder is gone" 0 "$(tm list-windows -t =ta-notes: -F '#{window_name}' 2>/dev/null | grep -c '^hold$')"
+ok "the linked editor goes with the session" gone "$(gone "$LW")"
+ok "the ta-notes session is wound up" no "$(tm has-session -t =ta-notes 2>/dev/null && echo yes || echo no)"
 PP=$(tm display -p -t tatest-parked:0.0 '#{pane_id}' 2>/dev/null)
 outof "$PP" >/dev/null; ok "the chat whose editor was parked runs too" 0 "$?"
 ok "tnotes was asked for the one editor that was on screen, once" "toggle $NP" "$(cat "$OUT/tnotes.log" 2>/dev/null)"
