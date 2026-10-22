@@ -302,11 +302,21 @@ collect() {
   # recognised as alive and the whole dashboard reads "everything is closed".
   # Printable ASCII survives either way; the title goes last because it is the
   # one field that carries arbitrary text.
-  tmux list-panes -a -F "P|@|#{pane_id}|@|#{session_name}:#{window_index}.#{pane_index}|@|#{pane_current_path}|@|#{window_id}|@|#{?@tagents_list,1,0}|@|#{pane_index}|@|#{pane_title}" 2>/dev/null |
-    LC_ALL=C awk -v OFS="$TAB" '
+  # A pane is the sidebar when a list is RUNNING in it: its @tagents_list holds a live pid (list_in_pane's rule). A marker left on a pane that now runs
+  # a chat must not hide that chat, so the pid leads each line, is checked here with kill -0 (a builtin: no process), and the awk turns it into the flag.
+  local panes pids=" " line pid
+  panes=$(tmux list-panes -a -F "#{@tagents_list}|@|P|@|#{pane_id}|@|#{session_name}:#{window_index}.#{pane_index}|@|#{pane_current_path}|@|#{window_id}|@|#{pane_index}|@|#{pane_title}" 2>/dev/null)
+  while IFS= read -r line; do
+    pid=${line%%|@|*}
+    case $pid in ''|*[!0-9]*) continue ;; esac
+    kill -0 "$pid" 2>/dev/null && pids="$pids$pid "
+  done <<<"$panes"
+  printf '%s\n' "$panes" |
+    LC_ALL=C awk -v OFS="$TAB" -v pids="$pids" '
+      $0 == "" { next }
       { n = split($0, a, "\\|@\\|")
         t = a[8]; for (i = 9; i <= n; i++) t = t "|@|" a[i]
-        print a[1], a[2], a[3], t, a[4], a[5], a[6], a[7] }'
+        print a[2], a[3], a[4], t, a[5], a[6], ((a[1] != "" && index(pids, " " a[1] " ")) ? 1 : 0), a[7] }'
   tmux list-windows -a -F "W|@|#{window_id}|@|#{session_name}|@|#{window_index}|@|#{window_name}" 2>/dev/null |
     LC_ALL=C awk -v OFS="$TAB" '{ n = split($0, a, "\\|@\\|"); t = a[5]; for (i = 6; i <= n; i++) t = t "|@|" a[i]; print a[1], a[2], a[3], a[4], t }'
   # G and not S: the S records are the state files.

@@ -776,6 +776,19 @@ ok "R32 a sidebar exists" 1 "$(nsbs)"
 ok "R32 it is in the chat's window" "$(wid "$PN")" "$(sbwin)"
 tm kill-pane -t "$(sbpane)"; unhook
 
+t "R37 a list marker whose process is gone does not make a chat pane the sidebar"
+tm new-session -d -s tatest-st1 -x 200 -y 50 -c "$REPO" "exec '$BIN/claude' 600" >/dev/null 2>&1      # not made by tagents: only a live chat makes it a group
+PST=$(tm list-panes -t "=tatest-st1:" -F '#{pane_id}' | head -1); chatrec "$PST" sid-st working
+ok "R37 the session is a group while the pane is unmarked" tatest-st1 "$(grp_of "$PST")"
+GONE=$(sh -c 'echo $$')                                                                                  # the pid of a shell that has exited
+tm set -p -t "$PST" @tagents_list "$GONE"
+has "R37 a dead pid on the chat's pane: the chat still has its row" "$PST" "$(keys)"
+ok "R37 and the session is still a group" tatest-st1 "$(grp_of "$PST")"
+ok "R37 collect says the pane is not a sidebar" 0 "$(modrun collect | awk -F'\t' -v p="$PST" '$1 == "P" && $2 == p { print $7 }')"
+tm set -p -t "$PST" @tagents_list "$$"
+ok "R37 a live pid still reads as a sidebar" 1 "$(modrun collect | awk -F'\t' -v p="$PST" '$1 == "P" && $2 == p { print $7 }')"
+tm kill-session -t =tatest-st1 2>/dev/null
+
 t "R34 the cursor follows the window on screen"
 kill_sidebars; mkchat tatest-work cur; WCUR=$LASTWIN; PCUR=$LASTPANE
 SB=$(fake_sidebar "$WCUR"); tm set -p -t "$SB" @tagents_port 9
