@@ -296,3 +296,18 @@ The naming test made its window with `new-window -n` and wrote a label for the s
 
 ## Test code written before its first run carried four wrong expectations (22.10.2026)
 A second fake sidebar made beside the one `enter` had just moved (F21) so a killed pane left one; a `move-window` of a window already broken out and joined elsewhere (R30); a new chat on the `no window` group expected in the client's session although the spec sends it to the session that owns the project when one does (R31, chat-launch spec); and F8 passes with both unzoom lines of `sidebar_move` removed because tmux 3.7b unzooms the target window itself on `join-pane` (probed for the target; the source side was not probed), so F8 pins the outcome and not those lines.
+
+## `tnotes sync` read the session name before the chat and closed the chat of every session named with a space (22.10.2026)
+The pane listing was `pane_id window_id session_name chat`, read with `read -r id ewin esess chat`; a session called `release notes` or `no window` put its second word into `chat`, the lookup of that "chat" failed, and `sync` took the pane for an editor of a gone chat and closed it, so the refresher's slow pass killed live chats in such sessions. The suite found it only in the full run, because the sections that make those sessions come before the tnotes ones; the same section run alone passed. A field that can hold a space goes last in a `read`, which gives the last variable the rest of the line.
+
+## A dimmed window row was also listed for a window whose pane already had a closed row (22.10.2026)
+`list.sh` counted only live chat panes as the window's chat, so a pane left at a shell with a closed record was listed twice, once as the closed row and once as its window's dimmed row, and a session holding nothing else could never be a closed-only group (the sink rule of the spec was unreachable). A pane that has a row to draw (`kept`) is the window's row.
+
+## An apostrophe in an awk comment ends the single-quoted program (22.10.2026)
+The new comment above the dimmed rows said "the window's row", inside the awk program `list.sh` hands to awk in single quotes, and the whole list failed with a bash syntax error at the next line; `bash -n` accepts the file only when the quote is closed, so it saw nothing wrong until the program was run. Comments inside an awk program written in a shell script carry no apostrophe.
+
+## `grep -q` at the end of a pipeline answers no under pipefail (22.10.2026)
+`x=$(a | b | grep -q pat && echo yes || echo no)` returned `no` for a header that contained the pattern, because `grep -q` exits at the first match and the producer ahead of it dies of SIGPIPE, and `set -o pipefail` takes that status as the pipeline's. Capture the text first and test it with `has`/`hasnt`.
+
+## The window a restored sidebar ends in is the client's, because the claim runs one follow (22.10.2026)
+`--resurrect` starts the list in the window of the `D` row, the list claims the sidebar and runs one follow (choice 10), and the follow moves it into the window the client shows; a test of "the list runs in the recorded window" has to keep the client in that window, or it measures the follow. Stub agents write no record, so a second restore from the same snapshot resumes the chats again into new windows, which also moves the session's current window away from index 0.

@@ -651,9 +651,313 @@ ok "W1 moving the sidebar renames nothing" "$nm1" "$(tm display -p -t "$WN" '#{w
 run --label "$SN1" "named by hand"
 ok "W1 --label renames a window that holds the sidebar" "named by hand" "$(tm display -p -t "$WN" '#{window_name}')"
 
+# ---------------------------------------------------------------------------------------------------------------------------------
+t "L1 L2 L3 L12 sessions are groups; a directory does not group; scratch sessions stay out; names with a space and a dot"
+kill_sidebars; to tatest-work
+pos() { hdrs | awk -v n="$1" '$0 == n { print NR; exit }'; }
+mkdir -p "$WRROOT/d1" "$WRROOT/d2"
+newsess tatest-l-work; mkchat tatest-l-work w1 "$WRROOT/d1"; LW1=$LASTPANE; SW1=$LASTSID
+mkchat tatest-l-work w2 "$WRROOT/d2"; LW2=$LASTPANE
+newsess tatest-l-personal; mkchat tatest-l-personal p1; LP1=$LASTPANE
+has "L1 header work" tatest-l-work "$(hdrs)"; has "L1 header personal" tatest-l-personal "$(hdrs)"
+ok "L1 personal before work" yes "$([ "$(pos tatest-l-personal)" -lt "$(pos tatest-l-work)" ] && echo yes || echo no)"
+ok "L1 the personal chat is under personal" tatest-l-personal "$(grp_of "$LP1")"
+ok "L2 two directories, one header" "tatest-l-work:tatest-l-work" "$(grp_of "$LW1"):$(grp_of "$LW2")"
+hasnt "L3 a scratch session has no header" tatest-scratch "$(hdrs)"
+newsess tatest-l-made; mkshell tatest-l-made devsrv; LDEV=$LASTWIN
+has "L3 a made session without a chat is a group" tatest-l-made "$(hdrs)"; has "L3 its window is listed" "$LDEV" "$(keys)"
+has "L12 a session with a space in its name" "release notes" "$(hdrs)"
+has "L12 a session with a dot in its name: tmux 3.7b keeps the dot, so the header is a.b" "a.b" "$(hdrs)"
+ok "L12 its chat is under that header" "a.b" "$(grp_of "$DOTP")"
+kill_sidebars; to 'a.b'; SB=$(fake_sidebar "$(wid '=a.b:')"); act open "$DOTP" working sid-dot "$REPO"
+ok "L12 selection works in a session with a dot" "$(wid "$DOTP")" "$(sbwin)"
+to tatest-work
+
+t "L4 a dimmed window row"
+ln=$(line_of "$LDEV")
+ok "L4 key, state, empty session id" "$LDEV|none|" "$(printf '%s' "$ln" | awk -F'\t' '{ print $1 "|" $3 "|" $4 }')"
+ok "L4 the directory is the first pane's" "$REPO" "$(printf '%s' "$ln" | awk -F'\t' '{ print $5 }')"
+txt=$(printf '%s' "$ln" | awk -F'\t' '{ print $2 }')
+has "L4 it shows the window name" devsrv "$txt"; hasnt "L4 no cost" '$' "$txt"; hasnt "L4 no state glyph" "●" "$txt"
+hasnt "L4 absent from the flat list" "$LDEV" "$(TA_FLAT=1 keys)"
+
+t "L5 L6 the order inside a group and the header's stand-in"
+newsess tatest-l-ord; LBASE=$LASTWIN
+mkchat tatest-l-ord oc; LOC=$LASTPANE
+mkshell tatest-l-ord d1; LD1=$LASTWIN
+mkshell tatest-l-ord d2; LD2=$LASTWIN
+mkshell tatest-l-ord zz; LZP=$LASTPANE; chatrec "$LZP" sid-zz dead      # a pane left at a shell with a record: a closed row, and that row is its window's row
+ok "L5 chats, dimmed windows in window order, closed rows" "$LOC $LBASE $LD1 $LD2 $LZP " "$(rows_of tatest-l-ord)"
+hk=$(lst | strip | awk -F'\t' 'index($2, "\342\226\276") { g = substr($2, index($2, "\342\226\276") + 4); sub(/  .*$/, "", g); if (g == "tatest-l-ord") { print $1; exit } }')
+ok "L6 the header carries the key of the first row" "$LOC" "$hk"
+newsess tatest-l-only; LONLY=$LASTWIN
+hl=$(lst | strip | awk -F'\t' 'index($2, "\342\226\276") { g = substr($2, index($2, "\342\226\276") + 4); sub(/  .*$/, "", g); if (g == "tatest-l-only") { print $1 "|" $3 "|" $4; exit } }')
+ok "L6 a session of windows only: window id, state none, no session id" "$LONLY|none|" "$hl"
+
+t "L7 L14 the no-window group is last; a closed-only session sinks below live ones; groups keep their place"
+chatrec "%994" sid-ngone dead
+newsess "no window"; mkchat "no window" nwc; LNW=$LASTPANE
+tm new-session -d -s tatest-l-aaa -x 200 -y 50 -c "$REPO" "exec sleep 600"; tm set -t =tatest-l-aaa: @tagents_made 1
+AAP=$(tm list-panes -t =tatest-l-aaa: -F '#{pane_id}'); chatrec "$AAP" sid-aaa dead
+ok "L7 a row whose pane is gone is under no window" "no window" "$(grp_of %994)"
+ok "L7 the session called no window is a group of its own" 2 "$(hdrs | grep -c '^no window$')"
+ok "L7 the last header is the trailing group" "no window" "$(hdrs | tail -1)"
+ok "L7 the session's chat is listed before the trailing group's row" yes "$([ "$(groups | awk -F'\t' -v k="$LNW" '$1 == k { print NR; exit }')" -lt "$(groups | awk -F'\t' '$1 == "%994" { print NR; exit }')" ] && echo yes || echo no)"
+ok "L14 a closed-only session sorts after a live one although its name sorts first" yes "$([ "$(pos tatest-l-aaa)" -gt "$(pos tatest-l-work)" ] && echo yes || echo no)"
+ok "L14 ...and before the trailing group" yes "$([ "$(pos tatest-l-aaa)" -lt "$(hdrs | awk '$0 == "no window" { n = NR } END { print n }')" ] && echo yes || echo no)"
+before=$(hdrs | tr '\n' ',')
+chatrec "$LW1" "$SW1" blocked "$WRROOT/d1"
+ok "L14 a blocked agent does not reorder the groups" "$before" "$(hdrs | tr '\n' ',')"
+
+t "L8 the flat list carries the group in a column of its own"
+has "L8 the flat row names its group" tatest-l-wo "$(TA_FLAT=1 TA_COLS=120 line_of "$LW1")"
+run --toggle-col loc >/dev/null 2>&1
+has "L8 ...also with loc hidden" tatest-l-wo "$(TA_FLAT=1 TA_COLS=120 line_of "$LW1")"
+run --toggle-col loc >/dev/null 2>&1
+
+t "L9 sessions that differ only in a Cyrillic letter"
+newsess я; mkchat я a1; CA1=$LASTPANE; mkchat я a2; CA2=$LASTPANE
+newsess ю; mkchat ю b1; CB1=$LASTPANE
+has "L9 a header each" я "$(hdrs)"; has "L9 ...and the other" ю "$(hdrs)"
+ok "L9 the rows of я sit together" "yes" "$(rows_of я | awk -v a="$CA1" -v b="$CA2" '{ f = 0; for (i = 1; i <= NF; i++) if ($i == a || $i == b) f++; print (f == 2) ? "yes" : "no" }')"
+has "L9 the last row of я is drawn with └" "└" "$(line_of "$(rows_of я | awk '{ print $NF }')")"
+has "L9 the last row of ю is drawn with └" "└" "$(line_of "$(rows_of ю | awk '{ print $NF }')")"
+
+t "L10 no seat marks"
+hasnt "L10 no ▶" "▶" "$(lst)"; hasnt "L10 no ▹" "▹" "$(lst)"
+ok "L10 TA_MARKS=0 still prints rows" yes "$([ "$(TA_MARKS=0 lst | wc -l | tr -d ' ')" -gt 0 ] && echo yes || echo no)"
+
+t "L11 a shell split before the chat: one chat row, no dimmed row, enter selects"
+newsess tatest-l-b; mkchat tatest-l-b bchat; LBW=$LASTWIN; LBP=$LASTPANE; LBS=$LASTSID
+tm split-window -d -b -h -t "$LBP" "exec sleep 600"
+ok "L11 the chat is not the first pane" 1 "$(tm display -p -t "$LBP" '#{pane_index}')"
+has "L11 one chat row" "$LBP" "$(keys)"; hasnt "L11 no dimmed row for that window" "$LBW" "$(keys)"
+ok "L11 first_chat_pane finds the chat" "$LBP" "$(modrun first_chat_pane "$LBW")"
+kill_sidebars; to tatest-l-b; SB=$(fake_sidebar "$(wid =tatest-l-b:)"); act open "$LBP" working "$LBS" "$REPO"
+ok "L11 enter selects the window" "$LBW" "$(sbwin)"
+
+t "L13 L15 the subdirectory, the header's path and badges"
+mkchat tatest-l-work sub "$REPO/packages/client"
+has "L13 the detail text starts with the subdirectory" "packages/client" "$(line_of "$LASTPANE")"
+h92=$(TA_COLS=92 lst | strip | grep '▾ tatest-l-work' | awk -F'\t' '{ print $2 }'); h91=$(TA_COLS=91 lst | strip | grep '▾ tatest-l-work' | awk -F'\t' '{ print $2 }')    # the text field only: the fifth field is a directory; captured first because a grep -q at the end of a pipe under pipefail answers no on SIGPIPE
+has "L15 the path is shown at 92 columns" "tagents-wr" "$h92"
+hasnt "L15 ...and not at 91" "tagents-wr" "$h91"
+newsess tatest-l-bdg; mkchat tatest-l-bdg e1; chatrec "$LASTPANE" sid-e1 blocked
+mkchat tatest-l-bdg e2; chatrec "$LASTPANE" sid-e2 done
+mkchat tatest-l-bdg e3; chatrec "$LASTPANE" sid-e3 working
+has "L15 badges in the order blocked, idle, working" "⚠1 ✓1 ●1" "$(lst | strip | grep '▾ tatest-l-bdg')"
+to tatest-work
+
+# ---------------------------------------------------------------------------------------------------------------------------------
+t "N1 N2 N3 the editor is an ordinary split of the chat's window"
+kill_sidebars; newsess tatest-nt; mkchat tatest-nt chat "$NREPO"; NW=$LASTWIN; NP=$LASTPANE; NS=$LASTSID
+mkchat tatest-nt other "$NREPO"; NOP=$LASTPANE; NOS=$LASTSID
+to tatest-nt; tm select-window -t "$NW"; SB=$(fake_sidebar "$NW"); tm select-pane -t "$NP"
+cw0=$(width_of "$NP")
+tn toggle "$NP"; rc=$?
+ED=$(tm show -pv -t "$NP" @ta_notes)
+ok "N1 toggle exit 0" 0 "$rc"
+ok "N1 the chat's window holds the editor" "$NW" "$(wid "$ED")"
+ok "N1 the editor names the chat" "$NP" "$(tm show -pv -t "$ED" @ta_notes_for)"
+ew=$(width_of "$ED"); ok "N1 about 45 percent of the chat's width" yes "$([ $(( ew * 100 / cw0 )) -ge 40 ] && [ $(( ew * 100 / cw0 )) -le 48 ] && echo yes || echo no)"
+ok "N1 the cursor did not move" "$NP" "$(active "$NW")"
+ok "N1 no ta-notes session" 1 "$(tm has-session -t =ta-notes 2>/dev/null; echo $?)"
+act open "$NOP" working "$NOS" "$REPO"; act open "$NP" working "$NS" "$REPO"
+ok "N2 the same editor pane after another row and back" "$ED" "$(tm show -pv -t "$NP" @ta_notes)"
+ok "N2 with the width it had" "$ew" "$(width_of "$ED")"
+ok "N2 no ta-notes session was ever made" 1 "$(tm has-session -t =ta-notes 2>/dev/null; echo $?)"
+NT=$(tm split-window -d -v -t "$NP" -P -F '#{pane_id}' "exec sleep 600")
+act open "$NP" working "$NS" "$REPO"
+tn toggle "$NP"; ok "N3 toggle goes into the editor" "$ED" "$(active "$NW")"
+tn toggle "$NP"; ok "N3 toggle again goes back into the chat" "$NP" "$(active "$NW")"
+ok "N3 the extra terminal is untouched" yes "$(paneok "$NT")"
+
+t "N4 N5 the user moved or killed the editor"
+NEWW=$(tm break-pane -d -P -F '#{window_id}' -s "$ED")
+tn toggle "$NP"
+ok "N4 toggle selects the editor's window" "$NEWW" "$(cwin)"; ok "N4 with the cursor in the editor" "$ED" "$(active "$NEWW")"
+tm select-window -t "$NW"; tm kill-pane -t "$ED"
+tn toggle "$NP"; ED2=$(tm show -pv -t "$NP" @ta_notes)
+ok "N5 a new editor is made" yes "$([ -n "$ED2" ] && [ "$ED2" != "$ED" ] && [ "$(paneok "$ED2")" = yes ] && echo yes || echo no)"
+
+t "N6 N7 N9 sync only cleans up"
+snap=$(tm list-panes -a -F '#{pane_id}:#{window_id}:#{pane_width}')
+tn sync; rc1=$?; tn sync; rc2=$?; tn sync "%5"; rc3=$?
+ok "N6 exit 0 three times" "0 0 0" "$rc1 $rc2 $rc3"
+ok "N6 nothing moved (a pane given to sync is ignored)" "$snap" "$(tm list-panes -a -F '#{pane_id}:#{window_id}:#{pane_width}')"
+ok "N9 no ta-notes session, and sync made none" 1 "$(tm has-session -t =ta-notes 2>/dev/null; echo $?)"
+tm kill-pane -t "$NP"; tn sync
+ok "N7 the editor of a dead chat is closed" no "$(paneok "$ED2")"
+
+t "N8 editors parked in ta-notes by an older version come back"
+newsess tatest-np; mkchat tatest-np pk "$NREPO"; PW=$LASTWIN; PP=$LASTPANE
+mkchat tatest-np pk2 "$NREPO"; PW2=$LASTWIN; PP2=$LASTPANE
+mkchat tatest-np pk3 "$NREPO"; PW3=$LASTWIN; PP3=$LASTPANE
+cwp=$(width_of "$PP")                                       # the chat's whole width, before an editor takes its share
+to tatest-np; tn toggle "$PP"; E1=$(tm show -pv -t "$PP" @ta_notes); tn toggle "$PP2"; E2=$(tm show -pv -t "$PP2" @ta_notes); tn toggle "$PP3"; E3=$(tm show -pv -t "$PP3" @ta_notes)
+tm new-session -d -s ta-notes -n hold "exec sleep 600"
+tm break-pane -d -s "$E1" -t ta-notes: -n park1; tm break-pane -d -s "$E2" -t ta-notes: -n park2; tm break-pane -d -s "$E3" -t ta-notes: -n park3
+tm set -p -t "$E3" @ta_notes_for "$PP3"; tm set -p -t "$PP3" @ta_notes "$E3"; tm set -p -t "$E3" @ta_notes_pct 99
+tm set -p -t "$E1" @ta_notes_for "$PP"; tm set -p -t "$PP" @ta_notes "$E1"; tm set -p -t "$E1" @ta_notes_pct 30
+tm set -p -t "$E2" @ta_notes_for "$PP2"; tm set -p -t "$PP2" @ta_notes "$E2"
+tm kill-pane -t "$PP2"
+tn sync
+ok "N8 the editor is a pane of its chat's window again" "$PW" "$(wid "$E1")"
+ok "N8 at the share recorded in @ta_notes_pct" yes "$([ $(( $(width_of "$E1") * 100 / cwp )) -ge 26 ] && [ $(( $(width_of "$E1") * 100 / cwp )) -le 33 ] && echo yes || echo no)"
+ok "N8 a share out of 10..90 falls back to 45" yes "$([ "$(wid "$E3")" = "$PW3" ] && [ $(( $(width_of "$E3") * 100 / cwp )) -ge 40 ] && [ $(( $(width_of "$E3") * 100 / cwp )) -le 48 ] && echo yes || echo no)"
+ok "N8 the markers are intact" "$E1" "$(tm show -pv -t "$PP" @ta_notes)"
+ok "N8 the parked editor of a dead chat is closed" no "$(paneok "$E2")"
+ok "N8 the parking session is gone" 1 "$(tm has-session -t =ta-notes 2>/dev/null; echo $?)"
+ok "N8 @ta_notes_pct is unset" "" "$(tm show -pv -t "$E1" @ta_notes_pct 2>/dev/null)"
+to tatest-work
+
+# ---------------------------------------------------------------------------------------------------------------------------------
+t "Z1 Z2 Z3 a capture files each chat where its pane is"
+kill_sidebars; newsess tatest-z1; mkchat tatest-z1 zc; ZW=$LASTWIN; ZP=$LASTPANE; ZS=$LASTSID
+ZSH=$(tm split-window -d -h -t "$ZP" -P -F '#{pane_id}' "exec sleep 600")
+to tatest-z1; tm select-window -t "$ZW"; SB=$(fake_sidebar "$ZW")
+rows=$(modrun resurrect_rows)
+arow=$(printf '%s\n' "$rows" | awk -F'\t' -v s="$ZS" '$1 == "A" && $2 == s')
+f() { printf '%s' "$arow" | awk -F'\t' -v n="$1" '{ print $n }'; }
+ok "Z1 14 columns" 14 "$(printf '%s' "$arow" | awk -F'\t' '{ print NF }')"
+ok "Z1 session" tatest-z1 "$(f 5)"
+ok "Z1 window index" "$(tm display -p -t "$ZW" '#{window_index}')" "$(f 6)"
+ok "Z1 pane index counts the sidebar and the shell" "$(tm display -p -t "$ZP" '#{pane_index}')" "$(f 7)"
+ok "Z1 the docked column is written empty" "" "$(f 11)"
+ok "Z1 the user's shell has no row" 1 "$(printf '%s\n' "$rows" | awk -F'\t' '$1 == "A" && $5 == "tatest-z1"' | wc -l | tr -d ' ')"
+ok "Z3 the D row is the window the sidebar is in" "D	tatest-z1	$(tm display -p -t "$ZW" '#{window_index}')" "$(printf '%s\n' "$rows" | awk '$1 == "D"')"
+newsess tatest-z2a; mkchat tatest-z2a ja; ZA=$LASTPANE; newsess tatest-z2b; mkchat tatest-z2b jb; ZB=$LASTPANE; ZBS=$LASTSID
+to tatest-z2a; tm select-window -t "$(wid "$ZA")"; kill_sidebars; SB=$(fake_sidebar "$(wid "$ZA")")
+act beside "$ZB" working "$ZBS" "$REPO"
+jrow=$(modrun resurrect_rows | awk -F'\t' -v s="$ZBS" '$1 == "A" && $2 == s')
+ok "Z2 a joined chat is filed under its home session" tatest-z2b "$(printf '%s' "$jrow" | awk -F'\t' '{ print $5 }')"
+ok "Z2 with an empty window and an empty pane" "|" "$(printf '%s' "$jrow" | awk -F'\t' '{ print $6 "|" $7 }')"
+
+t "Z4 Z5 Z6 Z7 Z9 Z10 a restore from an old-style snapshot (docked flag, old D row), with extra panes, a busy pane, a joined chat and leftovers"
+CFGD="$WRROOT/cfg"; mkdir -p "$CFGD/projects/x" "$NREPO/.claude/notes"
+for s in sid-r5 sid-r6 sid-r6n sid-r9; do : >"$CFGD/projects/x/$s.jsonl"; done
+arow_() {  # sid session widx pidx dir [docked] [notes] -> an A row of 14 columns
+  printf 'A\t%s\t%s\t1\t%s\t%s\t%s\tw\t\t%s\t%s\t%s\t\t\n' "$1" "$CFGD" "$2" "$3" "$4" "$5" "${6:-}" "${7:-}"
+}
+tm new-session -d -s tatest-z5 -x 200 -y 50 -c "$REPO"                       # an idle shell is pane 0
+Z5A=$(tm list-panes -t =tatest-z5: -F '#{pane_id}' | head -1)
+Z5B=$(tm split-window -d -h -t "$Z5A" -P -F '#{pane_id}' -c "$REPO")        # another idle shell beside it
+Z5C=$(tm split-window -d -h -t "$Z5A" -P -F '#{pane_id}' -c "$NREPO/.claude/notes")   # an unlinked editor pane
+Z5L1=$(tm split-window -d -h -t "$Z5A" -P -F '#{pane_id}' -c "$REPO"); tm select-pane -T tagents-sidebar -t "$Z5L1"   # leftovers
+Z5L2=$(tm split-window -d -h -t "$Z5A" -P -F '#{pane_id}' "exec sleep 600"); tm select-pane -T tagents-sidebar -t "$Z5L2" # a busy pane with that title
+tm new-session -d -s ta-notes -n hold "exec sleep 600"; tm new-window -d -t ta-notes: -n x "exec sleep 600"
+tm new-session -d -s tatest-z6 -x 200 -y 50 -c "$REPO" "exec sleep 600"      # pane 0 is busy
+Z6P=$(tm list-panes -t =tatest-z6: -F '#{pane_id}' | head -1)
+snapf="$WRROOT/old.tsv"
+{ printf 'D\ttatest-z5\t0\n'
+  arow_ sid-r5 tatest-z5 0 0 "$NREPO" 1 1           # docked flag 1 (ignored), editor beside it
+  arow_ sid-r6 tatest-z6 0 0 "$REPO"                # the recorded pane is busy
+  arow_ sid-r6n tatest-z6new 0 0 "$REPO"            # the session is gone
+  arow_ sid-r9 tatest-z9gone "" "" "$REPO"          # a joined chat whose home session is gone
+} >"$snapf"
+# the fake sidebar (a live list that is also titled) must survive the sweep
+kill_sidebars; ZSB=$(tm new-window -d -P -F '#{pane_id}' -t =tatest-z6: "exec sleep 600"); stamp_sidebar "$ZSB"
+out=$(resume_run --resurrect --from "$snapf" 2>&1); rc=$?
+ok "Z4 exit 0" 0 "$rc"; has "Z4 the report counts the resumes" "4 resumed" "$out"
+rp() { awk -v s="$1" '$2 == s { p = $1 } END { print p }' "$RESUMED"; }
+settle 0.5
+ok "Z5 the chat replaced the idle shell in place" "$Z5A" "$(rp sid-r5)"
+ok "Z5 the shell beside it is untouched" yes "$(paneok "$Z5B")"
+ok "Z6 a busy pane keeps running and the chat got a new window of that session" "yes:tatest-z6:new" "$(paneok "$Z6P"):$(tm display -p -t "$(rp sid-r6)" '#{session_name}'):$([ "$(wid "$(rp sid-r6)")" != "$(wid "$Z6P")" ] && echo new)"
+tm has-session -t =tatest-z6new 2>/dev/null; ok "Z6 the missing session was created" 0 "$?"
+ok "Z6 ...and marked as made by tagents" 1 "$(tm show -v -t =tatest-z6new: @tagents_made)"
+tm has-session -t =tatest-z9gone 2>/dev/null; ok "Z9 a joined chat's missing home session was created" 0 "$?"
+ok "Z7 the idle shell titled tagents-sidebar is closed" no "$(paneok "$Z5L1")"
+ok "Z7 the busy pane with that title is left running" yes "$(paneok "$Z5L2")"
+ok "Z7 the live list is still the sidebar" "$ZSB" "$(sbpane)"
+ok "Z4 the sidebar was moved to the D row's window" "$(wid =tatest-z5:)" "$(sbwin)"
+ok "Z10 the unlinked editor pane is closed" no "$(paneok "$Z5C")"
+ok "Z10 the returned ta-notes session is closed" 1 "$(tm has-session -t =ta-notes 2>/dev/null; echo $?)"
+has "Z10 tnotes was asked once for the chat whose editor was beside it" "notes" "$out"
+
+t "Z7 Z8 a dry run closes nothing; --auto sweeps as well"
+tm new-session -d -s tatest-z8 -x 200 -y 50 -c "$REPO"
+Z8S=$(tm split-window -d -h -t =tatest-z8: -P -F '#{pane_id}'); tm select-pane -T tagents-sidebar -t "$Z8S"
+resume_run --resurrect --dry-run --from "$snapf" >/dev/null 2>&1
+ok "Z7 --dry-run closes no pane" yes "$(paneok "$Z8S")"
+mkdir -p "$WRSTATE/resurrect"; cp "$snapf" "$WRSTATE/resurrect/$(( $(date +%s) - 3600 )).tsv"
+: >"$RESUMED"; resume_run --resurrect --auto >/dev/null 2>&1; settle 0.5
+ok "Z8 --resurrect --auto closes the leftover shell too" no "$(paneok "$Z8S")"
+has "Z8 and logs the restore" "resumed" "$(cat "$WRSTATE/resurrect.log" 2>/dev/null)"
+
+t "Z11 the sidebar comes back as a list when none runs"
+kill_sidebars; unhook; to tatest-z5; tm select-window -t "$(wid =tatest-z5:0)"      # the claim runs one follow, so the list ends in the client's window: the recorded one
+drow=$(printf 'D\ttatest-z5\t0\n'); printf '%s\n' "$drow" >"$WRROOT/d.tsv"; arow_ sid-r5 tatest-z5 0 5 "$REPO" >>"$WRROOT/d.tsv"
+out=$(resume_run --resurrect --from "$WRROOT/d.tsv" 2>&1)
+has "Z11 the report says dashboard" "✓ dashboard" "$out"
+ok "Z11 a list runs in the recorded window" "$(wid =tatest-z5:0)" "$(wait_eq "$(wid =tatest-z5:0)" sbwin)"
+tm kill-pane -t "$(sbpane)" 2>/dev/null; unhook; to tatest-work
+
+# ---------------------------------------------------------------------------------------------------------------------------------
+t "M1 M2 M3 M4 the first start after the upgrade sends docked chats home and removes the old state"
+kill_sidebars
+newsess tatest-old; OLDW=$LASTWIN                                              # the old dashboard window
+OSB=$(tm list-panes -t "$OLDW" -F '#{pane_id}' | head -1); stamp_sidebar "$OSB"
+mkchat tatest-old homeA; HA=$LASTWIN; PAo=$LASTPANE; SAo=$LASTSID
+mkchat tatest-old homeB; HB=$LASTWIN; PBo=$LASTPANE
+mkchat tatest-old homeC; HC=$LASTWIN; PCo=$LASTPANE
+for pair in "$PAo:$HA" "$PBo:$HB"; do c=${pair%%:*}; h=${pair##*:}
+  seat=$(tm split-window -d -h -t "$OSB" -P -F '#{pane_id}' "exec sleep 600")      # the seat in the dashboard window
+  tm set -p -t "$seat" @tagents_slot 1; tm swap-pane -d -s "$c" -t "$seat"          # the chat is in the seat, the placeholder at home
+  tm set -p -t "$seat" @tagents_parked "$c"; tm set -p -t "$c" @tagents_docked "$OLDW"; done
+PCpid=$(tm display -p -t "$PCo" '#{pane_pid}')
+# C is docked too, and its placeholder is gone before the upgrade
+seatC=$(tm split-window -d -h -t "$OSB" -P -F '#{pane_id}' "exec sleep 600"); tm swap-pane -d -s "$PCo" -t "$seatC"
+tm set -p -t "$seatC" @tagents_slot 1; tm set -p -t "$seatC" @tagents_parked "$PCo"; tm set -p -t "$PCo" @tagents_docked "$OLDW"
+tm kill-pane -t "$seatC" 2>/dev/null
+tm set -w -t "$OLDW" @tagents_cur "$PAo"; tm set-hook -g "pane-focus-in[5]" "run-shell \"'$TA' --unpark #{pane_id}\""
+tm set-hook -g "after-select-pane[6]" "run-shell \"'$TA' --poke #{pane_id}\""
+modrun install_event_hooks
+modrun migrate_seats
+ok "M1 chat A is in its home window" "$HA" "$(wid "$PAo")"; ok "M1 chat B is in its home window" "$HB" "$(wid "$PBo")"
+ok "M1 no placeholder is left" 0 "$(tm list-panes -a -F '#{@tagents_slot}' | grep -c 1)"
+ok "M1 the dashboard window is an ordinary window holding the sidebar" "$OLDW" "$(sbwin)"
+ok "M1 ...alone in it" 1 "$(npanes "$OLDW")"
+ok "M2 the chat whose placeholder was gone has a window of its own" 1 "$(npanes "$(wid "$PCo")")"
+ok "M2 ...and is the same process" "$PCpid" "$(tm display -p -t "$PCo" '#{pane_pid}')"
+ok "M3 none of the five options is left on a pane" "" "$(tm list-panes -a -F '#{@tagents_slot}#{@tagents_parked}#{@tagents_docked}#{@tagents_seat}' | tr -d '\n')"
+ok "M3 ...or on a window" "" "$(tm list-windows -a -F '#{@tagents_cur}#{@tagents_seat}' | tr -d '\n')"
+hasnt "M3 the old unpark hook is gone" "--unpark" "$(hooks_of pane-focus-in)"
+hasnt "M3 the old poke hook is gone" "--poke" "$(hooks_of after-select-pane)"
+has "M3 the ring at [42] is intact" "[42]" "$(hooks_of pane-focus-in)"
+ok "M4 the once-marker is set" 1 "$(tm show -gv @tagents_migrated)"
+snap="$(tm list-panes -a -F '#{pane_id}:#{window_id}:#{pane_title}:#{@tagents_dash}')|$(tm show-hooks -g | md5)"
+modrun migrate_seats
+ok "M4 a second start changes nothing" "$snap" "$(tm list-panes -a -F '#{pane_id}:#{window_id}:#{pane_title}:#{@tagents_dash}')|$(tm show-hooks -g | md5)"
+unhook; to tatest-work
+
 # =================================================================================================================================
 # PART 2 INSERTS ITS SECTIONS (L, N, Z, M, H) ABOVE THIS LINE. Everything below installs real hooks on the scratch server and goes last.
 # =================================================================================================================================
+t "H1 H2 H3 the refresher's hooks and snapshot"
+modrun install_event_hooks
+evs=$(modrun eval 'echo $EV_EVENTS')
+ok "H1 18 event hooks" 18 "$(echo $evs | wc -w | tr -d ' ')"
+for ev in $evs; do
+  h=$(hooks_of "$ev")
+  has "H1 $ev carries the ring at [42]" "$ev[42]" "$h"; hasnt "H1 $ev has no tagents-panes" tagents-panes "$h"; hasnt "H1 $ev has no @tagents_gen" tagents_gen "$h"
+done
+fmt=$(modrun eval 'echo "$REFRESH_SNAP_FMT"')
+has "H2 the snapshot covers @tagents_joined" "@tagents_joined" "$fmt"; has "H2 ...and @tagents_port" "@tagents_port" "$fmt"
+has "H3 ...and whether a pane carries @ta_notes_for" "?@ta_notes_for" "$fmt"
+hasnt "H2 no seat marker in it" "@tagents_docked" "$fmt"; hasnt "H2 nor the pane title" "pane_title" "$fmt"
+HP=$(tm list-panes -t =tatest-work: -F '#{pane_id}' | head -1)
+sA=$(tm list-panes -a -F "$fmt"); tm set -p -t "$HP" @tagents_joined tatest-x; sB=$(tm list-panes -a -F "$fmt"); sC=$(tm list-panes -a -F "$fmt")
+ok "H2 @tagents_joined set between two passes changes the snapshot: one reload" yes "$([ "$sA" != "$sB" ] && echo yes || echo no)"
+ok "H2 the next pass sees the same snapshot: quiet" "$sB" "$sC"
+tm set -up -t "$HP" @tagents_joined; tm select-pane -T "a title the spinner changes" -t "$HP"
+ok "H2 a pane title alone does not change the snapshot" "$sA" "$(tm list-panes -a -F "$fmt")"
+ok "H3 a pane without @ta_notes_for reads 0 in the snapshot" 0 "$(tm display -p -t "$HP" '#{?@ta_notes_for,1,0}')"
+tm set -p -t "$HP" @ta_notes_for %1; ok "H3 ...and a pane that has it reads 1" 1 "$(tm display -p -t "$HP" '#{?@ta_notes_for,1,0}')"; tm set -up -t "$HP" @ta_notes_for
+ok "H3 an editor line in the snapshot" yes "$(modrun eval 'snap=$(printf "a|@|0\nb|@|1\n7"); snap_has_editor && echo yes || echo no')"
+ok "H3 no editor line" no "$(modrun eval 'snap=$(printf "a|@|0\nb|@|0\n7"); snap_has_editor && echo yes || echo no')"
+unhook
+
 t "F16 the follow hooks: one each however often installed; the owner's hook kept; a wiped event gets its hook back"
 modrun install_follow_hooks; modrun install_follow_hooks
 for ev in session-window-changed client-session-changed; do
