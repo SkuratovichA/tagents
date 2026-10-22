@@ -13,9 +13,9 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { realClock } from '@tagents/core';
 import {
-  DocError,
   LEGACY_KEYS,
   OKF_KEYS,
+  RESERVED_FILES,
   SCOPES,
   SLUG,
   STATUSES,
@@ -23,6 +23,7 @@ import {
   documentLinks,
   fragmentMatches,
   isRealDate,
+  isRecord,
   isStale,
   listFiles,
   parseDoc,
@@ -58,15 +59,14 @@ export interface LintResult {
   readonly issues: readonly Issue[];
 }
 
-/** The date of the newest commit that touched `file`, or null. */
+/** The UTC date of the newest commit that touched `file`, or null. */
 export function lastCommitDate(file: string, env: NodeJS.ProcessEnv = process.env): string | null {
-  const r = spawnSync('git', ['-C', path.dirname(file), 'log', '-1', '--format=%cs', '--', file], {
+  const r = spawnSync('git', ['-C', path.dirname(file), 'log', '-1', '--format=%cI', '--', file], {
     encoding: 'utf8',
     env,
   });
   if (r.error || r.status !== 0) return null;
-  const date = r.stdout.trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  return utcDateOf(r.stdout.trim());
 }
 
 export function insideGitRepo(dir: string, env: NodeJS.ProcessEnv = process.env): boolean {
@@ -81,10 +81,6 @@ function utcDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
 /** `by` is a non-empty string and `at` a datetime with an explicit offset. */
 function isStamp(v: unknown): boolean {
   return isRecord(v) && typeof v['by'] === 'string' && v['by'].trim() !== '' && parseOffsetDatetime(v['at']) !== null;
@@ -97,6 +93,7 @@ function profileProblems(doc: KnowledgeDoc, t: Translate): string[] {
   const known = doc.meta.legacy ? [...OKF_KEYS, ...LEGACY_KEYS] : OKF_KEYS;
   for (const key of Object.keys(raw)) if (!known.includes(key)) out.push(t('issueUnknownKey', { key }));
 
+  if (raw['id'] !== undefined && typeof raw['id'] !== 'string') out.push(t('issueNotString', { key: 'id' }));
   for (const key of ['title', 'description', 'resource'] as const) {
     const v = raw[key];
     if (v !== undefined && typeof v !== 'string') out.push(t('issueNotString', { key }));
@@ -147,13 +144,22 @@ function profileProblems(doc: KnowledgeDoc, t: Translate): string[] {
   return out;
 }
 
+/** Any failure to stat (missing, not a directory, too long, unreadable) means: not a file to compare. */
+function isFile(p: string): boolean {
+  try {
+    return fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /** The existing file a `sources[].resource` names, or null for a URL, a missing file or anything else. */
 function sourceFile(dir: string, resource: string): string | null {
   if (URL_SCHEME.test(resource)) return null;
   const rest = expandHome(resource);
   // a leading slash is bundle-relative (OKF); an absolute path is the fallback
   const candidates = rest.startsWith('/') ? [path.join(dir, rest), rest] : [path.resolve(dir, rest)];
-  return candidates.find((c) => fs.statSync(c, { throwIfNoEntry: false })?.isFile() === true) ?? null;
+  return candidates.find(isFile) ?? null;
 }
 
 export function lint(
@@ -172,7 +178,7 @@ export function lint(
     try {
       doc = parseDoc(file, fs.readFileSync(file, 'utf8'));
     } catch (e) {
-      const detail = e instanceof DocError ? e.message : (e as Error).message;
+      const detail = e instanceof Error ? e.message : String(e);
       issues.push({ file, code: 'frontmatter', message: t('issueFrontmatter', { detail }) });
       continue;
     }
@@ -228,6 +234,7 @@ export function lint(
       }
 
     for (const link of documentLinks(doc.body)) {
+      if (RESERVED_FILES.includes(`${link.id}.md`) && fs.existsSync(path.join(dir, `${link.id}.md`))) continue;
       const target = docs.get(link.id);
       const fragment = link.fragment;
       const dead =

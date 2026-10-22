@@ -276,7 +276,10 @@ test('a fragment names a heading by its text or its slug', () => {
   assert.equal(fragmentMatches('failover-steps', 'Failover steps'), true);
   assert.equal(fragmentMatches('failover-step', 'Failover steps'), false);
   assert.equal(headingSlug('Что делать? (быстро)'), 'что-делать-быстро');
-  assert.equal(fragmentMatches('%E0%A4%A', 'Anything'), false, 'a malformed escape is compared as written');
+  assert.equal(fragmentMatches('100%', '100%'), true, 'a malformed escape is compared as written');
+  assert.equal(fragmentMatches('100%', 'Anything'), false);
+  assert.equal(fragmentMatches('caf\u00e9-menu', 'Cafe\u0301 menu'), true, 'NFC fragment, NFD heading');
+  assert.equal(headingSlug('Cafe\u0301 menu'), 'caf\u00e9-menu');
 });
 
 test('the fixture folder is the corpus the other suites assume', () => {
@@ -286,4 +289,9 @@ test('the fixture folder is the corpus the other suites assume', () => {
     loaded.docs.map((d) => d.meta.id).sort(),
     ['deploy-runbook', 'mashina-karta', 'relizy-zametki', 'sqlite-over-vectors', 'tmux-cheatsheet']
   );
+});
+
+test('documentLinks: inline code spans hide links, escaped brackets stay in the link text, order is document order', () => {
+  const links = documentLinks('[a](x.md) then [[y]] and `[[no]]` and [b \\] c](z.md#f)\n');
+  assert.deepEqual(links.map((l) => l.raw), ['[a](x.md)', '[[y]]', '[b \\] c](z.md#f)']);
 });

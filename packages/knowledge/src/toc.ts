@@ -5,13 +5,14 @@
 // a pure function of the documents: same folder, same bytes.
 import fs from 'node:fs';
 import path from 'node:path';
-import type { KnowledgeDoc } from './doc.ts';
+import { oneLine, type KnowledgeDoc } from './doc.ts';
 
 export const INDEX_FILE = 'index.md';
 
 const HEAD = '---\nokf_version: "0.2"\n---\n';
 
-const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim();
+/** Brackets in link text are escaped, so a title like `Plan ] draft` stays one link. */
+const linkText = (s: string): string => oneLine(s).replace(/[[\]]/g, '\\$&');
 
 /** Code-unit order, not locale order: the same folder gives the same bytes on every machine. */
 const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -29,7 +30,7 @@ export function renderIndex(docs: readonly KnowledgeDoc[]): string {
     }
     const description = doc.meta.description === undefined ? '' : ` - ${oneLine(doc.meta.description)}`;
     const deprecated = doc.meta.status === 'deprecated' ? ' (deprecated)' : '';
-    group.lines.push(`* [${oneLine(doc.meta.title)}](${doc.meta.id}.md)${description}${deprecated}`);
+    group.lines.push(`* [${linkText(doc.meta.title)}](${doc.meta.id}.md)${description}${deprecated}`);
   }
   if (groups.size === 0) return HEAD;
   const body = [...groups.entries()]

@@ -264,12 +264,13 @@ function cmdToc(argv: string[], io: Io, t: Translate): number {
   });
   const dir = needDir(values.dir ?? null, io, t);
   if (dir === null) return EXIT.error;
-  const { docs } = loadDir(dir);
+  const { docs, errors } = loadDir(dir);
   if (values.check === true) {
     if (indexState(dir, docs) === 'current') return EXIT.ok;
     io.err(`${t('tocOutOfDate')}\n`);
     return EXIT.error;
   }
+  for (const e of errors) io.err(`${path.basename(e.file)}: ${e.message}\n`);
   io.out(`${t('tocWrote', { path: writeIndex(dir, docs) })}\n`);
   return EXIT.ok;
 }

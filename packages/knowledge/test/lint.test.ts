@@ -356,3 +356,77 @@ test('lint findings are translated, the codes are not', () => {
     removeDir(dir);
   }
 });
+
+test('generated: a source whose parent is a regular file does not abort the run', () => {
+  const root = tmpDir('lint-enotdir');
+  try {
+    const dir = path.join(root, 'knowledge');
+    writeDoc(dir, 'notes.md', okfDoc('Note'));
+    writeDoc(
+      dir,
+      'a.md',
+      okfDoc('Map', ['generated:', '  by: tool', '  at: 2026-09-11T00:00:00Z', 'sources:', '  - resource: notes.md/x', `  - resource: ${'n'.repeat(5000)}`])
+    );
+    assert.deepEqual(only(dir, 'generated'), []);
+  } finally {
+    removeDir(root);
+  }
+});
+
+test('stale compares UTC dates on both sides: a commit at 00:20+02:00 is the day before in UTC', () => {
+  const dir = tmpDir('lint-stale-utc');
+  try {
+    writeDoc(dir, 'a.md', okfDoc('Note', ['generated:', '  by: tool', '  at: 2026-10-21T22:10:00Z']));
+    gitInit(dir, '2026-10-22T00:20:00+02:00');
+    assert.deepEqual(only(dir, 'stale'), []);
+  } finally {
+    removeDir(dir);
+  }
+});
+
+test('dead-link: a link to index.md or log.md is valid when the file exists, dead when it does not', () => {
+  const dir = tmpDir('lint-reserved');
+  try {
+    const body = '[a](index.md) [b](/log.md) [c](./index.md#top) [[log]]\n';
+    writeDoc(dir, 'src.md', okfDoc('Note', [], body));
+    assert.equal(only(dir, 'dead-link').length, 4, 'neither file exists yet');
+    writeDoc(dir, 'index.md', '---\nokf_version: "0.2"\n---\n');
+    writeDoc(dir, 'log.md', '# Log\n');
+    assert.deepEqual(only(dir, 'dead-link'), []);
+  } finally {
+    removeDir(dir);
+  }
+});
+
+test('dead-link: links inside inline code spans are not links, in either form', () => {
+  const dir = tmpDir('lint-inline-code');
+  try {
+    writeDoc(dir, 'src.md', okfDoc('Note', [], 'Write `[[nothing]]` or ``[x](/nothing.md)`` like that.\n'));
+    assert.deepEqual(only(dir, 'dead-link'), []);
+    writeDoc(dir, 'src.md', okfDoc('Note', [], 'Write `code` then [[nothing]].\n'));
+    assert.deepEqual(only(dir, 'dead-link'), ['dead link [[nothing]]']);
+  } finally {
+    removeDir(dir);
+  }
+});
+
+test('frontmatter: an id that is not a string is named', () => {
+  const dir = tmpDir('lint-id-type');
+  try {
+    writeDoc(dir, 'a.md', okfDoc('Note', ['id: 42']));
+    assert.deepEqual(only(dir, 'frontmatter'), ['id: must be a string']);
+  } finally {
+    removeDir(dir);
+  }
+});
+
+test('dead-link: a fragment in NFC finds a heading written in NFD', () => {
+  const dir = tmpDir('lint-nfd');
+  try {
+    writeDoc(dir, 'target.md', okfDoc('Note', [], `## Cafe\u0301 menu\n\nText.\n`));
+    writeDoc(dir, 'src.md', okfDoc('Note', [], '[a](target.md#caf\u00e9-menu) [b](target.md#Caf%C3%A9%20menu)\n'));
+    assert.deepEqual(only(dir, 'dead-link'), []);
+  } finally {
+    removeDir(dir);
+  }
+});

@@ -133,3 +133,36 @@ test('index.md and log.md are never listed in the index', () => {
     removeDir(dir);
   }
 });
+
+test('brackets in a title are escaped so the entry stays one link, and lint still sees links with escaped brackets', () => {
+  const dir = tmpDir('toc-brackets');
+  try {
+    writeDoc(dir, 'plan.md', okfDoc('Note', ['title: "Plan ] draft [v2]"']));
+    assert.match(renderIndex(loadDir(dir).docs), /^\* \[Plan \\\] draft \\\[v2\\\]\]\(plan\.md\)$/m);
+    assert.equal(runCli(['toc', '--dir', dir]).code, 0);
+    writeDoc(dir, 'src.md', okfDoc('Note', [], '[Plan \\] draft](plan.md) and [gone \\] x](missing.md)\n'));
+    assert.equal(runCli(['toc', '--dir', dir]).code, 0);
+    const lint = runCli(['lint', '--dir', dir]);
+    assert.match(lint.stdout, /dead link \[gone \\\] x\]\(missing\.md\)/);
+    assert.doesNotMatch(lint.stdout, /dead link \[Plan/);
+  } finally {
+    removeDir(dir);
+  }
+});
+
+test('toc prints a refused file on stderr, still exits 0 and leaves it out; --check stays silent about it', () => {
+  const dir = tmpDir('toc-refused');
+  try {
+    layoutFolder(dir);
+    writeDoc(dir, 'broken.md', 'no frontmatter\n');
+    const r = runCli(['toc', '--dir', dir]);
+    assert.equal(r.code, 0);
+    assert.match(r.stderr, /^broken\.md: no YAML frontmatter/m);
+    assert.equal(fs.readFileSync(path.join(dir, 'index.md'), 'utf8'), LAYOUT);
+    const check = runCli(['toc', '--check', '--dir', dir]);
+    assert.equal(check.code, 0);
+    assert.equal(check.stderr, '');
+  } finally {
+    removeDir(dir);
+  }
+});

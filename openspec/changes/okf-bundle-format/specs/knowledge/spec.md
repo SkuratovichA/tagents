@@ -226,7 +226,7 @@ Without `--json`, `list` SHALL print one line per document: id padded to 28, typ
 - **THEN** a `duplicate-id` finding is reported for the second file, together with a `stem` finding for the file whose name differs
 
 ### Requirement: Lint freshness checks
-A `stale` finding SHALL mean that the UTC date of `generated.at` is earlier than the date of the newest git commit touching the file, and is checked only inside a git work tree, only for committed files and only for documents that have `generated`.
+A `stale` finding SHALL mean that the UTC date of `generated.at` is earlier than the date of the newest git commit touching the file, and is checked only inside a git work tree, only for committed files and only for documents that have `generated`. Both sides SHALL be UTC dates: the commit date is the commit instant (committer date with its offset) converted to UTC.
 
 #### Scenario: Stale update date
 - **WHEN** a committed document says `generated.at: 2020-01-01T00:00:00Z` and its newest commit is later
@@ -429,3 +429,28 @@ The file SHALL be the frontmatter block, a blank line, then each group as its he
 #### Scenario: Check
 - **WHEN** `toc --check` runs after `toc`, and again after a document is added
 - **THEN** the first exits 0 and writes nothing, the second exits 1 with `index.md is out of date` and still writes nothing
+
+### Requirement: Links in code and to reserved files
+A link inside an inline code span (backticks) SHALL NOT be a link, in either form, just as inside a fenced block. Link text MAY contain backslash-escaped brackets. A link to `index.md` or `log.md`, with or without a leading slash or `./`, SHALL be valid when that file exists in the folder and a dead link only when it does not.
+
+#### Scenario: Inline code
+- **WHEN** a body contains `` `[[nothing]]` ``
+- **THEN** `lint` reports no dead link for it
+
+#### Scenario: Reserved file
+- **WHEN** a document links `[a](index.md)` and the folder holds `index.md`
+- **THEN** `lint` reports no dead link, and reports `dead link [a](index.md)` once the file is gone
+
+### Requirement: Lint non-string id
+A frontmatter `id` that is present and is not a string SHALL be a `frontmatter` finding naming `id`.
+
+#### Scenario: Numeric id
+- **WHEN** a document has `id: 42`
+- **THEN** `lint` reports a `frontmatter` finding naming `id`
+
+### Requirement: toc reports refused files
+When the loader refuses a file, `toc` without `--check` SHALL print `<filename>: <message>` for it on stderr, leave it out of `index.md` and still exit 0, and `toc --check` SHALL print only its own line.
+
+#### Scenario: One bad file
+- **WHEN** `toc` runs on a folder with one file that has no frontmatter
+- **THEN** stderr names that file, `index.md` omits it and the exit code is 0

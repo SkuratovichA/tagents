@@ -221,8 +221,13 @@ export function hashOf(text: string): string {
   return createHash('sha256').update(text).digest('hex').slice(0, 32);
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** Whitespace flattened to single spaces: one line of text. */
+export function oneLine(s: string): string {
+  return s.replace(/\s+/g, ' ').trim();
 }
 
 function nonEmpty(v: unknown): string | undefined {
@@ -308,7 +313,11 @@ export function parseDoc(file: string, text: string): KnowledgeDoc {
         ? undefined
         : { by: 'legacy', at: `${updated}T00:00:00Z` }
       : generatedOf(raw['generated']),
-    sources: legacy ? (generatedFrom === undefined ? [] : [{ resource: generatedFrom, id: undefined, title: undefined }]) : sourcesOf(raw['sources']),
+    sources: legacy
+      ? generatedFrom === undefined
+        ? []
+        : [{ resource: generatedFrom, id: undefined, title: undefined }]
+      : sourcesOf(raw['sources']),
     status: statusWritten ?? 'stable',
     staleAfter: typeof stale === 'string' && parseOffsetDatetime(stale) !== null ? stale : undefined,
     scope,
@@ -374,7 +383,7 @@ export function loadDir(dir: string): LoadResult {
 /** `[[id]]` / `[[id#heading]]`. */
 export const WIKILINK = /\[\[([^\]|#]+)(?:#([^\]|]+))?\]\]/g;
 /** `[text](target)` — the target has no spaces; images (`![`) are not links to documents. */
-const MARKDOWN_LINK = /(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+const MARKDOWN_LINK = /(?<!!)\[(?:\\.|[^\]\\])*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 export const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
 export interface Wikilink {
@@ -403,25 +412,38 @@ function markdownTarget(target: string): { id: string; fragment: string | null }
   return { id, fragment: fragment === '' ? null : fragment };
 }
 
+/** A line with its inline code spans blanked out, same length: a link inside backticks is not a link. */
+function withoutCodeSpans(line: string): string {
+  return line.replace(/(`+)[^`]*?\1/g, (span) => ' '.repeat(span.length));
+}
+
 /**
- * Every link to a document of the bundle in a body, in document order per
- * line: `[[id]]`, `[[id#Heading]]` and the markdown forms `[t](/id.md#frag)`,
- * `[t](./id.md)`, `[t](id.md)`. Links in fenced code are not links. A target
- * with a URL scheme, one that is not a `.md` file, or a bare `#fragment` is
- * not a document link.
+ * Every link to a document of the bundle in a body, in document order:
+ * `[[id]]`, `[[id#Heading]]` and the markdown forms `[t](/id.md#frag)`,
+ * `[t](./id.md)`, `[t](id.md)`. Links in fenced code or inline code spans are
+ * not links. A target with a URL scheme, one that is not a `.md` file, or a
+ * bare `#fragment` is not a document link. Link text may contain escaped
+ * brackets (`[a \] b](x.md)`).
  */
 export function documentLinks(body: string): DocLink[] {
   const out: DocLink[] = [];
   for (const { line, inFence } of scanFences(body)) {
     if (inFence) continue;
-    for (const m of line.matchAll(WIKILINK)) {
+    const text = withoutCodeSpans(line);
+    const found: { at: number; link: DocLink }[] = [];
+    for (const m of text.matchAll(WIKILINK)) {
       const id = (m[1] ?? '').trim();
-      if (id) out.push({ form: 'wiki', raw: m[0], id, fragment: m[2] === undefined ? null : m[2].trim() });
+      if (id)
+        found.push({
+          at: m.index,
+          link: { form: 'wiki', raw: m[0], id, fragment: m[2] === undefined ? null : m[2].trim() },
+        });
     }
-    for (const m of line.matchAll(MARKDOWN_LINK)) {
+    for (const m of text.matchAll(MARKDOWN_LINK)) {
       const target = markdownTarget(m[1] ?? '');
-      if (target) out.push({ form: 'markdown', raw: m[0], id: target.id, fragment: target.fragment });
+      if (target) found.push({ at: m.index, link: { form: 'markdown', raw: m[0], id: target.id, fragment: target.fragment } });
     }
+    out.push(...found.sort((a, b) => a.at - b.at).map((f) => f.link));
   }
   return out;
 }
@@ -435,9 +457,10 @@ export function wikilinks(body: string): Wikilink[] {
 /** GitHub-style anchor of a heading: lowercase, spaces to dashes, everything but letters, digits and dashes dropped. */
 export function headingSlug(heading: string): string {
   return heading
+    .normalize('NFC')
     .trim()
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/[^\p{L}\p{M}\p{N}\s-]/gu, '')
     .replace(/\s/g, '-');
 }
 
@@ -449,6 +472,6 @@ export function fragmentMatches(fragment: string, heading: string): boolean {
   } catch {
     // a malformed escape is compared as written
   }
-  const want = decoded.trim().toLowerCase();
-  return heading.trim().toLowerCase() === want || headingSlug(heading) === want;
+  const want = decoded.normalize('NFC').trim().toLowerCase();
+  return heading.normalize('NFC').trim().toLowerCase() === want || headingSlug(heading) === want;
 }

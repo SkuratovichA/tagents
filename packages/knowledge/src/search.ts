@@ -16,7 +16,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue } from 'node:sqlite';
 import { realClock, type TurnClock } from '@tagents/core';
 import { int, text, type Row } from './db.ts';
-import { STATUSES, isStale, utcDateOf, type Status } from './doc.ts';
+import { STATUSES, isStale, oneLine, utcDateOf, type Status } from './doc.ts';
 
 export const HEADING_WEIGHT = 10;
 export const BODY_WEIGHT = 1;
@@ -103,11 +103,6 @@ function filterSql(f: Filters): { sql: string; params: SQLInputValue[] } {
     params.push(f.tag);
   }
   return { sql: sql.join(' '), params };
-}
-
-/** One line of context around the match, newlines flattened for a terminal. */
-function oneLine(s: string): string {
-  return s.replace(/\s+/g, ' ').trim();
 }
 
 export function search(db: DatabaseSync, words: readonly string[], options: SearchOptions = {}): Hit[] {

@@ -244,7 +244,9 @@ test('--kind is an alias of --type: same lines, either case', () => {
     assert.equal(searchType.stdout, searchKind.stdout);
     assert.match(searchType.stdout, /^relizy-zametki/);
     // `type` wins when both are written.
-    assert.equal(runCli(['list', '--type', 'map', '--kind', 'runbook'], env).stdout.split('\n').length, 2);
+    const both = runCli(['list', '--type', 'map', '--kind', 'runbook'], env).stdout.trim().split('\n');
+    assert.equal(both.length, 1);
+    assert.match(both[0] ?? '', /^mashina-karta\s/);
   } finally {
     cleanup();
   }
