@@ -3,7 +3,7 @@
 `tagents` at the root of the checkout is the entry point and nothing else: the
 manual it prints for `--help`, `SELF`, the lookup that finds this directory,
 `forward_core`, and the `case` that maps a flag to a function. It is
-657 lines, 473 of them the manual. Everything the dashboard does is
+552 lines, 385 of them the manual. Everything the dashboard does is
 here, one file per part, sourced in the order of the table before the dispatch
 runs.
 
@@ -14,27 +14,27 @@ others are built on `STATE_DIR` and `TAB`.
 
 | file | lines | what is in it |
 |---|---:|---|
-| `core.sh` | 176 | constants, and the plumbing every dialog is built on |
+| `core.sh` | 199 | constants, and the plumbing every dialog is built on |
 | `config.sh` | 632 | config.yaml, flattened — and what is wrong with it |
 | `accounts.sh` | 361 | which Claude login an agent runs on, and whether it is there |
 | `usage.sh` | 324 | the monthly limit, on screen |
-| `state.sh` | 427 | the raw data every view reads |
-| `names.sh` | 400 | what an agent is called, and the window it names |
+| `state.sh` | 447 | the raw data every view reads |
+| `names.sh` | 404 | what an agent is called, and the window it names |
 | `columns.sh` | 135 | which columns are on screen |
-| `list.sh` | 992 | the rows — and the tally the status bar shows |
+| `list.sh` | 1004 | the rows — and the tally the status bar shows |
 | `timeline.sh` | 166 | which agent worked when |
-| `preview.sh` | 204 | a row, up close |
-| `actions.sh` | 329 | what a key actually does |
-| `refresh.sh` | 706 | keeping a list current |
-| `sidebar.sh` | 262 | which pane is the dashboard right now |
-| `follow.sh` | 171 | moving the sidebar into the window on screen, and the hooks that do it |
-| `migrate.sh` | 82 | the one pass that sent the previous version's seats home |
-| `rows.sh` | 157 | what a key does to a row: select, join, break out, kill |
-| `closed.sh` | 262 | the sessions that stopped running |
-| `resurrect.sh` | 312 | every chat back where it was after a reboot |
-| `launch.sh` | 298 | starting an agent |
-| `keys.sh` | 285 | every key, and where it comes from |
-| `dash.sh` | 255 | the dashboard itself |
+| `preview.sh` | 205 | a row, up close |
+| `actions.sh` | 240 | what a key actually does |
+| `refresh.sh` | 671 | keeping a list current |
+| `sidebar.sh` | 189 | which pane is the dashboard right now |
+| `follow.sh` | 202 | moving the sidebar into the window on screen, and the hooks that do it |
+| `migrate.sh` | 83 | the one pass that sent the previous version's seats home |
+| `rows.sh` | 162 | what a key does to a row: select, join, break out, kill |
+| `closed.sh` | 258 | the sessions that stopped running |
+| `resurrect.sh` | 362 | every chat back where it was after a reboot |
+| `launch.sh` | 226 | starting an agent |
+| `keys.sh` | 278 | every key, and where it comes from |
+| `dash.sh` | 264 | the dashboard itself |
 
 ## How it fits together
 

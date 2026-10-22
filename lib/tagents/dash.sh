@@ -79,7 +79,7 @@ dash_header() {  # <cols> <enter label> [quit item]
 # generated from the table alone — so a key bound and not listed is a key nobody
 # can find, and a key listed and not bound is a lie. tests/ui.sh fails on either.
 dash() {
-  local home=${TA_HOME:-} mode=${TA_MODE:-dash} out key rows
+  local mode=${TA_MODE:-dash} out key rows
   local rc started fails=0 esc_act=ignore quit fl ft
   local header
   local enter_lbl='open in sidebar' preview_win='' sidebar=0 after='' vact
@@ -95,8 +95,7 @@ dash() {
   # prompt in prefix+a mode ran behind execute-silent and was never seen.
   local ask='execute-silent'
   { has_popup && [ "$mode" != popup ]; } || ask='execute'
-  [ -z "$home" ] && home=$(tmux display -p '#S' 2>/dev/null)
-  if [ -z "$home" ]; then
+  if [ -z "$(tmux display -p '#S' 2>/dev/null)" ]; then
     echo "tagents: not inside tmux" >&2
     return 1
   fi
@@ -200,8 +199,6 @@ dash() {
   # it needs the same "not there at all" shape the array gives everything else.
   xp=()
   [ -n "$K_QUIT" ] && xp=(--expect="$K_QUIT")
-
-  export TA_HOME="$home"
 
   # First frame only: fzf hands every later reload an authoritative FZF_COLUMNS,
   # but the initial list is built before fzf exists. `tput cols` is unreliable

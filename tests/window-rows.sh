@@ -855,6 +855,11 @@ ok "R41 client_session of the named client" "$(csess)" "$(modrun client_session 
 ok "R41 client_session of the most recently active one" "$(csess)" "$(modrun client_session)"
 ok "R41 a client that is not there has neither" "" "$(modrun client_window %nosuch)$(modrun client_session %nosuch)"
 
+t "R42 the dashboard outside tmux says so and exits 1, with no session name to fall back on"
+out=$(env TMUX="$WRSOCK-nowhere,0,0" bash "$TA" 2>&1 >/dev/null); rc=$?
+ok "R42 exit 1" 1 "$rc"
+has "R42 the message" "tagents: not inside tmux" "$out"
+
 t "R34 the cursor follows the window on screen"
 kill_sidebars; mkchat tatest-work cur; WCUR=$LASTWIN; PCUR=$LASTPANE
 SB=$(fake_sidebar "$WCUR"); tm set -p -t "$SB" @tagents_port 9

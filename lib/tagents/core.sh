@@ -68,7 +68,7 @@ lock_age() {  # <dir> -> seconds
   printf '%s' $(( now - $(stat -f %m "$1" 2>/dev/null || echo "$now") ))
 }
 # The release, a statement of its own on every path out: never a `trap ...
-# RETURN`, which bash 3.2 fires again when the caller returns (see collapse_seat).
+# RETURN`, which bash 3.2 fires again when the caller returns.
 unlock_dir() { rm -rf "${1:?}" 2>/dev/null; return 0; }
 
 # tmux default pane title is the machine name, which names nothing — and it is

@@ -219,11 +219,6 @@ on the row the cursor was on · esc closes")
   pick=${pick%%$nl*}
   [ -n "$pick" ] || return 0
   verb=${pick#*$TAB}; verb=${verb%%$TAB*}
-  # TA_HOME is fzf's own environment, and a popup is spawned by the tmux server
-  # with none of it. undock needs it, so it is answered the same
-  # way dash() answers it — the session of the client that opened this.
-  [ -n "${TA_HOME:-}" ] || TA_HOME=$(tmux display -p '#S' 2>/dev/null)
-  export TA_HOME
   # THIS BODY IS ALREADY A POPUP, and the acts below are the ones that ask a
   # question. prompt() answers a question with a display-popup, and a popup
   # issued from inside a popup returns rc=0 and silently does nothing — so

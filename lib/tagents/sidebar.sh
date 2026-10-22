@@ -56,12 +56,11 @@ dash_pane() {
   [ -z "$pick" ] || printf '%s\n' "${pick%% *}"
   return 0
 }
-# THE RULE FOR "WHICH MARKED PANE IS THE LIST", in one place for dash_pane and for
-# slot(), which reads it off the list-panes output it already has. Lines of
+# THE RULE FOR "WHICH MARKED PANE IS THE LIST", in one place, for dash_pane. Lines of
 # "pane_id dash list [more...]" on stdin, an unset option written "-"; the first
 # pane marked dash=1 whose list pid passes kill -0 is printed as "pane_id more...".
 # With "clear", every dead marker met on the way is cleared (tmux set -up), as
-# dash_pane always did; slot() leaves them for the callers that clear them.
+# dash_pane does; without it they are left for a caller that clears them.
 dash_pane_pick() {  # [clear]
   local p d l rest
   while read -r p d l rest; do
