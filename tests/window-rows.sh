@@ -840,6 +840,21 @@ ok "R40 a stamp older than 20 seconds does not hold the start back: one pane was
 ok "R40 and the claim of the new list takes the stamp off" "" "$(wait_eq_long "" tm display -p -t "$NEWP" '#{@tagents_starting}')"
 tm kill-pane -t "$SP2" 2>/dev/null; tm kill-pane -t "$NEWP" 2>/dev/null; kill_sidebars; unhook; settle 0.3
 
+t "R41 win_alive, client_window, client_session and live_set, the helpers the rows and the follow share"
+to tatest-work
+mkchat tatest-work hl; WHL=$LASTWIN; PHL=$LASTPANE
+modrun win_alive "$WHL"; ok "R41 a window id that exists is alive" 0 $?
+modrun win_alive "$PHL"; ok "R41 a pane id is not a window" 1 $?
+modrun win_alive ""; ok "R41 an empty id is not a window" 1 $?
+has "R41 live_set holds the chat's pane between spaces" " $PHL " "$(modrun live_set)"
+tm kill-window -t "$WHL"
+modrun win_alive "$WHL"; ok "R41 a window that is gone is not alive" 1 $?
+ok "R41 client_window of the named client" "$(cwin)" "$(modrun client_window "$CLIENT")"
+ok "R41 client_window of the most recently active one" "$(cwin)" "$(modrun client_window)"
+ok "R41 client_session of the named client" "$(csess)" "$(modrun client_session "$CLIENT")"
+ok "R41 client_session of the most recently active one" "$(csess)" "$(modrun client_session)"
+ok "R41 a client that is not there has neither" "" "$(modrun client_window %nosuch)$(modrun client_session %nosuch)"
+
 t "R34 the cursor follows the window on screen"
 kill_sidebars; mkchat tatest-work cur; WCUR=$LASTWIN; PCUR=$LASTPANE
 SB=$(fake_sidebar "$WCUR"); tm set -p -t "$SB" @tagents_port 9

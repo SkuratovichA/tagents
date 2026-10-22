@@ -20,7 +20,7 @@ row_group() {  # <pane or window key>
 # The window's chat: the first pane, in pane order, that a Claude is running in. A user who split a shell before the chat (`split -b`) still has the chat found; a window with no live chat gets its first pane that is not the sidebar; one with only the sidebar, nothing.
 first_chat_pane() {  # <window-id>
   local live p first=""
-  live=" $(live_panes 2>/dev/null | tr '\n' ' ') "
+  live=$(live_set)
   for p in $(tmux list-panes -t "$1" -F '#{pane_id}' 2>/dev/null); do
     list_in_pane "$p" && continue
     [ -n "$first" ] || first=$p

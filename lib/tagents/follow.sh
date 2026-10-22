@@ -28,31 +28,22 @@ follow_unlock() {
 # Is a sidebar wanted: a list has claimed a pane on this server (claim_dash) and nobody has quit it since (ctrl-q, or a list that gave up). Only then does a follow start a new sidebar when none runs; a server that has only ever shown the popup, or whose sidebar was quit on purpose, gets none from a window switch.
 sidebar_wanted() { [ "$(tmux show -gv @tagents_sidebar_on 2>/dev/null)" = 1 ]; }
 
-win_alive() {  # <window-id>
-  local list
+win_alive() {  # <window-id> — one display: a window that is gone prints nothing, and a pane id prints its window's, which is not the id asked about
   [ -n "${1:-}" ] || return 1
-  list=$(tmux list-windows -a -F '#{window_id}' 2>/dev/null)
-  case $'\n'"$list"$'\n' in *$'\n'"$1"$'\n'*) return 0 ;; esac
-  return 1
+  [ "$(tmux display -p -t "$1" '#{window_id}' 2>/dev/null)" = "$1" ]
 }
 
-# The window a client shows; with no client named, the one of the most recently active client.
-client_window() {  # [client name]
-  tmux list-clients -F '#{client_activity} #{client_name} #{window_id}' 2>/dev/null |
-    LC_ALL=C awk -v c="${1:-}" '
-      c != "" { if ($2 == c) { print $3; exit } next }
-      $1 + 0 >= m { m = $1 + 0; w = $3 }
-      END { if (c == "" && w != "") print w }'
-}
-# The session name may hold spaces, so it is what is left of the line after the two fields in front of it.
-client_session() {  # [client name]
-  tmux list-clients -F '#{client_activity} #{client_name} #{session_name}' 2>/dev/null |
-    LC_ALL=C awk -v c="${1:-}" '
-      { s = $0; sub(/^[^ ]+ [^ ]+ /, "", s) }
-      c != "" { if ($2 == c) { print s; exit } next }
-      $1 + 0 >= m { m = $1 + 0; best = s }
+# One value of what a client shows: <format> for the named client, or, with none named, for the most recently active one. The value is the last thing on the line, so a session name with spaces comes through whole.
+client_attr() {  # <format> [client name]
+  tmux list-clients -F "#{client_activity} #{client_name} $1" 2>/dev/null |
+    LC_ALL=C awk -v c="${2:-}" '
+      { v = $0; sub(/^[^ ]+ [^ ]+ /, "", v) }
+      c != "" { if ($2 == c) { print v; exit } next }
+      $1 + 0 >= m { m = $1 + 0; best = v }
       END { if (c == "" && best != "") print best }'
 }
+client_window()  { client_attr '#{window_id}' "${1:-}"; }     # [client name]
+client_session() { client_attr '#{session_name}' "${1:-}"; }  # [client name]
 
 # Placeholders and docked chats of the previous version. While any is left the sidebar must not leave the window that holds them
 # (migrate.sh sends them home first), so a follow stands down until it has.
@@ -62,7 +53,7 @@ legacy_seats_present() {
 
 chat_in_session() {  # <session> — does it hold a pane a Claude is running in
   local live p
-  live=" $(live_panes 2>/dev/null | tr '\n' ' ') "
+  live=$(live_set)
   for p in $(tmux list-panes -s -t "=$1" -F '#{pane_id}' 2>/dev/null); do
     case "$live" in *" $p "*) return 0 ;; esac
   done

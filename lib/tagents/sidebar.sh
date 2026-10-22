@@ -77,17 +77,10 @@ dash_pane_pick() {  # [clear]
 
 
 
-# NOT `live_panes | grep -q`: this script runs under pipefail, and grep -q closes
-# the pipe the moment it matches, so live_panes dies of SIGPIPE and the pipeline
-# reports failure on exactly the runs that FOUND something. That inverted every
-# guard built on it — a chat tested as "not an agent" and kept the list marker.
+# Not `live_panes | grep -q` (see live_set): that inverted every guard built on it, a chat tested as "not an agent" kept the list marker.
 is_agent_pane() {  # <pane-id> — is a Claude actually running in it?
-  local p list
   [ -n "${1:-}" ] || return 1
-  list=$(live_panes 2>/dev/null)
-  for p in $list; do
-    [ "$p" = "$1" ] && return 0
-  done
+  case "$(live_set)" in *" $1 "*) return 0 ;; esac
   return 1
 }
 

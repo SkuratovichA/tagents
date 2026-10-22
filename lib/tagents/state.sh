@@ -20,6 +20,11 @@ live_panes() {
     LC_ALL=C awk '$2 ~ /^[0-9]+\.[0-9]+\.[0-9]+$/ || $2 == "claude" { print $1 }'
 }
 
+# The live chats as one padded string, " %1 %2 ", for `case "$live" in *" $pane "*)` — the walk is done once however many panes are asked about. A case and not `live_panes | grep -q`: this script runs under pipefail, and grep -q closes the pipe the moment it matches, so live_panes dies of SIGPIPE and the pipeline reports failure on exactly the runs that FOUND something.
+live_set() {
+  printf ' %s ' "$(live_panes 2>/dev/null | tr '\n' ' ')"
+}
+
 # The walk itself, with the pid of the Claude it found beside each pane: the
 # snapshot taken before a reboot needs that process's argv, and the pane alone
 # cannot give it. live_panes is this without the pid, plus its fallback.

@@ -141,7 +141,7 @@ end_agent() {  # <pane> — hang up the agent running in it
 open_chat() {  # <open_agent|open_beside> <pane> <sid> <dir>
   local selfn=$1 pane=$2 sid=${3:-} dir=${4:-} recsid="" msg live k ts key newest="" newestts=-1 locked=0 rc
   if [ -n "$sid" ] && [ "$pane" != "-" ]; then
-    live=" $(live_panes 2>/dev/null | tr '\n' ' ') "
+    live=$(live_set)
     IFS="$US" read -r recsid _ < <(rec_row "$pane")
     case "$live" in
       *" $pane "*) [ "$recsid" = "$sid" ] && key=$pane || key="" ;;
