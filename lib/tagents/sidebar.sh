@@ -122,8 +122,7 @@ claim_dash() {
   tmux list-panes -a -F '#{pane_id} #{@tagents_dash}' 2>/dev/null |
     LC_ALL=C awk -v me="$me" '$2 == "1" && $1 != me { print $1 }' |
     while IFS= read -r old; do tmux set -up -t "$old" @tagents_dash 2>/dev/null; done
-  tmux set -p -t "$me" @tagents_list "$$" 2>/dev/null
-  tmux set -p -t "$me" @tagents_dash 1 2>/dev/null
+  tmux set -p -t "$me" @tagents_list "$$" \; set -p -t "$me" @tagents_dash 1 \; set -up -t "$me" @tagents_starting 2>/dev/null
   # A sidebar is wanted from now until a ctrl-q: if its pane, window or session is killed, the next follow starts another (follow).
   tmux set -g @tagents_sidebar_on 1 2>/dev/null
   # tmux-resurrect saves the title with the layout; a restore sweeps the idle shells that come back with it (resurrect_sweep).
@@ -153,11 +152,18 @@ release_dash() {
   return 0
 }
 
+# Is a list on its way? start_sidebar stamps the pane it has just split with the time (@tagents_starting) and the list's claim_dash takes the stamp off; a stamp younger than 20 seconds on a pane that is still there is a list that has not claimed yet.
+sidebar_starting() {
+  tmux list-panes -a -F '#{@tagents_starting}' 2>/dev/null |
+    LC_ALL=C awk -v now="$(date +%s)" '$1 ~ /^[0-9]+$/ && now - $1 < 20 { found = 1 } END { exit !found }'
+}
+
 # A list as a new pane, leftmost and as tall as <window>, TA_WIDTH percent wide. Prints its pane id once it has claimed the sidebar (a
 # list claims itself a moment after it starts, so the caller waits instead of assuming); 1 when it did not within about two seconds. Under the
 # follow lock, and a list that claimed while this waited for it is the answer instead of a second one: a storm of hooks and an ensure-dash
 # started together start one list. 2 when the lock could not be had (somebody else is starting or moving the sidebar): a second list for
-# the sake of not waiting is worse than none, so nothing is started.
+# the sake of not waiting is worse than none, so nothing is started. Neither is a second one started while the first is still coming up: on a
+# loaded machine a list takes longer than await_list waits, and the next start would find no claim yet and split another pane.
 start_sidebar() {  # <window-id>
   local win=${1:-} p took="" rc=1
   [ -n "$win" ] || return 1
@@ -166,7 +172,10 @@ start_sidebar() {  # <window-id>
   p=$(dash_pane)
   if [ -n "$p" ]; then
     printf '%s' "$p"; rc=0
+  elif sidebar_starting; then
+    if await_list; then printf '%s' "$(dash_pane)"; rc=0; fi
   elif p=$(tmux split-window -d -f -b -h -l "${DASH_WIDTH}%" -P -F '#{pane_id}' -t "$win" "exec '$SELF'" 2>/dev/null) && [ -n "$p" ]; then
+    tmux set -p -t "$p" @tagents_starting "$(date +%s)" 2>/dev/null
     [ "$(tmux display -p -t "$win" '#{window_zoomed_flag}' 2>/dev/null)" = 1 ] && tmux resize-pane -Z -t "$win" 2>/dev/null
     if await_list; then printf '%s' "$p"; rc=0; fi
   fi

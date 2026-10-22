@@ -818,6 +818,28 @@ TA_NEW_CMD="exec '$BIN/claude' 600" env TMUX="$SOCKC,0,0" bash "$TA" --new "$WRR
 ok "R39 a second one is a second window of that session" 2 "$(tmux -L "${WRS}c" list-windows -t =agents: -F x 2>/dev/null | wc -l | tr -d ' ')"
 tmux -L "${WRS}c" kill-server >/dev/null 2>&1
 
+t "R40 a start while the first list is still coming up waits for it and splits no second pane"
+kill_sidebars; unhook; to tatest-work
+mkchat tatest-work stw; WST=$LASTWIN
+SP=$(tm split-window -d -f -b -h -l 40% -P -F '#{pane_id}' -t "$WST" "exec sleep 600")
+tm set -p -t "$SP" @tagents_starting "$(date +%s)"                     # split a moment ago; the list has not claimed yet
+n1=$(tm list-panes -a -F x | wc -l | tr -d ' ')
+out=$(modrun start_sidebar "$WST"); rc=$?
+ok "R40 no pane was split" "$n1" "$(tm list-panes -a -F x | wc -l | tr -d ' ')"
+ok "R40 it gave up after the wait: status 1, nothing printed" "1:" "$rc:$out"
+( sleep 0.6; stamp_sidebar "$SP" ) &
+out=$(modrun start_sidebar "$WST"); rc=$?; wait
+ok "R40 the list that claimed meanwhile is the answer" "0:$SP" "$rc:$out"
+tm kill-pane -t "$SP"; kill_sidebars
+SP2=$(tm split-window -d -f -b -h -l 40% -P -F '#{pane_id}' -t "$WST" "exec sleep 600")
+tm set -p -t "$SP2" @tagents_starting "$(( $(date +%s) - 60 ))"       # a list that never came up
+before=$(tm list-panes -a -F '#{pane_id}')
+out=$(modrun start_sidebar "$WST"); rc=$?
+NEWP=$(tm list-panes -a -F '#{pane_id}' | grep -vxF -f <(printf '%s\n' "$before"))
+ok "R40 a stamp older than 20 seconds does not hold the start back: one pane was split" 1 "$(printf '%s\n' "$NEWP" | grep -c .)"
+ok "R40 and the claim of the new list takes the stamp off" "" "$(wait_eq_long "" tm display -p -t "$NEWP" '#{@tagents_starting}')"
+tm kill-pane -t "$SP2" 2>/dev/null; tm kill-pane -t "$NEWP" 2>/dev/null; kill_sidebars; unhook; settle 0.3
+
 t "R34 the cursor follows the window on screen"
 kill_sidebars; mkchat tatest-work cur; WCUR=$LASTWIN; PCUR=$LASTPANE
 SB=$(fake_sidebar "$WCUR"); tm set -p -t "$SB" @tagents_port 9
