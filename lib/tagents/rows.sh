@@ -2,7 +2,7 @@
 #
 # enter selects: the client goes to the row's window, the sidebar follows it there, the cursor lands in the chat. ctrl-s joins a chat's pane into the window on screen beside its chat and remembers where it came from (@tagents_joined, a pane option holding the home session name); ctrl-u breaks it out again. ctrl-x moves the sidebar out of a window before the window closes with the chat. Nothing here moves, resizes, kills or marks a pane that is neither a chat it was asked about nor the sidebar: the other panes of a window belong to the user.
 #
-# Part of ./tagents; `tagents --help` is the model this implements. Sourced after dock.sh (deleted later), so open_agent, open_beside and undock here replace the seat versions.
+# Part of ./tagents; `tagents --help` is the model this implements. Sourced after follow.sh and migrate.sh.
 
 row_session() {  # <pane or window key> -> its session name, empty when the key has no window
   case "${1:-}" in ''|-|%s-*) return 0 ;; esac

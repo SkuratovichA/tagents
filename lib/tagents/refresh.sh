@@ -252,6 +252,7 @@ refresher() {
     [ -n "${TMUX_PANE:-}" ] && lpid=$(tmux show -pv -t "$TMUX_PANE" @tagents_list 2>/dev/null) ;;
   esac
   case $lpid in *[!0-9]*) lpid="" ;; esac
+  migrate_seats
   install_event_hooks
   # The FIFO the waiter answers through (evq), and one nobody ever writes to (nap),
   # which only a read with a timeout waits on: bash 3.2 has no builtin sleep, and a

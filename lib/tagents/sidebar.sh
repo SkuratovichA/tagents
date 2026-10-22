@@ -165,6 +165,7 @@ start_sidebar() {  # <window-id>
 # client nothing is started or moved and the status is 1.
 ensure_dash() {
   local win
+  migrate_seats
   win=$(client_window "")
   [ -n "$win" ] || return 1
   if [ -n "$(dash_pane)" ]; then

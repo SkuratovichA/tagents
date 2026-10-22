@@ -130,15 +130,14 @@ resurrect:
 keys:
   # closed: ctrl-y   # closed sessions — pick one to resume
   closed: ctrl-y
-  # open: enter      # open it in the sidebar
-  # beside: ctrl-s   # open it beside the current seat
+  # open: enter      # select its row: the sidebar moves into its window
+  # beside: ctrl-s   # join it into the window on screen, beside its chat
   # new: ctrl-n      # start a new agent in this project
   # pick: ctrl-p     # the same, picking the account
   # goto: ctrl-g     # go to the agent where it lives
-  # borrow: ctrl-o   # borrow its whole window into this session
   # send: ctrl-e     # send a line straight into it
   # rename: ctrl-r   # name this agent (f2 stays an alias either way)
-  # undock: ctrl-u   # undock the current seat
+  # undock: ctrl-u   # break a joined chat out into a window of its own
   # kill: ctrl-x     # kill this agent, asking first
   # tree: ctrl-t     # tree or flat
   # preview: ctrl-v  # the preview in a window of its own

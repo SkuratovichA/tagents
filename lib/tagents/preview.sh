@@ -63,7 +63,7 @@ preview() {
         transcript_tail "$tr" 20
       else
         printf '\033[90mheadless session — it runs in no pane, so there is nothing\n'
-        printf 'to show here and nothing to dock. No readable $TA_LOG was\n'
+        printf 'to show here and nothing to select. No readable $TA_LOG was\n'
         printf 'recorded for it either; export TA_LOG before starting one.\033[0m\n'
       fi
       return 0 ;;

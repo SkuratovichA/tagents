@@ -184,14 +184,24 @@ resurrect_place() {  # <session> <window index> <pane index> <dir> <cmd>
 
 # The sidebar back: a list as the leftmost full-height pane of the window the D row names when that window exists after the restore, of the first restored chat's window otherwise; a running list is moved there instead of a second one started. A window tmux-resurrect left from an older version's dashboard is an ordinary window and keeps what it runs.
 resurrect_dashboard() {  # <snapshot file> <window id of the first chat restored>
-  local file=$1 first=${2:-} drow ds di win
+  local file=$1 first=${2:-} drow ds di win sb np nw
   drow=$(LC_ALL=C awk -F"$TAB" '$1 == "D" { print $2 "\t" $3; exit }' "$file")
   [ -n "$drow" ] || return 1
   ds=${drow%%$TAB*}; di=${drow#*$TAB}
   win=$(tmux list-windows -t "=$ds:" -F '#{window_index} #{window_id}' 2>/dev/null | LC_ALL=C awk -v i="$di" '$1 == i { print $2; exit }')
   [ -n "$win" ] || win=$first
   [ -n "$win" ] || return 1
-  if [ -n "$(dash_pane)" ]; then sidebar_move "$win" || return 1; else start_sidebar "$win" >/dev/null || return 1; fi
+  sb=$(dash_pane)
+  if [ -n "$sb" ]; then
+    # A list alone in its session's only window cannot be moved without taking that window and the session with it: it stays where it is.
+    read -r np nw <<EOF
+$(tmux display -p -t "$sb" '#{window_panes} #{session_windows}' 2>/dev/null)
+EOF
+    [ "${np:-0}" -le 1 ] && [ "${nw:-0}" -le 1 ] && return 0
+    sidebar_move "$win" || return 1
+  else
+    start_sidebar "$win" >/dev/null || return 1
+  fi
   return 0
 }
 

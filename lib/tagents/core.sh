@@ -44,7 +44,7 @@ is_shell_cmd() {  # <pane_current_command> — an idle shell, the one thing safe
   return 1
 }
 
-# mkdir is the atomic primitive (macOS has no flock). A lock older than <stale> seconds belongs to a process that died holding it and is taken over. tnotes carries its own copy as take_lock (tnotes:216-228) — that script stands alone — still without the bound below.
+# mkdir is the atomic primitive (macOS has no flock). A lock older than <stale> seconds belongs to a process that died holding it and is taken over. tnotes carries its own copy as take_lock (tnotes:122-133) — that script stands alone — still without the bound below.
 # Every pass costs a try, the takeover included: a mkdir that fails for any other reason (a parent nobody may write to) gives up after the tries instead of spinning on a takeover that never lands.
 # A short sleep is not a short wait: a process at background priority (a detached worker, measured) has its timers coalesced, and there `sleep 0.05` took 0.12 s, so 36 tries were 4.4 s instead of 3. [seconds] bounds the wait by the clock as well; SECONDS counts whole seconds, so N waits between N-1 and N.
 lock_dir() {  # <dir> <stale seconds> [tries, 0.05 s apart; default 40] [seconds]

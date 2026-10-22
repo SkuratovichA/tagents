@@ -155,7 +155,7 @@ keys_table() {  # key<TAB>verb<TAB>what it does
   # is a lie in both directions: nothing is bound to it, and the ? window would
   # offer it anyway.
   printf '%s\n' \
-"$K_OPEN${TAB}open${TAB}open it in the sidebar and put the cursor in it" \
+"$K_OPEN${TAB}open${TAB}select its row: the sidebar and the client move into its window" \
 "$K_BESIDE${TAB}beside${TAB}join it into the window on screen, beside its chat" \
 "$K_NEW${TAB}new${TAB}start a new agent in this project" \
 "$K_PICK${TAB}pick${TAB}the same, picking the account it starts on" \

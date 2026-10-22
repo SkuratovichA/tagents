@@ -117,6 +117,9 @@ dash() {
   [ -n "$K_QUIT" ] && quit="$K_QUIT quit"
   if [ "$mode" = popup ]; then esc_act=abort; quit=''; after='+abort'; fi
 
+  # The seat model of the previous version, sent home once (migrate.sh), before the first claim and the first follow.
+  migrate_seats
+
   # A LIST RUNNING IN A PANE IS THE SIDEBAR. Not "is it running in the pane some
   # marker points at" — it claims the pane, so enter selects the chat's window, the
   # sidebar comes along and the cursor lands in the chat, whichever window that
