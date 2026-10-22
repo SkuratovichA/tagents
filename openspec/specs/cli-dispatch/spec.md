@@ -20,8 +20,12 @@ Every option that starts with `-` and that the dashboard knows SHALL be answered
 - **THEN** the script handles it itself
 
 #### Scenario: The rest of the flags
-- **WHEN** one of `--new`, `--profile-for`, `--config`, `--check`, `--agent-cmd`, `--counts`, `--preview`, `--ask-preview`, `--preview-popup`, `--focus-hooks`, `--slot`, `--unpark`, `--poke`, `--undock-pane`, `--undock-window`, `--collapse`, `--seats`, `--current-seat`, `--ensure-seat`, `--sync-names`, `--refresher`, `--ensure-dash`, `--goto` is given
+- **WHEN** one of `--new`, `--profile-for`, `--config`, `--check`, `--agent-cmd`, `--counts`, `--preview`, `--ask-preview`, `--preview-popup`, `--follow`, `--sync-names`, `--refresher`, `--ensure-dash`, `--goto` is given
 - **THEN** the script handles it itself
+
+#### Scenario: Removed flags
+- **WHEN** one of `--focus-hooks`, `--slot`, `--unpark`, `--poke`, `--undock-pane`, `--undock-window`, `--collapse`, `--seats`, `--current-seat` or `--ensure-seat` is given
+- **THEN** the script does not treat it as a flag of its own
 
 #### Scenario: Answered here
 - **WHEN** `tagents --keys`, `--hidden-cols`, `--config`, `--check`, `--header` or `--help` runs while a `tagents-core` is available

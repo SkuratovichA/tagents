@@ -21,7 +21,6 @@ beside ctrl-s K_BESIDE
 new ctrl-n K_NEW
 pick ctrl-p K_PICK
 goto ctrl-g K_GOTO
-borrow ctrl-o K_BORROW
 send ctrl-e K_SEND
 rename ctrl-r K_RENAME
 undock ctrl-u K_UNDOCK
@@ -156,15 +155,14 @@ keys_table() {  # key<TAB>verb<TAB>what it does
   # is a lie in both directions: nothing is bound to it, and the ? window would
   # offer it anyway.
   printf '%s\n' \
-"$K_OPEN${TAB}open${TAB}open it in the sidebar and put the cursor in it" \
-"$K_BESIDE${TAB}beside${TAB}open it beside the current seat — two chats at once" \
+"$K_OPEN${TAB}open${TAB}select its row: the sidebar and the client move into its window" \
+"$K_BESIDE${TAB}beside${TAB}join it into the window on screen, beside its chat" \
 "$K_NEW${TAB}new${TAB}start a new agent in this project" \
 "$K_PICK${TAB}pick${TAB}the same, picking the account it starts on" \
 "$K_GOTO${TAB}goto${TAB}go to the agent where it lives" \
-"$K_BORROW${TAB}borrow${TAB}borrow its whole window into this session" \
 "$K_SEND${TAB}send${TAB}send a line straight into it" \
 "$K_RENAME${TAB}rename${TAB}rename this agent — an empty name restores its title" \
-"$K_UNDOCK${TAB}undock${TAB}undock the current seat and close it behind the chat" \
+"$K_UNDOCK${TAB}undock${TAB}break a joined chat out into a window of its own" \
 "$K_KILL${TAB}kill${TAB}kill this agent, asking first; a closed row is forgotten" \
 "$K_TREE${TAB}:tree${TAB}tree or flat" \
 "$K_PREVIEW${TAB}:preview${TAB}the preview in a window of its own — in the prefix+a popup, fzf's toggle beside the list" \
@@ -221,11 +219,6 @@ on the row the cursor was on · esc closes")
   pick=${pick%%$nl*}
   [ -n "$pick" ] || return 0
   verb=${pick#*$TAB}; verb=${verb%%$TAB*}
-  # TA_HOME is fzf's own environment, and a popup is spawned by the tmux server
-  # with none of it. borrow and undock both need it, so it is answered the same
-  # way dash() answers it — the session of the client that opened this.
-  [ -n "${TA_HOME:-}" ] || TA_HOME=$(tmux display -p '#S' 2>/dev/null)
-  export TA_HOME
   # THIS BODY IS ALREADY A POPUP, and the acts below are the ones that ask a
   # question. prompt() answers a question with a display-popup, and a popup
   # issued from inside a popup returns rc=0 and silently does nothing — so
@@ -260,7 +253,7 @@ on the row the cursor was on · esc closes")
     :usage)      ask_usage ;;
     # Same again: this body is already a terminal of its own, and the picker
     # resumes on its own rather than reporting a verb back to the list.
-    :closed)     ask_closed "$port" ;;
+    :closed)     ask_closed "$port" "$(row_group "$pane")" ;;
     *)           "$SELF" --act "$verb" "$pane" "$state" "$sid" "$dir"
                  post_fzf "$port" "reload-sync($SELF --list)" ;;
   esac

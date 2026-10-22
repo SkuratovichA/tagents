@@ -6,7 +6,7 @@ After a reboot or any other loss of the tmux server, every Claude chat that had 
 ## Requirements
 
 ### Requirement: A snapshot holds one row per live chat
-A capture SHALL write one `A` row per live chat that has a state record with a session id, whether tagents started the chat or it was typed by hand. A pane that has a record but no Claude process, and a slot placeholder, SHALL get no row. A row is a tab-separated line of 14 columns, listed in the next requirement.
+A capture SHALL write one `A` row per live chat that has a state record with a session id, whether tagents started the chat or it was typed by hand. A pane that has a record but no Claude process, and the sidebar, SHALL get no row. A row is a tab-separated line of 14 columns, listed in the next requirement.
 
 #### Scenario: Two chats and a pane that only has a record
 - **WHEN** two panes run Claude with state records and a third pane runs `sleep` with a record left behind
@@ -22,22 +22,15 @@ A capture SHALL write one `A` row per live chat that has a state record with a s
 - **THEN** its row carries the model in column 13 and a command line containing `--effort high` in column 14
 
 ### Requirement: The columns of a row
-The 14 columns of an `A` row SHALL be, in order: the letter `A`, the session id, the Claude config directory the chat ran on, a flag that is `1` when that account was recorded, the tmux session name, the window index, the pane index, the window name, tagents' own name for the window, the working directory, `1` when the chat was docked, `1` when its notes editor was on screen, the model, and the command line the chat was started with, with tabs and newlines turned into spaces.
+The 14 columns of an `A` row SHALL be, in order: `A`, the session id, the Claude config directory the chat ran on, `1` when that account was recorded, the tmux session name, the window index, the pane's place in its window, the window name, tagents' own name for it, the working directory, `p` when the place skips the sidebar (older snapshots: empty or `1`), `1` when the notes editor was beside the chat, the model, and the command line it started with, tabs and newlines turned into spaces.
 
 #### Scenario: Column positions
-- **WHEN** a chat in session `proj`, window 1, pane 0 named `Alpha` runs in a directory `~/projects/app`
-- **THEN** column 5 is `proj`, column 6 is `1`, column 7 is `0`, column 8 is `Alpha` and column 10 is the directory
+- **WHEN** a chat in session `proj`, window 1, pane 1 named `Alpha` runs in a directory `~/projects/app`
+- **THEN** column 5 is `proj`, column 6 is `1`, column 7 is `0`, column 8 is `Alpha`, column 10 is the directory and column 11 is `p`
 
-### Requirement: A docked chat is filed at its home seat
-A chat that is docked into the sidebar window SHALL be recorded at the session, window and pane of its home seat (the placeholder's), never at the sidebar, and its docked column SHALL be `1`. When the dashboard sidebar window is up the snapshot SHALL also hold one `D` row of three columns: `D`, the session name and the window index of that window.
-
-#### Scenario: Docked chat
-- **WHEN** a chat is docked in the sidebar and its placeholder sits at pane 1 of window 1 in session `proj`
-- **THEN** its row says session `proj`, window 1, pane 1, docked `1`
-
-#### Scenario: Sidebar window
-- **WHEN** the sidebar window `dash` is window 0 of session `dashes`
-- **THEN** the snapshot has the row `D`, `dashes`, `0`
+#### Scenario: An old snapshot
+- **WHEN** a snapshot written before this change holds `1` in column 11 of a row
+- **THEN** the restore reads column 7 as a tmux pane index and the chat comes back undocked, as every chat does
 
 ### Requirement: Window names travel only when tagents named the window
 The tagents-name column SHALL be filled only when the window's current name still equals the name tagents gave it; a name that a person typed over it SHALL be left out, so a restore does not hand a typed name back to the naming sweep.
@@ -45,17 +38,6 @@ The tagents-name column SHALL be filled only when the window's current name stil
 #### Scenario: A typed name
 - **WHEN** a window carries a tagents name `Stale` but is now called `Hand`
 - **THEN** the row records window name `Hand` and an empty tagents-name column
-
-### Requirement: The notes editor counts only while it is on screen
-The notes column SHALL be `1` only when the chat's notes editor sits in the chat's own window, and empty when there is none or it is parked in the `ta-notes` session.
-
-#### Scenario: Parked editor
-- **WHEN** a chat's editor is parked in `ta-notes`
-- **THEN** the notes column of that chat's row is empty
-
-#### Scenario: Editor beside its chat
-- **WHEN** the editor is a pane of the chat's window
-- **THEN** the notes column is `1`
 
 ### Requirement: Rows are ordered and a capture replaces the last one
 A capture SHALL be a full replacement, never a merge. The `D` row, when there is one, SHALL come first, and the `A` rows SHALL be sorted by tmux session name, then window index, then pane index, so an unchanged set reads the same whatever order the process list returned its chats in. A capture that says exactly what the newest snapshot already says SHALL NOT be written. A capture that fails SHALL leave the newest good snapshot where it was.
@@ -65,7 +47,7 @@ A capture SHALL be a full replacement, never a merge. The `D` row, when there is
 - **THEN** one snapshot file exists
 
 #### Scenario: Changed set
-- **WHEN** a chat is docked between two captures
+- **WHEN** a chat is moved to another window between two captures
 - **THEN** the second capture is written as a new file
 
 ### Requirement: Snapshots live in the state directory
@@ -207,7 +189,7 @@ A restored chat SHALL be started with `--model <recorded model>` when the row ha
 - **THEN** the resumed command has no `--model`
 
 ### Requirement: Where a chat goes back
-A chat SHALL be placed at its recorded `session:window.pane` when that pane is an idle shell with no tagents or tnotes marker on it: the pane is replaced in place by the resumed command, and nothing is typed into the shell. Otherwise (the pane is busy, a seat, a placeholder, an editor, or gone) the chat SHALL get a new window in its session, and when the session is gone, a new session of that name. A pane running anything but a shell SHALL never be touched.
+A chat SHALL be placed at its recorded place in the window `session:window` when that pane is an idle shell with no tagents or tnotes marker on it and is not titled `tagents-sidebar`: the pane is replaced in place by the resumed command, and nothing is typed into the shell. Otherwise (the pane is busy, the sidebar, an editor, gone, or the row has no window and pane) the chat SHALL get a new window in its session, and when the session is gone, a new session of that name.
 
 #### Scenario: Idle shell
 - **WHEN** tmux-resurrect left an idle shell at the recorded pane
@@ -217,6 +199,10 @@ A chat SHALL be placed at its recorded `session:window.pane` when that pane is a
 - **WHEN** the recorded pane runs `sleep`
 - **THEN** the chat gets a new window in the same session and the `sleep` pane keeps running
 
+#### Scenario: A joined chat
+- **WHEN** a row has a session and empty window and pane columns
+- **THEN** the chat gets a new window in that session
+
 #### Scenario: Bare server
 - **WHEN** tmux-resurrect has not run and the server has none of the recorded sessions
 - **THEN** the restore creates the missing sessions
@@ -224,6 +210,13 @@ A chat SHALL be placed at its recorded `session:window.pane` when that pane is a
 #### Scenario: Session gone
 - **WHEN** the recorded session does not exist
 - **THEN** a new session of that name is created holding the chat
+
+### Requirement: The other panes of a restored window are left alone
+The other panes of the window, which tmux-resurrect brings back as idle shells in their working directories, SHALL be left as they are, and a pane running anything but a shell SHALL never be touched.
+
+#### Scenario: A shell beside the chat
+- **WHEN** the recorded window also had a shell pane that tmux-resurrect brought back
+- **THEN** the shell is untouched, an idle shell in its working directory, and the chat runs in its own pane
 
 ### Requirement: Names come back
 After placing a chat the restore SHALL stamp the recorded tagents name on its window again so the naming sweep keeps following the agent. A window name that was typed SHALL go back as a plain name, and only when the window had to be made anew.
@@ -287,23 +280,12 @@ Each recorded chat SHALL get one line: `✓ <session>:<window>.<pane> <name> →
 - **WHEN** both recorded chats are resumed
 - **THEN** there are two lines starting with `✓` and the last line is `tagents: 2 resumed, 0 skipped, 2 recorded (…)`
 
-### Requirement: The dashboard comes back
-When the snapshot holds a `D` row, the restore SHALL bring the dashboard back and report `✓ dashboard`. The window tmux-resurrect leaves as a dead `dash` window is where the list is started, rather than a second window beside it. Docked chats come back at their homes, undocked.
-
-#### Scenario: Dashboard row
-- **WHEN** the snapshot holds a `D` row
-- **THEN** the report says `✓ dashboard` and one window named `dash` carries the sidebar's marker with the list running in it
-
-#### Scenario: A dash window in use
-- **WHEN** the leftover `dash` window runs something other than a shell
-- **THEN** it keeps what it runs and the sidebar gets a window of its own
-
 ### Requirement: Notes editors
-After the chats are up, the restore SHALL close the notes editors that tmux-resurrect brought back with nothing linking them to a chat: the windows in `ta-notes` other than the holder window `hold` that are linked to no chat, and in each restored chat's window the pane in the notes directory that no chat links to. It SHALL then ask `tnotes toggle <pane>` once for each restored chat whose editor was on screen.
+After the chats are up, the restore SHALL close the notes editors that tmux-resurrect brought back with nothing linking them to a chat: in each restored chat's window the pane in the notes directory that no chat links to, and the whole session `ta-notes` when a save of an older version brought it back. It SHALL then ask `tnotes toggle <pane>` once for each restored chat whose editor was beside it.
 
 #### Scenario: Orphans closed and one editor reopened
-- **WHEN** two unlinked editors sit in `ta-notes` and one restored chat had its editor on screen
-- **THEN** both orphans are closed, the holder and any linked editor stay, and tnotes is asked once for that chat's pane
+- **WHEN** a restored chat's window holds an unlinked pane in the notes directory, two unlinked editors sit in a returned `ta-notes` session, and one restored chat had its editor beside it
+- **THEN** the unlinked pane and the `ta-notes` session are closed, and tnotes is asked once for that chat's pane
 
 #### Scenario: Report lines
 - **WHEN** tnotes reopens the editor, or fails to
@@ -315,8 +297,8 @@ After the chats are up, the restore SHALL close the notes editors that tmux-resu
 - **AND** any other value of `resurrect.notes`, or none, means `reopen`; a missing `tnotes` is not an error
 
 #### Scenario: A window named for the holder plus a Cyrillic letter
-- **WHEN** an unlinked editor in `ta-notes` sits in a window named `holdя`
-- **THEN** it is closed with the other orphans, since only the name `hold` itself marks the holder
+- **WHEN** an unlinked editor in a returned `ta-notes` session sits in a window named `holdя`
+- **THEN** it is closed with the rest of the session
 
 ### Requirement: The hook restore
 `tagents --resurrect --auto` is what tmux-resurrect's post-restore-all hook runs. It SHALL print nothing on the terminal and append its report to `resurrect.log` in the state directory, each run headed by a `== <date time> ==` line, keeping the last 2000 lines from earlier runs. It SHALL do nothing at all, silently, when `resurrect.auto` is false. After a restore it SHALL show `tagents: resurrected <n> agents, <k> skipped — <log path>` in the tmux status line.
@@ -367,8 +349,84 @@ Two tmux options, set by the user's tmux configuration as the README shows (tage
 - **THEN** a snapshot was taken at the save, and the hook then resumes the chats and the status line says how many came back
 
 ### Requirement: What does not come back
-A restore SHALL NOT bring back a chat's seat in the sidebar (the restored dashboard opens empty), scrollback, an `/effort` set inside a session, a chat on a login without the state hook (it has no record), headless sessions (`s-*`), or a shell under the resumed chat: the pane runs `claude --resume` itself, so `/exit` closes the pane. A chat hung up on purpose through tagents SHALL be out of the next snapshot and so not come back.
+A restore SHALL NOT bring back scrollback, an `/effort` set inside a session, a chat on a login without the state hook (it has no record), headless sessions (`s-*`), the commands of the user's other panes (tmux-resurrect returns them as idle shells), a chat's joined position (it comes back in a window of its own), or a shell under the resumed chat: the pane runs `claude --resume` itself, so `/exit` closes the pane. A chat hung up on purpose through tagents SHALL be out of the next snapshot.
 
 #### Scenario: Headless session
 - **WHEN** a headless session was running before the reboot
 - **THEN** it has no row and is not resurrected
+
+#### Scenario: A dev server beside the chat
+- **WHEN** a window held a chat and a pane running a dev server
+- **THEN** the dev server pane comes back as an idle shell and its command is not run
+
+### Requirement: Snapshots from the seat-based version still restore
+A snapshot written before windows became rows SHALL restore: its docked column is read and ignored, a chat that was docked comes back at the session, window and pane recorded for its home seat, and its `D` row is handled like any other.
+
+#### Scenario: A docked chat in an old snapshot
+- **WHEN** a snapshot holds a row with `1` in the docked column for a chat whose home seat was pane 1 of window 1 of session `proj`
+- **THEN** the restore places the chat at `proj:1.1` as it would any other chat
+
+### Requirement: Chats are filed where their panes are
+A capture SHALL record each chat at the session name and window index that tmux reports for its pane, and at its place among the panes of that window that are not the sidebar (the pane titled `tagents-sidebar`, or the live list): the number of such panes before it, from 0, with the user's panes counted. The sidebar moves between windows, so an index that counted it would name another pane after a restore.
+
+#### Scenario: A chat beside a shell
+- **WHEN** a chat is pane 1 of window 2 of session `proj`, with the sidebar as pane 0 and a shell as pane 2
+- **THEN** its row says session `proj`, window 2, place 0, and `p` in column 11
+
+### Requirement: A restore finds a chat's pane by its place
+A restore SHALL find the pane at the recorded place among the panes of the window that are not titled `tagents-sidebar`. A row without `p` in column 11 (an older snapshot) holds a tmux pane index, which SHALL be used as it stands, except that a pane titled `tagents-sidebar` is never used.
+
+#### Scenario: The sidebar was elsewhere at the restore
+- **WHEN** the snapshot was taken with the sidebar left of the chat, and tmux-resurrect brought the window back as two idle shells without it
+- **THEN** the chat runs in the first shell, the second shell is untouched and no window is added
+
+#### Scenario: An old snapshot points at the sidebar's shell
+- **WHEN** a row of an older snapshot names a tmux pane index at which an idle shell titled `tagents-sidebar` stands
+- **THEN** that pane is not used and the chat gets a new window in its session
+
+### Requirement: A joined chat is filed under its home session
+A chat joined into another window with `ctrl-s` SHALL be recorded under the session its `@tagents_joined` names, with the window index and the pane index empty, so that a restore gives it a window of its own there.
+
+#### Scenario: A joined chat
+- **WHEN** a chat joined from session `personal` is a pane of a window of session `work`
+- **THEN** its row says session `personal` and has empty window and pane columns
+
+### Requirement: The sidebar is filed by its window
+When the sidebar is up the snapshot SHALL hold one `D` row of three columns: `D`, the session name and the window index of the window the sidebar is in.
+
+#### Scenario: Sidebar window
+- **WHEN** the sidebar is in window 3 of session `work`
+- **THEN** the snapshot has the row `D`, `work`, `3`
+
+### Requirement: The notes column says whether the chat has its editor beside it
+The notes column SHALL be `1` when the chat's notes editor is a pane of the chat's own window, and empty when the chat has none.
+
+#### Scenario: No editor
+- **WHEN** a chat has no notes editor
+- **THEN** the notes column of that chat's row is empty
+
+#### Scenario: Editor beside its chat
+- **WHEN** the editor is a pane of the chat's window
+- **THEN** the notes column is `1`
+
+### Requirement: The sidebar comes back
+When the snapshot holds a `D` row, the restore SHALL bring the sidebar back once the chats are placed and report `✓ dashboard`: the list is started as the leftmost full-height pane of the recorded window when that window exists after the restore, and of the window of the first chat restored otherwise. A window that tmux-resurrect left from an older snapshot's dashboard SHALL be an ordinary window and keep what it runs.
+
+#### Scenario: Dashboard row
+- **WHEN** the snapshot holds a `D` row whose window is restored
+- **THEN** the report says `✓ dashboard` and the list runs as the leftmost pane of that window and claims the sidebar
+
+#### Scenario: The window is gone
+- **WHEN** the `D` row names a window that does not exist after the restore
+- **THEN** the sidebar is in the window of the first chat restored
+
+### Requirement: The restore closes the sidebar's leftover panes
+After the chats and the sidebar are up, the restore SHALL close every idle shell titled `tagents-sidebar` that is not the live list, as the `window-rows` capability says, and SHALL touch no other pane. A dry run SHALL close nothing.
+
+#### Scenario: Shells where the sidebar was
+- **WHEN** the snapshot's windows were restored with an idle shell titled `tagents-sidebar` in each
+- **THEN** after `tagents --resurrect` those shells are gone and the chats are untouched
+
+#### Scenario: Dry run
+- **WHEN** `tagents --resurrect --dry-run` runs
+- **THEN** no pane is closed

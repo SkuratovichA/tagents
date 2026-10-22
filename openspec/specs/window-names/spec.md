@@ -90,17 +90,6 @@ A change of the agent's title, such as a Claude `/rename`, SHALL show in the win
 - **THEN** the window keeps its name until the next sweep
 - **AND** the next sweep renames it to the new title
 
-### Requirement: What the sweep never names
-The sweep SHALL leave out the dashboard's own window, any window in which a list is running (the pid in `@tagents_list` is alive), and every docked chat, identified by its `@tagents_docked` marker. A docked chat names no window. Once a list is gone, its window is an ordinary window again.
-
-#### Scenario: A docked agent
-- **WHEN** an agent is docked in the dashboard window
-- **THEN** the dashboard window keeps its name
-
-#### Scenario: A window with a list
-- **WHEN** a window holds a pane with a live `@tagents_list` claim
-- **THEN** the sweep does not rename it, and renames it once the claim is removed
-
 ### Requirement: A name is a name, not a tmux format
 Whatever name is applied SHALL reach the window exactly as written: a `#` is literal and a name that starts with `-` is not a flag. `@tagents_name` SHALL record the name the window actually has afterwards, and a rename that fails SHALL record nothing, so the sweep keeps recognising its own names.
 
@@ -143,8 +132,38 @@ A label SHALL be stored in `labels.tsv` in the state directory as one line `<key
 - **WHEN** an agent has the label `named-by-hand` and a different terminal title
 - **THEN** a sweep leaves the window named `named-by-hand`
 
-### Requirement: Naming an agent from outside
-`tagents --label KEY [NAME]` SHALL store the label for KEY, a session id or a pane id, and SHALL rename the agent's window at once, including a window it shares with other panes, then exit 0. With no KEY it SHALL print a usage error on stderr and exit 2. A docked agent's rename SHALL NOT rename the dashboard window. An empty NAME SHALL remove the label, turn `automatic-rename` back on for the window and drop `@tagents_name`, so the sweep names the window from the titles again.
+### Requirement: The rename dialog starts from the current name
+The rename dialog behind ctrl-r SHALL open with the line already holding the agent's current label, or, when it has none, the name the row shows, so a rename is an edit rather than a retyping. Esc SHALL leave the label as it was, and an empty line SHALL clear it. Without a terminal the dialog SHALL read one line from stdin, waiting at most 300 seconds. The key binding itself belongs to the `dashboard-keys` capability.
+
+#### Scenario: Seeded with the label
+- **WHEN** an agent has the label `current name` and the dialog opens
+- **THEN** the input line starts as `current name`
+
+#### Scenario: Seeded with the displayed name
+- **WHEN** the agent has no label
+- **THEN** the input line starts as the name on its row, not empty
+
+#### Scenario: Esc
+- **WHEN** the dialog is cancelled with Esc
+- **THEN** the label is unchanged
+
+### Requirement: The sidebar does not stop a window being named
+The sweep SHALL name a window that holds a chat and the sidebar after the chat, as it would without the sidebar, and SHALL leave out a window whose only pane is the sidebar. Moving the sidebar into or out of a window SHALL NOT rename it.
+
+#### Scenario: A window with the sidebar
+- **WHEN** a window holds the sidebar and an agent whose title is `Search index rebuild`
+- **THEN** the sweep names the window `Search index rebuild`
+
+#### Scenario: A window with only the sidebar
+- **WHEN** a window holds nothing but the sidebar
+- **THEN** the sweep leaves its name alone
+
+#### Scenario: The sidebar moves
+- **WHEN** the sidebar moves from one window to another
+- **THEN** neither window is renamed because of it
+
+### Requirement: A label names the agent's window from outside
+`tagents --label KEY [NAME]` SHALL store the label for KEY, a session id or a pane id, and SHALL rename the agent's window at once, including a window it shares with other panes or with the sidebar, then exit 0. With no KEY it SHALL print a usage error on stderr and exit 2. An empty NAME SHALL remove the label, turn `automatic-rename` back on for the window and drop `@tagents_name`, so the sweep names the window from the titles again.
 
 #### Scenario: A label renames at once
 - **WHEN** `tagents --label sid-e named-by-hand` is run for an agent in a window
@@ -164,21 +183,6 @@ A label SHALL be stored in `labels.tsv` in the state directory as one line `<key
 - **THEN** `automatic-rename` is on for its window and `@tagents_name` is unset
 - **AND** the next sweep names it after the newest agent in it
 
-#### Scenario: A docked agent
-- **WHEN** `--label` names an agent that is docked in the dashboard window
-- **THEN** the dashboard window keeps its name
-
-### Requirement: The rename dialog starts from the current name
-The rename dialog behind ctrl-r SHALL open with the line already holding the agent's current label, or, when it has none, the name the row shows, so a rename is an edit rather than a retyping. Esc SHALL leave the label as it was, and an empty line SHALL clear it. Without a terminal the dialog SHALL read one line from stdin, waiting at most 300 seconds. The key binding itself belongs to the `dashboard-keys` capability.
-
-#### Scenario: Seeded with the label
-- **WHEN** an agent has the label `current name` and the dialog opens
-- **THEN** the input line starts as `current name`
-
-#### Scenario: Seeded with the displayed name
-- **WHEN** the agent has no label
-- **THEN** the input line starts as the name on its row, not empty
-
-#### Scenario: Esc
-- **WHEN** the dialog is cancelled with Esc
-- **THEN** the label is unchanged
+#### Scenario: An agent beside the sidebar
+- **WHEN** `--label` names an agent whose window holds the sidebar
+- **THEN** the window takes the label

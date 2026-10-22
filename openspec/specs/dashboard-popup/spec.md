@@ -12,12 +12,12 @@ The dashboard SHALL run in popup mode when `TA_MODE=popup` is set in its environ
 - **WHEN** the dashboard starts with `TA_MODE=popup`
 - **THEN** its header offers `enter open in sidebar` and `? keys` but no `ctrl-q quit` item
 
-### Requirement: A popup claims no pane and has no seat
-A popup list SHALL NOT claim the pane it runs in, since a popup has none of its own, and SHALL NOT dock a chat into the window it was opened over. `enter` on an agent hands the chat to the dedicated sidebar, bringing that session up if it does not exist, and takes the client there, as the `seats-and-docking` capability describes.
+### Requirement: A popup claims no pane and brings the sidebar to the chat
+A popup list SHALL NOT claim the pane it runs in, since a popup has none of its own. `enter` on an agent SHALL select its row as the `window-rows` capability describes: the sidebar is moved into the agent's window, started first with `tagents --ensure-dash` when none exists, and the client is taken there, after which the popup closes.
 
 #### Scenario: Open from the popup
 - **WHEN** the user presses `enter` on an agent in a popup list
-- **THEN** the chat is docked in the dedicated sidebar, the client is switched to it and the popup closes
+- **THEN** the sidebar is in the agent's window, the client shows it and the popup closes
 
 ### Requirement: A popup's refresher ends with it
 A popup list SHALL start a refresher of its own, as a sidebar list does, handing it fzf's port and process id. Although a popup claims no pane and so releases nothing, it SHALL ring the refresher's channel `tagents-ev` when it exits, so that the refresher sees fzf gone and ends without waiting for its idle timeout.

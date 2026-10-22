@@ -272,3 +272,90 @@ While the specs were written, every requirement that stated a rule in one long p
 
 ## `sort -u` merges names too, and a keyed sort does not keep equal keys together (20.10.2026)
 The collation that makes awk call `я` and `ю` equal governs `sort` as well: `printf 'я\nю\n' | sort -u` prints one line, so a name was lost from a list of directories, and `sort -s -k2,2` leaves rows whose keys weigh the same in the order they came in (`я ю я`), so a consumer that groups runs or compares with the previous line splits or merges groups. Fixes that keep the order of ASCII names: `LC_ALL=C sort -u` where the lines are what is counted, and for a keyed sort a number per distinct name (`gnum` in `list.sh`, field 15) sorted on right after the name, because `sort -f` or `LC_ALL=C` would reorder mixed-case names (`Web` before `api`). Every awk in `lib/` and `hooks/` now runs as `LC_ALL=C awk`, and `tests/modules.sh` lists any call that does not; a test for a pin uses one letter per name, since longer names can survive by luck, and is run once without the pin to see it fail.
+
+## tmux `-t "=name"` finds no session for set, show and display; the target needs the colon (22.10.2026)
+An exact-name target written `=name` worked for the commands whose target is a session by definition and found nothing for `set`, `show` and `display` aimed at a session, which read it as a window or pane name; `=name:` is the form that names the session for all of them. Found while the session-level options of the window-rows build were failing silently under `2>/dev/null`. Every exact-name target in a command that is not a session command is written `=name:`, and a check of such a call runs it against a scratch server with a session of that name and reads the option back.
+
+## The session record letter `S` was already a record of the state file (22.10.2026)
+The window-rows build added a record per session to the stream `collect` emits and named it `S`, which the state-file reader already used for something else, so one consumer read the other's lines as its own. The session record is `G` (P pane, W window, G group). A new record letter is looked up in every awk that switches on the first field of a state or snapshot file before it is chosen, and the consumer of the old letter is shown not to see the new record.
+
+## Functions appended to tnotes with `cat >>` landed after the dispatch case and were never defined (22.10.2026)
+`tnotes` is a script that defines its functions and then ends in a `case` that runs the verb, so a function appended to the end of the file sits behind the `case` and does not exist when the verb runs; the call failed with "command not found" only for the verbs that reached it. New functions go above the dispatch (beside the functions they belong with), and `bash -n` cannot see this, so the check is to run the verb on a scratch server and see the function's effect.
+
+## `show-messages` holds every command and every error, so a notice is found by the client that showed it (22.10.2026)
+A test that read the last 30 lines of `tmux show-messages` for a notice found only `command:` lines and `invalid option: @tagents_port` errors of the command clients, because the log keeps every command the server ran and every error it answered. A message shown on a client's status line is logged as `<time>: /dev/ttysNNN message: <text>`, so the suite's `msgs` keeps only those lines.
+
+## tmux 3.7b keeps a dot in a session name, and `-t =name` needs the colon almost everywhere (22.10.2026)
+`new-session -s a.b` makes a session named `a.b` (the plan expected `a_b`), `switch-client -t =a.b` did not switch while `=a.b:` did, `list-windows -t =name` and `list-panes -t =name` name a window, not the session, and `set -t =name` found no session at all (the 22.10 entry above, repeated in the suite's own `newsess`, which therefore never marked a session as made and left every session of the suite a non-group). Every target a suite builds from a session name is `=name:`.
+
+## A window is renamed only while its name is tmux's own, and a label outranks the pane title (22.10.2026)
+The naming test made its window with `new-window -n` and wrote a label for the stub chat, so `--sync-names` left the typed name alone (as the names spec says) and would have used the label over the pane title anyway; it now makes the window without `-n` and drops the chat's label first.
+
+## `TA_RESUME_CMD` replaces the whole resume command, so the wrapper gets the session id and no `--resume` (22.10.2026)
+`accounts.sh` prints `<prefix> $RESUME_CMD <sid>`, and `RESUME_CMD` is the override itself; a test that looked for `--resume` in what its wrapper logged never saw a resumed chat. The log's second field is the session id.
+
+## Test code written before its first run carried four wrong expectations (22.10.2026)
+A second fake sidebar made beside the one `enter` had just moved (F21) so a killed pane left one; a `move-window` of a window already broken out and joined elsewhere (R30); a new chat on the `no window` group expected in the client's session although the spec sends it to the session that owns the project when one does (R31, chat-launch spec); and F8 passes with both unzoom lines of `sidebar_move` removed because tmux 3.7b unzooms the target window itself on `join-pane` (probed for the target; the source side was not probed), so F8 pins the outcome and not those lines.
+
+## `tnotes sync` read the session name before the chat and closed the chat of every session named with a space (22.10.2026)
+The pane listing was `pane_id window_id session_name chat`, read with `read -r id ewin esess chat`; a session called `release notes` or `no window` put its second word into `chat`, the lookup of that "chat" failed, and `sync` took the pane for an editor of a gone chat and closed it, so the refresher's slow pass killed live chats in such sessions. The suite found it only in the full run, because the sections that make those sessions come before the tnotes ones; the same section run alone passed. A field that can hold a space goes last in a `read`, which gives the last variable the rest of the line.
+
+## A dimmed window row was also listed for a window whose pane already had a closed row (22.10.2026)
+`list.sh` counted only live chat panes as the window's chat, so a pane left at a shell with a closed record was listed twice, once as the closed row and once as its window's dimmed row, and a session holding nothing else could never be a closed-only group (the sink rule of the spec was unreachable). A pane that has a row to draw (`kept`) is the window's row.
+
+## An apostrophe in an awk comment ends the single-quoted program (22.10.2026)
+The new comment above the dimmed rows said "the window's row", inside the awk program `list.sh` hands to awk in single quotes, and the whole list failed with a bash syntax error at the next line; `bash -n` accepts the file only when the quote is closed, so it saw nothing wrong until the program was run. Comments inside an awk program written in a shell script carry no apostrophe.
+
+## `grep -q` at the end of a pipeline answers no under pipefail (22.10.2026)
+`x=$(a | b | grep -q pat && echo yes || echo no)` returned `no` for a header that contained the pattern, because `grep -q` exits at the first match and the producer ahead of it dies of SIGPIPE, and `set -o pipefail` takes that status as the pipeline's. Capture the text first and test it with `has`/`hasnt`.
+
+## The window a restored sidebar ends in is the client's, because the claim runs one follow (22.10.2026)
+`--resurrect` starts the list in the window of the `D` row, the list claims the sidebar and runs one follow (choice 10), and the follow moves it into the window the client shows; a test of "the list runs in the recorded window" has to keep the client in that window, or it measures the follow. Stub agents write no record, so a second restore from the same snapshot resumes the chats again into new windows, which also moves the session's current window away from index 0.
+
+## `join-pane -l` does not hand the other panes their old widths back (22.10.2026)
+design.md of the window-rows change said a re-join gives a window the same split each time; on tmux 3.7b a plain re-join turned a 21/21 split into 31/11. The sidebar saves the widths in the window option `@tagents_widths` before it leaves and applies them with `resize-pane -x` from left to right (`sidebar_move`, `lib/tagents/follow.sh`). `select-layout <saved string>` is no way out: after `join-pane -b` the layout string and the pane list differ in order and the panes are assigned wrongly.
+
+## A sidebar that leaves a window it is alone in takes the session with it, and the client is detached (22.10.2026)
+With `detach-on-destroy` on, the session that loses its last window goes, and a client attached to it is detached or moved. The client is switched first and the sidebar moves second (`show_window`, `lib/tagents/rows.sh`); F19 in `tests/window-rows.sh` pins the order.
+
+## A suite that runs a library function in a shell of its own has to hand it SELF (22.10.2026)
+`modsh install_event_hooks` in `tests/refresh.sh` sourced the modules without `SELF`, so the follow hook was installed as `'' --follow …`; the hook failed on every window change, its error was drawn into the pane as a view, and "select-window rings the refresher exactly once" read 2. The helper passes `SELF="$TREE/tagents"`, as the entry point would have set it.
+
+## A pane made after a scenario's drain wakes the refresher the scenario starts next (22.10.2026)
+`newrun` drains the channel so the loop starts from a quiet one; the editor pane of section 7 of `tests/refresh.sh` was split off after it, its layout event rang the channel, and the loop's first wait returned at once: three slow passes in three ticks instead of two, three `tnotes sync` instead of two. What a scenario needs on the server is made before `newrun`.
+
+## The first refresher on a fresh server runs the migration once and asks tnotes for a sync (22.10.2026)
+`migrate_seats` marks the server with `@tagents_migrated` and starts one `tnotes sync` in the background, so "no editors, no notes sync" in section 1 of `tests/refresh.sh` read `sync`. The fixture marks its server as one that has been through the upgrade; the migration itself is pinned by M1 to M4 in `tests/window-rows.sh`.
+
+## `fzf --filter` with `--with-nth=3` searches only the description, so a key picked by its verb found nothing (22.10.2026)
+The `?` window test picked undock with `--filter=undock`; the description column now says "break a joined chat out into a window of its own", `pick` was empty and the key did nothing, so the chat stayed where it was and the failure looked like a broken undock. The picker is given a word of the description (`--exact --filter=break`).
+
+## A group is a session, so a test that counts rows of "a project" counts a different set (22.10.2026)
+The window of the session that holds no chat is a dimmed row below its chats, a closed row lives in the `no window` group, and a group's cost total sits on that group's header; expectations written for project groups (the tee of the last row, `hdrfor repo`, the order of closed rows under their project, a flat row naming its project) were rewritten against the session tree rather than loosened.
+
+## A before/after comparison on the server races the tnotes sync the migration starts (22.10.2026)
+`migrate_seats` starts `tnotes sync` with `&`; under load it closed a pane after M4 of `tests/window-rows.sh` had taken its snapshot, and H2 saw the same drift. A check that compares the server before and after waits for the syncs of its tree to end (`wait_syncs`) first.
+
+## `openspec archive` stops on a spec that loses its last requirement, and the merged specs fail a length the change passed (22.10.2026)
+The window-rows change removed every requirement of `seats-and-docking`, and `archive --yes` aborted with "Spec must have at least one requirement" until the change had an `.openspec.yaml` holding `schema:` and `retire_capabilities: true`, which deletes the spec with the archive. After it, `validate window-rows --strict` had passed but `pnpm spec:check` failed nine requirements of the merged specs for text over 500 characters (the check on the change does not apply to the requirements it modifies): five were shortened by dropping words and four split in two with a scenario each (`The row a group header stands for`, `Rename and open keep their other bindings`, `The other panes of a restored window are left alone`). The merged specs are validated with `validate --specs --strict` before the archive is trusted.
+
+## A debug trace written into the line that does the work is deleted with the work (23.10.2026)
+A `sed '/#TRACE/d'` that was meant to strip trace lines also removed a real `lock_dir` call, because the trace had been appended to the same line. A trace goes on a line of its own, or in a copy of the tree (the scratch snapshot), never in the file under review.
+
+## A list killed with its pane leaks the follow lock its claim was holding (23.10.2026)
+`claim_dash` runs a follow, which takes `.follow.lock`; a list whose pane is killed in that moment never reaches the unlock, and every later follow waited out the stale time. `lock_dir` now writes the owner's pid into the lock and takes over a lock whose owner is dead, at once (F35).
+
+## A ctrl-q sent before fzf is up is swallowed by the tty (23.10.2026)
+Flow control eats the byte until fzf has put the tty in raw mode, so a test that sends the quit key right after the pane exists sees a list that never quits. The test waits for the `agents>` prompt on the pane first.
+
+## A test that starts a real list leaves the wish for a sidebar set (23.10.2026)
+`claim_dash` sets the global `@tagents_sidebar_on`, and the next test's window switch then brings a sidebar back. `kill_sidebars` and `unhook` clear it; a test that starts a list and kills it by other means calls them.
+
+## `grep -q` at the end of a pipeline under pipefail inverts the answer in a test too (23.10.2026)
+`keys | grep -qF "$pane"` reported "not found" exactly when it found the pane, because grep closed the pipe and `keys` died of SIGPIPE. The tests read the output into a variable and use `has` on it.
+
+## Two lists after a storm of follows on a loaded machine (23.10.2026)
+`start_sidebar` waits about two seconds for the new list to claim; on a machine with ten busy processes a list takes longer, the next follow found no claim and split a second pane (F33 failed there, and a debug loop with ten busy processes split a second pane in every round). The pane now carries `@tagents_starting` with the time from the split until the claim, and a start that sees a stamp younger than 20 seconds waits for that list instead of starting another (R40).
+
+## A dead holder's lock taken over by two takers at once (23.10.2026)
+`lock_dir` removed a lock whose owner pid was gone, then made its own; a second taker that had read the same dead owner a moment earlier removed the lock the first had just made, and both held it (17 of 30 rounds with eight takers). A takeover now runs inside `<dir>.take` and checks the holder again there (`lock_dead`); tests/resurrect.sh runs eight takers three times and wants one holder.

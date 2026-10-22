@@ -1,10 +1,10 @@
 # lib/tagents/list.sh — the rows — and the tally the status bar shows
 #
-# list() stays one unit (754 lines): the responsive column fit, the UTF-8-safe width helpers macOS awk forces it to carry, the row format, the two-level tree a child session hangs in, the group headers, and the seat markers. grouped/toggle_group (the .flat marker list() reads) and counts() (the same renderer with TA_MARKS=0, plus the burn rate and the usage line) sit with it because nothing else calls them and both are meaningless without it.
+# list() stays one unit: the responsive column fit, the UTF-8-safe width helpers macOS awk forces it to carry, the row format, the two-level tree a child session hangs in, the group headers and the dimmed window rows. grouped/toggle_group (the .flat marker list() reads) and counts() (the same renderer with TA_MARKS=0, plus the burn rate and the usage line) sit with it because nothing else calls them and both are meaningless without it.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
-grouped() {  # tree by directory unless explicitly turned off
+grouped() {  # tree by session unless explicitly turned off
   [ "${TA_FLAT:-0}" = 1 ] && return 1
   [ -e "$STATE_DIR/.flat" ] && return 1
   return 0
@@ -21,7 +21,7 @@ list() {
   # *attached client*, so it silently hid whichever agent you happened to be
   # looking at. The dashboard pane runs fzf, never Claude, so it can never show
   # up here anyway and needs no special case.
-  local grp=1 cols dp ss seat curseat="" dockedset="" hidecols tallyto="" rc
+  local grp=1 cols hidecols tallyto="" rc
   grouped || grp=0
   # Joined with $RS, never newlines: awk -v refuses a value with a newline in it
   # (BWK awk, and silently enough to look like "nothing is hidden").
@@ -48,27 +48,6 @@ list() {
   # already is the list's own width and stands as it is.
   [ "${TA_MODE:-}" = popup ] && cols=$(( cols * 45 / 100 ))
   [ "$cols" -lt 34 ] && cols=34
-
-  # WHICH CHATS ARE IN THE SIDEBAR, and which of them the cursor is in. With two
-  # chats docked side by side the row enter is about to replace is not guessable
-  # from the list, so it is marked: the current seat's chat gets a ▶ where the
-  # tree draws its dash, every other docked one a dim ▹.
-  #
-  # TA_MARKS=0 skips the lot, and counts() sets it: working the seats out costs
-  # eight round-trips to the tmux server — and dash_pane WRITES on the way, since
-  # it clears the markers of lists that are gone — while the status bar reads one
-  # field of this and throws every mark away. That is a bill paid on every status
-  # interval by every attached client for nothing.
-  if [ "${TA_MARKS:-1}" = 1 ]; then
-    dp=$(dash_pane)
-    if [ -n "$dp" ]; then
-      ss=$(seats "$dp")
-      seat=$(current_seat "$dp" "$ss")
-      is_docked "$seat" && curseat=$seat
-      dockedset=$(printf '%s\n' "$ss" |
-        LC_ALL=C awk -F"$TAB" -v rs="$RS" '$2 == "docked" { printf "%s%s", $1, rs }')
-    fi
-  fi
 
   # THE TALLY IS WRITTEN HERE, by the one awk that has the finished rows, to a
   # file the refresher turns into the status bar's cache (see refresher_counts).
@@ -124,6 +103,17 @@ list() {
     function tailfit(s, w) { return (length(s) <= w) ? s : "…" substr(s, length(s)-w+2) }
     function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
     function dirname(p) { return (p == home) ? "~" : base(p) }
+    # A group key is s:<session> or w: (the trailing group of rows without a window). A session group shows the session path, the other none.
+    function gname(g) { return (g == "w:") ? "no window" : substr(g, 3) }
+    function gpathof(g) { return (g == "w:") ? "" : spath[substr(g, 3)] }
+    # The header stands in for the first printed row: open chats, then dimmed windows, then closed rows, a chat last typed into first.
+    function standin(g, grk, cls, age, key, st, sid, dr) {
+      if (!(g in ghave) || grk < grank[g] ||
+          (grk == grank[g] && (cls < gtdead[g] || (cls == gtdead[g] && age < gtage[g])))) {
+        ghave[g] = 1; grank[g] = grk; gtdead[g] = cls; gtage[g] = age
+        gfirst[g] = key; gstate[g] = st; gsid[g] = sid; gdir[g] = dr
+      }
+    }
     # A NUMBER PER GROUP, BY BYTES. The sort below puts a group by its name, and under a UTF-8 locale it weighs every Cyrillic letter alike, so two groups whose names differ only in such letters would be one key and their rows would interleave: this number, in field 15 right after the name, keeps the rows of each group together without changing the order of any two names the locale tells apart.
     function gnum(g) { if (!(g in gno)) gno[g] = ++ngno; return gno[g] }
     # Claude prefixes the terminal title with a spinner glyph; the rest is the
@@ -225,7 +215,7 @@ list() {
     # and how urgent" survive to the very last, and the state word goes early
     # because its icon already carries the same information in colour.
     function fitcols(   avail, n) {
-      # The tree prefix, or in flat mode the two columns the docked marker is
+      # The tree prefix, or in flat mode the two columns the marker column is
       # drawn in, are both added after this and both have to be paid for here.
       # The tree gets its mark for nothing — it is drawn where the tee was
       # drawing a dash anyway, so `  └` + mark + a space is the same five columns
@@ -418,7 +408,9 @@ list() {
       prio["dead"]   =5; icon["dead"]   ="✗"; lbl["dead"]   ="closed";  col["dead"]   ="\033[90m"
       norder = split("blocked done working new ? dead", ORD, " ")
     }
-    $1=="P" { alive[$2]=1; loc[$2]=$3; title[$2]=$4; path[$2]=$5; next }
+    $1=="P" { alive[$2]=1; loc[$2]=$3; title[$2]=$4; path[$2]=$5; pwin[$2]=$6; psb[$2]=$7 + 0; ppi[$2]=$8 + 0; next }
+    $1=="W" { nwin++; wlist[nwin]=$2; wsess[$2]=$3; wix[$2]=$4 + 0; wnm[$2]=$5; next }
+    $1=="G" { smade[$2]=$3; spath[$2]=$4; next }
     $1=="L" { live[$2]=1; next }
     $1=="R" { root[$2]=$3; next }
     $1=="N" { lab[$2]=$3; next }
@@ -479,10 +471,16 @@ list() {
       # is filed in the group of its PARENT, which may well come later in
       # this unordered walk. The expression is the one both loops below make —
       # the live cwd where there is one, the path of the pane otherwise.
+      # A session is a group when it holds a live chat (any live pane, as session_is_group says: a Claude that has not fired a hook yet counts) or tagents made it; a row whose pane is gone (closed) or that never had one
+      # (headless) is in the trailing group "w:" (no window).
+      for (p in alive) if ((p in live) && (p in pwin) && psb[p] != 1) hasChat[wsess[pwin[p]]] = 1
+      for (sx in smade) if (smade[sx] == 1) hasChat[sx] = 1
       for (p in seen) {
         rdir[p] = (p in st && cwd[p] != "") ? cwd[p] : path[p]
         if (rdir[p] == "") rdir[p] = "(unknown)"
-        gk[p] = (rdir[p] in root) ? root[rdir[p]] : rdir[p]
+        rroot[p] = (rdir[p] in root) ? root[rdir[p]] : rdir[p]
+        sn = ((p in alive) && (p in pwin)) ? wsess[pwin[p]] : ""
+        gk[p] = (sn != "" && (sn in hasChat)) ? "s:" sn : "w:"
       }
 
       # The row names, measured before any row is drawn — the same selection
@@ -597,12 +595,13 @@ list() {
         # directory lies under the group at all, and names the repo honestly
         # when it does not.
         grpkey = nest ? gk[under[p]] : gk[p]
-        if (index(dir, grpkey) == 1 && grpkey != dir)
-          subp = substr(dir, length(grpkey) + 2) "  "
+        rootkey = nest ? rroot[under[p]] : rroot[p]
+        if (index(dir, rootkey) == 1 && rootkey != dir)
+          subp = substr(dir, length(rootkey) + 2) "  "
         else if (nest && dir != "") subp = base(dir) "  "
         else subp = ""
 
-        n++; rp[n] = p; rs[n] = s; rage[n] = age; rg[n] = grpkey
+        n++; rp[n] = p; rs[n] = s; rage[n] = age; rg[n] = grpkey; rr[n] = rootkey
         rdead[n] = (s == "dead") ? 1 : 0
         ridx[p] = n; rnest[n] = nest; runder[n] = nest ? under[p] : ""
         rsid[n] = (p in sid) ? sid[p] : ""
@@ -643,7 +642,7 @@ list() {
                                          (p in hascfg) ? hascfg[p] : 0), bdgw), R)
         row = row ufit(nm, namew)
         # Flat mode only: in the tree the group header above the row says this.
-        if (projw) row = row sprintf(" %s%-*.*s%s", DIM, projw, projw, base(grpkey), R)
+        if (projw) row = row sprintf(" %s%-*.*s%s", DIM, projw, projw, gname(grpkey), R)
         if (ctxw)  row = row sprintf(" %s%*s%s", ctxcol(cx), ctxw, tok(cx), R)
         # What this session has cost, priced per request at the model that ran
         # it. A trailing ? means some of it ran on a model with no published
@@ -705,18 +704,32 @@ list() {
         # gtotal counts children too, so the first-seen test gets a flag of its
         # own rather than borrowing that one.
         grk = nest ? 1 : 0
-        if (!(grpkey in ghave) || grk < grank[grpkey] ||
-            (grk == grank[grpkey] &&
-             (rdead[n] < gtdead[grpkey] ||
-              (rdead[n] == gtdead[grpkey] && age < gtage[grpkey])))) {
-          ghave[grpkey] = 1; grank[grpkey] = grk
-          gtdead[grpkey] = rdead[n]; gtage[grpkey] = age; gfirst[grpkey] = p
-          gstate[grpkey] = s; gsid[grpkey] = rsid[n]; gdir[grpkey] = dir
-        }
+        standin(grpkey, grk, (rdead[n] ? 2 : 0), age, p, s, rsid[n], dir)
         gtotal[grpkey]++
         gcount[grpkey SUBSEP s]++
       }
 
+      # A WINDOW OF A GROUP WITH NO CHAT ROW ON A PANE BESIDES THE SIDEBAR IS A DIMMED ROW, keyed on its window id: a pane with a live chat or a
+      # closed row is the row of its window already, and the window is not listed twice. A window that holds only the sidebar gets none. Not in flat
+      # mode: a flat list has no groups to hold them.
+      nd = 0
+      if (grp) {
+        for (q in alive) if ((q in kept) && (q in pwin) && psb[q] != 1) wchat[pwin[q]] = 1
+        for (dmi = 1; dmi <= nwin; dmi++) {
+          dmw = wlist[dmi]; dms = wsess[dmw]
+          if (!(dms in hasChat) || (dmw in wchat)) continue
+          dmf = ""; dmx = 1000000
+          for (q in pwin) if (pwin[q] == dmw && psb[q] != 1 && ppi[q] < dmx) { dmx = ppi[q]; dmf = q }
+          if (dmf == "") continue
+          dmg = "s:" dms
+          if (!(dmg in gtotal)) gmin[dmg] = 4.5; else if (4.5 < gmin[dmg]) gmin[dmg] = 4.5   # counts as not closed (prio dead is 5)
+          gtotal[dmg]++
+          standin(dmg, 0, 1, wix[dmw], dmw, "none", "", (dmf in path) ? path[dmf] : "")
+          nd++; dg[nd] = dmg; dk[nd] = dmw; dix[nd] = wix[dmw]
+          dbody[nd] = DIM uclip(wnm[dmw], cols - 10) R
+          ddir[nd] = (dmf in path) ? path[dmf] : ""
+        }
+      }
       if (grp) {
         for (g in gtotal) {
           badge = ""
@@ -728,7 +741,7 @@ list() {
           # their own section rather than being mixed in.
           # The full path is the first thing to drop: the basename already says
           # which project it is, and the header must never be the widest line.
-          gpath = (cols >= 92) ? sprintf("  %s%s%s", DIM, tilde(g), R) : ""
+          gpath = (cols >= 92 && gpathof(g) != "") ? sprintf("  %s%s%s", DIM, tilde(gpathof(g)), R) : ""
           # The five-hour total is money like any other, so it goes when the cost
           # column goes: hiding the dollars on the rows and leaving them on the
           # header would be hiding nothing at all. Built before the sprintf
@@ -738,12 +751,15 @@ list() {
           if (gburn[g] > 0 && cols >= 60 && !("cost" in hid))
             gbt = sprintf("%s%s/5h%s", DIM, money(gburn[g]), R)
           hdr = sprintf("%s▾ %s%s%s  %s%s",
-                        (gmin[g] < prio["dead"] ? BOLD : DIM), dirname(g), R, gpath, badge, gbt)
+                        (gmin[g] < prio["dead"] ? BOLD : DIM), gname(g), R, gpath, badge, gbt)
           printf "%d\t%s\t0\t0\t0\t%s\t%s\t%s\t%s\t%s\t0\t0\t0\t0\t%d\n",
-                 (gmin[g] < prio["dead"] ? 0 : 1), g, gfirst[g], hdr,
+                 (g == "w:" ? 2 : (gmin[g] < prio["dead"] ? 0 : 1)), g, gfirst[g], hdr,
                  gstate[g], gsid[g], gdir[g], (grp ? gnum(g) : 0)
         }
       }
+      for (i = 1; i <= nd; i++)
+        printf "%d\t%s\t1\t1\t%d\t%s\t%s\tnone\t\t%s\t%s\t0\t0\t%d\t%d\n",
+               (gmin[dg[i]] < prio["dead"] ? 0 : 1), dg[i], dix[i], dk[i], dbody[i], ddir[i], dk[i], dix[i], gnum(dg[i])
       # THE ORDER, and the two things it is deliberately NOT sensitive to:
       # state, and anything that moves during a turn. Projects keep the place
       # their path puts them (field 1 is only open-or-closed, field 2 the path),
@@ -773,26 +789,23 @@ list() {
           if (j != "") { fam = runder[i]; kid = 1; sd = rdead[j]; sa = rage[j] }
         }
         printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\n",
-               (grp ? (gmin[rg[i]] < prio["dead"] ? 0 : 1) : rdead[i]),
+               (grp ? (rg[i] == "w:" ? 2 : (gmin[rg[i]] < prio["dead"] ? 0 : 1)) : rdead[i]),
                (grp ? rg[i] : ""),
-               sd, sa, rp[i], rbody[i], rs[i], rsid[i], rg[i],
+               (sd ? 2 : 0), sa, rp[i], rbody[i], rs[i], rsid[i], rr[i],
                fam, kid, rdead[i], rage[i],
                (grp ? gnum(rg[i]) : 0)
       }
     }' |
     sort -t"$TAB" -k1,1n -k2,2 -k15,15n -k3,3n -k4,4n -k5,5n \
          -k11,11 -k12,12n -k13,13n -k14,14n |
-    LC_ALL=C awk -F"$TAB" -v grp="$grp" -v cur="$curseat" -v dks="$dockedset" -v RSC="$RS" \
+    LC_ALL=C awk -F"$TAB" -v grp="$grp" -v RSC="$RS" \
         -v tallyonly="${TA_TALLY:-0}" -v tallyto="$tallyto" '
-      # The marker is drawn where the tee draws its dash, so a docked row is no
-      # wider than any other and nothing shifts when a chat is docked. In flat
+      # The marker column is the dash the tree draws, on a group header too. In flat
       # mode there is no tee to borrow from, so the two columns are given to
       # every row instead and come out of the body — fitcols says what that
       # costs.
       BEGIN {
         DIM = "\033[90m"; R = "\033[0m"; HOT = "\033[1;33m"
-        ndk = split(dks, dka, RSC)
-        for (di = 1; di <= ndk; di++) if (dka[di] != "") isdock[dka[di]] = 1
       }
       # IS THIS THE LAST ROW AT ITS OWN LEVEL. Everything is buffered already, so
       # this is a real lookahead rather than a guess about the next line: scan
@@ -810,14 +823,10 @@ list() {
         dir[NR]=$10; depth[NR]=$12+0 }
       END {
         for (i = 1; i <= NR; i++) {
-          # A group header carries its most urgent member pane id too, and a
-          # header is not a chat: it is never marked.
-          if (kind[i] == 0)                     mk = DIM "─" R
-          else if (cur != "" && pane[i] == cur) mk = HOT "▶" R
-          else if (pane[i] in isdock)           mk = DIM "▹" R
-          else                                  mk = grp ? DIM "─" R : " "
-          # A CHILD IS NEVER DOCKED — it has no pane to dock — so its marker
-          # column is always the dash the tree draws, whatever a stale seat says.
+          # No row is marked as the one on screen: the window on screen is the
+          # one the sidebar is in, and the cursor is where the user left it.
+          if (kind[i] == 0)       mk = DIM "─" R
+          else                    mk = grp ? DIM "─" R : " "
           if (depth[i] > 0) mk = DIM "─" R
           last = lastat(i)
           if (depth[i] == 0) parlast = last
@@ -979,8 +988,8 @@ counts_now() {
   # nothing is wrong, so the bar of a good config is unchanged to the byte.
   cfg_count_cached
   [ "$CFG_NPROBLEMS" -gt 0 ] && printf '#[fg=magenta]cfg!%d ' "$CFG_NPROBLEMS"
-  # TA_MARKS=0: the status bar wants the tally and nothing else, so the seat
-  # marks would be computed and thrown away — see list(). TA_TALLY=1 makes list()
+  # TA_MARKS=0: the status bar wants the tally and nothing else, so the picker's
+  # tally file must not be written from here — see list(). TA_TALLY=1 makes list()
   # print the tally and no rows: the rule that decides what is counted (the
   # header rows are not) is in list(), where the picker's own tally comes from,
   # and nowhere else.

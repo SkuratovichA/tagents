@@ -31,7 +31,7 @@ The refresher SHALL wait on the tmux channel `tagents-ev` and SHALL do nothing b
 - **THEN** after the first pass no reload is posted and no program is started
 
 ### Requirement: Who rings the refresher
-`tagents-ev` SHALL be rung by the agent-state hook on its events, by the tmux hooks at index 42 of the events listed in this capability, by tagents wherever it writes what the list draws without a tmux event of its own (a label, an origin, a hidden column, the flat marker, a forgotten row, a hung-up agent), by a list that closes, and by the swaps and breaks of docking.
+`tagents-ev` SHALL be rung by the agent-state hook on its events, by the tmux hooks at index 42 of the events listed in this capability, by tagents wherever it writes what the list draws without a tmux event of its own (a label, an origin, a hidden column, the flat marker, a forgotten row, a hung-up agent), by a list that closes, and by the moves of the sidebar and the joins and breaks of chats.
 
 #### Scenario: A hidden column
 - **WHEN** `tagents --toggle-col model` runs inside tmux
@@ -99,18 +99,6 @@ A pass that posted a reload SHALL be looked at once more one second later. That 
 - **WHEN** a state file is written and the channel rung once on a quiet list
 - **THEN** one reload is posted for it, and the wakes after it post nothing
 
-### Requirement: What counts as a tmux change
-The tmux snapshot compared between passes SHALL cover each pane's id, position, window, current path, current command, pid and active and last flags, the seat and sidebar markers, the port claim, the sidebar's border status, and the notes flag. The pane title SHALL NOT be part of it, because Claude retitles a working pane several times a second; a title-only change waits for the next slow pass.
-
-#### Scenario: A seat stamp changes
-- **WHEN** `@tagents_cur` of the sidebar window changes between two idle passes
-- **THEN** a reload is posted on the next pass
-- **AND** the pass after it is quiet again
-
-#### Scenario: The options in the snapshot
-- **WHEN** any of `@tagents_list`, `@tagents_dash`, `@tagents_docked`, `@tagents_slot`, `@tagents_parked`, `@tagents_cur`, `@tagents_port`, the window option `pane-border-status` or the global `@ta_notes_any` changes
-- **THEN** the pass that follows posts a reload
-
 ### Requirement: What counts as a change on disk
 A reload SHALL be posted when any of these was written since the last reload: a state file, the origin cache, the labels file, the hidden-columns file, the `.flat` marker, the `sub/`, `model/` and `prompt/` directories and the files in them, the config file, or its per-host overlay. A write in the same second as the last reload SHALL count. A state file that was deleted SHALL count too, detected by a change in the number of state files. The state directory itself is not watched.
 
@@ -133,21 +121,6 @@ The refresher SHALL make a slow pass on the first wake that comes `TA_REFRESH_SL
 - **WHEN** the slow interval is far longer than the run and the channel is rung
 - **THEN** no wake is a slow pass and `tusage --update` is not run
 
-### Requirement: What the slow pass carries
-A slow pass SHALL put the tmux event hooks back, re-read a changed config, run `tusage --update` and push the footer, sweep the window names, take the resurrect snapshot if due, repair a dashboard window that has no seat, start `tnotes sync` while editors exist, and read the burn, month line and config marker again for the status bar. It also renews the age column, the pane titles and the state of dead processes by its reload.
-
-#### Scenario: Names and seats on the slow pass
-- **WHEN** a slow pass runs
-- **THEN** the window names are swept and a sidebar with no seat gets one back
-
-### Requirement: A slow pass is owed when the dashboard window has no seat
-When a wake that is not a slow pass runs its seat check and finds the dashboard window without a seat, the refresher SHALL end its next wait at the end of the slow interval, with no further ring needed, and make the slow pass then, which repairs the seat. The wake itself SHALL NOT put a seat back.
-
-#### Scenario: The seat is killed
-- **WHEN** the only seat of the dashboard window is killed and the channel rung once, with the slow interval at 6 seconds
-- **THEN** no pane is split on that wake
-- **AND** after the interval a seat is split in without another ring
-
 ### Requirement: A changed config is read again
 On every slow pass the refresher SHALL read the config again when the config file or its per-host overlay is not older than the last read, or when either has appeared or disappeared since then. A deleted overlay or config SHALL read as empty. The usage update SHALL follow the new config, so turning usage off stops the updates and turning it on starts them.
 
@@ -167,25 +140,15 @@ When usage is enabled, the slow pass SHALL run `tusage --update` and SHALL push 
 - **THEN** one `tusage --daily` fetch is made and a `change-footer(` action is posted
 
 ### Requirement: Notes editors are looked after only while there are some
-On the slow pass the refresher SHALL run `tnotes sync` in the background when the global tmux option `@ta_notes_any` is `1` and a `tnotes` executable sits beside `tagents`, and SHALL NOT run it otherwise. The notes workspace itself belongs to the `notes-workspace` capability.
+On the slow pass the refresher SHALL run `tnotes sync` in the background when a pane carries `@ta_notes_for` or a session named `ta-notes` exists, and a `tnotes` executable sits beside `tagents`, and SHALL NOT run it otherwise. The notes workspace itself belongs to the `notes-workspace` capability.
 
 #### Scenario: Editors exist
-- **WHEN** `@ta_notes_any` is set and two slow passes run
+- **WHEN** a pane carries `@ta_notes_for` and two slow passes run
 - **THEN** `tnotes sync` was started twice
 
-### Requirement: Seats are looked at only when tmux moved
-After a pass whose post was not refused, the refresher SHALL check the seats, the title bar and the cursor only when the snapshot changed, when it holds no port claim, or on a slow pass. This check repairs the title bar and renews the port claim.
-
-#### Scenario: A quiet pass
-- **WHEN** the snapshot is unchanged, the claim is held and it is not a slow pass
-- **THEN** no seat query is made
-
-### Requirement: The list cursor follows the seat
-When the current seat is a docked chat and it differs from the one at the previous check, the refresher SHALL move the list cursor to that chat's own row (not a group header) with an fzf `pos(N)` action. It SHALL NOT move the cursor again while the seat stays the same.
-
-#### Scenario: Clicking into the other chat
-- **WHEN** two chats are docked and the user clicks into the other one
-- **THEN** the cursor goes to the other chat's row once
+#### Scenario: No editors
+- **WHEN** no pane carries `@ta_notes_for`, there is no `ta-notes` session and a slow pass runs
+- **THEN** `tnotes sync` is not started
 
 ### Requirement: The port claim
 Once a post has been answered, the refresher SHALL publish its port in the pane option `@tagents_port` of the list pane, and SHALL make the claim again on the pass that finds the pane no longer says its port, such as after another refresher removed it or the list moved. A refused post SHALL give the claim up at once if it is still the refresher's own. When the loop ends, it SHALL remove the option only if the pane still carries its port.
@@ -247,7 +210,7 @@ On every pass whose post was not refused, the refresher SHALL turn the tally the
 - **THEN** the cache and the option hold the new tally within 3 seconds, with no further ring
 
 ### Requirement: The event hooks are installed at index 42
-`tagents` SHALL put a hook at index 42 of each of `after-new-window`, `after-split-window`, `after-new-session`, `after-kill-pane`, `pane-exited`, `pane-died`, `window-linked`, `window-unlinked`, `session-closed`, `window-renamed`, `session-renamed`, `window-layout-changed`, `client-attached`, `client-detached` and the four focus events. Each SHALL bump `@tagents_evgen`, signal `tagents-ev`, signal `tagents-panes` and bump `@tagents_gen`, and no program is started.
+`tagents` SHALL put a hook at index 42 of each of `after-new-window`, `after-split-window`, `after-new-session`, `after-kill-pane`, `pane-exited`, `pane-died`, `window-linked`, `window-unlinked`, `session-closed`, `window-renamed`, `session-renamed`, `window-layout-changed`, `client-attached`, `client-detached`, `pane-focus-in`, `after-select-pane`, `after-select-window` and `client-session-changed`. Each SHALL bump `@tagents_evgen` and signal `tagents-ev`, and start no program.
 
 #### Scenario: Eighteen hooks
 - **WHEN** a refresher has started
@@ -258,27 +221,15 @@ On every pass whose post was not refused, the refresher SHALL turn the tally the
 - **THEN** the owner's hook runs beside tagents' on a split
 
 ### Requirement: The event hooks are put back
-The hooks SHALL be installed at the start of every refresher and every placeholder, on every dock and on every slow pass, and installing again SHALL leave exactly one per event. A `.tmux.conf` that sets one of these events without an index wipes the event's list, and the next slow pass SHALL put the hook at `[42]` back beside the one that wiped it.
+The hooks SHALL be installed at the start of every refresher and on every slow pass, together with the follow hooks of the `window-rows` capability, and installing again SHALL leave exactly one per event. A `.tmux.conf` that sets one of these events without an index wipes the event's list, and the next slow pass SHALL put the hook at `[42]` back beside the one that wiped it, and the follow hook too when it was an event of that hook.
 
 #### Scenario: A hook set without an index
 - **WHEN** `set-hook -g pane-focus-in` is run without an index and a slow pass follows
 - **THEN** `pane-focus-in[42]` carries the ring again, beside the hook just set
 
-### Requirement: The focus hooks are installed on first use
-`tagents --focus-hooks`, and the first dock, SHALL install global tmux hooks on `pane-focus-in`, `after-select-pane`, `after-select-window` and `client-session-changed`. A user who never docks and never opens a notes editor SHALL get none of the four focus commands below. Installing resets those four events to exactly the hooks of this section and the ring at `[42]`, so a hook set earlier on them is replaced, and installing again leaves four commands per event besides the ring, not more.
-
-#### Scenario: First dock
-- **WHEN** a chat is docked for the first time
-- **THEN** each of the four events carries the four hook commands below, and the ring at `[42]`
-
-### Requirement: What each focus hook does
-Each of the four events SHALL carry, in this order: a command that runs `tagents --unpark <pane> <window>` when the focused pane is a placeholder; a command that stamps `@tagents_cur` of the window with the focused pane's id when the pane is a docked chat or a placeholder; a command that runs `tagents --poke <pane>` behind the same guard; and a command that runs `tnotes sync <pane>` while `@ta_notes_any` is set. The ring at `[42]` runs after them.
-
-#### Scenario: Hook order
-- **WHEN** the hooks of `pane-focus-in` are listed
-- **THEN** the command that sets `@tagents_cur` comes before the one that runs `--poke`
-- **AND** the unpark command carries the id of the window the event happened in
-- **AND** the ring at `[42]` comes last
+#### Scenario: A follow hook wiped
+- **WHEN** `set-hook -g client-session-changed` is run without an index and a slow pass follows
+- **THEN** the event carries the ring and one `tagents --follow` command again
 
 ### Requirement: A focus event rings once
 Each focus event SHALL ring once; a change made with a client attached can fire several, which the refresher draws as one pass.
@@ -288,23 +239,34 @@ Each focus event SHALL ring once; a change made with a client attached can fire 
 - **THEN** `@tagents_evgen` goes up by exactly one for each focus event that fires
 
 ### Requirement: Switching between unrelated panes starts no program
-The guards of the focus hooks SHALL be evaluated by tmux itself as formats, so that focusing a pane that is neither a placeholder nor a docked chat, with no notes editor open, starts no shell. The ring starts none either.
+The four focus events SHALL carry nothing but the ring, so that moving between panes starts no program. Only a switch of window or session runs a program, `tagents --follow` of the `window-rows` capability, which returns at once when the sidebar is already in the window on screen or the window is not in a group.
 
 #### Scenario: A plain terminal is focused
-- **WHEN** the user moves between two ordinary panes
+- **WHEN** the user moves between two ordinary panes of one window
 - **THEN** none of the hook commands runs a program
 
-### Requirement: A seat switch repaints the list at once
-`tagents --poke [PANE]` SHALL post a reload to every live list that publishes a port and move that list's cursor to the current seat, without waiting for the next pass. It SHALL do so only when the pair of sidebar pane and current seat differs from the one last written to the stamp file `.poke` in the state directory, so the several hooks one pane switch fires cause one repaint. The stamp SHALL be written only when a live list took the reload.
+### Requirement: What the tmux snapshot covers
+The tmux snapshot compared between passes SHALL cover each pane's id, position, window, current path, current command, pid and active and last flags, the sidebar markers `@tagents_list`, `@tagents_dash` and `@tagents_joined`, the port claim, and whether a pane carries `@ta_notes_for`. The pane title SHALL NOT be part of it, because Claude retitles a working pane several times a second; a title-only change waits for the next slow pass.
 
-#### Scenario: Focusing a seat
-- **WHEN** the user focuses chat A's seat and then chat C's seat
-- **THEN** `.poke` holds the list pane id and A, then the list pane id and C
+#### Scenario: A joined chat
+- **WHEN** `@tagents_joined` of a chat pane is set between two idle passes
+- **THEN** a reload is posted on the next pass
+- **AND** the pass after it is quiet again
 
-#### Scenario: The same seat twice
-- **WHEN** `--poke` runs twice for the same seat
-- **THEN** only one reload is posted
+#### Scenario: The options in the snapshot
+- **WHEN** any of `@tagents_list`, `@tagents_dash`, `@tagents_joined` or `@tagents_port` changes
+- **THEN** the pass that follows posts a reload
 
-#### Scenario: What reaches fzf
-- **WHEN** `--poke` runs for a new seat
-- **THEN** the post contains `reload-sync` and a `pos(` action
+### Requirement: What the slow pass does
+A slow pass SHALL put the tmux event hooks and the follow hooks back, re-read a changed config, run `tusage --update` and push the footer, sweep the window names, take the resurrect snapshot if due, start `tnotes sync` while editors exist, and read the burn, month line and config marker again for the status bar. It also renews the age column, the pane titles and the state of dead processes by its reload.
+
+#### Scenario: Names and hooks on the slow pass
+- **WHEN** a slow pass runs
+- **THEN** the window names are swept and the follow hooks are present once each
+
+### Requirement: The port claim is checked only when tmux moved
+After a pass whose post was not refused, the refresher SHALL check the port claim only when the snapshot changed, when it holds no port claim, or on a slow pass. This check renews the port claim.
+
+#### Scenario: A quiet pass
+- **WHEN** the snapshot is unchanged, the claim is held and it is not a slow pass
+- **THEN** the port claim is not queried

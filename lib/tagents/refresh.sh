@@ -1,30 +1,36 @@
 # lib/tagents/refresh.sh — keeping a list current
 #
-# Everything that reacts to time or to focus: the refresher loop (it sleeps on the tmux channel tagents-ev and wakes when the agent-state hook, a tmux hook or tagents itself rings it, posts a reload to the picker only when something it draws changed, looks at the seats only when tmux changed, and on a slow pass — every TA_REFRESH_SLOW seconds of wakes, and always at the idle timeout — reloads regardless, repairs the usage figure, window names, seats and notes, re-reads a changed config, and takes the resurrect snapshot; five failed posts end it), and keeps the status bar's text, in the tmux option @tagents_counts and in a cache file, from the tally the list writes, claim_port's re-assertion, follow_cursor, poke with its (pane, seat) debounce — one pane switch can fire three hooks — install_event_hooks, which wires the tmux lifecycle events to the channels, and install_focus_hooks, which wires the four focus events lazily on the first dock.
+# Everything that reacts to time or to tmux: the refresher loop (it sleeps on the tmux channel tagents-ev and wakes when the agent-state hook, a tmux hook or tagents itself rings it, posts a reload to the picker only when something it draws changed, checks the port claim only when tmux changed, and on a slow pass — every TA_REFRESH_SLOW seconds of wakes, and always at the idle timeout — reloads regardless, repairs the usage figure, window names and notes, re-reads a changed config, and takes the resurrect snapshot; five failed posts end it), and keeps the status bar's text, in the tmux option @tagents_counts and in a cache file, from the tally the list writes, claim_port's re-assertion, and install_event_hooks, which wires the tmux lifecycle and focus events to the channel and puts the follow hooks of follow.sh beside them.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
 # WHAT ONE TICK ASKS TMUX, in a single question. Every pane, with every attribute
-# and option that list() and the seat helpers read, joined with a printable
+# and option that list() and the window helpers read, joined with a printable
 # separator: a literal tab does not survive tmux outside a UTF-8 locale (see
 # collect). The snapshot is only ever compared with the one before it, so the
 # fields are never parsed back — except the last, which is global and so the same
-# on every line. What each one serves:
+# on every line, and snap_has_editor, which reads the last field of each pane line.
+# What each one serves:
 #   pane_id, session:window.pane, pane_current_path   collect's P lines and dir_roots, the rows and their groups
 #   pane_current_command, pane_pid                    live_panes' fallback and the process walk's pane map
-#   window_id                                         dash_window, seat_border and seats: which window the list is in
-#   pane_active, pane_last                            current_seat's answer when no hook stamped one
+#   window_id                                         dash_window: which window the list is in
+#   pane_active, pane_last                            which pane of a window is the one on screen
 #   @tagents_list, @tagents_dash                      dash_pane and list_in_pane: which pane is the list
-#   @tagents_docked, @tagents_slot, @tagents_parked   seats, is_docked, seat_border: who sits where
-#   @tagents_cur                                      current_seat: the seat the cursor was last in
+#   @tagents_joined                                   a chat joined into a window that is not its home: the session it came from
 #   @tagents_port                                     claim_port: whose port the list pane carries
-#   pane-border-status                                seat_border: the title bar it keeps
-#   @ta_notes_any                                     whether there are notes editors for tnotes sync to look after
+#   @ta_notes_for                                     whether a pane is a notes editor, so tnotes sync has something to look after (1 or 0)
 # THE PANE TITLE IS LEFT OUT ON PURPOSE. Claude's spinner retitles a working pane
 # several times a second, so a title in the snapshot would make every tick of a
 # busy session a reload — the very thing this exists to stop. A title-only change
 # waits for the forced reload of the 5th tick.
-REFRESH_SNAP_FMT='#{pane_id}|@|#{session_name}:#{window_index}.#{pane_index}|@|#{window_id}|@|#{pane_current_path}|@|#{pane_current_command}|@|#{pane_pid}|@|#{pane_active}|@|#{pane_last}|@|#{@tagents_list}|@|#{@tagents_dash}|@|#{@tagents_docked}|@|#{@tagents_slot}|@|#{@tagents_cur}|@|#{@tagents_parked}|@|#{@tagents_port}|@|#{pane-border-status}|@|#{@ta_notes_any}'
+REFRESH_SNAP_FMT='#{pane_id}|@|#{session_name}:#{window_index}.#{pane_index}|@|#{window_id}|@|#{pane_current_path}|@|#{pane_current_command}|@|#{pane_pid}|@|#{pane_active}|@|#{pane_last}|@|#{@tagents_list}|@|#{@tagents_dash}|@|#{@tagents_joined}|@|#{@tagents_port}|@|#{?@ta_notes_for,1,0}'
+
+# Does any pane of the snapshot ($snap of the caller) carry @ta_notes_for: the last field of a pane line is 1. The snapshot's own last line is
+# the count of rings, which has no |@| in it.
+snap_has_editor() {
+  case "$snap" in *"|@|1"$'\n'*|*"|@|1") return 0 ;; esac
+  return 1
+}
 
 # HAS ANYTHING THE LIST DRAWS FROM DISK BEEN WRITTEN SINCE THE MARKER WAS TOUCHED?
 # Answered with the shell's own file-time test and globs, nothing else: this runs
@@ -103,9 +109,8 @@ refresh_changed() {  # <marker> <overlay config path> [strict] — 0 when someth
 #   waits with `if-shell -F "#{==:#{?@tagents_evgen,..},<count it saw>}" 'wait-for
 #   tagents-ev'`, which the server evaluates and then waits, as one step: a ring
 #   that came in at any time since the snapshot has moved the count, the wait does
-#   not happen, and the loop is woken at once. The slots wait the same way, on
-#   @tagents_gen. A ring is therefore never lost, and nothing needs a second look
-#   in case one was.
+#   not happen, and the loop is woken at once. A ring is therefore never lost, and
+#   nothing needs a second look in case one was.
 # ONE WAITER IS OUTSTANDING AT MOST, and it is one `tmux` program per wait: a
 # subshell started when the loop is about to wait runs the if-shell above and
 # writes its exit status as a line into the FIFO the loop reads with a timeout
@@ -119,7 +124,7 @@ refresh_changed() {  # <marker> <overlay config path> [strict] — 0 when someth
 #   the snapshot     one tmux; a reload is due when it moved, when a file the
 #                    list reads is newer than the marker, when a reload was
 #                    refused, or on the slow pass
-#   the seats        when the snapshot moved, or no claim is held
+#   the port claim   when the snapshot moved, or no claim is held
 # and posts nothing at all when nothing is due: with no wake, no program runs.
 # AT MOST ONE RELOAD IS POSTED EVERY TA_REFRESH_MIN SECONDS (2): a busy Claude
 # changes something a second, and a reload is a whole list. A change after a quiet
@@ -132,10 +137,9 @@ refresh_changed() {  # <marker> <overlay config path> [strict] — 0 when someth
 # strictly newer, and when it finds none it moves the marker on, and so no event
 # is drawn twice.
 # THE SLOW PASS is what every 5th tick used to carry, and runs on a wake when
-# TA_REFRESH_SLOW seconds (10) have passed since it last did, at the end of that
-# interval when a wake found the dashboard window without a seat (the repair is
-# owed to it), and always at the idle timeout: the hooks put back (install_event_hooks), the config re-read, tusage --update and
-# the footer, the window names, the resurrect snapshot, the seat repair, tnotes sync, and the forced
+# TA_REFRESH_SLOW seconds (10) have passed since it last did, and always at the
+# idle timeout: the event and follow hooks put back (install_event_hooks), the config re-read, tusage --update and
+# the footer, the window names, the resurrect snapshot, tnotes sync while there are editors, and the forced
 # reload that keeps the age column, the pane titles and the dead processes right.
 # A config edited by hand is seen at the next of those.
 # A DEAD LIST ENDS THE LOOP WITHOUT POLLING: every wake and every timeout asks
@@ -168,12 +172,12 @@ refresher_sweep() {
 }
 
 refresher() {
-  local port=${TA_PORT:-} dp seat last="" fails=0 fl pub=""
-  local snap="" rsnap="" ssnap="" pending=1 due body first mark cfgmark ovl
+  local port=${TA_PORT:-} dp fails=0 fl pub=""
+  local snap="" rsnap="" ssnap="" pending=1 due body mark cfgmark ovl
   local startmark t0 live="" lasttl="" lasttext="" cdirty=1
   local cfgseen="" ovlseen="" cfgnow ovlnow nstate rstate="" sf
   local idle slow lastslow evq nap waiter="" outstanding="" seen="" gen ringed kind rc line
-  local lpid="" wt slowdue again="" strict claimed="" snap2 min lastpost owed="" slowowed=""
+  local lpid="" wt slowdue again="" strict claimed="" snap2 min lastpost owed=""
   [ -z "$port" ] && return 0
   idle=${TA_REFRESH_IDLE:-60}; slow=${TA_REFRESH_SLOW:-10}; min=${TA_REFRESH_MIN:-2}
   case $idle in ''|*[!0-9]*|0) idle=60 ;; esac
@@ -222,8 +226,8 @@ refresher() {
   # epoch of any later moment is t0 + SECONDS.
   t0=$(( $(date +%s) - SECONDS ))
   # THE PORT IS ONLY KNOWN IN HERE. fzf hands $FZF_PORT to the start: bind and
-  # to nothing else, so --poke — fired from a tmux hook in a window that has
-  # never heard of this list — has no way to ask for it. It is published on the
+  # to nothing else, so --follow — fired from a tmux hook in a window that has
+  # never heard of this list — has no way to ask for it (it moves the cursor with it). It is published on the
   # list pane instead, and taken down again when this loop ends: the refresher
   # is the one process that knows when the list has really gone, which makes the
   # option a live claim rather than a leftover pointing at a dead port.
@@ -248,6 +252,7 @@ refresher() {
     [ -n "${TMUX_PANE:-}" ] && lpid=$(tmux show -pv -t "$TMUX_PANE" @tagents_list 2>/dev/null) ;;
   esac
   case $lpid in *[!0-9]*) lpid="" ;; esac
+  migrate_seats
   install_event_hooks
   # The FIFO the waiter answers through (evq), and one nobody ever writes to (nap),
   # which only a read with a timeout waits on: bash 3.2 has no builtin sleep, and a
@@ -272,10 +277,6 @@ refresher() {
         # A change that came within TA_REFRESH_MIN of the last post: what is left of
         # the interval, a second at the least.
         wt=$((min - (SECONDS - lastpost))); [ "$wt" -lt 1 ] && wt=1; kind=retry
-      elif [ -n "$slowowed" ] && [ $((slow - (SECONDS - lastslow))) -lt "$idle" ]; then
-        # The slow pass is owed (see the seats below): what is left of its interval,
-        # a second at the least.
-        wt=$((slow - (SECONDS - lastslow))); [ "$wt" -lt 1 ] && wt=1; kind=late
       else
         wt=$idle; kind=idle
       fi
@@ -296,12 +297,12 @@ refresher() {
     if [ -n "$lpid" ] && ! kill -0 "$lpid" 2>/dev/null; then break; fi
     slowdue=""
     case $kind in
-      idle|late) slowdue=1 ;;
+      idle) slowdue=1 ;;
       # Not the second look: slow work on it would be done twice for one wake.
       wake) [ $((SECONDS - lastslow)) -ge "$slow" ] && slowdue=1 ;;
     esac
     if [ -n "$slowdue" ]; then
-      lastslow=$SECONDS; slowowed=""
+      lastslow=$SECONDS
       # THE HOOKS ARE PUT BACK. One tmux call, and it heals a ring that was lost for
       # good: a .tmux.conf that sets a hook of ours without an index wipes the
       # event's whole list at the next re-source, [42] included, and nothing would
@@ -354,19 +355,9 @@ refresher() {
       # them, so the snapshot rides the pass that already sweeps the names; its
       # own throttle (resurrect.every) still decides whether it is due.
       if resurrect_due; then resurrect_save >/dev/null 2>&1 & fi
-      # Self-heal the sidebar. When a docked agent's Claude exits, its pane dies
-      # inside the dashboard window and that seat is simply gone until something
-      # docks again. Put it back rather than making the user notice and work out
-      # what happened. "Is the window down to one pane" was the old test and it
-      # stopped firing the moment somebody opened a terminal in there; no seat at
-      # all is the condition, however many panes the window has.
-      dp=$(dash_pane)
-      if [ -n "$dp" ] && [ -z "$(seats "$dp")" ]; then
-        ensure_seat "$dp" >/dev/null 2>&1
-      fi
     fi
-    # THE SNAPSHOT IS TAKEN AFTER THE REPAIRS ABOVE, so a seat they put back is
-    # already in it and does not cost a reload on the next pass for something
+    # THE SNAPSHOT IS TAKEN AFTER THE SLOW WORK ABOVE, so whatever it moved in tmux
+    # is already in it and does not cost a reload on the next pass for something
     # the forced one below has just drawn.
     # THE COUNT OF RINGS IS READ IN THE SAME CALL, after the snapshot and as its last
     # line: the 'g' keeps it a line even when the option has never been set (a
@@ -384,14 +375,8 @@ refresher() {
     ringed=""; [ "$gen" != "$seen" ] && ringed=1
     seen=$gen
     if [ -n "$slowdue" ]; then
-      # The notes editors, for the same reason the seats are repaired here: the
-      # focus hooks all fire on ARRIVAL, so nothing at all notices a chat pane
-      # that simply died with its editor still parked beside it. Only while there
-      # are editors: @ta_notes_any is set by tnotes when it makes the first one
-      # and unset when the last goes (the focus hooks are guarded by the same
-      # flag), and it is global, so any line of the snapshot carries it.
-      first=${snap%%$'\n'*}
-      if [ -x "${SELF%/*}/tnotes" ] && [ "${first##*|@|}" = 1 ]; then
+      # Editors are looked after only while there are some: a pane carries @ta_notes_for, or an older tnotes left its parking session.
+      if [ -x "${SELF%/*}/tnotes" ] && { snap_has_editor || tmux has-session -t =ta-notes 2>/dev/null; }; then
         "${SELF%/*}/tnotes" sync >/dev/null 2>&1 &
       fi
     fi
@@ -443,7 +428,7 @@ refresher() {
           # keeps the loop alive through a busy fzf, but a refresher whose fzf is
           # already gone was re-publishing its dead port on the pane the NEXT list
           # had claimed, every pass until it quit — the two fought over the option
-          # and the poke posted into a closed port. So a refused post gives the claim
+          # and the cursor moves of --follow were posted into a closed port. So a refused post gives the claim
           # up at once (if it is still ours) and the claim is only ever re-made below,
           # after a post that was answered.
           if [ -n "$pub" ] &&
@@ -483,40 +468,16 @@ refresher() {
       { : >"$mark"; } 2>/dev/null
     fi
 
-    # THE SEATS ARE ONLY LOOKED AT WHEN TMUX MOVED. Every pane, option and seat
-    # stamp they read is in the snapshot, so an unchanged snapshot means the same
-    # answers as last time — and each of these is a tmux round-trip or several.
+    # THE PORT CLAIM IS ONLY CHECKED WHEN TMUX MOVED. Every pane and option it reads
+    # is in the snapshot, so an unchanged snapshot means the same answers as last
+    # time — and each of these is a tmux round-trip or several.
     # The claim counts as tmux state: another refresher overwriting it changes
     # the snapshot, and claim_port makes it again within the pass. Run anyway when
     # no claim is held (it was never made, or was given up above), and on the slow
     # pass for whatever a snapshot cannot show (a list process that has died).
     if [ "$snap" != "$ssnap" ] || [ -z "$pub" ] || [ -n "$slowdue" ]; then
       ssnap=$snap
-      # THE CURSOR FOLLOWS THE SEAT. With two chats side by side, clicking into the
-      # other one leaves the list still pointing at the row you left — and that row
-      # is what enter and ctrl-x act on. Only when it CHANGES: moving the cursor
-      # under somebody who is scrolling the list is an interruption, and once is a
-      # very different thing from twice a second.
       dp=$(dash_pane)
-      # A SEAT THAT DIED OWES THE SLOW PASS, which is what puts it back. The slow pass
-      # rides a wake at least TA_REFRESH_SLOW after the last one, so a seat lost
-      # shortly after a slow pass waited for the next ring after the interval, or for
-      # the idle timeout when none came (a minute, where the tick it replaced took ten
-      # seconds). A seat lost is a pane gone, which moves the snapshot, which is what
-      # brought this block here; so when the window has none, the wait ends with the
-      # interval and the pass runs on that timeout. It is not put back here: a
-      # window with no seat is also the moment before a dock makes one, and the
-      # repair has always been the slow pass's, not the wake's. One `seats` per
-      # snapshot that moved, and a slow pass only when it found nothing.
-      if [ -z "$slowdue" ] && [ -n "$dp" ] && [ -z "$(seats "$dp")" ]; then slowowed=1; fi
-      seat_border "$dp"   # the backstop for the paths that move seats without asking
-      seat=""
-      [ -n "$dp" ] && seat=$(current_seat "$dp")
-      is_docked "$seat" || seat=""
-      if [ "$seat" != "$last" ]; then
-        last=$seat
-        [ -n "$seat" ] && follow_cursor "$port" "$dp"
-      fi
       # Re-made whenever the pane moves or the option changes: see claim_port.
       claim_port
       # THE CLAIM IS PART OF THE SNAPSHOT, and made here, after it was taken: left
@@ -650,126 +611,20 @@ claim_port() {
   return 0
 }
 
-# THE CURSOR FOLLOWS THE SEAT. With two chats side by side, clicking into the
-# other one leaves the list still pointing at the row you left — and that row is
-# what enter and ctrl-x act on. Only ever called when the seat CHANGED, though:
-# moving the cursor under somebody who is scrolling the list is an interruption,
-# and once is a very different thing from twice a second. Both callers work that
-# out for themselves — the refresher by comparing ticks, poke by the stamp it
-# keeps — so this just does the move.
-follow_cursor() {  # <port> <list pane> — put the cursor on the current seat's row
-  local port=${1:-} dp=${2:-} seat n
-  [ -n "$port" ] && [ -n "$dp" ] || return 0
-  seat=$(current_seat "$dp")
-  is_docked "$seat" || return 0
-  # A group header carries its most urgent member's pane id too, so the row
-  # has to be the agent's own — the header is the one with the ▾ in it.
-  n=$("$SELF" --list 2>/dev/null |
-    LC_ALL=C awk -F"$TAB" -v p="$seat" \
-        '$1 == p && index($2, "\342\226\276") == 0 { print NR; exit }')
-  [ -n "$n" ] && post_fzf "$port" "pos($n)"
-  return 0
-}
 
-# THE MARKER MOVES WITH YOU, NOT WITH THE NEXT TICK. ▶ is drawn by --list from
-# the seat in @tagents_cur, which the focus hooks stamp the instant you arrive;
-# the list itself, though, is only ever re-rendered by whatever posts a reload to
-# fzf's listen port, and until this existed that was the refresher alone — so a
-# click into the other chat left the triangle behind for up to two seconds. This
-# is the same reload, posted by the hook that did the stamping.
-#
-# THE SEAT IS THE STAMP, on purpose. One select-pane fires after-select-pane and
-# pane-focus-in, and arriving from another window adds after-select-window on top:
-# three hooks, one thing that happened. Debouncing on a clock would need a
-# sub-second one, which bash 3.2 has not got and a hook on every pane switch is
-# the wrong place to fork for — and it would swallow a real second switch (into
-# the other seat and back) along with the duplicates. What the list draws depends
-# on the seat and nothing else, so the seat is what is compared: the first hook
-# of a switch repaints, its twins find their own answer already written down.
-poke() {  # [pane] — repaint every live list now, rather than on the next tick
-  # The pane the hook fired for is taken and not read: which pane you arrived in
-  # is already in @tagents_cur by the time this runs, and every list gets the
-  # same reload whichever window it was. It is in the hook so that `show-hooks`
-  # says what fired, and so `--poke %5` by hand reads the same as the rest.
-  local stamp="$STATE_DIR/.poke" was now dp p pid port hit=""
-  dp=$(dash_pane)
-  [ -n "$dp" ] || return 0
-  now="$dp $(current_seat "$dp")"
-  was=$(cat "$stamp" 2>/dev/null)
-  [ "$now" = "$was" ] && return 0
-  while read -r p pid port; do
-    kill -0 "$pid" 2>/dev/null || continue
-    hit=1
-    post_fzf "$port" "reload-sync($SELF --list)"
-    follow_cursor "$port" "$p"
-  done <<EOF
-$(tmux list-panes -a -F '#{pane_id} #{@tagents_list} #{@tagents_port}' 2>/dev/null |
-    LC_ALL=C awk 'NF == 3')
-EOF
-  # Written only when a list actually took it. A poke that found no port has
-  # repainted nothing, and must not tell the next one the work is done.
-  [ -n "$hit" ] && printf '%s\n' "$now" >"$stamp" 2>/dev/null
-  return 0
-}
 
-# Installed the first time anything is docked, so a user who never docks gets no
-# hooks at all. Several events because pane-focus-in alone misses arriving from
-# another window or another session.
-install_focus_hooks() {
-  # if-shell -F evaluates a tmux format WITHOUT spawning anything, so the script
-  # only ever runs when the pane you just focused really is a placeholder.
-  # These hooks fire on every pane switch; a bash start-up on each one would be
-  # a tax on simply moving around tmux.
-  #
-  # The second hook is what remembers which seat you are in, and it spawns
-  # nothing either: set-option takes -F, so tmux expands #{pane_id} itself and
-  # writes it into the window option. (This used to say a hook could not do that
-  # at all, and current_seat was built around tmux's own active/last pane
-  # instead. Those two say nothing once you have walked from the seat to a
-  # terminal and on to the list, which is the ordinary way to reach enter.)
-  # Appended with -ga rather than replacing: the unpark hook above has to stay.
-  # Four commands per event and no more however often this runs — the first
-  # set-hook resets the event, the other three append to it. (Resetting an event
-  # takes the whole list with it, [42] too: install_event_hooks puts it back below.)
-  local ev cmd cur pk nts
-  cmd="if-shell -F '#{@tagents_slot}' \"run-shell -b \\\"'$SELF' --unpark '#{pane_id}' '#{window_id}'\\\"\""
-  # Single quotes around the inner command so tmux stores it rather than
-  # expanding it now; the "#{pane_id}" inside is expanded when the hook fires,
-  # against the pane it fired for.
-  cur="if-shell -F '#{||:#{@tagents_docked},#{@tagents_slot}}'"
-  cur="$cur 'set -Fw @tagents_cur \"#{pane_id}\"'"
-  # AFTER the stamp above and never before it: this is what makes the list
-  # redraw, and it has to find the seat it is about to draw already written
-  # down. Behind the same format guard, so walking through panes that are
-  # neither a seat nor a placeholder still costs no shell at all.
-  pk="if-shell -F '#{||:#{@tagents_docked},#{@tagents_slot}}'"
-  pk="$pk \"run-shell -b \\\"'$SELF' --poke '#{pane_id}'\\\"\""
-  # And the notes editors, behind their own format guard for the same reason
-  # the unpark hook has one: a pane switch must not cost a bash start-up just
-  # because tnotes is installed. @ta_notes_any is set only while an editor pane
-  # exists anywhere, and unset again by `tnotes sync` when the last one goes.
-  nts="if-shell -F '#{@ta_notes_any}' \"run-shell -b \\\"'${SELF%/*}/tnotes' sync '#{pane_id}'\\\"\""
-  for ev in pane-focus-in after-select-pane after-select-window client-session-changed; do
-    tmux set-hook -g "$ev" "$cmd" 2>/dev/null
-    tmux set-hook -ga "$ev" "$cur" 2>/dev/null
-    tmux set-hook -ga "$ev" "$pk" 2>/dev/null
-    tmux set-hook -ga "$ev" "$nts" 2>/dev/null
-    # NO RING HERE: the focus events ring from [42] with the rest (EV_EVENTS), which
-    # tmux runs after these, so whoever wakes finds the seat stamped and the poke
-    # started. A second ring appended from here would be two for one focus change.
-  done
-  install_event_hooks
-}
 
-# WHAT TMUX DOES TO ITS PANES, WINDOWS AND SESSIONS RINGS THE CHANNELS. The list
-# draws them and the slots stand on them, and nothing here polls: a hook runs
-# `wait-for -S` for both channels, tagents-ev (the refresher) and tagents-panes
-# (the slots), inside the tmux server, which starts no program at all.
+# WHAT TMUX DOES TO ITS PANES, WINDOWS AND SESSIONS RINGS THE CHANNEL. The list
+# draws them and nothing here polls: a hook runs `wait-for -S` for tagents-ev (the
+# refresher), inside the tmux server, which starts no program at all. The four
+# focus events carry only this ring; the one program a switch may start is
+# `tagents --follow`, from the two follow hooks of follow.sh (install_follow_hooks)
+# at index 43, beside the ring at 42.
 #
 # AT A FIXED INDEX, so that it neither takes the place of a hook of the owner's own
 # (set-hook -g without an index REPLACES the event's whole list, and one at [0] is
 # somebody's) nor piles up when this runs again: it runs at every refresher start
-# and every dock, and setting [42] twice is setting it once. 42 is an arbitrary
+# and every slow pass, and setting [42] twice is setting it once. 42 is an arbitrary
 # number nobody picks by accident; ./tagents --help does not need to know it.
 #
 # THE EVENTS are the ones that exist. tmux 3.7b has no after-swap-pane,
@@ -777,23 +632,16 @@ install_focus_hooks() {
 # after-<command> hook exists for some commands only, and these are not among
 # them), so the layout is watched instead: window-layout-changed fires for a swap,
 # a join or a break, for both windows when they differ. A respawned pane changes
-# nothing the list draws until the slow pass. client-attached and client-detached
-# are here for the slots, which stand down in a session nobody is attached to.
+# nothing the list draws until the slow pass.
 EV_HOOK_INDEX=42
-# EV_SIGNAL, the text every one of them runs, is in core.sh beside the counts it
-# bumps (@tagents_evgen for the refresher, @tagents_gen for the slots).
+# EV_SIGNAL, the text every one of them runs, is in core.sh beside the count it
+# bumps (@tagents_evgen).
 #
-# THE FOUR FOCUS EVENTS ARE HERE TOO, at [42] like the rest, and not appended to the
-# lists install_focus_hooks makes. A `.tmux.conf` that says `set-hook -g <event> ...`
-# with no index replaces the event's whole list at every re-source, and takes
-# tagents' entries with it; the slots, which wait for a ring and poll nothing, then
-# slept through every focus change. The focus hooks themselves (the unpark, the
-# seat stamp, the poke) are installed once, on the first dock, and a wiped list is
-# not healed by that: this one is, and install_event_hooks runs again on every slow
-# pass of the refresher (see there), so a wiped [42] is back within the slow interval.
-# tmux runs an event's entries in index order, and 42 is after the [0]..[3] of
-# install_focus_hooks, so the ring still comes last, with the seat stamped and the
-# poke started (tests/refresh.sh section 20 asks tmux for it).
+# A `.tmux.conf` that says `set-hook -g <event> ...` with no index replaces the
+# event's whole list at every re-source, and takes tagents' entries with it, the
+# follow hooks too. install_event_hooks runs again on every slow pass of the
+# refresher (see there) and puts both back, so a wiped [42] and a wiped [43] are
+# back within the slow interval.
 EV_EVENTS='after-new-window after-split-window after-new-session after-kill-pane pane-exited pane-died window-linked window-unlinked session-closed window-renamed session-renamed window-layout-changed client-attached client-detached pane-focus-in after-select-pane after-select-window client-session-changed'
 install_event_hooks() {
   local ev i=0 args=()
@@ -804,11 +652,14 @@ install_event_hooks() {
     i=$((i + 1))
   done
   # One call for all of them. A command list stops at the first that fails (an
-  # event this tmux does not know), so the second try is one call each.
-  tmux "${args[@]}" 2>/dev/null && return 0
-  for ev in $EV_EVENTS; do
-    tmux set-hook -g "$ev[$EV_HOOK_INDEX]" "$EV_SIGNAL" 2>/dev/null
-  done
+  # event this tmux does not know), so the second try is one call each. The follow
+  # hooks go in after either way: they are put back with the ring or not at all.
+  if ! tmux "${args[@]}" 2>/dev/null; then
+    for ev in $EV_EVENTS; do
+      tmux set-hook -g "$ev[$EV_HOOK_INDEX]" "$EV_SIGNAL" 2>/dev/null
+    done
+  fi
+  install_follow_hooks
   return 0
 }
 

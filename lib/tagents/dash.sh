@@ -79,7 +79,7 @@ dash_header() {  # <cols> <enter label> [quit item]
 # generated from the table alone — so a key bound and not listed is a key nobody
 # can find, and a key listed and not bound is a lie. tests/ui.sh fails on either.
 dash() {
-  local home=${TA_HOME:-} mode=${TA_MODE:-dash} out key rows
+  local mode=${TA_MODE:-dash} out key rows
   local rc started fails=0 esc_act=ignore quit fl ft
   local header
   local enter_lbl='open in sidebar' preview_win='' sidebar=0 after='' vact
@@ -95,8 +95,7 @@ dash() {
   # prompt in prefix+a mode ran behind execute-silent and was never seen.
   local ask='execute-silent'
   { has_popup && [ "$mode" != popup ]; } || ask='execute'
-  [ -z "$home" ] && home=$(tmux display -p '#S' 2>/dev/null)
-  if [ -z "$home" ]; then
+  if [ -z "$(tmux display -p '#S' 2>/dev/null)" ]; then
     echo "tagents: not inside tmux" >&2
     return 1
   fi
@@ -117,16 +116,18 @@ dash() {
   [ -n "$K_QUIT" ] && quit="$K_QUIT quit"
   if [ "$mode" = popup ]; then esc_act=abort; quit=''; after='+abort'; fi
 
+  # The seat model of the previous version, sent home once (migrate.sh), before the first claim and the first follow.
+  migrate_seats
+
   # A LIST RUNNING IN A PANE IS THE SIDEBAR. Not "is it running in the pane some
-  # marker points at" — it claims the pane, so enter docks the chat into the right
-  # half of this very window and the cursor lands in it, whichever window that
+  # marker points at" — it claims the pane, so enter selects the chat's window, the
+  # sidebar comes along and the cursor lands in the chat, whichever window that
   # happens to be. Reading the marker instead is what sent you to another window:
   # the marker had drifted onto a chat elsewhere, and enter followed the marker.
-  # The docked pane then stands in for fzf's preview — it is the live thing.
   #
   # A popup is the one list with no pane of its own (TMUX_PANE is empty inside
-  # display-popup) and nowhere to put a seat, so it keeps the text preview and
-  # hands the chat to the dedicated sidebar instead.
+  # display-popup) and nowhere for the sidebar to be moved from, so it keeps the
+  # text preview and hands the chat to the dedicated sidebar instead.
   if [ "$mode" != popup ] && [ -n "${TMUX_PANE:-}" ] && claim_dash; then
     trap release_dash EXIT INT TERM
     enter_lbl='open here'
@@ -166,10 +167,9 @@ dash() {
   # verbatim. Aliases nobody needs a row in the table for follow the verb they
   # alias: double-click is enter, f2 is the rename key.
   BINDS=()
-  kb "$K_OPEN"    "execute-silent($SELF --act open {1} {3} {4} {5})$after"
-  kb double-click "execute-silent($SELF --act open {1} {3} {4} {5})$after"
-  kb "$K_GOTO"    "execute-silent($SELF --act goto {1})$after"
-  kb "$K_BORROW"  "execute-silent($SELF --act borrow {1})$after"
+  kb "$K_OPEN"    "execute-silent($SELF --act open {1} {3} {4} {5} {2})$after"
+  kb double-click "execute-silent($SELF --act open {1} {3} {4} {5} {2})$after"
+  kb "$K_GOTO"    "execute-silent($SELF --act goto {1} {3} {4} {5} {2})$after"
   kb "$K_SEND"    "$ask($SELF --act send {1})$after"
   kb "$K_BESIDE"  "execute-silent($SELF --act beside {1} {3} {4} {5})$after"
   kb "$K_RENAME"  "$ask($SELF --act rename {1} {3} {4})"
@@ -180,7 +180,7 @@ dash() {
   kb "$K_PICK"    "$ask($SELF --act pick {1} {3} {4} {5})$after"
   kb "$K_COLUMNS" "$ask($SELF --act columns)"
   kb "$K_USAGE"   "$ask($SELF --act usage)"
-  kb "$K_CLOSED"  "$ask($SELF --act closed)$after"
+  kb "$K_CLOSED"  "$ask($SELF --act closed {1})$after"
   kb "$K_KEYS"    "$ask($SELF --act keys {1} {3} {4} {5})$after"
   kb esc          "$esc_act"
   kb "$K_PREVIEW" "$vact"
@@ -199,8 +199,6 @@ dash() {
   # it needs the same "not there at all" shape the array gives everything else.
   xp=()
   [ -n "$K_QUIT" ] && xp=(--expect="$K_QUIT")
-
-  export TA_HOME="$home"
 
   # First frame only: fzf hands every later reload an authoritative FZF_COLUMNS,
   # but the initial list is built before fzf exists. `tput cols` is unreliable
@@ -245,7 +243,7 @@ dash() {
       # only if fzf is dying instantly, which would otherwise spin forever.
       if [ $(( SECONDS - started )) -lt 1 ]; then
         fails=$((fails + 1))
-        [ $fails -ge 5 ] && { echo "tagents: fzf keeps failing, giving up" >&2; break; }
+        [ $fails -ge 5 ] && { echo "tagents: fzf keeps failing, giving up" >&2; [ "$sidebar" = 1 ] && tmux set -gu @tagents_sidebar_on 2>/dev/null; break; }
       else
         fails=0
       fi
@@ -256,7 +254,11 @@ dash() {
     # Keys do their work inside fzf now, so reaching here means a deliberate
     # quit — or, in a popup, the abort that follows a completed action.
     key=$(printf '%s\n' "$out" | sed -n 1p)
-    [ "$key" = ctrl-q ] && break
+    # A deliberate quit ends the wish for a sidebar; the pane being killed does not (follow starts another then).
+    if [ "$key" = ctrl-q ]; then
+      [ "$sidebar" = 1 ] && tmux set -gu @tagents_sidebar_on 2>/dev/null
+      break
+    fi
     [ "$mode" = popup ] && break
   done
 }

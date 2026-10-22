@@ -80,7 +80,7 @@ chmod +x "$BIN/claude"
 # would never be counted, so the pane that stands in for a RUNNING session gets a
 # copy of /bin/sleep under that name instead. A copy of a system binary is killed
 # on sight on arm64 (its signature is only valid for the original inode), which
-# is what the ad-hoc re-sign is for; see tests/panes.sh.
+# is what the ad-hoc re-sign is for; see tests/window-rows.sh.
 cp /bin/sleep "$LIVEBIN/claude" || exit 1
 codesign --remove-signature "$LIVEBIN/claude" >/dev/null 2>&1
 codesign -f -s - "$LIVEBIN/claude" >/dev/null 2>&1

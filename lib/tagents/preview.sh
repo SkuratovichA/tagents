@@ -5,7 +5,7 @@
 # Part of ./tagents; `tagents --help` is the model this implements.
 
 preview() {
-  local pane=$1 state=${2:-} f ts st sid cwd tr detail cfgd hascfg parkey acct rprof log
+  local pane=$1 state=${2:-} f ts st sid cwd tr detail cfgd hascfg parkey acct rprof rsess log
   [ "$pane" = "-" ] && return 0
   f="$STATE_DIR/${pane#%}.tsv"
   if [ -e "$f" ]; then
@@ -63,7 +63,7 @@ preview() {
         transcript_tail "$tr" 20
       else
         printf '\033[90mheadless session — it runs in no pane, so there is nothing\n'
-        printf 'to show here and nothing to dock. No readable $TA_LOG was\n'
+        printf 'to show here and nothing to select. No readable $TA_LOG was\n'
         printf 'recorded for it either; export TA_LOG before starting one.\033[0m\n'
       fi
       return 0 ;;
@@ -78,7 +78,8 @@ preview() {
     # misspelt rule would land on the dashboard terminal a few times a second.
     # --profile-for, --config and the launch paths stay loud, which is where
     # somebody is actually asking the config a question.
-    rprof=$(resume_profile "${cfgd:-}" "${hascfg:-0}" "${cwd:-}" "$DASH_SESSION" 2>/dev/null)
+    rsess=$(row_session "$pane"); [ -n "$rsess" ] || rsess=$(client_session "")   # the session enter would resume in (resume_agent)
+    rprof=$(resume_profile "${cfgd:-}" "${hascfg:-0}" "${cwd:-}" "$rsess" 2>/dev/null)
     printf '\033[90mno Claude running in this pane any more.\n\nenter runs:\033[0m\n'
     if [ "$rprof" = ask ]; then
       printf '  \033[90m(enter asks which account first)\033[0m\n'

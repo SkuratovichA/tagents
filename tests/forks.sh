@@ -215,28 +215,19 @@ PS4='+${BASH_SUBSHELL}|${FUNCNAME[0]:-}| ' bash -x "$TA" --list >/dev/null 2>"$x
 ok "dir_roots forks nothing for 3 directories" 0 "$(grep -c '^++[0-9]*|dir_roots| repo_root' "$xt")"
 ok "dir_roots still walked 3 directories" 3 "$(grep -c '^+[0-9]*|dir_roots| repo_root' "$xt")"
 
+# The modules are loaded the way the entry point loads them, because that is the only way to reach a function.
+LIBD="$HERE/../lib/tagents"
+FN_MODS=$(sed -n '/for ta_mod in/,/; do/p' "$TA" | sed 's/.*for ta_mod in//; s/; do.*//' | tr -d '\\' | tr -s ' \n' '  ')
+fn() {  # <code> — runs it with the modules loaded and the config read
+  SELF="$TA" FN_LIB="$LIBD" FN_MODS="$FN_MODS" /bin/bash -c \
+    'set -uo pipefail; for m in $FN_MODS; do . "$FN_LIB/$m.sh"; done; cfg_load; eval "$1"' fn "$1"
+}
+
 # ---------------------------------------------------------------------------
 t "--list: names that differ only in a Cyrillic letter are different names"
 # ---------------------------------------------------------------------------
-# Under a UTF-8 locale macOS awk and sort weigh every Cyrillic letter alike, so "я" and "ю" were one name to them: two projects shared a group, two directories shared a line of `sort -u`, and a project one letter longer than the home directory was the home directory. One letter each, because longer names can survive by luck.
-cy_list() { env -u LC_ALL LANG=en_US.UTF-8 bash "$TA" --list 2>/dev/null | sed "s/$(printf '\033')\[[0-9;]*m//g"; }
-cy_agent() {  # <sid> <dir> — a pane-less record of an agent in a repository
-  mkdir -p "$2/.git"
-  printf '%s\tworking\t%s\t%s\t\t\t\t0\t\tlabel %s\n' "$NOW" "$1" "$2" "$1" >"$STATE/s-$1.tsv"
-  printf '%s\t%s\n' "$1" "$2" >>"$STATE/origin.tsv"
-}
-fresh
-cy_agent cy-1 "$ROOT/cy/я"; cy_agent cy-2 "$ROOT/cy/ю"; cy_agent cy-3 "$ROOT/cy/я"
-runs=0; prev=; tees=0
-while IFS= read -r line; do
-  case $line in *'▾'*) continue ;; esac
-  case ${line%%$TAB*} in *cy-1|*cy-3) l=a ;; *cy-2) l=b ;; *) continue ;; esac
-  [ "$l" = "$prev" ] || { runs=$((runs + 1)); prev=$l; }
-  case $line in *'└─'*) tees=$((tees + 1)) ;; esac
-done < <(cy_list)
-ok "two projects that differ only in a Cyrillic letter are two groups: each keeps its rows together" 2 "$runs"
-ok "...and the last row of each closes its own tree" 2 "$tees"
-
+# Under a UTF-8 locale macOS awk and sort weigh every Cyrillic letter alike, so "я" and "ю" were one name to them and two directories shared a line of `sort -u`: the second was never found under its repository. A group is a session now (tests/window-rows.sh L9 pins two sessions named that way); what is left of the rule here is the directory scan that feeds the subdirectory drawn before a row's detail.
+cy_fn() { ( unset LC_ALL; export LANG=en_US.UTF-8; fn "$1" ) 2>/dev/null; }
 fresh
 mkdir -p "$ROOT/dr/я/.git" "$ROOT/dr/я/src" "$ROOT/dr/ю/.git" "$ROOT/dr/ю/src"
 for i in 1 2; do
@@ -244,32 +235,21 @@ for i in 1 2; do
   printf '%s\tworking\tdr-%s\t%s\t\t\t\t0\t\tlabel %s\n' "$NOW" "$i" "$d" "$i" >"$STATE/s-dr-$i.tsv"
   printf 'dr-%s\t%s\n' "$i" "$d" >>"$STATE/origin.tsv"
 done
-heads=$(cy_list | grep '▾')
-ok "two directories that differ only in a Cyrillic letter are both found under their repository" 0 "$(printf '%s\n' "$heads" | grep -c '▾ src')"
-has "...the first as its own project" "▾ я" "$heads"
-has "...and the second as its own project" "▾ ю" "$heads"
-
-fresh
-cy_agent cy-h "${HOMED}я"
-has "a project named for the home directory plus a Cyrillic letter keeps its name" "▾ homeя" "$(cy_list | grep '▾')"
+roots=$(cy_fn dir_roots)
+ok "two directories that differ only in a Cyrillic letter are both found" 2 "$(printf '%s\n' "$roots" | grep -c '^R')"
+has "...the first under its own repository"  "$ROOT/dr/я/src$TAB$ROOT/dr/я" "$roots"
+has "...and the second under its own"        "$ROOT/dr/ю/src$TAB$ROOT/dr/ю" "$roots"
 
 # ---------------------------------------------------------------------------
-t "--list: the seats are asked once"
+t "--list: the questions to tmux do not grow with the chats"
 TSHIM="$ROOT/tshim"; mkdir -p "$TSHIM"
-cat >"$TSHIM/tmux" <<EOF
-#!/bin/sh
-echo "\$*" >>"$CNT/tmux"
-case "\$*" in
-  *@tagents_dash*) echo "%1 1 $$" ;;
-  "display -p -t %1 #{window_id}") echo @1 ;;
-  *tagents_docked*) printf '%%1 - -\n%%2 docked -\n%%3 - free\n' ;;
-esac
-EOF
-chmod +x "$TSHIM/tmux"
-fresh; add_states 2
-: >"$CNT/tmux"
-PATH="$TSHIM:$PATH" "$TA" --list >/dev/null 2>&1
-ok "list() starts one list-panes for the seats" 1 "$(grep -c "^list-panes -t .*tagents_slot" "$CNT/tmux")"
+printf '#!/bin/sh\necho "$*" >>"%s/tmux"\n' "$CNT" >"$TSHIM/tmux"; chmod +x "$TSHIM/tmux"
+fresh; add_states 2;  : >"$CNT/tmux"
+PATH="$TSHIM:$PATH" "$TA" --list >/dev/null 2>&1; n2=$(wc -l <"$CNT/tmux" | tr -d ' ')
+fresh; add_states 20; : >"$CNT/tmux"
+PATH="$TSHIM:$PATH" "$TA" --list >/dev/null 2>&1; n20=$(wc -l <"$CNT/tmux" | tr -d ' ')
+ok "twenty chats ask tmux as often as two" "$n2" "$n20"
+ok "...and nothing is asked about seats" 0 "$(grep -c -E 'tagents_slot|tagents_docked|tagents_parked' "$CNT/tmux")"
 
 # ---------------------------------------------------------------------------
 t "--sync-names: awk starts do not grow with the state files"
@@ -353,12 +333,6 @@ ok "...and the marks-on list leaves it in .counts.tally" "#[default]" "$(cat "$S
 t "--counts: the pieces the refresher keeps compose to exactly what counts_now prints"
 # The two functions are called in a bash that has loaded the modules the way the
 # entry point loads them, because that is the only way to reach a function.
-LIBD="$HERE/../lib/tagents"
-FN_MODS=$(sed -n '/for ta_mod in/,/; do/p' "$TA" | sed 's/.*for ta_mod in//; s/; do.*//' | tr -d '\\' | tr -s ' \n' '  ')
-fn() {  # <code> — runs it with the modules loaded and the config read
-  SELF="$TA" FN_LIB="$LIBD" FN_MODS="$FN_MODS" /bin/bash -c \
-    'set -uo pipefail; for m in $FN_MODS; do . "$FN_LIB/$m.sh"; done; cfg_load; eval "$1"' fn "$1"
-}
 printf 'usage:\n  monthly_limit_usd: abc\n' >"$ROOT/cfgbad.yaml"
 for cf in "$ROOT/absent.yaml" "$ROOT/cfgbad.yaml"; do
   export TA_CONFIG=$cf
@@ -432,55 +406,23 @@ ok "no stamp at all is due, with nothing on stderr" "rc=0" "$(cat "$ROOT/due.out
 ok "...and none of those started a cat" 0 "$(grep -c '^cat$' "$CNT/all")"
 ok "...while the shim did log the date calls (so a silent shim cannot pass)" 1 "$([ "$(grep -c '^date$' "$CNT/all")" -ge 1 ] && echo 1 || echo 0)"
 
-# ---------------------------------------------------------------------------
-t "slot: a lap asks tmux once and sleeps once (hooks aside)"
-SLSHIM="$ROOT/slshim"; mkdir -p "$SLSHIM"
-cat >"$SLSHIM/tmux" <<EOF
-#!/bin/sh
-echo "\$*" >>"$CNT/sl.tmux"
-case "\$*" in
-  list-panes*) printf '%%9 @1 1 $$ - 0\n%%2 @2 - - - 0\n' ;;
-  display*window_id*) echo @2 ;;
-esac
-EOF
-printf '#!/bin/sh\necho "$*" >>"%s/sl.sleep"\n' "$CNT" >"$SLSHIM/sleep"
-chmod +x "$SLSHIM/tmux" "$SLSHIM/sleep"
-: >"$CNT/sl.tmux"; : >"$CNT/sl.sleep"
-# The pane is outside the dashboard window and parks nobody: the second lap ends the loop.
-TMUX_PANE=%2 PATH="$SLSHIM:$PATH" fn 'slot; echo "rc=$?"' >"$ROOT/slot.out" 2>/dev/null
-ok "slot returned after two laps" 1 "$(grep -c 'rc=0$' "$ROOT/slot.out")"
-ok "...with one question to tmux per lap" 2 "$(grep -c '^list-panes' "$CNT/sl.tmux")"
-ok "...and the event hooks put in once, by one call, before the first" 1 "$(grep -c '^set-hook' "$CNT/sl.tmux")"
-ok "...and no other call: a stray placeholder is looked at again by the clock, not by waiting" 3 "$(wc -l <"$CNT/sl.tmux" | tr -d ' ')"
-ok "...and one sleep" 1 "$(wc -l <"$CNT/sl.sleep" | tr -d ' ')"
 
 # ---------------------------------------------------------------------------
-t "slot and dash_pane choose the list pane by one rule"
-# The panes and windows tmux answers with are read from files, so each case sets them. The sleep
-# shim ends the loop (SIGTERM to the slot's own shell) on its third call, and a watcher kills the
-# run after 20 seconds, so a wrong answer fails instead of hanging; macOS has no timeout(1).
+t "dash_pane chooses the list pane by one rule"
+# The panes and windows tmux answers with are read from files, so each case sets them. A watcher
+# kills the run after 20 seconds, so a wrong answer fails instead of hanging; macOS has no timeout(1).
 SL2="$ROOT/sl2"; mkdir -p "$SL2"
 cat >"$SL2/tmux" <<'EOF'
 #!/bin/sh
 echo "$*" >>"$SLDIR/tmux.log"
 case "$*" in
-  list-panes*window_id*) cat "$SLDIR/panes" ;;
   list-panes*) cat "$SLDIR/panes3" ;;
-  list-windows*) cat "$SLDIR/wins" ;;
-  display*window_id*) echo @1 ;;
-  # The wait for the next ring: the third one is "the server is gone", which ends the slot.
-  if-shell*) echo x >>"$SLDIR/waits"; [ "$(wc -l <"$SLDIR/waits" | tr -d ' ')" -lt 3 ] || exit 1 ;;
 esac
 EOF
-cat >"$SL2/sleep" <<'EOF'
-#!/bin/sh
-echo "$*" >>"$SLDIR/sleep.log"
-[ "$(wc -l <"$SLDIR/sleep.log" | tr -d ' ')" -lt 3 ] || kill -TERM "$PPID"
-EOF
-chmod +x "$SL2/tmux" "$SL2/sleep"
+chmod +x "$SL2/tmux"
 export SLDIR="$ROOT/sldir"; mkdir -p "$SLDIR"
-sl_run() {  # <code> — runs it as pane %2 under the shims, killed after 20 seconds
-  : >"$SLDIR/tmux.log"; : >"$SLDIR/sleep.log"; : >"$SLDIR/out"; : >"$SLDIR/unparked"; : >"$SLDIR/waits"
+sl_run() {  # <code> — runs it as pane %2 under the shim, killed after 20 seconds
+  : >"$SLDIR/tmux.log"; : >"$SLDIR/out"
   ( TMUX_PANE=%2 PATH="$SL2:$PATH" fn "$1" >"$SLDIR/out" 2>/dev/null ) &
   sl_pid=$!
   ( sleep 20; pkill -P "$sl_pid" 2>/dev/null; kill "$sl_pid" 2>/dev/null ) >/dev/null 2>&1 &
@@ -489,36 +431,10 @@ sl_run() {  # <code> — runs it as pane %2 under the shims, killed after 20 sec
   kill "$sl_wd" 2>/dev/null; wait "$sl_wd" 2>/dev/null
   return 0
 }
-SLSTUB='unpark() { echo "unpark $1" >>"$SLDIR/unparked"; }; '
-# %8 is marked and dead, %9 is marked and alive, %2 (the placeholder) sits in the live one's window.
-printf '%%8 @7 1 2147483000 - 0\n%%9 @1 1 %s - 0\n%%2 @1 - - - 0\n' "$$" >"$SLDIR/panes"
-printf '@5 1\n' >"$SLDIR/wins"
-sl_run "$SLSTUB"'slot'
-has "first marked pane dead, second alive: slot picks the live one's window" "pick an agent" "$(cat "$SLDIR/out")"
-ok "...and it cleared no marker" 0 "$(grep -c 'set -up' "$SLDIR/tmux.log")"
 printf '%%8 1 2147483000\n%%9 1 %s\n' "$$" >"$SLDIR/panes3"
 sl_run 'dash_pane'
 ok "dash_pane picks the live pane" "%9" "$(cat "$SLDIR/out")"
 ok "...and clears the dead one's marker" 1 "$(grep -c '^set -up -t %8 @tagents_dash' "$SLDIR/tmux.log")"
-# Nobody alive: the dashboard session's window (@5) is the answer, and %2 sits in it.
-printf '%%8 @7 1 2147483000 - 0\n%%2 @5 - - - 0\n' >"$SLDIR/panes"
-sl_run "$SLSTUB"'slot'
-has "no live list: slot falls back to the dashboard session's window" "pick an agent" "$(cat "$SLDIR/out")"
-# THE WAIT IS CONDITIONAL ON THE COUNT THE LAP SAW: the seventh field is @tagents_gen, and the
-# wait is one if-shell that holds only while the option still says that. A ring that came in
-# during the lap moves the option and the wait does not happen (see GEN_BUMP in core.sh).
-printf '%%9 @1 1 %s - 0 7\n%%2 @1 - - - 0 7\n' "$$" >"$SLDIR/panes"
-sl_run "$SLSTUB"'slot'
-has "the wait is conditional on the count the lap read (7)" \
-    'if-shell -F #{==:#{?@tagents_gen,#{@tagents_gen},0},7} wait-for tagents-panes' "$(cat "$SLDIR/tmux.log")"
-printf '%%9 @1 1 %s - 0\n%%2 @1 - - - 0\n' "$$" >"$SLDIR/panes"
-sl_run "$SLSTUB"'slot'
-has "...and with no count in the answer it is the count 0" \
-    'if-shell -F #{==:#{?@tagents_gen,#{@tagents_gen},0},0} wait-for tagents-panes' "$(cat "$SLDIR/tmux.log")"
-# Parked and active: the focus belt-and-braces calls unpark for this pane.
-printf '%%9 @1 1 %s - 0\n%%2 @1 - - %%9 1\n' "$$" >"$SLDIR/panes"
-sl_run "$SLSTUB"'slot'
-has "a parked, active placeholder still calls unpark" "unpark %2" "$(cat "$SLDIR/unparked")"
 
 # ---------------------------------------------------------------------------
 t "hostname is started once per process without a config file, even when it fails"

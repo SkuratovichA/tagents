@@ -10,7 +10,7 @@
 # Claude sessions have no name of their own, but Claude does keep the terminal
 # title up to date (that is what /rename sets), so the title is the default
 # name. A name set here overrides it and is keyed by session id, so it survives
-# the pane moving, being docked, or the session being resumed.
+# the pane moving, being joined into another window, or the session being resumed.
 LABELS="$STATE_DIR/labels.tsv"
 
 set_label() {
@@ -166,9 +166,6 @@ name_window() {
   case "$pane" in %[0-9]*) ;; *) return 0 ;; esac
   win=$(tmux display -p -t "$pane" '#{window_id}' 2>/dev/null)
   [ -n "$win" ] || return 0
-  # A docked agent physically sits in the dashboard window; renaming that would
-  # rename the dashboard, not the agent.
-  [ "$win" = "$(dash_window)" ] && return 0
   if [ -n "$name" ]; then
     # rename-window turns automatic-rename off for that window by itself, which
     # is what is wanted here: the name is ours now, and @tagents_name is what
@@ -197,10 +194,9 @@ name_window() {
 # so a shell split off beside an agent never wins by being newer — its title is
 # the host name, which names nothing.
 #
-# WHAT IS LEFT OUT: the dashboard window and any window a list is running in
-# (their name is the dashboard, not an agent), and docked chats — those sit in a
-# sidebar window that is skipped anyway, but the marker is the reason, not the
-# geography.
+# WHAT IS LEFT OUT: nothing by geography. The sidebar is not a chat, so a window
+# that holds only the sidebar has no pane with a name to give and is never named,
+# and a window with the sidebar and a chat is named after the chat.
 #
 # AND A NAME A PERSON TYPED IS NEVER OVERWRITTEN. A window is renamed only when
 # its current name is tmux automatic one, or the name this function gave it last
@@ -218,11 +214,8 @@ sync_window_names() {
     # renders as "_" and every field merges into one), and the title goes last
     # because it is the one field that carries arbitrary text — the same rule
     # collect() follows, for the same reason.
-    tmux list-panes -a -F "P|@|#{pane_id}|@|#{window_id}|@|#{pane_index}|@|#{window_name}|@|#{automatic-rename}|@|#{@tagents}|@|#{@tagents_docked}|@|#{@tagents_name}|@|#{pane_title}" 2>/dev/null
+    tmux list-panes -a -F "P|@|#{pane_id}|@|#{window_id}|@|#{pane_index}|@|#{window_name}|@|#{automatic-rename}|@|#{@tagents_name}|@|#{pane_title}" 2>/dev/null
     live_panes | LC_ALL=C awk '!s[$0]++ { print "L|@|" $0 }'
-    # The pid in @tagents_list is what tells a list that is running from a
-    # marker left behind by one that is gone, so this is asked in shell.
-    list_windows | LC_ALL=C awk '!s[$0]++ { print "X|@|" $0 }'
     [ -e "$LABELS" ] && LC_ALL=C awk -F"$TAB" '{ print "N|@|" $1 "|@|" $2 }' "$LABELS"
     # One awk for every state file, not one per file; the first record of each.
     set --
@@ -262,22 +255,18 @@ sync_window_names() {
       # are read, and anything else is taken as off — refusing to rename is the
       # safe half of a guess about whose name it is.
       wauto[a[3]] = (a[6] == "1" || a[6] == "on") ? 1 : 0
-      if (a[7] != "") skip[a[3]] = 1     # the dashboard window
-      if (a[8] != "") pdock[a[2]] = 1    # a chat docked into some sidebar
-      wrec[a[3]] = a[9]
-      t = a[10]; for (i = 11; i <= nf; i++) t = t "|@|" a[i]
+      wrec[a[3]] = a[7]
+      t = a[8]; for (i = 9; i <= nf; i++) t = t "|@|" a[i]
       ptitle[a[2]] = t
       next
     }
     kd == "L" { plive[a[2]] = 1; next }
-    kd == "X" { skip[a[2]] = 1; next }   # a window a list is running in
     kd == "N" { lab[a[2]] = a[3]; next }
     kd == "S" { pts[a[2]] = a[3] + 0; psid[a[2]] = a[4]; next }
     END {
       for (p in plive) {
-        if (!(p in pw) || (p in pdock)) continue
+        if (!(p in pw)) continue
         wi = pw[p]
-        if (wi in skip) continue
         nm = disp(p)
         if (nm == "") continue
         # A pane with no state record has no activity to compare, so it sorts

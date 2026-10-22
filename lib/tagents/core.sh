@@ -7,14 +7,13 @@
 # Where the hook writes. Overridable only so the renderer can be pointed at a
 # throwaway directory; the hook honours the same variable, so both move together.
 STATE_DIR=${TA_STATE_DIR:-$HOME/.claude/agent-state}
-DASH_SESSION=${TA_SESSION:-agents}
 # Subagent records are cleared explicitly on SubagentStop and on the parent's
 # Stop, so this is only a safety net for records that never got cleaned up. It
 # has to outlast a single long tool call, or a subagent running one 10-minute
 # command would silently drop out of the count.
 SUB_TTL=${TA_SUB_TTL:-1800}
 DEAD_TTL=${TA_DEAD_TTL:-86400}  # how long a closed session stays offered for resume
-DASH_WIDTH=${TA_WIDTH:-45}    # percent of the dashboard window the list occupies
+DASH_WIDTH=${TA_WIDTH:-45}    # percent of a window's width the sidebar occupies wherever it is moved or started
 RESUME_CMD=${TA_RESUME_CMD:-claude --dangerously-skip-permissions --resume}
 # Starting a fresh agent in a project, as opposed to resuming a closed one.
 NEW_CMD=${TA_NEW_CMD:-claude --dangerously-skip-permissions}
@@ -45,20 +44,32 @@ is_shell_cmd() {  # <pane_current_command> — an idle shell, the one thing safe
   return 1
 }
 
-# mkdir is the atomic primitive (macOS has no flock). A lock older than <stale> seconds belongs to a process that died holding it and is taken over. tnotes carries its own copy as take_lock (tnotes:216-228) — that script stands alone — still without the bound below.
+# mkdir is the atomic primitive (macOS has no flock). A lock older than <stale> seconds belongs to a process that died holding it and is taken over. tnotes carries its own copy as take_lock (tnotes:122-133) — that script stands alone — still without the bound below.
 # Every pass costs a try, the takeover included: a mkdir that fails for any other reason (a parent nobody may write to) gives up after the tries instead of spinning on a takeover that never lands.
 # A short sleep is not a short wait: a process at background priority (a detached worker, measured) has its timers coalesced, and there `sleep 0.05` took 0.12 s, so 36 tries were 4.4 s instead of 3. [seconds] bounds the wait by the clock as well; SECONDS counts whole seconds, so N waits between N-1 and N.
+# The holder writes its pid into the lock (owner), and a lock whose holder is gone is taken over at once: a list killed with its pane while it held the follow lock left everyone behind it waiting for <stale> seconds. A lock with no owner file yet was made a moment ago, and counts as held.
+# A TAKEOVER IS ONE AT A TIME (<dir>.take), and the taker looks again inside it: two takers that both saw the holder dead would otherwise each remove the lock, the second removing the one the first had just made, and both would hold it. A .take left by a taker that died between its mkdir and its rmdir is cleared after 5 seconds.
 lock_dir() {  # <dir> <stale seconds> [tries, 0.05 s apart; default 40] [seconds]
   local d=$1 stale=$2 tries=${3:-40} end=
   [ -n "${4:-}" ] && end=$((SECONDS + $4))
   mkdir -p "${d%/*}" 2>/dev/null
   while :; do
-    mkdir "$d" 2>/dev/null && return 0
-    [ "$(lock_age "$d")" -gt "$stale" ] && rm -rf "$d" 2>/dev/null
+    if mkdir "$d" 2>/dev/null; then printf '%s\n' "$$" >"$d/owner" 2>/dev/null; return 0; fi
+    if lock_dead "$d" "$stale"; then
+      if mkdir "$d.take" 2>/dev/null; then
+        lock_dead "$d" "$stale" && rm -rf "$d" 2>/dev/null
+        rmdir "$d.take" 2>/dev/null
+      elif [ "$(lock_age "$d.take")" -gt 5 ]; then rmdir "$d.take" 2>/dev/null; fi
+    fi
     tries=$((tries - 1)); [ "$tries" -gt 0 ] || return 1
     [ -n "$end" ] && [ "$SECONDS" -ge "$end" ] && return 1
     sleep 0.05
   done
+}
+# Is the lock's holder gone: its owner pid no longer runs, or the lock is older than <stale> seconds. A lock that is not there is not dead (lock_age reads it as made now).
+lock_dead() {  # <dir> <stale seconds>
+  local owner; owner=$(cat "$1/owner" 2>/dev/null)
+  { [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; } || [ "$(lock_age "$1")" -gt "$2" ]
 }
 # How long a lock has been held. One stat cannot read is as young as now, never an age measured from the epoch: that is a lock missing or out of reach, not one somebody died holding.
 lock_age() {  # <dir> -> seconds
@@ -66,7 +77,7 @@ lock_age() {  # <dir> -> seconds
   printf '%s' $(( now - $(stat -f %m "$1" 2>/dev/null || echo "$now") ))
 }
 # The release, a statement of its own on every path out: never a `trap ...
-# RETURN`, which bash 3.2 fires again when the caller returns (see collapse_seat).
+# RETURN`, which bash 3.2 fires again when the caller returns.
 unlock_dir() { rm -rf "${1:?}" 2>/dev/null; return 0; }
 
 # tmux default pane title is the machine name, which names nothing — and it is
@@ -126,45 +137,33 @@ prompt_at() {  # <width> <height> <args for $SELF...>
   return 0
 }
 
-# RINGING THE CHANNELS where tagents itself writes something the list draws.
+# RINGING THE CHANNEL where tagents itself writes something the list draws.
 # The refresher no longer looks on a timer: it sleeps on the tmux channel
 # tagents-ev, and whatever changes the picture without a tmux command of its own
-# (a label, an origin, a hidden column, a forgotten row) has to say so. 'panes'
-# rings the slots' channel, tagents-panes, too. One tmux call, no output, and
-# nothing at all outside tmux: with no $TMUX the call would go to the default
-# server, which is somebody else's. A change made from a shell outside tmux is
-# seen at the refresher's next wake or at its idle timeout.
+# (a label, an origin, a hidden column, a forgotten row) has to say so. One tmux
+# call, no output, and nothing at all outside tmux: with no $TMUX the call would
+# go to the default server, which is somebody else's. A change made from a shell
+# outside tmux is seen at the refresher's next wake or at its idle timeout.
 #
-# THE SLOTS' CHANNEL IS RUNG TOGETHER WITH A COUNT. Two signals with no waiter
-# cancel each other (a signal nobody waits for is remembered, a second one clears
-# it), so a slot that is busy with a lap while two rings arrive would sleep through
-# both. Every ring of tagents-panes therefore also adds one to the global option
-# @tagents_gen, which is the same server-side command and starts no program; a
-# slot reads it in the list-panes it makes anyway, and waits only if it has not
-# moved since (see slot).
-GEN_BUMP='#{e|+|:#{@tagents_gen},1}'
-# THE REFRESHER'S CHANNEL IS RUNG WITH A COUNT TOO, for the same reason and the
-# same way: every ring of tagents-ev first adds one to the global option
+# THE REFRESHER'S CHANNEL IS RUNG WITH A COUNT. Two signals with no waiter cancel
+# each other (a signal nobody waits for is remembered, a second one clears it), so
+# a waiter that is busy with a lap while two rings arrive would sleep through
+# both. Every ring of tagents-ev therefore first adds one to the global option
 # @tagents_evgen, in the same tmux call and BEFORE the signal, so a ring that
 # lands while the refresher is between two waits is a number that moved, not a
 # signal that cancelled another one. The refresher reads the number in the call
 # that takes its snapshot and waits only while it has not moved (see refresher).
 # The hook (hooks/tmux-agent-state.sh) is POSIX sh and cannot source this file, so
 # it carries a copy of EV_BUMP; tests/refresh.sh pins the two against each other.
-#   EV_BUMP, GEN_BUMP   the format that adds one to the option it is set into
-#   EV_SIGNAL           the command text of a tmux hook: both channels, both counts
-#   RING_EV, RING_BOTH  the same as arguments to one tmux call, after a `\;`
+#   EV_BUMP    the format that adds one to the option it is set into
+#   EV_SIGNAL  the command text of a tmux hook: the count, then the signal
+#   RING_EV    the same as arguments to one tmux call, after a `\;`
 EV_BUMP='#{e|+|:#{@tagents_evgen},1}'
-EV_SIGNAL="set -gF @tagents_evgen '$EV_BUMP' ; wait-for -S tagents-ev ; wait-for -S tagents-panes ; set -gF @tagents_gen '$GEN_BUMP'"
+EV_SIGNAL="set -gF @tagents_evgen '$EV_BUMP' ; wait-for -S tagents-ev"
 RING_EV=(set -gF @tagents_evgen "$EV_BUMP" ';' wait-for -S tagents-ev)
-RING_BOTH=("${RING_EV[@]}" ';' wait-for -S tagents-panes ';' set -gF @tagents_gen "$GEN_BUMP")
-signal_ev() {  # [panes]
+signal_ev() {
   [ -n "${TMUX:-}" ] || return 0
-  if [ "${1:-}" = panes ]; then
-    tmux "${RING_BOTH[@]}" 2>/dev/null
-  else
-    tmux "${RING_EV[@]}" 2>/dev/null
-  fi
+  tmux "${RING_EV[@]}" 2>/dev/null
   return 0
 }
 

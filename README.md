@@ -1,9 +1,6 @@
 # tagents
 
-A live dashboard of every Claude Code session running under tmux — what each one
-is doing, which is blocked on you, how much context it is holding and what it
-has spent — with the selected chat docked beside the list so you can type into
-it without leaving.
+A live dashboard of every Claude Code session running under tmux — what each one is doing, which is blocked on you, how much context it is holding and what it has spent — as a sidebar that moves into the window of the chat you select, so you can type into it without leaving.
 
 ```
 ▾ .dotfiles    ~/git/.dotfiles           ●1
@@ -161,15 +158,14 @@ Keys inside the dashboard:
 
 | key | |
 |-----|--|
-| `enter` | dock that agent's pane into the sidebar's current seat and put the cursor in it |
-| `ctrl-s` | dock it *beside* the current seat instead — two chats side by side |
+| `enter` | select the row: the sidebar moves into the chat's window and the client follows (a closed row is resumed first, a dimmed window row selects the window, a group header shows the session) |
+| `ctrl-s` | join the chat beside the chat of the window on screen — two chats side by side |
 | `ctrl-n` | start a new agent in the project under the cursor |
 | `ctrl-p` | the same, but choose the Claude account by hand whatever the rules say |
-| `ctrl-g` | go to the agent where it lives instead |
-| `ctrl-o` | borrow the agent's whole window into this session |
+| `ctrl-g` | go to the window the chat lives in; never resumes |
 | `ctrl-e` | type a line straight into that agent without leaving |
 | `ctrl-r` | name this agent (`F2` too) |
-| `ctrl-u` | undock — send the chat in the current seat home and close the seat behind it |
+| `ctrl-u` | break a joined chat out into a window of its own |
 | `ctrl-x` | kill this agent — hang up its Claude and close its pane (asks first). On a row that is already closed, forget it instead |
 | `ctrl-t` | toggle tree / flat |
 | `ctrl-v` | the preview — cost per subagent, the tail of the transcript — in a modal window of its own, scrollable, `q` closes it (with no `less` on `$PATH` it is printed instead and any key closes it). In the `prefix+a` popup, and on a tmux with no popups at all, it stays fzf's own preview beside the list: a popup cannot open a second popup |
@@ -202,17 +198,17 @@ model, and every non-obvious decision in it is commented with the reason.
 
 ## How the dashboard stays current
 
-**It waits; it does not poll.** The refresher beside the list sleeps on a tmux channel, `tagents-ev`, and does nothing at all until something rings it: no timer ticks, no program started on a quiet minute. A second channel, `tagents-panes`, wakes the placeholder panes (the slots) the same way. `tmux wait-for -S <channel>` is the ring, and it wakes every waiter. Two signals with nobody waiting cancel each other, so every ring is also a count: it first adds one to a global option (`@tagents_evgen` for the refresher, `@tagents_gen` for the slots) in the same tmux call, and a waiter sleeps only while that number is the one it saw with its last look (`tmux if-shell -F` decides and waits in one step, inside the server). A ring that lands between two waits is a number that moved, never a lost signal.
+**It waits; it does not poll.** The refresher beside the list sleeps on a tmux channel, `tagents-ev`, and does nothing at all until something rings it: no timer ticks, no program started on a quiet minute. `tmux wait-for -S <channel>` is the ring, and it wakes every waiter. Two signals with nobody waiting cancel each other, so every ring is also a count: it first adds one to a global option (`@tagents_evgen` for the refresher, `@tagents_gen` for the slots) in the same tmux call, and a waiter sleeps only while that number is the one it saw with its last look (`tmux if-shell -F` decides and waits in one step, inside the server). A ring that lands between two waits is a number that moved, never a lost signal.
 
 **Who rings.**
 
 - The agent-state hook, in the one `tmux` call it already makes: `tmux set -gF @tagents_evgen '#{e|+|:#{@tagents_evgen},1}' \; wait-for -S tagents-ev \; set -p -t "$pane" @agent "$state"`, the count and the signal first, so a pane that has just closed (a failed `set`) still announces the record that was written. An event with no pane rings on its own: a headless session or a child has no pane to set an option on, so it rings the default tmux server, one `tmux` program per event, and the list shows it at once. A subagent's file that appears or goes rings too; a rewrite of one that is already there does not.
-- tmux itself, through hooks that `tagents` puts at array index **42** (`set-hook -g after-new-window[42] …`): `after-new-window`, `after-split-window`, `after-new-session`, `after-kill-pane`, `pane-exited`, `pane-died`, `window-linked`, `window-unlinked`, `session-closed`, `window-renamed`, `session-renamed`, `window-layout-changed`, `client-attached`, `client-detached` and the four focus events (`pane-focus-in`, `after-select-pane`, `after-select-window`, `client-session-changed`). The index is fixed so that a hook of your own (`set-hook -g` without an index replaces the event's whole list, and `[0]` is somebody's) is left alone, and so that installing them again is installing them once. They are put in at every refresher start, every slot start, every dock and every slow pass, so a `.tmux.conf` that sets one of those events without an index (which wipes the event's list, ours with it) is healed within `TA_REFRESH_SLOW` seconds. tmux 3.7 has no `after-swap-pane`, `after-join-pane`, `after-break-pane`, `after-move-window` or `after-respawn-pane`; `window-layout-changed` fires for a swap, a join and a break (for both windows when they differ), and a respawned pane changes nothing the list draws until the slow pass. The focus events run the seat stamp and the poke at `[0]` to `[3]` and the ring last, at `[42]`: tmux runs an event's entries in index order, and a focus change rings once.
-- `tagents` itself, wherever it writes something the list draws without a tmux command of its own: a label, an origin, a hidden column, a forgotten row, a closed pane; the swaps and breaks that dock and undock chain the rings onto the same tmux call.
+- tmux itself, through hooks that `tagents` puts at array index **42** (`set-hook -g after-new-window[42] …`): `after-new-window`, `after-split-window`, `after-new-session`, `after-kill-pane`, `pane-exited`, `pane-died`, `window-linked`, `window-unlinked`, `session-closed`, `window-renamed`, `session-renamed`, `window-layout-changed`, `client-attached`, `client-detached` and the four focus events (`pane-focus-in`, `after-select-pane`, `after-select-window`, `client-session-changed`). The index is fixed so that a hook of your own (`set-hook -g` without an index replaces the event's whole list, and `[0]` is somebody's) is left alone, and so that installing them again is installing them once. They are put in at every refresher start and every slow pass, so a `.tmux.conf` that sets one of those events without an index (which wipes the event's list, ours with it) is healed within `TA_REFRESH_SLOW` seconds. tmux 3.7 has no `after-swap-pane`, `after-join-pane`, `after-break-pane`, `after-move-window` or `after-respawn-pane`; `window-layout-changed` fires for a swap, a join and a break (for both windows when they differ), and a respawned pane changes nothing the list draws until the slow pass. The follow hooks (`tagents --follow` on `session-window-changed` and `client-session-changed`) sit beside them at `[43]` and put the sidebar in the window now on screen.
+- `tagents` itself, wherever it writes something the list draws without a tmux command of its own: a label, an origin, a hidden column, a forgotten row, a closed pane; the joins and breaks that move the sidebar ring the channel themselves, because tmux has no hook for them.
 
 **What a wake does.** One `tmux list-panes` for the snapshot, with the ring count read in the same call; a reload is posted into the list only if the snapshot moved, a file the list reads is newer than the marker, a state file was added or removed, or an earlier post was refused (retried every 2 s, the one place left that polls; five in a row end the loop). A burst of rings is one pass: the loop lets a second go by after a wake. **At most one reload is posted every `TA_REFRESH_MIN` seconds** (2, a whole number, one at the least): a single change after a quiet spell is posted at once, one that comes within the interval of a post is owed and made when the interval is over, with no ring needed. A pass that posted is looked at once more a second later; that second look is there for the marker (file times are compared in whole seconds, so a write in the second of a reload's touch would otherwise be drawn twice), not for a lost ring. A quiet wake starts two programs, that snapshot and one `tmux if-shell` for the next wait: one of each per pass and nothing per ring, and never more than one wait outstanding.
 
-**The slow pass** is what every fifth tick used to carry: the config re-read, `tusage --update` and the footer, window names, the resurrect snapshot, seat repair, `tnotes sync`, and a reload whether or not anything moved (the age column, the pane titles and dead processes need that). It runs on the first wake after `TA_REFRESH_SLOW` seconds (10) since the last one, and always at the idle timeout `TA_REFRESH_IDLE` (60 s, two at the least), which is also how often a loop with no rings at all still looks. A config edited by hand is therefore seen within `TA_REFRESH_SLOW` of the next ring, or within `TA_REFRESH_IDLE` of none. The slow pass also puts the `[42]` hooks back. A seat that dies does not wait for a ring after the interval or for the idle timeout: a pane gone moves the snapshot, and a wake that finds the dashboard window without a seat owes the slow pass, which then runs at the end of its interval.
+**The slow pass** is what every fifth tick used to carry: the config re-read, `tusage --update` and the footer, window names, the resurrect snapshot, `tnotes sync`, and a reload whether or not anything moved (the age column, the pane titles and dead processes need that). It runs on the first wake after `TA_REFRESH_SLOW` seconds (10) since the last one, and always at the idle timeout `TA_REFRESH_IDLE` (60 s, two at the least), which is also how often a loop with no rings at all still looks. A config edited by hand is therefore seen within `TA_REFRESH_SLOW` of the next ring, or within `TA_REFRESH_IDLE` of none. The slow pass also puts the `[42]` hooks back.
 
 **The loop ends with its list.** It watches fzf itself (the start bind hands it `$PPID` of the shell fzf starts, not the bash that restarts fzf after an abort), checked at every wake, at every timeout and again after the delay, and closing the list rings the channel on the way out. A refresher that is killed, not asked, leaves its markers in the state directory; the next one sweeps them, and the list that closes takes `@tagents_counts` down if no refresher is left to.
 
@@ -260,8 +256,8 @@ What comes back, and how:
 - **On the login it ran on**, never the account rules and never a dialog — a hook has no terminal to ask in. A record from before the account field existed is resumed on the default login, and the report says so.
 - **With its model** (the status line records a `/model` switch too) and any `--effort` it was started with. `--resume` brings the permission mode back by itself.
 - **Under its window name**: a name tagents gave the window keeps following the agent, and one you typed stays yours.
-- **The dashboard**, when it was up. tmux-resurrect restores the sidebar as a dead `dash` window, and the list is started in that window rather than beside it — by the restore and by `prefix A` alike. Docked chats come back at their homes, undocked, and `enter` docks them again.
-- **The notes editor** of every chat whose editor was on screen; one that was hidden stays hidden. The editors tmux-resurrect brought back, parked in `ta-notes` or beside a chat in its own window, belong to no chat and hold their files open, so the next `prefix C-t` would run into a swap-file warning; they are closed first.
+- **The dashboard**, when it was up. the list is started in the window the snapshot recorded for it (else the window of the first chat restored), as the leftmost pane at `TA_WIDTH` percent, and the idle shells tmux-resurrect brought back where the sidebar stood are closed. Every chat comes back in the window its pane was in; a chat that was joined into another window comes back in its home session.
+- **The notes editor** of every chat whose editor was on screen; one that was hidden stays hidden. The editors tmux-resurrect brought back, beside a chat in its own window or left in `ta-notes` by an older version, belong to no chat and hold their files open, so the next `prefix C-t` would run into a swap-file warning; they are closed first.
 - **Nothing twice.** A chat already running, by session id, is skipped, and so is one whose transcript is gone from its login. A directory that no longer exists is resumed in `$HOME`, and the report says so. The hook's `--auto` restores once per tmux server, and only within the server's first 5 minutes: tmux-resurrect fires the same hook on a `prefix + C-r` in a server that has been up for hours, where a restore would bring back every chat ended since the boot and replace idle shells that are yours now. `tagents --resurrect` by hand is the way to run it again.
 
 The snapshots are `$STATE_DIR/resurrect/<epoch>.tsv` (`~/.claude/agent-state/` by default). One is written on every tmux-resurrect save (every 15 minutes with continuum, and on `prefix + C-s`), a few seconds after every launch or kill by tagents, and by the status bar every `resurrect.every` seconds; one that says exactly what the newest already says is not written again, and the newest 50 are kept, plus the one a restore on this server would read however old it is. **The restore uses the newest snapshot written before this tmux server started**, so the captures taken after the boot can never shadow the set that was running before it. They are not harmless all the same: a capture of a server nothing has been restored on yet says "no chats", and a second server start soon after (a `kill-server`, a crash) would pick exactly that one. So while `resurrect.auto` is on, a new server is not captured until the hook has restored it (or until it is 5 minutes old, if the hook never fires), nothing is captured while a restore is placing chats, and the restore takes a snapshot of its own 15 seconds after it is done, once the chats it resumed have written their records. `tagents --resurrect-rows` prints that snapshot's raw rows, `tagents --resurrect-rows latest` the newest one of all.
@@ -295,7 +291,6 @@ resurrect:
 
 ### What does not come back
 
-- A chat's seat in the sidebar: the restored dashboard opens empty, and `enter` docks as always.
 - A chat's scrollback: tmux-resurrect restores it and the resume replaces it, but Claude redraws the conversation anyway.
 - An `/effort` chosen inside a session is recorded nowhere; only an `--effort` on the command line is replayed. `/model` is covered.
 - A Claude on a login without the state hook has no record, so it is not captured.
@@ -320,49 +315,19 @@ What is hidden lives one key per line in `$STATE_DIR/cols`, so it survives a
 restart. `TA_HIDE_COLS=cost,model tagents` overrides that file for a single run,
 and `tagents --hidden-cols` prints what is in force.
 
-## Several chats side by side
+## Windows, sessions and the sidebar
 
-The sidebar window holds **seats**: panes the dashboard owns, each of them either
-a placeholder (the grey "pick an agent" pane) or a chat docked into one. `enter`
-opens a chat in the seat you were last in, `ctrl-s` opens one in a new seat
-beside it — so `enter` on A and `ctrl-s` on B leaves you with
+A row is a tmux window and a group is a tmux session. `enter` on a row moves the one sidebar pane into that row's window, as its leftmost full-height pane at `TA_WIDTH` percent of the window (default 45), and switches the client there; `enter` on a group header shows that session's last-used window the same way. Anything else the window holds (a shell, a dev server, a tnotes editor) is yours: tagents never moves, resizes or kills it, and it leaves the screen with the window and comes back with it. The widths the other panes had are remembered per window and put back when the sidebar leaves.
 
-```
-columns(list, A, B)
-```
+The sidebar follows you. tmux's own switches (`prefix n`, `prefix s`, a click on the status bar) fire `session-window-changed` and `client-session-changed`, and tagents hooks both with `tagents --follow`, which moves the sidebar into the window now on screen when that window belongs to a session that holds a chat or that tagents created. A scratch session is left alone. When the window or the session that held the sidebar is killed, the client lands elsewhere, the same hook fires and, with no list running, starts a new one there (one, however many hooks fire): a list in a pane makes a sidebar wanted, and `ctrl-q` ends the want, so a quit stays a quit.
 
-both live and typeable. With nothing docked yet there is nothing to sit beside,
-so `ctrl-s` opens in the empty seat exactly as `enter` would, rather than
-standing a blank placeholder a whole chat wide between the list and the chat.
+`ctrl-s` joins another chat's pane into the window on screen, to the right of its chat; the pane remembers its home session in `@tagents_joined`, and `ctrl-u` breaks it out into a window of its own. A window with no chat in it is listed as a dimmed row; `enter` on it selects the window.
 
-The list says which is which: a `▶` on the row of the
-chat whose seat the cursor is in — the one `enter` is about to replace — and a
-dim `▹` on every other docked chat. `ctrl-u` sends the current seat's chat home
-and closes the seat behind it, so the layout shrinks back to `columns(list, A)`.
-The last seat always stays; that pane is what says "pick an agent on the left".
+Closing a chat's pane or window is plain tmux: there are no seats and no placeholders, so `prefix+x` and `prefix+&` need no binding of tagents' own, and `ctrl-x` on the only chat of a window moves the sidebar out before the window closes.
 
-**Panes you opened yourself are never touched.** What the dashboard owns is said
-by two markers (`@tagents_docked`, `@tagents_slot`) and by nothing else, so a
-terminal split off beside the list is never swapped, broken out or killed here,
-whatever the pane order in that window happens to be. It used to be answered by
-position — the first pane that is not the list — which was true only while the
-window had exactly two panes.
+tmux-resurrect saves the sidebar's split and gives its window back an idle shell titled `tagents-sidebar`; `tagents --resurrect` closes those shells after the restore.
 
-**Closing a pane must not close a session.** A docked pane *is* the session's own
-pane — that is what makes it typeable — so `prefix+x` on it hangs up the Claude
-for good, and no tmux hook can veto a kill. The answer is a binding that asks
-first, in your `.tmux.conf`:
-
-```tmux
-bind-key x if-shell -F '#{@tagents_docked}' \
-  "run-shell \"tagents --undock-pane '#{pane_id}'\"" kill-pane
-bind-key & run-shell "tagents --undock-window '#{window_id}'" \; kill-window
-```
-
-`tagents --undock-pane` sends that chat home and exits 0; on anything else — the
-list, a placeholder, your own terminal — it does nothing and exits 1, so the
-binding stays a plain `kill-pane` everywhere else. `--undock-window` does the
-same for every chat docked in a window and always exits 0.
+The previous version swapped chats into seats of an `agents:1` window. On the first start after the upgrade tagents sends every docked chat home, closes the placeholders and removes the old options and hooks, once; a `bind-key x … --undock-pane` line in your `tmux.conf` then falls through to a plain `kill-pane`, and a `bind-key & … --undock-window` line prints "unknown option" before its `kill-window`, so both can be deleted. `TA_SESSION` is no longer read. A dashboard that was already running when you upgraded is the previous version's process, and tagents does not stop it for you: it carries the same markers as a current one, so it cannot be told apart safely, and its quit key is yours to rebind. It keeps the previous version's key bindings, so `ctrl-o` (borrow) in it calls an action that no longer exists. Restart it once: `ctrl-q` in it, then `tagents --ensure-dash` to start a sidebar in the window you are in.
 
 ## Windows are named after their agents
 
@@ -387,8 +352,7 @@ never takes the window's name.
 its current name is tmux's automatic one, or the name `tagents` itself gave it
 last time (recorded in the window option `@tagents_name`). Rename a window by
 hand in tmux and nothing here touches it again, until the day its name coincides
-with one of those two. The dashboard window, any window a list is running in and
-chats docked into a sidebar are all left out of it.
+with one of those two. The sidebar does not stop a window being named: a window that holds the sidebar and a chat is named after the chat.
 
 `tagents --sync-names` runs one pass by hand, which is the way to see what it
 would do.
@@ -524,7 +488,7 @@ warnings.
 | `●` | working | a prompt or a tool call is in flight |
 | `○` | new | the session just opened and has not been given anything yet |
 | `✗` | closed | no Claude process in that pane — `enter` resumes it, `ctrl-x` forgets it |
-| `●`… | headless | a session with no pane at all: same states, nothing to dock into |
+| `●`… | headless | a session with no pane at all: same states, no pane to select |
 | `●`… | child | a headless session an agent started itself, drawn under that agent |
 
 Claude Code also pings a notification after about a minute of silence, which
@@ -541,7 +505,7 @@ pane — and dims to `✗ closed` when that process is gone, without offering a
 resume it has nowhere to put.
 
 What you cannot do with one is anything that needs a pane: `enter`, `ctrl-s`,
-`ctrl-e`, `ctrl-o` and `ctrl-r` refuse with a one-line notice. `ctrl-v` is the
+`ctrl-e` and `ctrl-r` refuse with a one-line notice. `ctrl-v` is the
 exception, and is the reason to look at such a row at all — it follows `$TA_LOG`
 with a live `tail -f`, and the sidebar preview shows the tail of the same file.
 So export the two variables before starting one:
@@ -705,9 +669,7 @@ chat; only documents go to the folder.
 `prefix + C-t` toggles it ("text"): the editor opens beside the Claude pane it
 was called from, on the notes folder of that pane's project, so it doubles as
 the place to write a long prompt without fighting the terminal's line editing.
-The editor itself lives in a hidden `ta-notes` tmux session and is only ever
-*linked* into the window you are looking at, which is why toggling it does not
-disturb the layout you had.
+The editor itself is an ordinary split of the chat's window, beside the chat and beside whatever else the window holds; closing it gives the width back. `ta-notes` only matters to editors an older version parked there, which `tnotes sync` brings back beside their chats once.
 
 `:q` commits the draft and leaves `@.claude/notes/prompt.md ` in the chat's
 input. **You** press Enter, and the CLI reads the file at that moment — so
@@ -751,8 +713,7 @@ binding runs; run `tnotes` with no arguments for the rest:
 
 - `tnotes toggle <pane>` — open the editor beside a Claude pane, or hide it again
   when it is already there.
-- `tnotes sync [pane]` — park every editor whose chat you are not looking at, and
-  bring back the one belonging to `<pane>`.
+- `tnotes sync` — close the editors whose chat is gone, bring back the editors an older version parked in `ta-notes`, and clean up after them. It takes no pane.
 - `tnotes send <chat> <dir>` — commit the notes and hand `prompt.md` to `<chat>`,
   as a reference, a paste or a submitted paste (see `notes.send`).
 - `tnotes close <editor>` — ask the editor to write and quit, then make sure it did.
@@ -781,7 +742,7 @@ on.
 
 `tests/config.sh` covers the config parser, the rules and the command builder
 with no tmux involved; `tests/launch.sh` starts and resumes real agents,
-`tests/panes.sh` docks, undocks and kills them across seats, `tests/ui.sh`
+`tests/window-rows.sh` selects, joins and kills rows across windows and sessions and follows the sidebar, `tests/ui.sh`
 covers what the row looks like — the badge column, the hidden ones, the `?`
 window running a real key, the one-line header, the `ctrl-v` modal and the
 order, which is checked by making a state change and asserting that nothing

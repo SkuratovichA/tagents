@@ -52,23 +52,27 @@ With no configuration file, an agent SHALL be started as it always was: with `--
 - **WHEN** `TA_CONFIG` names a file that does not exist and `tagents --new ~/projects/app` is run
 - **THEN** the agent has `--dangerously-skip-permissions` and an unmodified `CLAUDE_CONFIG_DIR`
 
-### Requirement: A new agent lives with its project
-The new agent's window SHALL be created, detached, in the tmux session that owns the project: the session where most of the live panes sitting in that directory are, not counting the dashboard window or the chats docked in it. On a tie a real project session beats the dashboard session, then the alphabetically first wins. When the project has no windows the agent SHALL go to the dashboard session, which is created if it does not exist.
+### Requirement: A new agent opens in the group the cursor is in
+The new agent's window SHALL be created, detached, in the tmux session of the group the dashboard cursor is in. When the cursor is on the group `no window`, or the agent is started without a dashboard (`tagents --new` from a shell), it SHALL be created in the session that owns the project: the session where most of the live panes sitting in that directory are, else the session of the client, else the session tmux treats as current, else, with no session at all, a new session named `agents`.
 
 #### Scenario: Owning session
-- **WHEN** the project's other agents live in the tmux session `proj`
+- **WHEN** the cursor is on a row of the tmux session `proj`
 - **THEN** the new agent's window is in `proj`
 
 #### Scenario: No windows
-- **WHEN** every agent of the project is closed
-- **THEN** the window is created in the dashboard session
+- **WHEN** the cursor is on the group `no window` and every agent of the project is closed
+- **THEN** the window is created in the session of the client
+
+#### Scenario: No tmux server
+- **WHEN** `tagents --new DIR` runs with no tmux server running and no window for the project
+- **THEN** a tmux server is started with a session named `agents` whose first window is the new agent
 
 ### Requirement: A new agent is opened like any other
-After its window is created the new agent SHALL be docked into the sidebar's current seat with the cursor in it, exactly as `enter` on its row would do, the client ending up looking at the agent just asked for. With no sidebar to dock into the client SHALL be taken to the new window. `tagents` SHALL show `tagents: new agent in <project> (<session>:<window>) as <profile>` (the last words only when a profile was used) and take a fresh snapshot for the `resurrect` capability.
+After its window is created the new agent SHALL be selected as `enter` on its row would do (the `window-rows` capability): the sidebar is moved into its window, the cursor is in the agent, and the client ends up looking at it. With no sidebar the client SHALL be taken to the new window. `tagents` SHALL show `tagents: new agent in <project> (<session>:<window>) as <profile>` (the last words only when a profile was used) and take a fresh snapshot for the `resurrect` capability.
 
 #### Scenario: Cursor lands in the agent
 - **WHEN** the user presses `ctrl-n` in the sidebar
-- **THEN** the client's current pane is the new agent and it is docked in a sidebar seat
+- **THEN** the client's current pane is the new agent and the sidebar is in its window
 
 ### Requirement: The account dialog is a list of profiles
 When the rules say `ask`, or on `ctrl-p`, an `account> ` picker SHALL list every profile with its config directory (`default (~/.claude)` for a profile with none), under a header saying which project it is for (`which claude account for <project>?` or `start a new agent in <project> as…`) and the directory and session, ending with `esc cancels`. Choosing a profile starts the agent on it; `esc`, or a choice that is not a profile, starts nothing.
@@ -86,7 +90,7 @@ When the rules say `ask`, or on `ctrl-p`, an `account> ` picker SHALL list every
 - **THEN** its prompt, its profile rows and its header are visible, since it draws on standard error
 
 ### Requirement: Enter on a closed row resumes it
-`enter` on a closed row SHALL restart the session with `claude --resume <id>` on the account it ran on and dock it as `enter` on a live agent would. When the row's old pane still exists and sits at an idle shell the command SHALL be typed into it after a `cd` to the session's directory; otherwise it SHALL be started in a new window of the dashboard session (or of the pane's session).
+`enter` on a closed row SHALL restart the session with `claude --resume <id>` on the account it ran on and select it as `enter` on a live agent would. When the row's old pane still exists and sits at an idle shell the command SHALL be typed into it after a `cd` to the session's directory; otherwise it SHALL be started in a new window of the session of the row's group, or of the client's session for a row in the group `no window`.
 
 #### Scenario: Idle shell
 - **WHEN** the dead row's pane is at a shell prompt

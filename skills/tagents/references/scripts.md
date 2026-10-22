@@ -83,7 +83,13 @@ stays worth reacting to.
                           the rows behind the picker redraw (empty: no reload)
   tagents --header [COLS] the key header the dashboard would draw at that
                           width. One line, which is the whole point of it
-  tagents --ensure-dash   create the dedicated dashboard session if missing
+  tagents --ensure-dash   put the sidebar in the window the client is in: a running
+                          list is moved there, none running is started there
+  tagents --follow [CLIENT]
+                          move the sidebar into the window CLIENT shows (default:
+                          the most recent client); tmux's own hooks run this. With
+                          no list running and a sidebar wanted (a list claimed a
+                          pane and was not quit with ctrl-q), it starts one there
   tagents --new [DIR] [PROFILE]
                           start an agent in DIR from outside the list — a tmux
                           binding, a shell, anything. DIR defaults to $PWD and
@@ -111,24 +117,6 @@ stays worth reacting to.
   tagents --agent-cmd PROFILE new|resume [SID]
                           the exact command string a launch on that profile
                           would run, quoting and all
-  tagents --undock-pane PANE
-                          if a chat is docked in that pane, send it home and
-                          exit 0; exit 1 for anything else — the list, a
-                          placeholder, somebody's terminal. This is what a
-                          kill-pane binding asks first, so closing a pane in
-                          the sidebar can never hang up a session (see SEATS)
-  tagents --undock-window WINDOW
-                          the same for every chat docked in that window, for
-                          the kill-window binding. Always exits 0
-  tagents --seats [PANE] / --current-seat [PANE]
-                          which panes of the sidebar window are seats, and
-                          which one enter would use. Debugging aids
-  tagents --ensure-seat [PANE]
-                          repair that window's seats and print the current one
-                          — the same repair the refresher runs on its slow pass
-  tagents --collapse PANE close an empty seat the sidebar no longer needs.
-                          This is what unpark's own command list calls after a
-                          chat it sent home leaves its placeholder behind
   tagents update [--check]
                           move the managed copy (install.sh puts it in
                           ~/.local/share/tagents) to the newest origin/main,
@@ -152,15 +140,9 @@ of the two is missing and exits 2. Everything the dashboard answers itself is
 a --flag (and `update`) and is matched first, so nothing can be shadowed by
 forwarding.
 
-Agents are grouped into a tree by working directory, so several sessions in
-one repo sit under one header. Groups sort by their most urgent member, so a
-blocked agent still floats its whole project to the top. ctrl-t (or TA_FLAT=1)
-switches to one flat list ordered purely by urgency.
+Agents are grouped into a tree by tmux session: a header names the session and its rows are that session's windows, whichever directory their panes are in. A session is a group when it holds a chat or was created by tagents, and a scratch session stays out of the list. A window with no chat in it is a dimmed row, and a closed session with no window sits under `no window`. Groups sort by their most urgent member, so a blocked agent still floats its whole session to the top. ctrl-t (or TA_FLAT=1) switches to one flat list ordered purely by urgency.
 
-Claude sessions have no names of their own, so each row shows that session's
-terminal title (what /rename sets) until you name it with ctrl-r. Names are
-keyed by session id, so they survive docking, resuming and the pane being
-moved.
+Claude sessions have no names of their own, so each row shows that session's terminal title (what /rename sets) until you name it with ctrl-r. Names are keyed by session id, so they survive resuming and the pane being moved.
 
 WINDOW NAMES. The dashboard is one way to find an agent; prefix+w, the status
 bar and `tmux ls` are the other, and they are the ones that work when the
@@ -178,8 +160,7 @@ A NAME YOU TYPED IS NEVER OVERWRITTEN. A window is only ever renamed when its
 current name is tmux own automatic one, or the name tagents itself gave it
 last time (recorded in the window option @tagents_name). Rename a window by
 hand — in tmux, not in here — and nothing above touches it again, until the
-day its name coincides with one of those two. The dashboard window, any window
-a list is running in, and chats docked into a sidebar are all left out of it.
+day its name coincides with one of those two. The sidebar does not stop a window being named: a window that holds the sidebar and a chat is named after the chat, and one that holds only the sidebar is never named.
 
 Each row carries three columns joined on the session id via `tusage`: the live
 context size (yellow past 200k, red past 600k — that is where every request
@@ -256,7 +237,7 @@ the hook writes into the record, so the row shows the real state — ● working
 ✓ IDLE, ⚠ BLOCKED — while that process lives and sinks to a dimmed ✗ closed
 when it does not; a closed one is never offered for resume, having no pane to
 come back into. Nothing that acts on a pane can act on such a row, so enter,
-ctrl-s, ctrl-e, ctrl-o and ctrl-r refuse with one line. ctrl-v is the
+ctrl-s, ctrl-e and ctrl-r refuse with one line. ctrl-v is the
 exception and the point: it follows $TA_LOG, the log the thing that started
 the session sent it to, which is that agent's only window on itself. Export
 TA_LABEL (the name to show) and TA_LOG before starting one; `tagents --label
@@ -339,105 +320,29 @@ as, from a picker that looked fine. The dashboard header carries the count
 status bar shows `cfg!2`, and a good config shows nothing anywhere. Unknown
 keys are not problems: the file is shared across versions as well.
 
-The dashboard is a sidebar: the list on the left, the selected agent's own pane
-docked beside it, swapped in live so you can type into it. Enter only changes
-the seat it is docked in; the list is never disturbed, and neither is any other
-pane you have opened in that window.
+The dashboard is a sidebar: the list on the left of whichever window you are in. A row is a tmux window, a group is a tmux session, and there is one sidebar pane, which moves.
 
-WHEREVER THE LIST IS, THAT IS THE SIDEBAR. Run it in a pane — the dedicated
-session, a split, any window at all — and it claims that pane, so enter docks
-the chat into a seat in that same window and leaves the cursor in it. You are
-never taken anywhere. The one exception is the popup, which has no pane of its
-own to claim and nowhere to put a seat, so it hands the chat to the dedicated
-sidebar and takes you there.
+WINDOWS, SESSIONS AND THE SIDEBAR. enter on a row moves the sidebar into that row's window, as its leftmost full-height pane at TA_WIDTH percent of the window (default 45), and switches the client there; enter on a group header shows that session's last-used window the same way. Anything else the window holds (a shell, a dev server, a notes editor) is yours: tagents never moves, resizes or kills it, and it leaves the screen with the window and comes back with it. The widths the other panes had are remembered per window and put back when the sidebar leaves.
 
-Two bugs lived here. Enter used to dock into the right half of whatever window
-the POPUP had been opened over — nearly always a window you were reading a chat
-in — so it stood a second chat next to yours with no list in sight, and left a
-stranded placeholder pane behind. Then, with that fixed, enter followed a marker
-to find the sidebar; the marker had drifted onto a Claude chat in another window,
-so enter docked beside that chat and switched the client there, abandoning the
-list. Hence claim_dash(): the list running in a pane is the sidebar, by
-definition, and no marker gets to disagree. See open_agent() for the rest.
+THE SIDEBAR FOLLOWS YOU. tmux's own switches (prefix n, prefix s, a click on the status bar) fire session-window-changed and client-session-changed, and tagents hooks both with `tagents --follow`, which moves the sidebar into the window now on screen when that window belongs to a session that holds a chat or that tagents created. A scratch session is left alone. When the window or the session that held the sidebar is killed, the client lands elsewhere, the same hook fires and, with no list running, starts a new one there (one, however many hooks fire): a list in a pane makes a sidebar wanted, and ctrl-q ends the want, so a quit stays a quit. The follow hooks are installed with the event hooks and put back by the refresher's slow pass.
 
-SEATS — SEVERAL CHATS AT ONCE, AND PANES THAT ARE NOBODY ELSE'S BUSINESS.
-A seat is a pane of the sidebar window that this dashboard owns: a placeholder
-(the grey "pick an agent" pane) or a chat docked into one. Both carry a marker,
-and ONLY the markers answer "what is docked here". That used to be answered by
-position — the first pane in the window that is not the list — which is true
-exactly as long as the window has two panes. Split a terminal in there because
-there is room for one, and the terminal became the answer: ctrl-u swapped it
-into some other window, and enter broke it out into a window of its own before
-docking into a third column beside it. A pane carrying neither marker is now
-never swapped, split, broken out or killed by anything here.
+WHEREVER THE LIST IS, THAT IS THE SIDEBAR. Run it in a pane, in any window, and it claims that pane (claim_dash()); no marker gets to disagree, because a marker once drifted onto a chat in another window and enter followed the marker. The popup is the one list with no pane of its own to claim, so it brings the sidebar to the client's window with --ensure-dash before it selects a row.
 
-The window keeps at least one seat and may keep several. enter opens a chat in
-the CURRENT seat — the one you last had the cursor in — and ctrl-s opens one in
-a new seat beside it, which is how two chats end up side by side. The list
-marks the docked ones with ▹ and the current one with ▶, so which row enter is
-about to replace is something you can see rather than remember. ctrl-u sends
-the current seat's chat home and closes the seat behind it, unless it is the
-last one.
+JOINED CHATS, AND WINDOWS WITH NO CHAT. ctrl-s joins another chat's pane into the window on screen, to the right of its chat; the pane remembers its home session in @tagents_joined, and ctrl-u breaks it out into a window of its own. A window with no chat in it is a dimmed row, and enter on it selects the window.
 
-CLOSING A PANE MUST NOT CLOSE A SESSION. A docked pane IS the session's own
-pane — that is what makes it typeable — so prefix+x on it hangs up the Claude
-for good. No tmux hook can veto a kill, so the answer is a binding that asks
-first, in your own .tmux.conf:
+CLOSING A PANE CLOSES NOTHING ELSE. There are no seats and no placeholders any more, so closing a chat's pane or window is plain tmux and prefix+x and prefix+& need no binding of tagents' own. ctrl-x on the chat that is the only pane of its window besides the sidebar moves the sidebar to the window the client lands on first, so killing a chat never takes the sidebar with it.
 
-  bind-key x if-shell -F '#{@tagents_docked}' \
-    "run-shell \"tagents --undock-pane '#{pane_id}'\"" kill-pane
-  bind-key & run-shell "tagents --undock-window '#{window_id}'" \; kill-window
-
-Both entry points do nothing at all to a pane that is not a docked chat, so
-those bindings stay correct in every other window you use them in.
+THE SEATS OF THE PREVIOUS VERSION. It swapped chats into seats of an agents:1 window and left a placeholder pane in each chat's home window. On the first start after the upgrade tagents sends every docked chat home, closes the placeholders, removes the old options and focus hooks and asks tnotes to bring parked editors back (migrate_seats in lib/tagents/migrate.sh); a start with nothing left to clean changes nothing, and the state it leaves is one the previous version handles. A `bind-key x … --undock-pane` line in a tmux.conf then falls through to a plain kill-pane, and a `bind-key &` line with --undock-window prints "unknown option" before its kill-window: both can be deleted.
 
 Keys inside the dashboard:
-  enter / dbl-click  dock that agent's pane into the sidebar's current seat,
-                     creating one on demand, and put the cursor in it. The
-                     agent's own window keeps its pane count and layout (a
-                     placeholder is swapped into its place), so nothing is
-                     moved or destroyed and ctrl-u reverses it. Whatever was
-                     in that seat goes home first.
-                     On a closed session: resume it, then dock it.
-                     On a group header: act on the group's most urgent agent.
-  ctrl-s             open it BESIDE the current seat instead, in a seat of its
-                     own: two chats side by side, both live, either of them
-                     closable without touching the other (see SEATS). With
-                     nothing docked yet there is nothing to sit beside, so it
-                     opens in the empty seat, exactly as enter would. It only
-                     works at all because the dashboard turns off terminal flow
-                     control, where ctrl-s would otherwise be XOFF and freeze
-                     the pane's output
-  ctrl-g             go to the agent where it lives instead, leaving the
-                     sidebar out of it
-  ctrl-o             borrow the agent's whole WINDOW into this session via
-                     link-window (the old enter behaviour), leaving it in its
-                     own session too
+  enter / dbl-click  select the agent's row: the sidebar moves into the chat's window, the client switches there and the cursor lands in the chat. On a closed session: resume it, then select it. On a dimmed window row: select the window. On a group header: show that session's last-used window
+  ctrl-s             join the agent's pane into the window on screen, beside its chat: two chats side by side, both live, either closable without touching the other. A closed row is resumed first. It only works at all because the dashboard turns off terminal flow control, where ctrl-s would otherwise be XOFF and freeze the pane's output
+  ctrl-g             go to the agent where it lives: switch the client to its window and select its pane. It never resumes; on a closed row it only says so
   ctrl-e             type a line straight into that agent without leaving
-  ctrl-n             start a NEW agent in the project under the cursor, with
-                     `claude --dangerously-skip-permissions` (TA_NEW_CMD).
-                     Works on a group header and on an agent row alike — both
-                     name a project. The window is opened in the tmux session
-                     that already owns that project's windows, so the new chat
-                     joins its siblings rather than landing under "agents";
-                     only a project with no windows left falls back to the
-                     dashboard session. It does NOT dock and does NOT move you:
-                     the list stays on screen, the new agent shows up in the
-                     tree on the next refresh, and enter opens it like any
-                     other agent. See new_agent().
-  ctrl-p             the same, but always asking which account to start it on,
-                     whatever the rules would have picked. ctrl-p is fzf own
-                     "up", but ctrl-n (down) was already spent on "new", so the
-                     pair is at least consistent; the arrows and ctrl-j/ctrl-k
-                     still move the cursor
-  ctrl-r             name this agent; an empty name goes back to its title
-                     (F2 does the same, for keyboards that have an F-row;
-                     set TA_RENAME_KEY to move it somewhere else — or
-                     keys.rename in the config, like any other key here)
-  ctrl-u             undock — send the chat in the current seat home and close
-                     the seat behind it, unless it was the last one. With
-                     nothing docked, give a borrowed window back instead
-                     (unlink it from this session only)
+  ctrl-n             start a NEW agent next to the row under the cursor, with `claude --dangerously-skip-permissions` (TA_NEW_CMD). Works on a group header and on an agent row alike. The window is opened, detached, in the tmux session of the group the cursor is in and then selected like any row: the sidebar and the client move into it. On the `no window` group, and from a shell with `tagents --new`, it opens in the session that owns the project. See new_agent()
+  ctrl-p             the same, but always asking which account to start it on, whatever the rules would have picked. ctrl-p is fzf's own "up", but ctrl-n (down) was already spent on "new", so the pair is at least consistent; the arrows and ctrl-j/ctrl-k still move the cursor
+  ctrl-r             name this agent; an empty name goes back to its title (F2 does the same, for keyboards that have an F-row; set TA_RENAME_KEY to move it somewhere else — or keys.rename in the config, like any other key here)
+  ctrl-u             break a joined chat out into a window of its own, in its home session (in the session it is in when that session is gone). On a chat that is not joined it only says so
   ctrl-x             kill this agent: hang up its Claude and close its pane,
                      and its window with it when that was the pane's window.
                      Asks first, naming the agent. The session stays
@@ -588,12 +493,12 @@ bash 3.2 compatible — macOS ships nothing newer.
 Output of `tnotes --help`:
 
 ```text
-tnotes — a neovim pane beside a Claude pane, hidden and restored per session.
+tnotes — a neovim pane beside a Claude pane, in the chat's own window.
 
   tnotes toggle <pane>        open the notes editor beside a Claude pane,
-                              or hide it again when it is already there
-  tnotes sync [pane]          park every editor whose chat you are not looking
-                              at, bring back the one belonging to <pane>
+                              or move the cursor between the two when it is there
+  tnotes sync                 close the editors whose chat is gone, and bring back
+                              the ones an older version parked
   tnotes send <chat> <dir>    commit the notes and hand prompt.md to <chat>
   tnotes close <editor>       ask the editor to write and quit, then make sure
   tnotes editor <chat> <dir>  the program the editor pane runs (not for you)
@@ -615,22 +520,7 @@ program for as long as nvim is open — hours. `tagents` is read lazily by bash
 while it runs, so a long-lived tagents process is a process that breaks the
 moment the file is edited. This one is short and stays short.
 
-WHY NO @tagents_* MARKER EVER. tagents decides what belongs to it by markers
-and never by position: a pane carrying @tagents_docked or @tagents_slot is a
-SEAT and may be swapped, broken out or killed by the seat logic. An editor
-pane carrying neither is invisible to all of it, which is exactly the contract
-we want — the seat machinery leaves us alone and we leave it alone.
+WHY NO TAGENTS MARKER EVER. tagents decides what belongs to it by the options it puts on a pane (the sidebar's, a joined chat's) and never by position. An editor pane carries only the two options of this script, @ta_notes_for and the chat's @ta_notes, so everything of tagents's that moves, joins or closes panes passes it by, which is exactly the contract we want: it leaves us alone and we leave it alone.
 
-WHERE A HIDDEN EDITOR GOES. Into a detached session called `ta-notes`, one
-window per editor. tmux has no off-screen parking lot, and `break-pane -d`
-alone would litter the window list of the session you are working in. A
-session of its own is out of sight, survives the last editor leaving (a
-holder window keeps it alive), and pane ids survive both moves, so the chat
-pane's @ta_notes still names the same editor afterwards.
-
-WHY HIDE ON ARRIVAL RATHER THAN ON LEAVING. tmux has no "window deactivated"
-hook. So `sync` is written the other way round — arriving anywhere parks the
-editors of every window that is not this one — which is the same shape the
-dashboard's unpark hook already has, with the same backstop: a poll, because
-a hook alone is not trusted.
+WHERE THE EDITOR LIVES. The editor is an ordinary split of the chat's window. tnotes never moves it: switching rows takes the whole window, editor included, off the screen and back. toggle moves the cursor between the chat and its editor; sync only cleans up, and brings back editors an older version parked in a session called ta-notes.
 ```
