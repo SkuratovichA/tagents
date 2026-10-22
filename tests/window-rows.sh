@@ -114,6 +114,14 @@ wait_eq() {  # <expected> <cmd...> — polls ~3 s, prints the last value seen
   printf '%s' "$got"
 }
 settle() { sleep "${1:-0.6}"; }
+# The first start after an upgrade asks tnotes for one sync in the background (migrate_seats), and a sync may close a pane: a check that compares the server before and after waits for it to end. Quiet is no tnotes sync of this tree's for four samples in a row, which also covers the gap between the fork and the exec.
+wait_syncs() {
+  local i=0 quiet=0
+  while [ "$i" -lt 100 ] && [ "$quiet" -lt 4 ]; do
+    if pgrep -f "$TN sync" >/dev/null 2>&1; then quiet=0; else quiet=$((quiet + 1)); fi
+    sleep 0.1; i=$((i + 1))
+  done
+}
 hooks_of() {  # <event> — the lines of one event, from the session and the window scope: a pane or a window hook is shown by -gw only
   { tm show-hooks -g; tm show-hooks -gw; } 2>/dev/null | awk -v e="$1" 'index($0, e "[") == 1'
 }
@@ -913,7 +921,9 @@ tm kill-pane -t "$seatC" 2>/dev/null
 tm set -w -t "$OLDW" @tagents_cur "$PAo"; tm set-hook -g "pane-focus-in[5]" "run-shell \"'$TA' --unpark #{pane_id}\""
 tm set-hook -g "after-select-pane[6]" "run-shell \"'$TA' --poke #{pane_id}\""
 modrun install_event_hooks
-modrun migrate_seats
+# What M tests is the migration, not the follow: a follow hook that ran after it would move the fake sidebar to the client's window, as it should, and M1 would read that.
+tm set-hook -gu 'session-window-changed[43]'; tm set-hook -gu 'client-session-changed[43]'
+modrun migrate_seats; wait_syncs
 ok "M1 chat A is in its home window" "$HA" "$(wid "$PAo")"; ok "M1 chat B is in its home window" "$HB" "$(wid "$PBo")"
 ok "M1 no placeholder is left" 0 "$(tm list-panes -a -F '#{@tagents_slot}' | grep -c 1)"
 ok "M1 the dashboard window is an ordinary window holding the sidebar" "$OLDW" "$(sbwin)"
