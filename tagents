@@ -530,7 +530,7 @@ if [ "${1:-}" != -h ] && [ "${1:-}" != --help ]; then
   # Readability is what is checked, not the exit status of `.`: that status is
   # the module's own last line and says nothing about whether it was found.
   for ta_mod in core config accounts usage state names columns list \
-                timeline preview actions refresh sidebar follow seats dock closed \
+                timeline preview actions refresh sidebar follow seats dock rows closed \
                 resurrect launch keys dash; do
     if [ ! -r "$TA_LIB/$ta_mod.sh" ]; then
       echo "tagents: cannot load $TA_LIB/$ta_mod.sh" >&2
@@ -595,7 +595,7 @@ case "${1:-}" in
   # tests assert on and what any other surface would read.
   --closed-rows)    closed_rows ;;
   --closed-preview) shift; closed_preview "$@" ;;
-  --ask-closed)     ask_closed "${2:-}" ;;
+  --ask-closed)     ask_closed "${2:-}" "${3:-}" ;;
   # What comes back after a reboot: the snapshot, what it holds, and the restore
   # itself. The rows are machine-readable on purpose, like --closed-rows — what
   # the tests assert on, and what to look at before trusting a restore with

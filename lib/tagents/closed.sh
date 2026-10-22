@@ -186,28 +186,23 @@ EOF
   return 0
 }
 
-# WHERE A RESUMED SESSION LANDS is the project's own tmux session, the same
-# answer start_agent gets from session_for_dir — a conversation about a project
-# belongs beside that project's windows. The dead-row path in the list keeps its
-# own behaviour: there the pane usually still exists and gets typed into.
-resume_closed() {  # <sid> <dir> <profile>
-  local sid=${1:-} dir=${2:-} prof=${3:-} sess
+# WHERE A RESUMED SESSION LANDS is the session of the group the cursor was in, or the client's when it was on the group `no window` (chat-launch and closed-sessions). The dead-row path in the list keeps its own behaviour: there the pane usually still exists and gets typed into.
+resume_closed() {  # <sid> <dir> <profile> [session]
+  local sid=${1:-} dir=${2:-} prof=${3:-} sess=${4:-}
   [ -n "$sid" ] || return 1
   if [ -z "$dir" ] || [ ! -d "$dir" ]; then
     tmux display-message \
       "tagents: $(tilde_of "${dir:-its directory}") is gone — resuming in $(tilde_of "$HOME")" 2>/dev/null
     dir=$HOME
   fi
-  # An account nobody can name is not an account to launch on: fall through to
-  # the default login rather than making agent_cmd refuse a profile called "?".
+  # An account nobody can name is not an account to launch on: fall through to the default login rather than making agent_cmd refuse a profile called "?".
   profile_exists "$prof" || prof=""
-  sess=$(session_for_dir "$dir")
-  [ -n "$sess" ] || sess=$DASH_SESSION
+  [ -n "$sess" ] || sess=$(client_session "")
   resume_with "" "$sid" "$dir" "$prof" "$sess"
 }
 
-ask_closed() {  # <port> — the picker itself, normally the body of the popup
-  local port=${1:-} rows disp pick sid line prof dir nl
+ask_closed() {  # <port> [session] — the picker itself, normally the body of the popup; <session> is where a resumed chat opens
+  local port=${1:-} sess=${2:-} rows disp pick sid line prof dir nl
   nl='
 '
   rows=$(closed_rows)
@@ -250,13 +245,14 @@ ask_closed() {  # <port> — the picker itself, normally the body of the popup
   line=$(printf '%s\n' "$rows" | LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v s="$sid" '$1 == s { print $4, $7; exit }')
   prof=${line%%$TAB*}
   dir=${line#*$TAB}
-  resume_closed "$sid" "$dir" "$prof"
+  resume_closed "$sid" "$dir" "$prof" "$sess"
   post_fzf "$port" "reload-sync($SELF --list)" || :   # a failed post must not change the exit status
 }
 
-closed_window() {  # ctrl-y — the modal, or the same body inline where a popup cannot open
-  local port=${FZF_PORT:-}
-  prompt_at 90% 85% --ask-closed "$port" && return 0
-  ask_closed "$port"
+closed_window() {  # ctrl-y [key of the row under the cursor] — the modal, or the same body inline where a popup cannot open
+  local port=${FZF_PORT:-} sess
+  sess=$(row_group "${1:-}")
+  prompt_at 90% 85% --ask-closed "$port" "$sess" && return 0
+  ask_closed "$port" "$sess"
   return 0
 }

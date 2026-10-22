@@ -1,223 +1,8 @@
 # lib/tagents/launch.sh — starting an agent
 #
-# Every way a Claude comes into existence: session_for_dir (ownership by majority vote of live panes' cwd, the dashboard window excluded), new_agent (ctrl-n, rule-decided) and new_agent_pick (ctrl-p, always ask), the account dialog (ask_profile/ask_height), start_agent — the single place a window is created — and the resume pair moved here from the docking section (resume_agent reads the recorded account before deleting the record; resume_with either types the command into the pane's own idle shell or opens a fresh window). Both restart paths send the identical command string, which is the reason they belong in one file.
+# Every way a Claude comes into existence: session_for_dir (ownership by majority vote of live panes' cwd, for a chat started with no group to put it in), new_agent (ctrl-n, rule-decided) and new_agent_pick (ctrl-p, always ask) — both open a new window in the session of the group the cursor is in — the account dialog (ask_profile/ask_height), start_agent — the single place a window is created — and the resume pair (resume_agent reads the recorded account before deleting the record; resume_with either types the command into the pane's own idle shell or opens a fresh window). Both restart paths send the identical command string, which is the reason they belong in one file. Every launch ends in <after> (default open_agent, rows.sh), which selects the chat like any row.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
-
-# Restart a closed session with `claude --resume <id>`, on the account it ran on
-# (see resume_profile). Reuse its old pane when that pane still exists and is
-# sitting at a shell; otherwise open a new window in the dashboard session —
-# which has to exist before a window can be opened in it, so the sidebar is
-# brought up first. Either way the result is docked and focused, exactly as
-# enter on a live agent would leave it.
-#
-# Both paths send the SAME command string, `env` prefix and all. That is why the
-# prefix is carried in the string rather than passed with tmux -e: typed into a
-# shell it does the identical thing, and it steps around any claude() shell
-# function that would work the account out from $PWD all over again.
-resume_agent() {
-  local pane=$1 sid=$2 dir=$3 cfgd hascfg sess prof
-  if [ -z "$sid" ]; then
-    tmux display-message "tagents: no session id recorded — cannot resume" 2>/dev/null
-    return 1
-  fi
-  [ -d "$dir" ] || dir=$HOME
-  # READ THE ACCOUNT BEFORE THE RECORD IS DELETED, which is the first thing both
-  # launch paths below do. It is the account this conversation ran on, and the
-  # rules never get a vote: resuming it on another login opens another history,
-  # where the session simply does not exist.
-  IFS="$US" read -r _ _ _ cfgd hascfg < <(rec_row "$pane")
-  sess=$(tmux display -p -t "$pane" '#{session_name}' 2>/dev/null)
-  [ -n "$sess" ] || sess=$DASH_SESSION
-  prof=$(resume_profile "${cfgd:-}" "${hascfg:-0}" "$dir" "$sess")
-  if [ "$prof" = ask ]; then
-    prompt "$(ask_height)" --ask-profile resume "$pane" "$sid" "$dir" && return 0
-    ask_profile resume "$pane" "$sid" "$dir"
-    return 0
-  fi
-  resume_with "$pane" "$sid" "$dir" "$prof"
-}
-
-# The fifth argument is the tmux session a NEW window goes in, for the callers
-# that know where the conversation belongs (see resume_closed). Left out — which
-# is what the dead-row path in the list does — it is the dashboard session,
-# exactly as it always was.
-resume_with() {  # <pane> <sid> <dir> <profile> [session] — the restart itself
-  local pane=$1 sid=$2 dir=$3 prof=${4:-} sess=${5:-} cmd cur newpane
-  # A refusal must not become an empty string: the first path below TYPES this
-  # into somebody shell, where `cd "$dir" && ` is a syntax error in their pane.
-  cmd=$(agent_cmd "$prof" resume "$sid") || {
-    tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
-    return 1; }
-
-  if [ -n "$pane" ] && tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx -- "$pane"; then
-    cur=$(tmux display -p -t "$pane" '#{pane_current_command}' 2>/dev/null)
-    if is_shell_cmd "$cur"; then
-      # Its own pane, idle at a prompt — the natural place to bring it back.
-      rm -f "$STATE_DIR/${pane#%}.tsv"
-      tmux send-keys -t "$pane" -l -- "cd \"$dir\" && $cmd"
-      tmux send-keys -t "$pane" Enter
-      open_agent "$pane"
-      resurrect_soon
-      return 0
-    fi
-  fi
-
-  # Pane is gone, or busy with something else — do not type into it.
-  rm -f "$STATE_DIR/${pane#%}.tsv"
-  ensure_dash >/dev/null 2>&1 || return 1
-  [ -n "$sess" ] || sess=$DASH_SESSION
-  newpane=$(tmux new-window -d -t "$sess:" -P -F '#{pane_id}' \
-              -c "$dir" "$cmd" 2>/dev/null) || return 1
-  # Before open_agent, whose status is this function's: the capture waits for
-  # the SessionStart record anyway, so it does not care which runs first.
-  resurrect_soon
-  open_agent "$newpane"
-}
-
-# WHICH TMUX SESSION OWNS A PROJECT. A new agent for a project belongs beside
-# that project's other windows, not in the dashboard session — that is what keeps
-# prefix+w, the status bar and `tmux ls` reading as one window list per project
-# rather than a pile of unrelated chats under "agents".
-#
-# Decided by majority vote over the live panes sitting in that directory, NOT by
-# asking the selected pane what session it is in: while an agent is docked its
-# pane really is in the dashboard window (that is what docking does), so the
-# selected row would name the dashboard session for a project that lives
-# somewhere else entirely.
-#
-# What is skipped is the dashboard WINDOW (@tagents), not the dashboard session:
-# the docked chat and the list itself sit in that window and would both vote for
-# the wrong place, while an ordinary window that merely happens to live in the
-# dashboard session is a real home for a project and must still count.
-session_for_dir() {  # <dir> -> session name, empty when the project has no windows
-  local dir=$1
-  [ -n "$dir" ] || return 1
-  tmux list-panes -a -F "#{session_name}$TAB#{pane_current_path}$TAB#{@tagents}" 2>/dev/null |
-    LC_ALL=C awk -F"$TAB" -v dir="$dir" -v dash="$DASH_SESSION" '
-      $3 != "" { next }                                   # the dashboard window
-      $2 == dir || index($2, dir "/") == 1 { c[$1]++ }
-      END {
-        best = ""; n = -1; bd = -1
-        for (s in c) {
-          # On a tie, a real project session beats the dashboard session: an
-          # ordinary window that happens to live under "agents" is a weaker claim
-          # to being the projects home than any session of its own.
-          nd = (s == dash) ? 0 : 1
-          if (c[s] > n || (c[s] == n && nd > bd) || (c[s] == n && nd == bd && s < best)) {
-            n = c[s]; bd = nd; best = s
-          }
-        }
-        if (best != "") print best
-      }'
-}
-
-# ctrl-n: start a fresh Claude for the project under the cursor. Works on a group
-# header (the project as a whole) and on an agent row (the project it belongs
-# to) — both carry a directory, so both mean the same thing here.
-#
-# The directory is normalised to the repo root, so a session started from
-# ~/repo/packages/client makes the new agent a sibling in ~/repo rather than
-# burying it in a subdirectory the tree would file separately.
-new_agent() {  # <dir> [profile]
-  local dir=${1:-} prof=${2:-} root sess
-  [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
-  [ -d "$dir" ] || { tmux display-message "tagents: $dir is not a directory" 2>/dev/null; return 1; }
-  # A NAME THAT CAME FROM A HUMAN IS CHECKED FIRST, before a window or a
-  # dashboard session is brought into being for it. profile_for only ever
-  # returns names the config already has; `tagents --new <dir> personl` used to
-  # sail straight through to a launch on the default account, which is the exact
-  # silent wrong login all of this exists to end. Not profile_named: nothing is
-  # being skipped here, the launch is refused. `ask` passes — it is not a
-  # profile, it is the instruction to ask for one.
-  if [ -n "$prof" ] && [ "$prof" != ask ] && ! profile_exists "$prof"; then
-    echo "tagents: no claude profile \"$prof\" in $CONFIG_FILE" >&2
-    tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
-    return 1
-  fi
-  root=$(repo_root "$dir") || root=$dir
-
-  # No windows for this project yet (every agent in it is closed, or it is new):
-  # the dashboard session is the only place left that is certainly there.
-  sess=$(session_for_dir "$root")
-  if [ -z "$sess" ]; then
-    ensure_dash >/dev/null 2>&1 || return 1
-    sess=$DASH_SESSION
-  fi
-
-  # The session name is worked out first because a rule may match on it: an
-  # agent for a project that lives in the "work" tmux session is a work agent
-  # whatever its directory looks like.
-  [ -n "$prof" ] || prof=$(profile_for "$root" "$sess") || prof=""
-  if [ "$prof" = ask ]; then
-    prompt "$(ask_height)" --ask-profile new "$root" "$sess" && return 0
-    ask_profile new "$root" "$sess"
-    return 0
-  fi
-  start_agent "$root" "$sess" "$prof"
-}
-
-# ctrl-p: the same thing, but always asking. A rule is a default, not a verdict —
-# one agent in a personal repo that has to run on the work account is an ordinary
-# request, and there is no other way to make it.
-new_agent_pick() {  # <dir>
-  local dir=${1:-} root sess
-  [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
-  [ -d "$dir" ] || { tmux display-message "tagents: $dir is not a directory" 2>/dev/null; return 1; }
-  # Asked before anything is created: with nothing to choose between, bringing
-  # the dashboard session up to host a dialog that cannot open would be a window
-  # out of nowhere for no reason.
-  if [ -z "$(cfg_children claude.profiles)" ]; then
-    tmux display-message "tagents: no claude profiles in $CONFIG_FILE" 2>/dev/null
-    return 0
-  fi
-  root=$(repo_root "$dir") || root=$dir
-  sess=$(session_for_dir "$root")
-  if [ -z "$sess" ]; then
-    ensure_dash >/dev/null 2>&1 || return 1
-    sess=$DASH_SESSION
-  fi
-  prompt "$(ask_height)" --ask-profile pick "$root" "$sess" && return 0
-  ask_profile pick "$root" "$sess"
-}
-
-# The one place a fresh agent gets a window. Both entry points come through here
-# so the command, the message and the "it stays where it was born" policy are
-# decided once.
-start_agent() {  # <root> <session> <profile>
-  local root=$1 sess=$2 prof=${3:-} newpane idx cmd
-  # Built before the window exists: agent_cmd refuses a profile it cannot
-  # account for, and opening a window on an empty command string would give you
-  # a bare shell where an agent was asked for.
-  cmd=$(agent_cmd "$prof" new) || {
-    tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
-    return 1; }
-  # -d so the window is not selected as a side effect of being created, half
-  # built and before its pane id is even known; the cursor reaches the pane
-  # once, deliberately, through open_agent below.
-  newpane=$(tmux new-window -d -t "$sess:" -P -F '#{pane_id}' \
-              -c "$root" "$cmd" 2>/dev/null) || {
-    tmux display-message "tagents: could not open a window in $sess" 2>/dev/null; return 1; }
-
-  # IT IS OPENED LIKE ANY OTHER AGENT. The home window is still created with -d
-  # in the project's own session — that is where the chat lives and where it
-  # goes back to on ctrl-u — but the pane is then docked into the seat you are
-  # looking at and the cursor put in it, exactly what enter on its row would do
-  # a moment later, and exactly what resume_with already does for a dead row.
-  # Asking for an agent from the sidebar and being left looking at the previous
-  # one (or, worse, taken to a bare window in another session) was never what
-  # the key meant. With no sidebar to dock into, the cursor is moved to the new
-  # window instead. ctrl-n and ctrl-p both land here and both behave the same.
-  idx=$(tmux display -p -t "$newpane" '#{window_index}' 2>/dev/null)
-  open_agent "$newpane" || goto "$newpane"
-  # Every launch and every kill retakes the snapshot, so a chat is in it within
-  # seconds of starting rather than at the next status-bar tick — see
-  # resurrect_soon for why it is not taken at once.
-  resurrect_soon
-  tmux display-message \
-    "tagents: new agent in $(basename "$root") ($sess:$idx)${prof:+ as $prof}" 2>/dev/null
-  return 0
-}
 
 # Tall enough for the profiles plus the three header lines, the prompt and a
 # little air: a picker that scrolls when it is showing three things reads as
@@ -295,4 +80,136 @@ $note")
     new|pick) start_agent "$root" "$sess" "$pick" ;;
     resume)   resume_with "$pane" "$sid" "$dir" "$pick" ;;
   esac
+}
+
+# Restart a closed session with `claude --resume <id>`, on the account it ran on (see resume_profile). Reuse its old pane when that pane still exists and is sitting at a shell; otherwise open a new window in the session the row was in. <after> is what runs on the pane that was started (default: select it like any row; ctrl-s passes open_beside).
+#
+# Both paths send the SAME command string, `env` prefix and all. That is why the prefix is carried in the string rather than passed with tmux -e: typed into a shell it does the identical thing, and it steps around any claude() shell function that would work the account out from $PWD all over again.
+resume_agent() {  # <pane> <sid> <dir> [after]
+  local pane=$1 sid=$2 dir=$3 after=${4:-open_agent} cfgd hascfg sess prof
+  if [ -z "$sid" ]; then
+    tmux display-message "tagents: no session id recorded — cannot resume" 2>/dev/null
+    return 1
+  fi
+  [ -d "$dir" ] || dir=$HOME
+  # READ THE ACCOUNT BEFORE THE RECORD IS DELETED, which is the first thing both launch paths below do. It is the account this conversation ran on, and the rules never get a vote: resuming it on another login opens another history, where the session simply does not exist.
+  IFS="$US" read -r _ _ _ cfgd hascfg < <(rec_row "$pane")
+  sess=$(row_session "$pane")
+  [ -n "$sess" ] || sess=$(client_session "")
+  prof=$(resume_profile "${cfgd:-}" "${hascfg:-0}" "$dir" "$sess")
+  if [ "$prof" = ask ]; then
+    prompt "$(ask_height)" --ask-profile resume "$pane" "$sid" "$dir" && return 0
+    ask_profile resume "$pane" "$sid" "$dir"
+    return 0
+  fi
+  resume_with "$pane" "$sid" "$dir" "$prof" "$sess" "$after"
+}
+
+# The restart itself. The fifth argument is the tmux session a NEW window goes in (the group the cursor was in); left out, it is the session of the old pane, else the client's. With the old pane at an idle shell the command is typed into it; otherwise a new detached window is made in that session. A profile question asked in a dialog loses <after> and selects.
+resume_with() {  # <pane> <sid> <dir> <profile> [session] [after]
+  local pane=$1 sid=$2 dir=$3 prof=${4:-} sess=${5:-} after=${6:-open_agent} cmd cur newpane
+  # A refusal must not become an empty string: the first path below TYPES this into somebody's shell, where `cd "$dir" && ` is a syntax error in their pane.
+  cmd=$(agent_cmd "$prof" resume "$sid") || {
+    tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
+    return 1; }
+
+  if [ -n "$pane" ] && tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx -- "$pane"; then
+    cur=$(tmux display -p -t "$pane" '#{pane_current_command}' 2>/dev/null)
+    if is_shell_cmd "$cur"; then
+      # Its own pane, idle at a prompt — the natural place to bring it back.
+      rm -f "$STATE_DIR/${pane#%}.tsv"
+      tmux send-keys -t "$pane" -l -- "cd \"$dir\" && $cmd"
+      tmux send-keys -t "$pane" Enter
+      "$after" "$pane"
+      resurrect_soon
+      return 0
+    fi
+  fi
+
+  # Pane is gone, or busy with something else — do not type into it.
+  rm -f "$STATE_DIR/${pane#%}.tsv"
+  [ -n "$sess" ] || sess=$(row_session "$pane")
+  [ -n "$sess" ] || sess=$(client_session "")
+  [ -n "$sess" ] || sess=$(tmux display -p '#{session_name}' 2>/dev/null)
+  newpane=$(tmux new-window -d -t "=$sess:" -P -F '#{pane_id}' -c "$dir" "$cmd" 2>/dev/null) || {
+    tmux display-message "tagents: could not open a window in $sess" 2>/dev/null; return 1; }
+  # Before <after>, whose status is this function's: the capture waits for the SessionStart record anyway, so it does not care which runs first.
+  resurrect_soon
+  "$after" "$newpane"
+}
+
+# WHICH TMUX SESSION OWNS A PROJECT, for a chat started with no group to put it in (`tagents --new` from a shell): the session where most of the live panes sitting in that directory are. The sidebar's window is an ordinary window now and votes like any other.
+session_for_dir() {  # <dir> -> session name, empty when the project has no windows
+  local dir=$1
+  [ -n "$dir" ] || return 1
+  tmux list-panes -a -F "#{session_name}$TAB#{pane_current_path}" 2>/dev/null |
+    LC_ALL=C awk -F"$TAB" -v dir="$dir" '
+      $2 == dir || index($2, dir "/") == 1 { c[$1]++ }
+      END {
+        best = ""; n = -1
+        for (s in c) if (c[s] > n || (c[s] == n && s < best)) { n = c[s]; best = s }
+        if (best != "") print best
+      }'
+}
+
+# ctrl-n: start a fresh Claude for the project under the cursor, as a new window of <session> (the group the cursor is in). With no session given (`tagents --new`, or the cursor on the group `no window`) the session that owns the project, else the client's, else the current. The directory is normalised to the repo root, so a session started from ~/repo/packages/client makes the new agent a sibling in ~/repo rather than burying it in a subdirectory the tree would file separately.
+new_agent() {  # <dir> [profile] [session]
+  local dir=${1:-} prof=${2:-} sess=${3:-} root
+  [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
+  [ -d "$dir" ] || { tmux display-message "tagents: $dir is not a directory" 2>/dev/null; return 1; }
+  # A NAME THAT CAME FROM A HUMAN IS CHECKED FIRST, before a window is created for it. profile_for only ever returns names the config already has; `tagents --new <dir> personl` used to sail straight through to a launch on the default account, which is the exact silent wrong login all of this exists to end. Not profile_named: nothing is being skipped here, the launch is refused. `ask` passes — it is not a profile, it is the instruction to ask for one.
+  if [ -n "$prof" ] && [ "$prof" != ask ] && ! profile_exists "$prof"; then
+    echo "tagents: no claude profile \"$prof\" in $CONFIG_FILE" >&2
+    tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
+    return 1
+  fi
+  root=$(repo_root "$dir") || root=$dir
+  [ -n "$sess" ] || sess=$(session_for_dir "$root")
+  [ -n "$sess" ] || sess=$(client_session "")
+  [ -n "$sess" ] || sess=$(tmux display -p '#{session_name}' 2>/dev/null)
+  # The session name is worked out first because a rule may match on it: an agent for a project that lives in the "work" tmux session is a work agent whatever its directory looks like.
+  [ -n "$prof" ] || prof=$(profile_for "$root" "$sess") || prof=""
+  if [ "$prof" = ask ]; then
+    prompt "$(ask_height)" --ask-profile new "$root" "$sess" && return 0
+    ask_profile new "$root" "$sess"
+    return 0
+  fi
+  start_agent "$root" "$sess" "$prof"
+}
+
+# ctrl-p: the same thing, but always asking. A rule is a default, not a verdict — one agent in a personal repo that has to run on the work account is an ordinary request, and there is no other way to make it.
+new_agent_pick() {  # <dir> [session]
+  local dir=${1:-} sess=${2:-} root
+  [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
+  [ -d "$dir" ] || { tmux display-message "tagents: $dir is not a directory" 2>/dev/null; return 1; }
+  # Asked before anything is created: with nothing to choose between, a window out of nowhere for a dialog that cannot open would be for no reason.
+  if [ -z "$(cfg_children claude.profiles)" ]; then
+    tmux display-message "tagents: no claude profiles in $CONFIG_FILE" 2>/dev/null
+    return 0
+  fi
+  root=$(repo_root "$dir") || root=$dir
+  [ -n "$sess" ] || sess=$(session_for_dir "$root")
+  [ -n "$sess" ] || sess=$(client_session "")
+  [ -n "$sess" ] || sess=$(tmux display -p '#{session_name}' 2>/dev/null)
+  prompt "$(ask_height)" --ask-profile pick "$root" "$sess" && return 0
+  ask_profile pick "$root" "$sess"
+}
+
+# The one place a fresh agent gets a window. Both entry points come through here so the command, the message and the "it is selected like any row" policy are decided once.
+start_agent() {  # <root> <session> <profile>
+  local root=$1 sess=$2 prof=${3:-} newpane idx cmd
+  # Built before the window exists: agent_cmd refuses a profile it cannot account for, and a window on an empty command string would be a bare shell where an agent was asked for.
+  cmd=$(agent_cmd "$prof" new) || {
+    tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
+    return 1; }
+  # -d so the window is not selected as a side effect of being created, half built and before its pane id is even known; it is selected once, deliberately, below.
+  newpane=$(tmux new-window -d -t "=$sess:" -P -F '#{pane_id}' -c "$root" "$cmd" 2>/dev/null) || {
+    tmux display-message "tagents: could not open a window in $sess" 2>/dev/null; return 1; }
+  idx=$(tmux display -p -t "$newpane" '#{window_index}' 2>/dev/null)
+  # OPENED LIKE ANY OTHER AGENT: the client goes to it, the sidebar follows, the cursor is in it. Asking for an agent from the sidebar and being left looking at the previous one was never what the key meant. With no sidebar the client is simply taken to the new window.
+  open_agent "$newpane"
+  resurrect_soon
+  tmux display-message \
+    "tagents: new agent in $(basename "$root") ($sess:$idx)${prof:+ as $prof}" 2>/dev/null
+  return 0
 }

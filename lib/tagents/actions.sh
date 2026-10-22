@@ -1,56 +1,12 @@
 # lib/tagents/actions.sh — what a key actually does
 #
-# The verbs: borrow/give_back (link a window into the home session and unlink it), goto, send_line/ask_send, and the ctrl-x family (kill_agent, ask_kill's live re-check, end_agent, forget_agent) with the 'killing an agent' essay heading that half. act() lives here too — the short-lived execute-silent child every binding runs through, and the place that refuses pane-verbs on a headless row.
+# The verbs: send_line/ask_send and the ctrl-x family (kill_agent, ask_kill's live re-check, end_agent, forget_agent) with the 'killing an agent' essay heading that half, open_chat (settles a click against the records before a row is selected or joined) and act() — the short-lived execute-silent child every binding runs through, and the place that refuses pane-verbs on a headless row and every verb but a selection on a dimmed window row. Selecting, joining and breaking out live in rows.sh.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
 # ---------------------------------------------------------------------------
 # actions
 # ---------------------------------------------------------------------------
-
-win_index_in() {  # <window_id> <session> -> index, empty if not linked there
-  tmux list-windows -t "$2" -F '#{window_index} #{window_id}' 2>/dev/null |
-    LC_ALL=C awk -v w="$1" '$2==w { print $1; exit }'
-}
-
-borrow() {  # bring the agent's window into $home without moving it out of its own session
-  local pane=$1 home=$2 win src idx
-  [ "$pane" = "-" ] && return 0
-  win=$(tmux display -p -t "$pane" '#{window_id}' 2>/dev/null) || return 0
-  src=$(tmux display -p -t "$pane" '#{session_name}' 2>/dev/null)
-  if [ "$src" != "$home" ]; then
-    idx=$(win_index_in "$win" "$home")
-    if [ -z "$idx" ]; then
-      tmux link-window -s "$win" -t "$home:" 2>/dev/null
-      idx=$(win_index_in "$win" "$home")
-    fi
-    [ -n "$idx" ] && tmux select-window -t "$home:$idx" 2>/dev/null
-  else
-    tmux select-window -t "$win" 2>/dev/null
-  fi
-  tmux select-pane -t "$pane" 2>/dev/null
-  tmux switch-client -t "$home" 2>/dev/null
-}
-
-goto() {
-  local pane=$1 sess win
-  [ "$pane" = "-" ] && return 0
-  sess=$(tmux display -p -t "$pane" '#{session_name}' 2>/dev/null) || return 0
-  win=$(tmux display -p -t "$pane" '#{window_index}' 2>/dev/null)
-  tmux switch-client -t "$sess" 2>/dev/null
-  tmux select-window -t "$sess:$win" 2>/dev/null
-  tmux select-pane -t "$pane" 2>/dev/null
-}
-
-give_back() {
-  local pane=$1 home=$2 win idx
-  [ "$pane" = "-" ] && return 0
-  win=$(tmux display -p -t "$pane" '#{window_id}' 2>/dev/null) || return 0
-  idx=$(win_index_in "$win" "$home")
-  # unlink-window refuses when this is the window's last session, so a window
-  # that actually lives here cannot be destroyed by accident.
-  [ -n "$idx" ] && tmux unlink-window -t "$home:$idx" 2>/dev/null
-}
 
 send_line() {
   local pane=$1
@@ -97,9 +53,7 @@ ask_send() {
 kill_agent() {
   local pane=${1:-} sid=${2:-}
   [ "$pane" = "-" ] && return 0
-  # The list itself is a pane in the same window as the chat it docks, and it is
-  # never an agent row — but a marker can drift, and killing the list from the
-  # list is not a mistake worth allowing.
+  # The list itself is a pane in the same window as the chat it sits beside, and it is never an agent row — but a marker can drift, and killing the list from the list is not a mistake worth allowing.
   if [ "$pane" = "$(dash_pane)" ]; then
     tmux display-message "tagents: that is the dashboard itself" 2>/dev/null
     return 0
@@ -158,28 +112,6 @@ ask_kill() {  # the confirmation itself — normally the body of the popup
   if [ "$alive" = 1 ]; then end_agent "$pane"; else forget_agent "$pane"; fi
 }
 
-end_agent() {  # <pane> — hang up the agent running in it
-  local pane=$1 key=${pane#%}
-  # Send it home first if it is docked. Killing it where it sits leaves the
-  # placeholder parked in its seat pointing at a pane that no longer exists;
-  # slot() does clear that up by itself, but only after two ticks, and until
-  # then that seat of the sidebar is blank for no visible reason. Asked of this
-  # pane alone: another chat may be docked beside it, and it is not the one being
-  # killed.
-  is_docked "$pane" && undock_pane "$pane"
-  tmux kill-pane -t "$pane" 2>/dev/null || return 1
-  # SessionEnd cannot fire for a pane that has been killed, so do the half of
-  # its cleanup that would otherwise show: the subagent files, which keep
-  # claiming this session has work fanned out under it. Its own record is kept
-  # on purpose — that is what leaves the row as "closed, enter resumes it".
-  [ -n "$key" ] && rm -f "$STATE_DIR/sub/$key".* 2>/dev/null
-  signal_ev   # the pane's own death rang once already, before these files went
-  # A chat hung up on purpose must not come back after the next reboot: the
-  # snapshot is retaken now rather than at the next status-bar tick.
-  resurrect_soon
-  return 0
-}
-
 forget_agent() {  # <pane-key> — drop a closed session's record from the list
   local key=${1#%}
   [ -n "$key" ] || return 0
@@ -191,16 +123,23 @@ forget_agent() {  # <pane-key> — drop a closed session's record from the list
   return 0
 }
 
-# A notice stays on screen until it is dismissed, so its click arrives long after
-# the pane id in it was true: the chat may have been killed since, or tmux may
-# have restarted and given that id to another chat. The session id is what still
-# names the chat, so for a non-empty one the pane is settled against the records
-# before anything docks. "A pane exists" is not "the chat runs" (a chat that
-# exited leaves its shell), so the test is the dashboard's own: the pane is in
-# live_panes, taken once per click. The ordinary click (the named pane runs a
-# Claude and its record names this session) costs that one walk and one read.
+
+end_agent() {  # <pane> — hang up the agent running in it
+  local pane=$1 key=${pane#%}
+  # The sidebar leaves the window first when the window is about to close with the chat (rows.sh).
+  leave_window_for_kill "$pane"
+  tmux kill-pane -t "$pane" 2>/dev/null || return 1
+  # SessionEnd cannot fire for a pane that has been killed, so do the half of its cleanup that would otherwise show: the subagent files, which keep claiming this session has work fanned out under it. Its own record is kept on purpose — that is what leaves the row as "closed, enter resumes it".
+  [ -n "$key" ] && rm -f "$STATE_DIR/sub/$key".* 2>/dev/null
+  signal_ev   # the pane's own death rang once already, before these files went
+  # A chat hung up on purpose must not come back after the next reboot: the snapshot is retaken now rather than at the next status-bar tick.
+  resurrect_soon
+  return 0
+}
+
+# A notice stays on screen until it is dismissed, so its click arrives long after the pane id in it was true: the chat may have been killed since, or tmux may have restarted and given that id to another chat. The session id still names the chat, so for a non-empty one the pane is settled against the records before anything is selected. "A pane exists" is not "the chat runs" (a chat that exited leaves its shell), so the test is the dashboard's own: the pane is in live_panes, taken once per click. The ordinary click (the named pane runs a Claude and its record names this session) costs that one walk and one read.
 open_chat() {  # <open_agent|open_beside> <pane> <sid> <dir>
-  local dockfn=$1 pane=$2 sid=${3:-} dir=${4:-} recsid="" msg live k ts key newest="" newestts=-1 locked=0 rc
+  local selfn=$1 pane=$2 sid=${3:-} dir=${4:-} recsid="" msg live k ts key newest="" newestts=-1 locked=0 rc
   if [ -n "$sid" ] && [ "$pane" != "-" ]; then
     live=" $(live_panes 2>/dev/null | tr '\n' ' ') "
     IFS="$US" read -r recsid _ < <(rec_row "$pane")
@@ -209,11 +148,7 @@ open_chat() {  # <open_agent|open_beside> <pane> <sid> <dir>
       *) key="" ;;
     esac
     if [ -z "$key" ]; then
-      # Several records can name one session (a chat resumed by hand elsewhere
-      # leaves the old one behind): one that runs a Claude is the running chat;
-      # when none does the session is over, and it comes back from the NEWEST
-      # record, whose account is the one it last ran on. A headless record has
-      # no pane to dock or resume into.
+      # Several records can name one session (a chat resumed by hand elsewhere leaves the old one behind): one that runs a Claude is the running chat; when none does the session is over, and it comes back from the NEWEST record, whose account is the one it last ran on. A headless record has no pane to select or resume into.
       while IFS="$TAB" read -r k ts; do
         [ -n "$k" ] || continue
         case $k in %s-*) continue ;; esac
@@ -222,107 +157,83 @@ open_chat() {  # <open_agent|open_beside> <pane> <sid> <dir>
         if [ "$ts" -gt "$newestts" ]; then newest=$k; newestts=$ts; fi
       done < <(panes_for_sid "$sid")
       if [ -z "$key" ] && [ -z "$newest" ]; then
-        # Also on stderr: the notice helper logs a click's stderr, which is the
-        # only trace of why this click docked nothing.
+        # Also on stderr: the notice helper logs a click's stderr, which is the only trace of why this click selected nothing.
         msg="tagents: that chat has ended and left no record — ctrl-y lists closed sessions"
         tmux display-message "$msg" 2>/dev/null
         printf '%s\n' "$msg" >&2
         return 0
       fi
       if [ -z "$key" ]; then
-        # The session has ended: Enter on its dead row, from the record that names it.
-        resume_agent "$newest" "$sid" "$dir"
+        # The session has ended: Enter on its dead row, from the record that names it. ctrl-s joins the resumed chat, enter selects it.
+        resume_agent "$newest" "$sid" "$dir" "$selfn"
         return
       fi
     fi
     pane=$key
   fi
-  # Two notices clicked together would run two docks over the same seat. A lock
-  # that cannot be had is not a reason to do nothing: a click that
-  # does nothing is worse than a race. The wait is 3 s of wall time, whatever a
-  # try costs (at background priority 36 tries took 4.4 s, see lock_dir); the
-  # helper that runs this gives it 8 s.
-  lock_dir "$STATE_DIR/.dock.lock" 10 100 3 && locked=1
-  "$dockfn" "$pane"; rc=$?
-  [ "$locked" = 1 ] && unlock_dir "$STATE_DIR/.dock.lock"
+  # Two notices clicked together would run two selections over the same window. A lock that cannot be had is not a reason to do nothing: a click that does nothing is worse than a race. The wait is 3 s of wall time, whatever a try costs (at background priority 36 tries took 4.4 s, see lock_dir); the helper that runs this gives it 8 s.
+  lock_dir "$STATE_DIR/.select.lock" 10 100 3 && locked=1
+  "$selfn" "$pane"; rc=$?
+  [ "$locked" = 1 ] && unlock_dir "$STATE_DIR/.select.lock"
   return "$rc"
 }
 
-# Every key runs through here as a short-lived child of fzf, so fzf itself never
-# has to exit and restart. That is what keeps the list from repainting on each
-# action — execute-silent does not touch the screen.
+# Every key runs through here as a short-lived child of fzf, so fzf itself never has to exit and restart. That is what keeps the list from repainting on each action — execute-silent does not touch the screen. LINE (optional) is the text of the line under the cursor: a group header has the ▾ in it, and enter and ctrl-g on the header of a session show the session instead of acting on the header's stand-in row.
 act() {
-  local what=${1:-} pane=${2:-} state=${3:-} sid=${4:-} dir=${5:-}
-  # A HEADLESS ROW IS NOT A PANE, so every verb that docks, focuses, types into
-  # or renames one has nothing to act on: the agent is a `claude -p` some daemon
-  # started, with no terminal anywhere. tmux answers "can't find pane %s-<id>"
-  # to all of them, and every one of those calls is silenced, so without this
-  # the key simply did nothing and said nothing about why. `open` on a CLOSED
-  # headless row was worse than nothing: it would have gone to resume_agent and
-  # started a fresh claude in a new window, which is not that agent coming back.
-  # ctrl-v is the one key that still works, and is what the notice points at:
-  # the popup follows the session's log. kill is deliberately left alone —
-  # ask_kill already reads a pane-less key as "forget this record", which is the
-  # only thing that can be done to such a row. Resuming the CONVERSATION is
-  # still possible where it belongs, in the closed-sessions browser (ctrl-y),
-  # which offers it once the session has actually ended.
+  local what=${1:-} pane=${2:-} state=${3:-} sid=${4:-} dir=${5:-} line=${6:-} hdr=0 sess
+  case "$line" in *▾*) hdr=1 ;; esac
+  # A HEADLESS ROW IS NOT A PANE, so every verb that selects, focuses, types into or renames one has nothing to act on: the agent is a `claude -p` some daemon started, with no terminal anywhere. tmux answers "can't find pane %s-<id>" to all of them, and every one of those calls is silenced, so without this the key simply did nothing and said nothing about why. `open` on a CLOSED headless row was worse than nothing: it would have gone to resume_agent and started a fresh claude in a new window, which is not that agent coming back. ctrl-v is the one key that still works, and is what the notice points at: the popup follows the session's log. kill is deliberately left alone — ask_kill already reads a pane-less key as "forget this record", which is the only thing that can be done to such a row. Resuming the CONVERSATION is still possible where it belongs, in the closed-sessions browser (ctrl-y), which offers it once the session has actually ended.
   case "$pane" in
     %s-*)
       case "$what" in
-        open|beside|borrow|goto|send|rename)
-          # A CHILD IS THE SAME REFUSAL FOR A DIFFERENT REASON, and the reason
-          # is what the notice is for: it is not a daemon nobody is watching,
-          # it is a `claude -p` the agent above it started, and there is no log
-          # to follow either — ctrl-v shows its transcript instead.
-          if [ -n "$(LC_ALL=C awk -F"$TAB" 'NR==1 { print $11; exit }' \
-                       "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)" ]; then
+        open|beside|goto|send|rename)
+          # A CHILD IS THE SAME REFUSAL FOR A DIFFERENT REASON, and the reason is what the notice is for: it is not a daemon nobody is watching, it is a `claude -p` the agent above it started, and there is no log to follow either — ctrl-v shows its transcript instead.
+          if [ -n "$(LC_ALL=C awk -F"$TAB" 'NR==1 { print $11; exit }' "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)" ]; then
             tmux display-message \
-              "tagents: child session — no pane to dock, type into or rename (ctrl-v shows its transcript)" \
-              2>/dev/null
+              "tagents: child session — no pane to open, type into or rename (ctrl-v shows its transcript)" 2>/dev/null
           else
             tmux display-message \
-              "tagents: headless session — no pane to dock, type into or rename (ctrl-v follows its log)" \
-              2>/dev/null
+              "tagents: headless session — no pane to open, type into or rename (ctrl-v follows its log)" 2>/dev/null
           fi
           return 0 ;;
       esac ;;
+    @*)
+      # A window that runs no chat: only selecting it makes sense.
+      case "$what" in
+        open|goto)
+          if [ "$hdr" = 1 ]; then open_session "$pane"; else open_agent "$pane"; fi
+          return 0 ;;
+        beside|undock|send|rename|kill|preview)
+          tmux display-message "tagents: that window runs no chat" 2>/dev/null
+          return 0 ;;
+      esac ;;
   esac
+  sess=""
+  [ "$hdr" = 1 ] && sess=$(row_group "$pane")
   case "$what" in
     open)
-      # Same thing wherever the list is running: the chat ends up in the sidebar's
-      # current seat with the cursor in it. See open_agent().
-      if [ "$state" = dead ]; then
-        resume_agent "$pane" "$sid" "$dir"
-      else
-        open_chat open_agent "$pane" "$sid" "$dir"
-      fi ;;
+      if [ -n "$sess" ]; then open_session "$pane"
+      elif [ "$state" = dead ]; then resume_agent "$pane" "$sid" "$dir"
+      else open_chat open_agent "$pane" "$sid" "$dir"; fi ;;
     beside)
-      # A closed session has no pane to put anywhere yet, so bring it back first —
-      # which docks it in the current seat. ctrl-s on the NEXT one then puts that
-      # one beside it, which is the order this happens in anyway.
-      if [ "$state" = dead ]; then
-        resume_agent "$pane" "$sid" "$dir"
-      else
-        open_chat open_beside "$pane" "$sid" "$dir"
-      fi ;;
-    borrow) borrow "$pane" "${TA_HOME:-}" ;;
-    goto)   goto "$pane" ;;
+      # A closed session has no pane to join yet: bring it back first, then join it.
+      if [ "$state" = dead ]; then resume_agent "$pane" "$sid" "$dir" open_beside
+      else open_chat open_beside "$pane" "$sid" "$dir"; fi ;;
+    goto)
+      if [ -n "$sess" ]; then open_session "$pane"
+      elif [ "$state" = dead ]; then tmux display-message "tagents: that chat is closed — enter resumes it" 2>/dev/null
+      else goto "$pane"; fi ;;
     send)   send_line "$pane" ;;
     rename) rename_agent "$pane" "$sid" ;;
     # ctrl-v in the sidebar: a modal, not a column taken off the list.
     preview) preview_window "$pane" "$state" ;;
-    new)    new_agent "$dir" ;;
-    pick)   new_agent_pick "$dir" ;;
-    undock)
-      # Send the chat in the current seat home. With nothing docked, the only
-      # other way a window gets pulled in here is ctrl-o's borrow — undo that
-      # instead.
-      undock || give_back "$pane" "${TA_HOME:-}" ;;
+    new)    new_agent "$dir" "" "$(row_group "$pane")" ;;
+    pick)   new_agent_pick "$dir" "$(row_group "$pane")" ;;
+    undock) undock "$pane" ;;
     kill)   kill_agent "$pane" "$sid" ;;
-    # The two windows about the dashboard itself rather than about an agent.
-    # They run here, in fzf own child, because this is where FZF_PORT is.
+    # The two windows about the dashboard itself rather than about an agent. They run here, in fzf own child, because this is where FZF_PORT is.
     usage)   usage_window ;;
-    closed)  closed_window ;;
+    closed)  closed_window "$pane" ;;
     keys)    keys_window "$pane" "$state" "$sid" "$dir" ;;
     columns) columns_window ;;
   esac
