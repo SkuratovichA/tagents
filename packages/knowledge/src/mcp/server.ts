@@ -21,11 +21,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { renderRecent, renderSearch } from '@tagents/core';
-import { KINDS } from '../doc.ts';
+import { realClock, renderRecent, renderSearch } from '@tagents/core';
 import { openDb, reindex } from '../db.ts';
 import { resolveDb, resolveDir } from '../paths.ts';
-import { getDoc, getSection, listDocs, search } from '../search.ts';
+import { getDoc, getSection, listDocs, search, type Clock } from '../search.ts';
 
 export const SERVER_NAME = 'tagents-knowledge';
 export const SERVER_VERSION = '0.1.0';
@@ -69,9 +68,9 @@ function withDb<T>(
   }
 }
 
-const KIND_VALUES = KINDS.join(' | ');
+const TYPE_HINT = 'case-insensitive, for example Runbook';
 
-export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
+export function createServer(env: NodeJS.ProcessEnv = process.env, clock: Clock = realClock): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
 
   server.registerTool(
@@ -79,11 +78,12 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     {
       title: 'Search the knowledge base',
       description:
-        'Full-text search over the owner\'s knowledge documents (Russian and English). Returns the matching sections as JSON: id, title, heading, score, snippet, path. Read a whole section with knowledge_get.',
+        'Full-text search over the owner\'s knowledge documents (Russian and English). Returns the matching sections as JSON: id, title, heading, score, snippet, path, type, description, status, stale. Documents with status deprecated come last. Read a whole section with knowledge_get.',
       inputSchema: {
         query: z.string().min(1).describe('words to look for; all of them must appear'),
         tag: z.string().optional().describe('only documents carrying this tag'),
-        kind: z.string().optional().describe(`only documents of this kind (${KIND_VALUES})`),
+        type: z.string().optional().describe(`only documents of this type (${TYPE_HINT})`),
+        kind: z.string().optional().describe('deprecated alias of type'),
         limit: z.number().int().positive().max(50).optional().describe('how many sections (default 10)'),
       },
     },
@@ -92,8 +92,10 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
         (db) =>
           search(db, [args.query], {
             ...(args.tag === undefined ? {} : { tag: args.tag }),
+            ...(args.type === undefined ? {} : { type: args.type }),
             ...(args.kind === undefined ? {} : { kind: args.kind }),
             ...(args.limit === undefined ? {} : { limit: args.limit }),
+            now: clock,
           }),
         env
       );
@@ -138,9 +140,11 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
     'knowledge_list',
     {
       title: 'List the knowledge documents',
-      description: 'Every document as JSON: id, title, kind, tags, updated, path, headings.',
+      description:
+        'Every document as JSON: id, title, type, description, tags, status, stale, updated, path, headings. Documents with status deprecated come last.',
       inputSchema: {
-        kind: z.string().optional().describe(`only this kind (${KIND_VALUES})`),
+        type: z.string().optional().describe(`only this type (${TYPE_HINT})`),
+        kind: z.string().optional().describe('deprecated alias of type'),
         tag: z.string().optional().describe('only documents carrying this tag'),
       },
     },
@@ -148,8 +152,10 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): McpServer {
       const out = withDb(
         (db) =>
           listDocs(db, {
+            ...(args.type === undefined ? {} : { type: args.type }),
             ...(args.kind === undefined ? {} : { kind: args.kind }),
             ...(args.tag === undefined ? {} : { tag: args.tag }),
+            now: clock,
           }),
         env
       );

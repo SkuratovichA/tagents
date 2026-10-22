@@ -4,12 +4,13 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { openDb, reindex } from '../src/db.ts';
 import { ftsQuery, getDoc, getSection, listDocs, parseAddress, search } from '../src/search.ts';
-import { KNOWLEDGE, removeDir, tmpDir } from './helpers.ts';
+import { FakeClock } from '@tagents/core';
+import { KNOWLEDGE, OKF, removeDir, tmpDir } from './helpers.ts';
 
-function indexed(name: string): { db: ReturnType<typeof openDb>; close: () => void } {
+function indexed(name: string, dir = KNOWLEDGE): { db: ReturnType<typeof openDb>; close: () => void } {
   const root = tmpDir(name);
   const db = openDb(path.join(root, 'index.sqlite'));
-  reindex(db, KNOWLEDGE);
+  reindex(db, dir);
   return {
     db,
     close: () => {
@@ -165,6 +166,101 @@ test('a query cannot be made to break FTS5 syntax', () => {
       search(db, ['proxy AND manifest']).map((h) => h.id),
       ['deploy-runbook']
     );
+  } finally {
+    close();
+  }
+});
+
+test('the type filter is exact and case-insensitive, and kind is its alias', () => {
+  const { db, close } = indexed('type-filter', OKF);
+  try {
+    const ids = (type: string): string[] => listDocs(db, { type }).map((d) => d.id);
+    assert.deepEqual(ids('Runbook'), ['backup-runbook']);
+    assert.deepEqual(ids('RUNBOOK'), ['backup-runbook']);
+    assert.deepEqual(ids('run'), [], 'exact, not a prefix');
+    assert.deepEqual(
+      listDocs(db, { kind: 'runbook' }).map((d) => d.id),
+      ids('Runbook')
+    );
+    assert.deepEqual(
+      search(db, ['failover'], { kind: 'NOTE' }).map((h) => h.id),
+      search(db, ['failover'], { type: 'note' }).map((h) => h.id)
+    );
+    // `type` wins over `kind` when both are given.
+    assert.deepEqual(
+      listDocs(db, { type: 'map', kind: 'runbook' }).map((d) => d.id),
+      ['service-map']
+    );
+    // Not an ASCII-only comparison.
+    assert.deepEqual(listDocs(db, { type: 'Decision' }).map((d) => d.id), ['cache-policy']);
+  } finally {
+    close();
+  }
+});
+
+test('a deprecated document ranks last without being hidden', () => {
+  const { db, close } = indexed('deprecated', OKF);
+  try {
+    const hits = search(db, ['failover']);
+    assert.deepEqual(
+      hits.map((h) => `${h.id}#${h.heading}`),
+      ['cache-policy#Decision', 'old-queue-notes#Failover']
+    );
+    // The rule is what puts it second: on score alone the deprecated hit wins.
+    assert.ok((hits[1]?.score ?? 0) > (hits[0]?.score ?? 0), 'the deprecated section scores higher');
+    assert.deepEqual(
+      hits.map((h) => h.status),
+      ['stable', 'deprecated']
+    );
+    // A limit that leaves room still returns it; nothing is filtered out by status.
+    assert.equal(search(db, ['failover'], { limit: 5 }).length, 2);
+    assert.deepEqual(
+      listDocs(db).map((d) => d.id),
+      ['backup-runbook', 'cache-policy', 'service-map', 'old-queue-notes']
+    );
+  } finally {
+    close();
+  }
+});
+
+test('hits and summaries carry type, description, status and a stale flag from the injected clock', () => {
+  const { db, close } = indexed('lifecycle', OKF);
+  try {
+    const clock = new FakeClock(Date.parse('2026-09-30T21:59:59Z'));
+    const stale = (): boolean[] => [
+      search(db, ['failover'], { now: clock })[0]?.stale ?? false,
+      listDocs(db, { now: clock }).find((d) => d.id === 'cache-policy')?.stale ?? false,
+      getDoc(db, 'cache-policy', clock)?.stale ?? false,
+    ];
+    assert.deepEqual(stale(), [false, false, false]);
+    clock.advance(1000);
+    assert.deepEqual(stale(), [true, true, true]);
+
+    const hit = search(db, ['failover'], { now: clock })[0];
+    assert.equal(hit?.type, 'Decision');
+    assert.equal(hit?.description, 'Why cache entries expire after a day.');
+    assert.equal(hit?.status, 'stable');
+
+    const docs = new Map(listDocs(db, { now: clock }).map((d) => [d.id, d]));
+    // generated.at is 2026-09-12T10:00:00+02:00: the UTC date, not the written one's offset.
+    assert.equal(docs.get('cache-policy')?.updated, '2026-09-12');
+    assert.equal(docs.get('service-map')?.updated, '-');
+    assert.equal(docs.get('service-map')?.title, 'service-map');
+    assert.equal(docs.get('old-queue-notes')?.description, '');
+    assert.deepEqual(
+      [...docs.values()].filter((d) => d.stale).map((d) => d.id),
+      ['cache-policy']
+    );
+  } finally {
+    close();
+  }
+});
+
+test('index.md and log.md are not searchable', () => {
+  const { db, close } = indexed('reserved', OKF);
+  try {
+    assert.deepEqual(search(db, ['reservedmarker']), []);
+    assert.deepEqual(search(db, ['okf_version']), []);
   } finally {
     close();
   }

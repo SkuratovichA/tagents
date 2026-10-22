@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
-import { KNOWLEDGE, copyKnowledge, doc, removeDir, runCli, tmpDir, writeDoc } from './helpers.ts';
+import { main } from '../src/cli/main.ts';
+import { KNOWLEDGE, OKF, copyKnowledge, doc, removeDir, runCli, tmpDir, writeDoc } from './helpers.ts';
 
 type Env = Record<string, string>;
 
@@ -57,12 +58,16 @@ test('--json is a document, and it is not translated', () => {
     const hits: unknown = JSON.parse(r.stdout);
     assert.ok(Array.isArray(hits) && hits.length === 1);
     assert.deepEqual(Object.keys(hits[0] as object).sort(), [
+      'description',
       'heading',
       'id',
       'path',
       'score',
       'snippet',
+      'stale',
+      'status',
       'title',
+      'type',
     ]);
     const empty = runCli(['search', 'nothingmatchesthis', '--json'], env);
     assert.equal(empty.code, 4);
@@ -113,7 +118,7 @@ test('list is one line per document, or JSON', () => {
     const text = runCli(['list', '--kind', 'runbook'], env);
     assert.equal(text.code, 0, text.stderr);
     assert.equal(text.stdout.trim().split('\n').length, 1);
-    assert.match(text.stdout, /^deploy-runbook\s+runbook\s+2026-09-10\s+Deploying the demo service\s+#deploy #ci/);
+    assert.match(text.stdout, /^deploy-runbook\s+Runbook\s+2026-09-10\s+Deploying the demo service\s+#deploy #ci\n$/);
 
     const asJson: unknown = JSON.parse(runCli(['list', '--tag', 'deploy', '--json'], env).stdout);
     assert.ok(Array.isArray(asJson));
@@ -121,6 +126,18 @@ test('list is one line per document, or JSON', () => {
       asJson.map((d) => (d as { id: string }).id),
       ['deploy-runbook', 'relizy-zametki']
     );
+    assert.deepEqual(Object.keys(asJson[0] as object), [
+      'type',
+      'description',
+      'status',
+      'stale',
+      'id',
+      'title',
+      'tags',
+      'updated',
+      'path',
+      'headings',
+    ]);
   } finally {
     cleanup();
   }
@@ -212,5 +229,71 @@ test('nothing prints Node’s experimental SQLite notice', () => {
     }
   } finally {
     cleanup();
+  }
+});
+
+test('--kind is an alias of --type: same lines, either case', () => {
+  const { env, cleanup } = corpus('cli-alias');
+  try {
+    const byKind = runCli(['list', '--kind', 'runbook'], env);
+    const byType = runCli(['list', '--type', 'RUNBOOK'], env);
+    assert.equal(byKind.code, 0, byKind.stderr);
+    assert.equal(byType.stdout, byKind.stdout);
+    const searchKind = runCli(['search', 'релиз*', '--kind', 'note'], env);
+    const searchType = runCli(['search', 'релиз*', '--type', 'Note'], env);
+    assert.equal(searchType.stdout, searchKind.stdout);
+    assert.match(searchType.stdout, /^relizy-zametki/);
+    // `type` wins when both are written.
+    assert.equal(runCli(['list', '--type', 'map', '--kind', 'runbook'], env).stdout.split('\n').length, 2);
+  } finally {
+    cleanup();
+  }
+});
+
+/** The CLI in this process, with the clock handed in: a test never reads the real one. */
+async function inProcess(args: string[], now: string): Promise<{ code: number; out: string; err: string }> {
+  const out: string[] = [];
+  const err: string[] = [];
+  const code = await main(args, { out: (s) => out.push(s), err: (s) => err.push(s) }, { now: () => Date.parse(now) });
+  return { code, out: out.join(''), err: err.join('') };
+}
+
+test('list marks deprecated and stale documents, deprecated last, stale by the injected clock', async () => {
+  const root = tmpDir('cli-marks');
+  try {
+    const base = ['--dir', OKF, '--db', path.join(root, 'index.sqlite')];
+    const row = (id: string, type: string, updated: string, title: string, tags: string, mark = ''): string =>
+      `${id.padEnd(28)} ${type.padEnd(10)} ${updated}  ${title}  ${tags}${mark}`;
+
+    const before = await inProcess(['list', ...base], '2026-09-30T21:59:59Z');
+    assert.equal(before.code, 0, before.err);
+    assert.deepEqual(before.out.trimEnd().split('\n'), [
+      row('backup-runbook', 'Runbook', '2026-09-10', 'Nightly backup run', '#backup #ops'),
+      row('cache-policy', 'Decision', '2026-09-12', 'Cache policy', '#cache'),
+      row('service-map', 'Map', '-', 'service-map', '#map'),
+      row('old-queue-notes', 'Note', '2026-08-01', 'Retired queue', '#queue', ' [deprecated]'),
+    ]);
+
+    const after = await inProcess(['list', ...base], '2026-09-30T22:00:00Z');
+    assert.equal(after.out.split('\n')[1], row('cache-policy', 'Decision', '2026-09-12', 'Cache policy', '#cache', ' [stale]'));
+
+    const hits = await inProcess(['search', 'failover', ...base], '2026-09-30T22:00:00Z');
+    const lines = hits.out.trimEnd().split('\n');
+    assert.match(lines[0] ?? '', /^cache-policy#Decision\s+\d+\.\d+\s+.*\[stale\]$/);
+    assert.match(lines[1] ?? '', /^old-queue-notes#Failover\s+\d+\.\d+\s+.*\[deprecated\]$/);
+
+    const json = await inProcess(['list', '--json', ...base], '2026-09-30T22:00:00Z');
+    const items: Array<{ id: string; status: string; stale: boolean; type: string; description: string; updated: string }> =
+      JSON.parse(json.out);
+    const byId = new Map(items.map((i) => [i.id, i]));
+    assert.deepEqual(
+      [byId.get('cache-policy')?.stale, byId.get('cache-policy')?.status, byId.get('old-queue-notes')?.status],
+      [true, 'stable', 'deprecated']
+    );
+    assert.equal(byId.get('old-queue-notes')?.description, '');
+    assert.equal(byId.get('service-map')?.updated, '-');
+    assert.ok(items.every((i) => !('kind' in i)));
+  } finally {
+    removeDir(root);
   }
 });

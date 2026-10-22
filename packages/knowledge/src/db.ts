@@ -26,7 +26,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue, SQLOutputValue } from 'node:sqlite';
 import { DocError, listFiles, readDoc, stemOf, type KnowledgeDoc } from './doc.ts';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const TOKENIZER = 'unicode61 remove_diacritics 2';
 
 export type Row = Record<string, SQLOutputValue>;
@@ -65,9 +65,13 @@ create table if not exists docs (
   id      text primary key,
   path    text not null,
   title   text not null,
-  kind    text not null,
+  type    text not null,           -- as written (legacy 'kind' is capitalised)
+  type_key text not null,          -- the type lowercased in JS: the filter compares this, SQLite's lower() folds ASCII only
+  description text not null,       -- '' when the document has none
   tags    text not null,           -- a JSON array, queried with json_each
-  updated text not null,
+  status  text not null,           -- draft | stable | deprecated
+  stale_after  text,               -- ISO 8601 with offset; staleness is computed on read, never stored
+  generated_at text,               -- ISO 8601 with offset; null when the document has no 'generated'
   mtime   integer not null,        -- ms, the file's mtime at index time
   hash    text not null            -- sha256 of the file, first 32 hex chars
 );
@@ -137,14 +141,18 @@ function deleteDoc(db: DatabaseSync, id: string): void {
 
 function insertDoc(db: DatabaseSync, doc: KnowledgeDoc, mtime: number): void {
   db.prepare(
-    'insert into docs (id, path, title, kind, tags, updated, mtime, hash) values (?, ?, ?, ?, ?, ?, ?, ?)'
+    'insert into docs (id, path, title, type, type_key, description, tags, status, stale_after, generated_at, mtime, hash) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(
     doc.meta.id,
     doc.path,
     doc.meta.title,
-    doc.meta.kind,
+    doc.meta.type,
+    doc.meta.type.toLowerCase(),
+    doc.meta.description ?? '',
     JSON.stringify(doc.meta.tags),
-    doc.meta.updated,
+    doc.meta.status,
+    doc.meta.staleAfter ?? null,
+    doc.meta.generated?.at ?? null,
     Math.floor(mtime),
     doc.hash
   );

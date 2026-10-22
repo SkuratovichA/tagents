@@ -5,9 +5,9 @@ export const en = {
     'usage: tagents-knowledge <command>',
     '',
     '  index [--dir D] [--db F] [--full]',
-    '  search <query…> [--tag T] [--kind K] [--limit N] [--json]',
+    '  search <query…> [--tag T] [--type T] [--kind K] [--limit N] [--json]',
     '  show <id[#heading]> [--dir D]',
-    '  list [--kind K] [--tag T] [--json]',
+    '  list [--type T] [--kind K] [--tag T] [--json]',
     '  lint [--dir D]',
     '  mcp',
     '  serve [--idle S] [--foreground] [--socket P]',
@@ -40,9 +40,11 @@ export const en = {
   issueGenerated: 'generated_from {{source}} changed on {{changed}}, after updated {{updated}}',
   issueDeadLink: 'dead link [[{{target}}]]',
   summaryIndex: 'brings the index in line with the folder; --full rebuilds it from nothing',
-  summarySearch: 'prints one line per hit: id#heading, score and snippet',
+  summarySearch:
+    'prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last',
   summaryShow: 'prints the markdown of a document, or of one section of it',
-  summaryList: 'prints one line per document: id, kind, updated, title and tags',
+  summaryList:
+    'prints one line per document: id, type, updated, title and tags; --type filters by type (--kind is its deprecated alias); deprecated documents come last',
   summaryLint: 'checks the claims each document makes about itself',
   summaryMcp: 'serves the knowledge tools over stdio as an MCP server',
   summaryServe:

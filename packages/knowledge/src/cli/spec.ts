@@ -18,6 +18,7 @@ export const SEARCH = {
     dir: { type: 'string' },
     db: { type: 'string' },
     tag: { type: 'string' },
+    type: { type: 'string' },
     kind: { type: 'string' },
     limit: { type: 'string' },
     json: { type: 'boolean' },
@@ -40,6 +41,7 @@ export const LIST = {
   options: {
     dir: { type: 'string' },
     db: { type: 'string' },
+    type: { type: 'string' },
     kind: { type: 'string' },
     tag: { type: 'string' },
     json: { type: 'boolean' },

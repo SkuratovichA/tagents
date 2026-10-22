@@ -11,7 +11,7 @@ import test from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { z } from 'zod';
-import { NODE, baseEnv, cliEntry, copyKnowledge, removeDir, tmpDir } from './helpers.ts';
+import { NODE, baseEnv, cliEntry, copyKnowledge, copyOkf, removeDir, tmpDir } from './helpers.ts';
 
 const ResultSchema = z.object({
   content: z.array(z.object({ type: z.string(), text: z.string().optional() })),
@@ -63,6 +63,7 @@ test('an MCP client can search, read and list over stdio', async (t) => {
     'limit',
     'query',
     'tag',
+    'type',
   ]);
   assert.deepEqual(search?.inputSchema.required, ['query']);
 
@@ -127,4 +128,69 @@ test('the server refuses politely when no knowledge directory is configured', as
   const result = await client.callTool({ name: 'knowledge_list', arguments: {} });
   assert.ok(failed(result));
   assert.match(textOf(result), /TAGENTS_KNOWLEDGE_DIR/);
+});
+
+test('the OKF fields reach the tools, and kind is accepted as the alias of type', async (t) => {
+  const root = tmpDir('mcp-okf');
+  const dir = copyOkf(path.join(root, 'knowledge'));
+  const transport = new StdioClientTransport({
+    command: NODE,
+    args: [cliEntry(), 'mcp'],
+    env: baseEnv({
+      TAGENTS_KNOWLEDGE_DIR: dir,
+      TAGENTS_KNOWLEDGE_DB: path.join(root, 'index.sqlite'),
+      CLAUDE_HOMES: path.join(root, 'claude-homes'),
+      HOME: os.homedir(),
+    }),
+    stderr: 'pipe',
+  });
+  const client = new Client({ name: 'knowledge-suite', version: '0.0.0' });
+  t.after(async () => {
+    await client.close();
+    removeDir(root);
+  });
+  await client.connect(transport);
+
+  const call = async (name: string, args: Record<string, unknown>): Promise<unknown> =>
+    JSON.parse(textOf(await client.callTool({ name, arguments: args })));
+  const byType = await call('knowledge_list', { type: 'RUNBOOK' });
+  const byKind = await call('knowledge_list', { kind: 'runbook' });
+  assert.deepEqual(byType, byKind);
+  assert.ok(Array.isArray(byType) && byType.length === 1);
+  assert.deepEqual(Object.keys(byType[0] as object).sort(), [
+    'description',
+    'headings',
+    'id',
+    'path',
+    'stale',
+    'status',
+    'tags',
+    'title',
+    'type',
+    'updated',
+  ]);
+
+  const all = (await call('knowledge_list', {})) as Array<{ id: string; status: string }>;
+  assert.deepEqual(
+    all.map((d) => d.id),
+    ['backup-runbook', 'cache-policy', 'service-map', 'old-queue-notes']
+  );
+  const hits = (await call('knowledge_search', { query: 'failover', kind: 'note' })) as Array<Record<string, unknown>>;
+  assert.deepEqual(
+    hits.map((h) => [h['id'], h['status'], h['type']]),
+    [['old-queue-notes', 'deprecated', 'Note']]
+  );
+  assert.deepEqual(Object.keys(hits[0] ?? {}).sort(), [
+    'description',
+    'heading',
+    'id',
+    'path',
+    'score',
+    'snippet',
+    'stale',
+    'status',
+    'title',
+    'type',
+  ]);
+  assert.equal(typeof hits[0]?.['stale'], 'boolean');
 });

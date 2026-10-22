@@ -7,16 +7,35 @@
 // CALLED "Deploy" is what somebody searching for "deploy" wants; a section
 // that mentions deploying once, in passing, is not. The weight is what makes
 // that ordering, not the order rows happen to come out of FTS5.
+//
+// A deprecated document is ranked after every other and never hidden: the
+// reader who searches for the retired system should find it, below the live
+// one, marked as retired. Staleness is a question about NOW, so it is computed
+// here, per query, from a clock the caller may inject.
 import type { DatabaseSync } from 'node:sqlite';
 import type { SQLInputValue } from 'node:sqlite';
+import { realClock, type TurnClock } from '@tagents/core';
 import { int, text, type Row } from './db.ts';
+import { STATUSES, isStale, utcDateOf, type Status } from './doc.ts';
 
 export const HEADING_WEIGHT = 10;
 export const BODY_WEIGHT = 1;
 export const DEFAULT_LIMIT = 10;
 export const SNIPPET_TOKENS = 14;
 
-export interface Hit {
+/** Where a query gets "now" from: the real clock, or a fake one in a test. */
+export type Clock = Pick<TurnClock, 'now'>;
+
+export interface Lifecycle {
+  readonly type: string;
+  /** '' when the document has none. */
+  readonly description: string;
+  readonly status: Status;
+  /** `stale_after` has been reached, as of the query. */
+  readonly stale: boolean;
+}
+
+export interface Hit extends Lifecycle {
   readonly id: string;
   readonly title: string;
   /** '' for the preamble chunk. */
@@ -28,11 +47,28 @@ export interface Hit {
 
 export interface Filters {
   readonly tag?: string;
+  /** Exact, case-insensitive. */
+  readonly type?: string;
+  /** Deprecated alias of `type`; `type` wins when both are given. */
   readonly kind?: string;
 }
 
-export interface SearchOptions extends Filters {
+export interface Timed {
+  readonly now?: Clock;
+}
+
+export interface SearchOptions extends Filters, Timed {
   readonly limit?: number;
+}
+
+function lifecycle(row: Row, now: Clock): Lifecycle {
+  const stale = row['stale_after'];
+  return {
+    type: text(row, 'type'),
+    description: text(row, 'description'),
+    status: STATUSES.find((s) => s === text(row, 'status')) ?? 'stable',
+    stale: typeof stale === 'string' && isStale(stale, now.now()),
+  };
 }
 
 /**
@@ -57,9 +93,10 @@ export function ftsQuery(words: readonly string[]): string {
 function filterSql(f: Filters): { sql: string; params: SQLInputValue[] } {
   const sql: string[] = [];
   const params: SQLInputValue[] = [];
-  if (f.kind !== undefined && f.kind !== '') {
-    sql.push('and docs.kind = ?');
-    params.push(f.kind);
+  const type = f.type !== undefined && f.type !== '' ? f.type : f.kind;
+  if (type !== undefined && type !== '') {
+    sql.push('and docs.type_key = ?');
+    params.push(type.toLowerCase());
   }
   if (f.tag !== undefined && f.tag !== '') {
     sql.push('and exists (select 1 from json_each(docs.tags) where value = ?)');
@@ -80,6 +117,8 @@ export function search(db: DatabaseSync, words: readonly string[], options: Sear
   const where = filterSql(options);
   const sql = `
     select docs.id as id, docs.title as title, docs.path as path,
+           docs.type as type, docs.description as description, docs.status as status,
+           docs.stale_after as stale_after,
            chunks.heading as heading,
            bm25(chunks_fts, 0.0, ${HEADING_WEIGHT}.0, ${BODY_WEIGHT}.0) as rank,
            snippet(chunks_fts, 2, '[', ']', '…', ${SNIPPET_TOKENS}) as snip
@@ -87,7 +126,7 @@ export function search(db: DatabaseSync, words: readonly string[], options: Sear
       join chunks on chunks.rowid = chunks_fts.rowid
       join docs on docs.id = chunks.doc_id
      where chunks_fts match ? ${where.sql}
-     order by rank asc, docs.id asc, chunks.ord asc
+     order by (docs.status = 'deprecated') asc, rank asc, docs.id asc, chunks.ord asc
      limit ?`;
   let rows: Row[];
   try {
@@ -95,7 +134,9 @@ export function search(db: DatabaseSync, words: readonly string[], options: Sear
   } catch {
     return []; // a MATCH expression FTS5 refuses is an empty result, not a crash
   }
+  const now = options.now ?? realClock;
   return rows.map((row) => ({
+    ...lifecycle(row, now),
     id: text(row, 'id'),
     title: text(row, 'title'),
     heading: text(row, 'heading'),
@@ -106,11 +147,11 @@ export function search(db: DatabaseSync, words: readonly string[], options: Sear
   }));
 }
 
-export interface DocSummary {
+export interface DocSummary extends Lifecycle {
   readonly id: string;
   readonly title: string;
-  readonly kind: string;
   readonly tags: readonly string[];
+  /** The UTC date of `generated.at`, or '-' when the document has no `generated`. */
   readonly updated: string;
   readonly path: string;
   readonly headings: readonly string[];
@@ -121,7 +162,7 @@ function tagsOf(row: Row): string[] {
   return Array.isArray(parsed) ? parsed.filter((t): t is string => typeof t === 'string') : [];
 }
 
-function summary(db: DatabaseSync, row: Row): DocSummary {
+function summary(db: DatabaseSync, row: Row, now: Clock): DocSummary {
   const id = text(row, 'id');
   const headings = db
     .prepare('select heading from chunks where doc_id = ? order by ord asc')
@@ -129,27 +170,28 @@ function summary(db: DatabaseSync, row: Row): DocSummary {
     .map((r) => text(r, 'heading'))
     .filter((h) => h !== '');
   return {
+    ...lifecycle(row, now),
     id,
     title: text(row, 'title'),
-    kind: text(row, 'kind'),
     tags: tagsOf(row),
-    updated: text(row, 'updated'),
+    updated: utcDateOf(text(row, 'generated_at')) ?? '-',
     path: text(row, 'path'),
     headings,
   };
 }
 
-export function listDocs(db: DatabaseSync, filters: Filters = {}): DocSummary[] {
+export function listDocs(db: DatabaseSync, filters: Filters & Timed = {}): DocSummary[] {
   const where = filterSql(filters);
+  const now = filters.now ?? realClock;
   const rows = db
-    .prepare(`select * from docs where 1 = 1 ${where.sql} order by docs.id asc`)
+    .prepare(`select * from docs where 1 = 1 ${where.sql} order by (docs.status = 'deprecated') asc, docs.id asc`)
     .all(...where.params);
-  return rows.map((row) => summary(db, row));
+  return rows.map((row) => summary(db, row, now));
 }
 
-export function getDoc(db: DatabaseSync, id: string): DocSummary | null {
+export function getDoc(db: DatabaseSync, id: string, now: Clock = realClock): DocSummary | null {
   const row = db.prepare('select * from docs where id = ?').get(id);
-  return row ? summary(db, row) : null;
+  return row ? summary(db, row, now) : null;
 }
 
 export interface Section {

@@ -13,6 +13,7 @@ import {
   listFiles,
   parseDoc,
   stemOf,
+  utcDateOf,
   wikilinks,
   type KnowledgeDoc,
 } from './doc.ts';
@@ -71,37 +72,41 @@ export function lint(dir: string, t: Translate, env: NodeJS.ProcessEnv = process
       continue;
     }
     const stem = stemOf(file);
-    if (doc.meta.id !== stem)
-      issues.push({ file, code: 'stem', message: t('issueStem', { id: doc.meta.id, stem }) });
-    const owner = idOwner.get(doc.meta.id);
+    const declared = doc.declaredId ?? stem;
+    if (declared !== stem)
+      issues.push({ file, code: 'stem', message: t('issueStem', { id: declared, stem }) });
+    const owner = idOwner.get(declared);
     if (owner !== undefined) {
       issues.push({
         file,
         code: 'duplicate-id',
-        message: t('issueDuplicateId', { id: doc.meta.id, other: path.basename(owner) }),
+        message: t('issueDuplicateId', { id: declared, other: path.basename(owner) }),
       });
       continue;
     }
-    idOwner.set(doc.meta.id, file);
-    docs.set(doc.meta.id, doc);
+    idOwner.set(declared, file);
+    docs.set(stem, doc);
   }
 
   // The git check only makes sense where there is history to compare against:
   // a folder that is not a repo, or a document not committed yet, is not stale.
   const git = insideGitRepo(dir, env);
   for (const doc of docs.values()) {
-    if (git) {
+    // Minimum edit for the OKF loader: the dates come from `generated.at`, and a
+    // legacy `generated_from` is now its one source.
+    const generatedOn = utcDateOf(doc.meta.generated?.at);
+    if (git && generatedOn !== null) {
       const commit = lastCommitDate(doc.path, env);
-      if (commit !== null && doc.meta.updated < commit)
+      if (commit !== null && generatedOn < commit)
         issues.push({
           file: doc.path,
           code: 'stale',
-          message: t('issueStale', { updated: doc.meta.updated, commit }),
+          message: t('issueStale', { updated: generatedOn, commit }),
         });
     }
 
-    const from = doc.meta.generated_from;
-    if (from !== undefined) {
+    for (const { resource: from } of doc.meta.sources) {
+      if (generatedOn === null) break;
       const source = path.resolve(dir, expandHome(from));
       let mtimeMs: number | null = null;
       try {
@@ -111,11 +116,11 @@ export function lint(dir: string, t: Translate, env: NodeJS.ProcessEnv = process
       }
       if (mtimeMs !== null) {
         const changed = utcDate(mtimeMs);
-        if (changed > doc.meta.updated)
+        if (changed > generatedOn)
           issues.push({
             file: doc.path,
             code: 'generated',
-            message: t('issueGenerated', { source: from, changed, updated: doc.meta.updated }),
+            message: t('issueGenerated', { source: from, changed, updated: generatedOn }),
           });
       }
     }

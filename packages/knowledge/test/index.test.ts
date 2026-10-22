@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
-import { docCount, openDb, reindex } from '../src/db.ts';
+import { DatabaseSync } from 'node:sqlite';
+import { SCHEMA_VERSION, docCount, openDb, reindex } from '../src/db.ts';
 import { listDocs, search } from '../src/search.ts';
-import { copyKnowledge, doc, removeDir, tmpDir, writeDoc } from './helpers.ts';
+import { copyKnowledge, copyOkf, doc, removeDir, tmpDir, writeDoc } from './helpers.ts';
 
 function withCorpus(name: string, run: (dir: string, db: ReturnType<typeof openDb>) => void): void {
   const root = tmpDir(name);
@@ -76,10 +77,11 @@ test('a file that stopped parsing is reported and stops answering', () => {
   withCorpus('broken', (dir, db) => {
     reindex(db, dir);
     const file = path.join(dir, 'tmux-cheatsheet.md');
-    fs.writeFileSync(file, doc({ id: 'tmux-cheatsheet', kind: 'nonsense' }));
+    // Neither `type` nor `kind`: the one thing the tolerant loader still refuses.
+    fs.writeFileSync(file, '---\ntitle: Broken\n---\n\nbody\n');
     const stats = reindex(db, dir);
     assert.equal(stats.errors.length, 1);
-    assert.match(stats.errors[0]?.message ?? '', /kind/);
+    assert.match(stats.errors[0]?.message ?? '', /type: required/);
     assert.equal(docCount(db), 4);
     assert.deepEqual(
       listDocs(db).map((d) => d.id),
@@ -111,4 +113,55 @@ test('a document added later joins the index without a full rebuild', () => {
       ['novyj-runbook']
     );
   });
+});
+
+// The schema of the previous format, as it was written: `kind` and `updated`
+// columns and meta.schema_version = 1. Opening such a file must not fail and
+// must not serve its rows: the index is derived data and is rebuilt.
+const OLD_SCHEMA = `
+create table meta (key text primary key, value text not null);
+create table docs (id text primary key, path text not null, title text not null, kind text not null,
+  tags text not null, updated text not null, mtime integer not null, hash text not null);
+create table chunks (doc_id text not null references docs(id) on delete cascade, heading text not null,
+  ord integer not null, body text not null, primary key (doc_id, ord));
+create virtual table chunks_fts using fts5(doc_id unindexed, heading, body, tokenize='unicode61 remove_diacritics 2');
+insert into meta (key, value) values ('schema_version', '1');
+insert into docs values ('ghost', '/nowhere/ghost.md', 'Ghost', 'note', '[]', '2026-01-01', 0, 'x');
+insert into chunks values ('ghost', '', 0, 'phantomword');
+insert into chunks_fts (rowid, doc_id, heading, body) values (1, 'ghost', '', 'phantomword');
+`;
+
+test('an index written by the previous schema version is dropped and rebuilt', () => {
+  const root = tmpDir('old-index');
+  try {
+    const file = path.join(root, 'old.sqlite');
+    const old = new DatabaseSync(file);
+    old.exec(OLD_SCHEMA);
+    old.close();
+
+    const dir = copyOkf(path.join(root, 'knowledge'));
+    const db = openDb(file);
+    try {
+      assert.equal(SCHEMA_VERSION, 2);
+      const version = db.prepare("select value from meta where key = 'schema_version'").get();
+      assert.equal(String(version?.['value']), '2');
+      assert.equal(docCount(db), 0, 'the old rows are gone');
+      assert.deepEqual(search(db, ['phantomword']), []);
+      const columns = db.prepare('pragma table_info(docs)').all().map((r) => String(r['name']));
+      for (const c of ['type', 'description', 'status', 'stale_after', 'generated_at'])
+        assert.ok(columns.includes(c), `docs has no column ${c}: ${columns.join(',')}`);
+      assert.ok(!columns.includes('kind'));
+
+      const stats = reindex(db, dir);
+      assert.equal(stats.added, 4, 'index.md and log.md are not documents');
+      assert.deepEqual(
+        listDocs(db).map((d) => d.id),
+        ['backup-runbook', 'cache-policy', 'service-map', 'old-queue-notes']
+      );
+    } finally {
+      db.close();
+    }
+  } finally {
+    removeDir(root);
+  }
 });

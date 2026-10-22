@@ -267,6 +267,9 @@
             "tag": {
               "type": "string"
             },
+            "type": {
+              "type": "string"
+            },
             "kind": {
               "type": "string"
             },
@@ -278,7 +281,7 @@
             }
           },
           "required": [],
-          "summary": "prints one line per hit: id#heading, score and snippet"
+          "summary": "prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last"
         },
         {
           "path": [
@@ -310,6 +313,9 @@
             "db": {
               "type": "string"
             },
+            "type": {
+              "type": "string"
+            },
             "kind": {
               "type": "string"
             },
@@ -321,7 +327,7 @@
             }
           },
           "required": [],
-          "summary": "prints one line per document: id, kind, updated, title and tags"
+          "summary": "prints one line per document: id, type, updated, title and tags; --type filters by type (--kind is its deprecated alias); deprecated documents come last"
         },
         {
           "path": [
@@ -394,12 +400,16 @@
         },
         {
           "name": "knowledge_list",
-          "description": "Every document as JSON: id, title, kind, tags, updated, path, headings.",
+          "description": "Every document as JSON: id, title, type, description, tags, status, stale, updated, path, headings. Documents with status deprecated come last.",
           "inputSchema": {
             "type": "object",
             "properties": {
+              "type": {
+                "description": "only this type (case-insensitive, for example Runbook)",
+                "type": "string"
+              },
               "kind": {
-                "description": "only this kind (cheatsheet | runbook | map | decision | note)",
+                "description": "deprecated alias of type",
                 "type": "string"
               },
               "tag": {
@@ -412,7 +422,7 @@
         },
         {
           "name": "knowledge_search",
-          "description": "Full-text search over the owner's knowledge documents (Russian and English). Returns the matching sections as JSON: id, title, heading, score, snippet, path. Read a whole section with knowledge_get.",
+          "description": "Full-text search over the owner's knowledge documents (Russian and English). Returns the matching sections as JSON: id, title, heading, score, snippet, path, type, description, status, stale. Documents with status deprecated come last. Read a whole section with knowledge_get.",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -425,8 +435,12 @@
                 "description": "only documents carrying this tag",
                 "type": "string"
               },
+              "type": {
+                "description": "only documents of this type (case-insensitive, for example Runbook)",
+                "type": "string"
+              },
               "kind": {
-                "description": "only documents of this kind (cheatsheet | runbook | map | decision | note)",
+                "description": "deprecated alias of type",
                 "type": "string"
               },
               "limit": {
@@ -481,7 +495,7 @@
   },
   "api": {
     "@tagents/core": "sha256:c127f03b660a5ff59bfc2a3a99ad3b0ecbc25ebba324442ae187beb7dca0fcbd",
-    "@tagents/knowledge": "sha256:4eed805cc62428dba060d00688c436e3280670ada617a8a6aadcb20778c1ea69",
+    "@tagents/knowledge": "sha256:5b9234397b6d596db00cdacb7f4a550ac67227136641fe23f95bc88e134ec888",
     "@tagents/notify": "sha256:82378079b87af196363505cb138618ae0e84223fea9f92d4eaa01ec4981564bf",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"
   }
