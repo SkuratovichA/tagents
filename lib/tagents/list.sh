@@ -709,11 +709,12 @@ list() {
         gcount[grpkey SUBSEP s]++
       }
 
-      # A WINDOW OF A GROUP WITH NO LIVE CHAT PANE BESIDES THE SIDEBAR IS A DIMMED ROW, keyed on its window id. A window that holds only the
-      # sidebar gets none. Not in flat mode: a flat list has no groups to hold them.
+      # A WINDOW OF A GROUP WITH NO CHAT ROW ON A PANE BESIDES THE SIDEBAR IS A DIMMED ROW, keyed on its window id: a pane with a live chat or a
+      # closed row is the row of its window already, and the window is not listed twice. A window that holds only the sidebar gets none. Not in flat
+      # mode: a flat list has no groups to hold them.
       nd = 0
       if (grp) {
-        for (q in alive) if ((q in live) && (q in pwin) && psb[q] != 1) wchat[pwin[q]] = 1
+        for (q in alive) if ((q in kept) && (q in pwin) && psb[q] != 1) wchat[pwin[q]] = 1
         for (dmi = 1; dmi <= nwin; dmi++) {
           dmw = wlist[dmi]; dms = wsess[dmw]
           if (!(dms in hasChat) || (dmw in wchat)) continue
