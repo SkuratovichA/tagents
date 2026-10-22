@@ -157,7 +157,7 @@ ring() { tm set -gF @tagents_evgen "$EVB" \; wait-for -S tagents-ev; }
 # The modules tagents loads, read from its own loop, so that a function the refresher runs can be run here the way it runs it.
 LISTED_MODS=$(awk '/^[[:space:]]*for ta_mod in/ { grab = 1 } grab { l = $0; sub(/^[[:space:]]*for ta_mod in[[:space:]]*/, "", l); fin = (l ~ /;[[:space:]]*do[[:space:]]*$/); sub(/;[[:space:]]*do[[:space:]]*$/, "", l); sub(/\\[[:space:]]*$/, "", l); printf "%s ", l; if (fin) exit }' "$TA")
 modsh() {  # <code> — runs it in a shell with every module sourced, against this suite's server
-  env TMUX="$SOCK,0,0" TMUX_PANE="$DP" TA_STATE_DIR="$STATE" TA_CONFIG="$RFCFG" TA_SESSION=tatest-dash \
+  env TMUX="$SOCK,0,0" TMUX_PANE="$DP" TA_STATE_DIR="$STATE" TA_CONFIG="$RFCFG" TA_SESSION=tatest-dash SELF="$TREE/tagents" \
       /bin/bash -c 'for m in '"$LISTED_MODS"'; do . "'"$HERE"'/../lib/tagents/$m.sh"; done; '"$1" >/dev/null 2>&1
 }
 
@@ -170,6 +170,8 @@ SOCK=$(tm display -p '#{socket_path}' 2>/dev/null)
 DP=$(tm display -p -t tatest-dash: '#{pane_id}')
 tm set -p -t "$DP" @tagents_list "$$"
 tm set -p -t "$DP" @tagents_dash 1
+# A server that has been through the upgrade already: the one pass that sends docked chats home and asks tnotes for the editors an older version parked runs at most once per server, and the scenarios below count what tnotes is asked.
+tm set -g @tagents_migrated 1
 
 # The state directory, every file and directory in it dated long ago: a file the
 # loop sees as changed is then one a scenario wrote, never one the fixture did.
@@ -417,16 +419,28 @@ ok "with the slow pass out of reach, rings never run tusage --update" "" "$(upda
 # ---------------------------------------------------------------------------
 t "7. the notes editors are looked after only while there are some, on the slow pass"
 # ---------------------------------------------------------------------------
+# Some: a pane that names its chat (@ta_notes_for), or the ta-notes session an older tnotes parked editors in. Made before the scenario starts, so that the events of making them are drained with the rest.
+ED=$(tm split-window -d -P -F '#{pane_id}' -t "$DP" 'sleep 600')
+tm set -p -t "$ED" @ta_notes_for %1
+/bin/sleep 0.3
 newrun notes
 SLOW=0
-tm set -g @ta_notes_any 1
 go 3
 # The refresher starts tnotes with `&`, so the last sync can write its line after
 # the loop has ended (one TERM-less run read an empty log): wait for two lines.
 i=0; while [ "$(grep -c . "$D/tnotes.log" 2>/dev/null)" -lt 2 ] && [ "$i" -lt 30 ]; do /bin/sleep 0.1; i=$((i + 1)); done
-ok "with @ta_notes_any set, tnotes sync is started on each of the two slow wakes" "sync sync" \
+ok "with an editor pane about, tnotes sync is started on each of the two slow wakes" "sync sync" \
    "$(tr '\n' ' ' <"$D/tnotes.log" | sed 's/ $//')"
-tm set -gu @ta_notes_any
+tm kill-pane -t "$ED" 2>/dev/null
+tm new-session -d -s ta-notes 'sleep 600'
+/bin/sleep 0.3
+newrun notes_parked
+SLOW=0
+go 3
+i=0; while [ "$(grep -c . "$D/tnotes.log" 2>/dev/null)" -lt 2 ] && [ "$i" -lt 30 ]; do /bin/sleep 0.1; i=$((i + 1)); done
+ok "with the ta-notes session of an older version about, so is it" "sync sync" \
+   "$(tr '\n' ' ' <"$D/tnotes.log" | sed 's/ $//')"
+tm kill-session -t '=ta-notes' 2>/dev/null
 
 # ---------------------------------------------------------------------------
 t "8. the idle timeout is a slow pass of its own, and a dead list ends the loop"
