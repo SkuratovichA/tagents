@@ -20,8 +20,8 @@
 - [x] 4.1 Strict `frontmatter` findings (tags, `status`, `generated`, `verified`, `stale_after`, `sources`, unknown keys), `stem` for a non-slug stem, and the `legacy` finding. Proved by `packages/knowledge/test/lint.test.ts`.
 - [x] 4.2 `stale` and `generated` findings computed from `generated.at` and `sources`, the `expired` finding, and `dead-link` for markdown links and fragments. Proved by `packages/knowledge/test/lint.test.ts`.
 - [x] 4.3 The `index` finding and the `toc` verb with `--check`, writing the exact layout. Proved by `packages/knowledge/test/toc.test.ts` and `packages/knowledge/test/lint.test.ts`.
-- [ ] 4.4 Document the OKF form in the package README. Proved by `packages/knowledge/test/cli-spec.test.ts` (usage text and README agree on the verbs and flags).
+- [x] 4.4 Document the OKF form in the package README. Proved by `packages/knowledge/test/cli-spec.test.ts` (usage text and README agree on the verbs and flags).
 
 ## 5. Gates
 
-- [ ] 5.1 `pnpm --filter @tagents/knowledge typecheck`, `pnpm --filter @tagents/knowledge test` and `pnpm spec:check` exit 0; `packages/knowledge/test/lint-no-any.test.ts` stays green.
+- [x] 5.1 `pnpm --filter @tagents/knowledge typecheck`, `pnpm --filter @tagents/knowledge test` and `pnpm spec:check` exit 0; `packages/knowledge/test/lint-no-any.test.ts` stays green.

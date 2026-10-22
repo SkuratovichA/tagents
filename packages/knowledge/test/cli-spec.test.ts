@@ -141,3 +141,16 @@ test('knowledgeCliContract is English whatever the machine speaks', () => {
     else process.env['TAGENTS_LOCALE'] = before;
   }
 });
+
+test('the README table names every verb with the flags of its spec', () => {
+  const readme = fs.readFileSync(path.resolve(HERE, '..', 'README.md'), 'utf8');
+  for (const c of KNOWLEDGE_COMMANDS) {
+    const verb = c.path.join(' ');
+    const row = readme.split('\n').find((line) => line.startsWith(`| \`${verb}`));
+    assert.ok(row, `README has no table row for ${verb}`);
+    for (const option of Object.keys(c.options)) {
+      if (option === 'db' || option === 'dir') continue; // the README documents them once, under "Where things live"
+      assert.ok(row.includes(`--${option}`), `README row for ${verb} lacks --${option}`);
+    }
+  }
+});
