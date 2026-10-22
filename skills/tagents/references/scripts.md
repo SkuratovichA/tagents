@@ -83,7 +83,11 @@ stays worth reacting to.
                           the rows behind the picker redraw (empty: no reload)
   tagents --header [COLS] the key header the dashboard would draw at that
                           width. One line, which is the whole point of it
-  tagents --ensure-dash   create the dedicated dashboard session if missing
+  tagents --ensure-dash   put the sidebar in the window the client is in: a running
+                          list is moved there, none running is started there
+  tagents --follow [CLIENT]
+                          move the sidebar into the window CLIENT shows (default:
+                          the most recent client); tmux's own hooks run this
   tagents --new [DIR] [PROFILE]
                           start an agent in DIR from outside the list — a tmux
                           binding, a shell, anything. DIR defaults to $PWD and
