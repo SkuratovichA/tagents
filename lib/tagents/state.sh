@@ -298,15 +298,20 @@ dir_roots() {
 # path read here belongs there too, and tests/refresh.sh section 11 pins the two.
 collect() {
   # A literal tab must not go into a tmux format string. Outside a UTF-8 locale
-  # tmux renders it as "_", so all five fields merge into one, no pane is ever
+  # tmux renders it as "_", so all the fields merge into one, no pane is ever
   # recognised as alive and the whole dashboard reads "everything is closed".
   # Printable ASCII survives either way; the title goes last because it is the
   # one field that carries arbitrary text.
-  tmux list-panes -a -F "P|@|#{pane_id}|@|#{session_name}:#{window_index}.#{pane_index}|@|#{pane_current_path}|@|#{pane_title}" 2>/dev/null |
+  tmux list-panes -a -F "P|@|#{pane_id}|@|#{session_name}:#{window_index}.#{pane_index}|@|#{pane_current_path}|@|#{window_id}|@|#{?@tagents_list,1,0}|@|#{pane_index}|@|#{pane_title}" 2>/dev/null |
     LC_ALL=C awk -v OFS="$TAB" '
       { n = split($0, a, "\\|@\\|")
-        t = a[5]; for (i = 6; i <= n; i++) t = t "|@|" a[i]
-        print a[1], a[2], a[3], t, a[4] }'
+        t = a[8]; for (i = 9; i <= n; i++) t = t "|@|" a[i]
+        print a[1], a[2], a[3], t, a[4], a[5], a[6], a[7] }'
+  tmux list-windows -a -F "W|@|#{window_id}|@|#{session_name}|@|#{window_index}|@|#{window_name}" 2>/dev/null |
+    LC_ALL=C awk -v OFS="$TAB" '{ n = split($0, a, "\\|@\\|"); t = a[5]; for (i = 6; i <= n; i++) t = t "|@|" a[i]; print a[1], a[2], a[3], a[4], t }'
+  # G and not S: the S records are the state files.
+  tmux list-sessions -F "G|@|#{session_name}|@|#{?@tagents_made,1,0}|@|#{session_path}" 2>/dev/null |
+    LC_ALL=C awk -v OFS="$TAB" '{ n = split($0, a, "\\|@\\|"); print a[1], a[2], a[3], a[4] }'
   live_panes | sed "s/^/L${TAB}/"
   dir_roots
   [ -e "$LABELS" ] && LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '{ print "N", $1, $2 }' "$LABELS"
