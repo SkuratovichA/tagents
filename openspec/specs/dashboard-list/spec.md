@@ -1,12 +1,12 @@
 # dashboard-list Specification
 
 ## Purpose
-What the tagents dashboard list shows: one row per Claude Code session, grouped by project, with the state glyphs, the columns that fit the pane, the order the rows keep, the columns a user can hide, the preview of a row, and the timeline view.
+What the tagents dashboard list shows: one row per Claude Code session, grouped by the tmux session its window is in, with a dimmed row for every window that holds no chat, the state glyphs, the columns that fit the pane, the order the rows keep, the columns a user can hide, the preview of a row, and the timeline view.
 
 ## Requirements
 
 ### Requirement: The list is produced by `tagents --list`
-`tagents --list` SHALL print one line per row of the list for fzf to read, each line made of five TAB-separated fields: the pane key, the text of the row with its colours, the row's state, the session id and the directory. `tagents --flat` SHALL print the same list ungrouped whatever mode is saved.
+`tagents --list` SHALL print one line per row of the list for fzf to read, each line made of five TAB-separated fields: the row key (the pane id of a chat, the window id of a dimmed window row), the text of the row with its colours, the row's state, the session id and the directory. `tagents --flat` SHALL print the same list ungrouped whatever mode is saved.
 
 #### Scenario: Row fields
 - **WHEN** a session in `~/projects/app` is running in pane `%12` with session id `a1b2c3d4-…`
@@ -14,33 +14,14 @@ What the tagents dashboard list shows: one row per Claude Code session, grouped 
 
 #### Scenario: Nothing is running
 - **WHEN** the dashboard has no row to show
-- **THEN** the list it hands to fzf is one dim line reading `no claude sessions running` with the pane key `-` and the state `none`
+- **THEN** the list it hands to fzf is one dim line reading `no claude sessions running` with the key `-` and the state `none`
 
-### Requirement: Rows are grouped into a tree by project
-By default rows SHALL be grouped by project: one header line per project followed by that project's rows, drawn with `├` and `└` tees. A project is the repository root of the session's directory. A session started in a subdirectory stays in its project's group and shows the subdirectory, relative to the project, in front of its detail text.
-
-#### Scenario: Tree is the default
-- **WHEN** two sessions run in `~/projects/app` and nothing has been toggled to flat
-- **THEN** the list has one header line for `app` and two rows under it
-
-#### Scenario: Subdirectory
-- **WHEN** a session runs in `~/projects/app/packages/client`
-- **THEN** it is listed under the `app` header and its detail text starts with `packages/client`
-
-#### Scenario: Two projects that differ only in a Cyrillic letter
-- **WHEN** sessions run in `~/projects/я` and `~/projects/ю`, two of them in the first
-- **THEN** the list has a header for each, the two rows of `я` sit together under its header, and the last row of each project is drawn with `└`
-
-#### Scenario: Two directories that differ only in a Cyrillic letter
-- **WHEN** sessions run in `~/projects/я/src` and `~/projects/ю/src`, each below its own repository
-- **THEN** the headers are `я` and `ю`, and no header is `src`
-
-#### Scenario: The home directory with a letter after it
-- **WHEN** a session runs in a project whose path is the home directory followed by `я`
-- **THEN** its header names the project after the directory, not `~`
+#### Scenario: A dimmed window row
+- **WHEN** a window of a group runs no chat
+- **THEN** its line starts with the window id, for example `@7`, and its third and fourth fields are `none` and empty
 
 ### Requirement: ctrl-t switches between the tree and a flat list
-`ctrl-t` SHALL switch between the tree and a flat list without headers, and the choice SHALL persist across restarts in a marker file in the state directory; switching rings the refresher's channel. `TA_FLAT=1` SHALL force the flat list for one run. A flat row SHALL carry its project's directory name in a column of its own, which hiding the `loc` column does not remove.
+`ctrl-t` SHALL switch between the tree and a flat list without headers, and the choice SHALL persist across restarts in a marker file in the state directory; switching rings the refresher's channel. `TA_FLAT=1` SHALL force the flat list for one run. A flat list SHALL hold chats only, with no dimmed window rows. A flat row SHALL carry the name of its group, the session or `no window`, in a column of its own, which hiding the `loc` column does not remove.
 
 #### Scenario: Toggling
 - **WHEN** the user presses `ctrl-t` twice
@@ -48,29 +29,52 @@ By default rows SHALL be grouped by project: one header line per project followe
 
 #### Scenario: Flat rows name their project
 - **WHEN** the list is flat and at least 98 columns are available
-- **THEN** each row names its project as well as the agent, also when `loc` is hidden
+- **THEN** each row names its group, the session or `no window`, as well as the agent, also when `loc` is hidden
 
-### Requirement: A project header shows the project and what is going on in it
-The header of a project SHALL read `▾ <project name>`, then the project's path with `~` for the home directory when the list is 92 columns wide or more, then one badge per state present, then the five-hour cost total. It SHALL be bold when at least one row in the project is not closed and dim when every row is closed.
+#### Scenario: No dimmed rows when flat
+- **WHEN** a group has a window that runs no chat and the list is flat
+- **THEN** that window has no line
+
+### Requirement: A group header shows the session and what is going on in it
+The header of a group SHALL read `▾ <group name>`, then the group's path with `~` for the home directory when the list is 92 columns wide or more, then one badge per state present, then the five-hour cost total. The path of a session group is the session's working directory as tmux reports it, and the group `no window` shows no path. It SHALL be bold when at least one row in the group is not closed, a dimmed window row counting as not closed, and dim when every row is closed.
 
 #### Scenario: Badges
-- **WHEN** a project has one blocked, one idle and one working agent
+- **WHEN** a group has one blocked, one idle and one working agent
 - **THEN** its header ends with `⚠1 ✓1 ●1` in the order blocked, idle, working, new, unknown, closed, each coloured as its state
 
 #### Scenario: Narrow pane drops the path
 - **WHEN** the list is built for fewer than 92 columns
-- **THEN** the header shows the project name and badges but not the path
+- **THEN** the header shows the group name and badges but not the path
 
 #### Scenario: Five-hour total
-- **WHEN** a project has spent money in the last five hours, the list is 60 columns wide or more and `cost` is not hidden
+- **WHEN** a group has spent money in the last five hours, the list is 60 columns wide or more and `cost` is not hidden
 - **THEN** its header ends with the total as `$x/5h`
 
-### Requirement: A project header stands in for the row directly under it
-A group header line SHALL carry the pane key, state, session id and directory of the row printed directly beneath it, so a key pressed on a header acts on that agent. That row is chosen among the rows that are not child sessions, open before closed, then the one typed into most recently; a child is chosen only when the project has nothing else.
+#### Scenario: Session name
+- **WHEN** the group is session `release notes`
+- **THEN** its header reads `▾ release notes`
+
+### Requirement: A group header stands in for the row directly under it
+A group header line SHALL carry the key, state, session id and directory of the row printed directly beneath it, so a key that acts on an agent (send, rename, kill, pick) pressed on a header acts on that agent. `enter` and `ctrl-g` on the header of a session group SHALL instead show the session (the `window-rows` capability).
 
 #### Scenario: Header and first row agree
-- **WHEN** a project has a closed and a live agent
-- **THEN** the header's pane key equals the pane key of the first row beneath it, which is the live one
+- **WHEN** a group has a closed and a live agent
+- **THEN** the header's key equals the key of the first row beneath it, which is the live one
+
+#### Scenario: A group of windows only
+- **WHEN** a session tagents created holds one window `server` and no chat
+- **THEN** the header carries the window id of `server`, the state `none` and no session id
+
+### Requirement: The row a group header stands for
+The row a header stands in for SHALL be chosen among the rows of the group that are not child sessions: open chats before dimmed window rows before closed rows, and among chats the one typed into most recently. A child is chosen only when the group has nothing else.
+
+#### Scenario: A chat before a window row
+- **WHEN** a group holds a dimmed window row and a live chat
+- **THEN** the header carries the key of the live chat
+
+#### Scenario: Only a child
+- **WHEN** the only rows of a group are a child session and nothing else
+- **THEN** the header carries the child's key
 
 ### Requirement: Each state has its own glyph, label and colour
 The list SHALL draw states as follows: `⚠` BLOCKED in bold yellow, `✓` IDLE in cyan, `●` working in green, `○` new in grey, `·` with the word `?` in grey for a running Claude with no hook event yet, and `✗` closed in grey. The state word SHALL appear only when the list is wide enough for the label column; the glyph and colour always appear. Which state a session is in, and when, is decided by the `agent-state` capability.
@@ -84,7 +88,7 @@ The list SHALL draw states as follows: `⚠` BLOCKED in bold yellow, `✓` IDLE 
 - **THEN** the row is drawn with `·`, its age column reads `--`, and the detail text is empty
 
 ### Requirement: Closed rows say whether they can be resumed
-A row whose Claude process is gone but whose record is younger than `TA_DEAD_TTL` seconds (default 86400) SHALL be listed as closed and dimmed, below the live rows of its project. Its detail text SHALL be `closed — enter resumes it`, or `closed, no session id — cannot resume` when the record has no session id.
+A row whose Claude process is gone but whose record is younger than `TA_DEAD_TTL` seconds (default 86400) SHALL be listed as closed and dimmed, below the live rows of its group. Its detail text SHALL be `closed — enter resumes it`, or `closed, no session id — cannot resume` when the record has no session id.
 
 #### Scenario: Expired corpse
 - **WHEN** a closed record is older than `TA_DEAD_TTL`
@@ -95,7 +99,7 @@ A row whose Claude process is gone but whose record is younger than `TA_DEAD_TTL
 - **THEN** the closed record has no row
 
 ### Requirement: Sessions with no pane are listed as headless
-A session started with `claude -p` by a daemon, a job or `nohup`, with no tmux pane in its ancestry, SHALL be listed in the group of the directory it was launched in, with `headless` in the location column. It is live while the process id its record names is alive, and shows the ordinary states.
+A session started with `claude -p` by a daemon, a job or `nohup`, with no tmux pane in its ancestry, SHALL be listed in the group `no window`, with `headless` in the location column. It is live while the process id its record names is alive, and shows the ordinary states.
 
 #### Scenario: Headless row location
 - **WHEN** a headless session is running
@@ -124,27 +128,39 @@ A session that an agent started itself with `claude -p` from its own tools SHALL
 - **WHEN** a child's process has ended
 - **THEN** its detail reads `child ended — nothing to resume` and its row expires after `TA_SUB_TTL` seconds (default 1800), not after `TA_DEAD_TTL`
 
-### Requirement: Projects keep the place their path gives them
-Projects SHALL be ordered by path, not by urgency. A project SHALL NOT climb the list when one of its agents blocks or drop back when the agent is answered. The only project that moves is one in which every row is closed, which sorts to a dim section after every project with a live agent.
+### Requirement: Groups keep the place their name gives them
+Session groups SHALL be ordered by session name, not by urgency. A group SHALL NOT climb the list when one of its agents blocks or drop back when the agent is answered. The only session group that moves is one in which every row is closed, which sorts to a dim section after every session group with a live row. The group `no window` SHALL always be the last group.
+
+#### Scenario: Sessions by name
+- **WHEN** sessions `work` and `personal` hold chats
+- **THEN** the header `personal` comes before `work`
 
 #### Scenario: Blocking does not reorder
-- **WHEN** an agent in the second project blocks
-- **THEN** the order of the projects is unchanged
+- **WHEN** an agent in the second group blocks
+- **THEN** the order of the groups is unchanged
 
 #### Scenario: Closed-only project sinks
-- **WHEN** a project holds only closed rows
-- **THEN** it is listed after every project that has a live row, even when its path sorts first
+- **WHEN** a session group holds only closed rows
+- **THEN** it is listed after every session group that has a live row, even when its name sorts first
 
-### Requirement: Inside a project rows follow the user's last message
-Rows inside a project SHALL be ordered by when the user last typed into the session, newest first, with closed rows underneath, and never by state or by anything that changes during a turn. A child SHALL be placed with its parent, parent first, then its own children. In a flat list the same rule applies to the whole list: open rows before closed, newest conversation first.
+#### Scenario: The trailing group is last
+- **WHEN** the group `no window` holds a live headless session and a session group holds only closed rows
+- **THEN** `no window` is listed after that session group
+
+### Requirement: Inside a group rows follow the user's last message
+Rows inside a group SHALL be ordered by when the user last typed into the session, newest first, then the dimmed window rows in window order, then the closed rows, and never by state or by anything that changes during a turn. A child SHALL be placed with its parent, parent first, then its own children. In a flat list the same rule applies to the whole list: open rows before closed, newest conversation first.
 
 #### Scenario: State changes do not move rows
 - **WHEN** an agent goes from working to blocked and back
 - **THEN** its position among its siblings is unchanged
 
 #### Scenario: Typing moves a row to the top
-- **WHEN** the user sends a prompt to an agent that was second in its project
+- **WHEN** the user sends a prompt to an agent that was second in its group
 - **THEN** after the next refresh it is first
+
+#### Scenario: Window rows follow the chats
+- **WHEN** a group has a window that runs no chat and two chats
+- **THEN** the dimmed row is listed after both chats and before any closed row
 
 ### Requirement: The age column is time since the user's last message
 The second column of a row SHALL show how long ago the user last typed into the session, as `m:ss` below an hour and `HhMM` from an hour on, so the user can see how much of the one-hour prompt cache is left. It SHALL be read from the per-session file the hook writes on prompt submission in the state directory's `prompt/` folder, and fall back to the time of the record's last event when that file does not exist.
@@ -264,13 +280,6 @@ The model column SHALL show the model the session is set to now, as reported by 
 - **WHEN** the session's model is `claude-haiku-4-5-20251001`
 - **THEN** the column reads `haiku4.5`
 
-### Requirement: Docked chats are marked in the tree
-Where the tree would draw a dash before a row, the list SHALL draw `▶` for the chat docked in the sidebar's current seat and a dim `▹` for every other docked chat, so the user can see which row `enter` would replace. A header and a child row are never marked. Seats themselves belong to the `seats-and-docking` capability.
-
-#### Scenario: Two chats side by side
-- **WHEN** two chats are docked and the cursor is in the first one's seat
-- **THEN** the first chat's row has `▶` and the second `▹`
-
 ### Requirement: Columns can be hidden with ctrl-w
 `ctrl-w` SHALL open a picker with one line per column — `badge`, `ctx`, `cost`, `model`, `acct`, `loc` — each showing `[x]` when shown and `[ ]` when hidden. `enter` SHALL toggle the column under the cursor, flip the checkmark in place and reload the list behind; the picker SHALL stay open with the cursor where it was, and `esc` closes it. Hiding a column gives its width to the detail and reorders nothing.
 
@@ -380,3 +389,36 @@ A session already running when history began, with no start event, SHALL show `?
 #### Scenario: Child marker
 - **WHEN** a session was started by another agent
 - **THEN** its name is shown as `↳ <name>`
+
+### Requirement: Rows are grouped into a tree by session
+By default rows SHALL be grouped by session: one header line per group followed by that group's rows, drawn with `├` and `└` tees. A row whose chat has a window SHALL be in the group of that window's tmux session, and the header SHALL name the session (which sessions are groups is the `window-rows` capability's).
+
+#### Scenario: Tree is the default
+- **WHEN** two chats run in session `work` and nothing has been toggled to flat
+- **THEN** the list has one header line for `work` and two rows under it
+
+#### Scenario: Two directories, one session
+- **WHEN** the two chats of session `work` run in `~/projects/app` and `~/projects/api`
+- **THEN** both rows are under the header `work`
+
+#### Scenario: Two sessions that differ only in a Cyrillic letter
+- **WHEN** sessions `я` and `ю` hold chats, two of them in the first
+- **THEN** the list has a header for each, the two rows of `я` sit together under its header, and the last row of each group is drawn with `└`
+
+### Requirement: Rows with no window form the last group
+Every row with no window, a closed session whose pane is gone and a headless session, SHALL be in one trailing group headed `no window`, which is always the last group.
+
+#### Scenario: Rows with no window
+- **WHEN** a closed session's pane is gone and a headless session runs, and a session called `app` holds chats
+- **THEN** both are under one header `no window`, listed after the header `app`, even when a session called `no window` exists
+
+### Requirement: A subdirectory is shown in front of the detail text
+A session started in a subdirectory of its repository SHALL show the subdirectory, relative to the root of that repository, in front of its detail text, whichever group it is in.
+
+#### Scenario: Subdirectory
+- **WHEN** a session runs in `~/projects/app/packages/client`
+- **THEN** its detail text starts with `packages/client`
+
+#### Scenario: Subdirectory of a Cyrillic repository
+- **WHEN** a session runs in `~/projects/я/src`, below its own repository
+- **THEN** its detail text starts with `src`

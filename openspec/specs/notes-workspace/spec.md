@@ -1,12 +1,12 @@
 # notes-workspace Specification
 
 ## Purpose
-`tnotes` gives every Claude chat a real editor beside it, on a prompt file that lives with the project in `.claude/notes/` (a git repository of its own), and hands what was written back to the chat. It also keeps those editors out of the way when the chat is not being looked at.
+`tnotes` gives every Claude chat a real editor beside it, on a prompt file that lives with the project in `.claude/notes/` (a git repository of its own), and hands what was written back to the chat. The editor is a split of the chat's window and goes off the screen and comes back with it; `sync` only cleans up.
 
 ## Requirements
 
 ### Requirement: Command surface
-`tnotes` SHALL accept the verbs `toggle <pane>`, `sync [pane]`, `send <chat> <dir>`, `close <editor>` and `editor <chat> <dir>`. Run with no argument, or with `-h` or `--help`, it SHALL print its usage text and exit 0. Any other first argument SHALL print `tnotes: unknown command <word>` on stderr and exit 2.
+`tnotes` SHALL accept the verbs `toggle <pane>`, `sync`, `send <chat> <dir>`, `close <editor>` and `editor <chat> <dir>`. `sync` takes no pane, and a pane given to it, as an older focus hook passed one, is ignored. Run with no argument, or with `-h` or `--help`, it SHALL print its usage text and exit 0. Any other first argument SHALL print `tnotes: unknown command <word>` on stderr and exit 2.
 
 #### Scenario: Unknown verb
 - **WHEN** `tnotes frobnicate` is run
@@ -17,6 +17,10 @@
 - **WHEN** `tnotes send` or `tnotes editor` is run without both a chat and a directory
 - **THEN** stderr says `tnotes: send <chat> <dir>` or `tnotes: editor <chat> <dir>` respectively
 - **AND** the exit status is 2
+
+#### Scenario: An old hook's argument
+- **WHEN** `tnotes sync %5` is run
+- **THEN** it behaves as `tnotes sync` and exits 0
 
 ### Requirement: Errors are shown where the user is looking
 When `tnotes` fails for a reason the user should see, it SHALL show `tnotes: <message>` as a tmux status message, fall back to stderr when no tmux client can show it, and exit 1.
@@ -55,90 +59,49 @@ The notes folder for a chat SHALL be `.claude/notes` under the top level of the 
 - **THEN** the notes folder is still the one at the repository root
 
 ### Requirement: Toggle opens an editor beside the chat
-`tnotes toggle <pane>` on a chat that has no editor SHALL split the chat's window horizontally, giving the new editor pane 45 percent of the width, start the editor program in the notes folder, and leave the cursor where it was. The editor pane SHALL carry no `@tagents_*` option, so the seat logic of the dashboard never sees it.
+`tnotes toggle <pane>` on a chat that has no editor SHALL split the chat's window horizontally, giving the new editor pane 45 percent of the chat pane's width, start the editor program in the notes folder, and leave the cursor where it was. The editor is an ordinary pane of that window: tnotes SHALL NOT move it afterwards, so it leaves the screen with its window when another row is selected and is there again when the row is selected again.
 
 #### Scenario: First toggle
 - **WHEN** `tnotes toggle` is run on a chat with no editor
-- **THEN** the chat's window holds two panes and the editor is in it
+- **THEN** the chat's window holds the editor as a second pane, beside the chat
 
 #### Scenario: Seats are unaffected
-- **WHEN** editors are opened, parked and brought back
-- **THEN** panes that are not chats or editors stay in their windows, and the `seats-and-docking` capability behaves as before
+- **WHEN** editors are opened and closed
+- **THEN** panes that are not chats or editors stay in their windows, and the sidebar and the user's own panes are not moved by `tnotes`
+
+#### Scenario: Another row selected
+- **WHEN** the user selects another row of the dashboard and then selects the chat's row again
+- **THEN** the editor is the same pane, still beside the chat, with the width it had
 
 ### Requirement: Editor and chat name each other
-After an editor is created the chat pane SHALL carry the option `@ta_notes` naming the editor pane, and the editor pane SHALL carry `@ta_notes_for` naming the chat and `@ta_notes_open` set to `1`. The global option `@ta_notes_any` SHALL be set to `1` while any editor exists, for the refresher's focus hooks to test.
+After an editor is created the chat pane SHALL carry the option `@ta_notes` naming the editor pane, and the editor pane SHALL carry `@ta_notes_for` naming the chat.
 
 #### Scenario: Markers after the first toggle
 - **WHEN** an editor has just been created
 - **THEN** the chat's `@ta_notes` is the editor's pane id and the editor's `@ta_notes_for` is the chat's pane id
-- **AND** `@ta_notes_open` is `1` on the editor and `@ta_notes_any` is `1` globally
 
-### Requirement: Focus hooks are requested
-When an editor is created, `tnotes` SHALL ask `tagents --focus-hooks` to install the tmux focus hooks, if `tagents` is on the `PATH`, because a user who only takes notes never docks anything and nothing else would install them.
-
-#### Scenario: Notes without docking
-- **WHEN** the first editor is opened on a server where no chat was ever docked
-- **THEN** `tagents --focus-hooks` is run once, and a failure of it does not fail the toggle
-
-### Requirement: Toggle hides and restores the editor
-`tnotes toggle <pane>` on a chat whose editor exists SHALL hide the editor when it is beside the chat, setting its `@ta_notes_open` to `0`, and SHALL bring it back when it is elsewhere, setting `@ta_notes_open` to `1` and moving the cursor into the editor. This SHALL be the only operation that moves the cursor into an editor.
+### Requirement: Toggle moves the cursor between the chat and its editor
+`tnotes toggle <pane>` on a chat whose editor exists SHALL move the cursor into the editor, selecting the editor's window first when it is not the one on screen, and SHALL move the cursor back into the chat when it is already in the editor. It SHALL NOT hide, move or close the editor. This SHALL be the only operation that moves the cursor into an editor.
 
 #### Scenario: Toggle twice
-- **WHEN** `tnotes toggle` is run on a chat with an editor beside it
-- **THEN** the editor moves to the hidden `ta-notes` session and `@ta_notes_open` becomes `0`
+- **WHEN** `tnotes toggle` is run on a chat with an editor beside it and the cursor is in the chat
+- **THEN** the cursor is in the editor and the editor has not moved
 - **WHEN** it is run again
-- **THEN** the editor is beside the chat again, `@ta_notes_open` is `1`, and the cursor is in the editor
+- **THEN** the cursor is in the chat
 
-### Requirement: Hidden editors live in a session of their own
-Hidden editors SHALL be parked in a detached tmux session named `ta-notes`, one window per editor, named after the chat pane id. The session SHALL be created on demand with a holder window, so that it survives the last editor leaving. Pane ids and the `@ta_notes`, `@ta_notes_for` markers SHALL be the same after parking and after coming back.
-
-#### Scenario: Parking
-- **WHEN** an editor is hidden
-- **THEN** its pane is alive in the `ta-notes` session and the chat's window no longer lists it
-- **AND** the chat's `@ta_notes` still names it
-
-### Requirement: The split is remembered
-When an editor is parked from beside its chat, its share of the pair's width SHALL be recorded as a percentage in the pane option `@ta_notes_pct`, when that share is between 10 and 90. When the editor is brought back it SHALL be given that share of the chat's current width, as an absolute number of columns of at least 10; when no usable value is recorded it SHALL get 45 percent.
-
-#### Scenario: Narrowed editor round trip
-- **WHEN** the editor is resized narrower, parked, and brought back
-- **THEN** its width is within two columns of what it was
-
-### Requirement: Sync follows the user's focus
-`tnotes sync <pane>`, called by the tmux focus hooks with the pane the user arrived at, SHALL hide every editor that sits beside its chat in a window other than the arriving pane's window, and SHALL bring back the editor of the arriving chat if it is parked and its `@ta_notes_open` is `1`, without moving the cursor. An editor the user hid with `toggle` (`@ta_notes_open` `0`) SHALL stay hidden.
-
-#### Scenario: Arriving in another window
-- **WHEN** the user switches to a window with no relation to the chat and `tnotes sync <that pane>` runs
-- **THEN** the chat's editor is parked, its `@ta_notes_open` is still `1`, and the chat still names it
-
-#### Scenario: Coming back
-- **WHEN** `tnotes sync <chat>` runs on arrival at the chat's window
-- **THEN** the editor is beside the chat again, with the width it had before
-
-#### Scenario: A hidden-by-hand editor stays hidden
-- **WHEN** an editor was hidden by `toggle` and `tnotes sync <chat>` runs
-- **THEN** it stays in the `ta-notes` session
-
-### Requirement: Hiding and showing are idempotent
-Hiding an editor that is already parked, or showing one that is already beside its chat, SHALL leave the layout untouched, so the several syncs that one window switch starts do not disturb it.
-
-#### Scenario: Two syncs for one switch
-- **WHEN** `tnotes sync <chat>` runs twice in a row on arrival at the chat's window
-- **THEN** the editor is beside the chat once, with the same width
-
-### Requirement: Sync without an argument only cleans up
-`tnotes sync` with no pane SHALL NOT hide an editor that is beside its chat. It SHALL only park editors stranded in a window other than their chat's, and close editors whose chat pane no longer exists. It SHALL exit 0.
+### Requirement: Sync only cleans up
+`tnotes sync` SHALL NOT move, hide or split any editor of a living chat. It SHALL close editors whose chat pane no longer exists (see the next requirement), bring back editors parked by an older version, and exit 0.
 
 #### Scenario: The backstop changes nothing
 - **WHEN** `tnotes sync` is run twice with every editor beside its chat
 - **THEN** every editor stays where it was and is alive
 
 ### Requirement: Orphaned editors are closed
-`tnotes sync` SHALL close every editor whose chat pane is gone. When no editor with a living chat remains anywhere, it SHALL unset the global option `@ta_notes_any`.
+`tnotes sync` SHALL close every editor whose chat pane is gone.
 
 #### Scenario: Chat killed
 - **WHEN** a chat with an editor is killed and `tnotes sync` runs
-- **THEN** the editor pane is gone and `@ta_notes_any` is unset
+- **THEN** the editor pane is gone
 
 ### Requirement: One layout move at a time
 `toggle` and `sync` SHALL serialise through a lock directory `.tnotes.lock` in the agent-state directory (`$TA_STATE_DIR`, default `~/.claude/agent-state`). A lock older than five seconds SHALL be taken over. `sync` that cannot get the lock within about three seconds SHALL give up silently with exit 0; `toggle` SHALL fail with `tnotes: another tnotes is moving panes; try again`.
@@ -153,7 +116,7 @@ Hiding an editor that is already parked, or showing one that is already beside i
 #### Scenario: Quit sends and unlinks
 - **WHEN** the user writes a draft and quits the editor
 - **THEN** the draft is committed, a reference is left in the chat's input (see the `send` requirements)
-- **AND** the editor pane is gone, the chat's `@ta_notes` is unset, and the chat's window is back to one pane
+- **AND** the editor pane is gone, the chat's `@ta_notes` is unset, and the chat's window no longer holds the editor
 
 #### Scenario: No nvim
 - **WHEN** the editor program starts and `nvim` is not on the `PATH`
@@ -269,8 +232,26 @@ In the `submit` shape, `tnotes send` SHALL paste the draft as above, press Enter
 - **THEN** the changes are written to `prompt.md` before the pane goes
 
 ### Requirement: Other panes are left alone
-`tnotes` SHALL NOT move, split, join or kill any pane that is neither a chat it was asked about nor one of its own editors, and the editor panes SHALL NOT take part in seats and docking.
+`tnotes` SHALL NOT move, split, join or kill any pane that is neither a chat it was asked about nor one of its own editors, and SHALL NOT move an editor after creating it. Its editors are ordinary panes of the chat's window, which the dashboard's selecting, following and joining of rows never move.
 
 #### Scenario: Surrounding windows
-- **WHEN** editors are opened, parked, restored and closed
+- **WHEN** editors are opened and closed
 - **THEN** every other pane is alive in the window it started in, and a window holding only a non-chat pane still has that one pane
+
+### Requirement: Editors parked by an older version come back
+`tnotes sync` SHALL, when a session named `ta-notes` exists, bring every editor parked in it back beside its chat as a split of the chat's window, given the share of the chat's width recorded in the editor's `@ta_notes_pct` when that is between 10 and 90 and 45 percent otherwise, and leave the cursor where it was. It SHALL do nothing when there is no such session.
+
+#### Scenario: A parked editor
+- **WHEN** an editor was parked in `ta-notes` by an older version and `tnotes sync` runs
+- **THEN** the editor is a pane of its chat's window and `@ta_notes` still names it
+
+#### Scenario: Nothing parked
+- **WHEN** there is no `ta-notes` session
+- **THEN** `tnotes sync` changes nothing
+
+### Requirement: The parking session is wound up
+`tnotes sync` SHALL close a parked editor whose chat pane is gone, unset `@ta_notes_pct`, `@ta_notes_open` and the global `@ta_notes_any`, and end the `ta-notes` session once no editor is left in it.
+
+#### Scenario: The chat is gone
+- **WHEN** the chat of a parked editor no longer exists
+- **THEN** the editor is closed and the `ta-notes` session is gone

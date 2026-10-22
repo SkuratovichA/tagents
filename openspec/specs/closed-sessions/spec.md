@@ -113,7 +113,7 @@ For the line under the cursor the picker SHALL show on its right half, via `tage
 - **THEN** its prompts are not in this preview
 
 ### Requirement: enter resumes the chosen session on the account it ran on
-`enter` SHALL resume the picked session with `claude --resume <id>` on the account it ran on, in the directory it last ran in, in a new window of the tmux session that owns that directory (the one whose live panes mostly sit in it, else the dashboard session), and dock it as `enter` on a live agent would. The command is built by the `accounts` capability and the launch is `chat-launch`'s. Afterwards the dashboard list SHALL reload.
+`enter` SHALL resume the picked session with `claude --resume <id>` on the account it ran on, in the directory it last ran in, in a new window of the tmux session of the group the dashboard cursor was in (the session of the client when it was on the group `no window`), and select it as `enter` on a live agent would. The command is built by the `accounts` capability and the launch is `chat-launch`'s. Afterwards the dashboard list SHALL reload.
 
 #### Scenario: Work session
 - **WHEN** the user picks a session of the profile `work`, which has no config directory
@@ -128,7 +128,7 @@ For the line under the cursor the picker SHALL show on its right half, via `tage
 - **THEN** it is resumed on the default login and not on a profile called `?`
 
 #### Scenario: Owning session
-- **WHEN** the session ran in a project whose windows live in the tmux session `proj`
+- **WHEN** the dashboard cursor was on a row of the tmux session `proj`
 - **THEN** its new window is created in `proj`
 
 ### Requirement: A vanished directory is no reason to refuse
