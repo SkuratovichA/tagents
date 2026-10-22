@@ -313,6 +313,18 @@ resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
   return 0
 }
 
+# The parking session of an older version after a restore: an editor in it that no chat links (a reboot drops every pane option) is an orphan and goes; one that still names its chat is live, with buffers nobody saved, and stays, with the holder window, until tnotes sync has brought it back. The session is wound up, as tnotes does itself, once nothing but the holder is left in it. The names are tnotes' own (tests/resurrect.sh pins them). |@| like every other format here: a window name with a space in it, or none at all, would shift space-separated fields.
+resurrect_orphan_editors() {
+  local w left
+  tmux has-session -t '=ta-notes' 2>/dev/null || return 0
+  tmux list-panes -s -t '=ta-notes:' -F '#{window_id}|@|#{@ta_notes_for}|@|#{window_name}' 2>/dev/null |
+    LC_ALL=C awk -F'\\|@\\|' '$3 != "hold" && $2 == "" { print $1 }' | LC_ALL=C sort -u |
+    while IFS= read -r w; do tmux kill-window -t "$w" 2>/dev/null; done
+  left=$(tmux list-panes -s -t '=ta-notes:' -F '#{window_name}' 2>/dev/null | LC_ALL=C awk '$0 != "hold" { n++ } END { print n + 0 }')
+  [ "$left" = 0 ] && tmux kill-session -t '=ta-notes' 2>/dev/null
+  return 0
+}
+
 # The tnotes editor of every restored chat that had one beside it, opened again once the chats are up — best-effort, and anything but `off` in resurrect.notes is reopen, as --check says. Editors tmux-resurrect brought back hold the notes files open with no @ta_notes_for to link them to a chat: orphans, closed first — in each restored chat's window the pane in the notes directory that no chat links to, and the whole session ta-notes when a save of an older version brought it back. tnotes is looked up on PATH first, then beside this script the way the refresher finds it (refresh.sh): a hook's PATH may not hold ~/.local/bin.
 resurrect_notes() {  # <restored panes whose editor was beside them…> — after the agents are up
   local mode tn p w
@@ -320,7 +332,7 @@ resurrect_notes() {  # <restored panes whose editor was beside them…> — afte
   [ "$mode" = off ] && return 0
   tn=$(command -v tnotes 2>/dev/null) || tn="${SELF%/*}/tnotes"
   [ -x "$tn" ] || return 0
-  tmux has-session -t '=ta-notes' 2>/dev/null && tmux kill-session -t '=ta-notes' 2>/dev/null
+  resurrect_orphan_editors
   [ $# -gt 0 ] || return 0
   for p in "$@"; do
     tmux list-panes -t "$p" -F '#{pane_id}|@|#{@ta_notes_for}|@|#{pane_current_path}' 2>/dev/null |

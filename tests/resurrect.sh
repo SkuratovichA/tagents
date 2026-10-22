@@ -822,13 +822,19 @@ ok "the unlinked editor beside it is gone" 0 "$(panes_named "$OP")"
 ok "the first orphan is gone"  gone "$(gone "$O1")"
 ok "the second orphan is gone" gone "$(gone "$O2")"
 ok "an orphan whose window name is the holder's plus a Cyrillic letter is gone too" gone "$(gone "$O3")"
-ok "the holder is gone" 0 "$(tm list-windows -t =ta-notes: -F '#{window_name}' 2>/dev/null | grep -c '^hold$')"
-ok "the linked editor goes with the session" gone "$(gone "$LW")"
-ok "the ta-notes session is wound up" no "$(tm has-session -t =ta-notes 2>/dev/null && echo yes || echo no)"
+# An editor that still names its chat holds buffers nobody saved: it, the holder and the session stay until tnotes sync has brought it back.
+ok "the linked editor stays" there "$(gone "$LW")"
+ok "...with the holder" 1 "$(tm list-windows -t =ta-notes: -F '#{window_name}' 2>/dev/null | grep -c '^hold$')"
+ok "...and the session" yes "$(tm has-session -t =ta-notes 2>/dev/null && echo yes || echo no)"
 PP=$(tm display -p -t tatest-parked:0.0 '#{pane_id}' 2>/dev/null)
 outof "$PP" >/dev/null; ok "the chat whose editor was parked runs too" 0 "$?"
 ok "tnotes was asked for the one editor that was on screen, once" "toggle $NP" "$(cat "$OUT/tnotes.log" 2>/dev/null)"
 has "...and the report says so" "notes beside $NP" "$out"
+# Once nothing links an editor any more, nothing but the holder is left and the session is wound up.
+tm kill-window -t "$LW"
+run --resurrect --from "$SNAP/notes.tsv" >/dev/null
+ok "no editor left: the holder is gone" 0 "$(tm list-windows -t =ta-notes: -F '#{window_name}' 2>/dev/null | grep -c '^hold$')"
+ok "...and the ta-notes session is wound up" no "$(tm has-session -t =ta-notes 2>/dev/null && echo yes || echo no)"
 
 tm kill-session -t =ta-notes >/dev/null 2>&1
 notes_park
