@@ -310,6 +310,34 @@ ok "F14 one sidebar" 1 "$(nsbs)"
 ok "F14 in the window on screen" "$W3" "$(sbwin)"
 ok "F14 no lock left" no "$([ -d "$WRSTATE/.follow.lock" ] && echo yes || echo no)"
 
+t "F28 a move waits for the follow lock and reads where the sidebar is once it has it"
+SBL=$(sbpane); mkchat tatest-work lk; WLK=$LASTWIN
+tm set -w -t "$W2" @tagents_widths "%0:1 "                # a saved split that is not the real one
+mkdir "$WRSTATE/.follow.lock"                              # another follow is in the middle of its move
+modrun sidebar_move "$WLK" & MV=$!
+sleep 0.6
+ok "F28 nothing moved while the lock was held" "$W3" "$(sbwin)"
+tm join-pane -h -b -f -d -l 45% -s "$SBL" -t "$W2"         # meanwhile the sidebar is put into window 2
+want=$(widths "$W2" "$SBL")
+rmdir "$WRSTATE/.follow.lock"
+wait "$MV"
+ok "F28 then the sidebar went to the window asked for" "$WLK" "$(wait_eq "$WLK" sbwin)"
+ok "F28 the widths saved are those of the window it was really in" "$want" "$(tm show -wv -t "$W2" @tagents_widths)"
+ok "F28 the lock is free again" no "$([ -d "$WRSTATE/.follow.lock" ] && echo yes || echo no)"
+tm select-window -t "$W3"; run --follow "$CLIENT"
+
+t "F29 a join tmux refuses is told on the client's status line, and the sidebar stays"
+tm new-session -d -s tatest-tiny -x 6 -y 3 "exec sleep 600"; tm set -t =tatest-tiny: @tagents_made 1
+while tm split-window -d -h -t =tatest-tiny: "exec sleep 600" 2>/dev/null; do :; done
+WTINY=$(wid =tatest-tiny:); before=$(sbwin)
+tm display-message reset
+err=$(modrun sidebar_move "$WTINY" 2>&1 >/dev/null); rc=$?
+ok "F29 the move fails" 1 "$rc"
+has "F29 standard error says why" "no space for a new pane" "$err"
+has "F29 so does the client's status line" "no space for a new pane" "$(msgs)"
+ok "F29 the sidebar stayed" "$before" "$(sbwin)"
+tm kill-session -t =tatest-tiny
+
 t "F9 no sidebar: follow is silent"
 kill_sidebars
 out=$(run --follow "$CLIENT" 2>&1); rc=$?

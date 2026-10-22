@@ -10,6 +10,20 @@
 
 FOLLOW_HOOK_INDEX=43   # beside the ring at EV_HOOK_INDEX (42): set twice is set once, and the owner's hooks keep their own indexes
 FOLLOW_EVENTS='session-window-changed client-session-changed'
+FOLLOW_LOCK="$STATE_DIR/.follow.lock"
+FOLLOW_LOCKED=""   # 1 while this process holds the lock: the lock is not re-entrant, and a follow calls sidebar_move, which takes it for its other callers
+
+# ONE MOVE OR START OF THE SIDEBAR AT A TIME. A follow from a hook, a selection (show_window), ensure-dash and a list claiming its pane can all reach for the sidebar together; the lock is what makes the second one read where the sidebar is after the first has put it there. 0 when THIS call took the lock and its caller releases it with follow_unlock; 1 when this process holds it already or the wait ran out (the work goes on unlocked then: a click that does nothing is worse than a race).
+follow_lock() {
+  [ -n "$FOLLOW_LOCKED" ] && return 1
+  lock_dir "$FOLLOW_LOCK" 10 100 3 || return 1
+  FOLLOW_LOCKED=1
+  return 0
+}
+follow_unlock() {
+  FOLLOW_LOCKED=""
+  unlock_dir "$FOLLOW_LOCK"
+}
 
 win_alive() {  # <window-id>
   local list
@@ -78,8 +92,16 @@ win_restore_widths() {  # <window-id> <"%id:width …"> — left to right, only 
 # The sidebar becomes the leftmost full-height pane of <window>. Returns 0 when it is there afterwards. The client is NOT switched here: a
 # caller that also switches the client does that FIRST (show_window in rows.sh), because the sidebar leaving a window it was alone in
 # destroys that window and, when it was the session's only one, the session — and a client attached to it is detached from the terminal.
+# Under the follow lock, taken before anything is read: where the sidebar is, and its widths, are read after a move another caller was in the middle of has finished.
 sidebar_move() {  # <window-id>
-  local win=${1:-} sb from saved
+  local took="" rc
+  follow_lock && took=1
+  sidebar_move_now "$@"; rc=$?
+  [ -n "$took" ] && follow_unlock
+  return "$rc"
+}
+sidebar_move_now() {  # <window-id> — sidebar_move without the lock
+  local win=${1:-} sb from saved err
   [ -n "$win" ] || return 1
   sb=$(dash_pane)
   [ -n "$sb" ] || return 1
@@ -94,10 +116,11 @@ sidebar_move() {  # <window-id>
   [ "$(tmux display -p -t "$sb" '#{window_zoomed_flag}' 2>/dev/null)" = 1 ] && tmux resize-pane -Z -t "$sb" 2>/dev/null
   [ -n "$from" ] && tmux set -w -t "$from" @tagents_widths "$(win_widths "$from" "$sb")" 2>/dev/null
   saved=$(tmux show -wv -t "$win" @tagents_widths 2>/dev/null)
-  if ! tmux join-pane -h -b -f -d -l "${DASH_WIDTH}%" -s "$sb" -t "$win" 2>/dev/null; then
+  if ! err=$(tmux join-pane -h -b -f -d -l "${DASH_WIDTH}%" -s "$sb" -t "$win" 2>&1); then
     # Lost a race to another follow, which is a success; the window closing in between is not.
     [ "$(tmux display -p -t "$sb" '#{window_id}' 2>/dev/null)" = "$win" ] && return 0
-    echo "tagents: could not move the sidebar into $win — it stays where it is" >&2
+    echo "tagents: could not move the sidebar into $win — it stays where it is (${err:-no reason given})" >&2
+    tmux display-message "tagents: could not move the sidebar — ${err:-no reason given}" 2>/dev/null
     return 1
   fi
   # A join into a window whose active pane is zoomed can leave the sidebar behind the zoomed pane: unzoom, then put the widths back.
@@ -135,7 +158,7 @@ cursor_to_window() {  # <window-id>
 follow() {  # [client]
   local client=${1:-} win sess sb locked="" i=0
   legacy_seats_present && return 0
-  lock_dir "$STATE_DIR/.follow.lock" 10 100 3 && locked=1
+  follow_lock && locked=1
   while [ "$i" -lt 3 ]; do
     i=$((i + 1))
     win=${TA_FOLLOW_WINDOW:-$(client_window "$client")}
@@ -152,7 +175,7 @@ follow() {  # [client]
     cursor_to_window "$win"
     [ -n "${TA_FOLLOW_WINDOW:-}" ] && break
   done
-  [ "$locked" = 1 ] && unlock_dir "$STATE_DIR/.follow.lock"
+  [ "$locked" = 1 ] && follow_unlock
   return 0
 }
 
