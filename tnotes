@@ -390,14 +390,13 @@ cmd_send() {
 PANES=""
 # Field lookup over the one pane listing this command takes. No subprocess and no second tmux call: sync runs from the refresher's slow pass while there are editors, and a shell per pane there is a tax on simply moving around tmux.
 field_of() {  # <pane id> <field number, 1-based in the row> -> value, or fail
-  local want=$1 n=$2 id w s c o
-  while read -r id w s c o; do
+  local want=$1 n=$2 id w c s
+  while read -r id w c s; do
     [ "$id" = "$want" ] || continue
     case "$n" in
       2) printf '%s' "$w" ;;
-      3) printf '%s' "$s" ;;
-      4) printf '%s' "$c" ;;
-      5) printf '%s' "$o" ;;
+      3) printf '%s' "$c" ;;
+      4) printf '%s' "$s" ;;
     esac
     return 0
   done <<EOF
@@ -410,11 +409,11 @@ EOF
 cmd_sync() {
   local id ewin esess chat cwin
   take_lock || return 0
-  # Conditional formats, not bare #{@opt}: an unset option renders empty and the row loses a field, which is how a reader ends up believing a pane belongs to somebody it does not.
+  # Conditional formats, not bare #{@opt}: an unset option renders empty and the row loses a field, which is how a reader ends up believing a pane belongs to somebody it does not. The session name is LAST because it may hold a space: read gives the last variable the rest of the line, and a name split in two moved the chat's id into the wrong field, so the chat read as gone and its pane was closed.
   PANES=$(tmux list-panes -a -F \
-    '#{pane_id} #{window_id} #{session_name} #{?@ta_notes_for,#{@ta_notes_for},-}' 2>/dev/null) || return 0
+    '#{pane_id} #{window_id} #{?@ta_notes_for,#{@ta_notes_for},-} #{session_name}' 2>/dev/null) || return 0
   [ -n "$PANES" ] || return 0
-  while read -r id ewin esess chat; do
+  while read -r id ewin chat esess; do
     [ -n "$id" ] || continue
     [ "$chat" = "-" ] && continue
     if ! cwin=$(field_of "$chat" 2); then
