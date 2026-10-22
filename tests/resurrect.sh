@@ -697,6 +697,27 @@ mkdir "$LK/held"
 ( . "$CORE"; lock_dir "$LK/held" 120 3 ); ok "a lock held just now is not taken" 1 "$?"
 touch -t 202001010000 "$LK/held"
 ( . "$CORE"; lock_dir "$LK/held" 120 3 ); ok "a stale lock is taken over" 0 "$?"
+# A holder that is gone: taken over at once, one taker at a time.
+sh -c 'exit 0' & dead=$!; wait "$dead"
+rm -rf "$LK/held"; mkdir "$LK/held"; echo "$$" >"$LK/held/owner"
+( . "$CORE"; lock_dir "$LK/held" 120 3 ); ok "a fresh lock whose holder runs is not taken" 1 "$?"
+rm -rf "$LK/held"; mkdir "$LK/held"; echo "$dead" >"$LK/held/owner"
+( . "$CORE"; lock_dir "$LK/held" 120 3 ); ok "a fresh lock whose holder is gone is taken over" 0 "$?"
+rm -rf "$LK/held"; mkdir "$LK/held" "$LK/held.take"; echo "$dead" >"$LK/held/owner"
+( . "$CORE"; lock_dir "$LK/held" 120 3 ); ok "...but not while another takeover is under way" 1 "$?"
+ok "...and that one's lock is left alone" "$dead" "$(cat "$LK/held/owner" 2>/dev/null)"
+touch -t 202001010000 "$LK/held.take"
+( . "$CORE"; lock_dir "$LK/held" 120 3 ); ok "a takeover guard left by a taker that died is cleared" 0 "$?"
+ok "...and the guard is gone" no "$([ -e "$LK/held.take" ] && echo yes || echo no)"
+# Eight takers at once on a lock whose holder is gone: exactly one gets it (each keeps it, and its owner, this script, runs).
+for round in 1 2 3; do
+  rm -rf "$LK/held" "$LK/held.take" "$LK/got"; mkdir "$LK/held"; echo "$dead" >"$LK/held/owner"
+  takers=""
+  for k in 1 2 3 4 5 6 7 8; do ( . "$CORE"; lock_dir "$LK/held" 120 20 && echo "$k" >>"$LK/got" ) & takers="$takers $!"; done
+  for k in $takers; do wait "$k"; done
+  ok "eight takers of a dead holder's lock, round $round: one gets it" 1 "$(wc -l <"$LK/got" 2>/dev/null | tr -d ' ')"
+done
+rm -rf "$LK/held" "$LK/held.take" "$LK/got"
 
 # ---------------------------------------------------------------------------
 t "15c. pruning keeps the newest RESURRECT_KEEP, and the one a restore would read"

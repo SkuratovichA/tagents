@@ -356,3 +356,6 @@ Flow control eats the byte until fzf has put the tty in raw mode, so a test that
 
 ## Two lists after a storm of follows on a loaded machine (23.10.2026)
 `start_sidebar` waits about two seconds for the new list to claim; on a machine with ten busy processes a list takes longer, the next follow found no claim and split a second pane (F33 failed there, and a debug loop with ten busy processes split a second pane in every round). The pane now carries `@tagents_starting` with the time from the split until the claim, and a start that sees a stamp younger than 20 seconds waits for that list instead of starting another (R40).
+
+## A dead holder's lock taken over by two takers at once (23.10.2026)
+`lock_dir` removed a lock whose owner pid was gone, then made its own; a second taker that had read the same dead owner a moment earlier removed the lock the first had just made, and both held it (17 of 30 rounds with eight takers). A takeover now runs inside `<dir>.take` and checks the holder again there (`lock_dead`); tests/resurrect.sh runs eight takers three times and wants one holder.

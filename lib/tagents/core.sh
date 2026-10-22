@@ -48,19 +48,28 @@ is_shell_cmd() {  # <pane_current_command> — an idle shell, the one thing safe
 # Every pass costs a try, the takeover included: a mkdir that fails for any other reason (a parent nobody may write to) gives up after the tries instead of spinning on a takeover that never lands.
 # A short sleep is not a short wait: a process at background priority (a detached worker, measured) has its timers coalesced, and there `sleep 0.05` took 0.12 s, so 36 tries were 4.4 s instead of 3. [seconds] bounds the wait by the clock as well; SECONDS counts whole seconds, so N waits between N-1 and N.
 # The holder writes its pid into the lock (owner), and a lock whose holder is gone is taken over at once: a list killed with its pane while it held the follow lock left everyone behind it waiting for <stale> seconds. A lock with no owner file yet was made a moment ago, and counts as held.
+# A TAKEOVER IS ONE AT A TIME (<dir>.take), and the taker looks again inside it: two takers that both saw the holder dead would otherwise each remove the lock, the second removing the one the first had just made, and both would hold it. A .take left by a taker that died between its mkdir and its rmdir is cleared after 5 seconds.
 lock_dir() {  # <dir> <stale seconds> [tries, 0.05 s apart; default 40] [seconds]
-  local d=$1 stale=$2 tries=${3:-40} end= owner
+  local d=$1 stale=$2 tries=${3:-40} end=
   [ -n "${4:-}" ] && end=$((SECONDS + $4))
   mkdir -p "${d%/*}" 2>/dev/null
   while :; do
     if mkdir "$d" 2>/dev/null; then printf '%s\n' "$$" >"$d/owner" 2>/dev/null; return 0; fi
-    owner=$(cat "$d/owner" 2>/dev/null)
-    if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then rm -rf "$d" 2>/dev/null
-    elif [ "$(lock_age "$d")" -gt "$stale" ]; then rm -rf "$d" 2>/dev/null; fi
+    if lock_dead "$d" "$stale"; then
+      if mkdir "$d.take" 2>/dev/null; then
+        lock_dead "$d" "$stale" && rm -rf "$d" 2>/dev/null
+        rmdir "$d.take" 2>/dev/null
+      elif [ "$(lock_age "$d.take")" -gt 5 ]; then rmdir "$d.take" 2>/dev/null; fi
+    fi
     tries=$((tries - 1)); [ "$tries" -gt 0 ] || return 1
     [ -n "$end" ] && [ "$SECONDS" -ge "$end" ] && return 1
     sleep 0.05
   done
+}
+# Is the lock's holder gone: its owner pid no longer runs, or the lock is older than <stale> seconds. A lock that is not there is not dead (lock_age reads it as made now).
+lock_dead() {  # <dir> <stale seconds>
+  local owner; owner=$(cat "$1/owner" 2>/dev/null)
+  { [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; } || [ "$(lock_age "$1")" -gt "$2" ]
 }
 # How long a lock has been held. One stat cannot read is as young as now, never an age measured from the epoch: that is a lock missing or out of reach, not one somebody died holding.
 lock_age() {  # <dir> -> seconds
