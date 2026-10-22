@@ -78,7 +78,7 @@ TMUXLOG="$ROOT/tmux.log"
 
 # The fake claude: a copy of /bin/sh, so it is a `claude` to ps and a shell to
 # us. Re-signed because a copy of a system binary is killed on sight on arm64,
-# its signature being valid only for the original inode (see tests/panes.sh).
+# its signature being valid only for the original inode (see tests/window-rows.sh).
 cp /bin/sh "$BIN/claude" || exit 1
 codesign --remove-signature "$BIN/claude" >/dev/null 2>&1
 codesign -f -s - "$BIN/claude" >/dev/null 2>&1
@@ -819,14 +819,14 @@ hasnt "...and never offers the resume command" "enter runs" "$PV"
 t "10. nothing that needs a pane is attempted on a headless row"
 # ---------------------------------------------------------------------------
 PANES=$(tm list-panes -a -F '#{pane_id}' | wc -l | tr -d ' ')
-for verb in open beside borrow goto send rename; do
+for verb in open beside goto send rename; do
   run --act "$verb" "%s-live" working live "$REPO" >/dev/null 2>&1
   ok "--act $verb is refused quietly" 0 "$?"
 done
-ok "no pane was created, moved or docked" "$PANES" \
+ok "no pane was created, moved or joined" "$PANES" \
    "$(tm list-panes -a -F '#{pane_id}' | wc -l | tr -d ' ')"
-ok "and nothing is docked into the dashboard" 0 \
-   "$(tm list-panes -a -F '#{?@tagents_docked,1,}' | grep -c 1)"
+ok "and nothing is joined beside another chat" 0 \
+   "$(tm list-panes -a -F '#{?@tagents_joined,1,}' | grep -c 1)"
 
 # ---------------------------------------------------------------------------
 t "11. the timeline draws them"

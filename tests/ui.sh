@@ -11,7 +11,7 @@
 # when the shim went missing.
 #
 # The dashboard is a REAL list: `tagents` running in a pane of that server,
-# claiming it, so the ? window has a sidebar to undock a chat out of. The agents
+# claiming it, so the ? window has a sidebar in the window. The agents
 # are a copy of /bin/sleep named `claude`, so the process walk in live_panes
 # counts them — a #!/bin/sh stub would be an `sh` to ps and never an agent.
 #
@@ -207,6 +207,7 @@ cell() {  # <pane> <rows> <name>
 occurs() { printf '%s' "${2:-}" | awk -v w="${1:-}" '{ print gsub(w, "") + 0 }'; }
 
 where() { tm display -p -t "${1:-}" '#{window_id}' 2>/dev/null; }
+sess_of() { tm display -p -t "${1:-}" '#{session_name}' 2>/dev/null; }
 lives() { tm list-panes -a -F '#{pane_id}' 2>/dev/null |
             awk -v p="${1:-}" '$1 == p { f = 1 } END { print f ? "yes" : "no" }'; }
 
@@ -228,7 +229,7 @@ mkrec 8003 sid-u "/tmp/.claude-nobody"      # a dir no profile has heard of
 mkrec 8004 sid-o -                          # written before the account was
 
 # The list claims the pane it runs in; the ? window needs that claim to have a
-# sidebar to undock out of.
+# sidebar in the window.
 LIST=""
 i=0
 while [ "$i" -lt 80 ]; do
@@ -252,11 +253,10 @@ A=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" \
 # tree byte for byte against the committed entry, so the name of this row must
 # not depend on what the machine is called.
 tm select-pane -T "live agent" -t "$A"
-AHOME=$(where "$A")
+AHOME=$(sess_of "$A")
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$(date +%s)" working sid-live "$REPO" "" "on it" "$LOGIN" \
   >"$STATE/${A#%}.tsv"
-run --ensure-seat "$LIST" >/dev/null 2>&1
 sleep 0.3
 
 # ---------------------------------------------------------------------------
@@ -456,14 +456,14 @@ TABLE=$(run --keys | cut -f1 | sort)
 has "the two that cannot be run from here are still listed" "ctrl-q" "$TABLE"
 has "...both of them"                                       "esc"    "$TABLE"
 
-# AND IT REALLY RUNS THE KEY. Undock, end to end: a chat docked in the sidebar
-# goes home, exactly as ctrl-u would have sent it.
-run --act open "$A" live sid-live "$REPO" >/dev/null 2>&1; sleep 0.5
-ok "the agent is docked in the sidebar" "$DWIN" "$(where "$A")"
+# AND IT REALLY RUNS THE KEY. Undock, end to end: a chat joined beside another
+# window's chat is broken out into its home session, exactly as ctrl-u would do.
+run --act beside "$A" live sid-live "$REPO" >/dev/null 2>&1; sleep 0.5
+ok "the agent is joined into the window the sidebar is in" "$DWIN" "$(where "$A")"
 env TMUX="$TMUXV" FZF_DEFAULT_OPTS=--filter=undock bash "$TA" \
   --ask-keys "" "$A" live sid-live "$REPO" >/dev/null 2>&1
 sleep 0.5
-ok "picking undock in the ? window sends it home" "$AHOME" "$(where "$A")"
+ok "picking undock in the ? window breaks it out into its home session" "$AHOME" "$(sess_of "$A")"
 ok "...and the agent is still alive"              yes      "$(lives "$A")"
 
 # AND IT RUNS THE KEYS THAT ASK A QUESTION. Every check above runs --ask-keys as
@@ -699,7 +699,7 @@ drift popup   "$(binds_of "$POPUP")"
 t "7. every key comes out of the config"
 # ---------------------------------------------------------------------------
 # A key moved in the config is the key fzf is handed and the key the ? window
-# lists — one answer, arrived at once, in both places.
+# lists — one answer, arrived at once, in both places. The config also holds a key of a verb that is gone (borrow): it is ignored, neither an error nor bound.
 KCFG="$ROOT/keys-good.yaml"
 cat >"$KCFG" <<'YEOF'
 keys:
@@ -709,11 +709,10 @@ YEOF
 KDUMP=$(dumpargs "$ROOT/fzf-keys" "TA_CONFIG='$KCFG'")
 has "a configured key is the one fzf binds" \
     "--bind=ctrl-o:execute-silent($SELF --act closed)" "$KDUMP"
-has "...and the key it displaced moves with it" \
-    "--bind=ctrl-y:execute-silent($SELF --act borrow {1})" "$KDUMP"
+hasnt "a borrow key left in the config binds nothing" "act borrow" "$KDUMP"
 KT=$(env TMUX="$TMUXV" TA_CONFIG="$KCFG" bash "$TA" --keys)
 has "...and --keys says the same"     "ctrl-o${TAB}:closed" "$KT"
-has "...for both of them"             "ctrl-y${TAB}borrow"  "$KT"
+hasnt "...and lists no borrow"        "borrow" "$KT"
 
 # A KEY FZF DOES NOT KNOW WOULD STOP IT STARTING, so it never reaches fzf: the
 # default is kept and the reason is said out loud.
@@ -835,36 +834,40 @@ has "a problem that returns is seen again once the verdict ages out" "cfg!1" \
     "$(env TMUX="$TMUXV" TA_CONFIG="$BROKEN" TA_CFG_CHECK_EVERY=0 bash "$TA" --counts 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
-t "10. the order — projects keep their place, rows follow when you last typed"
+t "10. the order — groups keep their place, rows follow when you last typed"
 # ---------------------------------------------------------------------------
 # WHAT THIS IS FOR. The list used to be sorted by state: a project climbed to the
 # top the moment one of its agents blocked and dropped back when you answered it,
 # and inside a project a row jumped as its agent went working → idle → working.
 # Nothing you can read that way stays where you left it. The order is now the
-# path for projects and "when did I last type into it" for rows — the one clock
+# name for groups (the tmux sessions) and "when did I last type into it" for rows — the one clock
 # that does not move during a turn.
 mkdir -p "$STATE/prompt"
 said() { printf '%s\n' "$(( $(date +%s) - $2 ))" >"$STATE/prompt/${1#%}"; }
 
-# A second project, whose path sorts AFTER the first — the point of the checks
+# A second project, in a session whose name sorts AFTER the first's — the point of the checks
 # below is that nothing it does moves it off that place.
 REPO2="$ROOT/repo-z"; mkdir -p "$REPO2/.git"
-# ...and a third with nothing but a closed agent in it, whose path sorts FIRST.
+# ...and a third with nothing but a closed agent in it: a row with no window is in the last group.
 REPO3="$ROOT/repo-aaa"; mkdir -p "$REPO3/.git"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$(date +%s)" done sid-cold "$REPO3" "" "over" "$LOGIN" >"$STATE/8010.tsv"
 said %8010 30
 
-agent() {  # <dir> <pane key var> — a live claude in its own window
-  tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$1" \
-    "exec '$BIN/claude' 600" 2>/dev/null
+agent() {  # <dir> [session] — a live claude in its own window, in a session of its own when one is named
+  if [ -n "${2:-}" ]; then
+    tm new-session -d -s "$2" -P -F '#{pane_id}' -c "$1" "exec '$BIN/claude' 600" 2>/dev/null
+  else
+    tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$1" \
+      "exec '$BIN/claude' 600" 2>/dev/null
+  fi
 }
 live() {  # <pane> <state> <sid> <dir>
   printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$(date +%s)" "$2" "$3" "$4" "" "on it" "$LOGIN" >"$STATE/${1#%}.tsv"
 }
 A2=$(agent "$REPO")
-B=$(agent "$REPO2")
+B=$(agent "$REPO2" tatest-zeta)
 live "$A2" working sid-live2 "$REPO"
 live "$B"  working sid-liveZ "$REPO2"
 # A is the live agent of section 0, and is the older conversation of the two.

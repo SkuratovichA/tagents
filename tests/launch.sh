@@ -164,16 +164,8 @@ sess_of_out() {  # which tmux session the pane that wrote this file is in
     awk -v p="%$n" '$1 == p { print $2; exit }'
 }
 
-# Where an agent LIVES, docked or not: a docked chat sits in the sidebar, but the
-# placeholder keeping its seat warm (@tagents_parked names the chat) is in the
-# home window, and that window's session is the answer. An undocked chat is its
-# own answer.
-home_sess_of() {  # <stub .out file> -> session name of the agent's home window
-  local n=${1##*/} home
-  n=${n%.out}
-  home=$(tm list-panes -a -F '#{session_name} #{?@tagents_parked,#{@tagents_parked},-}' 2>/dev/null |
-           awk -v p="%$n" '$2 == p { print $1; exit }')
-  [ -n "$home" ] && { printf '%s' "$home"; return 0; }
+# Where an agent LIVES: the session of the window its pane is in.
+home_sess_of() {  # <stub .out file> -> session name of the agent's window
   sess_of_out "$1"
 }
 
@@ -362,12 +354,13 @@ ok "rename reads its answer inline" "newname" \
 # ---------------------------------------------------------------------------
 t "9. a new agent gets the cursor"
 # ---------------------------------------------------------------------------
-# The window is still opened with -d in the project's session, but the new pane
-# is then docked into the seat like enter would do, and the cursor lands in it:
-# ctrl-n leaves you looking at the agent you just asked for. The pane id is what
-# survives the dock swap, so that is what the client's current pane is checked
-# against — whichever window it now sits in.
+# The window is still opened with -d in the project's session, but the new window
+# is then selected like enter would do, the sidebar comes along and the cursor
+# lands in the chat: ctrl-n leaves you looking at the agent you just asked for.
+# The sidebar is a pane that counts as one (the pid of its shell and the title).
 clear_out
+SBP=$(tm list-panes -t tatest-dash: -F '#{pane_id}' | head -1)
+tm set -p -t "$SBP" @tagents_list "$(tm display -p -t "$SBP" '#{pane_pid}')" \; set -p -t "$SBP" @tagents_dash 1 \; select-pane -T tagents-sidebar -t "$SBP"
 run --act new "%$PN" dead sid-focus "$PERS"
 f=$(waitout) || { echo "  FAIL nothing started"; fail=$((fail+1)); f=/dev/null; }
 sleep 0.8
@@ -375,8 +368,8 @@ n=${f##*/}; n=${n%.out}
 csess=$(tm list-clients -F '#{client_session}' 2>/dev/null | head -1)
 ok "the client's current pane is the agent it just started" \
    "%$n" "$(tm display -p -t "$csess:" '#{pane_id}' 2>/dev/null)"
-ok "and that pane is docked in a sidebar seat" \
-   yes "$([ -n "$(tm display -p -t "%$n" '#{@tagents_docked}' 2>/dev/null)" ] && echo yes || echo no)"
+ok "and the sidebar is in its window" \
+   "$(tm display -p -t "%$n" '#{window_id}' 2>/dev/null)" "$(tm list-panes -a -F '#{window_id} #{@tagents_dash}' | awk '$2 == 1 { print $1 }')"
 
 # ---------------------------------------------------------------------------
 t "10. the hook records when you last typed, and nothing else touches it"
@@ -424,7 +417,7 @@ f=$(waitout) || { echo "  FAIL nothing resumed"; fail=$((fail+1)); f=/dev/null; 
 ok "a live click for a pane that is gone resumes from its record" \
    "$HOME/.claude-personal" "$(field CFG "$f")"
 has "...as a resume of that session" "--resume sid-gone" "$(field ARGS "$f")"
-ok "no dock lock is left behind" no "$([ -e "$STATE/.dock.lock" ] && echo yes || echo no)"
+ok "no select lock is left behind" no "$([ -e "$STATE/.select.lock" ] && echo yes || echo no)"
 
 # A session no record names: nothing is resumed, and the click still succeeds.
 clear_out

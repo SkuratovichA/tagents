@@ -16,9 +16,9 @@
 #
 # THERE IS NO LIST RUNNING HERE, deliberately: the whole point of the status bar
 # path is that it works when the dashboard is closed, and a suite that always
-# has one open could not tell the two apart. What the sweep skips — the
-# dashboard window, a window a list is in, a docked chat — is said by markers,
-# so the markers are set by hand and nothing has to be started for them.
+# has one open could not tell the two apart. What the sweep skips — a pane a
+# list is in — is said by markers, so the markers are set by hand and nothing
+# has to be started for them.
 #
 # The agents are a copy of /bin/sleep named `claude`, so the process walk in
 # live_panes counts them — a #!/bin/sh stub would be an `sh` to ps and never an
@@ -185,9 +185,6 @@ t "0. the ground the rest stands on"
 # ---------------------------------------------------------------------------
 DP=$(tm list-panes -t tatest-dash -F '#{pane_id}' 2>/dev/null | head -1)
 DWIN=$(wof "$DP")
-tm set -w -t "$DWIN" @tagents 1 >/dev/null 2>&1
-ok "the dashboard window is where the marker says" 1 \
-   "$(tm show -vw -t "$DWIN" @tagents 2>/dev/null)"
 
 A=$(newagent tatest-work 'fix-login-bugs' sid-a "$NOW")
 AW=$(wof "$A")
@@ -447,18 +444,20 @@ ok "...and the sweep does not claim the window either" 'sweep-target' "$(wrec "$
 # ---------------------------------------------------------------------------
 t "what the sweep never touches"
 # ---------------------------------------------------------------------------
-# The dashboard window: an agent docked in it is a pane the sidebar borrowed,
-# and naming that window after it would name the dashboard.
+# The window the sidebar is in is named after its chat like any other: DP stands
+# in for the sidebar (a pane a live list claims, lent this suite's pid) and DA is
+# the chat beside it.
 DA=$(tm split-window -d -t "$DWIN" -P -F '#{pane_id}' -c "$REPO" \
        "exec '$BIN/claude' 600" 2>/dev/null)
-tm select-pane -T 'docked-chat' -t "$DA"
+tm select-pane -T 'beside-sidebar' -t "$DA"
 mkrec "$DA" sid-da "$NOW"
-DNAME=$(wname "$DWIN")
+tm set -p -t "$DP" @tagents_list "$$" >/dev/null 2>&1
 run --sync-names >/dev/null 2>&1
-ok "the dashboard window keeps its name" "$DNAME" "$(wname "$DWIN")"
-# ...and ctrl-r on that agent does not rename the dashboard either.
+ok "a window holding the sidebar is named after its chat" "beside-sidebar" "$(wname "$DWIN")"
+# ...and ctrl-r on that agent renames it at once.
 run --label sid-da 'docked-by-hand' >/dev/null 2>&1
-ok "...and an explicit rename does not reach it" "$DNAME" "$(wname "$DWIN")"
+ok "...and an explicit rename reaches it" "docked-by-hand" "$(wname "$DWIN")"
+tm set -up -t "$DP" @tagents_list >/dev/null 2>&1
 
 # A window a list is running in is a sidebar, whatever session it is in. The pid
 # in @tagents_list is what makes the claim live, so this suite lends it its own.
@@ -473,16 +472,6 @@ tm set -up -t "$LW" @tagents_list >/dev/null 2>&1
 run --sync-names >/dev/null 2>&1
 ok "...and once that list is gone it is an ordinary window again" \
    "would-be-name" "$(wname "$LWIN")"
-
-# A docked chat is skipped by its MARKER, not by where it happens to sit: it is
-# a pane on loan to a sidebar, and the window it is standing in is not its home.
-GW=$(newagent tatest-work 'docked-elsewhere' sid-gw "$NOW")
-GWIN=$(wof "$GW")
-GNAME=$(wname "$GWIN")
-tm set -p -t "$GW" @tagents_docked "$DWIN" >/dev/null 2>&1
-run --sync-names >/dev/null 2>&1
-ok "a docked chat names no window" "$GNAME" "$(wname "$GWIN")"
-tm set -up -t "$GW" @tagents_docked >/dev/null 2>&1
 
 # ---------------------------------------------------------------------------
 t "(g) with no dashboard at all, the status bar does it"
