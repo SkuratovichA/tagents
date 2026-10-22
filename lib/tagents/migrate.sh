@@ -5,19 +5,20 @@
 # Part of ./tagents; `tagents --help` is the model this implements.
 
 # Every docked chat back into the window of the placeholder that stands in for it. The pane stays the same pane throughout: a swap moves panes, it never restarts them.
+# A chat is docked only while it is in the window its marker names (the previous version's own test, is_docked_in): a marker left on a chat that is in another window, one of the user's with panes of their own, or that an earlier pass of this function already sent home, is stale, and that chat is not touched. The marker is taken off AFTER the move, so a pass that stops between the two finds the chat marked and already home, and leaves it there; the other way round it would find a chat in a seat with no marker, and close the placeholder it needs.
 migrate_send_home() {
   local p sp
-  tmux list-panes -a -F '#{pane_id} #{@tagents_docked}' 2>/dev/null | LC_ALL=C awk '$2 != "" { print $1 }' |
+  tmux list-panes -a -F '#{pane_id} #{window_id} #{@tagents_docked}' 2>/dev/null | LC_ALL=C awk '$3 != "" && $3 == $2 { print $1 }' |
     while IFS= read -r p; do
       sp=$(tmux list-panes -a -F '#{pane_id} #{@tagents_slot} #{@tagents_parked}' 2>/dev/null |
              LC_ALL=C awk -v a="$p" '$2 == "1" && $3 == a { print $1; exit }')
-      tmux set -up -t "$p" @tagents_docked 2>/dev/null
       if [ -n "$sp" ] && [ "$sp" != "$p" ] && tmux swap-pane -d -s "$p" -t "$sp" 2>/dev/null; then
         tmux set -up -t "$sp" @tagents_parked 2>/dev/null
       else
         # Nowhere to go back to: a window of its own, in the session it is in, out of the way of the sidebar.
         tmux break-pane -d -s "$p" -t "$(tmux display -p -t "$p" '#{session_id}' 2>/dev/null):" 2>/dev/null
       fi
+      tmux set -up -t "$p" @tagents_docked 2>/dev/null
     done
 }
 

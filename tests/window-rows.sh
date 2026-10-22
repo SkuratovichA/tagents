@@ -1105,6 +1105,30 @@ modrun migrate_seats
 ok "M4 a second start changes nothing" "$snap" "$(tm list-panes -a -F '#{pane_id}:#{window_id}:#{pane_title}:#{@tagents_dash}')|$(tm show-hooks -g | md5)"
 unhook; to tatest-work
 
+t "M5 M6 a stale docked marker leaves a chat alone; a pass that stopped after the swap does not send the chat back"
+kill_sidebars; unhook
+newsess tatest-m5; M5D=$LASTWIN; M5SB=$(tm list-panes -t "$M5D" -F '#{pane_id}' | head -1); stamp_sidebar "$M5SB"
+mkchat tatest-m5 busy; M5W=$LASTWIN; M5P=$LASTPANE
+M5U=$(tm split-window -d -h -t "$M5P" -P -F '#{pane_id}' "exec sleep 600")       # the user's own pane beside the chat
+tm set -p -t "$M5P" @tagents_docked "$M5D"                                        # a marker for a window the chat is not in
+modrun migrate_seats; wait_syncs
+ok "M5 the chat is still in its window" "$M5W" "$(wid "$M5P")"
+ok "M5 beside the user's pane" 2 "$(npanes "$M5W")"
+ok "M5 the user's pane is untouched" yes "$(paneok "$M5U")"
+ok "M5 the stale marker is cleared" "" "$(tm show -pv -t "$M5P" @tagents_docked 2>/dev/null)"
+# M6: the pass swapped the chat home and stopped before it took the markers off.
+mkchat tatest-m5 seated; M6W=$LASTWIN; M6P=$LASTPANE
+M6S=$(tm split-window -d -h -t "$M5SB" -P -F '#{pane_id}' "exec sleep 600")
+tm set -p -t "$M6S" @tagents_slot 1; tm swap-pane -d -s "$M6P" -t "$M6S"            # the chat is in the seat, the placeholder at home
+tm set -p -t "$M6S" @tagents_parked "$M6P"; tm set -p -t "$M6P" @tagents_docked "$M5D"
+tm swap-pane -d -s "$M6P" -t "$M6S"                                                 # the swap home was done; the markers are still on
+modrun migrate_seats; wait_syncs
+ok "M6 the chat stays in its home window" "$M6W" "$(wid "$M6P")"
+ok "M6 the placeholder is closed" no "$(paneok "$M6S")"
+ok "M6 the sidebar's window is an ordinary window again" 1 "$(npanes "$M5D")"
+ok "M6 no marker is left" "" "$(tm list-panes -a -F '#{@tagents_slot}#{@tagents_parked}#{@tagents_docked}' | tr -d '\n')"
+unhook; to tatest-work
+
 # =================================================================================================================================
 # PART 2 INSERTS ITS SECTIONS (L, N, Z, M, H) ABOVE THIS LINE. Everything below installs real hooks on the scratch server and goes last.
 # =================================================================================================================================
