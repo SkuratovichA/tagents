@@ -280,7 +280,7 @@ A running list SHALL set `@tagents_dash` to `1` on its pane, taking it from any 
 - **AND** a Claude chat later started in that pane is never taken for the sidebar
 
 ### Requirement: The list cursor follows the window on screen
-When the sidebar is moved into a window, by a selection, `--follow` or `--ensure-dash`, the list SHALL put its cursor on that window's row: the chat row when the window's first pane is a chat, the window row otherwise. A window outside every group SHALL leave the cursor where it was.
+When the sidebar is moved into a window, by a selection, `--follow` or `--ensure-dash`, the list SHALL put its cursor on that window's row: the chat row when the window's first pane is a chat, the window row otherwise. A window outside every group SHALL leave the sidebar and the cursor where they were.
 
 #### Scenario: Switching with tmux's own keys
 - **WHEN** the user presses `prefix+n` from the window of the chat "release notes" to the window of the chat "billing"
@@ -288,4 +288,4 @@ When the sidebar is moved into a window, by a selection, `--follow` or `--ensure
 
 #### Scenario: A window outside the groups
 - **WHEN** the user switches to a window of a session that is not a group
-- **THEN** the sidebar moves there and the cursor stays on the row it was on
+- **THEN** the sidebar stays where it was and the cursor stays on the row it was on

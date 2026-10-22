@@ -48,7 +48,7 @@ follow() {  # the sidebar into the window on screen, once
 
 ## Risks / Trade-offs
 
-- [The window being left reflows when the sidebar leaves it] → `-l` gives the sidebar a fixed width, so a window returns to the same split each time it gets the sidebar back.
+- [The window being left reflows when the sidebar leaves it, and `-l` alone does not give it back the same split when the sidebar returns] → before the sidebar leaves a window, the widths of that window's panes are saved in the window option `@tagents_widths` and re-applied after the sidebar comes back.
 - [Two clients in different windows share one sidebar] → the sidebar sits with the client that moved last, as today; a second client sees its window without it.
 - [Groups by session regroup rows whose directory and session differ] → the first list run after the upgrade shows the new grouping; nothing is lost, and the owner's sessions already match its directory groups.
 - [Hooks fire for every window switch on the server] → `follow` is one `display` and returns, and it only acts for windows of tagents groups.
