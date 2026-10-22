@@ -31,7 +31,7 @@ WRSOCK=""
 WRSOCKB=""
 WRROOT=$(mktemp -d "${TMPDIR:-/tmp}/tagents-wr.XXXXXX") || exit 1
 WRROOT=$(cd "$WRROOT" && pwd -P) || exit 1
-trap 'tmux -L "$WRS" kill-server >/dev/null 2>&1; tmux -L "${WRS}b" kill-server >/dev/null 2>&1
+trap 'tmux -L "$WRS" kill-server >/dev/null 2>&1; tmux -L "${WRS}b" kill-server >/dev/null 2>&1; tmux -L "${WRS}c" kill-server >/dev/null 2>&1
       for f in "$WRROOT"/keeper*.pid; do [ -s "$f" ] && kill "$(cat "$f")" 2>/dev/null; done
       [ -n "$WRSOCK" ] && rm -f "$WRSOCK"; [ -n "$WRSOCKB" ] && rm -f "$WRSOCKB"
       rm -rf "$WRROOT"' EXIT INT TERM
@@ -805,6 +805,18 @@ tm select-pane -T "someone else's title" -t "$RP3"; tm set -p -t "$RP3" @tagents
 TMUX_PANE="$RP3" modrun release_dash
 ok "R38 a title the list did not set is left alone" "someone else's title" "$(tm display -p -t "$RP3" '#{pane_title}')"
 tm kill-window -t "$RW1" 2>/dev/null; tm kill-pane -t "$RP2" 2>/dev/null; tm kill-pane -t "$RP3" 2>/dev/null
+
+t "R39 --new with no project window, no client and no tmux server at all starts a server with a session for the chat"
+SOCKC="${WRSOCK%/*}/${WRS}c"                                   # no server listens here yet
+mkdir -p "$WRROOT/nosrv"
+TA_NEW_CMD="exec '$BIN/claude' 600" env TMUX="$SOCKC,0,0" bash "$TA" --new "$WRROOT/nosrv" >/dev/null 2>&1; rc=$?
+ok "R39 exit 0" 0 "$rc"
+ok "R39 a session exists, and it is the one the previous version made" agents "$(tmux -L "${WRS}c" list-sessions -F '#{session_name}' 2>/dev/null | head -1)"
+ok "R39 with one pane" 1 "$(tmux -L "${WRS}c" list-panes -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+ok "R39 the chat started in the directory asked for" "$WRROOT/nosrv" "$(tmux -L "${WRS}c" list-panes -a -F '#{pane_current_path}' 2>/dev/null | head -1)"
+TA_NEW_CMD="exec '$BIN/claude' 600" env TMUX="$SOCKC,0,0" bash "$TA" --new "$WRROOT/nosrv" >/dev/null 2>&1
+ok "R39 a second one is a second window of that session" 2 "$(tmux -L "${WRS}c" list-windows -t =agents: -F x 2>/dev/null | wc -l | tr -d ' ')"
+tmux -L "${WRS}c" kill-server >/dev/null 2>&1
 
 t "R34 the cursor follows the window on screen"
 kill_sidebars; mkchat tatest-work cur; WCUR=$LASTWIN; PCUR=$LASTPANE

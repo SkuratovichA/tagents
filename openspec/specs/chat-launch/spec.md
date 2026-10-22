@@ -53,7 +53,7 @@ With no configuration file, an agent SHALL be started as it always was: with `--
 - **THEN** the agent has `--dangerously-skip-permissions` and an unmodified `CLAUDE_CONFIG_DIR`
 
 ### Requirement: A new agent opens in the group the cursor is in
-The new agent's window SHALL be created, detached, in the tmux session of the group the dashboard cursor is in. When the cursor is on the group `no window`, or the agent is started without a dashboard (`tagents --new` from a shell), it SHALL be created in the session that owns the project: the session where most of the live panes sitting in that directory are, else the session of the client, else the session tmux treats as current.
+The new agent's window SHALL be created, detached, in the tmux session of the group the dashboard cursor is in. When the cursor is on the group `no window`, or the agent is started without a dashboard (`tagents --new` from a shell), it SHALL be created in the session that owns the project: the session where most of the live panes sitting in that directory are, else the session of the client, else the session tmux treats as current, else, with no session at all, a new session named `agents`.
 
 #### Scenario: Owning session
 - **WHEN** the cursor is on a row of the tmux session `proj`
@@ -62,6 +62,10 @@ The new agent's window SHALL be created, detached, in the tmux session of the gr
 #### Scenario: No windows
 - **WHEN** the cursor is on the group `no window` and every agent of the project is closed
 - **THEN** the window is created in the session of the client
+
+#### Scenario: No tmux server
+- **WHEN** `tagents --new DIR` runs with no tmux server running and no window for the project
+- **THEN** a tmux server is started with a session named `agents` whose first window is the new agent
 
 ### Requirement: A new agent is opened like any other
 After its window is created the new agent SHALL be selected as `enter` on its row would do (the `window-rows` capability): the sidebar is moved into its window, the cursor is in the agent, and the client ends up looking at it. With no sidebar the client SHALL be taken to the new window. `tagents` SHALL show `tagents: new agent in <project> (<session>:<window>) as <profile>` (the last words only when a profile was used) and take a fresh snapshot for the `resurrect` capability.
