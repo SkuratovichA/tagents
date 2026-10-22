@@ -200,6 +200,10 @@ The pane a list claims as the sidebar SHALL carry the pane title `tagents-sideba
 - **WHEN** a list claims the sidebar and the sidebar is then moved to another window
 - **THEN** the pane's title is `tagents-sidebar` in both places
 
+#### Scenario: The list exits
+- **WHEN** a list exits, whether or not a newer list has taken the shared marker since
+- **THEN** its pane no longer carries the title `tagents-sidebar`, and a title that someone else set is left as it is
+
 ### Requirement: A restore closes the panes left where the sidebar was
 After a restore (`tagents --resurrect`, and `tagents --resurrect --auto` from the tmux-resurrect hook), every pane titled `tagents-sidebar` that is not the live list SHALL be closed when it is an idle shell. A pane running anything but a shell SHALL never be touched, and a dry run SHALL close nothing.
 

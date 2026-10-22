@@ -137,7 +137,7 @@ claim_dash() {
 # chat once came to be mistaken for the list. A pane that is killed outright cannot run this, which is why dash_pane clears stale claims
 # rather than trusting them to be gone.
 release_dash() {
-  local me=${TMUX_PANE:-}
+  local me=${TMUX_PANE:-} st
   [ -n "$me" ] || return 0
   # My own stamp goes unconditionally: a list that has since lost the shared marker to a newer one still has to say it is not running.
   tmux set -up -t "$me" @tagents_list 2>/dev/null
@@ -145,9 +145,11 @@ release_dash() {
   signal_ev
   # The bar's text does not outlive the refreshers; whoever sees that none is left takes it down.
   other_refresher || tmux set -gu @tagents_counts 2>/dev/null
-  [ "$(tmux display -p -t "$me" '#{@tagents_dash}' 2>/dev/null)" = 1 ] || return 0
-  tmux set -up -t "$me" @tagents_dash 2>/dev/null
-  tmux select-pane -T '' -t "$me" 2>/dev/null   # the title is "tagents-sidebar" for as long as the claim holds
+  # The shared marker goes only when it is still this pane's (a newer list may hold it). The title is this pane's own: it goes with the list whether
+  # or not the marker was lost, or the shell or chat that comes next in the pane is taken for the sidebar by a restore. A title somebody else set stays.
+  st=$(tmux display -p -t "$me" '#{@tagents_dash}|#{pane_title}' 2>/dev/null)
+  [ "${st%%|*}" = 1 ] && tmux set -up -t "$me" @tagents_dash 2>/dev/null
+  [ "${st#*|}" = tagents-sidebar ] && tmux select-pane -T '' -t "$me" 2>/dev/null
   return 0
 }
 

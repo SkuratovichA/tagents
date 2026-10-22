@@ -789,6 +789,23 @@ tm set -p -t "$PST" @tagents_list "$$"
 ok "R37 a live pid still reads as a sidebar" 1 "$(modrun collect | awk -F'\t' -v p="$PST" '$1 == "P" && $2 == p { print $7 }')"
 tm kill-session -t =tatest-st1 2>/dev/null
 
+t "R38 a list that exits takes the sidebar title off its pane, whether or not it still held the shared marker"
+mkshell tatest-work rel1; RW1=$LASTWIN; RP1=$LASTPANE
+stamp_sidebar "$RP1"
+TMUX_PANE="$RP1" modrun release_dash
+ok "R38 it held the marker: the title is gone" "" "$(tm display -p -t "$RP1" '#{pane_title}')"
+ok "R38 ...and so are the marker and the stamp" "" "$(tm display -p -t "$RP1" '#{@tagents_dash}#{@tagents_list}')"
+mkshell tatest-work rel2; RP2=$LASTPANE
+stamp_sidebar "$RP2"; tm set -up -t "$RP2" @tagents_dash        # a newer list took the shared marker
+TMUX_PANE="$RP2" modrun release_dash
+ok "R38 a newer list holds the marker: the title still goes" "" "$(tm display -p -t "$RP2" '#{pane_title}')"
+ok "R38 ...and the stamp" "" "$(tm display -p -t "$RP2" '#{@tagents_list}')"
+mkshell tatest-work rel3; RP3=$LASTPANE
+tm select-pane -T "someone else's title" -t "$RP3"; tm set -p -t "$RP3" @tagents_list "$$"
+TMUX_PANE="$RP3" modrun release_dash
+ok "R38 a title the list did not set is left alone" "someone else's title" "$(tm display -p -t "$RP3" '#{pane_title}')"
+tm kill-window -t "$RW1" 2>/dev/null; tm kill-pane -t "$RP2" 2>/dev/null; tm kill-pane -t "$RP3" 2>/dev/null
+
 t "R34 the cursor follows the window on screen"
 kill_sidebars; mkchat tatest-work cur; WCUR=$LASTWIN; PCUR=$LASTPANE
 SB=$(fake_sidebar "$WCUR"); tm set -p -t "$SB" @tagents_port 9
