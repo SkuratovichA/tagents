@@ -14,7 +14,7 @@ others are built on `STATE_DIR` and `TAB`.
 
 | file | lines | what is in it |
 |---|---:|---|
-| `core.sh` | 199 | constants, and the plumbing every dialog is built on |
+| `core.sh` | 208 | constants, and the plumbing every dialog is built on |
 | `config.sh` | 632 | config.yaml, flattened — and what is wrong with it |
 | `accounts.sh` | 361 | which Claude login an agent runs on, and whether it is there |
 | `usage.sh` | 324 | the monthly limit, on screen |
