@@ -167,6 +167,17 @@ The sidebar SHALL be the leftmost pane of its window and as tall as the window, 
 - **WHEN** the sidebar leaves a window and later returns
 - **THEN** the other panes have the widths they had before, within one column
 
+### Requirement: The sidebar is never hidden behind a zoomed pane
+The sidebar SHALL be visible in the window it is moved or started in, so a pane the user zoomed in that window SHALL be unzoomed when the sidebar enters, and the zoom is not put back afterwards. A sidebar that is zoomed SHALL be unzoomed when it leaves, so that no window is left zoomed on nothing.
+
+#### Scenario: The user's zoomed pane
+- **WHEN** the user has zoomed a pane of a window and the sidebar is moved into that window
+- **THEN** the window is not zoomed and the sidebar is visible beside the other panes
+
+#### Scenario: A zoomed sidebar
+- **WHEN** the sidebar is zoomed and is moved to another window
+- **THEN** neither the window it left nor the window it entered is zoomed
+
 ### Requirement: ensure-dash puts a sidebar in the window the client is in
 `tagents --ensure-dash` SHALL make the sidebar be in the window the client is in. When no list is running it SHALL start one as a new pane, leftmost and as tall as the window with `TA_WIDTH` percent of its width, and wait up to about two seconds for the list to claim the sidebar. When a list is running it SHALL move that list's pane into the window as `tagents --follow` does. With no client it SHALL start and move nothing and exit 1.
 
