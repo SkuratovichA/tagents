@@ -76,7 +76,11 @@
 #                           the rows behind the picker redraw (empty: no reload)
 #   tagents --header [COLS] the key header the dashboard would draw at that
 #                           width. One line, which is the whole point of it
-#   tagents --ensure-dash   create the dedicated dashboard session if missing
+#   tagents --ensure-dash   put the sidebar in the window the client is in: a running
+#                           list is moved there, none running is started there
+#   tagents --follow [CLIENT]
+#                           move the sidebar into the window CLIENT shows (default:
+#                           the most recent client); tmux's own hooks run this
 #   tagents --new [DIR] [PROFILE]
 #                           start an agent in DIR from outside the list — a tmux
 #                           binding, a shell, anything. DIR defaults to $PWD and
@@ -526,7 +530,7 @@ if [ "${1:-}" != -h ] && [ "${1:-}" != --help ]; then
   # Readability is what is checked, not the exit status of `.`: that status is
   # the module's own last line and says nothing about whether it was found.
   for ta_mod in core config accounts usage state names columns list \
-                timeline preview actions refresh sidebar seats dock closed \
+                timeline preview actions refresh sidebar follow seats dock closed \
                 resurrect launch keys dash; do
     if [ ! -r "$TA_LIB/$ta_mod.sh" ]; then
       echo "tagents: cannot load $TA_LIB/$ta_mod.sh" >&2
@@ -650,6 +654,8 @@ case "${1:-}" in
   --sync-names)   sync_window_names ;;
   --refresher)    refresher ;;
   --ensure-dash)  ensure_dash ;;
+  # The sidebar into the window the client shows now (tmux's own session-window-changed / client-session-changed hooks run this).
+  --follow)       follow "${2:-}" ;;
   --goto)         goto "${2:-}" ;;
   # Print the header block up to the first line that is not a comment, rather
   # than a fixed line range: the block keeps growing and a stale range silently

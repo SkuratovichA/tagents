@@ -7,14 +7,13 @@
 # Where the hook writes. Overridable only so the renderer can be pointed at a
 # throwaway directory; the hook honours the same variable, so both move together.
 STATE_DIR=${TA_STATE_DIR:-$HOME/.claude/agent-state}
-DASH_SESSION=${TA_SESSION:-agents}
 # Subagent records are cleared explicitly on SubagentStop and on the parent's
 # Stop, so this is only a safety net for records that never got cleaned up. It
 # has to outlast a single long tool call, or a subagent running one 10-minute
 # command would silently drop out of the count.
 SUB_TTL=${TA_SUB_TTL:-1800}
 DEAD_TTL=${TA_DEAD_TTL:-86400}  # how long a closed session stays offered for resume
-DASH_WIDTH=${TA_WIDTH:-45}    # percent of the dashboard window the list occupies
+DASH_WIDTH=${TA_WIDTH:-45}    # percent of a window's width the sidebar occupies wherever it is moved or started
 RESUME_CMD=${TA_RESUME_CMD:-claude --dangerously-skip-permissions --resume}
 # Starting a fresh agent in a project, as opposed to resuming a closed one.
 NEW_CMD=${TA_NEW_CMD:-claude --dangerously-skip-permissions}
@@ -126,45 +125,33 @@ prompt_at() {  # <width> <height> <args for $SELF...>
   return 0
 }
 
-# RINGING THE CHANNELS where tagents itself writes something the list draws.
+# RINGING THE CHANNEL where tagents itself writes something the list draws.
 # The refresher no longer looks on a timer: it sleeps on the tmux channel
 # tagents-ev, and whatever changes the picture without a tmux command of its own
-# (a label, an origin, a hidden column, a forgotten row) has to say so. 'panes'
-# rings the slots' channel, tagents-panes, too. One tmux call, no output, and
-# nothing at all outside tmux: with no $TMUX the call would go to the default
-# server, which is somebody else's. A change made from a shell outside tmux is
-# seen at the refresher's next wake or at its idle timeout.
+# (a label, an origin, a hidden column, a forgotten row) has to say so. One tmux
+# call, no output, and nothing at all outside tmux: with no $TMUX the call would
+# go to the default server, which is somebody else's. A change made from a shell
+# outside tmux is seen at the refresher's next wake or at its idle timeout.
 #
-# THE SLOTS' CHANNEL IS RUNG TOGETHER WITH A COUNT. Two signals with no waiter
-# cancel each other (a signal nobody waits for is remembered, a second one clears
-# it), so a slot that is busy with a lap while two rings arrive would sleep through
-# both. Every ring of tagents-panes therefore also adds one to the global option
-# @tagents_gen, which is the same server-side command and starts no program; a
-# slot reads it in the list-panes it makes anyway, and waits only if it has not
-# moved since (see slot).
-GEN_BUMP='#{e|+|:#{@tagents_gen},1}'
-# THE REFRESHER'S CHANNEL IS RUNG WITH A COUNT TOO, for the same reason and the
-# same way: every ring of tagents-ev first adds one to the global option
+# THE REFRESHER'S CHANNEL IS RUNG WITH A COUNT. Two signals with no waiter cancel
+# each other (a signal nobody waits for is remembered, a second one clears it), so
+# a waiter that is busy with a lap while two rings arrive would sleep through
+# both. Every ring of tagents-ev therefore first adds one to the global option
 # @tagents_evgen, in the same tmux call and BEFORE the signal, so a ring that
 # lands while the refresher is between two waits is a number that moved, not a
 # signal that cancelled another one. The refresher reads the number in the call
 # that takes its snapshot and waits only while it has not moved (see refresher).
 # The hook (hooks/tmux-agent-state.sh) is POSIX sh and cannot source this file, so
 # it carries a copy of EV_BUMP; tests/refresh.sh pins the two against each other.
-#   EV_BUMP, GEN_BUMP   the format that adds one to the option it is set into
-#   EV_SIGNAL           the command text of a tmux hook: both channels, both counts
-#   RING_EV, RING_BOTH  the same as arguments to one tmux call, after a `\;`
+#   EV_BUMP    the format that adds one to the option it is set into
+#   EV_SIGNAL  the command text of a tmux hook: the count, then the signal
+#   RING_EV    the same as arguments to one tmux call, after a `\;`
 EV_BUMP='#{e|+|:#{@tagents_evgen},1}'
-EV_SIGNAL="set -gF @tagents_evgen '$EV_BUMP' ; wait-for -S tagents-ev ; wait-for -S tagents-panes ; set -gF @tagents_gen '$GEN_BUMP'"
+EV_SIGNAL="set -gF @tagents_evgen '$EV_BUMP' ; wait-for -S tagents-ev"
 RING_EV=(set -gF @tagents_evgen "$EV_BUMP" ';' wait-for -S tagents-ev)
-RING_BOTH=("${RING_EV[@]}" ';' wait-for -S tagents-panes ';' set -gF @tagents_gen "$GEN_BUMP")
-signal_ev() {  # [panes]
+signal_ev() {
   [ -n "${TMUX:-}" ] || return 0
-  if [ "${1:-}" = panes ]; then
-    tmux "${RING_BOTH[@]}" 2>/dev/null
-  else
-    tmux "${RING_EV[@]}" 2>/dev/null
-  fi
+  tmux "${RING_EV[@]}" 2>/dev/null
   return 0
 }
 

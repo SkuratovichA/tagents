@@ -1,6 +1,6 @@
 # lib/tagents/sidebar.sh — which pane is the dashboard right now
 #
-# The marker discipline, with the essay at 3328-3368 (two real incidents: a stray @tagents_dash sending every dock to a chat pane; several lists fighting over one marker) heading the file. list_in_pane's kill -0 on a stamped pid, dash_pane (own pane first, marker only as fallback, stale markers cleared), dash_window vs dash_session_window, claim_dash/release_dash, is_agent_pane, and ensure_dash — get-or-create the session, the window (adopt_dash_window takes over the one tmux-resurrect restores after a reboot), the list pane, and a seat.
+# The marker discipline, with the essay at 3328-3368 (two real incidents: a stray @tagents_dash sending every dock to a chat pane; several lists fighting over one marker) heading the file. list_in_pane's kill -0 on a stamped pid, dash_pane (own pane first, marker only as fallback, stale markers cleared), dash_window, claim_dash/release_dash (the claim also titles the pane tagents-sidebar and runs one follow), is_agent_pane, await_list, and start_sidebar and ensure_dash — a sidebar in the window the client is in.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -74,88 +74,8 @@ dash_pane_pick() {  # [clear]
   done
   return 0
 }
-dash_window() {   # the window the list sits in — the sidebar, wherever that is
-  local dp
-  dp=$(dash_pane)
-  if [ -n "$dp" ]; then
-    tmux display -p -t "$dp" '#{window_id}' 2>/dev/null
-    return 0
-  fi
-  dash_session_window   # no list running: the window kept for one
-}
-# TWO DIFFERENT QUESTIONS. "Where is the sidebar right now" is answered by the
-# pane the list is in (dash_window, above). "Which window does the dedicated
-# session keep for a list" is answered by the marker alone, and ensure_dash needs
-# that one: it re-homes a marker that has drifted, so it cannot take the drifted
-# pane's own window as the answer it is checking against.
-dash_session_window() {
-  tmux list-windows -t "=$DASH_SESSION" -F '#{window_id} #{@tagents}' 2>/dev/null |
-    LC_ALL=C awk '$2 == "1" { print $1; exit }'
-}
 
-# The list claims the pane it is running in. Nothing else can know as reliably,
-# and any older claim is dropped, so exactly one pane and one window are ever the
-# sidebar however many lists have come and gone.
-claim_dash() {
-  local me=${TMUX_PANE:-} win old
-  [ -n "$me" ] || return 1
-  win=$(tmux display -p -t "$me" '#{window_id}' 2>/dev/null)
-  [ -n "$win" ] || return 1
-  tmux list-panes -a -F '#{pane_id} #{@tagents_dash}' 2>/dev/null |
-    LC_ALL=C awk -v me="$me" '$2 == "1" && $1 != me { print $1 }' |
-    while IFS= read -r old; do tmux set -up -t "$old" @tagents_dash 2>/dev/null; done
-  tmux list-windows -a -F '#{window_id} #{@tagents}' 2>/dev/null |
-    LC_ALL=C awk -v w="$win" '$2 == "1" && $1 != w { print $1 }' |
-    while IFS= read -r old; do tmux set -uw -t "$old" @tagents 2>/dev/null; done
-  # Two different statements. @tagents_list says "a list with this pid is running
-  # in this pane" and belongs to this list alone — it is never taken away, which
-  # is what lets several lists coexist, each its own sidebar. @tagents_dash is the
-  # shared "which one do non-list callers mean", and that one is stolen, newest
-  # list wins. The pid is what tells a live claim from a marker left behind,
-  # without asking ps about the pane every time.
-  tmux set -p -t "$me" @tagents_list "$$" 2>/dev/null
-  tmux set -p -t "$me" @tagents_dash 1 2>/dev/null
-  tmux set -w -t "$win" @tagents 1 \; set -w -t "$win" automatic-rename off 2>/dev/null
-  return 0
-}
 
-# ...and gives the claim up on the way out, because what runs in this pane next is
-# very often a Claude chat, and that is exactly how a chat came to be mistaken for
-# the list. A pane that is killed outright cannot run this, which is why
-# claim_dash clears stale claims rather than trusting them to be gone.
-release_dash() {
-  local me=${TMUX_PANE:-} win sess
-  [ -n "$me" ] || return 0
-  # My own stamp goes unconditionally: a list that has since lost the shared
-  # marker to a newer one still has to say it is not running any more.
-  tmux set -up -t "$me" @tagents_list 2>/dev/null
-  # THE REFRESHER OF THIS LIST HAS NOTHING TO TICK ON, so it is told: it wakes,
-  # and the list process it watches (kill -0) is gone a moment later, which it
-  # sees when its delay after the wake is over. Without this a closed list's
-  # refresher would live until its idle timeout.
-  signal_ev
-  # THE BAR'S TEXT DOES NOT OUTLIVE THE REFRESHERS. A refresher takes its own
-  # @tagents_counts down when it is the last, and one that is killed with -9 cannot:
-  # the bar would print the last tally for good. Whoever sees that no refresher is
-  # left (a marker whose pid fails kill -0 is not one) takes it down for it. The
-  # refresher of this very list is still alive at this moment and is not counted
-  # out here; it does the same on its way out.
-  other_refresher || tmux set -gu @tagents_counts 2>/dev/null
-  # And so does the seat this list was last in. Nothing else clears it, and
-  # "which seat is current" is a question only a list has any business asking:
-  # with the list gone it describes a cursor position in a window that no longer
-  # has a sidebar in it.
-  win=$(tmux display -p -t "$me" '#{window_id}' 2>/dev/null)
-  [ -n "$win" ] && tmux set -uw -t "$win" @tagents_cur 2>/dev/null
-  [ "$(tmux display -p -t "$me" '#{@tagents_dash}' 2>/dev/null)" = 1 ] || return 0
-  tmux set -up -t "$me" @tagents_dash 2>/dev/null
-  sess=$(tmux display -p -t "$me" '#{session_name}' 2>/dev/null)
-  # The dedicated session keeps its window marked — ensure_dash runs the list
-  # there again. A window anywhere else was only the sidebar while the list was
-  # in it, and should not be remembered as one.
-  [ "$sess" = "$DASH_SESSION" ] || tmux set -uw -t "$win" @tagents 2>/dev/null
-  return 0
-}
 
 # NOT `live_panes | grep -q`: this script runs under pipefail, and grep -q closes
 # the pipe the moment it matches, so live_panes dies of SIGPIPE and the pipeline
@@ -171,30 +91,6 @@ is_agent_pane() {  # <pane-id> — is a Claude actually running in it?
   return 1
 }
 
-# A window called dash in the dashboard session, every pane of it an idle shell
-# and none of them marked, is what tmux-resurrect leaves where the sidebar was.
-# The list is started IN it rather than beside it; its other panes were seats
-# and docked chats and go — the chats come back at their homes through
-# --resurrect. Anything running in there means somebody is using the window.
-adopt_dash_window() {
-  local w p cur first=""
-  w=$(tmux list-windows -t "=$DASH_SESSION" -F '#{window_id} #{window_name} #{@tagents}' 2>/dev/null |
-        LC_ALL=C awk '$2 == "dash" && $3 == "" { print $1; exit }')
-  [ -n "$w" ] || return 1
-  while read -r p cur; do
-    [ -n "$p" ] || continue
-    is_shell_cmd "$cur" || return 1
-    list_in_pane "$p" && return 1   # the list is a bash script: its pane reads as a shell while it runs
-    [ -n "$first" ] || first=$p
-  done <<EOF
-$(tmux list-panes -t "$w" -F '#{pane_id} #{pane_current_command}' 2>/dev/null)
-EOF
-  [ -n "$first" ] || return 1
-  tmux list-panes -t "$w" -F '#{pane_id}' 2>/dev/null | LC_ALL=C awk -v f="$first" '$1 != f' |
-    while IFS= read -r p; do tmux kill-pane -t "$p" 2>/dev/null; done
-  tmux respawn-pane -k -t "$first" "exec '$SELF'" 2>/dev/null || return 1
-  printf '%s' "$w"
-}
 
 # A list claims the sidebar itself, a moment after it starts (claim_dash), so
 # whoever has just started one waits for the claim instead of assuming it —
@@ -207,63 +103,74 @@ await_list() {
   return 1
 }
 
-ensure_dash() {
-  local win="" dp started=""
-  if tmux has-session -t "=$DASH_SESSION" 2>/dev/null; then
-    win=$(dash_session_window)
-    [ -z "$win" ] && win=$(adopt_dash_window) && started=1
-    # The session can outlive the dashboard window — a docked or borrowed window
-    # keeps it alive on its own — so re-create it rather than assuming it.
-    [ -z "$win" ] && win=$(tmux new-window -d -t "$DASH_SESSION:" -n dash -P \
-                             -F '#{window_id}' "exec '$SELF'" 2>/dev/null) && started=1
-  else
-    tmux new-session -d -s "$DASH_SESSION" -n dash -x 200 -y 50 "exec '$SELF'" 2>/dev/null || return 1
-    started=1
-    win=$(tmux list-windows -t "=$DASH_SESSION" -F '#{window_id}' 2>/dev/null | head -1)
-  fi
-  [ -z "$win" ] && return 1
-  tmux set -w -t "$win" @tagents 1 \; set -w -t "$win" automatic-rename off 2>/dev/null
 
-  # THE DASHBOARD PANE IS THE ONE RUNNING THE LIST, and taking "the first pane in
-  # the window" for it is how the marker ended up on a chat: docking swaps an
-  # agent INTO this window, where it is frequently the first pane, so a lost
-  # marker was handed straight to somebody's Claude session. Everything then
-  # docked around that chat and ctrl-n switched the client to a sidebar with no
-  # list in it. Re-home the marker instead of trusting it, and never give it to a
-  # pane that is running an agent.
-  #
-  # A window adopted or made just now already has its list starting in it, and a list grown beside that one before it claims would be a second sidebar: wait for it.
-  [ -n "$started" ] && await_list
+# Where the sidebar is right now: the window of the pane the list runs in, empty when no list runs.
+dash_window() {
+  local dp
   dp=$(dash_pane)
-  if [ -n "$dp" ]; then
-    if [ "$(tmux display -p -t "$dp" '#{window_id}' 2>/dev/null)" != "$win" ] || is_agent_pane "$dp"; then
-      tmux set -up -t "$dp" @tagents_dash 2>/dev/null
-      dp=
-    fi
-  fi
-  if [ -z "$dp" ]; then
-    # A PANE THAT COULD HOLD THE LIST IS NOT A PANE THAT DOES. This used to adopt
-    # any spare pane in the window and mark it as the dashboard without starting
-    # anything in it, which is the bug behind "enter shows nothing and throws me
-    # into another window": the marker sat on a pane that would never claim or
-    # release it, and the moment a claude was started there — which is what a
-    # spare pane in this window is usually for — every dock went to that chat
-    # instead of to a sidebar, client and all.
-    #
-    # So a list is grown, never adopted. Typing `exec tagents` into somebody's
-    # shell would take the shell with it, and there is no way to tell a pane
-    # being kept for the list from a pane being kept for something else. One
-    # extra pane is the cheaper mistake. Nothing here marks anything either —
-    # only a list that is actually running claims, in claim_dash.
-    dp=$(tmux split-window -d -t "$win" -P -F '#{pane_id}' \
-           -b -h -l "$DASH_WIDTH%" "exec '$SELF'" 2>/dev/null)
-    # The list claims the marker itself, a moment after it starts. Wait for it:
-    # the caller's next move is dock(), and dock with no sidebar to dock into
-    # does nothing at all — one keypress silently lost.
-    [ -n "$dp" ] && await_list
-  fi
-  [ -n "$dp" ] && ensure_seat "$dp" >/dev/null
-  tmux select-window -t "$win" 2>/dev/null
-  [ -n "$dp" ] && tmux select-pane -t "$dp" 2>/dev/null
+  [ -n "$dp" ] && tmux display -p -t "$dp" '#{window_id}' 2>/dev/null
   return 0
+}
+
+# The list claims the pane it is running in. Nothing else can know as reliably, and any older claim is dropped, so exactly one pane is
+# ever the shared sidebar. Two different statements: @tagents_list says "a list with this pid runs in this pane" and belongs to this list
+# alone (several lists can coexist, each its own sidebar; the pid tells a live claim from a marker left behind), @tagents_dash is the
+# shared "which one do non-list callers mean", and that one is stolen, newest list wins.
+claim_dash() {
+  local me=${TMUX_PANE:-} old
+  [ -n "$me" ] || return 1
+  tmux list-panes -a -F '#{pane_id} #{@tagents_dash}' 2>/dev/null |
+    LC_ALL=C awk -v me="$me" '$2 == "1" && $1 != me { print $1 }' |
+    while IFS= read -r old; do tmux set -up -t "$old" @tagents_dash 2>/dev/null; done
+  tmux set -p -t "$me" @tagents_list "$$" 2>/dev/null
+  tmux set -p -t "$me" @tagents_dash 1 2>/dev/null
+  # tmux-resurrect saves the title with the layout; a restore sweeps the idle shells that come back with it (resurrect_sweep).
+  tmux select-pane -T tagents-sidebar -t "$me" 2>/dev/null
+  # A window switch made while this list was starting ran a follow that found no sidebar: catch up once.
+  follow "" >/dev/null 2>&1
+  return 0
+}
+
+# ...and gives the claim up on the way out, because what runs in this pane next is very often a Claude chat, and that is exactly how a
+# chat once came to be mistaken for the list. A pane that is killed outright cannot run this, which is why dash_pane clears stale claims
+# rather than trusting them to be gone.
+release_dash() {
+  local me=${TMUX_PANE:-}
+  [ -n "$me" ] || return 0
+  # My own stamp goes unconditionally: a list that has since lost the shared marker to a newer one still has to say it is not running.
+  tmux set -up -t "$me" @tagents_list 2>/dev/null
+  # The refresher of this list has nothing to tick on, so it is told: it wakes and sees the list process gone.
+  signal_ev
+  # The bar's text does not outlive the refreshers; whoever sees that none is left takes it down.
+  other_refresher || tmux set -gu @tagents_counts 2>/dev/null
+  [ "$(tmux display -p -t "$me" '#{@tagents_dash}' 2>/dev/null)" = 1 ] || return 0
+  tmux set -up -t "$me" @tagents_dash 2>/dev/null
+  tmux select-pane -T '' -t "$me" 2>/dev/null   # the title is "tagents-sidebar" for as long as the claim holds
+  return 0
+}
+
+# A list as a new pane, leftmost and as tall as <window>, TA_WIDTH percent wide. Prints its pane id once it has claimed the sidebar (a
+# list claims itself a moment after it starts, so the caller waits instead of assuming); 1 when it did not within about two seconds.
+start_sidebar() {  # <window-id>
+  local win=${1:-} p
+  [ -n "$win" ] || return 1
+  p=$(tmux split-window -d -f -b -h -l "${DASH_WIDTH}%" -P -F '#{pane_id}' -t "$win" "exec '$SELF'" 2>/dev/null) || return 1
+  [ -n "$p" ] || return 1
+  [ "$(tmux display -p -t "$win" '#{window_zoomed_flag}' 2>/dev/null)" = 1 ] && tmux resize-pane -Z -t "$win" 2>/dev/null
+  await_list || return 1
+  printf '%s' "$p"
+}
+
+# The sidebar in the window the client is in: a running list is moved there as --follow does, none running starts one there. With no
+# client nothing is started or moved and the status is 1.
+ensure_dash() {
+  local win
+  win=$(client_window "")
+  [ -n "$win" ] || return 1
+  if [ -n "$(dash_pane)" ]; then
+    sidebar_move "$win" || return 1
+    cursor_to_window "$win"
+    return 0
+  fi
+  start_sidebar "$win" >/dev/null
 }
