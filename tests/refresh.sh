@@ -143,10 +143,9 @@ tm() { tmux -L "$S" "$@"; }
 # The strings of a ring, as core.sh has them: read from the file, so that the test
 # cannot hold a copy that drifts. EVB is the format that bumps the count.
 EVB=$(sed -n "s/^EV_BUMP='\(.*\)'\$/\1/p" "$HERE/../lib/tagents/core.sh")
-GENB=$(sed -n "s/^GEN_BUMP='\(.*\)'\$/\1/p" "$HERE/../lib/tagents/core.sh")
-[ -n "$EVB" ] && [ -n "$GENB" ] || { echo "refresh.sh: no EV_BUMP in core.sh"; exit 1; }
+[ -n "$EVB" ] || { echo "refresh.sh: no EV_BUMP in core.sh"; exit 1; }
 # ...and as show-hooks prints it, which is tmux's own spelling of the same commands.
-EVSHOW="set-option -Fg @tagents_evgen \"$EVB\" ; wait-for -S tagents-ev ; wait-for -S tagents-panes ; set-option -Fg @tagents_gen \"$GENB\""
+EVSHOW="set-option -Fg @tagents_evgen \"$EVB\" ; wait-for -S tagents-ev"
 # How many hooks, of the given event or of all, carry the ring at [42]: the hooks of
 # a pane or a window are in the window scope, the rest in the session's.
 hooks42() {  # [event]
@@ -155,17 +154,20 @@ hooks42() {  # [event]
 }
 # One ring the way every ringer makes it: the count first, then the signal.
 ring() { tm set -gF @tagents_evgen "$EVB" \; wait-for -S tagents-ev; }
+# The modules tagents loads, read from its own loop, so that a function the refresher runs can be run here the way it runs it.
+LISTED_MODS=$(awk '/^[[:space:]]*for ta_mod in/ { grab = 1 } grab { l = $0; sub(/^[[:space:]]*for ta_mod in[[:space:]]*/, "", l); fin = (l ~ /;[[:space:]]*do[[:space:]]*$/); sub(/;[[:space:]]*do[[:space:]]*$/, "", l); sub(/\\[[:space:]]*$/, "", l); printf "%s ", l; if (fin) exit }' "$TA")
+modsh() {  # <code> — runs it in a shell with every module sourced, against this suite's server
+  env TMUX="$SOCK,0,0" TMUX_PANE="$DP" TA_STATE_DIR="$STATE" TA_CONFIG="$RFCFG" TA_SESSION=tatest-dash \
+      /bin/bash -c 'for m in '"$LISTED_MODS"'; do . "'"$HERE"'/../lib/tagents/$m.sh"; done; '"$1" >/dev/null 2>&1
+}
 
 # The dashboard window the loop looks after: the list pane, which says a live
-# list (this very process) is running in it, and one free seat beside it, so the
-# self-heal that rebuilds a missing seat has nothing to do.
+# list (this very process) is running in it.
 tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 'sleep 600' || exit 1
 tm set -g default-shell /bin/sh >/dev/null 2>&1
 SOCK=$(tm display -p '#{socket_path}' 2>/dev/null)
 [ -n "$SOCK" ] || { echo "refresh.sh: no socket for $S"; exit 1; }
 DP=$(tm display -p -t tatest-dash: '#{pane_id}')
-SEAT=$(tm split-window -d -P -F '#{pane_id}' -t "$DP" 'sleep 600')
-tm set -p -t "$SEAT" @tagents_slot 1
 tm set -p -t "$DP" @tagents_list "$$"
 tm set -p -t "$DP" @tagents_dash 1
 
@@ -197,7 +199,6 @@ newrun() {
   drain_ev
   rm -f "$RFCFG"
   tm set -gu @ta_notes_any >/dev/null 2>&1
-  tm set -wu -t "$DP" @tagents_cur >/dev/null 2>&1
   tm set -p -t "$DP" @tagents_port "$PORT"
   tm set -gu @tagents_counts >/dev/null 2>&1
   SLOW=3600; IDLE=600; TAIL=0.5; MINP=1
@@ -216,14 +217,14 @@ MINP=1
 # What a scenario files before a tick (`act`) runs with the variables the actions
 # are written against, which are the refresher's too.
 rf_env() {
-  env RF_DIR="$D" RF_TMUX="$REALTMUX" RF_S="$S" RF_STATE="$STATE" RF_CFG="$RFCFG" RF_DP="$DP" RF_SEAT="$SEAT" RF_SLOW_DAILY="${RF_SLOW_DAILY-}" "$@"
+  env RF_DIR="$D" RF_TMUX="$REALTMUX" RF_S="$S" RF_STATE="$STATE" RF_CFG="$RFCFG" RF_DP="$DP" RF_SLOW_DAILY="${RF_SLOW_DAILY-}" "$@"
 }
 evwaits() { if [ -f "$D/ev.waits" ]; then wc -l <"$D/ev.waits" | tr -d ' '; else echo 0; fi; }
 start_ref() {
   [ -f "$D/at.1" ] && rf_env sh "$D/at.1"
   echo 1 >"$D/tick"
   EVMARK=$(evwaits)
-  env RF_DIR="$D" RF_TMUX="$REALTMUX" RF_S="$S" RF_STATE="$STATE" RF_CFG="$RFCFG" RF_DP="$DP" RF_SEAT="$SEAT" RF_SLOW_DAILY="${RF_SLOW_DAILY-}" \
+  env RF_DIR="$D" RF_TMUX="$REALTMUX" RF_S="$S" RF_STATE="$STATE" RF_CFG="$RFCFG" RF_DP="$DP" RF_SLOW_DAILY="${RF_SLOW_DAILY-}" \
       PATH="$BIN:$PATH" TMUX="$SOCK,0,0" TMUX_PANE="$DP" TA_PORT="$PORT" TA_LIST_PID="$LISTPID" \
       TA_REFRESH_SLOW="$SLOW" TA_REFRESH_IDLE="$IDLE" TA_REFRESH_MIN="$MINP" \
       TA_STATE_DIR="$STATE" TA_CONFIG="$RFCFG" TA_SESSION=tatest-dash \
@@ -355,18 +356,21 @@ go 3
 ok "the state file removed (2) reloads once, and 3 is quiet" "1 2" "$(reloads)"
 
 # ---------------------------------------------------------------------------
-t "3. tmux changes: a reload, and the seats looked at again"
+t "3. tmux changes: a reload, and the port claim looked at again"
 # ---------------------------------------------------------------------------
 newrun tmux
-act 2 '"$RF_TMUX" -L "$RF_S" set -w -t "$RF_DP" @tagents_cur "$RF_SEAT"'
+act 2 '"$RF_TMUX" -L "$RF_S" set -p -t "$RF_DP" @tagents_joined tatest-home'
 act 4 '"$RF_TMUX" -L "$RF_S" set -up -t "$RF_DP" @tagents_port'
 act 5 '"$RF_TMUX" -L "$RF_S" show -pv -t "$RF_DP" @tagents_port >"$RF_DIR/port.5"'
 go 6
-has "the seat stamp (2) and the claim taken away (4) each reload" "1 2 4" "$(reloads)"
-ok "the wake after the stamp's second look is quiet again, one tmux call" "3:1 5:1 6:1" "$(tmuxn 3 5 6)"
-if [ "$(tmuxn 2)" != "2:1" ]; then r=more; else r=one; fi
-ok "the seat block ran on the wake the stamp changed" more "$r"
+has "a field the snapshot covers (2) and the claim taken away (4) each reload" "1 2 4" "$(reloads)"
+ok "the wake after the second look is quiet again, one tmux call" "3:1 5:1 6:1" "$(tmuxn 3 5 6)"
 ok "the claim taken away is made again within the wake" "$PORT" "$(cat "$D/port.5" 2>/dev/null)"
+# What the snapshot does not cover moves nothing: a title is not in it.
+newrun title
+act 2 '"$RF_TMUX" -L "$RF_S" select-pane -T "some title" -t "$RF_DP"'
+go 4
+ok "a pane title changes nothing the snapshot covers" "1" "$(reloads)"
 
 # ---------------------------------------------------------------------------
 t "4. five refused posts in a row end the loop, and nothing else does"
@@ -691,6 +695,8 @@ unset TA_HOST
 # ---------------------------------------------------------------------------
 t "19. the doorbells: the agent-state hook wakes a waiter, and a hook of the owner's is left alone"
 # ---------------------------------------------------------------------------
+# The pane the hook is run for, made before the scenario starts so that its own events are drained with the rest.
+HKP=$(tm split-window -d -P -F '#{pane_id}' -t "$DP" 'sleep 600')
 newrun bell
 tm set-hook -g 'after-split-window[7]' 'set -g @mine yes'
 tm set-hook -g 'after-split-window[42]' 'set -g @mine no'
@@ -699,27 +705,18 @@ printf '{"hook_event_name":"PreToolUse","session_id":"sid-b","cwd":"/tmp","trans
 rm -f "$D/woke"
 ( tm wait-for tagents-ev; : >"$D/woke" ) &
 /bin/sleep 0.5
-env TMUX="$SOCK,0,0" TMUX_PANE="$SEAT" TA_STATE_DIR="$STATE" sh "$HOOK" <"$D/pre.json"
+env TMUX="$SOCK,0,0" TMUX_PANE="$HKP" TA_STATE_DIR="$STATE" sh "$HOOK" <"$D/pre.json"
 /bin/sleep 0.5
 ok "a hook event rings tagents-ev" yes "$([ -e "$D/woke" ] && echo yes || echo no)"
-ok "...and still sets @agent on the pane" working "$(tm show -pv -t "$SEAT" @agent 2>/dev/null)"
+ok "...and still sets @agent on the pane" working "$(tm show -pv -t "$HKP" @agent 2>/dev/null)"
 rm -f "$D/woke"
 ( tm wait-for tagents-ev; : >"$D/woke" ) &
 /bin/sleep 0.5
 env TMUX="$SOCK,0,0" TMUX_PANE=%999999 TA_STATE_DIR="$STATE" sh "$HOOK" <"$D/pre.json"
 /bin/sleep 0.5
 ok "an event whose pane is gone rings it all the same (the signal is first in the list)" yes "$([ -e "$D/woke" ] && echo yes || echo no)"
-TMUX="$SOCK,0,0" bash "$TREE/tagents" --focus-hooks >/dev/null 2>&1
-TMUX="$SOCK,0,0" bash "$TREE/tagents" --focus-hooks >/dev/null 2>&1
-has "installing the focus hooks again rings both channels from them, once" "tagents-panes" "$(tm show-hooks -g 2>/dev/null | grep after-select-pane)"
-ok "...and does not pile up: the signal appears once per event" 1 "$(tm show-hooks -g 2>/dev/null | grep after-select-pane | grep -c 'wait-for -S tagents-ev')"
-# THE COUNT THE SLOTS COMPARE: every ring of tagents-panes also adds one to
-# @tagents_gen, so a ring that cancelled another with no slot waiting is still seen.
-g0=$(tm show -gv @tagents_gen 2>/dev/null); g0=${g0:-0}
-tm new-window -d -t tatest-dash: 'sleep 1'
-/bin/sleep 0.3
-g1=$(tm show -gv @tagents_gen 2>/dev/null); g1=${g1:-0}
-ok "a window made by tmux moves the count the slots compare" yes "$([ "$g1" -gt "$g0" ] && echo yes || echo no)"
+modsh install_event_hooks; modsh install_event_hooks
+ok "installing the event hooks twice leaves one ring on each of the 18 events" 18 "$(hooks42)"
 tm split-window -d -t tatest-dash: 'sleep 1'
 /bin/sleep 0.3
 ok "the owner's hook at [7] ran beside ours" yes "$(tm show -gv @mine 2>/dev/null | grep -q yes && echo yes || echo no)"
@@ -732,7 +729,7 @@ ok "no ring in the hook is a bare signal: the count comes first" 0 \
 ok "...six rings: the subagent pair, the removal pair and the event pair" 6 \
    "$(grep -c 'tmux set -gF @tagents_evgen "\$EV_BUMP" \\; wait-for -S tagents-ev' "$HOOK" | tr -d ' ')"
 g0=$(tm show -gv @tagents_evgen 2>/dev/null); g0=${g0:-0}
-env TMUX="$SOCK,0,0" TMUX_PANE="$SEAT" TA_STATE_DIR="$STATE" sh "$HOOK" <"$D/pre.json"
+env TMUX="$SOCK,0,0" TMUX_PANE="$HKP" TA_STATE_DIR="$STATE" sh "$HOOK" <"$D/pre.json"
 g1=$(tm show -gv @tagents_evgen 2>/dev/null); g1=${g1:-0}
 ok "one hook event adds one to the count" 1 "$((g1 - g0))"
 
@@ -825,11 +822,14 @@ stop_ref 0
 t "23. the focus events ring from [42], once, and the slow pass puts a wiped hook back"
 # ---------------------------------------------------------------------------
 newrun focus
-TMUX="$SOCK,0,0" bash "$TREE/tagents" --focus-hooks >/dev/null 2>&1
+modsh install_event_hooks
 for ev in pane-focus-in after-select-pane after-select-window client-session-changed; do
   ok "$ev rings from [42], with the count first" 1 "$(hooks42 "$ev")"
   ok "...and nothing else of ours rings: the signal appears once in its list" 1 \
      "$( { tm show-hooks -g; tm show-hooks -gw; } 2>/dev/null | grep "^$ev\[" | grep -c 'wait-for -S tagents-ev')"
+done
+for ev in session-window-changed client-session-changed; do
+  ok "$ev carries the follow hook at [43], once" 1 "$( { tm show-hooks -g; tm show-hooks -gw; } 2>/dev/null | grep "^$ev\[43\]" | grep -c -- '--follow')"
 done
 # One focus change, one ring. A plain pane and a plain window: the guards of the
 # other hooks are false for them, so nothing but the ring runs.
@@ -916,7 +916,7 @@ kill -9 "$RPID" 2>/dev/null
 rm -f "$STATE"/.refresher.*
 
 # ---------------------------------------------------------------------------
-t "25. what the loop leaves behind: no waiter, no bar text; and a seat that died is put back"
+t "25. what the loop leaves behind: no waiter, no bar text"
 # ---------------------------------------------------------------------------
 # The exit frees the waiter that is outstanding: its `tmux if-shell` would otherwise
 # sit in the server until somebody rang the channel.
@@ -946,7 +946,6 @@ newrun deadbar
 tm set -g @tagents_counts 'frozen'
 sh -c 'exit 0' & gone=$!; wait "$gone" 2>/dev/null
 : >"$STATE/.refresher.$gone.start"
-LISTED_MODS=$(awk '/^[[:space:]]*for ta_mod in/ { grab = 1 } grab { l = $0; sub(/^[[:space:]]*for ta_mod in[[:space:]]*/, "", l); fin = (l ~ /;[[:space:]]*do[[:space:]]*$/); sub(/;[[:space:]]*do[[:space:]]*$/, "", l); sub(/\\[[:space:]]*$/, "", l); printf "%s ", l; if (fin) exit }' "$TA")
 env TMUX="$SOCK,0,0" TMUX_PANE="$DP" TA_STATE_DIR="$STATE" TA_CONFIG="$RFCFG" TA_SESSION=tatest-dash \
     /bin/bash -c 'for m in '"$LISTED_MODS"'; do . "'"$HERE"'/../lib/tagents/$m.sh"; done; release_dash' >/dev/null 2>&1
 ok "the list that closes takes the bar's text down when the only marker left is a dead refresher's" "" "$(tm show -gv @tagents_counts 2>/dev/null)"
@@ -958,26 +957,6 @@ env TMUX="$SOCK,0,0" TMUX_PANE="$DP" TA_STATE_DIR="$STATE" TA_CONFIG="$RFCFG" TA
 ok "...and leaves it alone while another refresher is alive" kept "$(tm show -gv @tagents_counts 2>/dev/null)"
 kill "$alive" 2>/dev/null; rm -f "$STATE"/.refresher.*; tm set -gu @tagents_counts
 tm set -p -t "$DP" @tagents_list "$$"
-
-# A SEAT THAT DIED OWES THE SLOW PASS, which is what puts it back: the slow pass rides
-# a wake at least TA_REFRESH_SLOW after the last, so a seat lost shortly after one
-# waited for the next ring, or for the idle timeout (tests/panes.sh section 9 asks the
-# same of the real thing, and failed one run in two on exactly this). The wake that
-# sees the window without a seat ends its wait at the end of the interval instead.
-newrun seatheal
-SLOW=6
-act 2 '"$RF_TMUX" -L "$RF_S" kill-pane -t "$RF_SEAT"'
-start_ref
-wake 2
-ok "the wake that saw the seat gone did not put one back (the repair is the slow pass's)" 0 \
-   "$(awk '$2 == "split-window"' "$D/tmux.log" | wc -l | tr -d ' ')"
-/bin/sleep 3.5
-# The new seat is a pane running `tagents --slot`, which has nothing to stand on in
-# this server and ends at once: what is asked of the loop is that it made one.
-ok "...the end of the interval did, with no further ring (a split of the dashboard window)" 1 \
-   "$(awk '$2 == "split-window"' "$D/tmux.log" | wc -l | tr -d ' ')"
-stop_ref 0
-SEAT=$(tm split-window -d -P -F '#{pane_id}' -t "$DP" 'sleep 600')
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
