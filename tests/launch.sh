@@ -269,7 +269,7 @@ has "the list shows the account column" "personal" "$row"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$(date +%s)" done "sid-slash" "$PERS" "" closed "$HOME/.claude-personal/" \
   >"$STATE/9102.tsv"
-row=$(TA_COLS=130 run --list | awk -F'\t' '$1 == "%9102" { print $2; exit }' |
+row=$(TA_COLS=130 run --list | awk -F'\t' '$1 == "%9102" && index($2, "\342\226\276") == 0 { print $2; exit }' |
         sed 's/\033\[[0-9;]*m//g')
 has "a trailing slash still names the profile" "personal" "$row"
 rm -f "$STATE/9102.tsv" "$STATE/$PN.tsv"

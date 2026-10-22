@@ -671,6 +671,8 @@ t "15b. a held lock holds a restore and every capture off; a stale one holds not
 # ---------------------------------------------------------------------------
 # The snapshots so far are set aside, so every count below starts from none.
 mkdir -p "$ROOT/aside"; mv "$STATE/resurrect/"*.tsv "$ROOT/aside/" 2>/dev/null
+# A capture the status bar or a restore started in the background holds this very lock while it runs, and its unlock would take the held directory below away: wait until the lock has been free for five looks in a row (about a second).
+i=0; free=0; while [ "$i" -lt 100 ] && [ "$free" -lt 5 ]; do if [ -d "$STATE/.resurrect.lock" ]; then free=0; else free=$((free + 1)); fi; sleep 0.2; i=$((i + 1)); done
 mkdir "$STATE/.resurrect.lock"
 out=$(run --resurrect --from "$SNAP/dry.tsv"); rc=$?
 has "a held lock: the restore says why it stops" "another resurrect is running" "$out"
