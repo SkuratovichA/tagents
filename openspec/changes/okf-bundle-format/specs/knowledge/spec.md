@@ -373,7 +373,7 @@ A standard markdown link whose target is a document of the folder SHALL be recog
 A fragment of a markdown link SHALL match a section of the target when, after URL-decoding, it equals the section heading case-insensitively, or equals the heading's slug: the heading in lowercase with spaces turned into dashes and every character that is not a letter, a digit or a dash dropped. A link without a fragment needs only the target document.
 
 #### Scenario: Heading and slug
-- **WHEN** the target has a section `Failover steps` and links use `#Failover%20steps`, `#failover steps` and `#failover-steps`
+- **WHEN** the target has a section `Failover steps` and links use `#Failover%20steps`, `#FAILOVER%20STEPS` and `#failover-steps`
 - **THEN** all three match, and `#failover-step` does not
 
 ### Requirement: Lifecycle status and staleness
