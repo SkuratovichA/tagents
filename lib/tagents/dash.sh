@@ -181,7 +181,7 @@ dash() {
   kb "$K_PICK"    "$ask($SELF --act pick {1} {3} {4} {5})$after"
   kb "$K_COLUMNS" "$ask($SELF --act columns)"
   kb "$K_USAGE"   "$ask($SELF --act usage)"
-  kb "$K_CLOSED"  "$ask($SELF --act closed)$after"
+  kb "$K_CLOSED"  "$ask($SELF --act closed {1})$after"
   kb "$K_KEYS"    "$ask($SELF --act keys {1} {3} {4} {5})$after"
   kb esc          "$esc_act"
   kb "$K_PREVIEW" "$vact"

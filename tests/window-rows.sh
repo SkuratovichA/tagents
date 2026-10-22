@@ -628,6 +628,30 @@ mkchat tatest-n1 own "$WRROOT/own"; nw0=$(tm list-windows -t =tatest-n1: -F x | 
 TA_NEW_CMD="exec '$BIN/claude' 600" act new "%994" dead sid-y "$WRROOT/own"; settle 0.5
 ok "R31 on no window, a project a session owns: the new chat opens there (chat-launch spec)" "$((nw0 + 1))" "$(tm list-windows -t =tatest-n1: -F x | wc -l | tr -d ' ')"
 
+t "R35 ctrl-y with the cursor in another group: the resumed chat opens in that group's session (the bind passes the row's key)"
+newsess tatest-y1; mkchat tatest-y1 yy; PYY=$LASTPANE; SYY=$LASTSID
+kill_sidebars; to tatest-work
+printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(( $(date +%s) - 300 ))" start sid-closed-y '%990' '' "$REPO" >>"$WRSTATE/history.tsv"
+printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(( $(date +%s) - 200 ))" end   sid-closed-y '%990' '' "$REPO" >>"$WRSTATE/history.tsv"
+nw1=$(tm list-windows -t =tatest-y1: -F x | wc -l | tr -d ' ')
+: >"$RESUMED"
+FZF_DEFAULT_OPTS='--filter=sid-closed-y' TA_MODE=popup resume_run --act closed "$PYY"
+RY=""; i=0; while [ "$i" -lt 30 ] && [ -z "$RY" ]; do RY=$(awk '$2 == "sid-closed-y" { p = $1 } END { print p }' "$RESUMED"); i=$((i+1)); sleep 0.1; done
+ok "R35 the closed session was resumed" yes "$([ -n "$RY" ] && echo yes || echo no)"
+ok "R35 in the session of the row under the cursor" tatest-y1 "$(tm display -p -t "$RY" '#{session_name}' 2>/dev/null)"
+ok "R35 as a new window of it" "$((nw1 + 1))" "$(tm list-windows -t =tatest-y1: -F x | wc -l | tr -d ' ')"
+to tatest-work; : >"$RESUMED"
+FZF_DEFAULT_OPTS='--filter=sid-closed-y' TA_MODE=popup resume_run --act closed ""
+RY2=""; i=0; while [ "$i" -lt 30 ] && [ -z "$RY2" ]; do RY2=$(awk '$2 == "sid-closed-y" { p = $1 } END { print p }' "$RESUMED"); i=$((i+1)); sleep 0.1; done
+ok "R35 with no row under the cursor it opens in the client's session" tatest-work "$(tm display -p -t "$RY2" '#{session_name}' 2>/dev/null)"
+# The ? window reaches the same picker (:closed): it is handed the row it was opened on, and fzf is a function that picks the closed key and then the one closed session.
+to tatest-work; : >"$RESUMED"
+TA_RESUME_CMD="$BIN/rec" WR_PRE='fzf() { case "$*" in *"keys>"*) grep -m1 ":closed" ;; *) head -1 ;; esac; }' modrun ask_keys "" "$PYY" working "$SYY" "$REPO" >/dev/null 2>&1
+RY3=""; i=0; while [ "$i" -lt 30 ] && [ -z "$RY3" ]; do RY3=$(awk '$2 == "sid-closed-y" { p = $1 } END { print p }' "$RESUMED"); i=$((i+1)); sleep 0.1; done
+ok "R35 the ? window's closed key opens it in the row's session as well" tatest-y1 "$(tm display -p -t "$RY3" '#{session_name}' 2>/dev/null)"
+rm -f "$WRSTATE/history.tsv"
+to tatest-work; tm kill-session -t =tatest-y1; rm -f "$WRSTATE/${PYY#%}.tsv" "$WRSTATE/history.tsv"; ring
+
 t "R32 popup enter with no sidebar starts one first"
 kill_sidebars; to tatest-work
 TA_MODE=popup act open "$PN" working "$SN" "$REPO"; settle 0.8

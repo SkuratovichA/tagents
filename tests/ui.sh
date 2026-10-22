@@ -710,7 +710,7 @@ keys:
 YEOF
 KDUMP=$(dumpargs "$ROOT/fzf-keys" "TA_CONFIG='$KCFG'")
 has "a configured key is the one fzf binds" \
-    "--bind=ctrl-o:execute-silent($SELF --act closed)" "$KDUMP"
+    "--bind=ctrl-o:execute-silent($SELF --act closed {1})" "$KDUMP"
 hasnt "a borrow key left in the config binds nothing" "act borrow" "$KDUMP"
 KT=$(env TMUX="$TMUXV" TA_CONFIG="$KCFG" bash "$TA" --keys)
 has "...and --keys says the same"     "ctrl-o${TAB}:closed" "$KT"
@@ -722,7 +722,7 @@ BCFG="$ROOT/keys-bogus.yaml"
 printf 'keys:\n  closed: bogus\n' >"$BCFG"
 BDUMP=$(dumpargs "$ROOT/fzf-bogus" "TA_CONFIG='$BCFG'")
 has "an unusable key falls back to the default" \
-    "--bind=ctrl-y:execute-silent($SELF --act closed)" "$BDUMP"
+    "--bind=ctrl-y:execute-silent($SELF --act closed {1})" "$BDUMP"
 ok  "...and nothing is bound to the name itself" 0 \
     "$(printf '%s\n' "$BDUMP" | grep -c '^--bind=bogus:' | tr -d ' ')"
 has "...and --keys says why" \
