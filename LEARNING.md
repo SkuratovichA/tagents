@@ -311,3 +311,27 @@ The new comment above the dimmed rows said "the window's row", inside the awk pr
 
 ## The window a restored sidebar ends in is the client's, because the claim runs one follow (22.10.2026)
 `--resurrect` starts the list in the window of the `D` row, the list claims the sidebar and runs one follow (choice 10), and the follow moves it into the window the client shows; a test of "the list runs in the recorded window" has to keep the client in that window, or it measures the follow. Stub agents write no record, so a second restore from the same snapshot resumes the chats again into new windows, which also moves the session's current window away from index 0.
+
+## `join-pane -l` does not hand the other panes their old widths back (22.10.2026)
+design.md of the window-rows change said a re-join gives a window the same split each time; on tmux 3.7b a plain re-join turned a 21/21 split into 31/11. The sidebar saves the widths in the window option `@tagents_widths` before it leaves and applies them with `resize-pane -x` from left to right (`sidebar_move`, `lib/tagents/follow.sh`). `select-layout <saved string>` is no way out: after `join-pane -b` the layout string and the pane list differ in order and the panes are assigned wrongly.
+
+## A sidebar that leaves a window it is alone in takes the session with it, and the client is detached (22.10.2026)
+With `detach-on-destroy` on, the session that loses its last window goes, and a client attached to it is detached or moved. The client is switched first and the sidebar moves second (`show_window`, `lib/tagents/rows.sh`); F19 in `tests/window-rows.sh` pins the order.
+
+## A suite that runs a library function in a shell of its own has to hand it SELF (22.10.2026)
+`modsh install_event_hooks` in `tests/refresh.sh` sourced the modules without `SELF`, so the follow hook was installed as `'' --follow …`; the hook failed on every window change, its error was drawn into the pane as a view, and "select-window rings the refresher exactly once" read 2. The helper passes `SELF="$TREE/tagents"`, as the entry point would have set it.
+
+## A pane made after a scenario's drain wakes the refresher the scenario starts next (22.10.2026)
+`newrun` drains the channel so the loop starts from a quiet one; the editor pane of section 7 of `tests/refresh.sh` was split off after it, its layout event rang the channel, and the loop's first wait returned at once: three slow passes in three ticks instead of two, three `tnotes sync` instead of two. What a scenario needs on the server is made before `newrun`.
+
+## The first refresher on a fresh server runs the migration once and asks tnotes for a sync (22.10.2026)
+`migrate_seats` marks the server with `@tagents_migrated` and starts one `tnotes sync` in the background, so "no editors, no notes sync" in section 1 of `tests/refresh.sh` read `sync`. The fixture marks its server as one that has been through the upgrade; the migration itself is pinned by M1 to M4 in `tests/window-rows.sh`.
+
+## `fzf --filter` with `--with-nth=3` searches only the description, so a key picked by its verb found nothing (22.10.2026)
+The `?` window test picked undock with `--filter=undock`; the description column now says "break a joined chat out into a window of its own", `pick` was empty and the key did nothing, so the chat stayed where it was and the failure looked like a broken undock. The picker is given a word of the description (`--exact --filter=break`).
+
+## A group is a session, so a test that counts rows of "a project" counts a different set (22.10.2026)
+The window of the session that holds no chat is a dimmed row below its chats, a closed row lives in the `no window` group, and a group's cost total sits on that group's header; expectations written for project groups (the tee of the last row, `hdrfor repo`, the order of closed rows under their project, a flat row naming its project) were rewritten against the session tree rather than loosened.
+
+## A before/after comparison on the server races the tnotes sync the migration starts (22.10.2026)
+`migrate_seats` starts `tnotes sync` with `&`; under load it closed a pane after M4 of `tests/window-rows.sh` had taken its snapshot, and H2 saw the same drift. A check that compares the server before and after waits for the syncs of its tree to end (`wait_syncs`) first.
