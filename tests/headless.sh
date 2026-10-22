@@ -869,7 +869,7 @@ rowfor() {  # <pane key> — the whole row, tabs intact, colours stripped
   TA_COLS=130 run --list | plain |
     awk -F"$TAB" -v p="$1" '$1 == p && index($2, "▾") == 0 { print; exit }'
 }
-hdrfor() {  # <group basename> — the group header row, colours stripped
+hdrfor() {  # <group name> — the group header row, colours stripped
   TA_COLS=130 run --list | plain |
     awk -F"$TAB" -v n="▾ $1 " 'index($2, n) > 0 { print; exit }'
 }
@@ -920,8 +920,9 @@ ok "the child sits directly under its parent" "$MUM %s-kid1" \
    "$(order | awk '{ for (i = 1; i <= NF; i++) if ($i == "'"$MUM"'") print $i, $(i+1) }')"
 ok "...in the group of the parent, not of its own repo" "$REPO" \
    "$(printf '%s' "$KIDROW" | awk -F"$TAB" '{ print $5 }')"
-has "the parent draws the tee it always drew" "  └─ " "$MUMROW"
-has "and the child hangs one level deeper" "     └─ " "$KIDROW"
+# The group is the session, and its other window (window 0, no chat) is drawn below the parent as a dimmed row, so the parent is not the last of its group and its bar runs down past the child.
+has "the parent draws a tee: the session's other window is drawn below it" "  ├─ " "$MUMROW"
+has "and the child hangs one level deeper, under that bar" "  │  └─ " "$KIDROW"
 has "the location column says what it is" "child" "$KIDROW"
 has "...and the detail still names the repo it actually runs in" "kidrepo" "$KIDROW"
 
@@ -939,12 +940,12 @@ has "only the column that says what it is" "child" "$FKID"
 t "D2. the header stands in for the parent, and counts the child"
 # ---------------------------------------------------------------------------
 ok "the header names a pane somebody can be sent to" "$MUM" \
-   "$(hdrfor repo | awk -F"$TAB" '{ print $1 }')"
+   "$(hdrfor tatest-dash | awk -F"$TAB" '{ print $1 }')"
 has "the parent shows what is fanned out under it" "⑂1" "$(rowfor "$MUM")"
 crec kid1 blocked "$$" "" "$MUMK" sid-mum 0 "$REPO2" "$KIDTR"
-has "a blocked child is a blocked group" "⚠1" "$(hdrfor repo)"
+has "a blocked child is a blocked group" "⚠1" "$(hdrfor tatest-dash)"
 ok "...and the header is still the parent" "$MUM" \
-   "$(hdrfor repo | awk -F"$TAB" '{ print $1 }')"
+   "$(hdrfor tatest-dash | awk -F"$TAB" '{ print $1 }')"
 crec kid1 working "$$" "" "$MUMK" sid-mum 0 "$REPO2" "$KIDTR"
 
 # ---------------------------------------------------------------------------
@@ -1039,9 +1040,9 @@ crec kid3 working "$$" "" "s-kid1" kid1 0 "$REPO2" ""
 ORD=$(order)
 ok "the whole family is one block under the pane" "$MUM %s-kid1 %s-kid3 " \
    "$(printf '%s' "$ORD" | awk '{ for (i = 1; i <= NF; i++) if ($i == "'"$MUM"'") printf "%s %s %s ", $i, $(i+1), $(i+2) }')"
-has "the grandchild hangs beside its parent, not under it" "     └─ " \
+has "the grandchild hangs beside its parent, not under it" "  │  └─ " \
    "$(rowfor "%s-kid3")"
-has "...which now has a sibling below it" "     ├─ " "$(rowfor "%s-kid1")"
+has "...which now has a sibling below it" "  │  ├─ " "$(rowfor "%s-kid1")"
 ok "...and it is in the group of the pane" "$REPO" \
    "$(rowfor "%s-kid3" | awk -F"$TAB" '{ print $5 }')"
 rm -f "$STATE/s-kid3.tsv"
@@ -1098,7 +1099,7 @@ ok "...and the child still sits directly under the live parent" "$MUM %s-kid1" \
    "$(printf '%s' "$ORD" | awk '{ for (i = 1; i <= NF; i++) if ($i == "'"$MUM"'") print $i, $(i+1) }')"
 ok "...in the live parent's group" "$REPO" \
    "$(rowfor "%s-kid1" | awk -F"$TAB" '{ print $5 }')"
-has "...hanging one level deeper, as a nested row does" "     └─ " \
+has "...hanging one level deeper, as a nested row does" "  │  └─ " \
    "$(rowfor "%s-kid1")"
 rm -f "$STATE"/910[3-6].tsv
 

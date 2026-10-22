@@ -442,7 +442,7 @@ ok "a rename inside the sweep is not clobbered" 'MINE-DO-NOT-TOUCH' "$(wname "$R
 ok "...and the sweep does not claim the window either" 'sweep-target' "$(wrec "$RCW")"
 
 # ---------------------------------------------------------------------------
-t "what the sweep never touches"
+t "the sidebar does not stop a window being named, and a window of only the sidebar is not named"
 # ---------------------------------------------------------------------------
 # The window the sidebar is in is named after its chat like any other: DP stands
 # in for the sidebar (a pane a live list claims, lent this suite's pid) and DA is
@@ -459,19 +459,17 @@ run --label sid-da 'docked-by-hand' >/dev/null 2>&1
 ok "...and an explicit rename reaches it" "docked-by-hand" "$(wname "$DWIN")"
 tm set -up -t "$DP" @tagents_list >/dev/null 2>&1
 
-# A window a list is running in is a sidebar, whatever session it is in. The pid
-# in @tagents_list is what makes the claim live, so this suite lends it its own.
-LW=$(newagent tatest-work 'would-be-name' sid-lw "$NOW")
-LWIN=$(wof "$LW")
-LNAME=$(wname "$LWIN")
-tm set -p -t "$LW" @tagents_list "$$" >/dev/null 2>&1
+# A window that holds only the sidebar has no pane with a name to give: the sidebar
+# is no chat, so the sweep leaves the window's name alone. The pid in @tagents_list
+# is what makes the claim live, so this suite lends it its own.
+SW=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' "exec sleep 600" 2>/dev/null)
+SWIN=$(wof "$SW")
+SNAME=$(wname "$SWIN")
+tm set -p -t "$SW" @tagents_list "$$" >/dev/null 2>&1
+tm select-pane -T tagents-sidebar -t "$SW" >/dev/null 2>&1
 run --sync-names >/dev/null 2>&1
-ok "a window with a live list in it is a sidebar, not an agent" \
-   "$LNAME" "$(wname "$LWIN")"
-tm set -up -t "$LW" @tagents_list >/dev/null 2>&1
-run --sync-names >/dev/null 2>&1
-ok "...and once that list is gone it is an ordinary window again" \
-   "would-be-name" "$(wname "$LWIN")"
+ok "a window with only the sidebar in it is not named" "$SNAME" "$(wname "$SWIN")"
+tm set -up -t "$SW" @tagents_list >/dev/null 2>&1
 
 # ---------------------------------------------------------------------------
 t "(g) with no dashboard at all, the status bar does it"

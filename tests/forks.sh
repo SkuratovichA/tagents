@@ -215,28 +215,19 @@ PS4='+${BASH_SUBSHELL}|${FUNCNAME[0]:-}| ' bash -x "$TA" --list >/dev/null 2>"$x
 ok "dir_roots forks nothing for 3 directories" 0 "$(grep -c '^++[0-9]*|dir_roots| repo_root' "$xt")"
 ok "dir_roots still walked 3 directories" 3 "$(grep -c '^+[0-9]*|dir_roots| repo_root' "$xt")"
 
+# The modules are loaded the way the entry point loads them, because that is the only way to reach a function.
+LIBD="$HERE/../lib/tagents"
+FN_MODS=$(sed -n '/for ta_mod in/,/; do/p' "$TA" | sed 's/.*for ta_mod in//; s/; do.*//' | tr -d '\\' | tr -s ' \n' '  ')
+fn() {  # <code> — runs it with the modules loaded and the config read
+  SELF="$TA" FN_LIB="$LIBD" FN_MODS="$FN_MODS" /bin/bash -c \
+    'set -uo pipefail; for m in $FN_MODS; do . "$FN_LIB/$m.sh"; done; cfg_load; eval "$1"' fn "$1"
+}
+
 # ---------------------------------------------------------------------------
 t "--list: names that differ only in a Cyrillic letter are different names"
 # ---------------------------------------------------------------------------
-# Under a UTF-8 locale macOS awk and sort weigh every Cyrillic letter alike, so "я" and "ю" were one name to them: two projects shared a group, two directories shared a line of `sort -u`, and a project one letter longer than the home directory was the home directory. One letter each, because longer names can survive by luck.
-cy_list() { env -u LC_ALL LANG=en_US.UTF-8 bash "$TA" --list 2>/dev/null | sed "s/$(printf '\033')\[[0-9;]*m//g"; }
-cy_agent() {  # <sid> <dir> — a pane-less record of an agent in a repository
-  mkdir -p "$2/.git"
-  printf '%s\tworking\t%s\t%s\t\t\t\t0\t\tlabel %s\n' "$NOW" "$1" "$2" "$1" >"$STATE/s-$1.tsv"
-  printf '%s\t%s\n' "$1" "$2" >>"$STATE/origin.tsv"
-}
-fresh
-cy_agent cy-1 "$ROOT/cy/я"; cy_agent cy-2 "$ROOT/cy/ю"; cy_agent cy-3 "$ROOT/cy/я"
-runs=0; prev=; tees=0
-while IFS= read -r line; do
-  case $line in *'▾'*) continue ;; esac
-  case ${line%%$TAB*} in *cy-1|*cy-3) l=a ;; *cy-2) l=b ;; *) continue ;; esac
-  [ "$l" = "$prev" ] || { runs=$((runs + 1)); prev=$l; }
-  case $line in *'└─'*) tees=$((tees + 1)) ;; esac
-done < <(cy_list)
-ok "two projects that differ only in a Cyrillic letter are two groups: each keeps its rows together" 2 "$runs"
-ok "...and the last row of each closes its own tree" 2 "$tees"
-
+# Under a UTF-8 locale macOS awk and sort weigh every Cyrillic letter alike, so "я" and "ю" were one name to them and two directories shared a line of `sort -u`: the second was never found under its repository. A group is a session now (tests/window-rows.sh L9 pins two sessions named that way); what is left of the rule here is the directory scan that feeds the subdirectory drawn before a row's detail.
+cy_fn() { ( unset LC_ALL; export LANG=en_US.UTF-8; fn "$1" ) 2>/dev/null; }
 fresh
 mkdir -p "$ROOT/dr/я/.git" "$ROOT/dr/я/src" "$ROOT/dr/ю/.git" "$ROOT/dr/ю/src"
 for i in 1 2; do
@@ -244,15 +235,10 @@ for i in 1 2; do
   printf '%s\tworking\tdr-%s\t%s\t\t\t\t0\t\tlabel %s\n' "$NOW" "$i" "$d" "$i" >"$STATE/s-dr-$i.tsv"
   printf 'dr-%s\t%s\n' "$i" "$d" >>"$STATE/origin.tsv"
 done
-heads=$(cy_list | grep '▾')
-ok "two directories that differ only in a Cyrillic letter are both found under their repository" 0 "$(printf '%s\n' "$heads" | grep -c '▾ src')"
-has "...the first as its own project" "▾ я" "$heads"
-has "...and the second as its own project" "▾ ю" "$heads"
-
-fresh
-cy_agent cy-h "${HOMED}я"
-has "a project named for the home directory plus a Cyrillic letter keeps its name" "▾ homeя" "$(cy_list | grep '▾')"
-
+roots=$(cy_fn dir_roots)
+ok "two directories that differ only in a Cyrillic letter are both found" 2 "$(printf '%s\n' "$roots" | grep -c '^R')"
+has "...the first under its own repository"  "$ROOT/dr/я/src$TAB$ROOT/dr/я" "$roots"
+has "...and the second under its own"        "$ROOT/dr/ю/src$TAB$ROOT/dr/ю" "$roots"
 
 # ---------------------------------------------------------------------------
 t "--list: the questions to tmux do not grow with the chats"
@@ -347,12 +333,6 @@ ok "...and the marks-on list leaves it in .counts.tally" "#[default]" "$(cat "$S
 t "--counts: the pieces the refresher keeps compose to exactly what counts_now prints"
 # The two functions are called in a bash that has loaded the modules the way the
 # entry point loads them, because that is the only way to reach a function.
-LIBD="$HERE/../lib/tagents"
-FN_MODS=$(sed -n '/for ta_mod in/,/; do/p' "$TA" | sed 's/.*for ta_mod in//; s/; do.*//' | tr -d '\\' | tr -s ' \n' '  ')
-fn() {  # <code> — runs it with the modules loaded and the config read
-  SELF="$TA" FN_LIB="$LIBD" FN_MODS="$FN_MODS" /bin/bash -c \
-    'set -uo pipefail; for m in $FN_MODS; do . "$FN_LIB/$m.sh"; done; cfg_load; eval "$1"' fn "$1"
-}
 printf 'usage:\n  monthly_limit_usd: abc\n' >"$ROOT/cfgbad.yaml"
 for cf in "$ROOT/absent.yaml" "$ROOT/cfgbad.yaml"; do
   export TA_CONFIG=$cf

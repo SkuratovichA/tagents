@@ -258,7 +258,7 @@ has "the preview says which account that is" "account: work" "$(run --preview "%
 hookrun "$HOME/.claude-personal"
 # Read the row for that pane alone: the group header carries the project path,
 # which contains the word "personal" and would pass a grep over the whole list.
-row=$(TA_COLS=130 run --list | awk -F'\t' -v p="%$PN" '$1 == p { print $2; exit }' |
+row=$(TA_COLS=130 run --list | awk -F'\t' -v p="%$PN" '$1 == p && index($2, "\342\226\276") == 0 { print $2; exit }' |
         sed 's/\033\[[0-9;]*m//g')
 has "the list shows the account column" "personal" "$row"
 
@@ -357,9 +357,11 @@ t "9. a new agent gets the cursor"
 # The window is still opened with -d in the project's session, but the new window
 # is then selected like enter would do, the sidebar comes along and the cursor
 # lands in the chat: ctrl-n leaves you looking at the agent you just asked for.
-# The sidebar is a pane that counts as one (the pid of its shell and the title).
+# The sidebar is a pane that counts as one (the pid of its shell and the title);
+# the lists earlier sections started are closed first, so there is exactly one.
 clear_out
-SBP=$(tm list-panes -t tatest-dash: -F '#{pane_id}' | head -1)
+for p in $(tm list-panes -a -F '#{pane_id} #{@tagents_dash}' 2>/dev/null | awk '$2 == 1 { print $1 }'); do tm kill-pane -t "$p" 2>/dev/null; done
+SBP=$(tm split-window -d -t tatest-dash: -P -F '#{pane_id}' 'sleep 600')
 tm set -p -t "$SBP" @tagents_list "$(tm display -p -t "$SBP" '#{pane_pid}')" \; set -p -t "$SBP" @tagents_dash 1 \; select-pane -T tagents-sidebar -t "$SBP"
 run --act new "%$PN" dead sid-focus "$PERS"
 f=$(waitout) || { echo "  FAIL nothing started"; fail=$((fail+1)); f=/dev/null; }
@@ -370,6 +372,7 @@ ok "the client's current pane is the agent it just started" \
    "%$n" "$(tm display -p -t "$csess:" '#{pane_id}' 2>/dev/null)"
 ok "and the sidebar is in its window" \
    "$(tm display -p -t "%$n" '#{window_id}' 2>/dev/null)" "$(tm list-panes -a -F '#{window_id} #{@tagents_dash}' | awk '$2 == 1 { print $1 }')"
+tm kill-pane -t "$SBP" 2>/dev/null
 
 # ---------------------------------------------------------------------------
 t "10. the hook records when you last typed, and nothing else touches it"
