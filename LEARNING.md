@@ -338,3 +338,21 @@ The window of the session that holds no chat is a dimmed row below its chats, a 
 
 ## `openspec archive` stops on a spec that loses its last requirement, and the merged specs fail a length the change passed (22.10.2026)
 The window-rows change removed every requirement of `seats-and-docking`, and `archive --yes` aborted with "Spec must have at least one requirement" until the change had an `.openspec.yaml` holding `schema:` and `retire_capabilities: true`, which deletes the spec with the archive. After it, `validate window-rows --strict` had passed but `pnpm spec:check` failed nine requirements of the merged specs for text over 500 characters (the check on the change does not apply to the requirements it modifies): five were shortened by dropping words and four split in two with a scenario each (`The row a group header stands for`, `Rename and open keep their other bindings`, `The other panes of a restored window are left alone`). The merged specs are validated with `validate --specs --strict` before the archive is trusted.
+
+## A debug trace written into the line that does the work is deleted with the work (23.10.2026)
+A `sed '/#TRACE/d'` that was meant to strip trace lines also removed a real `lock_dir` call, because the trace had been appended to the same line. A trace goes on a line of its own, or in a copy of the tree (the scratch snapshot), never in the file under review.
+
+## A list killed with its pane leaks the follow lock its claim was holding (23.10.2026)
+`claim_dash` runs a follow, which takes `.follow.lock`; a list whose pane is killed in that moment never reaches the unlock, and every later follow waited out the stale time. `lock_dir` now writes the owner's pid into the lock and takes over a lock whose owner is dead, at once (F35).
+
+## A ctrl-q sent before fzf is up is swallowed by the tty (23.10.2026)
+Flow control eats the byte until fzf has put the tty in raw mode, so a test that sends the quit key right after the pane exists sees a list that never quits. The test waits for the `agents>` prompt on the pane first.
+
+## A test that starts a real list leaves the wish for a sidebar set (23.10.2026)
+`claim_dash` sets the global `@tagents_sidebar_on`, and the next test's window switch then brings a sidebar back. `kill_sidebars` and `unhook` clear it; a test that starts a list and kills it by other means calls them.
+
+## `grep -q` at the end of a pipeline under pipefail inverts the answer in a test too (23.10.2026)
+`keys | grep -qF "$pane"` reported "not found" exactly when it found the pane, because grep closed the pipe and `keys` died of SIGPIPE. The tests read the output into a variable and use `has` on it.
+
+## Two lists after a storm of follows on a loaded machine (23.10.2026)
+`start_sidebar` waits about two seconds for the new list to claim; on a machine with ten busy processes a list takes longer, the next follow found no claim and split a second pane (F33 failed there, and a debug loop with ten busy processes split a second pane in every round). The pane now carries `@tagents_starting` with the time from the split until the claim, and a start that sees a stamp younger than 20 seconds waits for that list instead of starting another (R40).
