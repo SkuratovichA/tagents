@@ -592,12 +592,12 @@ bash 3.2 compatible — macOS ships nothing newer.
 Output of `tnotes --help`:
 
 ```text
-tnotes — a neovim pane beside a Claude pane, hidden and restored per session.
+tnotes — a neovim pane beside a Claude pane, in the chat's own window.
 
   tnotes toggle <pane>        open the notes editor beside a Claude pane,
-                              or hide it again when it is already there
-  tnotes sync [pane]          park every editor whose chat you are not looking
-                              at, bring back the one belonging to <pane>
+                              or move the cursor between the two when it is there
+  tnotes sync                 close the editors whose chat is gone, and bring back
+                              the ones an older version parked
   tnotes send <chat> <dir>    commit the notes and hand prompt.md to <chat>
   tnotes close <editor>       ask the editor to write and quit, then make sure
   tnotes editor <chat> <dir>  the program the editor pane runs (not for you)
@@ -619,22 +619,7 @@ program for as long as nvim is open — hours. `tagents` is read lazily by bash
 while it runs, so a long-lived tagents process is a process that breaks the
 moment the file is edited. This one is short and stays short.
 
-WHY NO @tagents_* MARKER EVER. tagents decides what belongs to it by markers
-and never by position: a pane carrying @tagents_docked or @tagents_slot is a
-SEAT and may be swapped, broken out or killed by the seat logic. An editor
-pane carrying neither is invisible to all of it, which is exactly the contract
-we want — the seat machinery leaves us alone and we leave it alone.
+WHY NO TAGENTS MARKER EVER. tagents decides what belongs to it by the options it puts on a pane (the sidebar's, a joined chat's) and never by position. An editor pane carries only the two options of this script, @ta_notes_for and the chat's @ta_notes, so everything of tagents's that moves, joins or closes panes passes it by, which is exactly the contract we want: it leaves us alone and we leave it alone.
 
-WHERE A HIDDEN EDITOR GOES. Into a detached session called `ta-notes`, one
-window per editor. tmux has no off-screen parking lot, and `break-pane -d`
-alone would litter the window list of the session you are working in. A
-session of its own is out of sight, survives the last editor leaving (a
-holder window keeps it alive), and pane ids survive both moves, so the chat
-pane's @ta_notes still names the same editor afterwards.
-
-WHY HIDE ON ARRIVAL RATHER THAN ON LEAVING. tmux has no "window deactivated"
-hook. So `sync` is written the other way round — arriving anywhere parks the
-editors of every window that is not this one — which is the same shape the
-dashboard's unpark hook already has, with the same backstop: a poll, because
-a hook alone is not trusted.
+WHERE THE EDITOR LIVES. The editor is an ordinary split of the chat's window. tnotes never moves it: switching rows takes the whole window, editor included, off the screen and back. toggle moves the cursor between the chat and its editor; sync only cleans up, and brings back editors an older version parked in a session called ta-notes.
 ```

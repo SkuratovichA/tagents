@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# tnotes — a neovim pane beside a Claude pane, hidden and restored per session.
+# tnotes — a neovim pane beside a Claude pane, in the chat's own window.
 #
 #   tnotes toggle <pane>        open the notes editor beside a Claude pane,
-#                               or hide it again when it is already there
-#   tnotes sync [pane]          park every editor whose chat you are not looking
-#                               at, bring back the one belonging to <pane>
+#                               or move the cursor between the two when it is there
+#   tnotes sync                 close the editors whose chat is gone, and bring back
+#                               the ones an older version parked
 #   tnotes send <chat> <dir>    commit the notes and hand prompt.md to <chat>
 #   tnotes close <editor>       ask the editor to write and quit, then make sure
 #   tnotes editor <chat> <dir>  the program the editor pane runs (not for you)
@@ -27,24 +27,9 @@
 # while it runs, so a long-lived tagents process is a process that breaks the
 # moment the file is edited. This one is short and stays short.
 #
-# WHY NO @tagents_* MARKER EVER. tagents decides what belongs to it by markers
-# and never by position: a pane carrying @tagents_docked or @tagents_slot is a
-# SEAT and may be swapped, broken out or killed by the seat logic. An editor
-# pane carrying neither is invisible to all of it, which is exactly the contract
-# we want — the seat machinery leaves us alone and we leave it alone.
+# WHY NO TAGENTS MARKER EVER. tagents decides what belongs to it by the options it puts on a pane (the sidebar's, a joined chat's) and never by position. An editor pane carries only the two options of this script, @ta_notes_for and the chat's @ta_notes, so everything of tagents's that moves, joins or closes panes passes it by, which is exactly the contract we want: it leaves us alone and we leave it alone.
 #
-# WHERE A HIDDEN EDITOR GOES. Into a detached session called `ta-notes`, one
-# window per editor. tmux has no off-screen parking lot, and `break-pane -d`
-# alone would litter the window list of the session you are working in. A
-# session of its own is out of sight, survives the last editor leaving (a
-# holder window keeps it alive), and pane ids survive both moves, so the chat
-# pane's @ta_notes still names the same editor afterwards.
-#
-# WHY HIDE ON ARRIVAL RATHER THAN ON LEAVING. tmux has no "window deactivated"
-# hook. So `sync` is written the other way round — arriving anywhere parks the
-# editors of every window that is not this one — which is the same shape the
-# dashboard's unpark hook already has, with the same backstop: a poll, because
-# a hook alone is not trusted.
+# WHERE THE EDITOR LIVES. The editor is an ordinary split of the chat's window. tnotes never moves it: switching rows takes the whole window, editor included, off the screen and back. toggle moves the cursor between the chat and its editor; sync only cleans up, and brings back editors an older version parked in a session called ta-notes.
 
 set -uo pipefail
 
@@ -63,7 +48,7 @@ die() {  # <message> — say it where the user is looking, then fail
   exit 1
 }
 
-pane_ok() { tmux display -p -t "${1:-}" '#{pane_id}' >/dev/null 2>&1; }
+pane_ok() { [ -n "$(tmux display -p -t "${1:-}" '#{pane_id}' 2>/dev/null)" ]; }
 opt_of()  { tmux display -p -t "${2:-}" "#{${1}}" 2>/dev/null; }
 
 # A pane is a Claude pane when it says so itself. `claude` as the running command
@@ -116,103 +101,23 @@ ensure_notes() {  # <dir>
 }
 
 # ---------------------------------------------------------------------------
-# moving the editor pane in and out
+# the editor pane
 # ---------------------------------------------------------------------------
-
-ensure_park() {
-  tmux has-session -t "$NOTES_SESSION" 2>/dev/null && return 0
-  # The holder window is what keeps the session alive when the last editor is
-  # joined back; without it tmux destroys the session and the next hide has to
-  # race to recreate it.
-  tmux new-session -d -s "$NOTES_SESSION" -n hold 'sleep 2147483647' 2>/dev/null
-}
-
-hide_editor() {  # <editor> <chat>
-  local ed=$1 chat=$2 ew cw pct= ewin cwin
-  ensure_park || return 1
-  # IDEMPOTENT, BECAUSE IT RUNS IN PARALLEL WITH ITSELF. One window switch fires
-  # several focus hooks, each of which starts a sync, so two hides race for the
-  # same editor: the second one used to measure a pane that was already parked
-  # and record that as the split. An editor that is not beside its chat is left
-  # exactly where it is — parked already, or stranded and handled by the caller.
-  ewin=$(opt_of window_id "$ed"); cwin=$(opt_of window_id "$chat")
-  [ -n "$ewin" ] && [ "$ewin" = "$cwin" ] || {
-    [ "$(opt_of session_name "$ed")" = "$NOTES_SESSION" ] && return 0
-    tmux break-pane -d -s "$ed" -t "$NOTES_SESSION:" -n "$chat" 2>/dev/null || return 1
-    tmux set -p -t "$ed" @ta_notes_for "$chat" 2>/dev/null
-    tmux set -p -t "$chat" @ta_notes "$ed" 2>/dev/null
-    return 0
-  }
-  # THE SPLIT YOU MADE IS THE SPLIT YOU GET BACK. A parked editor loses its
-  # geometry — tmux gives the chat the whole width — so the share it had is
-  # written on the pane before it goes, as a percentage of the pair rather than
-  # a column count: the window may be a different size when it comes back.
-  ew=$(opt_of pane_width "$ed"); cw=$(opt_of pane_width "$chat")
-  case "${ew:-x}${cw:-x}" in *[!0-9]*) ;; *)
-    if [ "$((ew + cw))" -gt 0 ]; then
-      pct=$(( ew * 100 / (ew + cw) ))
-      [ "$pct" -ge 10 ] && [ "$pct" -le 90 ] && tmux set -p -t "$ed" @ta_notes_pct "$pct" 2>/dev/null
-    fi ;;
-  esac
-  tmux break-pane -d -s "$ed" -t "$NOTES_SESSION:" -n "$chat" 2>/dev/null || return 1
-  # Markers are re-stamped after every move: the pane id survives break-pane and
-  # join-pane, but nothing promises the same of a pane option, and a marker lost
-  # here would leave an editor nothing can ever find again.
-  tmux set -p -t "$ed" @ta_notes_for "$chat" 2>/dev/null
-  tmux set -p -t "$chat" @ta_notes "$ed" 2>/dev/null
-  return 0
-}
-
-show_editor() {  # <editor> <chat>
-  local ed=$1 chat=$2 pct cw cols
-  # Same race as hide_editor, other direction: a second show finds the editor
-  # already home and must not touch the layout.
-  [ "$(opt_of window_id "$ed")" = "$(opt_of window_id "$chat")" ] && return 0
-  pct=$(opt_of @ta_notes_pct "$ed")
-  case "${pct:-x}" in *[!0-9]*|'') pct=$NOTES_WIDTH ;; esac
-  [ "$pct" -ge 10 ] && [ "$pct" -le 90 ] || pct=$NOTES_WIDTH
-  # COLUMNS, NOT A PERCENTAGE. join-pane's `-l N%` was seen sizing the target
-  # pane in one window and the joined pane in another; an absolute width read
-  # off the chat right now means the same thing everywhere.
-  cw=$(opt_of pane_width "$chat")
-  case "${cw:-x}" in *[!0-9]*) cw= ;; esac
-  if [ -n "$cw" ] && [ "$cw" -gt 20 ]; then
-    cols=$(( cw * pct / 100 )); [ "$cols" -lt 10 ] && cols=10
-    tmux join-pane -h -d -s "$ed" -t "$chat" -l "$cols" 2>/dev/null || return 1
-  else
-    tmux join-pane -h -d -s "$ed" -t "$chat" -l "$pct%" 2>/dev/null || return 1
-  fi
-  tmux set -p -t "$ed" @ta_notes_for "$chat" 2>/dev/null
-  tmux set -p -t "$chat" @ta_notes "$ed" 2>/dev/null
-  return 0
-}
 
 create_editor() {  # <chat> -> makes the pane, stamps the markers
   local chat=$1 dir ed
   dir=$(notes_dir "$chat") || return 1
   ensure_notes "$dir" || return 1
+  # An ordinary split of the chat's window: nothing here moves it afterwards, so it leaves the screen with its window when another row is selected and is there again, the same pane at the same width, when the row is selected again.
   ed=$(tmux split-window -h -d -P -F '#{pane_id}' -l "$NOTES_WIDTH%" -c "$dir" \
          -t "$chat" "exec '$SELF' editor '$chat' '$dir'" 2>/dev/null) || return 1
   [ -n "$ed" ] || return 1
   tmux set -p -t "$chat" @ta_notes "$ed" 2>/dev/null
   tmux set -p -t "$ed" @ta_notes_for "$chat" 2>/dev/null
-  tmux set -p -t "$ed" @ta_notes_open 1 2>/dev/null
-  # One global flag so the focus hooks can decide with a tmux format instead of
-  # starting a bash on every pane switch — the same guard tagents puts in front
-  # of its own unpark hook, for the same reason.
-  tmux set -g @ta_notes_any 1 2>/dev/null
-  # tagents installs the focus hooks lazily, the first time anything is docked.
-  # A user who only ever takes notes never docks, so ask for them here.
-  command -v tagents >/dev/null 2>&1 && tagents --focus-hooks >/dev/null 2>&1
   return 0
 }
 
-# ONE MOVE AT A TIME. A single window switch fires several focus hooks and each
-# starts a sync; the refresher ticks too; toggle is a hand on the same panes. Two
-# of them interleaving break-pane and join-pane on one editor produce layouts
-# nobody asked for. mkdir is the atomic primitive (macOS has no flock), the wait
-# is short because every holder is, and a lock older than five seconds belongs
-# to a process that died holding it.
+# ONE MOVE AT A TIME. The refresher's sync, a toggle and a bring-back can all reach one editor at once, and two of them interleaving join-pane and kill-pane on it produce layouts nobody asked for. mkdir is the atomic primitive (macOS has no flock), the wait is short because every holder is, and a lock older than five seconds belongs to a process that died holding it.
 LOCK="$STATE_DIR/.tnotes.lock"
 take_lock() {
   local i=0 age
@@ -232,26 +137,24 @@ take_lock() {
 # ---------------------------------------------------------------------------
 
 cmd_toggle() {
-  local pane=${1:-} chat ed ewin cwin
+  local pane=${1:-} chat ed
   [ -n "$pane" ] || die "toggle needs a pane"
   take_lock || die "another tnotes is moving panes; try again"
-  chat=$(tmux display -p -t "$pane" '#{pane_id}' 2>/dev/null) ||
-    die "$pane is gone"
+  chat=$(tmux display -p -t "$pane" '#{pane_id}' 2>/dev/null)
+  [ -n "$chat" ] || die "$pane is gone"
   is_claude_pane "$chat" || die "not a Claude pane"
 
   ed=$(opt_of @ta_notes "$chat")
   if [ -n "$ed" ] && pane_ok "$ed"; then
-    ewin=$(opt_of window_id "$ed")
-    cwin=$(opt_of window_id "$chat")
-    if [ "$ewin" = "$cwin" ]; then
-      hide_editor "$ed" "$chat" || die "cannot park the editor"
-      tmux set -p -t "$ed" @ta_notes_open 0 2>/dev/null
-      return 0
+    # The cursor is in the editor already (its pane active in its window, that window active in a session a client looks at): back to the chat. Otherwise into the editor, its window selected first when it is not the one on screen. Nothing is hidden, moved or closed.
+    if [ "$(opt_of pane_active "$ed")" = 1 ] && [ "$(opt_of window_active "$ed")" = 1 ] &&
+       [ "$(opt_of session_attached "$ed")" != 0 ]; then
+      tmux select-pane -t "$chat" 2>/dev/null
+    else
+      tmux switch-client -t "=$(opt_of session_name "$ed")" 2>/dev/null
+      tmux select-window -t "$(opt_of window_id "$ed")" 2>/dev/null
+      tmux select-pane -t "$ed" 2>/dev/null
     fi
-    show_editor "$ed" "$chat" || die "cannot bring the editor back"
-    tmux set -p -t "$ed" @ta_notes_open 1 2>/dev/null
-    # The only place the cursor is moved: you asked for the editor, so you get it.
-    tmux select-pane -t "$ed" 2>/dev/null
     return 0
   fi
 
@@ -485,9 +388,7 @@ cmd_send() {
 # ---------------------------------------------------------------------------
 
 PANES=""
-# Field lookup over the one pane listing this command takes. No subprocess and
-# no second tmux call: sync runs on every pane switch in the server, and a shell
-# per pane there is a tax on simply moving around tmux.
+# Field lookup over the one pane listing this command takes. No subprocess and no second tmux call: sync runs from the refresher's slow pass while there are editors, and a shell per pane there is a tax on simply moving around tmux.
 field_of() {  # <pane id> <field number, 1-based in the row> -> value, or fail
   local want=$1 n=$2 id w s c o
   while read -r id w s c o; do
@@ -505,63 +406,58 @@ EOF
   return 1
 }
 
+# Sync only cleans up: it closes the editor of a chat that is gone, and brings back editors an older version parked in `ta-notes`. It never moves, hides or splits the editor of a living chat. A pane given to it (an older focus hook passed one) is ignored.
 cmd_sync() {
-  local arriving=${1:-} id ewin esess chat open cwin awin="" left=0 ed eopen
+  local id ewin esess chat cwin
   take_lock || return 0
-  # Conditional formats, not bare #{@opt}: an unset option renders empty and the
-  # row loses a field, which is how a reader ends up believing a pane belongs to
-  # somebody it does not.
+  # Conditional formats, not bare #{@opt}: an unset option renders empty and the row loses a field, which is how a reader ends up believing a pane belongs to somebody it does not.
   PANES=$(tmux list-panes -a -F \
-    '#{pane_id} #{window_id} #{session_name} #{?@ta_notes_for,#{@ta_notes_for},-} #{?@ta_notes_open,#{@ta_notes_open},-}' \
-    2>/dev/null) || return 0
+    '#{pane_id} #{window_id} #{session_name} #{?@ta_notes_for,#{@ta_notes_for},-}' 2>/dev/null) || return 0
   [ -n "$PANES" ] || return 0
-  [ -n "$arriving" ] && awin=$(field_of "$arriving" 2)
-
-  while read -r id ewin esess chat open; do
+  while read -r id ewin esess chat; do
     [ -n "$id" ] || continue
     [ "$chat" = "-" ] && continue
     if ! cwin=$(field_of "$chat" 2); then
-      # The Claude pane is gone. The editor has nothing left to be beside, and
-      # nothing else will ever clean it up.
-      cmd_close "$id"
+      cmd_close "$id"               # the chat is gone: the editor has nothing left to be beside
       continue
     fi
-    left=$((left + 1))
-    [ "$esess" = "$NOTES_SESSION" ] && continue     # already parked
-    # Two ways an editor stops being wanted where it is. Either it is stranded —
-    # its chat was docked away and left it behind in a window it has nothing to
-    # do with — or you have just arrived somewhere else, which is the only shape
-    # "hide when you leave" can take: tmux has no window-deactivated hook, so
-    # leaving is only ever observed as arriving somewhere.
-    #
-    # The arrival clause needs an arriving pane and gets one only from the focus
-    # hooks. `tnotes sync` with no argument is the refresher's backstop and must
-    # do cleanup only — hiding every editor once every ten seconds is not a
-    # backstop, it is the feature firing at random.
-    #
-    # @ta_notes_open is left alone throughout: parking is not the user's
-    # decision, and the editor has to come back when its chat is looked at again.
-    if [ "$ewin" != "$cwin" ]; then
-      hide_editor "$id" "$chat"
-    elif [ -n "$awin" ] && [ "$awin" != "$ewin" ]; then
-      hide_editor "$id" "$chat"
-    fi
-  done <<EOF
+    [ "$esess" = "$NOTES_SESSION" ] && bring_back_editor "$id" "$chat"
+  done <<PANES_EOF
 $PANES
-EOF
+PANES_EOF
+  tmux set -gu @ta_notes_any 2>/dev/null
+  wind_up_parking
+  return 0
+}
 
-  if [ -n "$arriving" ]; then
-    ed=$(opt_of @ta_notes "$arriving")
-    if [ -n "$ed" ] && pane_ok "$ed"; then
-      eopen=$(opt_of @ta_notes_open "$ed")
-      if [ "$(opt_of session_name "$ed")" = "$NOTES_SESSION" ] && [ "$eopen" = 1 ]; then
-        # No select-pane. You switched to a chat, not to its notes.
-        show_editor "$ed" "$arriving"
-      fi
-    fi
+# From the parking session to a split of the chat's window, given the share of the chat's width recorded in @ta_notes_pct when that is between 10 and 90 and NOTES_WIDTH otherwise. COLUMNS, NOT A PERCENTAGE: join-pane's `-l N%` was seen sizing the target in one window and the joined pane in another; an absolute width read off the chat right now means the same everywhere. The cursor stays where it was.
+bring_back_editor() {  # <editor> <chat>
+  local ed=$1 chat=$2 pct cw cols
+  pct=$(opt_of @ta_notes_pct "$ed")
+  case "${pct:-x}" in *[!0-9]*|'') pct=$NOTES_WIDTH ;; esac
+  [ "$pct" -ge 10 ] && [ "$pct" -le 90 ] || pct=$NOTES_WIDTH
+  cw=$(opt_of pane_width "$chat")
+  case "${cw:-x}" in *[!0-9]*) cw= ;; esac
+  if [ -n "$cw" ] && [ "$cw" -gt 20 ]; then
+    cols=$(( cw * pct / 100 )); [ "$cols" -lt 10 ] && cols=10
+    tmux join-pane -h -d -s "$ed" -t "$chat" -l "$cols" 2>/dev/null || return 1
+  else
+    tmux join-pane -h -d -s "$ed" -t "$chat" -l "$pct%" 2>/dev/null || return 1
   fi
+  tmux set -p -t "$ed" @ta_notes_for "$chat" 2>/dev/null
+  tmux set -p -t "$chat" @ta_notes "$ed" 2>/dev/null
+  tmux set -up -t "$ed" @ta_notes_pct 2>/dev/null
+  tmux set -up -t "$ed" @ta_notes_open 2>/dev/null
+  return 0
+}
 
-  [ "$left" = 0 ] && tmux set -gu @ta_notes_any 2>/dev/null
+# The parking session ends once no editor is left in it (its holder window does not count).
+wind_up_parking() {
+  local left
+  tmux has-session -t "=$NOTES_SESSION" 2>/dev/null || return 0
+  left=$(tmux list-panes -s -t "=$NOTES_SESSION:" -F '#{window_name}' 2>/dev/null |
+           LC_ALL=C awk '$0 != "hold" { n++ } END { print n + 0 }')
+  [ "$left" = 0 ] && tmux kill-session -t "=$NOTES_SESSION" 2>/dev/null
   return 0
 }
 
@@ -592,7 +488,7 @@ cmd_close() {
 
 case "${1:-}" in
   toggle)     shift; cmd_toggle "${1:-}" ;;
-  sync)       shift; cmd_sync "${1:-}" ;;
+  sync)       shift; cmd_sync ;;
   send)       shift; cmd_send "${1:-}" "${2:-}" ;;
   close)      shift; cmd_close "${1:-}" ;;
   editor)     shift; cmd_editor "${1:-}" "${2:-}" ;;
