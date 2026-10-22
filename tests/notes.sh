@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# tests/notes.sh — tnotes: the editor pane beside a Claude pane, where it goes
-# when you look away, and what happens to the draft when nvim quits.
+# tests/notes.sh — tnotes: the editor pane beside a Claude pane, what sync cleans
+# up, and what happens to the draft when nvim quits.
 #
-# NOTHING HERE MAY TOUCH THE DEFAULT TMUX SOCKET, and nothing here may touch the
-# real ta-notes session either: the server is created with `tmux -L tatest-$$ -f
-# /dev/null`, tnotes is pointed at it by exporting $TMUX into the one command
-# under test, and the parking session tnotes creates is created on THAT server.
+# NOTHING HERE MAY TOUCH THE DEFAULT TMUX SOCKET: the server is created with
+# `tmux -L tatest-$$ -f /dev/null` and tnotes is pointed at it by exporting $TMUX
+# into the one command under test. There is no second session: the editor is a
+# pane of the chat's window.
 #
 # THE STUBS. `claude` is a re-signed copy of /bin/cat, which is two things at
 # once: #{pane_current_command} says "claude", so tnotes takes the pane for a
@@ -18,9 +18,8 @@
 # `nvim` is a script that records its argv and the size prompt.md had when it
 # opened, writes $NVIM_WRITE into prompt.md and then sits until $TN_ROOT/nvim.quit
 # appears, which is how the test says "now the user quits the editor". `tnotes`
-# itself is deliberately NOT on the server's PATH: the focus hooks tagents
-# installs would otherwise fire a background sync on every select-pane here and
-# race the syncs the test runs on purpose.
+# itself is deliberately NOT on the server's PATH, so no hook of the server can
+# start a sync of its own and race the ones the test runs on purpose.
 #
 # bash 3.2, runnable from any cwd, non-zero exit on any failing check.
 
@@ -153,12 +152,6 @@ wait_file() { local i=0; while [ "$i" -lt 60 ]; do [ -e "$1" ] && return 0
                 sleep 0.1; i=$((i+1)); done; return 1; }
 wait_gone() { local i=0; while [ "$i" -lt 80 ]; do [ "$(lives "$1")" = no ] && return 0
                 sleep 0.1; i=$((i+1)); done; return 1; }
-# The focus hooks start `tnotes sync` in the background (run-shell -b), and every
-# sync takes the lock. Quiet is the lock free for five samples in a row: a sync
-# waiting for it polls every 0.1 s and would have taken it. Bounded at ~12 s.
-wait_syncs() { local i=0 free=0; while [ "$i" -lt 60 ] && [ "$free" -lt 5 ]; do
-                 if [ -d "$STATE/.tnotes.lock" ]; then free=0; else free=$((free+1)); fi
-                 sleep 0.2; i=$((i+1)); done; }
 
 # THE USER'S TERMINAL, ASSERTED AT THE END. tnotes splits, breaks out and joins
 # panes in windows the user also keeps their own things in; a pane carrying none
@@ -192,6 +185,7 @@ ok "toggle exits 0" 0 "$?"
 ED=$(notes_of "$CHAT")
 ok "the chat names an editor" yes "$([ -n "$ED" ] && echo yes || echo no)"
 ok "the editor is in the chat's window" "$CWIN" "$(where "$ED")"
+ok "...as a pane of the chat's own window" "$(where "$CHAT")" "$(where "$ED")"
 ok "two panes there now" 2 "$(npanes "$CWIN")"
 ok "the editor names the chat back" "$CHAT" "$(popt @ta_notes_for "$ED")"
 ok "and says it is open" 1 "$(popt @ta_notes_open "$ED")"
@@ -211,46 +205,7 @@ ok "and is alive" yes "$(lives "$ED")"
 run sync >/dev/null 2>&1
 ok "twice is the same as once" "$CWIN" "$(where "$ED")"
 
-# ---------------------------------------------------------------------------
-t "4. arriving in another window parks it; coming back brings it home"
-# ---------------------------------------------------------------------------
-OTHER=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" "exec sleep 600")
-# The user's own split is not the default one: narrow the editor first, so the
-# round trip has a ratio to lose.
-tm resize-pane -t "$ED" -x 30 >/dev/null 2>&1; sleep 0.3
-EDW=$(tm display -p -t "$ED" '#{pane_width}')
-tm select-window -t "$(where "$OTHER")" >/dev/null 2>&1
-run sync "$OTHER" >/dev/null 2>&1
-ok "the editor went to the parking session" ta-notes "$(sess "$ED")"
-ok "it is still alive" yes "$(lives "$ED")"
-ok "and still counts as open" 1 "$(popt @ta_notes_open "$ED")"
-ok "the chat still names it" "$ED" "$(notes_of "$CHAT")"
-ok "the chat's window is down to one pane" 1 "$(npanes "$CWIN")"
-tm select-window -t "$CWIN" >/dev/null 2>&1
-run sync "$CHAT" >/dev/null 2>&1
-ok "arriving at the chat brings it back" "$CWIN" "$(where "$ED")"
-ok "two panes there again" 2 "$(npanes "$CWIN")"
-EDW2=$(tm display -p -t "$ED" '#{pane_width}'); d=$(( EDW2 - EDW )); [ "$d" -lt 0 ] && d=$(( -d ))
-ok "with the width it had before parking (±2)" yes "$([ "$d" -le 2 ] && echo yes || echo "no: $EDW -> $EDW2")"
 
-# ---------------------------------------------------------------------------
-t "5. toggling it away is a decision sync does not overrule"
-# ---------------------------------------------------------------------------
-# Section 4's window switches started hook syncs of their own, and one that lost
-# the lock race to the test's sync still arrives from the other window and parks
-# the editor again: the toggle then brought it back, and five checks failed. Let
-# them finish, and arrive at the chat once more, so the toggle starts from the
-# editor beside it.
-wait_syncs
-run sync "$CHAT" >/dev/null 2>&1
-run toggle "$CHAT" >/dev/null 2>&1
-ok "toggle parked it" ta-notes "$(sess "$ED")"
-ok "and marked it closed" 0 "$(popt @ta_notes_open "$ED")"
-run sync "$CHAT" >/dev/null 2>&1
-ok "sync leaves a closed editor parked" ta-notes "$(sess "$ED")"
-run toggle "$CHAT" >/dev/null 2>&1
-ok "toggle brings it back" "$CWIN" "$(where "$ED")"
-ok "open again" 1 "$(popt @ta_notes_open "$ED")"
 
 # ---------------------------------------------------------------------------
 t "6. quitting nvim commits the draft and leaves a reference in the chat"
@@ -478,20 +433,6 @@ t "12. everything else in the server was left alone"
 ok "the user terminal is untouched" "yes $TWIN" "$(lives "$TERM1") $(where "$TERM1")"
 ok "the pane that was never a chat is untouched" "yes $SWIN" "$(lives "$SHELLP") $(where "$SHELLP")"
 ok "and still has its window to itself" 1 "$(npanes "$SWIN")"
-
-# The seat logic must not have noticed any of this: an editor pane carries no
-# @tagents_* marker, so seats() cannot see it and nothing in panes.sh can change.
-bash "$HERE/panes.sh" >"$ROOT/panes.log" 2>&1
-PRC=$?
-ok "tests/panes.sh is unaffected" 0 "$PRC"
-# The nested log goes with $ROOT, so what failed in it is printed here, while it exists:
-# a check that fails only in this nested run cannot be looked at afterwards.
-if [ "$PRC" -ne 0 ]; then
-  printf '       the nested panes.sh ended with %s; the checks it failed:\n' "$PRC"
-  grep -A3 'FAIL' "$ROOT/panes.log" | head -60 | cut -c1-240 | sed 's/^/       | /'
-  printf '       its last line: %s\n' "$(tail -1 "$ROOT/panes.log")"
-fi
-has "and says so" " 0 failed" "$(tail -1 "$ROOT/panes.log")"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
