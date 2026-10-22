@@ -88,7 +88,7 @@ When the window of the row selected no longer exists, the sidebar and the client
 - **THEN** the client shows window 2 of `work` and the sidebar is in it
 
 ### Requirement: The sidebar follows the window on screen
-`tagents --follow [CLIENT]` SHALL move the sidebar into the window the client (default: the current one) shows now, as its leftmost full-height pane. It SHALL do nothing and exit 0 when the sidebar already is there, when there is no sidebar, or when the window belongs to a session that is not a group.
+`tagents --follow [CLIENT]` SHALL move the sidebar into the window the client (default: the current one) shows now, as its leftmost full-height pane. It SHALL do nothing and exit 0 when the sidebar already is there, when there is no sidebar and none is wanted, or when the window belongs to a session that is not a group.
 
 #### Scenario: Already there
 - **WHEN** `tagents --follow` runs while the sidebar is in the window on screen
@@ -124,6 +124,33 @@ tagents SHALL install a hook running `tagents --follow` on `session-window-chang
 - **WHEN** the window the client was switched to is closed before the sidebar is moved
 - **THEN** the sidebar is where it was, one line is written on standard error and the exit status is 0
 - **AND** after the client's next window switch the sidebar is in the window on screen
+
+### Requirement: A sidebar that was killed comes back with the next follow
+While a sidebar is wanted, `tagents --follow` SHALL start a new one in the window on screen, as `tagents --ensure-dash` does, when no list runs and that window belongs to a group, and SHALL start exactly one however many follows run at once. A sidebar is wanted from the moment a list in a pane claims the sidebar until `ctrl-q` quits it; a list in a popup never makes it wanted, and a start that fails ends the want.
+
+#### Scenario: The window on screen is killed
+- **WHEN** the window that holds the sidebar is killed while the client shows it, and tmux lands the client in another window of a group
+- **THEN** the follow hook starts a list there as the leftmost full-height pane, which claims the sidebar, and no other list runs
+
+#### Scenario: The session on screen is killed
+- **WHEN** the session that holds the sidebar is killed and the client lands in a window of another group
+- **THEN** a list runs in that window and no other list runs
+
+#### Scenario: ctrl-q is final
+- **WHEN** the user quits the list with `ctrl-q` and then switches windows
+- **THEN** no sidebar is started, until `tagents --ensure-dash` or a list started by hand wants one again
+
+#### Scenario: Only a popup was ever shown
+- **WHEN** no list has ever claimed a pane on the server and the user switches windows
+- **THEN** no sidebar is started
+
+#### Scenario: A storm of hooks
+- **WHEN** five follows run at once with a sidebar wanted and none running
+- **THEN** exactly one list is started and no lock is left behind
+
+#### Scenario: A window outside the groups
+- **WHEN** the client lands in a window of a session that is not a group
+- **THEN** no sidebar is started
 
 ### Requirement: The sidebar sits at the left edge at the width TA_WIDTH gives
 The sidebar SHALL be the leftmost pane of its window and as tall as the window, whatever the other panes of the window are. When it is moved or started in a window it SHALL be given `TA_WIDTH` percent of the window's width (default 45). A window the sidebar leaves SHALL give its width back to the pane that was beside it, and SHALL have the same split as before when the sidebar returns.

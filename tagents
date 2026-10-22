@@ -80,7 +80,9 @@
 #                           list is moved there, none running is started there
 #   tagents --follow [CLIENT]
 #                           move the sidebar into the window CLIENT shows (default:
-#                           the most recent client); tmux's own hooks run this
+#                           the most recent client); tmux's own hooks run this. With
+#                           no list running and a sidebar wanted (a list claimed a
+#                           pane and was not quit with ctrl-q), it starts one there
 #   tagents --new [DIR] [PROFILE]
 #                           start an agent in DIR from outside the list — a tmux
 #                           binding, a shell, anything. DIR defaults to $PWD and
@@ -315,7 +317,7 @@
 #
 # WINDOWS, SESSIONS AND THE SIDEBAR. enter on a row moves the sidebar into that row's window, as its leftmost full-height pane at TA_WIDTH percent of the window (default 45), and switches the client there; enter on a group header shows that session's last-used window the same way. Anything else the window holds (a shell, a dev server, a notes editor) is yours: tagents never moves, resizes or kills it, and it leaves the screen with the window and comes back with it. The widths the other panes had are remembered per window and put back when the sidebar leaves.
 #
-# THE SIDEBAR FOLLOWS YOU. tmux's own switches (prefix n, prefix s, a click on the status bar) fire session-window-changed and client-session-changed, and tagents hooks both with `tagents --follow`, which moves the sidebar into the window now on screen when that window belongs to a session that holds a chat or that tagents created. A scratch session is left alone. The follow hooks are installed with the event hooks and put back by the refresher's slow pass.
+# THE SIDEBAR FOLLOWS YOU. tmux's own switches (prefix n, prefix s, a click on the status bar) fire session-window-changed and client-session-changed, and tagents hooks both with `tagents --follow`, which moves the sidebar into the window now on screen when that window belongs to a session that holds a chat or that tagents created. A scratch session is left alone. When the window or the session that held the sidebar is killed, the client lands elsewhere, the same hook fires and, with no list running, starts a new one there (one, however many hooks fire): a list in a pane makes a sidebar wanted, and ctrl-q ends the want, so a quit stays a quit. The follow hooks are installed with the event hooks and put back by the refresher's slow pass.
 #
 # WHEREVER THE LIST IS, THAT IS THE SIDEBAR. Run it in a pane, in any window, and it claims that pane (claim_dash()); no marker gets to disagree, because a marker once drifted onto a chat in another window and enter followed the marker. The popup is the one list with no pane of its own to claim, so it brings the sidebar to the client's window with --ensure-dash before it selects a row.
 #

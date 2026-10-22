@@ -113,6 +113,12 @@ wait_eq() {  # <expected> <cmd...> — polls ~3 s, prints the last value seen
   while :; do got=$("$@"); [ "$got" = "$want" ] && break; i=$((i + 1)); [ "$i" -ge 30 ] && break; sleep 0.1; done
   printf '%s' "$got"
 }
+wait_eq_long() {  # <expected> <cmd...> — the same, up to ~8 s: for a list that a hook starts, which is a fresh fzf and a fresh bash
+  local want=$1 got i=0; shift
+  while :; do got=$("$@"); [ "$got" = "$want" ] && break; i=$((i + 1)); [ "$i" -ge 80 ] && break; sleep 0.1; done
+  printf '%s' "$got"
+}
+lockheld() { [ -d "$WRSTATE/.follow.lock" ] && echo yes || echo no; }
 settle() { sleep "${1:-0.6}"; }
 # The first start after an upgrade asks tnotes for one sync in the background (migrate_seats), and a sync may close a pane: a check that compares the server before and after waits for it to end. Quiet is no tnotes sync of this tree's for four samples in a row, which also covers the gap between the fork and the exec.
 wait_syncs() {
@@ -154,10 +160,11 @@ fake_sidebar() {  # <window> -> its pane id (leftmost, full height, 45 percent)
   p=$(tm split-window -d -f -b -h -l 45% -P -F '#{pane_id}' -t "$1" "exec sleep 600")
   stamp_sidebar "$p"; printf '%s' "$p"
 }
-kill_sidebars() { local p; for p in $(tm list-panes -a -F '#{pane_id} #{@tagents_dash}' 2>/dev/null | awk '$2 == 1 { print $1 }'); do tm kill-pane -t "$p" 2>/dev/null; done; }
-unhook() {
+kill_sidebars() { local p; for p in $(tm list-panes -a -F '#{pane_id} #{@tagents_dash}' 2>/dev/null | awk '$2 == 1 { print $1 }'); do tm kill-pane -t "$p" 2>/dev/null; done; tm set -gu @tagents_sidebar_on 2>/dev/null; }   # and the wish for one: only a real list sets it (claim_dash)
+unhook() {   # the hooks a real list's refresher installs, and the wish for a sidebar its claim made
   local ev; for ev in $(modrun eval 'echo $EV_EVENTS') session-window-changed client-session-changed; do
     tm set-hook -gu "$ev[42]" 2>/dev/null; tm set-hook -gu "$ev[43]" 2>/dev/null; done
+  tm set -gu @tagents_sidebar_on 2>/dev/null
 }
 n=0
 chatrec() {  # <pane> <sid> [state] [dir] — the record the agent-state hook would write
@@ -308,7 +315,7 @@ tm select-window -t "$W3"
 for i in 1 2 3 4 5; do run --follow "$CLIENT" & done; wait
 ok "F14 one sidebar" 1 "$(nsbs)"
 ok "F14 in the window on screen" "$W3" "$(sbwin)"
-ok "F14 no lock left" no "$([ -d "$WRSTATE/.follow.lock" ] && echo yes || echo no)"
+ok "F14 no lock left" no "$(wait_eq_long no lockheld)"
 
 t "F28 a move waits for the follow lock and reads where the sidebar is once it has it"
 SBL=$(sbpane); mkchat tatest-work lk; WLK=$LASTWIN
@@ -338,6 +345,18 @@ has "F29 so does the client's status line" "no space for a new pane" "$(msgs)"
 ok "F29 the sidebar stayed" "$before" "$(sbwin)"
 tm kill-session -t =tatest-tiny
 
+t "F35 a lock whose holder died is taken at once, not after the stale time"
+DEADPID=$(bash -c 'echo $$')
+mkdir "$WRSTATE/.follow.lock"; printf '%s\n' "$DEADPID" >"$WRSTATE/.follow.lock/owner"
+s0=$SECONDS; modrun follow_lock; rc=$?
+ok "F35 the lock is had" 0 "$rc"
+ok "F35 without waiting for it" yes "$([ $((SECONDS - s0)) -le 1 ] && echo yes || echo no)"
+mkdir -p "$WRSTATE/.follow.lock"; rm -rf "$WRSTATE/.follow.lock"
+mkdir "$WRSTATE/.follow.lock"                        # a lock with no owner written yet is held
+s0=$SECONDS; modrun follow_lock; rc=$?
+ok "F35 a lock with no owner file is waited for, and the move then goes on without it" 1 "$rc"
+rmdir "$WRSTATE/.follow.lock"
+
 t "F9 no sidebar: follow is silent"
 kill_sidebars
 out=$(run --follow "$CLIENT" 2>&1); rc=$?
@@ -357,7 +376,7 @@ tm has-session -t =tatest-solo 2>/dev/null; ok "F19 the emptied session went wit
 t "F21 F22 the sidebar pane, its window and its session killed by hand; ensure-dash starts a new one (R33)"
 tm kill-pane -t "$SB"; settle 0.3
 out=$(run --follow "$CLIENT" 2>&1); rc=$?
-ok "F21 follow after the kill: exit 0" 0 "$rc"; ok "F21 silent" "" "$out"
+ok "F21 follow after the kill, no sidebar wanted (a fake one never claimed a pane): exit 0" 0 "$rc"; ok "F21 silent" "" "$out"
 ok "F21 no pane is a sidebar" 0 "$(nsbs)"
 run --ensure-dash; rc=$?
 ok "R33 ensure-dash exit 0" 0 "$rc"
@@ -373,9 +392,12 @@ run --ensure-dash
 ok "R33 a sidebar elsewhere is moved, the same pane" "$LIST1" "$(sbpane)"
 ok "R33 ...into the client's window" "$WE" "$(wait_eq "$WE" sbwin)"
 ok "R33 no second list" 1 "$(nsbs)"
+modrun install_follow_hooks                          # the refresher puts them back on its own; not waited for here
 tm kill-window -t "$WE"; settle 0.4
 ok "F22 the window killed: the client is still attached" 1 "$(nclients)"
-ok "F22 no sidebar left" 0 "$(nsbs)"
+ok "F22 the list claimed a pane, so the follow hook brings a sidebar back where the client landed" "$(cwin)" "$(wait_eq_long "$(cwin)" sbwin)"
+ok "F22 one list" 1 "$(nsbs)"
+kill_sidebars; unhook                                # no list, no wish, no hooks: the same kills now leave nothing behind
 tm new-session -d -s tatest-extra -x 200 -y 50 -c "$REPO" "exec sleep 600"; tm set -t =tatest-extra: @tagents_made 1
 XW=$(wid =tatest-extra:); stamp_sidebar "$(tm list-panes -t "$XW" -F '#{pane_id}' | head -1)"
 tm kill-session -t =tatest-extra; settle 0.4
@@ -391,6 +413,61 @@ n1=$(tmb list-panes -a -F x | wc -l | tr -d ' ')
 runb --ensure-dash; rc=$?
 ok "R33 exit 1" 1 "$rc"
 ok "R33 nothing started" "$n1" "$(tmb list-panes -a -F x | wc -l | tr -d ' ')"
+
+t "F30 F31 the window or the session on screen killed with the sidebar in it: the next follow brings a sidebar back, one list, where the client lands"
+nlists() { tm list-panes -a -F '#{@tagents_list}' 2>/dev/null | grep -c .; }
+mkchat tatest-work fa; WFA=$LASTWIN; mkchat tatest-work fb; WFB=$LASTWIN
+to tatest-work; tm select-window -t "$WFA"
+modrun install_follow_hooks                          # the real hooks, as the refresher puts them
+run --ensure-dash
+ok "F30 a real list runs in the window on screen" "$WFA" "$(wait_eq "$WFA" sbwin)"
+ok "F30 a sidebar is wanted from the claim on" 1 "$(tm show -gv @tagents_sidebar_on 2>/dev/null)"
+tm kill-window -t "$WFA"
+LAND=$(cwin)
+ok "F30 the client landed in another window" yes "$([ -n "$LAND" ] && [ "$LAND" != "$WFA" ] && echo yes || echo no)"
+ok "F30 a list runs there, started by the hook" "$LAND" "$(wait_eq_long "$LAND" sbwin)"
+ok "F30 exactly one list" 1 "$(nlists)"
+ok "F30 as the leftmost full-height pane" "$(sbpane)" "$(tm list-panes -t "$LAND" -F '#{pane_left} #{pane_id}' | sort -n | head -1 | cut -d' ' -f2)"
+newsess tatest-f31; mkchat tatest-f31 fc
+to tatest-f31; run --follow "$CLIENT"
+ok "F31 the sidebar went with the client to the other session" tatest-f31 "$(tm display -p -t "$(sbpane)" '#{session_name}')"
+tm set -g detach-on-destroy off                      # tmux moves the client to another session instead of detaching it
+tm kill-session -t =tatest-f31
+ok "F31 the client is still attached" 1 "$(nclients)"
+LAND=$(cwin)
+ok "F31 a list runs in the window it landed in" "$LAND" "$(wait_eq_long "$LAND" sbwin)"
+ok "F31 exactly one list" 1 "$(nlists)"
+tm set -gu detach-on-destroy
+
+t "F32 ctrl-q ends the wish: a window switch brings no sidebar back; ensure-dash wants one again"
+ready() { tm capture-pane -p -t "$(sbpane)" 2>/dev/null | grep -c 'agents>'; }   # fzf is up: before that the tty is still in flow control and swallows ctrl-q
+i=0; while [ "$i" -lt 100 ] && [ "$(ready)" != 1 ]; do i=$((i + 1)); sleep 0.1; done
+ok "F32 the list is up" 1 "$(ready)"
+tm send-keys -t "$(sbpane)" C-q
+ok "F32 the list is gone" 0 "$(wait_eq_long 0 nlists)"
+ok "F32 no sidebar is wanted" "" "$(tm show -gv @tagents_sidebar_on 2>/dev/null)"
+tm select-window -t "$WFB"; run --follow "$CLIENT"; settle 0.5
+ok "F32 a follow starts none" 0 "$(nlists)"
+run --ensure-dash
+ok "F32 ensure-dash starts one" "$(cwin)" "$(wait_eq_long "$(cwin)" sbwin)"
+ok "F32 and a sidebar is wanted again" 1 "$(tm show -gv @tagents_sidebar_on 2>/dev/null)"
+
+t "F33 a storm of follows with a wanted sidebar and none running starts one list"
+tm kill-pane -t "$(sbpane)"; settle 0.3
+ok "F33 none runs" 0 "$(nlists)"
+unhook                                               # the storm below is the follows we start ourselves
+tm set -g @tagents_sidebar_on 1
+for i in 1 2 3 4 5; do run --follow "$CLIENT" & done; wait
+ok "F33 one list" 1 "$(wait_eq_long 1 nlists)"
+ok "F33 in the window on screen" "$(cwin)" "$(wait_eq_long "$(cwin)" sbwin)"
+ok "F33 no lock left" no "$(wait_eq_long no lockheld)"
+tm select-window -t "$WFB"; kill_sidebars; settle 0.3; unhook
+
+t "F34 a window of a session that is not a group gets no new sidebar either"
+tm set -g @tagents_sidebar_on 1; to tatest-scratch
+run --follow "$CLIENT"; settle 0.5
+ok "F34 none started" 0 "$(nlists)"
+to tatest-work; tm set -gu @tagents_sidebar_on
 
 t "F23 F24 F25 the user moves the sidebar by hand"
 mkchat tatest-work hand; WH=$LASTWIN; PH=$LASTPANE; SH=$LASTSID
@@ -1055,7 +1132,7 @@ i=0; while [ "$i" -lt 15 ]; do tm next-window -t tatest-work; i=$((i + 1)); done
 want=$(cwin); settle 2
 ok "F13 one sidebar" 1 "$(nsbs)"
 ok "F13 in the window on screen" "$(cwin)" "$(wait_eq "$(cwin)" sbwin)"
-ok "F13 no lock directory left" no "$([ -d "$WRSTATE/.follow.lock" ] && echo yes || echo no)"
+ok "F13 no lock directory left" no "$(wait_eq_long no lockheld)"
 unhook
 
 t "F15 a list that is still starting when the user switches window ends up in the window on screen (review focus 4)"

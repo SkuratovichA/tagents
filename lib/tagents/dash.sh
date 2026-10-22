@@ -246,7 +246,7 @@ dash() {
       # only if fzf is dying instantly, which would otherwise spin forever.
       if [ $(( SECONDS - started )) -lt 1 ]; then
         fails=$((fails + 1))
-        [ $fails -ge 5 ] && { echo "tagents: fzf keeps failing, giving up" >&2; break; }
+        [ $fails -ge 5 ] && { echo "tagents: fzf keeps failing, giving up" >&2; [ "$sidebar" = 1 ] && tmux set -gu @tagents_sidebar_on 2>/dev/null; break; }
       else
         fails=0
       fi
@@ -257,7 +257,11 @@ dash() {
     # Keys do their work inside fzf now, so reaching here means a deliberate
     # quit — or, in a popup, the abort that follows a completed action.
     key=$(printf '%s\n' "$out" | sed -n 1p)
-    [ "$key" = ctrl-q ] && break
+    # A deliberate quit ends the wish for a sidebar; the pane being killed does not (follow starts another then).
+    if [ "$key" = ctrl-q ]; then
+      [ "$sidebar" = 1 ] && tmux set -gu @tagents_sidebar_on 2>/dev/null
+      break
+    fi
     [ "$mode" = popup ] && break
   done
 }

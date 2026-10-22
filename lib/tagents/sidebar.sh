@@ -124,6 +124,8 @@ claim_dash() {
     while IFS= read -r old; do tmux set -up -t "$old" @tagents_dash 2>/dev/null; done
   tmux set -p -t "$me" @tagents_list "$$" 2>/dev/null
   tmux set -p -t "$me" @tagents_dash 1 2>/dev/null
+  # A sidebar is wanted from now until a ctrl-q: if its pane, window or session is killed, the next follow starts another (follow).
+  tmux set -g @tagents_sidebar_on 1 2>/dev/null
   # tmux-resurrect saves the title with the layout; a restore sweeps the idle shells that come back with it (resurrect_sweep).
   tmux select-pane -T tagents-sidebar -t "$me" 2>/dev/null
   # A window switch made while this list was starting ran a follow that found no sidebar: catch up once.
@@ -150,15 +152,24 @@ release_dash() {
 }
 
 # A list as a new pane, leftmost and as tall as <window>, TA_WIDTH percent wide. Prints its pane id once it has claimed the sidebar (a
-# list claims itself a moment after it starts, so the caller waits instead of assuming); 1 when it did not within about two seconds.
+# list claims itself a moment after it starts, so the caller waits instead of assuming); 1 when it did not within about two seconds. Under the
+# follow lock, and a list that claimed while this waited for it is the answer instead of a second one: a storm of hooks and an ensure-dash
+# started together start one list. 2 when the lock could not be had (somebody else is starting or moving the sidebar): a second list for
+# the sake of not waiting is worse than none, so nothing is started.
 start_sidebar() {  # <window-id>
-  local win=${1:-} p
+  local win=${1:-} p took="" rc=1
   [ -n "$win" ] || return 1
-  p=$(tmux split-window -d -f -b -h -l "${DASH_WIDTH}%" -P -F '#{pane_id}' -t "$win" "exec '$SELF'" 2>/dev/null) || return 1
-  [ -n "$p" ] || return 1
-  [ "$(tmux display -p -t "$win" '#{window_zoomed_flag}' 2>/dev/null)" = 1 ] && tmux resize-pane -Z -t "$win" 2>/dev/null
-  await_list || return 1
-  printf '%s' "$p"
+  follow_lock && took=1
+  if [ -z "$took" ] && [ -z "$FOLLOW_LOCKED" ]; then return 2; fi
+  p=$(dash_pane)
+  if [ -n "$p" ]; then
+    printf '%s' "$p"; rc=0
+  elif p=$(tmux split-window -d -f -b -h -l "${DASH_WIDTH}%" -P -F '#{pane_id}' -t "$win" "exec '$SELF'" 2>/dev/null) && [ -n "$p" ]; then
+    [ "$(tmux display -p -t "$win" '#{window_zoomed_flag}' 2>/dev/null)" = 1 ] && tmux resize-pane -Z -t "$win" 2>/dev/null
+    if await_list; then printf '%s' "$p"; rc=0; fi
+  fi
+  [ -n "$took" ] && follow_unlock
+  return "$rc"
 }
 
 # The sidebar in the window the client is in: a running list is moved there as --follow does, none running starts one there. With no
@@ -168,10 +179,8 @@ ensure_dash() {
   migrate_seats
   win=$(client_window "")
   [ -n "$win" ] || return 1
-  if [ -n "$(dash_pane)" ]; then
-    sidebar_move "$win" || return 1
-    cursor_to_window "$win"
-    return 0
-  fi
-  start_sidebar "$win" >/dev/null
+  [ -n "$(dash_pane)" ] || start_sidebar "$win" >/dev/null || return 1
+  sidebar_move "$win" || return 1
+  cursor_to_window "$win"
+  return 0
 }

@@ -47,13 +47,16 @@ is_shell_cmd() {  # <pane_current_command> — an idle shell, the one thing safe
 # mkdir is the atomic primitive (macOS has no flock). A lock older than <stale> seconds belongs to a process that died holding it and is taken over. tnotes carries its own copy as take_lock (tnotes:122-133) — that script stands alone — still without the bound below.
 # Every pass costs a try, the takeover included: a mkdir that fails for any other reason (a parent nobody may write to) gives up after the tries instead of spinning on a takeover that never lands.
 # A short sleep is not a short wait: a process at background priority (a detached worker, measured) has its timers coalesced, and there `sleep 0.05` took 0.12 s, so 36 tries were 4.4 s instead of 3. [seconds] bounds the wait by the clock as well; SECONDS counts whole seconds, so N waits between N-1 and N.
+# The holder writes its pid into the lock (owner), and a lock whose holder is gone is taken over at once: a list killed with its pane while it held the follow lock left everyone behind it waiting for <stale> seconds. A lock with no owner file yet was made a moment ago, and counts as held.
 lock_dir() {  # <dir> <stale seconds> [tries, 0.05 s apart; default 40] [seconds]
-  local d=$1 stale=$2 tries=${3:-40} end=
+  local d=$1 stale=$2 tries=${3:-40} end= owner
   [ -n "${4:-}" ] && end=$((SECONDS + $4))
   mkdir -p "${d%/*}" 2>/dev/null
   while :; do
-    mkdir "$d" 2>/dev/null && return 0
-    [ "$(lock_age "$d")" -gt "$stale" ] && rm -rf "$d" 2>/dev/null
+    if mkdir "$d" 2>/dev/null; then printf '%s\n' "$$" >"$d/owner" 2>/dev/null; return 0; fi
+    owner=$(cat "$d/owner" 2>/dev/null)
+    if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then rm -rf "$d" 2>/dev/null
+    elif [ "$(lock_age "$d")" -gt "$stale" ]; then rm -rf "$d" 2>/dev/null; fi
     tries=$((tries - 1)); [ "$tries" -gt 0 ] || return 1
     [ -n "$end" ] && [ "$SECONDS" -ge "$end" ] && return 1
     sleep 0.05

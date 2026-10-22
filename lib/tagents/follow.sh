@@ -25,6 +25,9 @@ follow_unlock() {
   unlock_dir "$FOLLOW_LOCK"
 }
 
+# Is a sidebar wanted: a list has claimed a pane on this server (claim_dash) and nobody has quit it since (ctrl-q, or a list that gave up). Only then does a follow start a new sidebar when none runs; a server that has only ever shown the popup, or whose sidebar was quit on purpose, gets none from a window switch.
+sidebar_wanted() { [ "$(tmux show -gv @tagents_sidebar_on 2>/dev/null)" = 1 ]; }
+
 win_alive() {  # <window-id>
   local list
   [ -n "${1:-}" ] || return 1
@@ -150,9 +153,12 @@ cursor_to_window() {  # <window-id>
   return 0
 }
 
-# The sidebar into the window the client shows now. Does nothing, and says nothing, when there is no client, no sidebar, the sidebar is
-# already there, the window is in a session that is not a group, or old seats are still standing. Serialised by a lock and repeated up to
-# three times while the client's window keeps changing, so a storm of hooks settles on the window on screen whatever order they finish in.
+# The sidebar into the window the client shows now. Does nothing, and says nothing, when there is no client, the sidebar is already there,
+# the window is in a session that is not a group, or old seats are still standing. When no list runs but one is wanted (its pane, window or
+# session was killed, which no key does), a new one is started in that window: a window or a session killed on screen takes the sidebar with
+# it, since it follows the user, and tmux then lands the client elsewhere and fires the hook that got us here. Serialised by a lock, so a storm
+# of hooks starts one list and not several, and repeated up to three times while the client's window keeps changing, so the storm settles on
+# the window on screen whatever order the hooks finish in.
 # TA_FOLLOW_WINDOW is for the tests: a window id used instead of the client's, so a window that closes between the hook and the move can
 # be made to happen.
 follow() {  # [client]
@@ -164,12 +170,23 @@ follow() {  # [client]
     win=${TA_FOLLOW_WINDOW:-$(client_window "$client")}
     [ -n "$win" ] || break
     sb=$(dash_pane)
-    [ -n "$sb" ] || break
-    [ "$(tmux display -p -t "$sb" '#{window_id}' 2>/dev/null)" = "$win" ] && break
+    if [ -n "$sb" ]; then
+      [ "$(tmux display -p -t "$sb" '#{window_id}' 2>/dev/null)" = "$win" ] && break
+    else
+      sidebar_wanted || break
+      win_alive "$win" || break
+    fi
     # A window that is gone goes on to sidebar_move, which says so once; a live one must be in a group.
     if win_alive "$win"; then
       sess=$(tmux display -p -t "$win" '#{session_name}' 2>/dev/null)
       session_is_group "$sess" || break
+    fi
+    if [ -z "$sb" ]; then
+      # The new list claims the sidebar itself and runs one follow of its own. A start that fails (no fzf, a pane too small) ends the wish, or
+      # every window switch would open another pane that dies: a later ensure-dash, or a list started by hand, wants it again.
+      start_sidebar "$win" >/dev/null
+      [ "$?" = 1 ] && tmux set -gu @tagents_sidebar_on 2>/dev/null
+      break
     fi
     sidebar_move "$win" || break
     cursor_to_window "$win"
