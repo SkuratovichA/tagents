@@ -102,6 +102,11 @@ open_beside() {  # <chat pane>
   [ -n "$here" ] || return 1
   # Already in the window on screen: only focus it.
   if [ "$win" = "$here" ]; then tmux select-pane -t "$pane" 2>/dev/null; return 0; fi
+  # A chat alone in the only window of its session cannot be joined: tmux closes a session when its last window empties, and the session with it.
+  if [ "$(tmux display -p -t "$pane" '#{window_panes} #{session_windows}' 2>/dev/null)" = "1 1" ]; then
+    tmux display-message "tagents: that chat is alone in its session — joining it would close the session" 2>/dev/null
+    return 0
+  fi
   # The first home is kept when a chat is joined again.
   home=$(tmux show -pv -t "$pane" @tagents_joined 2>/dev/null)
   [ -n "$home" ] || home=$(tmux display -p -t "$pane" '#{session_name}' 2>/dev/null)

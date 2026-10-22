@@ -634,6 +634,18 @@ act beside "$PJD" working "$SJD" "$REPO"
 act undock "$PJD" working "$SJD" "$REPO"
 ok "R20 broken out into its home session" tatest-j4 "$(tm display -p -t "$PJD" '#{session_name}')"
 
+t "R36 ctrl-s refuses a chat that is alone in the only window of its session"
+tm new-session -d -s tatest-j5 -x 200 -y 50 -c "$REPO" "exec '$BIN/claude' 600" >/dev/null 2>&1
+tm set -t "=tatest-j5:" @tagents_made 1
+PJE=$(tm list-panes -t "=tatest-j5:" -F '#{pane_id}' | head -1); chatrec "$PJE" sid-je working
+to tatest-j3; tm select-window -t "$JC"; tm display-message reset
+act beside "$PJE" working sid-je "$REPO"
+ok "R36 the session is still there" yes "$(tm has-session -t =tatest-j5 2>/dev/null && echo yes || echo no)"
+ok "R36 the chat stayed in it" tatest-j5 "$(tm display -p -t "$PJE" '#{session_name}' 2>/dev/null)"
+ok "R36 and carries no joined marker" "" "$(tm show -pv -t "$PJE" @tagents_joined 2>/dev/null)"
+has "R36 the notice says why" "tagents: that chat is alone in its session" "$(msgs)"
+tm kill-session -t =tatest-j5 2>/dev/null
+
 t "R19 ctrl-s on a closed row resumes it first and then joins it"
 chatrec "%997" sid-rj dead
 resume_run --act beside "%997" dead sid-rj "$REPO"

@@ -213,7 +213,7 @@ Every window of a group whose first pane, not counting the sidebar, carries no a
 - **THEN** its row is an ordinary chat row
 
 ### Requirement: Ctrl-s joins a chat into the window on screen
-`ctrl-s` on a chat row SHALL join the chat's pane into the window the client shows, as a split to the right of that window's chat, and leave the cursor where it was. A chat already in the window on screen SHALL only be focused. A window left with no pane by the join SHALL be closed and one that still has panes SHALL stay.
+`ctrl-s` on a chat row SHALL join the chat's pane into the window the client shows, as a split to the right of that window's chat, and leave the cursor where it was. A chat already in the window on screen SHALL only be focused. A window left with no pane by the join SHALL be closed and one that still has panes SHALL stay. A chat that is the only pane of the only window of its session SHALL NOT be joined, because the session would close with it: a notice is shown and nothing moves.
 
 #### Scenario: Two chats in one window
 - **WHEN** chat A is on screen and the user presses `ctrl-s` on chat B, whose window held only B
@@ -223,6 +223,10 @@ Every window of a group whose first pane, not counting the sidebar, carries no a
 #### Scenario: Already here
 - **WHEN** the user presses `ctrl-s` on the chat of the window on screen
 - **THEN** nothing moves and the chat is focused
+
+#### Scenario: Alone in its session
+- **WHEN** the user presses `ctrl-s` on a chat that is the only pane of the only window of its session
+- **THEN** the chat stays where it is, the session stays, and a notice says the chat is alone in its session
 
 ### Requirement: A joined chat remembers its home
 A pane joined by `ctrl-s` SHALL carry the pane option `@tagents_joined` holding the name of the session its window was in. When it is joined again, it SHALL keep the first value.
