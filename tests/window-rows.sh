@@ -959,8 +959,9 @@ f() { printf '%s' "$arow" | awk -F'\t' -v n="$1" '{ print $n }'; }
 ok "Z1 14 columns" 14 "$(printf '%s' "$arow" | awk -F'\t' '{ print NF }')"
 ok "Z1 session" tatest-z1 "$(f 5)"
 ok "Z1 window index" "$(tm display -p -t "$ZW" '#{window_index}')" "$(f 6)"
-ok "Z1 pane index counts the sidebar and the shell" "$(tm display -p -t "$ZP" '#{pane_index}')" "$(f 7)"
-ok "Z1 the docked column is written empty" "" "$(f 11)"
+ok "Z1 the sidebar is left of the chat, so tmux's pane index is 1" 1 "$(tm display -p -t "$ZP" '#{pane_index}')"
+ok "Z1 the place does not count the sidebar: the chat is the first of the other panes" 0 "$(f 7)"
+ok "Z1 the column that held the docked flag says the place skips the sidebar" p "$(f 11)"
 ok "Z1 the user's shell has no row" 1 "$(printf '%s\n' "$rows" | awk -F'\t' '$1 == "A" && $5 == "tatest-z1"' | wc -l | tr -d ' ')"
 ok "Z3 the D row is the window the sidebar is in" "D	tatest-z1	$(tm display -p -t "$ZW" '#{window_index}')" "$(printf '%s\n' "$rows" | awk '$1 == "D"')"
 newsess tatest-z2a; mkchat tatest-z2a ja; ZA=$LASTPANE; newsess tatest-z2b; mkchat tatest-z2b jb; ZB=$LASTPANE; ZBS=$LASTSID
@@ -1029,6 +1030,40 @@ out=$(resume_run --resurrect --from "$WRROOT/d.tsv" 2>&1)
 has "Z11 the report says dashboard" "✓ dashboard" "$out"
 ok "Z11 a list runs in the recorded window" "$(wid =tatest-z5:0)" "$(wait_eq "$(wid =tatest-z5:0)" sbwin)"
 tm kill-pane -t "$(sbpane)" 2>/dev/null; unhook; to tatest-work
+
+t "Z12 Z13 a snapshot taken with the sidebar left of the chat restores the chat into its own pane; an older snapshot never takes the sidebar's shell"
+kill_sidebars; unhook
+newsess tatest-z12; mkchat tatest-z12 zc; ZW12=$LASTWIN; ZP12=$LASTPANE; ZS12=$LASTSID
+ZSH12=$(tm split-window -d -h -t "$ZP12" -P -F '#{pane_id}' "exec sleep 600")      # the user's shell, right of the chat
+to tatest-z12; tm select-window -t "$ZW12"; SB=$(fake_sidebar "$ZW12")             # the sidebar, left of both: tmux's index of the chat is 1
+rows12=$(modrun resurrect_rows)
+row12=$(printf '%s\n' "$rows12" | awk -F'\t' -v s="$ZS12" '$1 == "A" && $2 == s')
+ok "Z12 the capture says place 0 and marks it" "0|p" "$(printf '%s' "$row12" | awk -F'\t' '{ print $7 "|" $11 }')"
+SNAP12="$WRROOT/z12.tsv"; : >"$CFGD/projects/x/$ZS12.jsonl"
+printf '%s\n' "$row12" | awk -F'\t' -v OFS='\t' -v c="$CFGD" '{ $3 = c; $4 = 1; print }' >"$SNAP12"
+# After the reboot tmux-resurrect has the window as it saved it: the sidebar was in another window then, so two idle shells.
+to tatest-work; kill_sidebars; tm kill-session -t =tatest-z12
+tm new-session -d -s tatest-z12 -x 200 -y 50 -c "$REPO"; tm new-window -d -t =tatest-z12:1 -c "$REPO"
+Z12A=$(tm list-panes -t =tatest-z12:1 -F '#{pane_id}' | head -1)
+Z12B=$(tm split-window -d -h -t "$Z12A" -P -F '#{pane_id}' -c "$REPO")
+nwin=$(tm list-windows -t =tatest-z12: -F x | wc -l | tr -d ' '); SHC=$(tm display -p -t "$Z12B" '#{pane_current_command}')
+: >"$RESUMED"; resume_run --resurrect --from "$SNAP12" >/dev/null 2>&1; settle 0.5
+ok "Z12 the chat runs in the first pane of its window" "$Z12A" "$(rp "$ZS12")"
+ok "Z12 the user's shell beside it is still the same shell" "$SHC" "$(tm display -p -t "$Z12B" '#{pane_current_command}' 2>/dev/null)"
+ok "Z12 no window was added" "$nwin" "$(tm list-windows -t =tatest-z12: -F x | wc -l | tr -d ' ')"
+# An older snapshot: a tmux pane index that points at the idle shell tmux-resurrect brought back titled tagents-sidebar.
+tm kill-session -t =tatest-z12
+tm new-session -d -s tatest-z12 -x 200 -y 50 -c "$REPO"; tm new-window -d -t =tatest-z12:1 -c "$REPO"
+Z13S=$(tm list-panes -t =tatest-z12:1 -F '#{pane_id}' | head -1); tm select-pane -T tagents-sidebar -t "$Z13S"
+Z13C=$(tm split-window -d -h -t "$Z13S" -P -F '#{pane_id}' -c "$REPO")
+nwin=$(tm list-windows -t =tatest-z12: -F x | wc -l | tr -d ' ')
+printf '%s\n' "$row12" | awk -F'\t' -v OFS='\t' -v c="$CFGD" '{ $3 = c; $4 = 1; $7 = 0; $11 = ""; print }' >"$WRROOT/z13.tsv"
+: >"$RESUMED"; resume_run --resurrect --from "$WRROOT/z13.tsv" >/dev/null 2>&1; settle 0.5
+RZ13=$(rp "$ZS12")
+ok "Z13 the pane titled tagents-sidebar was not taken for the chat" yes "$([ -n "$RZ13" ] && [ "$RZ13" != "$Z13S" ] && echo yes || echo no)"
+ok "Z13 the chat got a window of its own instead" "$((nwin + 1))" "$(tm list-windows -t =tatest-z12: -F x | wc -l | tr -d ' ')"
+ok "Z13 the shell beside it is untouched" "$SHC" "$(tm display -p -t "$Z13C" '#{pane_current_command}' 2>/dev/null)"
+tm kill-session -t =tatest-z12; to tatest-work
 
 # ---------------------------------------------------------------------------------------------------------------------------------
 t "M1 M2 M3 M4 the first start after the upgrade sends docked chats home and removes the old state"

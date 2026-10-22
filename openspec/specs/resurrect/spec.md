@@ -22,15 +22,15 @@ A capture SHALL write one `A` row per live chat that has a state record with a s
 - **THEN** its row carries the model in column 13 and a command line containing `--effort high` in column 14
 
 ### Requirement: The columns of a row
-The 14 columns of an `A` row SHALL be, in order: `A`, the session id, the Claude config directory the chat ran on, `1` when that account was recorded, the tmux session name, the window index, the pane index, the window name, tagents' own name for it, the working directory, a column written empty (older snapshots held `1` for a docked chat; a restore ignores it), `1` when the notes editor was beside the chat, the model, and the command line it started with, tabs and newlines turned into spaces.
+The 14 columns of an `A` row SHALL be, in order: `A`, the session id, the Claude config directory the chat ran on, `1` when that account was recorded, the tmux session name, the window index, the pane's place in its window, the window name, tagents' own name for it, the working directory, `p` when the place skips the sidebar (older snapshots: empty or `1`), `1` when the notes editor was beside the chat, the model, and the command line it started with, tabs and newlines turned into spaces.
 
 #### Scenario: Column positions
 - **WHEN** a chat in session `proj`, window 1, pane 1 named `Alpha` runs in a directory `~/projects/app`
-- **THEN** column 5 is `proj`, column 6 is `1`, column 7 is `1`, column 8 is `Alpha`, column 10 is the directory and column 11 is empty
+- **THEN** column 5 is `proj`, column 6 is `1`, column 7 is `0`, column 8 is `Alpha`, column 10 is the directory and column 11 is `p`
 
 #### Scenario: An old snapshot
 - **WHEN** a snapshot written before this change holds `1` in column 11 of a row
-- **THEN** the restore reads the row like any other and the chat comes back undocked, as every chat does
+- **THEN** the restore reads column 7 as a tmux pane index and the chat comes back undocked, as every chat does
 
 ### Requirement: Window names travel only when tagents named the window
 The tagents-name column SHALL be filled only when the window's current name still equals the name tagents gave it; a name that a person typed over it SHALL be left out, so a restore does not hand a typed name back to the naming sweep.
@@ -189,7 +189,7 @@ A restored chat SHALL be started with `--model <recorded model>` when the row ha
 - **THEN** the resumed command has no `--model`
 
 ### Requirement: Where a chat goes back
-A chat SHALL be placed at its recorded `session:window.pane` when that pane is an idle shell with no tagents or tnotes marker on it: the pane is replaced in place by the resumed command, and nothing is typed into the shell. Otherwise (the pane is busy, the sidebar, an editor, gone, or the row has no window and pane) the chat SHALL get a new window in its session, and when the session is gone, a new session of that name.
+A chat SHALL be placed at its recorded place in the window `session:window` when that pane is an idle shell with no tagents or tnotes marker on it and is not titled `tagents-sidebar`: the pane is replaced in place by the resumed command, and nothing is typed into the shell. Otherwise (the pane is busy, the sidebar, an editor, gone, or the row has no window and pane) the chat SHALL get a new window in its session, and when the session is gone, a new session of that name.
 
 #### Scenario: Idle shell
 - **WHEN** tmux-resurrect left an idle shell at the recorded pane
@@ -367,11 +367,22 @@ A snapshot written before windows became rows SHALL restore: its docked column i
 - **THEN** the restore places the chat at `proj:1.1` as it would any other chat
 
 ### Requirement: Chats are filed where their panes are
-A capture SHALL record each chat at the session name, window index and pane index that tmux reports for its pane, the index counting every pane of the window including the sidebar and the user's panes.
+A capture SHALL record each chat at the session name and window index that tmux reports for its pane, and at its place among the panes of that window that are not the sidebar (the pane titled `tagents-sidebar`, or the live list): the number of such panes before it, from 0, with the user's panes counted. The sidebar moves between windows, so an index that counted it would name another pane after a restore.
 
 #### Scenario: A chat beside a shell
 - **WHEN** a chat is pane 1 of window 2 of session `proj`, with the sidebar as pane 0 and a shell as pane 2
-- **THEN** its row says session `proj`, window 2, pane 1
+- **THEN** its row says session `proj`, window 2, place 0, and `p` in column 11
+
+### Requirement: A restore finds a chat's pane by its place
+A restore SHALL find the pane at the recorded place among the panes of the window that are not titled `tagents-sidebar`. A row without `p` in column 11 (an older snapshot) holds a tmux pane index, which SHALL be used as it stands, except that a pane titled `tagents-sidebar` is never used.
+
+#### Scenario: The sidebar was elsewhere at the restore
+- **WHEN** the snapshot was taken with the sidebar left of the chat, and tmux-resurrect brought the window back as two idle shells without it
+- **THEN** the chat runs in the first shell, the second shell is untouched and no window is added
+
+#### Scenario: An old snapshot points at the sidebar's shell
+- **WHEN** a row of an older snapshot names a tmux pane index at which an idle shell titled `tagents-sidebar` stands
+- **THEN** that pane is not used and the chat gets a new window in its session
 
 ### Requirement: A joined chat is filed under its home session
 A chat joined into another window with `ctrl-s` SHALL be recorded under the session its `@tagents_joined` names, with the window index and the pane index empty, so that a restore gives it a window of its own there.

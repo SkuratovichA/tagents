@@ -272,7 +272,7 @@ ok "row 1: pane index"         0                  "$(col "$r1" 7)"
 ok "row 1: window name"        Alpha              "$(col "$r1" 8)"
 ok "row 1: tagents' own name"  Alpha              "$(col "$r1" 9)"
 ok "row 1: directory"          "$PERS"            "$(col "$r1" 10)"
-ok "row 1: the docked column is empty" ""            "$(col "$r1" 11)"
+ok "row 1: the place counts the panes that are not the sidebar (p in the column that held the docked flag)" p "$(col "$r1" 11)"
 ok "row 1: no notes editor"    ""                 "$(col "$r1" 12)"
 ok "row 1: the model"          claude-opus-5-5    "$(col "$r1" 13)"
 has "row 1: argv keeps --effort" "--effort high"  "$(col "$r1" 14)"
@@ -342,7 +342,7 @@ r1=$(row "$S3" "$SID1")
 ok "joined: the home session"              tatest-proj "$(col "$r1" 5)"
 ok "joined: no window index"               ""          "$(col "$r1" 6)"
 ok "joined: no pane index"                 ""          "$(col "$r1" 7)"
-ok "joined: the docked column stays empty" ""          "$(col "$r1" 11)"
+ok "joined: no place, so the column stays empty" ""    "$(col "$r1" 11)"
 ok "the sidebar window is a D row" "D	tatest-dash	0" "$(awk -F'\t' '$1 == "D"' "$S3")"
 
 tm set -up -t "$P1" @tagents_joined

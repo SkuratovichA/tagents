@@ -38,24 +38,27 @@ RESURRECT_YOUNG=${TA_RESURRECT_YOUNG:-300}    # seconds a server counts as just 
 RESURRECT_SOON=${TA_RESURRECT_SOON:-5}        # the capture after a launch or a kill
 RESURRECT_RETAKE=${TA_RESURRECT_RETAKE:-15}   # the capture after a restore
 
-# One pane of the list-panes map resurrect_rows builds, US-joined: session, window index, pane index, command, joined (the home session of a chat joined by ctrl-s), notes (1 when the chat's editor is a pane of its own window), tagents' own name for the window, directory, window name. The window name is last and may hold the separator.
-resurrect_pane() {  # <map> <pane id>
-  printf '%s\n' "$1" | LC_ALL=C awk -F'\\|@\\|' -v OFS="$US" -v p="$2" '
-    { win[$1] = $2 SUBSEP $3 }
-    !d && $1 == p { s = $2; wi = $3; pi = $4; c = $5; jn = $6; e = $7; tn = $8; dr = $9
-                    w = $10; for (i = 11; i <= NF; i++) w = w "|@|" $i; d = 1 }
-    END { if (d) print s, wi, pi, c, jn, ((e != "" && win[e] == s SUBSEP wi) ? 1 : ""), tn, dr, w }'
+# One pane of the list-panes map resurrect_rows builds, US-joined: session, window index, the pane's place, command, joined (the home session of a chat joined by ctrl-s), notes (1 when the chat's editor is a pane of its own window), tagents' own name for the window, directory, window name. The window name is last and may hold the separator. THE PANE'S PLACE counts the panes of its window that are not the sidebar and come before it (0 for the first): the sidebar moves from window to window, so a tmux pane index that counts it names a different pane once it has gone; the sidebar is the pane titled tagents-sidebar or <sidebar pane>.
+resurrect_pane() {  # <map> <pane id> [sidebar pane]
+  printf '%s\n' "$1" | LC_ALL=C awk -F'\\|@\\|' -v OFS="$US" -v p="$2" -v sb="${3:-}" '
+    { win[$1] = $2 SUBSEP $3; ses[$1] = $2; wix[$1] = $3; pix[$1] = $4 + 0; isb[$1] = ($1 == sb || $10 == 1)
+      if (!d && $1 == p) { s = $2; wi = $3; pi = $4; c = $5; jn = $6; e = $7; tn = $8; dr = $9
+                           w = $11; for (i = 12; i <= NF; i++) w = w "|@|" $i; d = 1 } }
+    END { if (!d) exit
+          n = 0
+          for (q in ses) if (ses[q] == s && wix[q] == wi && pix[q] < pi + 0 && !isb[q]) n++
+          print s, wi, n, c, jn, ((e != "" && win[e] == s SUBSEP wi) ? 1 : ""), tn, dr, w }'
 }
 
-# One A row per live chat and a D row when the sidebar is up. A chat is recorded where tmux says its pane is — the pane index counts every pane of the window, the sidebar and the user's panes included — except a chat joined by ctrl-s, which is recorded under its home session with no window, no pane and no window names (the ones its pane reports are the host window's), so a restore gives it a window of its own there. The D row names the window the sidebar is in. The window's own name travels with @tagents_name only when the two still agree: that is how the naming sweep tells its name from one a person typed, and a restore must not hand a typed name back to the sweep. The A rows come sorted the way the restore walks them, so an unchanged set reads the same whatever order ps listed its chats in.
+# One A row per live chat and a D row when the sidebar is up. A chat is recorded where tmux says its pane is, by its place among the panes of its window that are not the sidebar (the user's panes count; `p` in the column that once held the docked flag says so, and a snapshot without it holds a tmux pane index) — except a chat joined by ctrl-s, which is recorded under its home session with no window, no pane and no window names (the ones its pane reports are the host window's), so a restore gives it a window of its own there. The D row names the window the sidebar is in. The window's own name travels with @tagents_name only when the two still agree: that is how the naming sweep tells its name from one a person typed, and a restore must not hand a typed name back to the sweep. The A rows come sorted the way the restore walks them, so an unchanged set reads the same whatever order ps listed its chats in.
 resurrect_rows() {
   local map p pid sid cwd tr cfgd hascfg model argv sbp
   local sess widx pidx cur joined notes tname dir wname
   # |@| not tab (collect() in state.sh says why).
-  map=$(tmux list-panes -a -F "#{pane_id}|@|#{session_name}|@|#{window_index}|@|#{pane_index}|@|#{pane_current_command}|@|#{@tagents_joined}|@|#{@ta_notes}|@|#{@tagents_name}|@|#{pane_current_path}|@|#{window_name}" 2>/dev/null)
+  map=$(tmux list-panes -a -F "#{pane_id}|@|#{session_name}|@|#{window_index}|@|#{pane_index}|@|#{pane_current_command}|@|#{@tagents_joined}|@|#{@ta_notes}|@|#{@tagents_name}|@|#{pane_current_path}|@|#{==:#{pane_title},tagents-sidebar}|@|#{window_name}" 2>/dev/null)
   sbp=$(dash_pane)
   if [ -n "$sbp" ]; then
-    IFS="$US" read -r sess widx _ < <(resurrect_pane "$map" "$sbp")
+    IFS="$US" read -r sess widx _ < <(resurrect_pane "$map" "$sbp" "$sbp")
     [ -n "$sess" ] && printf 'D\t%s\t%s\n' "$sess" "$widx"
   fi
   # Every pane the ps walk vouches for (with the claude pid) first, then the ones only the command name vouches for (no pid, so no argv); awk keeps the first line per pane, so a pane known both ways keeps its pid.
@@ -63,7 +66,7 @@ resurrect_rows() {
     while IFS="$TAB" read -r p pid; do
       IFS="$US" read -r sid cwd tr cfgd hascfg < <(rec_row "${p#%}")
       [ -n "$sid" ] || continue                     # no record yet: nothing to resume by
-      IFS="$US" read -r sess widx pidx cur joined notes tname dir wname < <(resurrect_pane "$map" "$p")
+      IFS="$US" read -r sess widx pidx cur joined notes tname dir wname < <(resurrect_pane "$map" "$p" "$sbp")
       [ -n "$sess" ] || continue
       if [ -n "$joined" ]; then sess=$joined; widx=""; pidx=""; tname=""; wname=""; fi
       [ "$tname" = "$wname" ] || tname=""
@@ -72,7 +75,7 @@ resurrect_rows() {
       printf 'A\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$sid" "$cfgd" "$hascfg" "$sess" "$widx" "$pidx" \
         "$(printf '%s' "$wname" | tr '\t' ' ')" "$(printf '%s' "$tname" | tr '\t' ' ')" \
-        "$dir" "" "${notes:+1}" "$model" "$argv"
+        "$dir" "${pidx:+p}" "${notes:+1}" "$model" "$argv"
     done | sort -t"$TAB" -k5,5 -k6,6n -k7,7n
 }
 
@@ -161,9 +164,18 @@ resurrect_has_transcript() {  # <config dir, as recorded> <sid>
   set -- "$(cfg_expand_dir "$1")"/projects/*/"$2".jsonl; [ -e "$1" ]
 }
 
+# The pane a snapshot's place names in a restored window, never one titled tagents-sidebar (the idle shell tmux-resurrect brings back where the sidebar was is swept afterwards, and a chat must not take its place). A place written with `p` counts the panes that are not titled so, from 0; a place of an older snapshot is a tmux pane index, taken as it is. Prints the pane id, or nothing when the window has no such pane.
+resurrect_target() {  # <session> <window index> <place> <kind: p or empty>
+  tmux list-panes -t "=$1:$2" -F '#{pane_index}|@|#{pane_id}|@|#{pane_title}' 2>/dev/null |
+    LC_ALL=C awk -F'\\|@\\|' -v want="$3" -v kind="$4" '
+      $3 == "tagents-sidebar" { next }
+      kind == "p" { if (n++ == want + 0) { print $2; exit } next }
+      $1 == want { print $2; exit }'
+}
+
 # Where a chat goes back: its own pane when tmux-resurrect put an idle shell there, a new window in its session when that pane is busy, gone, the sidebar or an editor, or the row has no window and pane (a joined chat), a new session (marked as made by tagents) when even the session is gone. The other panes of the window are never touched. Prints the pane id.
-resurrect_place() {  # <session> <window index> <pane index> <dir> <cmd>
-  local sess=$1 widx=$2 pidx=$3 dir=$4 cmd=$5 t cur p
+resurrect_place() {  # <session> <window index> <place> <dir> <cmd> [kind]
+  local sess=$1 widx=$2 pidx=$3 dir=$4 cmd=$5 kind=${6:-} t cur p
   if ! tmux has-session -t "=$sess" 2>/dev/null; then
     p=$(tmux new-session -d -s "$sess" -x 200 -y 50 -c "$dir" -P -F '#{pane_id}' "$cmd" 2>/dev/null) || return 1
     mark_session_made "$sess"
@@ -171,12 +183,14 @@ resurrect_place() {  # <session> <window index> <pane index> <dir> <cmd>
     return 0
   fi
   if [ -n "$widx" ] && [ -n "$pidx" ]; then
-    t="=$sess:$widx.$pidx"
-    cur=$(tmux display -p -t "$t" '#{pane_current_command}|@|#{@tagents_list}#{@tagents_joined}#{@ta_notes_for}' 2>/dev/null)
-    if [ -n "$cur" ] && is_shell_cmd "${cur%%|@|*}" && [ -z "${cur#*|@|}" ]; then
-      tmux respawn-pane -k -t "$t" -c "$dir" "$cmd" 2>/dev/null &&
-        tmux display -p -t "$t" '#{pane_id}' 2>/dev/null
-      return
+    t=$(resurrect_target "$sess" "$widx" "$pidx" "$kind")
+    if [ -n "$t" ]; then
+      cur=$(tmux display -p -t "$t" '#{pane_current_command}|@|#{@tagents_list}#{@tagents_joined}#{@ta_notes_for}' 2>/dev/null)
+      if [ -n "$cur" ] && is_shell_cmd "${cur%%|@|*}" && [ -z "${cur#*|@|}" ]; then
+        tmux respawn-pane -k -t "$t" -c "$dir" "$cmd" 2>/dev/null &&
+          tmux display -p -t "$t" '#{pane_id}' 2>/dev/null
+        return
+      fi
     fi
   fi
   tmux new-window -d -t "=$sess:" -P -F '#{pane_id}' -c "$dir" "$cmd" 2>/dev/null
@@ -227,7 +241,7 @@ resurrect_sweep() {
 # From the hook it runs once per server and only on a young one; by hand it runs whenever it is asked to.
 resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
   local dry=0 auto=0 file="" live n=0 k=0 total notes_panes="" st lt root
-  local t sid cfgd hascfg sess widx pidx wname tname dir docked notes model argv
+  local t sid cfgd hascfg sess widx pidx wname tname dir kind notes model argv
   local prof cmd pane note eff wid at at_w firstwin=""
   while [ $# -gt 0 ]; do
     case $1 in
@@ -262,7 +276,7 @@ resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
   total=$(LC_ALL=C awk -F"$TAB" '$1 == "A"' "$file" | wc -l | tr -d ' ')
   # Not IFS=TAB on the raw line: an empty field would collapse (see collect()
   # in state.sh), so the rows are re-joined with US first.
-  while IFS="$US" read -r t sid cfgd hascfg sess widx pidx wname tname dir docked notes model argv; do
+  while IFS="$US" read -r t sid cfgd hascfg sess widx pidx wname tname dir kind notes model argv; do
     note=""; at_w="${sess}${widx:+:$widx}"; at="$at_w${pidx:+.$pidx}"
     case " $live " in *" $sid "*) echo "– $at_w ${tname:-$wname}: already running"; k=$((k + 1)); continue ;; esac
     # A record from before the account was written down is looked for on the login this runs on.
@@ -289,7 +303,7 @@ resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
       echo "✓ would resume $at ${tname:-$wname} [$sid]${note}"; echo "    $cmd"
       n=$((n + 1)); continue
     fi
-    pane=$(resurrect_place "$sess" "$widx" "$pidx" "$dir" "$cmd") && [ -n "$pane" ] ||
+    pane=$(resurrect_place "$sess" "$widx" "$pidx" "$dir" "$cmd" "$kind") && [ -n "$pane" ] ||
       { echo "! $at_w: could not open a pane — skipped"; k=$((k + 1)); continue; }
     # tagents' own name is stamped again so the naming sweep keeps it; a typed
     # one goes back plain, and only when the window had to be made anew.
