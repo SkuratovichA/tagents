@@ -191,8 +191,8 @@ row_of() {
   printf '%s\n' "${2:-}" |
     awk -F'\t' -v p="${1:-}" 'index($2, "\342\226\276") == 0 && $1 == p { print $2; exit }'
 }
-hdr_row() {  # the group header line
-  printf '%s\n' "${1:-}" | awk -F'\t' 'index($2, "\342\226\276") > 0 { print $2; exit }'
+hdr_named() {  # <rows> <group name> — the header line of that group
+  printf '%s\n' "${1:-}" | awk -F'\t' -v n="$(printf '\342\226\276 ')${2:-}" 'index($2, n) > 0 { print $2; exit }'
 }
 # WHAT SITS BETWEEN THE AGE AND THE NAME — the badge cell, padding and all, so a
 # missing column and a blank one are told apart rather than both reading as "no
@@ -368,12 +368,12 @@ t "2. hiding columns"
 FULL=$(rows_at 140)
 has "the cost column is there to begin with" '$12.3' "$(row_of %8001 "$FULL")"
 has "...and the subagent share with it"      '⑂$1.25' "$(row_of %8001 "$FULL")"
-has "...and the project total in the header" "/5h"    "$(hdr_row "$FULL")"
+has "...and the group total in the header" "/5h"      "$(hdr_named "$FULL" "no window")"
 
 NOCOST=$(rows_at 140 TA_HIDE_COLS=cost)
 hasnt "hiding cost takes the column"          '$12.3'  "$(row_of %8001 "$NOCOST")"
 hasnt "...the subagent share"                 '⑂$'     "$(row_of %8001 "$NOCOST")"
-hasnt "...and the /5h total off the header"   "/5h"    "$(hdr_row "$NOCOST")"
+hasnt "...and the /5h total off the header"   "/5h"    "$(hdr_named "$NOCOST" "no window")"
 has   "...while the context is untouched"     "150k"   "$(row_of %8001 "$NOCOST")"
 has   "...and so is the model"                "opus5"  "$(row_of %8001 "$NOCOST")"
 
@@ -385,16 +385,17 @@ ok    "hiding badge takes the indicator"    ""         "$(cell %8001 "$(rows_at 
 has   "the location column is there"        "tatest-work:" "$(row_of "$A" "$(rows_at 140)")"
 hasnt "hiding loc takes it"                 "tatest-work:" "$(row_of "$A" "$(rows_at 140 TA_HIDE_COLS=loc)")"
 # AND IT TAKES NOTHING ELSE WITH IT. Flat mode has no group headers, so the
-# 14-wide project column is the only thing on the row that says which project an
-# agent belongs to — and it was drawn under the location column's own width, so
-# `loc` quietly took it away too. Counted rather than grepped: here the project
-# and the agent are both called "repo".
+# 14-wide group column (the session, or "no window") is the only thing on the row
+# that says which group an agent belongs to — and it was drawn under the location
+# column's own width, so `loc` quietly took it away too. Counted rather than
+# grepped: a closed row is in "no window".
 FLAT=$(rows_at 140 TA_FLAT=1)
 FLATNOLOC=$(rows_at 140 TA_FLAT=1 TA_HIDE_COLS=loc)
-ok    "flat rows name the project as well as the agent" 2 \
-      "$(occurs repo "$(row_of %8001 "$FLAT")")"
-ok    "...and hiding loc leaves the project where it was" 2 \
-      "$(occurs repo "$(row_of %8001 "$FLATNOLOC")")"
+ok    "flat rows name the group as well as the agent" 1 \
+      "$(occurs 'no window' "$(row_of %8001 "$FLAT")")"
+ok    "...and hiding loc leaves the group where it was" 1 \
+      "$(occurs 'no window' "$(row_of %8001 "$FLATNOLOC")")"
+has   "...a live agent's group is its session" "tatest-work" "$(row_of "$A" "$FLATNOLOC")"
 hasnt "...while the pane column really is gone" "tatest-work:" "$(row_of "$A" "$FLATNOLOC")"
 # Two at once, and the detail column gets the width — nothing is reordered.
 NOBOTH=$(rows_at 140 TA_HIDE_COLS=cost,model)
@@ -460,7 +461,8 @@ has "...both of them"                                       "esc"    "$TABLE"
 # window's chat is broken out into its home session, exactly as ctrl-u would do.
 run --act beside "$A" live sid-live "$REPO" >/dev/null 2>&1; sleep 0.5
 ok "the agent is joined into the window the sidebar is in" "$DWIN" "$(where "$A")"
-env TMUX="$TMUXV" FZF_DEFAULT_OPTS=--filter=undock bash "$TA" \
+# The picker searches the description column, where undock reads "break a joined chat out into a window of its own".
+env TMUX="$TMUXV" FZF_DEFAULT_OPTS="--exact --filter=break" bash "$TA" \
   --ask-keys "" "$A" live sid-live "$REPO" >/dev/null 2>&1
 sleep 0.5
 ok "picking undock in the ? window breaks it out into its home session" "$AHOME" "$(sess_of "$A")"
@@ -734,7 +736,7 @@ CCFG="$ROOT/keys-clash.yaml"
 printf 'keys:\n  send: ctrl-g\n' >"$CCFG"
 CDUMP=$(dumpargs "$ROOT/fzf-clash" "TA_CONFIG='$CCFG'")
 has "the verb that had the key keeps it" \
-    "--bind=ctrl-g:execute-silent($SELF --act goto {1})" "$CDUMP"
+    "--bind=ctrl-g:execute-silent($SELF --act goto {1} {3} {4} {5} {2})" "$CDUMP"
 has "...and the one that asked for it stays on its default" \
     "--bind=ctrl-e:execute-silent($SELF --act send {1})" "$CDUMP"
 ok  "...so the key is bound exactly once" 1 \
@@ -852,7 +854,7 @@ REPO2="$ROOT/repo-z"; mkdir -p "$REPO2/.git"
 REPO3="$ROOT/repo-aaa"; mkdir -p "$REPO3/.git"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$(date +%s)" done sid-cold "$REPO3" "" "over" "$LOGIN" >"$STATE/8010.tsv"
-said %8010 30
+said %8010 45
 
 agent() {  # <dir> [session] — a live claude in its own window, in a session of its own when one is named
   if [ -n "${2:-}" ]; then
@@ -879,29 +881,31 @@ said %8002 300
 said %8003 900
 said %8004  30
 sleep 0.3
+# The dimmed row of the session's other window (no chat in it), drawn below the chats of its group.
+WROW=$(tm display -p -t tatest-work:0 '#{window_id}')
 
 groups() { rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") > 0 { split($2, a, " "); print a[2] }' | tr '\n' ' '; }
 order()  { rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") == 0 { print $1 }' | tr '\n' ' '; }
-ok "projects sort by path, and the closed-only one is last" \
-   "repo repo-z repo-aaa " "$(groups)"
-ok "inside a project the newest conversation is on top, closed ones below" \
-   "$A2 $A %8004 %8001 %8002 %8003 %8010 " \
+ok "groups sort by name, and the one with no window is last" \
+   "tatest-work tatest-zeta no " "$(groups)"
+ok "inside a group the newest conversation is on top, the window row below it, and the closed ones are the last group" \
+   "$A2 $A $WROW %8004 %8010 %8001 %8002 %8003 " \
    "$(order | sed "s/$B //")"
 
 # THE CHECK THIS EXISTS FOR. Everything above moved only because a timestamp
 # said so; here nothing moves at all, because a state change is not one.
 live "$B" blocked sid-liveZ "$REPO2"
-ok "a blocked agent does not drag its project up the list" \
-   "repo repo-z repo-aaa " "$(groups)"
+ok "a blocked agent does not drag its group up the list" \
+   "tatest-work tatest-zeta no " "$(groups)"
 live "$A" blocked sid-live "$REPO"
-ok "...nor its own row up its project" \
-   "$A2 $A %8004 %8001 %8002 %8003 %8010 " "$(order | sed "s/$B //")"
+ok "...nor its own row up its group" \
+   "$A2 $A $WROW %8004 %8010 %8001 %8002 %8003 " "$(order | sed "s/$B //")"
 live "$A" working sid-live "$REPO"
 
 # ...and typing into it IS one: the only thing that reorders the list is you.
 said "$A" 1
 ok "answering it puts it on top, where you just left off" \
-   "$A $A2 %8004 %8001 %8002 %8003 %8010 " "$(order | sed "s/$B //")"
+   "$A $A2 $WROW %8004 %8010 %8001 %8002 %8003 " "$(order | sed "s/$B //")"
 said "$A" 600
 
 # The header is a stand-in for the row under it, which is now the newest one
