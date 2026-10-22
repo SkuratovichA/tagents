@@ -344,6 +344,22 @@
         },
         {
           "path": [
+            "toc"
+          ],
+          "positionals": [],
+          "options": {
+            "dir": {
+              "type": "string"
+            },
+            "check": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "summary": "writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date"
+        },
+        {
+          "path": [
             "mcp"
           ],
           "positionals": [],
@@ -495,7 +511,7 @@
   },
   "api": {
     "@tagents/core": "sha256:c127f03b660a5ff59bfc2a3a99ad3b0ecbc25ebba324442ae187beb7dca0fcbd",
-    "@tagents/knowledge": "sha256:5b9234397b6d596db00cdacb7f4a550ac67227136641fe23f95bc88e134ec888",
+    "@tagents/knowledge": "sha256:ff27124f4075cfd20705c7c6b4c768641bfcc933c9f043ae7b929e681a7b2d95",
     "@tagents/notify": "sha256:82378079b87af196363505cb138618ae0e84223fea9f92d4eaa01ec4981564bf",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"
   }

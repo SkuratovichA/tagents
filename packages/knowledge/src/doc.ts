@@ -375,7 +375,7 @@ export function loadDir(dir: string): LoadResult {
 export const WIKILINK = /\[\[([^\]|#]+)(?:#([^\]|]+))?\]\]/g;
 /** `[text](target)` — the target has no spaces; images (`![`) are not links to documents. */
 const MARKDOWN_LINK = /(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+export const URL_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
 export interface Wikilink {
   readonly id: string;

@@ -61,6 +61,9 @@ export type { Clock, DocSummary, Filters, Hit, Lifecycle, SearchOptions, Section
 export { insideGitRepo, lastCommitDate, lint } from './lint.ts';
 export type { Issue, IssueCode, LintResult } from './lint.ts';
 
+export { INDEX_FILE, indexState, renderIndex, writeIndex } from './toc.ts';
+export type { IndexState } from './toc.ts';
+
 export { DB_BASENAME, configuredDir, expandHome, resolveDb, resolveDir } from './paths.ts';
 export type { DirResult } from './paths.ts';
 

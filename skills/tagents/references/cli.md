@@ -217,6 +217,17 @@ Usage: `tagents-knowledge lint [--dir <dir>]`
 |---|---|---|---|
 | `--dir` | string | no | no |
 
+### toc
+
+writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date
+
+Usage: `tagents-knowledge toc [--dir <dir>] [--check]`
+
+| Flag | Type | Required | Repeatable |
+|---|---|---|---|
+| `--dir` | string | no | no |
+| `--check` | boolean | no | no |
+
 ### mcp
 
 serves the knowledge tools over stdio as an MCP server

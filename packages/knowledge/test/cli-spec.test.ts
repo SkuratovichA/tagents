@@ -114,7 +114,7 @@ test('knowledgeCliContract lists every verb with a non-empty English summary', (
   assert.equal(contract.exit['notFound'], 4);
   assert.deepEqual(
     contract.commands.map((c) => c.path.join(' ')),
-    ['index', 'search', 'show', 'list', 'lint', 'mcp', 'serve'],
+    ['index', 'search', 'show', 'list', 'lint', 'toc', 'mcp', 'serve'],
   );
   for (const c of contract.commands) {
     assert.ok(c.summary.trim().length > 0, c.path.join(' '));

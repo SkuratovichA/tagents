@@ -178,6 +178,15 @@ export interface Hit extends Lifecycle {
 }
 
 // @public (undocumented)
+export const INDEX_FILE = "index.md";
+
+// @public (undocumented)
+export type IndexState = 'current' | 'missing' | 'outdated';
+
+// @public
+export function indexState(dir: string, docs: readonly KnowledgeDoc[]): IndexState;
+
+// @public (undocumented)
 export interface IndexStats {
     // (undocumented)
     readonly added: number;
@@ -217,7 +226,7 @@ export interface Issue {
 }
 
 // @public (undocumented)
-export type IssueCode = 'frontmatter' | 'stem' | 'duplicate-id' | 'stale' | 'generated' | 'dead-link';
+export type IssueCode = 'frontmatter' | 'stem' | 'duplicate-id' | 'legacy' | 'expired' | 'stale' | 'generated' | 'dead-link' | 'index';
 
 // @public (undocumented)
 export interface KnowledgeDoc {
@@ -257,7 +266,7 @@ export interface Lifecycle {
 }
 
 // @public (undocumented)
-export function lint(dir: string, t: Translate, env?: NodeJS.ProcessEnv): LintResult;
+export function lint(dir: string, t: Translate, env?: NodeJS.ProcessEnv, clock?: Clock): LintResult;
 
 // @public (undocumented)
 export interface LintResult {
@@ -317,6 +326,9 @@ export function reindex(db: DatabaseSync, dir: string, options?: {
 }): IndexStats;
 
 // @public
+export function renderIndex(docs: readonly KnowledgeDoc[]): string;
+
+// @public
 export const RESERVED_FILES: readonly string[];
 
 // @public
@@ -346,14 +358,35 @@ export const resources: {
             readonly issueFrontmatter: "invalid frontmatter — {{detail}}";
             readonly issueStem: "id \"{{id}}\" must equal the filename stem \"{{stem}}\"";
             readonly issueDuplicateId: "duplicate id \"{{id}}\", already used by {{other}}";
-            readonly issueStale: "updated {{updated}} is older than the newest commit touching the file ({{commit}})";
-            readonly issueGenerated: "generated_from {{source}} changed on {{changed}}, after updated {{updated}}";
-            readonly issueDeadLink: "dead link [[{{target}}]]";
+            readonly issueStemSlug: "filename stem \"{{stem}}\" must be a slug: lowercase words joined by single dashes";
+            readonly issueUnknownKey: "unknown key \"{{key}}\"";
+            readonly issueNotString: "{{key}}: must be a string";
+            readonly issueDescriptionLines: "description: must be one line";
+            readonly issueTagsList: "tags: must be a list of slugs";
+            readonly issueTag: "tags: \"{{tag}}\" is not a slug (lowercase words joined by single dashes)";
+            readonly issueStatus: "status: \"{{value}}\" must be draft, stable or deprecated";
+            readonly issueScope: "scope: \"{{value}}\" must be global or project";
+            readonly issueGeneratedShape: "generated: must be a mapping with a non-empty `by` and an `at` datetime with an explicit offset";
+            readonly issueVerifiedShape: "verified: must be a mapping, or a list of mappings, each with a non-empty `by` and an `at` datetime with an explicit offset";
+            readonly issueStaleAfter: "stale_after: \"{{value}}\" must be a datetime with an explicit offset, such as 2026-10-01T00:00:00+02:00";
+            readonly issueSourcesList: "sources: must be a list of mappings";
+            readonly issueSourceResource: "sources: entry {{n}} has no `resource` string";
+            readonly issueUpdated: "updated: \"{{value}}\" must be a real date, YYYY-MM-DD";
+            readonly issueLegacy: "legacy form (`kind`, `updated`): rewrite it in the OKF form with `type` and `generated`";
+            readonly issueExpired: "stale_after {{value}} has passed";
+            readonly issueStale: "generated.at {{updated}} is older than the newest commit touching the file ({{commit}})";
+            readonly issueGenerated: "source {{source}} changed on {{changed}}, after generated.at {{updated}}";
+            readonly issueDeadLink: "dead link {{link}}";
+            readonly issueIndexMissing: "index.md is missing: run toc";
+            readonly issueIndexOutdated: "index.md is out of date: run toc";
+            readonly tocWrote: "wrote {{path}}";
+            readonly tocOutOfDate: "index.md is out of date";
             readonly summaryIndex: "brings the index in line with the folder; --full rebuilds it from nothing";
             readonly summarySearch: "prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last";
             readonly summaryShow: "prints the markdown of a document, or of one section of it";
             readonly summaryList: "prints one line per document: id, type, updated, title and tags; --type filters by type (--kind is its deprecated alias); deprecated documents come last";
             readonly summaryLint: "checks the claims each document makes about itself";
+            readonly summaryToc: "writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date";
             readonly summaryMcp: "serves the knowledge tools over stdio as an MCP server";
             readonly summaryServe: "starts the shared MCP server for this environment if it is not running and prints its unix socket; --idle S is how many seconds without a client before it exits (default 600); --foreground runs the server in this process, on --socket P";
             readonly badIdle: "--idle must be a positive number of seconds";
@@ -361,7 +394,7 @@ export const resources: {
         };
     };
     readonly ru: {
-        readonly knowledge: Partial<Record<"usage" | "unknownCommand" | "missingOption" | "noDir" | "missingDir" | "indexed" | "indexErrors" | "notIndexed" | "noHits" | "unknownId" | "unknownHeading" | "noDocs" | "lintClean" | "lintProblems" | "issueFrontmatter" | "issueStem" | "issueDuplicateId" | "issueStale" | "issueGenerated" | "issueDeadLink" | "summaryIndex" | "summarySearch" | "summaryShow" | "summaryList" | "summaryLint" | "summaryMcp" | "summaryServe" | "badIdle" | "serveFailed", string>>;
+        readonly knowledge: Partial<Record<"usage" | "unknownCommand" | "missingOption" | "noDir" | "missingDir" | "indexed" | "indexErrors" | "notIndexed" | "noHits" | "unknownId" | "unknownHeading" | "noDocs" | "lintClean" | "lintProblems" | "issueFrontmatter" | "issueStem" | "issueDuplicateId" | "issueStemSlug" | "issueUnknownKey" | "issueNotString" | "issueDescriptionLines" | "issueTagsList" | "issueTag" | "issueStatus" | "issueScope" | "issueGeneratedShape" | "issueVerifiedShape" | "issueStaleAfter" | "issueSourcesList" | "issueSourceResource" | "issueUpdated" | "issueLegacy" | "issueExpired" | "issueStale" | "issueGenerated" | "issueDeadLink" | "issueIndexMissing" | "issueIndexOutdated" | "tocWrote" | "tocOutOfDate" | "summaryIndex" | "summarySearch" | "summaryShow" | "summaryList" | "summaryLint" | "summaryToc" | "summaryMcp" | "summaryServe" | "badIdle" | "serveFailed", string>>;
     };
 };
 
@@ -472,6 +505,9 @@ export interface Wikilink {
 
 // @public (undocumented)
 export function wikilinks(body: string): Wikilink[];
+
+// @public
+export function writeIndex(dir: string, docs: readonly KnowledgeDoc[]): string;
 
 // (No @packageDocumentation comment for this package)
 

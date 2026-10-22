@@ -14,10 +14,12 @@ import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import { EXIT } from './exit.ts';
-import { INDEX, LINT, LIST, SEARCH, SERVE, SHOW } from './spec.ts';
+import { INDEX, LINT, LIST, SEARCH, SERVE, SHOW, TOC } from './spec.ts';
 import { openDb, reindex, silenceSqliteWarning } from '../db.ts';
 import { createT, type Translate } from '../i18n/index.ts';
+import { loadDir } from '../doc.ts';
 import { lint } from '../lint.ts';
+import { indexState, writeIndex } from '../toc.ts';
 import { DEFAULT_IDLE_SECONDS, defaultSocket, ensureDaemon, runDaemon } from '../mcp/daemon.ts';
 import { runMcp } from '../mcp/server.ts';
 import { resolveDb, resolveDir } from '../paths.ts';
@@ -234,7 +236,7 @@ function cmdList(argv: string[], io: Io, t: Translate, clock: Clock): number {
   });
 }
 
-function cmdLint(argv: string[], io: Io, t: Translate): number {
+function cmdLint(argv: string[], io: Io, t: Translate, clock: Clock): number {
   const { values } = parseArgs({
     args: argv,
     options: LINT.options,
@@ -243,7 +245,7 @@ function cmdLint(argv: string[], io: Io, t: Translate): number {
   });
   const dir = needDir(values.dir ?? null, io, t);
   if (dir === null) return EXIT.error;
-  const result = lint(dir, t);
+  const result = lint(dir, t, process.env, clock);
   for (const issue of result.issues) io.out(`${path.basename(issue.file)}: ${issue.message}\n`);
   if (!result.issues.length) {
     io.out(`${t('lintClean', { count: result.checked, dir })}\n`);
@@ -251,6 +253,25 @@ function cmdLint(argv: string[], io: Io, t: Translate): number {
   }
   io.out(`${t('lintProblems', { count: result.issues.length, dir })}\n`);
   return EXIT.error;
+}
+
+function cmdToc(argv: string[], io: Io, t: Translate): number {
+  const { values } = parseArgs({
+    args: argv,
+    options: TOC.options,
+    strict: true,
+    allowPositionals: false,
+  });
+  const dir = needDir(values.dir ?? null, io, t);
+  if (dir === null) return EXIT.error;
+  const { docs } = loadDir(dir);
+  if (values.check === true) {
+    if (indexState(dir, docs) === 'current') return EXIT.ok;
+    io.err(`${t('tocOutOfDate')}\n`);
+    return EXIT.error;
+  }
+  io.out(`${t('tocWrote', { path: writeIndex(dir, docs) })}\n`);
+  return EXIT.ok;
 }
 
 /**
@@ -293,7 +314,8 @@ export async function main(argv: string[], io: Io = stdio(), clock: Clock = real
     if (verb === 'search') return cmdSearch(rest, io, t, clock);
     if (verb === 'show') return cmdShow(rest, io, t);
     if (verb === 'list') return cmdList(rest, io, t, clock);
-    if (verb === 'lint') return cmdLint(rest, io, t);
+    if (verb === 'lint') return cmdLint(rest, io, t, clock);
+    if (verb === 'toc') return cmdToc(rest, io, t);
     if (verb === 'serve') return await cmdServe(rest, io, t);
     if (verb === 'mcp') {
       await runMcp();

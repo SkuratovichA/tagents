@@ -58,6 +58,14 @@ export const LINT = {
   summary: 'summaryLint',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
+export const TOC = {
+  path: ['toc'],
+  positionals: [],
+  options: { dir: { type: 'string' }, check: { type: 'boolean' } },
+  required: [],
+  summary: 'summaryToc',
+} as const satisfies CommandSpec<KnowledgeKey>;
+
 export const MCP = {
   path: ['mcp'],
   positionals: [],
@@ -74,7 +82,7 @@ export const SERVE = {
   summary: 'summaryServe',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
-export const KNOWLEDGE_COMMANDS = [INDEX, SEARCH, SHOW, LIST, LINT, MCP, SERVE] as const satisfies readonly CommandSpec<KnowledgeKey>[];
+export const KNOWLEDGE_COMMANDS = [INDEX, SEARCH, SHOW, LIST, LINT, TOC, MCP, SERVE] as const satisfies readonly CommandSpec<KnowledgeKey>[];
 
 /** English whatever the machine's locale is: the contract is read by tools, not people. */
 export function knowledgeCliContract(): CliContract {
