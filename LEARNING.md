@@ -281,3 +281,18 @@ The window-rows build added a record per session to the stream `collect` emits a
 
 ## Functions appended to tnotes with `cat >>` landed after the dispatch case and were never defined (22.10.2026)
 `tnotes` is a script that defines its functions and then ends in a `case` that runs the verb, so a function appended to the end of the file sits behind the `case` and does not exist when the verb runs; the call failed with "command not found" only for the verbs that reached it. New functions go above the dispatch (beside the functions they belong with), and `bash -n` cannot see this, so the check is to run the verb on a scratch server and see the function's effect.
+
+## `show-messages` holds every command and every error, so a notice is found by the client that showed it (22.10.2026)
+A test that read the last 30 lines of `tmux show-messages` for a notice found only `command:` lines and `invalid option: @tagents_port` errors of the command clients, because the log keeps every command the server ran and every error it answered. A message shown on a client's status line is logged as `<time>: /dev/ttysNNN message: <text>`, so the suite's `msgs` keeps only those lines.
+
+## tmux 3.7b keeps a dot in a session name, and `-t =name` needs the colon almost everywhere (22.10.2026)
+`new-session -s a.b` makes a session named `a.b` (the plan expected `a_b`), `switch-client -t =a.b` did not switch while `=a.b:` did, `list-windows -t =name` and `list-panes -t =name` name a window, not the session, and `set -t =name` found no session at all (the 22.10 entry above, repeated in the suite's own `newsess`, which therefore never marked a session as made and left every session of the suite a non-group). Every target a suite builds from a session name is `=name:`.
+
+## A window is renamed only while its name is tmux's own, and a label outranks the pane title (22.10.2026)
+The naming test made its window with `new-window -n` and wrote a label for the stub chat, so `--sync-names` left the typed name alone (as the names spec says) and would have used the label over the pane title anyway; it now makes the window without `-n` and drops the chat's label first.
+
+## `TA_RESUME_CMD` replaces the whole resume command, so the wrapper gets the session id and no `--resume` (22.10.2026)
+`accounts.sh` prints `<prefix> $RESUME_CMD <sid>`, and `RESUME_CMD` is the override itself; a test that looked for `--resume` in what its wrapper logged never saw a resumed chat. The log's second field is the session id.
+
+## Test code written before its first run carried four wrong expectations (22.10.2026)
+A second fake sidebar made beside the one `enter` had just moved (F21) so a killed pane left one; a `move-window` of a window already broken out and joined elsewhere (R30); a new chat on the `no window` group expected in the client's session although the spec sends it to the session that owns the project when one does (R31, chat-launch spec); and F8 passes with both unzoom lines of `sidebar_move` removed because tmux 3.7b unzooms the target window itself on `join-pane` (probed for the target; the source side was not probed), so F8 pins the outcome and not those lines.
