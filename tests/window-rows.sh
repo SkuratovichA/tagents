@@ -806,6 +806,68 @@ ok "AG3 the sidebar is in it" "$(wid =tatest-ag1:)" "$(sbwin)"
 ok "AG3 beside the new chat" 2 "$(npanes "$(wid =tatest-ag1:)")"
 kill_sidebars; to tatest-work; tm kill-session -t =tatest-ag1
 
+t "SH1-SH7 ctrl-a opens a shell: dimmed row, chat row, no window, only the sidebar, directory gone, nothing left, by hand"
+shnew() {  # <session> — the window with the highest index, the one a launch just made
+  tm list-windows -t "=$1:" -F '#{window_index} #{window_id}' | sort -n | tail -1 | awk '{ print $2 }'
+}
+shcnt() { tm list-windows -t "=$1:" -F x | wc -l | tr -d ' '; }
+shpwd() { ( cd "$1" && pwd -P ); }   # tmux reports the resolved path
+mkdir -p "$WRROOT/shd" "$WRROOT/shown" "$WRROOT/shs4" "$WRROOT/shs5" "$WRROOT/shs6"
+kill_sidebars; to tatest-work; SB=$(fake_sidebar "$(wid =tatest-work:)")
+tm new-session -d -s tatest-sh1 -x 200 -y 50 -c "$WRROOT/shd" "exec sleep 600" >/dev/null 2>&1; XSH1=$(wid =tatest-sh1:)
+tm display-message reset
+act shell "$XSH1" none "" "$WRROOT/shd"; settle 0.5
+XSH1N=$(shnew tatest-sh1)
+ok "SH1 ctrl-a on a dimmed row adds a window to its session" 2 "$(shcnt tatest-sh1)"
+ok "SH1 it runs tmux's default shell" "" "$(tm display -p -t "$XSH1N" '#{pane_start_command}')"
+ok "SH1 in the row's directory" "$(shpwd "$WRROOT/shd")" "$(tm display -p -t "$XSH1N" '#{pane_current_path}')"
+ok "SH1 the sidebar and the client are in it" "tatest-sh1:$XSH1N" "$(csess):$(sbwin)"
+has "SH1 the notice names the directory, the session and the index" "tagents: new shell in shd (tatest-sh1:$(tm display -p -t "$XSH1N" '#{window_index}'))" "$(msgs)"
+hasnt "SH1 and the window does not say it runs no chat" "runs no chat" "$(msgs)"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-sh1
+
+newsess tatest-sh2; mkchat tatest-sh2 shc; PSH2=$LASTPANE; WSH2=$LASTWIN; SSH2=$LASTSID
+kill_sidebars; to tatest-work; SB=$(fake_sidebar "$(wid =tatest-work:)")
+n=$(shcnt tatest-sh2)
+act shell "$PSH2" working "$SSH2" "$REPO"; settle 0.5
+ok "SH2 ctrl-a on a chat row adds a window to the chat's session" "$((n + 1))" "$(shcnt tatest-sh2)"
+ok "SH2 the new window runs a shell" "" "$(tm display -p -t "$(shnew tatest-sh2)" '#{pane_start_command}')"
+ok "SH2 and the chat's window still holds the chat" "$WSH2" "$(wid "$PSH2")"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-sh2
+
+newsess tatest-sh3; mkchat tatest-sh3 own "$WRROOT/shown"; n=$(shcnt tatest-sh3); to tatest-work
+act shell "%993" dead sid-sh3 "$WRROOT/shown"; settle 0.5
+ok "SH3 ctrl-a on a no-window row goes to the session that owns the project" "$((n + 1))" "$(shcnt tatest-sh3)"
+to tatest-work; tm kill-session -t =tatest-sh3
+
+kill_sidebars; tm new-session -d -s tatest-sh4 -x 200 -y 50 -c "$WRROOT/shs4" "exec sleep 600" >/dev/null 2>&1; XSH4=$(wid =tatest-sh4:)
+stamp_sidebar "$(tm list-panes -t "$XSH4" -F '#{pane_id}' | head -1)"; to tatest-sh4
+act shell "$XSH4" none "" "$WRROOT/shs4"; settle 0.5
+ok "SH4 ctrl-a on the header of a session holding only the sidebar: one window" 1 "$(shcnt tatest-sh4)"
+ok "SH4 the sidebar is in it" "$(wid =tatest-sh4:)" "$(sbwin)"
+ok "SH4 it started in the session's directory" "$(shpwd "$WRROOT/shs4")" "$(tm display -p -t "$(shnew tatest-sh4)" '#{pane_current_path}')"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-sh4
+
+kill_sidebars; to tatest-work; SB=$(fake_sidebar "$(wid =tatest-work:)")
+tm new-session -d -s tatest-sh5 -x 200 -y 50 -c "$WRROOT/shs5" "exec sleep 600" >/dev/null 2>&1; XSH5=$(wid =tatest-sh5:)
+act shell "$XSH5" none "" "$WRROOT/no-such-dir"; settle 0.5
+ok "SH5 with the row's directory gone the shell starts in the session's" "$(shpwd "$WRROOT/shs5")" "$(tm display -p -t "$(shnew tatest-sh5)" '#{pane_current_path}')"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-sh5
+
+kill_sidebars; to tatest-work; SB=$(fake_sidebar "$(wid =tatest-work:)")
+tm new-session -d -s tatest-sh6 -x 200 -y 50 -c "$WRROOT/shs6" "exec sleep 600" >/dev/null 2>&1; XSH6=$(wid =tatest-sh6:)
+rmdir "$WRROOT/shs6"; tm display-message reset
+act shell "$XSH6" none "" "$WRROOT/no-such-dir"; settle 0.5
+ok "SH6 with nothing left to start in the shell starts in the home directory" "$(shpwd "$HOME")" "$(tm display -p -t "$(shnew tatest-sh6)" '#{pane_current_path}')"
+has "SH6 and the notice reads ~" "tagents: new shell in ~ (tatest-sh6:" "$(msgs)"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-sh6
+
+kill_sidebars; to tatest-work; SB=$(fake_sidebar "$(wid =tatest-work:)")
+mkdir -p "$WRROOT/shhand"; newsess tatest-sh7; XSH7=$LASTWIN
+run --act shell "$XSH7" none '' "$WRROOT/shhand"; settle 0.5
+ok "SH7 tagents --act shell @window none '' dir: a window of that window's session, in dir" "2 $(shpwd "$WRROOT/shhand")" "$(shcnt tatest-sh7) $(tm display -p -t "$(shnew tatest-sh7)" '#{pane_current_path}')"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-sh7
+
 t "TH1 TH2 the home directory itself reads ~"
 ok "TH1 tilde_of writes ~ for the home directory" "~" "$(modrun tilde_of "$HOME")"
 ok "TH1 and ~/x for a path in it" "~/x" "$(modrun tilde_of "$HOME/x")"

@@ -134,6 +134,7 @@ keys:
   # beside: ctrl-s   # join it into the window on screen, beside its chat
   # new: ctrl-n      # start a new agent in this project
   # pick: ctrl-p     # the same, picking the account
+  # shell: ctrl-a    # open a plain shell in a new window of this group
   # goto: ctrl-g     # go to the agent where it lives
   # send: ctrl-e     # send a line straight into it
   # rename: ctrl-r   # name this agent (f2 stays an alias either way)

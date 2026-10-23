@@ -20,6 +20,7 @@ KEY_DEFAULTS="open enter K_OPEN
 beside ctrl-s K_BESIDE
 new ctrl-n K_NEW
 pick ctrl-p K_PICK
+shell ctrl-a K_SHELL
 goto ctrl-g K_GOTO
 send ctrl-e K_SEND
 rename ctrl-r K_RENAME
@@ -159,6 +160,7 @@ keys_table() {  # key<TAB>verb<TAB>what it does
 "$K_BESIDE${TAB}beside${TAB}join it into the window on screen, beside its chat" \
 "$K_NEW${TAB}new${TAB}start a new agent in this project" \
 "$K_PICK${TAB}pick${TAB}the same, picking the account it starts on" \
+"$K_SHELL${TAB}shell${TAB}open a plain shell in a new window of this group" \
 "$K_GOTO${TAB}goto${TAB}go to the agent where it lives" \
 "$K_SEND${TAB}send${TAB}send a line straight into it" \
 "$K_RENAME${TAB}rename${TAB}rename this agent — an empty name restores its title" \

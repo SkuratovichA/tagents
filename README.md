@@ -162,6 +162,7 @@ Keys inside the dashboard:
 | `ctrl-s` | join the chat beside the chat of the window on screen — two chats side by side |
 | `ctrl-n` | start a new agent in the project under the cursor |
 | `ctrl-p` | the same, but choose the Claude account by hand whatever the rules say |
+| `ctrl-a` | open a plain shell in a new window of the session under the cursor, in the row's directory |
 | `ctrl-g` | go to the window the chat lives in; never resumes |
 | `ctrl-e` | type a line straight into that agent without leaving |
 | `ctrl-r` | name this agent (`F2` too) |
@@ -317,7 +318,7 @@ and `tagents --hidden-cols` prints what is in force.
 
 ## Windows, sessions and the sidebar
 
-A row is a tmux window and a group is a tmux session: every session is a group, whether or not a chat has ever run in it, and a session whose only window holds nothing but the sidebar is a header with no row under it, which `ctrl-n` and `ctrl-p` open a window in. `enter` on a row moves the one sidebar pane into that row's window, as its leftmost full-height pane at `TA_WIDTH` percent of the window (default 45), and switches the client there; `enter` on a group header shows that session's last-used window the same way. Anything else the window holds (a shell, a dev server, a tnotes editor) is yours: tagents never moves, resizes or kills it, and it leaves the screen with the window and comes back with it. The widths the other panes had are remembered per window and put back when the sidebar leaves.
+A row is a tmux window and a group is a tmux session: every session is a group, whether or not a chat has ever run in it, and a session whose only window holds nothing but the sidebar is a header with no row under it, which `ctrl-n`, `ctrl-p` and `ctrl-a` open a window in. `enter` on a row moves the one sidebar pane into that row's window, as its leftmost full-height pane at `TA_WIDTH` percent of the window (default 45), and switches the client there; `enter` on a group header shows that session's last-used window the same way. Anything else the window holds (a shell, a dev server, a tnotes editor) is yours: tagents never moves, resizes or kills it, and it leaves the screen with the window and comes back with it. The widths the other panes had are remembered per window and put back when the sidebar leaves.
 
 The sidebar follows you. tmux's own switches (`prefix n`, `prefix s`, a click on the status bar) fire `session-window-changed` and `client-session-changed`, and tagents hooks both with `tagents --follow`, which moves the sidebar into the window now on screen, in whichever session that is. When the window or the session that held the sidebar is killed, the client lands elsewhere, the same hook fires and, with no list running, starts a new one there (one, however many hooks fire): a list in a pane makes a sidebar wanted, and `ctrl-q` ends the want, so a quit stays a quit.
 

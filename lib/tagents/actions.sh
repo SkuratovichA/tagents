@@ -295,6 +295,7 @@ act() {
     preview) preview_window "$pane" "$state" ;;
     new)    new_agent "$dir" "" "$(row_session "$pane")" ;;
     pick)   new_agent_pick "$dir" "$(row_session "$pane")" ;;
+    shell)  new_shell "$dir" "$(row_session "$pane")" ;;
     undock) undock "$pane" ;;
     kill)   kill_agent "$pane" "$sid" ;;
     # The two windows about the dashboard itself rather than about an agent. They run here, in fzf own child, because this is where FZF_PORT is.

@@ -178,6 +178,7 @@ dash() {
   kb "$K_KILL"    "$ask($SELF --act kill {1} {3} {4})"
   kb "$K_NEW"     "$ask($SELF --act new {1} {3} {4} {5})$after"
   kb "$K_PICK"    "$ask($SELF --act pick {1} {3} {4} {5})$after"
+  kb "$K_SHELL"   "execute-silent($SELF --act shell {1} {3} {4} {5})$after"
   kb "$K_COLUMNS" "$ask($SELF --act columns)"
   kb "$K_USAGE"   "$ask($SELF --act usage)"
   kb "$K_CLOSED"  "$ask($SELF --act closed {1})$after"

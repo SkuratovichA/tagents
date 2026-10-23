@@ -305,8 +305,8 @@ if mkdir -p "$CONTROL" &&
    [ -s "$CONTROL/tagents" ] && [ -r "$CONTROL/lib/tagents/core.sh" ]; then
   agenorm() { sed 's/[0-9]*:[0-9][0-9]/AGE/g'; }
   before=$(env TMUX="$TMUXV" TA_COLS=140 TA_MARKS=0 TA_CONFIG=/nonexistent/config.yaml \
-             bash "$CONTROL/tagents" --list | strip | agenorm)
-  # Every session is a group now, so the session that holds only the dashboard is a header with no row, which the control (the old rule) does not list.
+             bash "$CONTROL/tagents" --list | strip | agenorm | awk 'index($0, "\342\226\276 tatest-dash ") == 0')
+  # Every session is a group now, so the session that holds only the dashboard is a header with no row; the control is the committed tree, which lists it too since that change, so both sides drop it and the rest is compared.
   after=$(rows_at 140 TA_CONFIG=/nonexistent/config.yaml | agenorm | awk 'index($0, "\342\226\276 tatest-dash ") == 0')
   ok "no config: the rows are what they were before any of this" "$before" "$after"
 else
@@ -729,6 +729,19 @@ ok  "...and nothing is bound to the name itself" 0 \
 has "...and --keys says why" \
     "# keys.closed: 'bogus' is not a key fzf knows — using ctrl-y" \
     "$(env TMUX="$TMUXV" TA_CONFIG="$BCFG" bash "$TA" --keys)"
+
+# THE SHELL KEY MOVED: ctrl-a is its default, and a config that gives it alt-s leaves ctrl-a bound to nothing.
+SCFG="$ROOT/keys-shell.yaml"
+printf 'keys:\n  shell: alt-s\n' >"$SCFG"
+SDUMP=$(dumpargs "$ROOT/fzf-shell" "TA_CONFIG='$SCFG'")
+has "shell: alt-s binds alt-s to a shell window" \
+    "--bind=alt-s:execute-silent($SELF --act shell {1} {3} {4} {5})" "$SDUMP"
+ok  "...and nothing is bound to ctrl-a" 0 \
+    "$(printf '%s\n' "$SDUMP" | grep -c '^--bind=ctrl-a:' | tr -d ' ')"
+has "...and --keys lists alt-s for shell" "alt-s${TAB}shell" \
+    "$(env TMUX="$TMUXV" TA_CONFIG="$SCFG" bash "$TA" --keys)"
+has "the default binds ctrl-a" "--bind=ctrl-a:execute-silent($SELF --act shell {1} {3} {4} {5})" \
+    "$(dumpargs "$ROOT/fzf-shell0" "TA_CONFIG='$ROOT/none.yaml'")"
 
 # TWO VERBS ON ONE KEY IS ONE VERB GONE — fzf keeps the last --bind silently, so
 # the collision is settled here instead: the verb that owns the key by the
