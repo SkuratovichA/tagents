@@ -40,13 +40,14 @@ The markdown of one document by id, or of a single "## " section when heading is
 
 ### knowledge_list
 
-Every document as JSON: id, title, kind, tags, updated, path, headings.
+Every document as JSON: id, title, type, description, tags, status, stale, updated, path, headings. Documents with status deprecated come last.
 
 #### Inputs
 
 | Input | Type | Required | Description |
 |---|---|---|---|
-| `kind` | string | no | only this kind (cheatsheet \| runbook \| map \| decision \| note) |
+| `type` | string | no | only this type (case-insensitive, for example Runbook) |
+| `kind` | string | no | deprecated alias of type |
 | `tag` | string | no | only documents carrying this tag |
 
 #### Input schema
@@ -55,8 +56,12 @@ Every document as JSON: id, title, kind, tags, updated, path, headings.
 {
   "type": "object",
   "properties": {
+    "type": {
+      "description": "only this type (case-insensitive, for example Runbook)",
+      "type": "string"
+    },
     "kind": {
-      "description": "only this kind (cheatsheet | runbook | map | decision | note)",
+      "description": "deprecated alias of type",
       "type": "string"
     },
     "tag": {
@@ -70,7 +75,7 @@ Every document as JSON: id, title, kind, tags, updated, path, headings.
 
 ### knowledge_search
 
-Full-text search over the owner's knowledge documents (Russian and English). Returns the matching sections as JSON: id, title, heading, score, snippet, path. Read a whole section with knowledge_get.
+Full-text search over the owner's knowledge documents (Russian and English). Returns the matching sections as JSON: id, title, heading, score, snippet, path, type, description, status, stale. Documents with status deprecated come last. Read a whole section with knowledge_get.
 
 #### Inputs
 
@@ -78,7 +83,8 @@ Full-text search over the owner's knowledge documents (Russian and English). Ret
 |---|---|---|---|
 | `query` | string | yes | words to look for; all of them must appear |
 | `tag` | string | no | only documents carrying this tag |
-| `kind` | string | no | only documents of this kind (cheatsheet \| runbook \| map \| decision \| note) |
+| `type` | string | no | only documents of this type (case-insensitive, for example Runbook) |
+| `kind` | string | no | deprecated alias of type |
 | `limit` | integer | no | how many sections (default 10) |
 
 #### Input schema
@@ -96,8 +102,12 @@ Full-text search over the owner's knowledge documents (Russian and English). Ret
       "description": "only documents carrying this tag",
       "type": "string"
     },
+    "type": {
+      "description": "only documents of this type (case-insensitive, for example Runbook)",
+      "type": "string"
+    },
     "kind": {
-      "description": "only documents of this kind (cheatsheet | runbook | map | decision | note)",
+      "description": "deprecated alias of type",
       "type": "string"
     },
     "limit": {

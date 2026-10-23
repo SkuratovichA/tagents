@@ -7,7 +7,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { SQLOutputValue } from 'node:sqlite';
-import { z } from 'zod';
+import { TurnClock } from '@tagents/core';
 
 // @public (undocumented)
 export const BODY_WEIGHT = 1;
@@ -26,10 +26,13 @@ export interface Chunk {
 export function chunk(body: string): Chunk[];
 
 // @public
+export type Clock = Pick<TurnClock, 'now'>;
+
+// @public
 export function configuredDir(file?: string): string | null;
 
 // @public (undocumented)
-export function createServer(env?: NodeJS.ProcessEnv): McpServer;
+export function createServer(env?: NodeJS.ProcessEnv, clock?: Clock): McpServer;
 
 // @public
 export function createT(locale?: string | undefined): Translate;
@@ -66,63 +69,86 @@ export class DocError extends Error {
     readonly file: string;
 }
 
+// @public
+export interface DocLink {
+    // (undocumented)
+    readonly form: 'wiki' | 'markdown';
+    readonly fragment: string | null;
+    // (undocumented)
+    readonly id: string;
+    readonly raw: string;
+}
+
 // @public (undocumented)
-export interface DocSummary {
+export interface DocSummary extends Lifecycle {
     // (undocumented)
     readonly headings: readonly string[];
     // (undocumented)
     readonly id: string;
-    // (undocumented)
-    readonly kind: string;
     // (undocumented)
     readonly path: string;
     // (undocumented)
     readonly tags: readonly string[];
     // (undocumented)
     readonly title: string;
-    // (undocumented)
     readonly updated: string;
 }
+
+// @public
+export function documentLinks(body: string): DocLink[];
 
 // @public
 export function expandHome(p: string, home?: string): string;
 
 // @public (undocumented)
 export interface Filters {
-    // (undocumented)
     readonly kind?: string;
     // (undocumented)
     readonly tag?: string;
+    readonly type?: string;
 }
 
-// @public (undocumented)
-export type Frontmatter = z.infer<typeof FrontmatterSchema>;
+// @public
+export function fragmentMatches(fragment: string, heading: string): boolean;
 
-// @public (undocumented)
-export const FrontmatterSchema: z.ZodObject<{
-    id: z.ZodString;
-    title: z.ZodString;
-    kind: z.ZodEnum<{
-        cheatsheet: "cheatsheet";
-        runbook: "runbook";
-        map: "map";
-        decision: "decision";
-        note: "note";
-    }>;
-    tags: z.ZodArray<z.ZodString>;
-    updated: z.ZodString;
-    generated_from: z.ZodOptional<z.ZodString>;
-    scope: z.ZodOptional<z.ZodEnum<{
-        global: "global";
-        project: "project";
-    }>>;
-}, z.core.$strict>;
+// @public
+export interface Frontmatter {
+    // (undocumented)
+    readonly description: string | undefined;
+    // (undocumented)
+    readonly generated: Generated | undefined;
+    readonly id: string;
+    readonly legacy: boolean;
+    // (undocumented)
+    readonly resource: string | undefined;
+    // (undocumented)
+    readonly scope: Scope | undefined;
+    // (undocumented)
+    readonly sources: readonly Source[];
+    // (undocumented)
+    readonly staleAfter: string | undefined;
+    // (undocumented)
+    readonly status: Status;
+    // (undocumented)
+    readonly tags: readonly string[];
+    // (undocumented)
+    readonly title: string;
+    // (undocumented)
+    readonly type: string;
+}
 
 // @public
 export function ftsQuery(words: readonly string[]): string;
 
 // @public (undocumented)
-export function getDoc(db: DatabaseSync, id: string): DocSummary | null;
+export interface Generated {
+    readonly at: string;
+    // (undocumented)
+    readonly by: string;
+}
+
+// @public (undocumented)
+export function getDoc(db: DatabaseSync, id: string, now?: Clock): DocSummary | null;
 
 // @public
 export function getSection(db: DatabaseSync, id: string, heading: string): Section | null;
@@ -133,8 +159,11 @@ export function hashOf(text: string): string;
 // @public (undocumented)
 export const HEADING_WEIGHT = 10;
 
+// @public
+export function headingSlug(heading: string): string;
+
 // @public (undocumented)
-export interface Hit {
+export interface Hit extends Lifecycle {
     readonly heading: string;
     // (undocumented)
     readonly id: string;
@@ -147,6 +176,15 @@ export interface Hit {
     // (undocumented)
     readonly title: string;
 }
+
+// @public (undocumented)
+export const INDEX_FILE = "index.md";
+
+// @public (undocumented)
+export type IndexState = 'current' | 'missing' | 'outdated';
+
+// @public
+export function indexState(dir: string, docs: readonly KnowledgeDoc[]): IndexState;
 
 // @public (undocumented)
 export interface IndexStats {
@@ -171,6 +209,12 @@ export function interpolate(template: string, vars: Vars): string;
 // @public (undocumented)
 export function isLocale(v: string | undefined): v is Locale;
 
+// @public
+export function isRealDate(s: string): boolean;
+
+// @public
+export function isStale(staleAfter: string | null | undefined, nowMs: number): boolean;
+
 // @public (undocumented)
 export interface Issue {
     // (undocumented)
@@ -182,24 +226,20 @@ export interface Issue {
 }
 
 // @public (undocumented)
-export type IssueCode = 'frontmatter' | 'stem' | 'duplicate-id' | 'stale' | 'generated' | 'dead-link';
-
-// @public (undocumented)
-export type Kind = (typeof KINDS)[number];
-
-// @public (undocumented)
-export const KINDS: readonly ["cheatsheet", "runbook", "map", "decision", "note"];
+export type IssueCode = 'frontmatter' | 'stem' | 'duplicate-id' | 'legacy' | 'expired' | 'stale' | 'generated' | 'dead-link' | 'index';
 
 // @public (undocumented)
 export interface KnowledgeDoc {
     readonly body: string;
     // (undocumented)
     readonly chunks: readonly Chunk[];
+    readonly declaredId: string | null;
     // (undocumented)
     readonly hash: string;
     // (undocumented)
     readonly meta: Frontmatter;
     readonly path: string;
+    readonly raw: Readonly<Record<string, unknown>>;
     readonly text: string;
 }
 
@@ -212,8 +252,21 @@ export type KnowledgeResource = typeof en;
 // @public
 export function lastCommitDate(file: string, env?: NodeJS.ProcessEnv): string | null;
 
+// @public
+export const LEGACY_KEYS: readonly string[];
+
 // @public (undocumented)
-export function lint(dir: string, t: Translate, env?: NodeJS.ProcessEnv): LintResult;
+export interface Lifecycle {
+    readonly description: string;
+    readonly stale: boolean;
+    // (undocumented)
+    readonly status: Status;
+    // (undocumented)
+    readonly type: string;
+}
+
+// @public (undocumented)
+export function lint(dir: string, t: Translate, env?: NodeJS.ProcessEnv, clock?: Clock): LintResult;
 
 // @public (undocumented)
 export interface LintResult {
@@ -224,7 +277,7 @@ export interface LintResult {
 }
 
 // @public (undocumented)
-export function listDocs(db: DatabaseSync, filters?: Filters): DocSummary[];
+export function listDocs(db: DatabaseSync, filters?: Filters & Timed): DocSummary[];
 
 // @public
 export function listFiles(dir: string): string[];
@@ -247,6 +300,9 @@ export type Locale = keyof typeof resources;
 export const MAX_SESSIONS = 50;
 
 // @public
+export const OKF_KEYS: readonly string[];
+
+// @public
 export function openDb(file: string): DatabaseSync;
 
 // @public
@@ -259,12 +315,21 @@ export function parseAddress(address: string): {
 export function parseDoc(file: string, text: string): KnowledgeDoc;
 
 // @public
+export function parseOffsetDatetime(value: unknown): number | null;
+
+// @public
 export function readDoc(file: string): KnowledgeDoc;
 
 // @public
 export function reindex(db: DatabaseSync, dir: string, options?: {
     full?: boolean;
 }): IndexStats;
+
+// @public
+export function renderIndex(docs: readonly KnowledgeDoc[]): string;
+
+// @public
+export const RESERVED_FILES: readonly string[];
 
 // @public
 export function resolveDb(explicit?: string | null, env?: NodeJS.ProcessEnv): string;
@@ -293,14 +358,35 @@ export const resources: {
             readonly issueFrontmatter: "invalid frontmatter — {{detail}}";
             readonly issueStem: "id \"{{id}}\" must equal the filename stem \"{{stem}}\"";
             readonly issueDuplicateId: "duplicate id \"{{id}}\", already used by {{other}}";
-            readonly issueStale: "updated {{updated}} is older than the newest commit touching the file ({{commit}})";
-            readonly issueGenerated: "generated_from {{source}} changed on {{changed}}, after updated {{updated}}";
-            readonly issueDeadLink: "dead link [[{{target}}]]";
+            readonly issueStemSlug: "filename stem \"{{stem}}\" must be a slug: lowercase words joined by single dashes";
+            readonly issueUnknownKey: "unknown key \"{{key}}\"";
+            readonly issueNotString: "{{key}}: must be a string";
+            readonly issueDescriptionLines: "description: must be one line";
+            readonly issueTagsList: "tags: must be a list of slugs";
+            readonly issueTag: "tags: \"{{tag}}\" is not a slug (lowercase words joined by single dashes)";
+            readonly issueStatus: "status: \"{{value}}\" must be draft, stable or deprecated";
+            readonly issueScope: "scope: \"{{value}}\" must be global or project";
+            readonly issueGeneratedShape: "generated: must be a mapping with a non-empty `by` and an `at` datetime with an explicit offset";
+            readonly issueVerifiedShape: "verified: must be a mapping, or a list of mappings, each with a non-empty `by` and an `at` datetime with an explicit offset";
+            readonly issueStaleAfter: "stale_after: \"{{value}}\" must be a datetime with an explicit offset, such as 2026-10-01T00:00:00+02:00";
+            readonly issueSourcesList: "sources: must be a list of mappings";
+            readonly issueSourceResource: "sources: entry {{n}} has no `resource` string";
+            readonly issueUpdated: "updated: \"{{value}}\" must be a real date, YYYY-MM-DD";
+            readonly issueLegacy: "legacy form (`kind`, `updated`): rewrite it in the OKF form with `type` and `generated`";
+            readonly issueExpired: "stale_after {{value}} has passed";
+            readonly issueStale: "generated.at {{updated}} is older than the newest commit touching the file ({{commit}})";
+            readonly issueGenerated: "source {{source}} changed on {{changed}}, after generated.at {{updated}}";
+            readonly issueDeadLink: "dead link {{link}}";
+            readonly issueIndexMissing: "index.md is missing: run toc";
+            readonly issueIndexOutdated: "index.md is out of date: run toc";
+            readonly tocWrote: "wrote {{path}}";
+            readonly tocOutOfDate: "index.md is out of date";
             readonly summaryIndex: "brings the index in line with the folder; --full rebuilds it from nothing";
-            readonly summarySearch: "prints one line per hit: id#heading, score and snippet";
+            readonly summarySearch: "prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last";
             readonly summaryShow: "prints the markdown of a document, or of one section of it";
-            readonly summaryList: "prints one line per document: id, kind, updated, title and tags";
+            readonly summaryList: "prints one line per document: id, type, updated, title and tags; --type filters by type (--kind is its deprecated alias); deprecated documents come last";
             readonly summaryLint: "checks the claims each document makes about itself";
+            readonly summaryToc: "writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date";
             readonly summaryMcp: "serves the knowledge tools over stdio as an MCP server";
             readonly summaryServe: "starts the shared MCP server for this environment if it is not running and prints its unix socket; --idle S is how many seconds without a client before it exits (default 600); --foreground runs the server in this process, on --socket P";
             readonly badIdle: "--idle must be a positive number of seconds";
@@ -308,7 +394,7 @@ export const resources: {
         };
     };
     readonly ru: {
-        readonly knowledge: Partial<Record<"usage" | "unknownCommand" | "missingOption" | "noDir" | "missingDir" | "indexed" | "indexErrors" | "notIndexed" | "noHits" | "unknownId" | "unknownHeading" | "noDocs" | "lintClean" | "lintProblems" | "issueFrontmatter" | "issueStem" | "issueDuplicateId" | "issueStale" | "issueGenerated" | "issueDeadLink" | "summaryIndex" | "summarySearch" | "summaryShow" | "summaryList" | "summaryLint" | "summaryMcp" | "summaryServe" | "badIdle" | "serveFailed", string>>;
+        readonly knowledge: Partial<Record<"usage" | "unknownCommand" | "missingOption" | "noDir" | "missingDir" | "indexed" | "indexErrors" | "notIndexed" | "noHits" | "unknownId" | "unknownHeading" | "noDocs" | "lintClean" | "lintProblems" | "issueFrontmatter" | "issueStem" | "issueDuplicateId" | "issueStemSlug" | "issueUnknownKey" | "issueNotString" | "issueDescriptionLines" | "issueTagsList" | "issueTag" | "issueStatus" | "issueScope" | "issueGeneratedShape" | "issueVerifiedShape" | "issueStaleAfter" | "issueSourcesList" | "issueSourceResource" | "issueUpdated" | "issueLegacy" | "issueExpired" | "issueStale" | "issueGenerated" | "issueDeadLink" | "issueIndexMissing" | "issueIndexOutdated" | "tocWrote" | "tocOutOfDate" | "summaryIndex" | "summarySearch" | "summaryShow" | "summaryList" | "summaryLint" | "summaryToc" | "summaryMcp" | "summaryServe" | "badIdle" | "serveFailed", string>>;
     };
 };
 
@@ -319,7 +405,7 @@ export type Row = Record<string, SQLOutputValue>;
 export function runMcp(env?: NodeJS.ProcessEnv): Promise<void>;
 
 // @public (undocumented)
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 // @public (undocumented)
 export type Scope = (typeof SCOPES)[number];
@@ -331,7 +417,7 @@ export const SCOPES: readonly ["global", "project"];
 export function search(db: DatabaseSync, words: readonly string[], options?: SearchOptions): Hit[];
 
 // @public (undocumented)
-export interface SearchOptions extends Filters {
+export interface SearchOptions extends Filters, Timed {
     // (undocumented)
     readonly limit?: number;
 }
@@ -363,20 +449,45 @@ export const SLUG: RegExp;
 // @public (undocumented)
 export const SNIPPET_TOKENS = 14;
 
+// @public (undocumented)
+export interface Source {
+    // (undocumented)
+    readonly id: string | undefined;
+    // (undocumented)
+    readonly resource: string;
+    // (undocumented)
+    readonly title: string | undefined;
+}
+
 // @public
 export function splitFrontmatter(text: string): {
     yaml: string;
     body: string;
 } | null;
 
+// @public (undocumented)
+export type Status = (typeof STATUSES)[number];
+
+// @public (undocumented)
+export const STATUSES: readonly ["draft", "stable", "deprecated"];
+
 // @public
 export function stemOf(file: string): string;
+
+// @public (undocumented)
+export interface Timed {
+    // (undocumented)
+    readonly now?: Clock;
+}
 
 // @public (undocumented)
 export const TOKENIZER = "unicode61 remove_diacritics 2";
 
 // @public
 export type Translate = (key: KnowledgeKey, vars?: Vars) => string;
+
+// @public
+export function utcDateOf(at: unknown): string | null;
 
 // @public (undocumented)
 export type Vars = Readonly<Record<string, string | number>>;
@@ -394,6 +505,9 @@ export interface Wikilink {
 
 // @public (undocumented)
 export function wikilinks(body: string): Wikilink[];
+
+// @public
+export function writeIndex(dir: string, docs: readonly KnowledgeDoc[]): string;
 
 // (No @packageDocumentation comment for this package)
 

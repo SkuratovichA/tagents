@@ -4,22 +4,42 @@
 // write path into the documents.
 export {
   DocError,
-  FrontmatterSchema,
-  KINDS,
+  LEGACY_KEYS,
+  OKF_KEYS,
+  RESERVED_FILES,
   SCOPES,
   SLUG,
+  STATUSES,
   WIKILINK,
   chunk,
+  documentLinks,
+  fragmentMatches,
   hashOf,
+  headingSlug,
+  isRealDate,
+  isStale,
   listFiles,
   loadDir,
   parseDoc,
+  parseOffsetDatetime,
   readDoc,
   splitFrontmatter,
   stemOf,
+  utcDateOf,
   wikilinks,
 } from './doc.ts';
-export type { Chunk, Frontmatter, KnowledgeDoc, Kind, LoadResult, Scope, Wikilink } from './doc.ts';
+export type {
+  Chunk,
+  DocLink,
+  Frontmatter,
+  Generated,
+  KnowledgeDoc,
+  LoadResult,
+  Scope,
+  Source,
+  Status,
+  Wikilink,
+} from './doc.ts';
 
 export { SCHEMA_VERSION, TOKENIZER, docCount, openDb, reindex, silenceSqliteWarning } from './db.ts';
 export type { IndexStats, Row } from './db.ts';
@@ -36,10 +56,13 @@ export {
   parseAddress,
   search,
 } from './search.ts';
-export type { DocSummary, Filters, Hit, SearchOptions, Section } from './search.ts';
+export type { Clock, DocSummary, Filters, Hit, Lifecycle, SearchOptions, Section, Timed } from './search.ts';
 
 export { insideGitRepo, lastCommitDate, lint } from './lint.ts';
 export type { Issue, IssueCode, LintResult } from './lint.ts';
+
+export { INDEX_FILE, indexState, renderIndex, writeIndex } from './toc.ts';
+export type { IndexState } from './toc.ts';
 
 export { DB_BASENAME, configuredDir, expandHome, resolveDb, resolveDir } from './paths.ts';
 export type { DirResult } from './paths.ts';

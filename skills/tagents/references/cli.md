@@ -167,15 +167,16 @@ Usage: `tagents-knowledge index [--dir <dir>] [--db <db>] [--full]`
 
 ### search
 
-prints one line per hit: id#heading, score and snippet
+prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last
 
-Usage: `tagents-knowledge search <query…> [--dir <dir>] [--db <db>] [--tag <tag>] [--kind <kind>] [--limit <limit>] [--json]`
+Usage: `tagents-knowledge search <query…> [--dir <dir>] [--db <db>] [--tag <tag>] [--type <type>] [--kind <kind>] [--limit <limit>] [--json]`
 
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
 | `--dir` | string | no | no |
 | `--db` | string | no | no |
 | `--tag` | string | no | no |
+| `--type` | string | no | no |
 | `--kind` | string | no | no |
 | `--limit` | string | no | no |
 | `--json` | boolean | no | no |
@@ -193,14 +194,15 @@ Usage: `tagents-knowledge show <id[#heading]> [--dir <dir>] [--db <db>]`
 
 ### list
 
-prints one line per document: id, kind, updated, title and tags
+prints one line per document: id, type, updated, title and tags; --type filters by type (--kind is its deprecated alias); deprecated documents come last
 
-Usage: `tagents-knowledge list [--dir <dir>] [--db <db>] [--kind <kind>] [--tag <tag>] [--json]`
+Usage: `tagents-knowledge list [--dir <dir>] [--db <db>] [--type <type>] [--kind <kind>] [--tag <tag>] [--json]`
 
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
 | `--dir` | string | no | no |
 | `--db` | string | no | no |
+| `--type` | string | no | no |
 | `--kind` | string | no | no |
 | `--tag` | string | no | no |
 | `--json` | boolean | no | no |
@@ -214,6 +216,17 @@ Usage: `tagents-knowledge lint [--dir <dir>]`
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
 | `--dir` | string | no | no |
+
+### toc
+
+writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date
+
+Usage: `tagents-knowledge toc [--dir <dir>] [--check]`
+
+| Flag | Type | Required | Repeatable |
+|---|---|---|---|
+| `--dir` | string | no | no |
+| `--check` | boolean | no | no |
 
 ### mcp
 

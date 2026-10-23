@@ -1,25 +1,52 @@
 // Is the folder still telling the truth?
 //
-// Everything here is a claim a document makes ABOUT ITSELF that can rot
-// without anybody touching the document: an id that no longer matches the
-// file, an `updated:` older than the last commit that changed the text, a
-// `generated_from:` whose source moved on, a link to a document that was
-// renamed. The prose is the author's business; these are the machine's.
+// The loader is tolerant, as OKF asks of a consumer; this is the strict layer.
+// Everything here is either a rule of this package's profile that the loader
+// let through (a tag that is not a slug, a status nobody knows, an unknown key)
+// or a claim a document makes ABOUT ITSELF that can rot without anybody
+// touching it: a `generated.at` older than the last commit that changed the
+// text, a source that moved on, a link to a document that was renamed, an
+// `index.md` that no longer lists what the folder holds. The prose is the
+// author's business; these are the machine's.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { realClock } from '@tagents/core';
 import {
-  DocError,
+  LEGACY_KEYS,
+  OKF_KEYS,
+  RESERVED_FILES,
+  SCOPES,
+  SLUG,
+  STATUSES,
+  URL_SCHEME,
+  documentLinks,
+  fragmentMatches,
+  isRealDate,
+  isRecord,
+  isStale,
   listFiles,
   parseDoc,
+  parseOffsetDatetime,
   stemOf,
-  wikilinks,
+  utcDateOf,
   type KnowledgeDoc,
 } from './doc.ts';
 import { expandHome } from './paths.ts';
+import { INDEX_FILE, indexState, type IndexState } from './toc.ts';
+import type { Clock } from './search.ts';
 import type { Translate } from './i18n/index.ts';
 
-export type IssueCode = 'frontmatter' | 'stem' | 'duplicate-id' | 'stale' | 'generated' | 'dead-link';
+export type IssueCode =
+  | 'frontmatter'
+  | 'stem'
+  | 'duplicate-id'
+  | 'legacy'
+  | 'expired'
+  | 'stale'
+  | 'generated'
+  | 'dead-link'
+  | 'index';
 
 export interface Issue {
   readonly file: string;
@@ -32,15 +59,14 @@ export interface LintResult {
   readonly issues: readonly Issue[];
 }
 
-/** The date of the newest commit that touched `file`, or null. */
+/** The UTC date of the newest commit that touched `file`, or null. */
 export function lastCommitDate(file: string, env: NodeJS.ProcessEnv = process.env): string | null {
-  const r = spawnSync('git', ['-C', path.dirname(file), 'log', '-1', '--format=%cs', '--', file], {
+  const r = spawnSync('git', ['-C', path.dirname(file), 'log', '-1', '--format=%cI', '--', file], {
     encoding: 'utf8',
     env,
   });
   if (r.error || r.status !== 0) return null;
-  const date = r.stdout.trim();
-  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+  return utcDateOf(r.stdout.trim());
 }
 
 export function insideGitRepo(dir: string, env: NodeJS.ProcessEnv = process.env): boolean {
@@ -55,87 +81,185 @@ function utcDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-export function lint(dir: string, t: Translate, env: NodeJS.ProcessEnv = process.env): LintResult {
+/** `by` is a non-empty string and `at` a datetime with an explicit offset. */
+function isStamp(v: unknown): boolean {
+  return isRecord(v) && typeof v['by'] === 'string' && v['by'].trim() !== '' && parseOffsetDatetime(v['at']) !== null;
+}
+
+/** The messages of the profile violations in one document's frontmatter, as `frontmatter` findings. */
+function profileProblems(doc: KnowledgeDoc, t: Translate): string[] {
+  const raw = doc.raw;
+  const out: string[] = [];
+  const known = doc.meta.legacy ? [...OKF_KEYS, ...LEGACY_KEYS] : OKF_KEYS;
+  for (const key of Object.keys(raw)) if (!known.includes(key)) out.push(t('issueUnknownKey', { key }));
+
+  if (raw['id'] !== undefined && typeof raw['id'] !== 'string') out.push(t('issueNotString', { key: 'id' }));
+  for (const key of ['title', 'description', 'resource'] as const) {
+    const v = raw[key];
+    if (v !== undefined && typeof v !== 'string') out.push(t('issueNotString', { key }));
+    else if (key === 'description' && typeof v === 'string' && v.trim().includes('\n'))
+      out.push(t('issueDescriptionLines'));
+  }
+
+  const tags = raw['tags'];
+  if (tags !== undefined) {
+    if (!Array.isArray(tags)) out.push(t('issueTagsList'));
+    else {
+      const list: unknown[] = tags;
+      for (const tag of list) if (typeof tag !== 'string' || !SLUG.test(tag)) out.push(t('issueTag', { tag: String(tag) }));
+    }
+  }
+
+  const status = raw['status'];
+  if (status !== undefined && !STATUSES.some((s) => s === status)) out.push(t('issueStatus', { value: String(status) }));
+  const scope = raw['scope'];
+  if (scope !== undefined && !SCOPES.some((s) => s === scope)) out.push(t('issueScope', { value: String(scope) }));
+
+  if (raw['generated'] !== undefined && !isStamp(raw['generated'])) out.push(t('issueGeneratedShape'));
+  const verified = raw['verified'];
+  if (verified !== undefined) {
+    const stamps: unknown[] = Array.isArray(verified) ? verified : [verified];
+    if (stamps.length === 0 || !stamps.every(isStamp)) out.push(t('issueVerifiedShape'));
+  }
+
+  const staleAfter = raw['stale_after'];
+  if (staleAfter !== undefined && parseOffsetDatetime(staleAfter) === null)
+    out.push(t('issueStaleAfter', { value: String(staleAfter) }));
+
+  const sources = raw['sources'];
+  if (sources !== undefined) {
+    if (!Array.isArray(sources)) out.push(t('issueSourcesList'));
+    else {
+      const list: unknown[] = sources;
+      list.forEach((entry, i) => {
+        if (!isRecord(entry) || typeof entry['resource'] !== 'string' || entry['resource'].trim() === '')
+          out.push(t('issueSourceResource', { n: String(i + 1) }));
+      });
+    }
+  }
+
+  const updated = raw['updated'];
+  if (doc.meta.legacy && updated !== undefined && !(typeof updated === 'string' && isRealDate(updated)))
+    out.push(t('issueUpdated', { value: String(updated) }));
+  return out;
+}
+
+/** Any failure to stat (missing, not a directory, too long, unreadable) means: not a file to compare. */
+function isFile(p: string): boolean {
+  try {
+    return fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** The existing file a `sources[].resource` names, or null for a URL, a missing file or anything else. */
+function sourceFile(dir: string, resource: string): string | null {
+  if (URL_SCHEME.test(resource)) return null;
+  const rest = expandHome(resource);
+  // a leading slash is bundle-relative (OKF); an absolute path is the fallback
+  const candidates = rest.startsWith('/') ? [path.join(dir, rest), rest] : [path.resolve(dir, rest)];
+  return candidates.find(isFile) ?? null;
+}
+
+export function lint(
+  dir: string,
+  t: Translate,
+  env: NodeJS.ProcessEnv = process.env,
+  clock: Clock = realClock
+): LintResult {
   const issues: Issue[] = [];
   const docs = new Map<string, KnowledgeDoc>();
   const files = listFiles(dir);
-  const idOwner = new Map<string, string>();
+  const declaredBy = new Map<string, string>();
 
   for (const file of files) {
     let doc: KnowledgeDoc;
     try {
       doc = parseDoc(file, fs.readFileSync(file, 'utf8'));
     } catch (e) {
-      const detail = e instanceof DocError ? e.message : (e as Error).message;
+      const detail = e instanceof Error ? e.message : String(e);
       issues.push({ file, code: 'frontmatter', message: t('issueFrontmatter', { detail }) });
       continue;
     }
     const stem = stemOf(file);
-    if (doc.meta.id !== stem)
-      issues.push({ file, code: 'stem', message: t('issueStem', { id: doc.meta.id, stem }) });
-    const owner = idOwner.get(doc.meta.id);
-    if (owner !== undefined) {
-      issues.push({
-        file,
-        code: 'duplicate-id',
-        message: t('issueDuplicateId', { id: doc.meta.id, other: path.basename(owner) }),
-      });
-      continue;
+    docs.set(stem, doc);
+    if (!SLUG.test(stem)) issues.push({ file, code: 'stem', message: t('issueStemSlug', { stem }) });
+    if (doc.declaredId !== null) {
+      if (doc.declaredId !== stem)
+        issues.push({ file, code: 'stem', message: t('issueStem', { id: doc.declaredId, stem }) });
+      const owner = declaredBy.get(doc.declaredId);
+      if (owner === undefined) declaredBy.set(doc.declaredId, file);
+      else
+        issues.push({
+          file,
+          code: 'duplicate-id',
+          message: t('issueDuplicateId', { id: doc.declaredId, other: path.basename(owner) }),
+        });
     }
-    idOwner.set(doc.meta.id, file);
-    docs.set(doc.meta.id, doc);
+    if (doc.meta.legacy) issues.push({ file, code: 'legacy', message: t('issueLegacy') });
+    for (const message of profileProblems(doc, t))
+      issues.push({ file, code: 'frontmatter', message });
   }
 
   // The git check only makes sense where there is history to compare against:
   // a folder that is not a repo, or a document not committed yet, is not stale.
   const git = insideGitRepo(dir, env);
   for (const doc of docs.values()) {
-    if (git) {
+    const generatedOn = utcDateOf(doc.meta.generated?.at);
+    if (git && generatedOn !== null) {
       const commit = lastCommitDate(doc.path, env);
-      if (commit !== null && doc.meta.updated < commit)
+      if (commit !== null && generatedOn < commit)
         issues.push({
           file: doc.path,
           code: 'stale',
-          message: t('issueStale', { updated: doc.meta.updated, commit }),
+          message: t('issueStale', { updated: generatedOn, commit }),
         });
     }
 
-    const from = doc.meta.generated_from;
-    if (from !== undefined) {
-      const source = path.resolve(dir, expandHome(from));
-      let mtimeMs: number | null = null;
-      try {
-        mtimeMs = fs.statSync(source).mtimeMs;
-      } catch {
-        mtimeMs = null; // the source is not on this machine: nothing to compare
-      }
-      if (mtimeMs !== null) {
-        const changed = utcDate(mtimeMs);
-        if (changed > doc.meta.updated)
+    if (doc.meta.staleAfter !== undefined && isStale(doc.meta.staleAfter, clock.now()))
+      issues.push({ file: doc.path, code: 'expired', message: t('issueExpired', { value: doc.meta.staleAfter }) });
+
+    if (generatedOn !== null)
+      for (const { resource } of doc.meta.sources) {
+        const source = sourceFile(dir, resource);
+        if (source === null) continue; // a URL, or not on this machine: nothing to compare
+        const changed = utcDate(fs.statSync(source).mtimeMs);
+        if (changed > generatedOn)
           issues.push({
             file: doc.path,
             code: 'generated',
-            message: t('issueGenerated', { source: from, changed, updated: doc.meta.updated }),
+            message: t('issueGenerated', { source: resource, changed, updated: generatedOn }),
           });
       }
-    }
 
-    for (const link of wikilinks(doc.body)) {
+    for (const link of documentLinks(doc.body)) {
+      if (RESERVED_FILES.includes(`${link.id}.md`) && fs.existsSync(path.join(dir, `${link.id}.md`))) continue;
       const target = docs.get(link.id);
+      const fragment = link.fragment;
       const dead =
         target === undefined ||
-        (link.heading !== null &&
-          !target.chunks.some((c) => c.heading.toLowerCase() === link.heading?.toLowerCase()));
-      if (dead)
-        issues.push({
-          file: doc.path,
-          code: 'dead-link',
-          message: t('issueDeadLink', {
-            target: link.heading === null ? link.id : `${link.id}#${link.heading}`,
-          }),
-        });
+        (fragment !== null &&
+          !target.chunks.some((c) =>
+            link.form === 'wiki'
+              ? c.heading.toLowerCase() === fragment.toLowerCase()
+              : fragmentMatches(fragment, c.heading)
+          ));
+      if (dead) issues.push({ file: doc.path, code: 'dead-link', message: t('issueDeadLink', { link: link.raw }) });
     }
   }
+
+  // The same documents `toc` would list: the ones the loader accepts.
+  const state: IndexState = indexState(
+    dir,
+    [...docs.values()].filter((d) => SLUG.test(d.meta.id))
+  );
+  if (state !== 'current')
+    issues.push({
+      file: path.join(dir, INDEX_FILE),
+      code: 'index',
+      message: t(state === 'missing' ? 'issueIndexMissing' : 'issueIndexOutdated'),
+    });
 
   return { checked: files.length, issues };
 }

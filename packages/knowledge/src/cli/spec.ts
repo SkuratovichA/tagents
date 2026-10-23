@@ -18,6 +18,7 @@ export const SEARCH = {
     dir: { type: 'string' },
     db: { type: 'string' },
     tag: { type: 'string' },
+    type: { type: 'string' },
     kind: { type: 'string' },
     limit: { type: 'string' },
     json: { type: 'boolean' },
@@ -40,6 +41,7 @@ export const LIST = {
   options: {
     dir: { type: 'string' },
     db: { type: 'string' },
+    type: { type: 'string' },
     kind: { type: 'string' },
     tag: { type: 'string' },
     json: { type: 'boolean' },
@@ -54,6 +56,14 @@ export const LINT = {
   options: { dir: { type: 'string' } },
   required: [],
   summary: 'summaryLint',
+} as const satisfies CommandSpec<KnowledgeKey>;
+
+export const TOC = {
+  path: ['toc'],
+  positionals: [],
+  options: { dir: { type: 'string' }, check: { type: 'boolean' } },
+  required: [],
+  summary: 'summaryToc',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const MCP = {
@@ -72,7 +82,7 @@ export const SERVE = {
   summary: 'summaryServe',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
-export const KNOWLEDGE_COMMANDS = [INDEX, SEARCH, SHOW, LIST, LINT, MCP, SERVE] as const satisfies readonly CommandSpec<KnowledgeKey>[];
+export const KNOWLEDGE_COMMANDS = [INDEX, SEARCH, SHOW, LIST, LINT, TOC, MCP, SERVE] as const satisfies readonly CommandSpec<KnowledgeKey>[];
 
 /** English whatever the machine's locale is: the contract is read by tools, not people. */
 export function knowledgeCliContract(): CliContract {

@@ -18,31 +18,45 @@ into the source of truth with no diff and no review.
 
 ## The document format
 
-One file per subject, `knowledge/<id>.md`:
+The folder is an OKF (Open Knowledge Format) v0.2 bundle and every document in it is an OKF concept: one markdown file per subject, `knowledge/<id>.md`, whose id is the filename without `.md`. The id must be a slug (lowercase words joined by single dashes), because every verb and tool addresses a document by it.
 
 ```markdown
 ---
-id: deploy-runbook          # a slug, and it MUST equal the filename stem
+type: Runbook                # required, free text: Runbook, Decision, Map, Note…
 title: Deploying the demo service
-kind: runbook               # cheatsheet | runbook | map | decision | note
-tags: [deploy, ci]
-updated: 2026-09-10         # YYYY-MM-DD, a real calendar date
-generated_from: ../src/hosts.yaml   # optional: this file was derived
-scope: project              # optional: global | project
+description: How the demo service is deployed and rolled back.   # one line
+tags: [deploy, ci]           # slugs
+resource: https://example.invalid/deploy   # kept and listed, not interpreted
+generated:                   # who wrote it and when: ISO 8601 with an explicit offset
+  by: deploy-tool
+  at: 2026-09-10T08:00:00Z
+verified:                    # a mapping or a list of them, kept and not interpreted
+  - by: someone
+    at: 2026-09-11T09:00:00+02:00
+sources:                     # what it was derived from; only `resource` is required
+  - resource: ../src/hosts.yaml
+    title: Host inventory
+status: stable              # draft | stable | deprecated; absent means stable
+stale_after: 2026-12-01T00:00:00+01:00   # a datetime with an explicit offset
+scope: project              # global | project
 ---
 
 Everything before the first heading is the preamble — chunk `''`.
 
 ## Before you start
 
-One `## ` heading starts one chunk. `###` and deeper stay inside it, and a
-`## comment` inside a fenced code block does not start anything.
+One `## ` heading starts one chunk. `###` and deeper stay inside it, and a `## comment` inside a fenced code block does not start anything.
 ```
 
-The frontmatter is validated with zod, not merely parsed: an unknown key, a
-`kind` outside the five, a `2026-02-30`, an `id` that is not a slug or does not
-match the filename are all refused with the file named. `[[wikilinks]]` and
-`[[wikilinks#Heading]]` are understood, and `lint` reports the dead ones.
+Only `type` is required. The loader is tolerant, as OKF asks of a consumer: a key it does not know, a missing title, a malformed date or an unknown status never refuses a file, the value loads as absent (an unknown `status` as `stable`). A file is refused only when it cannot be addressed or classified: no frontmatter block, frontmatter that is not YAML, no `type`, or a stem that is not a slug. The strict reading of the folder is `lint`, below.
+
+The legacy form, with `kind`, `updated` and `generated_from` instead of `type`, `generated` and `sources`, is still read for one release and never written: `kind: runbook` becomes the type `Runbook`, `updated` becomes `generated.at` at 00:00:00Z and `generated_from` becomes the one source. `lint` reports every legacy document so that the folder gets rewritten.
+
+Two kinds of link to another document are understood, and `lint` reports the dead ones. `[[id]]` and `[[id#Heading]]` are wikilinks; `[text](/id.md)`, `[text](/id.md#fragment)`, `[text](./id.md)` and `[text](id.md#fragment)` are standard markdown links. A link with a URL scheme, a target that is not a `.md` file and a bare `#fragment` are not links to documents. A wikilink heading matches a section heading case-insensitively; a markdown fragment matches after URL-decoding either the heading, case-insensitively, or its slug (`#failover-steps` for `Failover steps`). Links inside fenced code are not links.
+
+`status: deprecated` keeps a document loaded, searchable and listable but ranks it after the others and marks it `[deprecated]` in `list`. A document is stale once the clock reaches its `stale_after`; staleness is computed when a query is answered and never stored in the index, and `list` marks it `[stale]` while search results and `--json` carry a `stale` flag.
+
+`index.md` at the folder root is the OKF progressive-disclosure file and `log.md` is the OKF change log; neither is a document, and no verb lists, searches or counts them. `tagents-knowledge toc` writes `index.md`: the frontmatter `okf_version: "0.2"`, then one group per `type` (alphabetical, types that differ only in case share a group), and in each group one line per document ordered by id, `* [<title>](<id>.md) - <description>`, with ` (deprecated)` appended for a deprecated one. The output is deterministic, so a diff of `index.md` is a diff of the folder.
 
 ## Where things live
 
@@ -66,10 +80,11 @@ that says how to set it.
 | command | does |
 | --- | --- |
 | `index [--dir D] [--db F] [--full]` | bring the index in line with the folder; `--full` rebuilds from nothing |
-| `search <query…> [--tag T] [--kind K] [--limit N] [--json]` | one line per hit: `id#heading  score  snippet` |
+| `search <query…> [--tag T] [--type T] [--kind K] [--limit N] [--json]` | one line per hit: `id#heading  score  snippet` |
 | `show <id[#heading]>` | the markdown of the document, or of one section (`id#` is the preamble) |
-| `list [--kind K] [--tag T] [--json]` | `id  kind  updated  title  #tags` |
+| `list [--type T] [--kind K] [--tag T] [--json]` | `id  type  updated  title  #tags`, then ` [deprecated]` and ` [stale]` marks; `--kind` is the deprecated alias of `--type` |
 | `lint [--dir D]` | the claims each document makes about itself, checked |
+| `toc [--dir D] [--check]` | write `index.md`; `--check` writes nothing and exits 1 when it is absent or out of date |
 | `mcp` | serve the tools below over stdio, one process for this one client |
 | `serve [--idle S] [--foreground] [--socket P]` | make sure the shared MCP server for this environment is running and print the unix socket it listens on; `--idle S` is the quiet time in seconds before it exits (default 600); `--foreground` runs the server in this process instead, on `--socket P` |
 
@@ -86,14 +101,17 @@ from the index, and the rest of the folder keeps answering.
 Human strings go through the package's own `knowledge` namespace —
 `TAGENTS_LOCALE=ru` for Russian. `--json` output never does: it is a contract.
 
-`lint` reports:
+`lint` reads the folder without using the index and prints one line per finding, `<filename>: <message>`, then `N problem(s) in DIR` and exits 1, or `N document(s) in DIR: no problems` and exits 0. A file the loader refuses is one finding and the others are still checked. The findings:
 
-* frontmatter that does not validate, and an `id` that is not the filename stem;
-* an id used by two files;
-* `updated:` older than the newest commit that touched the file — only when the
-  folder is a git repository and the file has been committed;
-* `generated_from:` whose source file has been modified since `updated:`;
-* `[[wikilinks]]` to a document, or a heading, that does not exist.
+* `frontmatter`: a tag that is not a slug, a `status` outside `draft|stable|deprecated`, a `scope` outside `global|project`, a malformed `generated` or `verified`, a `stale_after` that is not a datetime with an explicit offset, a `sources` entry without a string `resource`, a title, description or resource that is not a string, or a key this package does not know (`unknown key "owner"`; the known keys are the ones in the example above plus `id`, and for a legacy document `kind`, `updated` and `generated_from`);
+* `stem`: a frontmatter `id` that differs from the filename stem, or a stem that is not a slug;
+* `duplicate-id`: two files that declare the same `id`;
+* `legacy`: a document in the legacy form, to be rewritten in the OKF form;
+* `expired`: `stale_after` has passed;
+* `stale`: the UTC date of `generated.at` is earlier than the date of the newest commit that touched the file, checked only inside a git work tree, for committed files that have `generated`;
+* `generated`: a `sources[].resource` that is a relative or bundle-relative path (`~` expanded) to an existing file modified on a UTC date after `generated.at`; URLs, other values that are not paths and files that do not exist on this machine are skipped;
+* `dead-link`: a link of either form to a document, heading or fragment that does not exist, reported as `dead link <the link as written>`;
+* `index`: `index.md` is missing or differs from what `toc` would write, which is cured by running `toc`.
 
 ## MCP
 
@@ -124,9 +142,9 @@ Built on `@modelcontextprotocol/sdk` **1.x** (current stable major; input schema
 
 | tool | input | returns |
 | --- | --- | --- |
-| `knowledge_search` | `{ query, tag?, kind?, limit? }` | the matching sections as JSON: `id, title, heading, score, snippet, path` |
+| `knowledge_search` | `{ query, tag?, type?, kind?, limit? }` | the matching sections as JSON: `id, title, heading, score, snippet, path` |
 | `knowledge_get` | `{ id, heading? }` | the markdown of the document, or of one section |
-| `knowledge_list` | `{ kind?, tag? }` | every document as JSON, with its headings |
+| `knowledge_list` | `{ type?, kind?, tag? }` | every document as JSON, with its headings |
 | `sessions_recent` | `{ limit? }` | recent Claude sessions on this machine — core's renderer, the same text the sessions CLI prints |
 | `sessions_search` | `{ words }` | sessions whose project or opening prompt contains every word |
 

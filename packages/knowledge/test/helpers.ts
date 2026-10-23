@@ -15,6 +15,8 @@ export const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PKG = path.resolve(HERE, '..');
 export const FIXTURES = path.join(HERE, 'fixtures');
 export const KNOWLEDGE = path.join(FIXTURES, 'knowledge');
+/** The same kind of folder in the OKF form, with the reserved index.md and log.md in it. */
+export const OKF = path.join(FIXTURES, 'okf');
 export const NODE = process.execPath;
 
 /**
@@ -38,9 +40,16 @@ export function removeDir(dir: string): void {
 
 /** A copy of the fixture folder, so a test may edit or delete documents in it. */
 export function copyKnowledge(dest: string): string {
+  return copyFolder(KNOWLEDGE, dest);
+}
+
+export function copyOkf(dest: string): string {
+  return copyFolder(OKF, dest);
+}
+
+function copyFolder(src: string, dest: string): string {
   fs.mkdirSync(dest, { recursive: true });
-  for (const name of fs.readdirSync(KNOWLEDGE))
-    fs.copyFileSync(path.join(KNOWLEDGE, name), path.join(dest, name));
+  for (const name of fs.readdirSync(src)) fs.copyFileSync(path.join(src, name), path.join(dest, name));
   return dest;
 }
 
@@ -65,6 +74,11 @@ export function doc(
   ];
   if (fields.extra !== undefined) lines.push(fields.extra);
   return `---\n${lines.join('\n')}\n---\n\n${body}`;
+}
+
+/** A document in the OKF form: `type` and whatever extra frontmatter lines a case needs. */
+export function okfDoc(type: string, extra: readonly string[] = [], body = 'Body text.\n'): string {
+  return `---\n${[`type: ${type}`, ...extra].join('\n')}\n---\n\n${body}`;
 }
 
 export interface RunResult {

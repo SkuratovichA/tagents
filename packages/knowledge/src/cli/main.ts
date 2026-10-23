@@ -14,14 +14,17 @@ import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import { EXIT } from './exit.ts';
-import { INDEX, LINT, LIST, SEARCH, SERVE, SHOW } from './spec.ts';
+import { INDEX, LINT, LIST, SEARCH, SERVE, SHOW, TOC } from './spec.ts';
 import { openDb, reindex, silenceSqliteWarning } from '../db.ts';
 import { createT, type Translate } from '../i18n/index.ts';
+import { loadDir } from '../doc.ts';
 import { lint } from '../lint.ts';
+import { indexState, writeIndex } from '../toc.ts';
 import { DEFAULT_IDLE_SECONDS, defaultSocket, ensureDaemon, runDaemon } from '../mcp/daemon.ts';
 import { runMcp } from '../mcp/server.ts';
 import { resolveDb, resolveDir } from '../paths.ts';
-import { getDoc, getSection, listDocs, parseAddress, search, type Filters } from '../search.ts';
+import { realClock } from '@tagents/core';
+import { getDoc, getSection, listDocs, parseAddress, search, type Clock, type Filters, type Hit } from '../search.ts';
 
 export { EXIT };
 
@@ -68,10 +71,36 @@ function withIndex(
   }
 }
 
-function filters(values: { tag?: string | undefined; kind?: string | undefined }): Filters {
+function filters(values: {
+  tag?: string | undefined;
+  type?: string | undefined;
+  kind?: string | undefined;
+}): Filters {
   return {
     ...(values.tag === undefined ? {} : { tag: values.tag }),
+    ...(values.type === undefined ? {} : { type: values.type }),
     ...(values.kind === undefined ? {} : { kind: values.kind }),
+  };
+}
+
+/** ` [deprecated]` and ` [stale]`: the lifecycle marks at the end of a hit or list line. */
+function marks(d: { status: string; stale: boolean }): string {
+  return `${d.status === 'deprecated' ? ' [deprecated]' : ''}${d.stale ? ' [stale]' : ''}`;
+}
+
+/** A hit as `--json` prints it: a contract, so the keys are listed, not spread. */
+function hitJson(h: Hit): Record<string, unknown> {
+  return {
+    id: h.id,
+    title: h.title,
+    heading: h.heading,
+    score: h.score,
+    snippet: h.snippet,
+    path: h.path,
+    type: h.type,
+    description: h.description,
+    status: h.status,
+    stale: h.stale,
   };
 }
 
@@ -108,7 +137,7 @@ function cmdIndex(argv: string[], io: Io, t: Translate): number {
   }
 }
 
-function cmdSearch(argv: string[], io: Io, t: Translate): number {
+function cmdSearch(argv: string[], io: Io, t: Translate, clock: Clock): number {
   const { values, positionals } = parseArgs({
     args: argv,
     options: SEARCH.options,
@@ -123,10 +152,11 @@ function cmdSearch(argv: string[], io: Io, t: Translate): number {
   return withIndex({ dir: values.dir ?? null, db: values.db ?? null }, io, t, (db) => {
     const hits = search(db, positionals, {
       ...filters(values),
+      now: clock,
       ...(Number.isFinite(limit) && limit > 0 ? { limit } : {}),
     });
     if (values.json === true) {
-      io.out(json(hits.map((h) => ({ id: h.id, title: h.title, heading: h.heading, score: h.score, snippet: h.snippet, path: h.path }))));
+      io.out(json(hits.map(hitJson)));
       return hits.length ? EXIT.ok : EXIT.notFound;
     }
     if (!hits.length) {
@@ -135,7 +165,7 @@ function cmdSearch(argv: string[], io: Io, t: Translate): number {
     }
     for (const h of hits) {
       const address = h.heading ? `${h.id}#${h.heading}` : h.id;
-      io.out(`${address.padEnd(38)} ${h.score.toFixed(2).padStart(7)}  ${h.snippet}\n`);
+      io.out(`${address.padEnd(38)} ${h.score.toFixed(2).padStart(7)}  ${h.snippet}${marks(h)}\n`);
     }
     return EXIT.ok;
   });
@@ -181,7 +211,7 @@ function cmdShow(argv: string[], io: Io, t: Translate): number {
   });
 }
 
-function cmdList(argv: string[], io: Io, t: Translate): number {
+function cmdList(argv: string[], io: Io, t: Translate, clock: Clock): number {
   const { values } = parseArgs({
     args: argv,
     options: LIST.options,
@@ -189,7 +219,7 @@ function cmdList(argv: string[], io: Io, t: Translate): number {
     allowPositionals: false,
   });
   return withIndex({ dir: values.dir ?? null, db: values.db ?? null }, io, t, (db, dir) => {
-    const docs = listDocs(db, filters(values));
+    const docs = listDocs(db, { ...filters(values), now: clock });
     if (values.json === true) {
       io.out(json(docs));
       return docs.length ? EXIT.ok : EXIT.notFound;
@@ -200,13 +230,13 @@ function cmdList(argv: string[], io: Io, t: Translate): number {
     }
     for (const d of docs) {
       const tags = d.tags.length ? `  #${d.tags.join(' #')}` : '';
-      io.out(`${d.id.padEnd(28)} ${d.kind.padEnd(10)} ${d.updated}  ${d.title}${tags}\n`);
+      io.out(`${d.id.padEnd(28)} ${d.type.padEnd(10)} ${d.updated}  ${d.title}${tags}${marks(d)}\n`);
     }
     return EXIT.ok;
   });
 }
 
-function cmdLint(argv: string[], io: Io, t: Translate): number {
+function cmdLint(argv: string[], io: Io, t: Translate, clock: Clock): number {
   const { values } = parseArgs({
     args: argv,
     options: LINT.options,
@@ -215,7 +245,7 @@ function cmdLint(argv: string[], io: Io, t: Translate): number {
   });
   const dir = needDir(values.dir ?? null, io, t);
   if (dir === null) return EXIT.error;
-  const result = lint(dir, t);
+  const result = lint(dir, t, process.env, clock);
   for (const issue of result.issues) io.out(`${path.basename(issue.file)}: ${issue.message}\n`);
   if (!result.issues.length) {
     io.out(`${t('lintClean', { count: result.checked, dir })}\n`);
@@ -223,6 +253,26 @@ function cmdLint(argv: string[], io: Io, t: Translate): number {
   }
   io.out(`${t('lintProblems', { count: result.issues.length, dir })}\n`);
   return EXIT.error;
+}
+
+function cmdToc(argv: string[], io: Io, t: Translate): number {
+  const { values } = parseArgs({
+    args: argv,
+    options: TOC.options,
+    strict: true,
+    allowPositionals: false,
+  });
+  const dir = needDir(values.dir ?? null, io, t);
+  if (dir === null) return EXIT.error;
+  const { docs, errors } = loadDir(dir);
+  if (values.check === true) {
+    if (indexState(dir, docs) === 'current') return EXIT.ok;
+    io.err(`${t('tocOutOfDate')}\n`);
+    return EXIT.error;
+  }
+  for (const e of errors) io.err(`${path.basename(e.file)}: ${e.message}\n`);
+  io.out(`${t('tocWrote', { path: writeIndex(dir, docs) })}\n`);
+  return EXIT.ok;
 }
 
 /**
@@ -253,7 +303,7 @@ async function cmdServe(argv: string[], io: Io, t: Translate): Promise<number> {
   }
 }
 
-export async function main(argv: string[], io: Io = stdio()): Promise<number> {
+export async function main(argv: string[], io: Io = stdio(), clock: Clock = realClock): Promise<number> {
   // Before anything runs: importing node:sqlite queues Node's experimental
   // notice, and a verb that never opens the index (lint, help) would otherwise
   // print it on the next tick, into stderr a human is reading.
@@ -262,10 +312,11 @@ export async function main(argv: string[], io: Io = stdio()): Promise<number> {
   const [verb, ...rest] = argv;
   try {
     if (verb === 'index') return cmdIndex(rest, io, t);
-    if (verb === 'search') return cmdSearch(rest, io, t);
+    if (verb === 'search') return cmdSearch(rest, io, t, clock);
     if (verb === 'show') return cmdShow(rest, io, t);
-    if (verb === 'list') return cmdList(rest, io, t);
-    if (verb === 'lint') return cmdLint(rest, io, t);
+    if (verb === 'list') return cmdList(rest, io, t, clock);
+    if (verb === 'lint') return cmdLint(rest, io, t, clock);
+    if (verb === 'toc') return cmdToc(rest, io, t);
     if (verb === 'serve') return await cmdServe(rest, io, t);
     if (verb === 'mcp') {
       await runMcp();
