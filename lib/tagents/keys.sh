@@ -163,7 +163,7 @@ keys_table() {  # key<TAB>verb<TAB>what it does
 "$K_SEND${TAB}send${TAB}send a line straight into it" \
 "$K_RENAME${TAB}rename${TAB}rename this agent — an empty name restores its title" \
 "$K_UNDOCK${TAB}undock${TAB}break a joined chat out into a window of its own" \
-"$K_KILL${TAB}kill${TAB}kill this agent, asking first; a closed row is forgotten" \
+"$K_KILL${TAB}kill${TAB}kill this agent, asking first; a closed row is forgotten; on a dimmed row it closes the window, asking first" \
 "$K_TREE${TAB}:tree${TAB}tree or flat" \
 "$K_PREVIEW${TAB}:preview${TAB}the preview in a window of its own — in the prefix+a popup, fzf's toggle beside the list" \
 "$K_REFRESH${TAB}:refresh${TAB}refresh now" \

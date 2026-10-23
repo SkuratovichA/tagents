@@ -349,7 +349,10 @@ Keys inside the dashboard:
                      resumable — the row turns into a closed one that enter
                      brings back — so on a row that is ALREADY closed there is
                      nothing to kill and this forgets the record instead,
-                     taking the row off the list
+                     taking the row off the list. On a dimmed window row it
+                     closes the whole window with every pane in it, asking
+                     first and listing what runs there; the sidebar moves out
+                     of that window before it goes
   ctrl-t             toggle tree / flat
   ctrl-v             the preview in a window of its own: a popup 80% by 85%,
                      the size prefix+C-f, tsess and tneww all open at, with

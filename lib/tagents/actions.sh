@@ -1,6 +1,6 @@
 # lib/tagents/actions.sh — what a key actually does
 #
-# The verbs: send_line/ask_send and the ctrl-x family (kill_agent, ask_kill's live re-check, end_agent, forget_agent) with the 'killing an agent' essay heading that half, open_chat (settles a click against the records before a row is selected or joined) and act() — the short-lived execute-silent child every binding runs through, and the place that refuses pane-verbs on a headless row and every verb but a selection on a dimmed window row. Selecting, joining and breaking out live in rows.sh.
+# The verbs: send_line/ask_send and the ctrl-x family (kill_agent, ask_kill's live re-check, end_agent, forget_agent, and for a dimmed window row ask_kill_window and end_window) with the 'killing an agent' essay heading that half, open_chat (settles a click against the records before a row is selected or joined) and act() — the short-lived execute-silent child every binding runs through, and the place that refuses pane-verbs on a headless row and every verb but a selection and a kill on a dimmed window row. Selecting, joining and breaking out live in rows.sh.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -58,13 +58,69 @@ kill_agent() {
     tmux display-message "tagents: that is the dashboard itself" 2>/dev/null
     return 0
   fi
+  case "$pane" in
+    @*)
+      # A dimmed row's window: the question lists its panes, so the popup grows with them.
+      if ! tmux list-windows -a -F '#{window_id}' 2>/dev/null | grep -qx -- "$pane"; then
+        tmux display-message "tagents: that window is gone" 2>/dev/null
+        return 0
+      fi
+      local n
+      n=$(window_panes "$pane" | wc -l | tr -d ' ')
+      if [ "$n" = 0 ]; then
+        tmux display-message "tagents: that is the dashboard itself" 2>/dev/null
+        return 0
+      fi
+      [ "$n" -gt 12 ] && n=13
+      prompt $((11 + n)) --ask-kill "$pane" "" && return 0
+      ask_kill "$pane" ""
+      return 0 ;;
+  esac
   prompt 11 --ask-kill "$pane" "$sid" && return 0
   ask_kill "$pane" "$sid"
+}
+
+window_panes() {  # <window id> — "index<TAB>command<TAB>path" of each pane but the sidebar, in pane order
+  tmux list-panes -t "$1" -F "#{pane_id}${TAB}#{pane_index}${TAB}#{pane_current_command}${TAB}#{pane_current_path}" 2>/dev/null |
+    LC_ALL=C awk -F"$TAB" -v sb="$(dash_pane)" '$1 != sb { print $2 FS $3 FS $4 }'
+}
+
+ask_kill_window() {  # <window id> — the question for a window that runs no chat
+  local win=${1:-} ans rows n i=0 idx cmd dir sb last
+  if ! tmux list-windows -a -F '#{window_id}' 2>/dev/null | grep -qx -- "$win"; then
+    tmux display-message "tagents: that window is gone" 2>/dev/null
+    return 0
+  fi
+  printf '\033[1mkill this window?\033[0m\n'
+  tmux display -p -t "$win" '#{window_name}' 2>/dev/null
+  printf '\033[90m%s\033[0m\n' "$(tmux display -p -t "$win" '#{session_name}:#{window_index}' 2>/dev/null)"
+  rows=$(window_panes "$win")
+  n=$(printf '%s\n' "$rows" | grep -c .)
+  while IFS="$TAB" read -r idx cmd dir; do
+    i=$((i + 1))
+    [ "$i" -le 12 ] || break
+    printf '\033[90m  %s  %s  %s\033[0m\n' "$idx" "$cmd" "$(tilde_of "$dir")"
+  done <<< "$rows"
+  [ "$n" -gt 12 ] && printf '\033[90m  … and %s more\033[0m\n' $((n - 12))
+  printf '\033[90mthe window closes with every pane in it.\033[0m\n'
+  sb=$(dash_pane)
+  [ -z "$sb" ] || sb=$(tmux display -p -t "$sb" '#{window_id}' 2>/dev/null)
+  last=$(tmux display -p -t "$win" '#{session_windows}' 2>/dev/null)
+  if [ "$last" = 1 ] && [ "$sb" != "$win" ]; then
+    printf '\033[90mit is the last window of %s: the session ends with it.\033[0m\n' "$(tmux display -p -t "$win" '#{session_name}' 2>/dev/null)"
+  fi
+  printf '\033[90my confirms · anything else cancels\033[0m\n> '
+  IFS= read -r -t 60 ans || return 0
+  case "$ans" in
+    y|Y|yes|YES|Yes) end_window "$win" ;;
+  esac
+  return 0
 }
 
 ask_kill() {  # the confirmation itself — normally the body of the popup
   local pane=${1:-} sid=${2:-} nm dir where ans alive=0
   [ "$pane" = "-" ] && return 0
+  case "$pane" in @*) ask_kill_window "$pane"; return 0 ;; esac
   # Asked of tmux, not taken from the row: the row was rendered up to two
   # seconds ago, and what is about to happen depends on whether there is still a
   # pane to kill. A row keyed "s-<session>" — a session that had no $TMUX_PANE
@@ -137,6 +193,15 @@ end_agent() {  # <pane> — hang up the agent running in it
   return 0
 }
 
+end_window() {  # <window id> — close a window that runs no chat, with every pane in it
+  local win=$1
+  leave_window_for_kill "$win"
+  tmux kill-window -t "$win" 2>/dev/null || return 1
+  signal_ev
+  resurrect_soon
+  return 0
+}
+
 # A notice stays on screen until it is dismissed, so its click arrives long after the pane id in it was true: the chat may have been killed since, or tmux may have restarted and given that id to another chat. The session id still names the chat, so for a non-empty one the pane is settled against the records before anything is selected. "A pane exists" is not "the chat runs" (a chat that exited leaves its shell), so the test is the dashboard's own: the pane is in live_panes, taken once per click. The ordinary click (the named pane runs a Claude and its record names this session) costs that one walk and one read.
 open_chat() {  # <open_agent|open_beside> <pane> <sid> <dir>
   local selfn=$1 pane=$2 sid=${3:-} dir=${4:-} recsid="" msg live k ts key newest="" newestts=-1 locked=0 rc
@@ -198,12 +263,13 @@ act() {
           return 0 ;;
       esac ;;
     @*)
-      # A window that runs no chat: only selecting it makes sense.
+      # A window that runs no chat: only selecting it and closing it make sense.
       case "$what" in
         open|goto)
           if [ "$hdr" = 1 ]; then open_session "$pane"; else open_agent "$pane"; fi
           return 0 ;;
-        beside|undock|send|rename|kill|preview)
+        kill) kill_agent "$pane" ""; return 0 ;;
+        beside|undock|send|rename|preview)
           tmux display-message "tagents: that window runs no chat" 2>/dev/null
           return 0 ;;
       esac ;;

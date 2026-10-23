@@ -548,7 +548,7 @@ ok "R7 enter on a dimmed row selects the window" "$WD" "$(sbwin)"
 act open "$PC" working "$SIDC" "$REPO"; act goto "$WD" none "" "$REPO"
 ok "R7 ctrl-g on a dimmed row selects the window" "$WD" "$(sbwin)"
 CWIN=$(tm display -p -t "$WD" '#{window_id}'); np=$(npanes "$WD"); nw=$(nwins)
-for v in beside undock send rename kill; do
+for v in beside undock send rename; do
   : >"$WRROOT/none"; tm display-message "reset"
   act "$v" "$WD" none "" "$REPO"
   has "R8 $v on a dimmed row" "tagents: that window runs no chat" "$(msgs)"
@@ -697,6 +697,104 @@ tm kill-pane -t "$K3P"; settle 0.3
 ok "R28 the window and the sidebar are still there" "$K3W" "$(sbwin)"
 tm select-window -t "$K3B"; run --follow "$CLIENT"
 ok "R28 the sidebar moved out" "$K3B" "$(sbwin)"; ok "R28 the emptied window went" no "$(winlive "$K3W")"
+
+t "R43 R44 R45 ctrl-x on a dimmed row asks about the window, and only y closes it"
+newsess tatest-w1; XW1B=$LASTWIN
+mkshell tatest-w1 dev "$REPO"; XW1=$LASTWIN; XW1P=$LASTPANE
+XW1Q=$(tm split-window -d -h -t "$XW1P" -P -F '#{pane_id}' -c "$NREPO" "exec sleep 600")
+kill_sidebars; to tatest-work
+d1=$(tm display -p -t "$XW1P" '#{pane_current_path}'); d2=$(tm display -p -t "$XW1Q" '#{pane_current_path}')
+q=$(printf 'n\n' | run --ask-kill "$XW1" "" | strip)
+has "R43 the title" "kill this window?" "$q"
+has "R43 the window name" "dev" "$q"
+has "R43 session:index" "tatest-w1:$(tm display -p -t "$XW1" '#{window_index}')" "$q"
+has "R43 first pane" "  0  sleep  $(modrun tilde_of "$d1")" "$q"
+has "R43 second pane" "  1  sleep  $(modrun tilde_of "$d2")" "$q"
+has "R43 the closing line" "the window closes with every pane in it." "$q"
+hasnt "R43 not the last window of its session" "the session ends with it" "$q"
+ok "R43 n keeps the window" yes "$(winlive "$XW1")"
+printf '\n' | run --ask-kill "$XW1" "" >/dev/null
+ok "R44 an empty line keeps the window" yes "$(winlive "$XW1")"
+run --ask-kill "$XW1" "" </dev/null >/dev/null
+ok "R44 a closed stdin keeps the window" yes "$(winlive "$XW1")"
+ok "R44 and its panes" "2" "$(npanes "$XW1")"
+SBW=$(sbwin); NW=$(nwins)
+printf 'y\n' | run --ask-kill "$XW1" "" >/dev/null
+ok "R45 y closes the window" no "$(winlive "$XW1")"
+ok "R45 and its panes" "no:no" "$(paneok "$XW1P"):$(paneok "$XW1Q")"
+ok "R45 the other windows stay" "$((NW - 1))" "$(nwins)"
+ok "R45 the session's other window stays" yes "$(winlive "$XW1B")"
+ok "R45 the sidebar stays where it was" "$SBW" "$(sbwin)"
+
+t "R46 the sidebar is no line of the question"
+mkshell tatest-w1 dev2 "$REPO"; XW2=$LASTWIN; tm split-window -d -h -t "$LASTPANE" "exec sleep 600" >/dev/null
+SB=$(fake_sidebar "$XW2")
+q=$(printf 'n\n' | run --ask-kill "$XW2" "" | strip)
+ok "R46 the window holds three panes" 3 "$(npanes "$XW2")"
+ok "R46 two pane lines" 2 "$(printf '%s\n' "$q" | grep -c '^  [0-9]')"
+kill_sidebars; tm kill-window -t "$XW2"
+
+t "R47 fourteen panes print twelve lines and the rest counted"
+newsess tatest-w3; mkshell tatest-w3 big "$REPO"; XW3=$LASTWIN
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13; do tm split-window -d -t "$XW3" "exec sleep 600"; tm select-layout -t "$XW3" tiled; done
+ok "R47 fourteen panes" 14 "$(npanes "$XW3")"
+q=$(printf 'n\n' | run --ask-kill "$XW3" "" | strip)
+ok "R47 twelve pane lines" 12 "$(printf '%s\n' "$q" | grep -c '^  [0-9]')"
+has "R47 the rest" "  … and 2 more" "$q"
+tm kill-session -t =tatest-w3
+
+t "R48 a window killed before the question is gone, and nothing is asked"
+mkshell tatest-w1 gone; XWG=$LASTWIN; tm kill-window -t "$XWG"; tm display-message reset
+q=$(printf 'y\n' | run --ask-kill "$XWG" "" | strip)
+has "R48 notice" "tagents: that window is gone" "$(msgs)"
+hasnt "R48 no question" "kill this window?" "$q"
+
+t "R49 the sidebar in the killed window goes to the landing window"
+newsess tatest-w4; XW4B=$LASTWIN; mkshell tatest-w4 dev4; XW4=$LASTWIN
+kill_sidebars; to tatest-w4; tm select-window -t "$XW4"; SB=$(fake_sidebar "$XW4")
+printf 'y\n' | run --ask-kill "$XW4" "" >/dev/null; settle 0.3
+ok "R49 the window is gone" no "$(winlive "$XW4")"
+ok "R49 the sidebar is in the landing window" "$XW4B" "$(sbwin)"
+ok "R49 so is the client" "$XW4B" "$(cwin)"
+ok "R49 one sidebar" 1 "$(nsbs)"
+
+t "R50 the only window of a session with the sidebar in it: the session survives"
+newsess tatest-w5; XW5=$LASTWIN
+kill_sidebars; to tatest-w5; SB=$(fake_sidebar "$XW5")
+q=$(printf 'y\n' | run --ask-kill "$XW5" "" | strip); settle 0.3
+hasnt "R50 no session line, the sidebar keeps it" "the session ends with it" "$q"
+ok "R50 the session survives" 0 "$(tm has-session -t =tatest-w5 2>/dev/null; echo $?)"
+ok "R50 the window is gone" no "$(winlive "$XW5")"
+ok "R50 a new window holds the sidebar" tatest-w5 "$(tm display -p -t "$(sbpane)" '#{session_name}')"
+ok "R50 and is on the client" "$(sbwin)" "$(cwin)"
+ok "R50 one sidebar" 1 "$(nsbs)"
+
+t "R51 the last window of another session: the session ends, the client stays"
+kill_sidebars; to tatest-work
+newsess tatest-w6; XW6=$LASTWIN; NC=$(nclients); CS=$(csess)
+q=$(printf 'n\n' | run --ask-kill "$XW6" "" | strip)
+has "R51 the question says so" "it is the last window of tatest-w6: the session ends with it." "$q"
+printf 'y\n' | run --ask-kill "$XW6" "" >/dev/null; settle 0.3
+ok "R51 the session is gone" 1 "$(tm has-session -t =tatest-w6 2>/dev/null; echo $?)"
+ok "R51 no client lost" "$NC" "$(nclients)"
+ok "R51 the client is where it was" "$CS" "$(csess)"
+
+t "R52 ctrl-x on a window with only the sidebar says so and kills nothing"
+newsess tatest-w7; XW7=$LASTWIN; kill_sidebars
+stamp_sidebar "$(tm list-panes -t "$XW7" -F '#{pane_id}')"
+tm display-message reset
+TA_MODE=popup act kill "$XW7" none "" "$REPO" </dev/null
+has "R52 notice" "tagents: that is the dashboard itself" "$(msgs)"
+ok "R52 the window survives" yes "$(winlive "$XW7")"
+ok "R52 and the sidebar" 1 "$(nsbs)"
+kill_sidebars; tm kill-session -t =tatest-w7
+
+t "R53 act kill on a dimmed row goes through the question"
+newsess tatest-w8; mkshell tatest-w8 dev8; XW8=$LASTWIN
+printf 'y\n' | TA_MODE=popup act kill "$XW8" none "" "$REPO" >/dev/null
+ok "R53 the window is closed" no "$(winlive "$XW8")"
+tm kill-session -t =tatest-w1 2>/dev/null; tm kill-session -t =tatest-w4 2>/dev/null; tm kill-session -t =tatest-w5 2>/dev/null; tm kill-session -t =tatest-w8 2>/dev/null
+to tatest-work
 
 t "R29 headless and child rows: the notice says open, no window is made"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%s)" working sid-hl "$REPO" "" hl "" >"$WRSTATE/s-abc.tsv"
