@@ -62,7 +62,7 @@ A group header line SHALL carry the key, state, session id and directory of the 
 - **THEN** the header's key equals the key of the first row beneath it, which is the live one
 
 #### Scenario: A group of windows only
-- **WHEN** a session tagents created holds one window `server` and no chat
+- **WHEN** a session holds one window `server` and no chat
 - **THEN** the header carries the window id of `server`, the state `none` and no session id
 
 ### Requirement: The row a group header stands for
@@ -422,3 +422,14 @@ A session started in a subdirectory of its repository SHALL show the subdirector
 #### Scenario: Subdirectory of a Cyrillic repository
 - **WHEN** a session runs in `~/projects/я/src`, below its own repository
 - **THEN** its detail text starts with `src`
+
+### Requirement: A session holding only the sidebar has a header alone
+When a session's only window holds nothing but the sidebar, its group SHALL be a header with no row under it. That header SHALL carry the window id of that window, the state `none`, no session id and the session's working directory, so that `ctrl-n`, `ctrl-p` and `ctrl-a` on it open a window in that session (the `window-rows` capability) and `ctrl-x` on it only shows `tagents: that is the dashboard itself`.
+
+#### Scenario: The header alone
+- **WHEN** the client shows session `empty`, whose working directory is `~/app` and whose only window holds nothing but the sidebar
+- **THEN** the list has a header `empty` and no row under it, and the header carries the window id of that window, the state `none`, no session id and the directory `~/app`
+
+#### Scenario: ctrl-x on the header alone
+- **WHEN** the user presses `ctrl-x` on the header of `empty`
+- **THEN** `tagents: that is the dashboard itself` is shown and no window is killed

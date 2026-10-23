@@ -25,9 +25,9 @@
 
 ## 5. Integration
 
-- [ ] 5.1 Run every suite under `tests/` on a scratch server, one at a time, as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/<suite>.sh`, and verify that each exits 0.
-- [ ] 5.2 Run `pnpm spec:check` and verify that it passes.
-- [ ] 5.3 Check on the live server with the branch's `tagents`: a session without a chat has a header over its windows, `ctrl-a` on one of its rows opens a shell there with the sidebar in it, and `ctrl-x` on that row asks and closes it.
+- [x] 5.1 Run every suite under `tests/` on a scratch server, one at a time, as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/<suite>.sh`, and verify that each exits 0.
+- [x] 5.2 Run `pnpm spec:check` and verify that it passes.
+- [x] 5.3 Check on the live server with the branch's `tagents`: a session without a chat has a header over its windows, `ctrl-a` on one of its rows opens a shell there with the sidebar in it, and `ctrl-x` on that row asks and closes it.
 
 ## Workflow follow-up
 
