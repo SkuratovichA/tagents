@@ -387,3 +387,6 @@ The wrappers `tagents-core` and `tagents-knowledge` ran `exec node …`, and a c
 
 ## A list started by `split-window` without `-c` kept the caller's directory (23.10.2026)
 The list started by `start_sidebar` took the directory of the shell that ran `tagents --ensure-dash`, because a `tmux` command run as a client gives a new pane that client's directory, so a sidebar restarted from a worktree kept that worktree in use; the list's pane now starts with `-c "$HOME"`, and R33 and F22 in tests/window-rows.sh check `#{pane_current_path}`.
+
+## tests/ holds 21 suites, not 22 (23.10.2026)
+`tests/scratch-guard.sh` is a helper that the tmux suites source, not a suite, so `tests/` holds 21 suites; a loop over `tests/*.sh` must skip it, and a count of 22 counted it.
