@@ -384,3 +384,6 @@ A window tagents makes as a command client, with `tmux new-window` and no `-c`, 
 
 ## The node commands died in a chat whose PATH held no node (23.10.2026)
 The wrappers `tagents-core` and `tagents-knowledge` ran `exec node …`, and a chat whose PATH had no node (node lives only under nvm on this machine) got `exec: node: not found` from the knowledge MCP server; install.sh now writes the absolute path of the node it found on PATH into those wrappers, which run it while the file is executable and otherwise fall back to `node` on the caller's PATH, and tests/install.sh section 10 pins both forms.
+
+## A list started by `split-window` without `-c` kept the caller's directory (23.10.2026)
+The list started by `start_sidebar` took the directory of the shell that ran `tagents --ensure-dash`, because a `tmux` command run as a client gives a new pane that client's directory, so a sidebar restarted from a worktree kept that worktree in use; the list's pane now starts with `-c "$HOME"`, and R33 and F22 in tests/window-rows.sh check `#{pane_current_path}`.

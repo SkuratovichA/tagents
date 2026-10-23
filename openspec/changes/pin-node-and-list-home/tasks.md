@@ -6,9 +6,9 @@
 
 ## 2. A list started as the sidebar runs in the home directory
 
-- [ ] 2.1 In `start_sidebar` (`lib/tagents/sidebar.sh`), pass `-c "$HOME"` to the `split-window` that creates the list's pane. Proved by `tests/window-rows.sh`.
-- [ ] 2.2 In `tests/window-rows.sh`, run the first `--ensure-dash` of R33 from `$REPO` and check that the new list's `#{pane_current_path}` is the physical home directory, and check the same for the list the follow hook brings back in F22. Proved by `tests/window-rows.sh`.
-- [ ] 2.3 Add a `LEARNING.md` entry: a list started with `split-window` and no `-c` kept the caller's directory, a worktree, in use, and the list's pane now starts in `$HOME`. Proved by the diff of `LEARNING.md`.
+- [x] 2.1 In `start_sidebar` (`lib/tagents/sidebar.sh`), pass `-c "$HOME"` to the `split-window` that creates the list's pane. Proved by `tests/window-rows.sh`.
+- [x] 2.2 In `tests/window-rows.sh`, run the first `--ensure-dash` of R33 from `$REPO` and check that the new list's `#{pane_current_path}` is the physical home directory, and check the same for the list the follow hook brings back in F22. Proved by `tests/window-rows.sh`.
+- [x] 2.3 Add a `LEARNING.md` entry: a list started with `split-window` and no `-c` kept the caller's directory, a worktree, in use, and the list's pane now starts in `$HOME`. Proved by the diff of `LEARNING.md`.
 
 ## 3. The whole tree
 

@@ -377,13 +377,15 @@ tm kill-pane -t "$SB"; settle 0.3
 out=$(run --follow "$CLIENT" 2>&1); rc=$?
 ok "F21 follow after the kill, no sidebar wanted (a fake one never claimed a pane): exit 0" 0 "$rc"; ok "F21 silent" "" "$out"
 ok "F21 no pane is a sidebar" 0 "$(nsbs)"
-run --ensure-dash; rc=$?
+(cd "$REPO" && run --ensure-dash); rc=$?
 ok "R33 ensure-dash exit 0" 0 "$rc"
 ok "R33 a list runs in the client's window" "$(cwin)" "$(wait_eq "$(cwin)" sbwin)"
 set -- $(tm list-panes -t "$(cwin)" -F '#{pane_left} #{pane_id} #{pane_height} #{window_height} #{@tagents_list}' | sort -n | head -1)
 ok "R33 it is the leftmost pane" "$(sbpane)" "$2"; ok "R33 as tall as the window" "$4" "$3"
 ok "R33 it has claimed the sidebar (a live pid)" yes "$([ -n "${5:-}" ] && kill -0 "${5:-0}" 2>/dev/null && echo yes || echo no)"
 ok "R33 titled" tagents-sidebar "$(tm display -p -t "$(sbpane)" '#{pane_title}')"
+WRH_HOME=$(cd "$HOME" && pwd -P)
+ok "R33 the new list runs in the home directory, not where ensure-dash ran" "$WRH_HOME" "$(wait_eq "$WRH_HOME" tm display -p -t "$(sbpane)" '#{pane_current_path}')"
 LIST1=$(sbpane)
 mkchat tatest-work elsewhere; WE=$LASTWIN
 tm select-window -t "$WE"
@@ -396,6 +398,7 @@ tm kill-window -t "$WE"; settle 0.4
 ok "F22 the window killed: the client is still attached" 1 "$(nclients)"
 ok "F22 the list claimed a pane, so the follow hook brings a sidebar back where the client landed" "$(cwin)" "$(wait_eq_long "$(cwin)" sbwin)"
 ok "F22 one list" 1 "$(nsbs)"
+ok "F22 the list the follow hook starts runs in the home directory" "$WRH_HOME" "$(wait_eq "$WRH_HOME" tm display -p -t "$(sbpane)" '#{pane_current_path}')"
 kill_sidebars; unhook                                # no list, no wish, no hooks: the same kills now leave nothing behind
 tm new-session -d -s tatest-extra -x 200 -y 50 -c "$REPO" "exec sleep 600"
 XW=$(wid =tatest-extra:); stamp_sidebar "$(tm list-panes -t "$XW" -F '#{pane_id}' | head -1)"
