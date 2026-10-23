@@ -14,10 +14,7 @@
 #   <hooks dir>/<name>.sh                   exec sh $TAGENTS_HOME/hooks/<name>.sh, one per hooks/*.sh
 #   <node> is the node the install found on PATH, or node on the caller's PATH once that file is gone.
 #
-# Running it again IS the update: it fetches origin/main, moves the copy there,
-# rebuilds, and rewrites the wrappers. A build that fails puts the copy back on
-# the commit it was on, so a bad main costs one failed run and not the
-# dashboard. `tagents update` runs this file from the copy it belongs to.
+# Running it again IS the update: it fetches origin/main, moves the copy there and hands the rest of the run to the install.sh the copy now holds, which rebuilds and rewrites the wrappers, so a change to this file is in force from the update that brings it. A build that fails puts the copy back on the commit it was on, so a bad main costs one failed run and not the dashboard. `tagents update` runs this file from the copy it belongs to.
 #
 #   sh install.sh                       install or update
 #   sh install.sh --check               say whether main has moved; change nothing
@@ -40,11 +37,9 @@
 #   TAGENTS_REF    the branch to follow                 main
 #   TAGENTS_BUILD_CMD  run in the copy after a move     pnpm install --frozen-lockfile && pnpm build
 #   TAGENTS_LAUNCHD_DIR, TAGENTS_NO_LAUNCHCTL=1         where the plist goes, and not loading it
+#   TAGENTS_MOVED_FROM  internal: the commit the copy left, set by the run that moved it for the run it hands over to
 #
-# POSIX sh. The whole program is the function at the bottom, called on the last
-# line with an `exit` in the same breath: the copy this file lives in is
-# rewritten by the update it performs, and a shell that is still reading a file
-# which has just changed under it executes whatever now sits at its old offset.
+# POSIX sh. The whole program is the function at the bottom, called on the last line with an `exit` in the same breath: the copy this file lives in is rewritten by the update it performs, and a shell that is still reading a file which has just changed under it executes whatever now sits at its old offset. The program the shell parsed is still the old commit's after the move, which is why the move is followed by an exec of the new file.
 
 set -eu
 
@@ -199,20 +194,23 @@ acquire_lock() {
   lock=$TAGENTS_HOME.lock
   if ! mkdir "$lock" 2>/dev/null; then
     holder=$(cat "$lock/pid" 2>/dev/null || true)
-    if [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; then
-      say "another install is running (pid $holder), nothing to do"
-      exit 0
+    # exec keeps the pid and drops the EXIT trap: a lock that holds this pid was taken by the run that handed the update over to this one.
+    if [ "$holder" != "$$" ]; then
+      if [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; then
+        say "another install is running (pid $holder), nothing to do"
+        exit 0
+      fi
+      rm -rf "$lock"
+      mkdir "$lock" || die "cannot take $lock"
     fi
-    rm -rf "$lock"
-    mkdir "$lock" || die "cannot take $lock"
   fi
   printf '%s\n' "$$" > "$lock/pid"
   trap 'rm -rf "$lock" "$BUILD_LOG"' EXIT
   trap 'exit 1' INT TERM
 }
 
-main() {
-  QUIET=0; CHECK=0; LAUNCHD=0; SKIPPED=0; HOOK_DIRS=''
+# A function of its own, so its shifts leave main's arguments whole for the run main may hand over to.
+parse_args() {
   while [ $# -gt 0 ]; do
     case $1 in
       --hooks-dir)
@@ -223,12 +221,17 @@ main() {
       --launchd) LAUNCHD=1; shift ;;
       --check)   CHECK=1; shift ;;
       --quiet)   QUIET=1; shift ;;
-      -h|--help) usage; return 0 ;;
+      -h|--help) usage; exit 0 ;;
       *)         die "unknown option $1 (see --help)" ;;
     esac
   done
   [ -n "$HOOK_DIRS" ] || HOOK_DIRS="$HOME/.claude/hooks
 "
+}
+
+main() {
+  QUIET=0; CHECK=0; LAUNCHD=0; SKIPPED=0; HOOK_DIRS=''
+  parse_args "$@"
 
   TAGENTS_HOME=${TAGENTS_HOME:-$HOME/.local/share/tagents}
   TAGENTS_BIN=${TAGENTS_BIN:-$HOME/.local/bin}
@@ -261,28 +264,42 @@ main() {
     fresh=1
   fi
 
-  git -C "$TAGENTS_HOME" fetch --quiet origin "+refs/heads/$TAGENTS_REF:refs/remotes/origin/$TAGENTS_REF" \
-    || die "cannot fetch $TAGENTS_REF from origin"
-  target=$(git -C "$TAGENTS_HOME" rev-parse "refs/remotes/origin/$TAGENTS_REF")
-  prev=$(git -C "$TAGENTS_HOME" rev-parse HEAD)
+  if [ -n "${TAGENTS_MOVED_FROM:-}" ]; then
+    # The run that moved the copy handed the rest of the update to this file: no fetch and no move, only what follows them.
+    prev=$TAGENTS_MOVED_FROM
+    unset TAGENTS_MOVED_FROM
+    target=$(git -C "$TAGENTS_HOME" rev-parse HEAD)
+  else
+    git -C "$TAGENTS_HOME" fetch --quiet origin "+refs/heads/$TAGENTS_REF:refs/remotes/origin/$TAGENTS_REF" \
+      || die "cannot fetch $TAGENTS_REF from origin"
+    target=$(git -C "$TAGENTS_HOME" rev-parse "refs/remotes/origin/$TAGENTS_REF")
+    prev=$(git -C "$TAGENTS_HOME" rev-parse HEAD)
 
-  if [ "$CHECK" = 1 ]; then
-    if [ "$prev" = "$target" ]; then
-      say "up to date at $(short "$target")"
-    else
-      say "behind: $(short "$prev") -> $(short "$target") on $TAGENTS_REF"
+    if [ "$CHECK" = 1 ]; then
+      if [ "$prev" = "$target" ]; then
+        say "up to date at $(short "$target")"
+      else
+        say "behind: $(short "$prev") -> $(short "$target") on $TAGENTS_REF"
+      fi
+      return 0
     fi
-    return 0
-  fi
 
-  # Detached even when already on the right commit: a fresh clone is on a
-  # branch, and a branch is what invites somebody to work in the copy.
-  if [ "$prev" != "$target" ] || git -C "$TAGENTS_HOME" symbolic-ref -q HEAD >/dev/null 2>&1; then
-    if [ -n "$(git -C "$TAGENTS_HOME" status --porcelain --untracked-files=no)" ]; then
-      die "$TAGENTS_HOME has local changes, so it was not moved. It is a managed copy: develop in a clone of your own"
+    # Detached even when already on the right commit: a fresh clone is on a
+    # branch, and a branch is what invites somebody to work in the copy.
+    if [ "$prev" != "$target" ] || git -C "$TAGENTS_HOME" symbolic-ref -q HEAD >/dev/null 2>&1; then
+      if [ -n "$(git -C "$TAGENTS_HOME" status --porcelain --untracked-files=no)" ]; then
+        die "$TAGENTS_HOME has local changes, so it was not moved. It is a managed copy: develop in a clone of your own"
+      fi
+      git -C "$TAGENTS_HOME" checkout --quiet --detach "$target" || die "cannot move $TAGENTS_HOME to $(short "$target")"
+      if [ "$prev" != "$target" ]; then say "moved $(short "$prev") -> $(short "$target")"; fi
     fi
-    git -C "$TAGENTS_HOME" checkout --quiet --detach "$target" || die "cannot move $TAGENTS_HOME to $(short "$target")"
-    if [ "$prev" != "$target" ]; then say "moved $(short "$prev") -> $(short "$target")"; fi
+
+    # From here on this is still the program of the commit the copy left, so the rest of an update goes to the install.sh the copy now holds, unless that one predates the hand-over; a clone is finished here.
+    if [ "$prev" != "$target" ] && [ "$fresh" = 0 ] && grep -q TAGENTS_MOVED_FROM "$TAGENTS_HOME/install.sh" 2>/dev/null; then
+      rm -f "$BUILD_LOG"
+      TAGENTS_MOVED_FROM=$prev; export TAGENTS_MOVED_FROM
+      exec sh "$TAGENTS_HOME/install.sh" "$@"
+    fi
   fi
 
   if [ "$fresh" = 1 ] || [ "$prev" != "$target" ] || [ ! -f "$TAGENTS_HOME/packages/core/dist/cli/main.js" ]; then

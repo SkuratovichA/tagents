@@ -393,3 +393,6 @@ The list started by `start_sidebar` took the directory of the shell that ran `ta
 
 ## tests/ holds 21 suites, not 22 (23.10.2026)
 `tests/scratch-guard.sh` is a helper that the tmux suites source, not a suite, so `tests/` holds 21 suites; a loop over `tests/*.sh` must skip it, and a count of 22 counted it.
+
+## An update ran the installer of the commit it left, so install.sh changes landed one update late (23.10.2026)
+sh parses install.sh's single `main` before running it, so after `git checkout` moved the managed copy the rest of the run was still the old commit's program: the update that brought the node pin wrote the wrappers in the old `exec node` form and only the next update pinned them, and no case in tests/install.sh could see it because the test origin carried no install.sh; the run that moves the copy now execs the install.sh the copy holds with `TAGENTS_MOVED_FROM` set (only when that file names the variable, and never after a clone), the lock survives the exec because `acquire_lock` keeps a lock that holds its own pid, the test origin carries the tree's install.sh, and cases 11 and 12 check the hand-over and an old target installer.
