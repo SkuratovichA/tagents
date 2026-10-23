@@ -381,3 +381,6 @@ The suite is one shell scope, and its sections reuse short names such as `W2`, `
 
 ## A window made by `tmux new-window` without `-c` starts in the list process's directory (23.10.2026)
 A window tagents makes as a command client, with `tmux new-window` and no `-c`, starts in the directory the list process runs in, not in the session's. `leave_window_for_kill` made the sidebar's replacement window that way until it went through `new_pane_window`, which always passes `-c`; the review of the all-sessions-groups branch caught it, and R50 now asserts the directory.
+
+## The node commands died in a chat whose PATH held no node (23.10.2026)
+The wrappers `tagents-core` and `tagents-knowledge` ran `exec node …`, and a chat whose PATH had no node (node lives only under nvm on this machine) got `exec: node: not found` from the knowledge MCP server; install.sh now writes the absolute path of the node it found on PATH into those wrappers, which run it while the file is executable and otherwise fall back to `node` on the caller's PATH, and tests/install.sh section 10 pins both forms.

@@ -9,9 +9,10 @@
 # there is no path that quietly ends in somebody's working branch:
 #
 #   ~/.local/bin/tagents tusage tnotes      exec $TAGENTS_HOME/<name>
-#   ~/.local/bin/tagents-core               exec node $TAGENTS_HOME/packages/core/dist/cli/main.js
-#   ~/.local/bin/tagents-knowledge          exec node $TAGENTS_HOME/packages/knowledge/dist/cli/main.js
+#   ~/.local/bin/tagents-core               exec <node> $TAGENTS_HOME/packages/core/dist/cli/main.js
+#   ~/.local/bin/tagents-knowledge          exec <node> $TAGENTS_HOME/packages/knowledge/dist/cli/main.js
 #   <hooks dir>/<name>.sh                   exec sh $TAGENTS_HOME/hooks/<name>.sh, one per hooks/*.sh
+#   <node> is the node the install found on PATH, or node on the caller's PATH once that file is gone.
 #
 # Running it again IS the update: it fetches origin/main, moves the copy there,
 # rebuilds, and rewrites the wrappers. A build that fails puts the copy back on
@@ -62,8 +63,7 @@ short() { printf '%s' "$1" | cut -c1-7; }
 
 xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
-# Wrappers carry no logic: they name the one file to run and pass everything
-# through, stdin included, which is what a hook is fed on.
+# A wrapper names the one file to run and passes everything through, stdin included, which is what a hook is fed on; an interpreter given by its absolute path is pinned, so the wrapper runs that file while it is executable and otherwise the interpreter of the same name on the caller's PATH.
 write_wrapper() {  # <dest> <path to exec> [interpreter]
   dest=$1; target=$2; interp=${3:-}
   if [ -L "$dest" ]; then
@@ -75,7 +75,10 @@ write_wrapper() {  # <dest> <path to exec> [interpreter]
   fi
   mkdir -p "$(dirname "$dest")"
   tmp=$dest.tmp.$$
-  printf '#!/bin/sh\n# %s, rewritten on every update: do not edit\nexec %s"%s" "$@"\n' "$MARK" "${interp:+$interp }" "$target" > "$tmp"
+  case $interp in
+    /*) printf '#!/bin/sh\n# %s, rewritten on every update: do not edit\nn="%s"\n[ -x "$n" ] || n=%s\nexec "$n" "%s" "$@"\n' "$MARK" "$interp" "${interp##*/}" "$target" ;;
+    *) printf '#!/bin/sh\n# %s, rewritten on every update: do not edit\nexec %s"%s" "$@"\n' "$MARK" "${interp:+$interp }" "$target" ;;
+  esac > "$tmp"
   chmod 755 "$tmp"
   mv -f "$tmp" "$dest"
 }
@@ -84,10 +87,13 @@ install_commands() {
   for name in tagents tusage tnotes; do
     write_wrapper "$TAGENTS_BIN/$name" "$TAGENTS_HOME/$name"
   done
+  # The node CLIs pin the node this install found; none on PATH leaves them looking node up at run time.
+  node_bin=$(command -v node || true)
+  case $node_bin in /*) ;; *) node_bin=node ;; esac
   for pair in tagents-core:core tagents-knowledge:knowledge; do
     cli=$TAGENTS_HOME/packages/${pair#*:}/dist/cli/main.js
     if [ -f "$cli" ]; then
-      write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" node
+      write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin"
     else
       warn "no $cli after the build, so ${pair%%:*} was not installed"
       SKIPPED=$((SKIPPED + 1))
