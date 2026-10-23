@@ -5,11 +5,12 @@ export const en = {
     'usage: tagents-knowledge <command>',
     '',
     '  index [--dir D] [--db F] [--full]',
-    '  search <query…> [--tag T] [--type T] [--kind K] [--limit N] [--json]',
-    '  show <id[#heading]> [--dir D]',
+    '  search <query…> [--tag T] [--type T] [--kind K] [--limit N] [--json] [--usage-db F] [--verbose]',
+    '  show <id[#heading]> [--dir D] [--usage-db F] [--verbose]',
     '  list [--type T] [--kind K] [--tag T] [--json]',
     '  lint [--dir D]',
     '  toc [--dir D] [--check]',
+    '  usage [--dir D] [--db F] [--usage-db F] [--since Nd] [--top N] [--type T] [--all] [--candidates] [--min-gets N] [--min-days N] [--json]',
     '  mcp',
     '  serve [--idle S] [--foreground] [--socket P]',
     '',
@@ -62,16 +63,25 @@ export const en = {
   tocOutOfDate: 'index.md is out of date',
   summaryIndex: 'brings the index in line with the folder; --full rebuilds it from nothing',
   summarySearch:
-    'prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last',
-  summaryShow: 'prints the markdown of a document, or of one section of it',
+    'prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last; each document it returns is recorded as a hit in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)',
+  summaryShow:
+    'prints the markdown of a document, or of one section of it; the read is recorded as a get in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)',
   summaryList:
     'prints one line per document: id, type, updated, title and tags; --type filters by type (--kind is its deprecated alias); deprecated documents come last',
   summaryLint: 'checks the claims each document makes about itself',
   summaryToc:
     'writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date',
+  summaryUsage:
+    'reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store',
   summaryMcp: 'serves the knowledge tools over stdio as an MCP server',
   summaryServe:
     'starts the shared MCP server for this environment if it is not running and prints its unix socket; --idle S is how many seconds without a client before it exits (default 600); --foreground runs the server in this process, on --socket P',
+  usageColumns: 'id type status gets hits days last',
+  noUsageRows: 'nothing to report: no document matches',
+  badSince: '--since must be a positive whole number of days followed by d, such as 30d',
+  badCount: '--{{flag}} must be a positive whole number',
+  usageUnreadable: 'the usage store {{file}} cannot be read: {{reason}}',
+  notRecorded: 'not recorded in the usage store {{file}}: {{reason}}',
   badIdle: '--idle must be a positive number of seconds',
   serveFailed: 'could not start the shared knowledge server: {{reason}}',
 } as const;

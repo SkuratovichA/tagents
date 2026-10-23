@@ -64,6 +64,7 @@ Two kinds of link to another document are understood, and `lint` reports the dea
 | --- | --- | --- |
 | the documents | *no default, on purpose* | `--dir`, `TAGENTS_KNOWLEDGE_DIR`, or `knowledge.dir` in `~/.config/tagents/config.yaml` |
 | the index | `~/.config/tagents/knowledge.sqlite` | `--db`, `TAGENTS_KNOWLEDGE_DB` |
+| the usage store | `knowledge-usage.sqlite` beside the index in use, however that was chosen | `--usage-db`, `TAGENTS_KNOWLEDGE_USAGE_DB` |
 
 ```yaml
 # ~/.config/tagents/config.yaml — the same file core's plugin host reads
@@ -80,17 +81,18 @@ that says how to set it.
 | command | does |
 | --- | --- |
 | `index [--dir D] [--db F] [--full]` | bring the index in line with the folder; `--full` rebuilds from nothing |
-| `search <query…> [--tag T] [--type T] [--kind K] [--limit N] [--json]` | one line per hit: `id#heading  score  snippet` |
-| `show <id[#heading]>` | the markdown of the document, or of one section (`id#` is the preamble) |
+| `search <query…> [--tag T] [--type T] [--kind K] [--limit N] [--json] [--usage-db F] [--verbose]` | one line per hit: `id#heading  score  snippet`; each document returned is recorded as a hit |
+| `show <id[#heading]> [--usage-db F] [--verbose]` | the markdown of the document, or of one section (`id#` is the preamble); recorded as a get |
 | `list [--type T] [--kind K] [--tag T] [--json]` | `id  type  updated  title  #tags`, then ` [deprecated]` and ` [stale]` marks; `--kind` is the deprecated alias of `--type` |
 | `lint [--dir D]` | the claims each document makes about itself, checked |
 | `toc [--dir D] [--check]` | write `index.md`; `--check` writes nothing and exits 1 when it is absent or out of date |
+| `usage [--dir D] [--db F] [--usage-db F] [--since Nd] [--top N] [--type T] [--all] [--candidates] [--min-gets N] [--min-days N] [--json]` | what was read: `id  type  status  gets  hits  days  last` per document, the most read first; `--candidates` keeps the ones worth turning into a skill (see Usage) |
 | `mcp` | serve the tools below over stdio, one process for this one client |
 | `serve [--idle S] [--foreground] [--socket P]` | make sure the shared MCP server for this environment is running and print the unix socket it listens on; `--idle S` is the quiet time in seconds before it exits (default 600); `--foreground` runs the server in this process instead, on `--socket P` |
 
 Exit codes: **0** ok · **1** error · **2** usage · **4** nothing found (a search
 with no hits, a `show` of an id or heading that does not exist, an empty
-`list`).
+`list`, a `usage` report with no row).
 
 Every read command runs an incremental reindex first, so there is no such thing
 as searching yesterday's copy of a runbook. A file whose mtime has not moved is
@@ -112,6 +114,16 @@ Human strings go through the package's own `knowledge` namespace —
 * `generated`: a `sources[].resource` that is a relative or bundle-relative path (`~` expanded) to an existing file modified on a UTC date after `generated.at`; URLs, other values that are not paths and files that do not exist on this machine are skipped;
 * `dead-link`: a link of either form to a document, heading or fragment that does not exist, reported as `dead link <the link as written>`;
 * `index`: `index.md` is missing or differs from what `toc` would write, which is cured by running `toc`.
+
+## Usage
+
+Every `show` and `knowledge_get` that returns text leaves a `get` in the usage store, and every `search` and `knowledge_search` leaves a `hit` for each distinct document among its results, however many of its sections matched. The point is to know which documents are really read, and so which are worth turning into a skill. The store is a SQLite file of its own, apart from the index, because the index is derived and is dropped and rebuilt whenever its schema moves, while the store is the only copy of what happened: `index --full`, a deleted index and an upgrade leave it alone. It is created, with its directory, when the first event is recorded.
+
+It holds one row per event in `usage_events`: `ts` (milliseconds since the epoch), `doc_id`, `heading` (empty for a whole document or a hit), `kind` (`get` or `hit`) and `caller`. The caller is the client name given in the MCP handshake, or `TA_LABEL` for the CLI when it is set and not empty, and null otherwise. The text of a query and any session id are never stored. Events older than 365 days are deleted whenever one is recorded.
+
+Recording is best effort. A store that cannot be opened, stays locked for more than 250 ms or cannot be written never changes what the read printed or its exit code; `--verbose` on `search` and `show` says on stderr that the read was not recorded and why, and without it they stay silent. `index`, `list`, `lint`, `toc`, `usage`, `knowledge_list`, `knowledge_usage` and the sessions tools record nothing, so looking at the numbers is never a use. The order of search results does not depend on the store.
+
+`usage` prints a header and a line per document of the folder with the columns `id  type  status  gets  hits  days  last`, the most read first (then by hits, then by id), `-` where a value is unknown, at most `--top N` lines (20). `gets` and `hits` count the events inside the window `--since Nd` (30d, a day being 24 hours); `days` is the number of distinct UTC dates with a get inside it; `last` is the UTC date of the newest get, whatever its age. Unread documents are listed with zeros, ids that have events but left the folder only with `--all`, and `--type T` keeps one type (and so drops those ids). `--candidates` keeps the documents that are not deprecated and have at least `--min-gets` gets (5) on at least `--min-days` UTC dates (3) inside the window; it only names them, it creates, edits and ranks nothing. With `--json` it is an array of objects with exactly the keys `id`, `type`, `status`, `gets`, `hits`, `days` and `last`, null where unknown. No row is exit 4, printing `[]` with `--json`. A store that is not there counts as empty and is not created; one that exists and cannot be read is exit 1, naming the file.
 
 ## MCP
 
@@ -145,10 +157,11 @@ Built on `@modelcontextprotocol/sdk` **1.x** (current stable major; input schema
 | `knowledge_search` | `{ query, tag?, type?, kind?, limit? }` | the matching sections as JSON: `id, title, heading, score, snippet, path` |
 | `knowledge_get` | `{ id, heading? }` | the markdown of the document, or of one section |
 | `knowledge_list` | `{ type?, kind?, tag? }` | every document as JSON, with its headings |
+| `knowledge_usage` | `{ since?, top?, type?, all?, candidates?, min_gets?, min_days? }` | the rows of `usage --json`, as JSON; none is `[]` |
 | `sessions_recent` | `{ limit? }` | recent Claude sessions on this machine — core's renderer, the same text the sessions CLI prints |
 | `sessions_search` | `{ words }` | sessions whose project or opening prompt contains every word |
 
-There are no write tools, and there will not be any.
+No tool writes a document, and none will. `knowledge_get` and `knowledge_search` leave an event in the usage store (see Usage), located from the environment alone because the tools have no flags: `TAGENTS_KNOWLEDGE_USAGE_DB`, else beside the index in use.
 
 ## The shared server
 
@@ -156,7 +169,7 @@ A `tagents-knowledge mcp` process is about 30 MB resident, and a Claude session 
 
 `serve` prints the socket and exits 0. If something already answers on it, that is all it does. Otherwise it starts the server detached (its own process group, so it outlives the session that happened to start it), waits until the socket accepts a connection and prints the path. The server gives every connection its own MCP server over the same stdio framing, and exits after 10 minutes without a connection: a one-shot timer, armed when the last connection closes and cleared by the next, so nothing polls.
 
-One server per environment, not per session. The socket is `$TMPDIR/tagents-<uid>/knowledge-<key>.sock` in a directory of mode 0700 (under `/tmp` when `$TMPDIR` is too long for a socket address), and `<key>` is a hash of `HOME`, `TAGENTS_CONFIG_DIR`, `XDG_CONFIG_HOME`, `TAGENTS_KNOWLEDGE_DIR`, `TAGENTS_KNOWLEDGE_DB` and `CLAUDE_HOMES`, the variables the server and the session renderers behind it read, plus a stamp of the running build, so a rebuilt checkout starts a server of its own instead of joining the previous build's. Relative paths in those variables are made absolute against the starter's directory, because the server starts elsewhere. `test/socket.test.ts` scans the sources and fails when they read a variable that is neither in the key nor on its list of reasons not to be. Beside each socket the server keeps `<socket>.pid`, written once it listens and removed when it leaves.
+One server per environment, not per session. The socket is `$TMPDIR/tagents-<uid>/knowledge-<key>.sock` in a directory of mode 0700 (under `/tmp` when `$TMPDIR` is too long for a socket address), and `<key>` is a hash of `HOME`, `TAGENTS_CONFIG_DIR`, `XDG_CONFIG_HOME`, `TAGENTS_KNOWLEDGE_DIR`, `TAGENTS_KNOWLEDGE_DB`, `TAGENTS_KNOWLEDGE_USAGE_DB` and `CLAUDE_HOMES`, the variables the server and the session renderers behind it read, plus a stamp of the running build, so a rebuilt checkout starts a server of its own instead of joining the previous build's. Relative paths in those variables are made absolute against the starter's directory, because the server starts elsewhere. `test/socket.test.ts` scans the sources and fails when they read a variable that is neither in the key nor on its list of reasons not to be. Beside each socket the server keeps `<socket>.pid`, written once it listens and removed when it leaves.
 
 Starters that race are settled by the kernel: the loser's `listen` fails with `EADDRINUSE`, it finds a live server and leaves. A socket file that refuses connections (its server was killed) is removed and replaced under a lock, in the same critical section as the new `listen`, so two servers that both see the dead file cannot unlink each other's fresh one.
 

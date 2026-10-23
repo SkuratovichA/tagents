@@ -102,6 +102,23 @@ test('the specs and the English usage text name the same verbs, positionals and 
   }
 });
 
+test('the flags of the usage store: search and show record and may say so, usage reports, the others do neither', () => {
+  const options = (verb: string): string[] =>
+    Object.keys(KNOWLEDGE_COMMANDS.find((c) => c.path.join(' ') === verb)?.options ?? {}).sort();
+  for (const verb of ['search', 'show']) {
+    assert.ok(options(verb).includes('usage-db'), `${verb} takes --usage-db`);
+    assert.ok(options(verb).includes('verbose'), `${verb} takes --verbose`);
+  }
+  assert.deepEqual(options('usage'), [
+    'all', 'candidates', 'db', 'dir', 'json', 'min-days', 'min-gets', 'since', 'top', 'type', 'usage-db',
+  ]);
+  for (const c of KNOWLEDGE_COMMANDS) {
+    const verb = c.path.join(' ');
+    if (!['search', 'show'].includes(verb)) assert.ok(!('verbose' in c.options), `${verb} has no --verbose`);
+    if (!['search', 'show', 'usage'].includes(verb)) assert.ok(!('usage-db' in c.options), `${verb} has no --usage-db`);
+  }
+});
+
 test('a required option is a declared option', () => {
   for (const c of KNOWLEDGE_COMMANDS) {
     for (const r of c.required) assert.ok(r in c.options, `${c.path.join(' ')}: ${r}`);
@@ -114,7 +131,7 @@ test('knowledgeCliContract lists every verb with a non-empty English summary', (
   assert.equal(contract.exit['notFound'], 4);
   assert.deepEqual(
     contract.commands.map((c) => c.path.join(' ')),
-    ['index', 'search', 'show', 'list', 'lint', 'toc', 'mcp', 'serve'],
+    ['index', 'search', 'show', 'list', 'lint', 'toc', 'usage', 'mcp', 'serve'],
   );
   for (const c of contract.commands) {
     assert.ok(c.summary.trim().length > 0, c.path.join(' '));

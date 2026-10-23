@@ -14,6 +14,8 @@ import { z } from 'zod';
 import { configDir, configFile } from '@tagents/core';
 
 export const DB_BASENAME = 'knowledge.sqlite';
+/** What was read, kept apart from the index: the index is derived and rebuilt, this is not. */
+export const USAGE_BASENAME = 'knowledge-usage.sqlite';
 
 /** '~/x' → '/Users/me/x'. A config file written by a human contains tildes. */
 export function expandHome(p: string, home: string = os.homedir()): string {
@@ -68,10 +70,27 @@ export function resolveDir(
   return { ok: true, dir: chosen };
 }
 
+/** The path a flag or, failing that, a variable gave, made absolute; null when neither said anything. */
+function givenPath(explicit: string | null, fromEnv: string | undefined): string | null {
+  for (const value of [explicit, fromEnv]) if (value && value.trim()) return path.resolve(expandHome(value));
+  return null;
+}
+
 /** The index file. Unlike the documents, this one has a default. */
 export function resolveDb(explicit: string | null = null, env: NodeJS.ProcessEnv = process.env): string {
-  if (explicit && explicit.trim()) return path.resolve(expandHome(explicit));
-  const fromEnv = env['TAGENTS_KNOWLEDGE_DB'];
-  if (fromEnv && fromEnv.trim()) return path.resolve(expandHome(fromEnv));
-  return path.join(configDir(env), DB_BASENAME);
+  return givenPath(explicit, env['TAGENTS_KNOWLEDGE_DB']) ?? path.join(configDir(env), DB_BASENAME);
+}
+
+/**
+ * The usage store: what this invocation said (--usage-db), what the environment
+ * says, else a file of its own beside the index in use. Beside it, rather than
+ * always in the config directory, so that a run on a scratch index (`--db`, a
+ * test, a second corpus) gets a scratch store and cannot write into the real one.
+ */
+export function resolveUsageDb(
+  explicit: string | null,
+  indexFile: string,
+  env: NodeJS.ProcessEnv = process.env
+): string {
+  return givenPath(explicit, env['TAGENTS_KNOWLEDGE_USAGE_DB']) ?? path.join(path.dirname(indexFile), USAGE_BASENAME);
 }

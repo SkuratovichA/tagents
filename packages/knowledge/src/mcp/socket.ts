@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
  *   XDG_CONFIG_HOME         the same function, when the line above is unset
  *   TAGENTS_KNOWLEDGE_DIR   paths.ts resolveDir(): the documents
  *   TAGENTS_KNOWLEDGE_DB    paths.ts resolveDb(): the index
+ *   TAGENTS_KNOWLEDGE_USAGE_DB paths.ts resolveUsageDb(): the store the read tools record into
  *   CLAUDE_HOMES            core transcripts.ts discoverAccounts(): which Claude accounts the sessions tools list
  * CLAUDE_CONFIG_DIR is deliberately absent: nothing under the server reads it (the sessions tools list every account on the machine). test/socket.test.ts scans the sources and fails when a read appears that is neither here nor in its list of reasons to ignore one.
  */
@@ -24,11 +25,19 @@ export const KEY_VARS = [
   'XDG_CONFIG_HOME',
   'TAGENTS_KNOWLEDGE_DIR',
   'TAGENTS_KNOWLEDGE_DB',
+  'TAGENTS_KNOWLEDGE_USAGE_DB',
   'CLAUDE_HOMES',
 ] as const;
 
 /** The key variables that hold a path (CLAUDE_HOMES a comma-separated list of them). */
-const PATH_VARS = ['TAGENTS_CONFIG_DIR', 'XDG_CONFIG_HOME', 'TAGENTS_KNOWLEDGE_DIR', 'TAGENTS_KNOWLEDGE_DB', 'CLAUDE_HOMES'] as const;
+const PATH_VARS = [
+  'TAGENTS_CONFIG_DIR',
+  'XDG_CONFIG_HOME',
+  'TAGENTS_KNOWLEDGE_DIR',
+  'TAGENTS_KNOWLEDGE_DB',
+  'TAGENTS_KNOWLEDGE_USAGE_DB',
+  'CLAUDE_HOMES',
+] as const;
 
 /** 108 on Linux, 104 on macOS, and the terminating NUL counts. */
 const MAX_SOCKET_BYTES = 100;

@@ -278,10 +278,16 @@
             },
             "json": {
               "type": "boolean"
+            },
+            "usage-db": {
+              "type": "string"
+            },
+            "verbose": {
+              "type": "boolean"
             }
           },
           "required": [],
-          "summary": "prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last"
+          "summary": "prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last; each document it returns is recorded as a hit in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)"
         },
         {
           "path": [
@@ -296,10 +302,16 @@
             },
             "db": {
               "type": "string"
+            },
+            "usage-db": {
+              "type": "string"
+            },
+            "verbose": {
+              "type": "boolean"
             }
           },
           "required": [],
-          "summary": "prints the markdown of a document, or of one section of it"
+          "summary": "prints the markdown of a document, or of one section of it; the read is recorded as a get in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)"
         },
         {
           "path": [
@@ -357,6 +369,49 @@
           },
           "required": [],
           "summary": "writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date"
+        },
+        {
+          "path": [
+            "usage"
+          ],
+          "positionals": [],
+          "options": {
+            "dir": {
+              "type": "string"
+            },
+            "db": {
+              "type": "string"
+            },
+            "usage-db": {
+              "type": "string"
+            },
+            "since": {
+              "type": "string"
+            },
+            "top": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "all": {
+              "type": "boolean"
+            },
+            "candidates": {
+              "type": "boolean"
+            },
+            "min-gets": {
+              "type": "string"
+            },
+            "min-days": {
+              "type": "string"
+            },
+            "json": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "summary": "reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store"
         },
         {
           "path": [
@@ -473,6 +528,50 @@
           }
         },
         {
+          "name": "knowledge_usage",
+          "description": "What the knowledge documents are used for, as JSON rows, the most read first: id, type, status, gets (times the document or one of its sections was read), hits (times a search returned it), days (distinct UTC dates with a get inside the window), last (UTC date of the newest get, null when never read). Unread documents are listed with zeros. With candidates, only the documents read often enough on enough days to be worth turning into a skill. Looking at the numbers is not a read.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "since": {
+                "description": "the window, a whole number of days and a d, for example 30d (default 30d)",
+                "type": "string"
+              },
+              "top": {
+                "description": "how many rows (default 20)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "type": {
+                "description": "only documents of this type (case-insensitive, for example Runbook)",
+                "type": "string"
+              },
+              "all": {
+                "description": "also list the ids that have events but are no longer in the folder",
+                "type": "boolean"
+              },
+              "candidates": {
+                "description": "only the documents that are not deprecated and were read at least min_gets times on at least min_days dates",
+                "type": "boolean"
+              },
+              "min_gets": {
+                "description": "gets a candidate needs inside the window (default 5)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "min_days": {
+                "description": "UTC dates a candidate needs a get on inside the window (default 3)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "$schema": "http://json-schema.org/draft-07/schema#"
+          }
+        },
+        {
           "name": "sessions_recent",
           "description": "The latest sessions across every Claude account on this machine, newest first — the same text the sessions CLI prints.",
           "inputSchema": {
@@ -511,7 +610,7 @@
   },
   "api": {
     "@tagents/core": "sha256:c127f03b660a5ff59bfc2a3a99ad3b0ecbc25ebba324442ae187beb7dca0fcbd",
-    "@tagents/knowledge": "sha256:ff27124f4075cfd20705c7c6b4c768641bfcc933c9f043ae7b929e681a7b2d95",
+    "@tagents/knowledge": "sha256:63465226fcb49e8f6a20867948332ff35da600f4a020fa9701ef88730f5c2d8a",
     "@tagents/notify": "sha256:82378079b87af196363505cb138618ae0e84223fea9f92d4eaa01ec4981564bf",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"
   }

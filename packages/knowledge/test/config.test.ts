@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { DB_BASENAME, configuredDir, expandHome, resolveDb, resolveDir } from '../src/paths.ts';
+import { DB_BASENAME, USAGE_BASENAME, configuredDir, expandHome, resolveDb, resolveDir, resolveUsageDb } from '../src/paths.ts';
 import { copyKnowledge, removeDir, runCli, tmpDir } from './helpers.ts';
 
 test('~ is expanded, and only at the start', () => {
@@ -69,6 +69,28 @@ test('the index defaults next to the config, and moves with the env', () => {
   assert.equal(resolveDb(null, env), path.join('/tmp/tagents-config', DB_BASENAME));
   assert.equal(resolveDb(null, { ...env, TAGENTS_KNOWLEDGE_DB: '/tmp/other.sqlite' }), '/tmp/other.sqlite');
   assert.equal(resolveDb('/tmp/explicit.sqlite', { ...env, TAGENTS_KNOWLEDGE_DB: '/tmp/other.sqlite' }), '/tmp/explicit.sqlite');
+});
+
+test('the usage store: the flag, then the variable, then a file beside the index in use', () => {
+  const index = '/tmp/x/index.sqlite';
+  const env = { TAGENTS_KNOWLEDGE_USAGE_DB: '/tmp/b.sqlite' };
+  assert.equal(resolveUsageDb(null, index, {}), path.join('/tmp/x', USAGE_BASENAME));
+  assert.equal(resolveUsageDb(null, index, env), '/tmp/b.sqlite');
+  assert.equal(resolveUsageDb('/tmp/a.sqlite', index, env), '/tmp/a.sqlite');
+  // Blank is unset, as for the index.
+  assert.equal(resolveUsageDb('  ', index, { TAGENTS_KNOWLEDGE_USAGE_DB: ' ' }), path.join('/tmp/x', USAGE_BASENAME));
+  // A relative path counts from the directory the program runs in, and ~ is expanded.
+  assert.equal(resolveUsageDb('a.sqlite', index, {}), path.resolve('a.sqlite'));
+  assert.equal(resolveUsageDb('~/u.sqlite', index, {}), path.join(os.homedir(), 'u.sqlite'));
+  assert.equal(resolveUsageDb(null, index, { TAGENTS_KNOWLEDGE_USAGE_DB: '~/v.sqlite' }), path.join(os.homedir(), 'v.sqlite'));
+});
+
+test('the default usage store follows the index, however the index was chosen', () => {
+  const env = { TAGENTS_CONFIG_DIR: '/tmp/tagents-config' };
+  const beside = (db: string | null, e: NodeJS.ProcessEnv): string => resolveUsageDb(null, resolveDb(db, e), e);
+  assert.equal(beside(null, env), path.join('/tmp/tagents-config', USAGE_BASENAME));
+  assert.equal(beside(null, { ...env, TAGENTS_KNOWLEDGE_DB: '/tmp/other/index.sqlite' }), path.join('/tmp/other', USAGE_BASENAME));
+  assert.equal(beside('/tmp/explicit/i.sqlite', { ...env, TAGENTS_KNOWLEDGE_DB: '/tmp/other/index.sqlite' }), path.join('/tmp/explicit', USAGE_BASENAME));
 });
 
 test('the CLI finds the folder through config.yaml alone', () => {

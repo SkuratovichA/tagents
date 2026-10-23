@@ -8,11 +8,13 @@
 // serves the same `createServer` to many clients over a unix socket, and
 // bin/knowledge-mcp falls back to `runMcp` whenever that cannot be had.
 //
-// THERE ARE NO WRITE TOOLS, and that is a design decision, not an omission.
+// NO TOOL WRITES A DOCUMENT, and that is a design decision, not an omission.
 // The documents are a git repository the owner edits; a tool that could write
 // them would put an agent's paraphrase into the source of truth without a
 // diff, a review or a commit message. Reads are safe to hand out; writes go
-// through git.
+// through git. The one thing a read tool leaves behind is an event in the usage
+// store (usage.ts) for each document it returns: the owner's record of what is
+// read, which is not a document and never changes an answer.
 //
 // stdout belongs to the JSON-RPC framing. Nothing in this file may print.
 import fs from 'node:fs';
@@ -23,8 +25,9 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { realClock, renderRecent, renderSearch } from '@tagents/core';
 import { openDb, reindex } from '../db.ts';
-import { resolveDb, resolveDir } from '../paths.ts';
+import { resolveDb, resolveDir, resolveUsageDb } from '../paths.ts';
 import { getDoc, getSection, listDocs, search, type Clock } from '../search.ts';
+import { UsageStoreError, callerFrom, getEvent, hitEvents, parseSince, readUsageRows, recordReads, type UsageEvent, type UsageRow } from '../usage.ts';
 
 export const SERVER_NAME = 'tagents-knowledge';
 export const SERVER_VERSION = '0.1.0';
@@ -47,7 +50,7 @@ const json = (value: unknown): string => JSON.stringify(value, null, 2);
 type Answer<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
 
 function withDb<T>(
-  fn: (db: DatabaseSync, dir: string) => T,
+  fn: (db: DatabaseSync, dir: string, indexFile: string) => T,
   env: NodeJS.ProcessEnv = process.env
 ): Answer<T> {
   const dir = resolveDir(null, env);
@@ -59,10 +62,11 @@ function withDb<T>(
           ? `no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in ${dir.config}`
           : `knowledge directory ${dir.dir} does not exist`,
     };
-  const db = openDb(resolveDb(null, env));
+  const indexFile = resolveDb(null, env);
+  const db = openDb(indexFile);
   try {
     reindex(db, dir.dir);
-    return { ok: true, value: fn(db, dir.dir) };
+    return { ok: true, value: fn(db, dir.dir, indexFile) };
   } finally {
     db.close();
   }
@@ -72,6 +76,12 @@ const TYPE_HINT = 'case-insensitive, for example Runbook';
 
 export function createServer(env: NodeJS.ProcessEnv = process.env, clock: Clock = realClock): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
+
+  /** Who is asking: the name the client gave in the handshake. */
+  const caller = (): string | null => callerFrom(server.server.getClientVersion()?.name);
+  /** Leave the events of a read in the usage store. Silent: a tool has nobody to tell, and a store that fails never changes an answer. */
+  const record = (events: readonly UsageEvent[], indexFile: string): void =>
+    recordReads(resolveUsageDb(null, indexFile, env), events, { now: clock });
 
   server.registerTool(
     'knowledge_search',
@@ -88,17 +98,17 @@ export function createServer(env: NodeJS.ProcessEnv = process.env, clock: Clock 
       },
     },
     (args) => {
-      const out = withDb(
-        (db) =>
-          search(db, [args.query], {
-            ...(args.tag === undefined ? {} : { tag: args.tag }),
-            ...(args.type === undefined ? {} : { type: args.type }),
-            ...(args.kind === undefined ? {} : { kind: args.kind }),
-            ...(args.limit === undefined ? {} : { limit: args.limit }),
-            now: clock,
-          }),
-        env
-      );
+      const out = withDb((db, _dir, indexFile) => {
+        const hits = search(db, [args.query], {
+          ...(args.tag === undefined ? {} : { tag: args.tag }),
+          ...(args.type === undefined ? {} : { type: args.type }),
+          ...(args.kind === undefined ? {} : { kind: args.kind }),
+          ...(args.limit === undefined ? {} : { limit: args.limit }),
+          now: clock,
+        });
+        record(hitEvents(hits, caller()), indexFile);
+        return hits;
+      }, env);
       if (!out.ok) return fail(out.error);
       return out.value.length ? ok(json(out.value)) : ok(`nothing matches "${args.query}"`);
     }
@@ -119,16 +129,21 @@ export function createServer(env: NodeJS.ProcessEnv = process.env, clock: Clock 
       },
     },
     (args) => {
-      const out = withDb((db): Answer<string> => {
+      const out = withDb((db, _dir, indexFile): Answer<string> => {
         const doc = getDoc(db, args.id);
         if (!doc) return { ok: false, error: `no document with id "${args.id}"` };
-        if (args.heading === undefined) return { ok: true, value: readText(doc.path) };
+        if (args.heading === undefined) {
+          const text = readText(doc.path);
+          record([getEvent(doc.id, '', caller())], indexFile);
+          return { ok: true, value: text };
+        }
         const section = getSection(db, args.id, args.heading);
         if (section === null)
           return {
             ok: false,
             error: `document "${args.id}" has no section "${args.heading}"; it has: ${doc.headings.join(', ') || '(none)'}`,
           };
+        record([getEvent(doc.id, section.heading, caller())], indexFile);
         return { ok: true, value: `## ${section.heading}\n\n${section.body}\n` };
       }, env);
       if (!out.ok) return fail(out.error);
@@ -160,6 +175,51 @@ export function createServer(env: NodeJS.ProcessEnv = process.env, clock: Clock 
         env
       );
       return out.ok ? ok(json(out.value)) : fail(out.error);
+    }
+  );
+
+  server.registerTool(
+    'knowledge_usage',
+    {
+      title: 'Which knowledge documents are read',
+      description:
+        'What the knowledge documents are used for, as JSON rows, the most read first: id, type, status, gets (times the document or one of its sections was read), hits (times a search returned it), days (distinct UTC dates with a get inside the window), last (UTC date of the newest get, null when never read). Unread documents are listed with zeros. With candidates, only the documents read often enough on enough days to be worth turning into a skill. Looking at the numbers is not a read.',
+      inputSchema: {
+        since: z.string().optional().describe('the window, a whole number of days and a d, for example 30d (default 30d)'),
+        top: z.number().int().positive().optional().describe('how many rows (default 20)'),
+        type: z.string().optional().describe(`only documents of this type (${TYPE_HINT})`),
+        all: z.boolean().optional().describe('also list the ids that have events but are no longer in the folder'),
+        candidates: z
+          .boolean()
+          .optional()
+          .describe('only the documents that are not deprecated and were read at least min_gets times on at least min_days dates'),
+        min_gets: z.number().int().positive().optional().describe('gets a candidate needs inside the window (default 5)'),
+        min_days: z.number().int().positive().optional().describe('UTC dates a candidate needs a get on inside the window (default 3)'),
+      },
+    },
+    (args) => {
+      const sinceDays = args.since === undefined ? undefined : parseSince(args.since);
+      if (sinceDays === null) return fail('since must be a positive whole number of days followed by d, such as 30d');
+      const out = withDb((db, _dir, indexFile): Answer<UsageRow[]> => {
+        try {
+          const rows = readUsageRows(db, resolveUsageDb(null, indexFile, env), {
+            now: clock,
+            ...(sinceDays === undefined ? {} : { sinceDays }),
+            ...(args.top === undefined ? {} : { top: args.top }),
+            ...(args.type === undefined ? {} : { type: args.type }),
+            ...(args.all === undefined ? {} : { all: args.all }),
+            ...(args.candidates === undefined ? {} : { candidates: args.candidates }),
+            ...(args.min_gets === undefined ? {} : { minGets: args.min_gets }),
+            ...(args.min_days === undefined ? {} : { minDays: args.min_days }),
+          });
+          return { ok: true, value: rows };
+        } catch (e) {
+          if (!(e instanceof UsageStoreError)) throw e;
+          return { ok: false, error: `the usage store ${e.file} cannot be read: ${e.reason}` };
+        }
+      }, env);
+      if (!out.ok) return fail(out.error);
+      return out.value.ok ? ok(json(out.value.value)) : fail(out.value.error);
     }
   );
 
