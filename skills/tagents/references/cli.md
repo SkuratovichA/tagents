@@ -167,9 +167,9 @@ Usage: `tagents-knowledge index [--dir <dir>] [--db <db>] [--full]`
 
 ### search
 
-prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last
+prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last; each document it returns is recorded as a hit in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)
 
-Usage: `tagents-knowledge search <query…> [--dir <dir>] [--db <db>] [--tag <tag>] [--type <type>] [--kind <kind>] [--limit <limit>] [--json]`
+Usage: `tagents-knowledge search <query…> [--dir <dir>] [--db <db>] [--tag <tag>] [--type <type>] [--kind <kind>] [--limit <limit>] [--json] [--usage-db <usage-db>] [--verbose]`
 
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
@@ -180,17 +180,21 @@ Usage: `tagents-knowledge search <query…> [--dir <dir>] [--db <db>] [--tag <ta
 | `--kind` | string | no | no |
 | `--limit` | string | no | no |
 | `--json` | boolean | no | no |
+| `--usage-db` | string | no | no |
+| `--verbose` | boolean | no | no |
 
 ### show
 
-prints the markdown of a document, or of one section of it
+prints the markdown of a document, or of one section of it; the read is recorded as a get in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)
 
-Usage: `tagents-knowledge show <id[#heading]> [--dir <dir>] [--db <db>]`
+Usage: `tagents-knowledge show <id[#heading]> [--dir <dir>] [--db <db>] [--usage-db <usage-db>] [--verbose]`
 
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
 | `--dir` | string | no | no |
 | `--db` | string | no | no |
+| `--usage-db` | string | no | no |
+| `--verbose` | boolean | no | no |
 
 ### list
 
@@ -227,6 +231,26 @@ Usage: `tagents-knowledge toc [--dir <dir>] [--check]`
 |---|---|---|---|
 | `--dir` | string | no | no |
 | `--check` | boolean | no | no |
+
+### usage
+
+reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store
+
+Usage: `tagents-knowledge usage [--dir <dir>] [--db <db>] [--usage-db <usage-db>] [--since <since>] [--top <top>] [--type <type>] [--all] [--candidates] [--min-gets <min-gets>] [--min-days <min-days>] [--json]`
+
+| Flag | Type | Required | Repeatable |
+|---|---|---|---|
+| `--dir` | string | no | no |
+| `--db` | string | no | no |
+| `--usage-db` | string | no | no |
+| `--since` | string | no | no |
+| `--top` | string | no | no |
+| `--type` | string | no | no |
+| `--all` | boolean | no | no |
+| `--candidates` | boolean | no | no |
+| `--min-gets` | string | no | no |
+| `--min-days` | string | no | no |
+| `--json` | boolean | no | no |
 
 ### mcp
 

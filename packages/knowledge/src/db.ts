@@ -94,11 +94,16 @@ create virtual table if not exists chunks_fts using fts5(
 );
 `;
 
-/** Open (creating it if need be) and bring the schema up to date. */
-export function openDb(file: string): DatabaseSync {
+/** Open a SQLite file, making its directory if need be, with Node's experimental notice already dropped. The index and the usage store both start here. */
+export function openFile(file: string): DatabaseSync {
   silenceSqliteWarning();
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
-  const db = new DatabaseSync(file);
+  return new DatabaseSync(file);
+}
+
+/** Open (creating it if need be) and bring the schema up to date. */
+export function openDb(file: string): DatabaseSync {
+  const db = openFile(file);
   db.exec('pragma foreign_keys = on');
   const version = schemaVersion(db);
   // No migration path while the schema is one version old: the index is a

@@ -10,7 +10,7 @@ Nobody can tell which knowledge documents are read. A runbook every session reac
 - New location settings `--usage-db` and `TAGENTS_KNOWLEDGE_USAGE_DB`. The variable joins the key of the shared server, so sessions with different usage stores never share a daemon.
 - `search` and `show` gain `--verbose`, which says on stderr why a read could not be recorded.
 - Recording a new event deletes the events older than 365 days.
-- **Stacks on `okf-bundle-format`** (PR #12). Both changes modify "CLI verbs and flags" and "MCP server", so the modified blocks here repeat that change's text with this change's additions, and this change is archived after it.
+- **Stacks on `okf-bundle-format`** (PR #12, merged; the change itself is not archived yet). Both changes modify "CLI verbs and flags" and "MCP server", so the modified blocks here repeat that change's text with this change's additions, and this change is archived after it.
 
 ## Capabilities
 

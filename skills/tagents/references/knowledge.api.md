@@ -9,8 +9,20 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { SQLOutputValue } from 'node:sqlite';
 import { TurnClock } from '@tagents/core';
 
+// @public
+export function appendEvents(db: DatabaseSync, events: readonly UsageEvent[], clock?: Clock): void;
+
 // @public (undocumented)
 export const BODY_WEIGHT = 1;
+
+// @public (undocumented)
+export const BUSY_TIMEOUT_MS = 250;
+
+// @public
+export function callerFrom(name: string | undefined): string | null;
+
+// @public
+export function callerFromEnv(env: NodeJS.ProcessEnv): string | null;
 
 // @public
 export interface Chunk {
@@ -45,6 +57,18 @@ export const DEFAULT_LIMIT = 10;
 
 // @public (undocumented)
 export const DEFAULT_LOCALE = "en";
+
+// @public (undocumented)
+export const DEFAULT_MIN_DAYS = 3;
+
+// @public (undocumented)
+export const DEFAULT_MIN_GETS = 5;
+
+// @public (undocumented)
+export const DEFAULT_SINCE_DAYS = 30;
+
+// @public (undocumented)
+export const DEFAULT_TOP = 20;
 
 // @public (undocumented)
 export type DirResult = {
@@ -150,6 +174,9 @@ export interface Generated {
 // @public (undocumented)
 export function getDoc(db: DatabaseSync, id: string, now?: Clock): DocSummary | null;
 
+// @public (undocumented)
+export function getEvent(docId: string, heading: string, caller: string | null): UsageEvent;
+
 // @public
 export function getSection(db: DatabaseSync, id: string, heading: string): Section | null;
 
@@ -176,6 +203,9 @@ export interface Hit extends Lifecycle {
     // (undocumented)
     readonly title: string;
 }
+
+// @public
+export function hitEvents(hits: readonly Pick<Hit, 'id'>[], caller: string | null): UsageEvent[];
 
 // @public (undocumented)
 export const INDEX_FILE = "index.md";
@@ -306,6 +336,9 @@ export const OKF_KEYS: readonly string[];
 export function openDb(file: string): DatabaseSync;
 
 // @public
+export function openUsageDb(file: string): DatabaseSync;
+
+// @public
 export function parseAddress(address: string): {
     id: string;
     heading: string | null;
@@ -318,7 +351,26 @@ export function parseDoc(file: string, text: string): KnowledgeDoc;
 export function parseOffsetDatetime(value: unknown): number | null;
 
 // @public
+export function parsePositive(value: string): number | null;
+
+// @public
+export function parseSince(value: string): number | null;
+
+// @public
 export function readDoc(file: string): KnowledgeDoc;
+
+// @public
+export function readUsageRows(index: DatabaseSync, file: string, options?: ReportOptions): UsageRow[];
+
+// @public (undocumented)
+export interface RecordOptions {
+    // (undocumented)
+    readonly now?: Clock;
+    readonly report?: (reason: string) => void;
+}
+
+// @public
+export function recordReads(file: string, events: readonly UsageEvent[], options?: RecordOptions): void;
 
 // @public
 export function reindex(db: DatabaseSync, dir: string, options?: {
@@ -328,6 +380,23 @@ export function reindex(db: DatabaseSync, dir: string, options?: {
 // @public
 export function renderIndex(docs: readonly KnowledgeDoc[]): string;
 
+// @public (undocumented)
+export interface ReportOptions {
+    readonly all?: boolean;
+    readonly candidates?: boolean;
+    // (undocumented)
+    readonly minDays?: number;
+    // (undocumented)
+    readonly minGets?: number;
+    // (undocumented)
+    readonly now?: Clock;
+    // (undocumented)
+    readonly sinceDays?: number;
+    // (undocumented)
+    readonly top?: number;
+    readonly type?: string;
+}
+
 // @public
 export const RESERVED_FILES: readonly string[];
 
@@ -336,6 +405,9 @@ export function resolveDb(explicit?: string | null, env?: NodeJS.ProcessEnv): st
 
 // @public (undocumented)
 export function resolveDir(explicit?: string | null, env?: NodeJS.ProcessEnv): DirResult;
+
+// @public
+export function resolveUsageDb(explicit: string | null, indexFile: string, env?: NodeJS.ProcessEnv): string;
 
 // @public (undocumented)
 export const resources: {
@@ -382,21 +454,31 @@ export const resources: {
             readonly tocWrote: "wrote {{path}}";
             readonly tocOutOfDate: "index.md is out of date";
             readonly summaryIndex: "brings the index in line with the folder; --full rebuilds it from nothing";
-            readonly summarySearch: "prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last";
-            readonly summaryShow: "prints the markdown of a document, or of one section of it";
+            readonly summarySearch: "prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last; each document it returns is recorded as a hit in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)";
+            readonly summaryShow: "prints the markdown of a document, or of one section of it; the read is recorded as a get in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)";
             readonly summaryList: "prints one line per document: id, type, updated, title and tags; --type filters by type (--kind is its deprecated alias); deprecated documents come last";
             readonly summaryLint: "checks the claims each document makes about itself";
             readonly summaryToc: "writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date";
+            readonly summaryUsage: "reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store";
             readonly summaryMcp: "serves the knowledge tools over stdio as an MCP server";
             readonly summaryServe: "starts the shared MCP server for this environment if it is not running and prints its unix socket; --idle S is how many seconds without a client before it exits (default 600); --foreground runs the server in this process, on --socket P";
+            readonly usageColumns: "id type status gets hits days last";
+            readonly noUsageRows: "nothing to report: no document matches";
+            readonly badSince: "--since must be a positive whole number of days followed by d, such as 30d";
+            readonly badCount: "--{{flag}} must be a positive whole number";
+            readonly usageUnreadable: "the usage store {{file}} cannot be read: {{reason}}";
+            readonly notRecorded: "not recorded in the usage store {{file}}: {{reason}}";
             readonly badIdle: "--idle must be a positive number of seconds";
             readonly serveFailed: "could not start the shared knowledge server: {{reason}}";
         };
     };
     readonly ru: {
-        readonly knowledge: Partial<Record<"usage" | "unknownCommand" | "missingOption" | "noDir" | "missingDir" | "indexed" | "indexErrors" | "notIndexed" | "noHits" | "unknownId" | "unknownHeading" | "noDocs" | "lintClean" | "lintProblems" | "issueFrontmatter" | "issueStem" | "issueDuplicateId" | "issueStemSlug" | "issueUnknownKey" | "issueNotString" | "issueDescriptionLines" | "issueTagsList" | "issueTag" | "issueStatus" | "issueScope" | "issueGeneratedShape" | "issueVerifiedShape" | "issueStaleAfter" | "issueSourcesList" | "issueSourceResource" | "issueUpdated" | "issueLegacy" | "issueExpired" | "issueStale" | "issueGenerated" | "issueDeadLink" | "issueIndexMissing" | "issueIndexOutdated" | "tocWrote" | "tocOutOfDate" | "summaryIndex" | "summarySearch" | "summaryShow" | "summaryList" | "summaryLint" | "summaryToc" | "summaryMcp" | "summaryServe" | "badIdle" | "serveFailed", string>>;
+        readonly knowledge: Partial<Record<"usage" | "unknownCommand" | "missingOption" | "noDir" | "missingDir" | "indexed" | "indexErrors" | "notIndexed" | "noHits" | "unknownId" | "unknownHeading" | "noDocs" | "lintClean" | "lintProblems" | "issueFrontmatter" | "issueStem" | "issueDuplicateId" | "issueStemSlug" | "issueUnknownKey" | "issueNotString" | "issueDescriptionLines" | "issueTagsList" | "issueTag" | "issueStatus" | "issueScope" | "issueGeneratedShape" | "issueVerifiedShape" | "issueStaleAfter" | "issueSourcesList" | "issueSourceResource" | "issueUpdated" | "issueLegacy" | "issueExpired" | "issueStale" | "issueGenerated" | "issueDeadLink" | "issueIndexMissing" | "issueIndexOutdated" | "tocWrote" | "tocOutOfDate" | "summaryIndex" | "summarySearch" | "summaryShow" | "summaryList" | "summaryLint" | "summaryToc" | "summaryUsage" | "summaryMcp" | "summaryServe" | "usageColumns" | "noUsageRows" | "badSince" | "badCount" | "usageUnreadable" | "notRecorded" | "badIdle" | "serveFailed", string>>;
     };
 };
+
+// @public (undocumented)
+export const RETENTION_DAYS = 365;
 
 // @public (undocumented)
 export type Row = Record<string, SQLOutputValue>;
@@ -485,6 +567,49 @@ export const TOKENIZER = "unicode61 remove_diacritics 2";
 
 // @public
 export type Translate = (key: KnowledgeKey, vars?: Vars) => string;
+
+// @public
+export const USAGE_BASENAME = "knowledge-usage.sqlite";
+
+// @public (undocumented)
+export interface UsageEvent {
+    // (undocumented)
+    readonly caller: string | null;
+    // (undocumented)
+    readonly docId: string;
+    readonly heading: string;
+    readonly kind: UsageKind;
+}
+
+// @public (undocumented)
+export type UsageKind = 'get' | 'hit';
+
+// @public (undocumented)
+export interface UsageRow {
+    readonly days: number;
+    // (undocumented)
+    readonly gets: number;
+    // (undocumented)
+    readonly hits: number;
+    // (undocumented)
+    readonly id: string;
+    readonly last: string | null;
+    // (undocumented)
+    readonly status: Status | null;
+    readonly type: string | null;
+}
+
+// @public
+export function usageRows(index: DatabaseSync, usage: DatabaseSync | null, options?: ReportOptions): UsageRow[];
+
+// @public
+export class UsageStoreError extends Error {
+    constructor(file: string, reason: string);
+    // (undocumented)
+    readonly file: string;
+    // (undocumented)
+    readonly reason: string;
+}
 
 // @public
 export function utcDateOf(at: unknown): string | null;

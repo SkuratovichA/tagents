@@ -7,6 +7,8 @@
 // reindex of a folder this size is a handful of stat() calls), so there is no
 // such thing as searching yesterday's copy of a runbook.
 //
+// `search` and `show` also leave a line in the usage store once they have answered (usage.ts says what and why). That is best effort: a store that cannot take it never changes what was printed or the exit code, and `--verbose` is the only way to hear about it.
+//
 // Exit codes: 0 ok · 1 error · 2 usage · 4 nothing found.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -14,7 +16,7 @@ import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import { EXIT } from './exit.ts';
-import { INDEX, LINT, LIST, SEARCH, SERVE, SHOW, TOC } from './spec.ts';
+import { INDEX, LINT, LIST, SEARCH, SERVE, SHOW, TOC, USAGE } from './spec.ts';
 import { openDb, reindex, silenceSqliteWarning } from '../db.ts';
 import { createT, type Translate } from '../i18n/index.ts';
 import { loadDir } from '../doc.ts';
@@ -22,9 +24,25 @@ import { lint } from '../lint.ts';
 import { indexState, writeIndex } from '../toc.ts';
 import { DEFAULT_IDLE_SECONDS, defaultSocket, ensureDaemon, runDaemon } from '../mcp/daemon.ts';
 import { runMcp } from '../mcp/server.ts';
-import { resolveDb, resolveDir } from '../paths.ts';
+import { resolveDb, resolveDir, resolveUsageDb } from '../paths.ts';
 import { realClock } from '@tagents/core';
 import { getDoc, getSection, listDocs, parseAddress, search, type Clock, type Filters, type Hit } from '../search.ts';
+import {
+  DEFAULT_MIN_DAYS,
+  DEFAULT_MIN_GETS,
+  DEFAULT_SINCE_DAYS,
+  DEFAULT_TOP,
+  UsageStoreError,
+  callerFromEnv,
+  getEvent,
+  hitEvents,
+  parsePositive,
+  parseSince,
+  readUsageRows,
+  recordReads,
+  type UsageEvent,
+  type UsageRow,
+} from '../usage.ts';
 
 export { EXIT };
 
@@ -50,25 +68,44 @@ function needDir(explicit: string | null, io: Io, t: Translate): string | null {
   return null;
 }
 
-/** Resolve the folder, open the index, refresh it, hand both to the verb. */
+/** Resolve the folder, open the index, refresh it, hand both to the verb, with the file the index was opened from. */
 function withIndex(
   common: Common,
   io: Io,
   t: Translate,
-  run: (db: DatabaseSync, dir: string) => number
+  run: (db: DatabaseSync, dir: string, indexFile: string) => number
 ): number {
   const dir = needDir(common.dir, io, t);
   if (dir === null) return EXIT.error;
-  const db = openDb(resolveDb(common.db));
+  const indexFile = resolveDb(common.db);
+  const db = openDb(indexFile);
   try {
     // Reading is allowed to be a little stale in its reporting, never in its
     // answers: a file that stopped parsing is named on stderr and the rest of
     // the folder still answers.
     for (const e of reindex(db, dir).errors) io.err(`${path.basename(e.file)}: ${e.message}\n`);
-    return run(db, dir);
+    return run(db, dir, indexFile);
   } finally {
     db.close();
   }
+}
+
+/** Where the events of a read go, and whether a failure to record them is told. */
+interface Recording {
+  usageDb: string | null;
+  indexFile: string;
+  verbose: boolean;
+}
+
+/** Leave the events of a read that answered in the usage store; a store that cannot take them is named on stderr only for `--verbose`. */
+function record(events: readonly UsageEvent[], where: Recording, io: Io, t: Translate, clock: Clock): void {
+  const file = resolveUsageDb(where.usageDb, where.indexFile, process.env);
+  recordReads(file, events, {
+    now: clock,
+    report: (reason) => {
+      if (where.verbose) io.err(`${t('notRecorded', { file, reason })}\n`);
+    },
+  });
 }
 
 function filters(values: {
@@ -149,14 +186,24 @@ function cmdSearch(argv: string[], io: Io, t: Translate, clock: Clock): number {
     return EXIT.usage;
   }
   const limit = Number(values.limit);
-  return withIndex({ dir: values.dir ?? null, db: values.db ?? null }, io, t, (db) => {
+  return withIndex({ dir: values.dir ?? null, db: values.db ?? null }, io, t, (db, _dir, indexFile) => {
     const hits = search(db, positionals, {
       ...filters(values),
       now: clock,
       ...(Number.isFinite(limit) && limit > 0 ? { limit } : {}),
     });
+    // Once per document among the results, after the answer is out as `show` does it; a search that found nothing has nothing to record.
+    const hit = (): void =>
+      record(
+        hitEvents(hits, callerFromEnv(process.env)),
+        { usageDb: values['usage-db'] ?? null, indexFile, verbose: values.verbose === true },
+        io,
+        t,
+        clock
+      );
     if (values.json === true) {
       io.out(json(hits.map(hitJson)));
+      hit();
       return hits.length ? EXIT.ok : EXIT.notFound;
     }
     if (!hits.length) {
@@ -167,11 +214,12 @@ function cmdSearch(argv: string[], io: Io, t: Translate, clock: Clock): number {
       const address = h.heading ? `${h.id}#${h.heading}` : h.id;
       io.out(`${address.padEnd(38)} ${h.score.toFixed(2).padStart(7)}  ${h.snippet}${marks(h)}\n`);
     }
+    hit();
     return EXIT.ok;
   });
 }
 
-function cmdShow(argv: string[], io: Io, t: Translate): number {
+function cmdShow(argv: string[], io: Io, t: Translate, clock: Clock): number {
   const { values, positionals } = parseArgs({
     args: argv,
     options: SHOW.options,
@@ -184,12 +232,21 @@ function cmdShow(argv: string[], io: Io, t: Translate): number {
     return EXIT.usage;
   }
   const { id, heading } = parseAddress(address);
-  return withIndex({ dir: values.dir ?? null, db: values.db ?? null }, io, t, (db) => {
+  return withIndex({ dir: values.dir ?? null, db: values.db ?? null }, io, t, (db, _dir, indexFile) => {
     const doc = getDoc(db, id);
     if (!doc) {
       io.err(`${t('unknownId', { id })}\n`);
       return EXIT.notFound;
     }
+    // A get is recorded only for a call that returned text: the section under the heading the document writes, whatever case was asked for.
+    const got = (section: string): void =>
+      record(
+        [getEvent(doc.id, section, callerFromEnv(process.env))],
+        { usageDb: values['usage-db'] ?? null, indexFile, verbose: values.verbose === true },
+        io,
+        t,
+        clock
+      );
     if (heading === null) {
       let text: string;
       try {
@@ -199,6 +256,7 @@ function cmdShow(argv: string[], io: Io, t: Translate): number {
         return EXIT.notFound;
       }
       io.out(text.endsWith('\n') ? text : `${text}\n`);
+      got('');
       return EXIT.ok;
     }
     const section = getSection(db, id, heading);
@@ -207,6 +265,7 @@ function cmdShow(argv: string[], io: Io, t: Translate): number {
       return EXIT.notFound;
     }
     io.out(section.heading ? `## ${section.heading}\n\n${section.body}\n` : `${section.body}\n`);
+    got(section.heading);
     return EXIT.ok;
   });
 }
@@ -275,6 +334,73 @@ function cmdToc(argv: string[], io: Io, t: Translate): number {
   return EXIT.ok;
 }
 
+/** A count flag: its value, the default when it is absent, null (after saying which flag) when it is not a positive whole number. */
+function countFlag(flag: 'top' | 'min-gets' | 'min-days', value: string | undefined, fallback: number, io: Io, t: Translate): number | null {
+  if (value === undefined) return fallback;
+  const n = parsePositive(value);
+  if (n === null) io.err(`${t('badCount', { flag })}\n`);
+  return n;
+}
+
+/** The report as text: the header, then a line per row, the columns at least two spaces apart and the counts flush right. */
+function usageTable(rows: readonly UsageRow[], t: Translate): string[] {
+  const header = t('usageColumns').split(' ');
+  const body = rows.map((r) => [r.id, r.type ?? '-', r.status ?? '-', String(r.gets), String(r.hits), String(r.days), r.last ?? '-']);
+  const table = [header, ...body];
+  const widths = header.map((_, i) => Math.max(...table.map((row) => (row[i] ?? '').length)));
+  return table.map((row) =>
+    row
+      .map((cell, i) => (i >= 3 && i <= 5 ? cell.padStart(widths[i] ?? 0) : cell.padEnd(widths[i] ?? 0)))
+      .join('  ')
+      .trimEnd()
+  );
+}
+
+function cmdUsage(argv: string[], io: Io, t: Translate, clock: Clock): number {
+  const { values } = parseArgs({
+    args: argv,
+    options: USAGE.options,
+    strict: true,
+    allowPositionals: false,
+  });
+  const sinceDays = values.since === undefined ? DEFAULT_SINCE_DAYS : parseSince(values.since);
+  if (sinceDays === null) io.err(`${t('badSince')}\n`);
+  const top = countFlag('top', values.top, DEFAULT_TOP, io, t);
+  const minGets = countFlag('min-gets', values['min-gets'], DEFAULT_MIN_GETS, io, t);
+  const minDays = countFlag('min-days', values['min-days'], DEFAULT_MIN_DAYS, io, t);
+  if (sinceDays === null || top === null || minGets === null || minDays === null) return EXIT.usage;
+  return withIndex({ dir: values.dir ?? null, db: values.db ?? null }, io, t, (db, _dir, indexFile) => {
+    const file = resolveUsageDb(values['usage-db'] ?? null, indexFile, process.env);
+    let rows: UsageRow[];
+    try {
+      rows = readUsageRows(db, file, {
+        sinceDays,
+        top,
+        minGets,
+        minDays,
+        all: values.all === true,
+        candidates: values.candidates === true,
+        now: clock,
+        ...(values.type === undefined ? {} : { type: values.type }),
+      });
+    } catch (e) {
+      if (!(e instanceof UsageStoreError)) throw e;
+      io.err(`${t('usageUnreadable', { file: e.file, reason: e.reason })}\n`);
+      return EXIT.error;
+    }
+    if (values.json === true) {
+      io.out(json(rows));
+      return rows.length ? EXIT.ok : EXIT.notFound;
+    }
+    if (!rows.length) {
+      io.err(`${t('noUsageRows')}\n`);
+      return EXIT.notFound;
+    }
+    for (const line of usageTable(rows, t)) io.out(`${line}\n`);
+    return EXIT.ok;
+  });
+}
+
 /**
  * `serve` prints the socket of the shared server for this environment, starting the server first when none answers. `--foreground` is the server itself, which `serve` starts detached.
  */
@@ -313,10 +439,11 @@ export async function main(argv: string[], io: Io = stdio(), clock: Clock = real
   try {
     if (verb === 'index') return cmdIndex(rest, io, t);
     if (verb === 'search') return cmdSearch(rest, io, t, clock);
-    if (verb === 'show') return cmdShow(rest, io, t);
+    if (verb === 'show') return cmdShow(rest, io, t, clock);
     if (verb === 'list') return cmdList(rest, io, t, clock);
     if (verb === 'lint') return cmdLint(rest, io, t, clock);
     if (verb === 'toc') return cmdToc(rest, io, t);
+    if (verb === 'usage') return cmdUsage(rest, io, t, clock);
     if (verb === 'serve') return await cmdServe(rest, io, t);
     if (verb === 'mcp') {
       await runMcp();

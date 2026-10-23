@@ -226,7 +226,14 @@ export class Peer {
   }
 }
 
-export const TOOL_NAMES = ['knowledge_get', 'knowledge_list', 'knowledge_search', 'sessions_recent', 'sessions_search'];
+export const TOOL_NAMES = [
+  'knowledge_get',
+  'knowledge_list',
+  'knowledge_search',
+  'knowledge_usage',
+  'sessions_recent',
+  'sessions_search',
+];
 
 /** A session's MCP server as the plugin starts it: `sh bin/knowledge-mcp`. */
 export function startBridge(world: World, extra: Record<string, string> = {}): Peer {

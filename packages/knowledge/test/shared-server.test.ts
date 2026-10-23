@@ -22,7 +22,7 @@ import {
   writeScript,
   type World,
 } from './daemon-helpers.ts';
-import { HERE, NODE, cliEntry, runCli } from './helpers.ts';
+import { HERE, NODE, PKG, cliEntry, recordedLines, runCli } from './helpers.ts';
 import { z } from 'zod';
 
 function newWorld(t: TestContext): World {
@@ -133,6 +133,31 @@ test('environments that differ get their own daemon, and each answers from its o
   // A variable the server does not read does not split the daemon.
   await session(world, async () => undefined, { TAGENTS_KNOWLEDGE_DIR: alpha, CLAUDE_CONFIG_DIR: path.join(world.root, 'account') });
   assert.equal(daemonPids(world).length, 2);
+});
+
+test('sessions whose usage stores differ get a daemon each, and each daemon records into its own store', async (t) => {
+  const world = newWorld(t);
+  const [one, two] = ['one', 'two'].map((name) => path.join(world.root, `usage-${name}`, 'knowledge-usage.sqlite'));
+  assert.ok(one !== undefined && two !== undefined);
+  const read = (store: string, id: string): Promise<string> =>
+    session(world, (peer) => peer.callText('knowledge_get', { id }), { TAGENTS_KNOWLEDGE_USAGE_DB: store });
+
+  await read(one, 'tmux-cheatsheet');
+  await read(two, 'mashina-karta');
+  assert.equal(daemonPids(world).length, 2, 'two usage stores, two daemons');
+  assert.deepEqual(recordedLines(one), ['get tmux-cheatsheet# by daemon-suite'], 'the caller is the name the session gave in its handshake');
+  assert.deepEqual(recordedLines(two), ['get mashina-karta# by daemon-suite']);
+
+  // The same environment again joins its daemon and adds to its own store only.
+  await read(one, 'deploy-runbook');
+  assert.equal(daemonPids(world).length, 2);
+  assert.deepEqual(recordedLines(one), ['get tmux-cheatsheet# by daemon-suite', 'get deploy-runbook# by daemon-suite']);
+  assert.equal(recordedLines(two).length, 1);
+
+  // A store given relative to the session is made absolute for the daemon, which starts elsewhere.
+  const relative = path.relative(PKG, path.join(world.root, 'usage-relative', 'knowledge-usage.sqlite'));
+  await read(relative, 'tmux-cheatsheet');
+  assert.deepEqual(recordedLines(path.resolve(PKG, relative)), ['get tmux-cheatsheet# by daemon-suite']);
 });
 
 test('the bridge falls back to a server of its own when `tagents-knowledge serve` fails', async (t) => {

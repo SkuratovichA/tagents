@@ -1,3 +1,19 @@
+## A guard that "usage does not rank" needs two documents that could swap, and it only counts once a mutation has failed it (23.10.2026)
+
+The MCP guard searched `proxy`, which matches three sections of ONE document, so no re-ranking by usage could change its order and the test stayed green under a patch that sorted `knowledge_search` by reads. The guard in `search.test.ts` was worse: it called `search()`, which never reads the usage store, so it could not fail at all. Only the mutation run (patch the handler to re-rank, run the suite, see it pass) showed that. The MCP guard now has two documents that tie on score, reads the one that sorts second forty times and expects the order to stay, which fails under the patch; the `search.test.ts` one is gone.
+
+## `const rows: Array<{ id: string }> = JSON.parse(text)` is an unchecked assertion, and `lint-no-any` does not see it (23.10.2026)
+
+`JSON.parse` returns `any`, and a type annotation on the variable that receives it narrows that `any` to whatever the annotation says without checking a byte of the data. Seven of those crept into `test/cli.test.ts` while the suite was green and the no-any test passed, because the test only looks for the word `any`. A wrong shape would have failed later with `undefined` somewhere far from the cause. Parse into `unknown` and narrow with a schema: `IdRows` and `UsageRows` in `test/helpers.ts` are zod schemas, and a case that tests the order of the keys uses `z.record`, because an object schema hands its keys back in its own order.
+
+## Importing `node:sqlite` from the shared test helper puts Node's experimental notice into every suite (23.10.2026)
+
+Adding `readEvents` and `eventsIn` to `test/helpers.ts` meant importing `node:sqlite` and `src/db.ts` there, and seven suites (config, doc, lint, mcp, shared-server, socket, toc) started printing `ExperimentalWarning: SQLite is an experimental feature` into the runner's output. The notice is queued when `node:sqlite` is imported and emitted on the next tick, so only a suite whose first test calls `silenceSqliteWarning()` synchronously gets in before it. The helper now calls `silenceSqliteWarning()` at module level, the way `main()` does before anything runs. It showed only in the log: the exit code and the pass count were green, and a per-file count of `ExperimentalWarning` found it.
+
+## `pragma journal_mode = wal` on a file two processes create at once is refused without waiting (23.10.2026)
+
+The switch of a new SQLite file to WAL does not honour `busy_timeout`: the second process to create the usage store got `database is locked` on that pragma, its call threw before writing, and best-effort recording dropped the event (found by the test that records from two processes at once). The file works in either journal mode and the next call finds it switched, so the pragma sits in its own try/catch in `openUsageDb` and everything after it (`synchronous`, the table) still runs.
+
 ## A shell script that updates the checkout it lives in must not still be reading itself (20.10.2026)
 
 `install.sh` lives inside the managed copy it moves to a new commit. `sh` reads a script command by command, by offset: when the file changes under it halfway, the next command comes from the middle of whatever is now at that offset. The whole program is therefore one function, called on the last line as `main "$@"; exit $?`; the last line is read in one piece before anything runs, and nothing after `exit` is ever read.

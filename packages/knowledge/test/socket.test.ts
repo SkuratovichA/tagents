@@ -20,6 +20,7 @@ test('the key follows every variable the server reads, the code stamp, and nothi
   const key = serverKey(base, STAMP);
   assert.match(key, /^[0-9a-f]{12}$/);
   assert.equal(serverKey({ ...base }, STAMP), key, 'stable');
+  assert.ok(KEY_VARS.includes('TAGENTS_KNOWLEDGE_USAGE_DB'), 'two usage stores are two environments: each gets a server of its own');
   for (const name of KEY_VARS) {
     assert.notEqual(serverKey({ ...base, [name]: '/changed' }, STAMP), key, name);
   }
@@ -35,6 +36,7 @@ test('a path relative to the session becomes absolute, because the daemon starts
     {
       TAGENTS_KNOWLEDGE_DIR: 'docs',
       TAGENTS_KNOWLEDGE_DB: '~/index.sqlite',
+      TAGENTS_KNOWLEDGE_USAGE_DB: 'usage/events.sqlite',
       TAGENTS_CONFIG_DIR: '/abs/config',
       CLAUDE_HOMES: ' a , /b ,,c ',
       HOME: '/home/a',
@@ -43,6 +45,7 @@ test('a path relative to the session becomes absolute, because the daemon starts
   );
   assert.equal(env['TAGENTS_KNOWLEDGE_DIR'], '/work/project/docs');
   assert.equal(env['TAGENTS_KNOWLEDGE_DB'], '~/index.sqlite', 'paths.ts expands ~ itself');
+  assert.equal(env['TAGENTS_KNOWLEDGE_USAGE_DB'], '/work/project/usage/events.sqlite');
   assert.equal(env['TAGENTS_CONFIG_DIR'], '/abs/config');
   assert.equal(env['CLAUDE_HOMES'], '/work/project/a,/b,/work/project/c');
   assert.equal(env['XDG_CONFIG_HOME'], undefined, 'unset stays unset');
@@ -107,6 +110,7 @@ const IGNORED: Record<string, string> = {
   PATH: 'finds `claude` for core\'s CLI and `git` for lint, neither of which a tool reaches',
   TAGENTS_LOCALE: 'the language of the CLI\'s own strings; tool text is English whatever it says',
   TA_STATE_DIR: 'the dashboard\'s state directory (agent-state.ts); no tool reads it',
+  TA_LABEL: 'a session variable only the CLI reads, as the caller of an event (usage.ts); the daemon never reads it, a tool\'s caller is the name its client gave in the handshake',
 };
 
 test('every environment variable the sources read is in the key or has a reason not to be', () => {

@@ -10,6 +10,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DatabaseSync } from 'node:sqlite';
+import { z } from 'zod';
+import { int, silenceSqliteWarning, text } from '../src/db.ts';
+
+// Importing node:sqlite, here or in a module under test, queues Node's experimental notice for the next tick. Drop it before that tick, as the CLI does before anything runs, so that no suite puts it into the runner's output because its first test did not happen to open a database.
+silenceSqliteWarning();
 
 export const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PKG = path.resolve(HERE, '..');
@@ -133,3 +139,65 @@ export function gitInit(dir: string, when = '2026-09-07T12:00:00Z'): void {
     'fixture'
   );
 }
+
+export interface StoredEvent {
+  readonly ts: number;
+  readonly docId: string;
+  readonly heading: string;
+  readonly kind: string;
+  readonly caller: string | null;
+}
+
+/** The events of a usage store that is already open, oldest first. */
+export function readEvents(db: DatabaseSync): StoredEvent[] {
+  return db
+    .prepare('select ts, doc_id, heading, kind, caller from usage_events order by ts, rowid')
+    .all()
+    .map((row) => ({
+      ts: int(row, 'ts'),
+      docId: text(row, 'doc_id'),
+      heading: text(row, 'heading'),
+      kind: text(row, 'kind'),
+      caller: row['caller'] === null ? null : text(row, 'caller'),
+    }));
+}
+
+/** What a usage store file holds, read the way anybody with sqlite3 would. Throws when the file is not there. */
+export function eventsIn(file: string): StoredEvent[] {
+  const db = new DatabaseSync(file, { readOnly: true });
+  try {
+    return readEvents(db);
+  } finally {
+    db.close();
+  }
+}
+
+/** The events a usage store holds, none when there is no store yet. */
+export function recordedEvents(file: string): StoredEvent[] {
+  return fs.existsSync(file) ? eventsIn(file) : [];
+}
+
+/** The same, a line for each: `get deploy-runbook#Rollback by reader`. */
+export function recordedLines(file: string): string[] {
+  return recordedEvents(file).map((e) => `${e.kind} ${e.docId}#${e.heading} by ${e.caller}`);
+}
+
+// `JSON.parse` hands back `any`. A schema is what turns a parsed answer into a type, and fails the case when the answer is not that shape.
+
+/** A `--json` answer that a case reads only for the ids in it. */
+export const IdRows = z.array(z.object({ id: z.string() }));
+
+/** The rows of `usage --json` and of the `knowledge_usage` tool: these keys and no others. */
+export const UsageRows = z.array(
+  z
+    .object({
+      id: z.string(),
+      type: z.string().nullable(),
+      status: z.string().nullable(),
+      gets: z.number(),
+      hits: z.number(),
+      days: z.number(),
+      last: z.string().nullable(),
+    })
+    .strict()
+);

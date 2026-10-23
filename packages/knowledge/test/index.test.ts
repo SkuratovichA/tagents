@@ -5,8 +5,10 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { SCHEMA_VERSION, docCount, openDb, reindex } from '../src/db.ts';
+import { resolveUsageDb } from '../src/paths.ts';
 import { listDocs, search } from '../src/search.ts';
-import { copyKnowledge, copyOkf, doc, removeDir, tmpDir, writeDoc } from './helpers.ts';
+import { getEvent, hitEvents, recordReads } from '../src/usage.ts';
+import { copyKnowledge, copyOkf, doc, eventsIn, removeDir, tmpDir, writeDoc } from './helpers.ts';
 
 function withCorpus(name: string, run: (dir: string, db: ReturnType<typeof openDb>) => void): void {
   const root = tmpDir(name);
@@ -161,6 +163,40 @@ test('an index written by the previous schema version is dropped and rebuilt', (
     } finally {
       db.close();
     }
+  } finally {
+    removeDir(root);
+  }
+});
+
+test('the usage store lies outside the index: a full rebuild, a deleted index and a new schema version leave it alone', () => {
+  const root = tmpDir('usage-apart');
+  try {
+    const dir = copyKnowledge(path.join(root, 'knowledge'));
+    const index = path.join(root, 'index.sqlite');
+    const store = resolveUsageDb(null, index, {});
+    assert.equal(store, path.join(root, 'knowledge-usage.sqlite'));
+    recordReads(store, [getEvent('deploy-runbook', 'Rollback', null), ...hitEvents([{ id: 'tmux-cheatsheet' }], null)], {
+      report: (reason) => assert.fail(reason),
+    });
+    const stored = (): number => eventsIn(store).length;
+
+    let db = openDb(index);
+    reindex(db, dir, { full: true });
+    db.close();
+    assert.equal(stored(), 2, 'index --full');
+
+    fs.rmSync(index);
+    db = openDb(index);
+    reindex(db, dir);
+    assert.equal(docCount(db), 5);
+    db.prepare("update meta set value = ? where key = 'schema_version'").run(String(SCHEMA_VERSION - 1));
+    db.close();
+    assert.equal(stored(), 2, 'a deleted index');
+
+    db = openDb(index);
+    assert.equal(docCount(db), 0, 'an index of another schema version is dropped');
+    db.close();
+    assert.equal(stored(), 2, 'a schema change');
   } finally {
     removeDir(root);
   }

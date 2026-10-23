@@ -22,6 +22,8 @@ export const SEARCH = {
     kind: { type: 'string' },
     limit: { type: 'string' },
     json: { type: 'boolean' },
+    'usage-db': { type: 'string' },
+    verbose: { type: 'boolean' },
   },
   required: [],
   summary: 'summarySearch',
@@ -30,7 +32,12 @@ export const SEARCH = {
 export const SHOW = {
   path: ['show'],
   positionals: ['<id[#heading]>'],
-  options: { dir: { type: 'string' }, db: { type: 'string' } },
+  options: {
+    dir: { type: 'string' },
+    db: { type: 'string' },
+    'usage-db': { type: 'string' },
+    verbose: { type: 'boolean' },
+  },
   required: [],
   summary: 'summaryShow',
 } as const satisfies CommandSpec<KnowledgeKey>;
@@ -66,6 +73,26 @@ export const TOC = {
   summary: 'summaryToc',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
+export const USAGE = {
+  path: ['usage'],
+  positionals: [],
+  options: {
+    dir: { type: 'string' },
+    db: { type: 'string' },
+    'usage-db': { type: 'string' },
+    since: { type: 'string' },
+    top: { type: 'string' },
+    type: { type: 'string' },
+    all: { type: 'boolean' },
+    candidates: { type: 'boolean' },
+    'min-gets': { type: 'string' },
+    'min-days': { type: 'string' },
+    json: { type: 'boolean' },
+  },
+  required: [],
+  summary: 'summaryUsage',
+} as const satisfies CommandSpec<KnowledgeKey>;
+
 export const MCP = {
   path: ['mcp'],
   positionals: [],
@@ -82,7 +109,7 @@ export const SERVE = {
   summary: 'summaryServe',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
-export const KNOWLEDGE_COMMANDS = [INDEX, SEARCH, SHOW, LIST, LINT, TOC, MCP, SERVE] as const satisfies readonly CommandSpec<KnowledgeKey>[];
+export const KNOWLEDGE_COMMANDS = [INDEX, SEARCH, SHOW, LIST, LINT, TOC, USAGE, MCP, SERVE] as const satisfies readonly CommandSpec<KnowledgeKey>[];
 
 /** English whatever the machine's locale is: the contract is read by tools, not people. */
 export function knowledgeCliContract(): CliContract {
