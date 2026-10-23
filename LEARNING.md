@@ -384,3 +384,15 @@ The suite is one shell scope, and its sections reuse short names such as `W2`, `
 
 ## A window made by `tmux new-window` without `-c` starts in the list process's directory (23.10.2026)
 A window tagents makes as a command client, with `tmux new-window` and no `-c`, starts in the directory the list process runs in, not in the session's. `leave_window_for_kill` made the sidebar's replacement window that way until it went through `new_pane_window`, which always passes `-c`; the review of the all-sessions-groups branch caught it, and R50 now asserts the directory.
+
+## The node commands died in a chat whose PATH held no node (23.10.2026)
+The wrappers `tagents-core` and `tagents-knowledge` ran `exec node …`, and a chat whose PATH had no node (node lives only under nvm on this machine) got `exec: node: not found` from the knowledge MCP server; install.sh now writes the absolute path of the node it found on PATH into those wrappers, which run it while the file is executable and otherwise fall back to `node` on the caller's PATH, and tests/install.sh section 10 pins both forms.
+
+## A list started by `split-window` without `-c` kept the caller's directory (23.10.2026)
+The list started by `start_sidebar` took the directory of the shell that ran `tagents --ensure-dash`, because a `tmux` command run as a client gives a new pane that client's directory, so a sidebar restarted from a worktree kept that worktree in use; the list's pane now starts with `-c "$HOME"`, and R33 and F22 in tests/window-rows.sh check `#{pane_current_path}`.
+
+## tests/ holds 21 suites, not 22 (23.10.2026)
+`tests/scratch-guard.sh` is a helper that the tmux suites source, not a suite, so `tests/` holds 21 suites; a loop over `tests/*.sh` must skip it, and a count of 22 counted it.
+
+## An update ran the installer of the commit it left, so install.sh changes landed one update late (23.10.2026)
+sh parses install.sh's single `main` before running it, so after `git checkout` moved the managed copy the rest of the run was still the old commit's program: the update that brought the node pin wrote the wrappers in the old `exec node` form and only the next update pinned them, and no case in tests/install.sh could see it because the test origin carried no install.sh; the run that moves the copy now execs the install.sh the copy holds with `TAGENTS_MOVED_FROM` set (only when that file names the variable, and never after a clone), the lock survives the exec because `acquire_lock` keeps a lock that holds its own pid, the test origin carries the tree's install.sh, and cases 11 and 12 check the hand-over and an old target installer.

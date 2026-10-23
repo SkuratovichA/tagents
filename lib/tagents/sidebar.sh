@@ -166,7 +166,7 @@ start_sidebar() {  # <window-id>
     printf '%s' "$p"; rc=0
   elif sidebar_starting; then
     if await_list; then printf '%s' "$(dash_pane)"; rc=0; fi
-  elif p=$(tmux split-window -d -f -b -h -l "${DASH_WIDTH}%" -P -F '#{pane_id}' -t "$win" "exec '$SELF'" 2>/dev/null) && [ -n "$p" ]; then
+  elif p=$(tmux split-window -d -f -b -h -c "$HOME" -l "${DASH_WIDTH}%" -P -F '#{pane_id}' -t "$win" "exec '$SELF'" 2>/dev/null) && [ -n "$p" ]; then
     tmux set -p -t "$p" @tagents_starting "$(date +%s)" 2>/dev/null
     [ "$(tmux display -p -t "$win" '#{window_zoomed_flag}' 2>/dev/null)" = 1 ] && tmux resize-pane -Z -t "$win" 2>/dev/null
     if await_list; then printf '%s' "$p"; rc=0; fi

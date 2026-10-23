@@ -37,6 +37,14 @@ contains() {  # <name> <needle> <haystack>
   esac
 }
 
+lacks() {  # <name> <needle> <haystack>
+  case "$3" in
+    *"$2"*) fail=$((fail + 1))
+            printf '  FAIL %s\n       expected NOT to contain: %s\n       actual: %s\n' "$1" "$2" "$3" ;;
+    *) pass=$((pass + 1)); printf '  ok   %s\n' "$1" ;;
+  esac
+}
+
 t() { printf '\n%s\n' "$1"; }
 
 # A fresh sandbox per case: origin, and the three places install.sh writes to.
@@ -53,6 +61,8 @@ mkorigin() {
     printf '#!/bin/sh\necho "notes v1"\n' > hooks/notes-context.sh
     printf '#!/usr/bin/env node\n' > packages/core/dist/cli/main.js
     printf '#!/usr/bin/env node\n' > packages/knowledge/dist/cli/main.js
+    # The tree's own installer, so an update that moves the copy hands over to the install.sh of the commit it lands on, as on a real machine.
+    cp "$INSTALL" install.sh
     git add -A && git commit -q -m v1
   )
 }
@@ -60,6 +70,8 @@ mkorigin() {
 HOME_DIR=$TMP/home
 fresh_env() {
   rm -rf "$HOME_DIR"; mkdir -p "$HOME_DIR"
+  # A run handed over across an exec gets its arguments from the run before it, and one that lost them would put hooks into $HOME/.claude/hooks.
+  export HOME=$HOME_DIR
   export TAGENTS_HOME=$HOME_DIR/share/tagents
   export TAGENTS_BIN=$HOME_DIR/bin
   export TAGENTS_REPO=$ORIGIN
@@ -93,7 +105,7 @@ for f in "$TAGENTS_BIN/tagents" "$TAGENTS_BIN/tusage" "$TAGENTS_BIN/tnotes" "$TA
 done
 ok "a command wrapper reaches the copy and passes its arguments" "tagents v1 a b" "$("$TAGENTS_BIN/tagents" a b)"
 ok "a hook wrapper passes stdin and arguments through" "state v1 x <payload>" "$(printf payload | "$HOOKS_A/tmux-agent-state.sh" x)"
-contains "the node CLIs go through node" 'exec node "'"$TAGENTS_HOME"'/packages/core/dist/cli/main.js"' "$(cat "$TAGENTS_BIN/tagents-core")"
+contains "the node CLI wrapper execs the copy's cli file with all arguments" '"'"$TAGENTS_HOME"'/packages/core/dist/cli/main.js" "$@"' "$(cat "$TAGENTS_BIN/tagents-core")"
 contains "the wrapper says whose it is" "managed by tagents install.sh" "$(cat "$TAGENTS_BIN/tusage")"
 ok "no lock left behind" "no" "$([ -e "$TAGENTS_HOME.lock" ] && echo yes || echo no)"
 
@@ -177,6 +189,7 @@ contains "the build's own words are shown" "boom: BROKEN is here" "$out"
 contains "it says where the copy is" "back on ${v1:0:7}" "$out"
 ok "the copy is on the commit it was on" "$v1" "$(git -C "$TAGENTS_HOME" rev-parse HEAD)"
 ok "the wrappers still work" "tagents v1 " "$("$TAGENTS_BIN/tagents")"
+ok "no lock left behind" "no" "$([ -e "$TAGENTS_HOME.lock" ] && echo yes || echo no)"
 # main is fixed upstream: the next run recovers on its own.
 advance git rm -q BROKEN
 out=$(run); rc=$?
@@ -223,6 +236,64 @@ t "9. \`tagents update\` is the dashboard's own verb"
 # ---------------------------------------------------------------------------
 out=$(bash "$ROOT/tagents" update --help 2>&1)
 contains "it reaches install.sh and not tagents-core" "install.sh — put tagents on this machine" "$out"
+
+# ---------------------------------------------------------------------------
+t "10. the node commands run the node that installed them"
+# ---------------------------------------------------------------------------
+mkdir -p "$TMP/node-a" "$TMP/node-b"
+printf '#!/bin/sh\necho "node-a $*"\n' > "$TMP/node-a/node"; chmod 755 "$TMP/node-a/node"
+printf '#!/bin/sh\necho "node-b $*"\n' > "$TMP/node-b/node"; chmod 755 "$TMP/node-b/node"
+mkorigin; fresh_env
+out=$(PATH="$TMP/node-a:$PATH" run); rc=$?
+ok "an install with a node on PATH exits 0" 0 "$rc"
+contains "tagents-core pins the node found at install" 'n="'"$TMP"'/node-a/node"' "$(cat "$TAGENTS_BIN/tagents-core")"
+contains "tagents-knowledge pins it too" 'n="'"$TMP"'/node-a/node"' "$(cat "$TAGENTS_BIN/tagents-knowledge")"
+ok "tagents-core runs the pinned node with no node on the caller's PATH" "node-a $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+rm -f "$TMP/node-a/node"
+ok "tagents-knowledge falls back to the node on the caller's PATH once the pinned file is gone" "node-b $TAGENTS_HOME/packages/knowledge/dist/cli/main.js x" "$(env PATH="$TMP/node-b:/usr/bin:/bin" "$TAGENTS_BIN/tagents-knowledge" x)"
+out=$(PATH="$TMP/node-b:$PATH" run); rc=$?
+ok "an install from a shell finding the second node exits 0" 0 "$rc"
+contains "tagents-core now pins the second node" 'n="'"$TMP"'/node-b/node"' "$(cat "$TAGENTS_BIN/tagents-core")"
+if [ -n "$(env PATH=/usr/bin:/bin sh -c 'command -v node' 2>/dev/null)" ]; then
+  printf '  skip /usr/bin or /bin holds a node\n'
+else
+  out=$(PATH=/usr/bin:/bin run); rc=$?
+  ok "an install from a shell finding no node exits 0" 0 "$rc"
+  contains "the wrapper then looks node up on the caller's PATH" 'exec node "'"$TAGENTS_HOME"'/packages/core/dist/cli/main.js" "$@"' "$(cat "$TAGENTS_BIN/tagents-core")"
+fi
+
+# ---------------------------------------------------------------------------
+t "11. one update installs with the installer of the commit it moves to"
+# ---------------------------------------------------------------------------
+mkorigin; fresh_env
+run >/dev/null
+# The next commit's install.sh writes its wrappers with another comment line.
+advance sh -c 'sed "s/rewritten on every update: do not edit/rewritten on every update, v2: do not edit/" install.sh > install.sh.new && mv install.sh.new install.sh'
+# Run by the copy's own installer, as `tagents update` and the LaunchAgent run it.
+out=$(sh "$TAGENTS_HOME/install.sh" --hooks-dir "$HOOKS_A" --hooks-dir "$HOOKS_B" 2>&1); rc=$?
+ok "exit status" 0 "$rc"
+ok "the copy follows origin/main" "$(git -C "$ORIGIN" rev-parse HEAD)" "$(git -C "$TAGENTS_HOME" rev-parse HEAD)"
+contains "a command wrapper is written by the new installer" "v2: do not edit" "$(cat "$TAGENTS_BIN/tagents")"
+contains "a node command wrapper too" "v2: do not edit" "$(cat "$TAGENTS_BIN/tagents-core")"
+ok "and the hook wrappers in both dirs" 2 "$(cat "$HOOKS_A/tmux-agent-state.sh" "$HOOKS_B/tmux-agent-state.sh" | grep -c 'v2: do not edit')"
+ok "the wrappers work" "tagents v1 a" "$("$TAGENTS_BIN/tagents" a)"
+ok "the move is reported once" 1 "$(printf '%s\n' "$out" | grep -c 'install: moved ')"
+ok "the install is reported once" 1 "$(printf '%s\n' "$out" | grep -c 'install: installed ')"
+lacks "the run handed over does not take itself for another install" "another install is running" "$out"
+ok "no lock left behind" "no" "$([ -e "$TAGENTS_HOME.lock" ] && echo yes || echo no)"
+
+# ---------------------------------------------------------------------------
+t "12. a commit whose install.sh cannot take the hand-over is finished by the running installer"
+# ---------------------------------------------------------------------------
+mkorigin; fresh_env
+run >/dev/null
+advance sh -c 'printf "#!/bin/sh\necho \"the old installer ran\"\n" > install.sh'
+out=$(run); rc=$?
+ok "exit status" 0 "$rc"
+ok "the copy follows origin/main" "$(git -C "$ORIGIN" rev-parse HEAD)" "$(git -C "$TAGENTS_HOME" rev-parse HEAD)"
+lacks "the commit's own installer did not run" "the old installer ran" "$out"
+contains "the running installer installed" "install: installed " "$out"
+ok "no lock left behind" "no" "$([ -e "$TAGENTS_HOME.lock" ] && echo yes || echo no)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
