@@ -29,14 +29,14 @@
 ## 5. Documentation and contract
 
 - [x] 5.1 Document the usage store and the verb in the package README (the "Where things live" table, the CLI table, the MCP table, the key variables of the shared server), replace "There are no write tools" with the statement that no tool writes a document, and amend the header comment of the MCP server the same way. Proved by `packages/knowledge/test/cli-spec.test.ts` (the README row of every verb names its flags; the usage text and the specs agree).
-- [ ] 5.2 Regenerate `contract.json` and `skills/tagents/references` with `pnpm plugin:gen`. Proved by `packages/contract/test` and a clean `git status` after the command.
+- [x] 5.2 Regenerate `contract.json` and `skills/tagents/references` with `pnpm plugin:gen`. Proved by `packages/contract/test` and a clean `git status` after the command.
 
 ## 6. Gates
 
-- [ ] 6.1 `pnpm --filter @tagents/knowledge typecheck`, `pnpm --filter @tagents/knowledge test`, `pnpm spec:check` and `pnpm plugin:gen` exit 0 with nothing uncommitted afterwards, and `packages/knowledge/test/lint-no-any.test.ts` stays green.
+- [x] 6.1 `pnpm --filter @tagents/knowledge typecheck`, `pnpm --filter @tagents/knowledge test`, `pnpm spec:check` and `pnpm plugin:gen` exit 0 with nothing uncommitted afterwards, and `packages/knowledge/test/lint-no-any.test.ts` stays green.
 
 ## Workflow follow-up
 
 - Write each test before the code it proves and watch it fail first.
-- This change stacks on `okf-bundle-format`. PR #12 is merged, so the base of the pull request is `main`, but that change is not archived yet. Before this one is archived, diff the modified blocks of its delta against that change's and re-copy what moved.
+- This change stacks on `okf-bundle-format`. PR #12 is merged, so the base of the pull request is `main`, but that change is not archived yet. Before this one is archived, diff the modified blocks of its delta against that change's and re-copy what moved. Diffed after the rebase onto the merge of PR #12: `CLI verbs and flags` and `MCP server` are the only requirements both deltas modify, and the two blocks differ only by what this change adds (the `usage` verb, `--usage-db` and `--verbose`, the sixth tool).
 - Archive this change after `okf-bundle-format`, splitting the requirements that the main-spec check refuses for length.
