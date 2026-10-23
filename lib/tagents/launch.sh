@@ -1,6 +1,6 @@
 # lib/tagents/launch.sh — starting an agent
 #
-# Every way a Claude comes into existence: session_for_dir (ownership by majority vote of live panes' cwd, for a chat started with no group to put it in), new_agent (ctrl-n, rule-decided) and new_agent_pick (ctrl-p, always ask) — both open a new window in the session of the group the cursor is in — the account dialog (ask_profile/ask_height), start_agent — the single place a window is created — and the resume pair (resume_agent reads the recorded account before deleting the record; resume_with either types the command into the pane's own idle shell or opens a fresh window). Both restart paths send the identical command string, which is the reason they belong in one file. Every launch ends in <after> (default open_agent, rows.sh), which selects the chat like any row.
+# Every way a Claude comes into existence: session_for_dir (ownership by majority vote of live panes' cwd, for a chat started with no group to put it in), new_agent (ctrl-n, rule-decided) and new_agent_pick (ctrl-p, always ask) — both open a new window in the session of the group the cursor is in — the account dialog (ask_profile/ask_height), start_agent, new_shell (ctrl-a) — both through launch_session and new_pane_window, the single place a window is created — and the resume pair (resume_agent reads the recorded account before deleting the record; resume_with either types the command into the pane's own idle shell or opens a fresh window). Both restart paths send the identical command string, which is the reason they belong in one file. Every launch ends in <after> (default open_agent, rows.sh), which selects the chat like any row.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -131,7 +131,7 @@ resume_with() {  # <pane> <sid> <dir> <profile> [session] [after]
   [ -n "$sess" ] || sess=$(row_session "$pane")
   [ -n "$sess" ] || sess=$(client_session "")
   [ -n "$sess" ] || sess=$(tmux display -p '#{session_name}' 2>/dev/null)
-  newpane=$(tmux new-window -d -t "=$sess:" -P -F '#{pane_id}' -c "$dir" "$cmd" 2>/dev/null) || {
+  newpane=$(new_pane_window "$sess" "$dir" "$cmd") || {
     tmux display-message "tagents: could not open a window in $sess" 2>/dev/null; return 1; }
   # Before <after>, whose status is this function's: the capture waits for the SessionStart record anyway, so it does not care which runs first.
   resurrect_soon
@@ -155,6 +155,27 @@ session_for_dir() {  # <dir> -> session name, empty when the project has no wind
 # The session a chat gets when there is no session to put it in: no tmux server at all, or one with none. The previous version made the same one for it.
 LAST_RESORT_SESSION=agents
 
+# The session a new window goes in when the caller named none: the one that owns the root, else the client's, else the current, else the last resort. An empty root skips the vote (a shell started from a row with no directory).
+launch_session() {  # <root> -> session name
+  local root=${1:-} sess=""
+  [ -z "$root" ] || sess=$(session_for_dir "$root")
+  [ -n "$sess" ] || sess=$(client_session "")
+  [ -n "$sess" ] || sess=$(tmux display -p '#{session_name}' 2>/dev/null)
+  [ -n "$sess" ] || sess=$LAST_RESORT_SESSION
+  printf '%s\n' "$sess"
+}
+
+# The one place a window is created, for a chat and a shell alike; prints the new pane id, its status is tmux's. -d so the window is not selected as a side effect of being created; -c always, because a window made from a command client starts in the caller's directory without it; no command means tmux's default shell.
+# The last resort session does not exist yet (no tmux server running, or none with a session): it is created with the window as its first. Any other name that is gone is a session killed under the caller, and it stays gone.
+new_pane_window() {  # <session> <dir> [cmd]
+  local sess=$1 dir=$2 cmd=${3:-}
+  if [ "$sess" = "$LAST_RESORT_SESSION" ] && ! tmux has-session -t "=$sess" 2>/dev/null; then
+    tmux new-session -d -s "$sess" -P -F '#{pane_id}' -c "$dir" ${cmd:+"$cmd"} 2>/dev/null
+  else
+    tmux new-window -d -t "=$sess:" -P -F '#{pane_id}' -c "$dir" ${cmd:+"$cmd"} 2>/dev/null
+  fi
+}
+
 # ctrl-n: start a fresh Claude for the project under the cursor, as a new window of <session> (the group the cursor is in). With no session given (`tagents --new`, or the cursor on the group `no window`) the session that owns the project, else the client's, else the current. The directory is normalised to the repo root, so a session started from ~/repo/packages/client makes the new agent a sibling in ~/repo rather than burying it in a subdirectory the tree would file separately.
 new_agent() {  # <dir> [profile] [session]
   local dir=${1:-} prof=${2:-} sess=${3:-} root
@@ -167,10 +188,7 @@ new_agent() {  # <dir> [profile] [session]
     return 1
   fi
   root=$(repo_root "$dir") || root=$dir
-  [ -n "$sess" ] || sess=$(session_for_dir "$root")
-  [ -n "$sess" ] || sess=$(client_session "")
-  [ -n "$sess" ] || sess=$(tmux display -p '#{session_name}' 2>/dev/null)
-  [ -n "$sess" ] || sess=$LAST_RESORT_SESSION
+  [ -n "$sess" ] || sess=$(launch_session "$root")
   # The session name is worked out first because a rule may match on it: an agent for a project that lives in the "work" tmux session is a work agent whatever its directory looks like.
   [ -n "$prof" ] || prof=$(profile_for "$root" "$sess") || prof=""
   if [ "$prof" = ask ]; then
@@ -192,12 +210,23 @@ new_agent_pick() {  # <dir> [session]
     return 0
   fi
   root=$(repo_root "$dir") || root=$dir
-  [ -n "$sess" ] || sess=$(session_for_dir "$root")
-  [ -n "$sess" ] || sess=$(client_session "")
-  [ -n "$sess" ] || sess=$(tmux display -p '#{session_name}' 2>/dev/null)
-  [ -n "$sess" ] || sess=$LAST_RESORT_SESSION
+  [ -n "$sess" ] || sess=$(launch_session "$root")
   prompt "$(ask_height)" --ask-profile pick "$root" "$sess" && return 0
   ask_profile pick "$root" "$sess"
+}
+
+# ctrl-a: a plain shell in a new window of <session> (the group the cursor is in), starting where the row works: its directory, else the session's own path, else home. Nothing is asked and no chat is recorded, so no resurrect_soon.
+new_shell() {  # <dir> [session]
+  local dir=${1:-} sess=${2:-} pane idx
+  case $dir in /*) [ -d "$dir" ] || dir="" ;; *) dir="" ;; esac
+  [ -n "$sess" ] || sess=$(launch_session "$(repo_root "$dir" || printf '%s' "$dir")")
+  [ -n "$dir" ] || dir=$(tmux display -p -t "=$sess:" '#{session_path}' 2>/dev/null)
+  [ -n "$dir" ] && [ -d "$dir" ] || dir=$HOME
+  pane=$(new_pane_window "$sess" "$dir") || {
+    tmux display-message "tagents: could not open a window in $sess" 2>/dev/null; return 1; }
+  idx=$(tmux display -p -t "$pane" '#{window_index}' 2>/dev/null)
+  open_agent "$pane"
+  tmux display-message "tagents: new shell in $(basename "$(tilde_of "$dir")") ($sess:$idx)" 2>/dev/null
 }
 
 # The one place a fresh agent gets a window. Both entry points come through here so the command, the message and the "it is selected like any row" policy are decided once.
@@ -209,11 +238,7 @@ start_agent() {  # <root> <session> <profile>
     return 1; }
   # -d so the window is not selected as a side effect of being created, half built and before its pane id is even known; it is selected once, deliberately, below.
   # The last resort session does not exist yet (no tmux server running, or none with a session): it is created with the chat as its first window. Any other name that is gone is a session killed under the caller, and it stays gone.
-  if [ "$sess" = "$LAST_RESORT_SESSION" ] && ! tmux has-session -t "=$sess" 2>/dev/null; then
-    newpane=$(tmux new-session -d -s "$sess" -P -F '#{pane_id}' -c "$root" "$cmd" 2>/dev/null)
-  else
-    newpane=$(tmux new-window -d -t "=$sess:" -P -F '#{pane_id}' -c "$root" "$cmd" 2>/dev/null)
-  fi
+  newpane=$(new_pane_window "$sess" "$root" "$cmd")
   [ -n "$newpane" ] || {
     tmux display-message "tagents: could not open a window in $sess" 2>/dev/null; return 1; }
   idx=$(tmux display -p -t "$newpane" '#{window_index}' 2>/dev/null)
