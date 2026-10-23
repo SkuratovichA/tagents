@@ -9,14 +9,6 @@ row_session() {  # <pane or window key> -> its session name, empty when the key 
   tmux display -p -t "$1" '#{session_name}' 2>/dev/null
 }
 
-# The session of the group the key's row sits in: its session when that is a group, else empty — a closed row whose pane is still in a scratch session is listed under `no window`, and a new chat or a resume from it opens as for a chat started with no group.
-row_group() {  # <pane or window key>
-  local sess
-  sess=$(row_session "${1:-}")
-  [ -n "$sess" ] && session_is_group "$sess" && printf '%s' "$sess"
-  return 0
-}
-
 # The window's chat: the first pane, in pane order, that a Claude is running in. A user who split a shell before the chat (`split -b`) still has the chat found; a window with no live chat gets its first pane that is not the sidebar; one with only the sidebar, nothing.
 first_chat_pane() {  # <window-id>
   local live p first=""

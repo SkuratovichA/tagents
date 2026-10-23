@@ -306,7 +306,8 @@ if mkdir -p "$CONTROL" &&
   agenorm() { sed 's/[0-9]*:[0-9][0-9]/AGE/g'; }
   before=$(env TMUX="$TMUXV" TA_COLS=140 TA_MARKS=0 TA_CONFIG=/nonexistent/config.yaml \
              bash "$CONTROL/tagents" --list | strip | agenorm)
-  after=$(rows_at 140 TA_CONFIG=/nonexistent/config.yaml | agenorm)
+  # Every session is a group now, so the session that holds only the dashboard is a header with no row, which the control (the old rule) does not list.
+  after=$(rows_at 140 TA_CONFIG=/nonexistent/config.yaml | agenorm | awk 'index($0, "\342\226\276 tatest-dash ") == 0')
   ok "no config: the rows are what they were before any of this" "$before" "$after"
 else
   printf '  --   no committed tagents to compare against, skipping the control run\n'
@@ -887,7 +888,7 @@ WROW=$(tm display -p -t tatest-work:0 '#{window_id}')
 groups() { rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") > 0 { split($2, a, " "); print a[2] }' | tr '\n' ' '; }
 order()  { rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") == 0 { print $1 }' | tr '\n' ' '; }
 ok "groups sort by name, and the one with no window is last" \
-   "tatest-work tatest-zeta no " "$(groups)"
+   "tatest-dash tatest-work tatest-zeta no " "$(groups)"
 ok "inside a group the newest conversation is on top, the window row below it, and the closed ones are the last group" \
    "$A2 $A $WROW %8004 %8010 %8001 %8002 %8003 " \
    "$(order | sed "s/$B //")"
@@ -896,7 +897,7 @@ ok "inside a group the newest conversation is on top, the window row below it, a
 # said so; here nothing moves at all, because a state change is not one.
 live "$B" blocked sid-liveZ "$REPO2"
 ok "a blocked agent does not drag its group up the list" \
-   "tatest-work tatest-zeta no " "$(groups)"
+   "tatest-dash tatest-work tatest-zeta no " "$(groups)"
 live "$A" blocked sid-live "$REPO"
 ok "...nor its own row up its group" \
    "$A2 $A $WROW %8004 %8010 %8001 %8002 %8003 " "$(order | sed "s/$B //")"
@@ -912,7 +913,7 @@ said "$A" 600
 # rather than the most urgent — enter on a header and enter on its first row
 # must still mean the same agent.
 ok "the header carries the pane id of the row below it" "$A2" \
-   "$(rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") > 0 { print $1; exit }')"
+   "$(rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") > 0 { split($2, a, " "); if (a[2] == "tatest-work") { print $1; exit } }')"
 
 # ---------------------------------------------------------------------------
 t "10b. the age column is time since YOUR last message"

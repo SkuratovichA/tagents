@@ -253,7 +253,7 @@ on the row the cursor was on · esc closes")
     :usage)      ask_usage ;;
     # Same again: this body is already a terminal of its own, and the picker
     # resumes on its own rather than reporting a verb back to the list.
-    :closed)     ask_closed "$port" "$(row_group "$pane")" ;;
+    :closed)     ask_closed "$port" "$(row_session "$pane")" ;;
     *)           "$SELF" --act "$verb" "$pane" "$state" "$sid" "$dir"
                  post_fzf "$port" "reload-sync($SELF --list)" ;;
   esac

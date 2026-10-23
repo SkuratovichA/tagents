@@ -154,6 +154,8 @@ sleep 0.5
 run() { env TMUX="$SOCK,0,0" bash "$TA" "$@"; }
 
 clear_out() { rm -f "$OUT"/*.out 2>/dev/null; return 0; }
+# The same one-liner as msgs() in tests/window-rows.sh (the suites share no helper file): only what a client's status line showed.
+msgs() { tm show-messages 2>/dev/null | grep -E ' /dev/[^ ]+ message: ' | tail -30; }
 
 waitout() {  # -> path of the first stub file to appear, or 1 after ~6s
   local i f
@@ -248,6 +250,7 @@ FZF_DEFAULT_OPTS='--filter=s-gone' TA_MODE=popup run --ask-closed
 f=$(waitout) || { echo "  FAIL nothing resumed"; fail=$((fail+1)); f=/dev/null; }
 has "it still resumes"          "--resume s-gone" "$(field ARGS "$f")"
 ok  "...from $HOME instead"     "$HOMED"          "$(field PWD "$f")"
+has "...and the notice reads: is gone, resuming in ~" "is gone — resuming in ~" "$(msgs)"
 
 # ---------------------------------------------------------------------------
 t "5. the key is listed"

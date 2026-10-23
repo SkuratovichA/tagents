@@ -275,7 +275,7 @@ act() {
       esac ;;
   esac
   sess=""
-  [ "$hdr" = 1 ] && sess=$(row_group "$pane")
+  [ "$hdr" = 1 ] && sess=$(row_session "$pane")
   case "$what" in
     open)
       if [ -n "$sess" ]; then open_session "$pane"
@@ -293,8 +293,8 @@ act() {
     rename) rename_agent "$pane" "$sid" ;;
     # ctrl-v in the sidebar: a modal, not a column taken off the list.
     preview) preview_window "$pane" "$state" ;;
-    new)    new_agent "$dir" "" "$(row_group "$pane")" ;;
-    pick)   new_agent_pick "$dir" "$(row_group "$pane")" ;;
+    new)    new_agent "$dir" "" "$(row_session "$pane")" ;;
+    pick)   new_agent_pick "$dir" "$(row_session "$pane")" ;;
     undock) undock "$pane" ;;
     kill)   kill_agent "$pane" "$sid" ;;
     # The two windows about the dashboard itself rather than about an agent. They run here, in fzf own child, because this is where FZF_PORT is.
