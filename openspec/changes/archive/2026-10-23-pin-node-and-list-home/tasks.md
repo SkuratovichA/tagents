@@ -13,7 +13,7 @@
 ## 3. The whole tree
 
 - [x] 3.1 Add a `LEARNING.md` entry for the suite count: `tests/scratch-guard.sh` is a helper the tmux suites source, so `tests/` holds 21 suites, not 22. Proved by the diff of `LEARNING.md`.
-- [ ] 3.2 Run every suite under `tests/` on its own scratch tmux server with the live server's global hook count the same before and after, and run `pnpm spec:check` and `pnpm plugin:check`. Proved by the run's summary and the two exit codes.
+- [x] 3.2 Run every suite under `tests/` on its own scratch tmux server with the live server's global hook count the same before and after, and run `pnpm spec:check` and `pnpm plugin:check`. Proved by the run's summary and the two exit codes.
 
 ## Workflow follow-up
 
