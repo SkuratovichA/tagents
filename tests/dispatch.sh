@@ -130,6 +130,17 @@ ok       "an unknown option is still an unknown option" 2 "$rc"
 contains "...with the line it always printed" "tagents: unknown option --nope" "$out"
 ok       "...and nothing was forwarded"       ""  "$(argv)"
 
+# The verbs the previous version handed to tmux keep arriving after an update
+# lands under a running list: its focus hooks stay until the first start of this
+# version removes them. A non-zero exit there is a "returned 2" on every focus,
+# and anything printed is shown over the pane.
+for flag in --poke --unpark --undock-pane --undock-window; do
+  run "$SOLO/tagents" "$BIN:$BARE" "$flag" '%67' >/dev/null
+  ok "$flag from the previous version's tmux exits 0" 0 "$rc"
+  ok "...prints nothing"                              ""  "$out"
+  ok "...and forwards nothing"                        ""  "$(argv)"
+done
+
 # ---------------------------------------------------------------------------
 t "3. where tagents-core is found"
 # ---------------------------------------------------------------------------

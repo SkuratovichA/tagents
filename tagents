@@ -325,7 +325,7 @@
 #
 # CLOSING A PANE CLOSES NOTHING ELSE. There are no seats and no placeholders any more, so closing a chat's pane or window is plain tmux and prefix+x and prefix+& need no binding of tagents' own. ctrl-x on the chat that is the only pane of its window besides the sidebar moves the sidebar to the window the client lands on first, so killing a chat never takes the sidebar with it.
 #
-# THE SEATS OF THE PREVIOUS VERSION. It swapped chats into seats of an agents:1 window and left a placeholder pane in each chat's home window. On the first start after the upgrade tagents sends every docked chat home, closes the placeholders, removes the old options and focus hooks and asks tnotes to bring parked editors back (migrate_seats in lib/tagents/migrate.sh); a start with nothing left to clean changes nothing, and the state it leaves is one the previous version handles. A `bind-key x … --undock-pane` line in a tmux.conf then falls through to a plain kill-pane, and a `bind-key &` line with --undock-window prints "unknown option" before its kill-window: both can be deleted.
+# THE SEATS OF THE PREVIOUS VERSION. It swapped chats into seats of an agents:1 window and left a placeholder pane in each chat's home window. On the first start after the upgrade tagents sends every docked chat home, closes the placeholders, removes the old options and focus hooks and asks tnotes to bring parked editors back (migrate_seats in lib/tagents/migrate.sh); a start with nothing left to clean changes nothing, and the state it leaves is one the previous version handles. An update lands under a running list, so until that start the old focus hooks still fire: --poke and --unpark, which they call, and --undock-pane and --undock-window, which the old kill bindings call, exit 0 and do nothing. A `bind-key x … --undock-pane` line in a tmux.conf then falls through to a plain kill-pane, and a `bind-key &` line with --undock-window to a plain kill-window: both can be deleted.
 #
 # Keys inside the dashboard:
 #   enter / dbl-click  select the agent's row: the sidebar moves into the chat's window, the client switches there and the cursor lands in the chat. On a closed session: resume it, then select it. On a dimmed window row: select the window. On a group header: show that session's last-used window
@@ -544,6 +544,13 @@ case "${1:-}" in
   # cuts the help in half.
   -h|--help)      LC_ALL=C awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$SELF" ;;
   "")            cfg_load; dash ;;
+  # The verbs the previous version handed to tmux: its focus hooks fire --poke
+  # and --unpark, the kill bindings its README gave out fire --undock-pane and
+  # --undock-window. An update lands under a running list and the hooks stay
+  # until this version's first start takes them out (migrate_seats), so they
+  # answer 0 and do nothing: tmux puts a hook's non-zero exit on the status line
+  # as "returned 2" on every focus.
+  --poke|--unpark|--undock-pane|--undock-window) : ;;
   # An unknown --flag is a typo in the dashboard's own vocabulary and stays an
   # error here. A bare verb is not the dashboard's vocabulary at all: it is
   # tagents-core's, and goes there with everything after it.

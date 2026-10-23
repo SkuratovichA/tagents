@@ -362,3 +362,6 @@ Flow control eats the byte until fzf has put the tty in raw mode, so a test that
 
 ## New test variables clobbered later sections of tests/window-rows.sh (23.10.2026)
 The suite is one shell scope, and its sections reuse short names such as `W2`, `W3` and `W5`; the new kill tests set them too, and F15 and F17 further down then ran against the wrong windows. Variables of a new section get a prefix of their own (`XW2`), never a bare name another section might use.
+
+## A verb removed while tmux hooks still call it (23.10.2026)
+The seat migration deleted `--poke` and `--unpark` from the dispatch, but the focus hooks that call them are only removed by `migrate_seats` on the first start of the new version, and the updater swaps the code under a running list. A list started before the update kept its hooks, and every focus on a docked chat showed `'…/tagents' --poke '%67'' returned 2` until the list was restarted. A verb that a tmux hook or a binding in someone's tmux.conf calls stays in the dispatch as a quiet `exit 0` when its feature goes; tests/dispatch.sh pins the four.
