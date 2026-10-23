@@ -457,10 +457,10 @@ t "3. the ? window"
 TABLE=$(run --keys | cut -f1 | sort)
 has "the two that cannot be run from here are still listed" "ctrl-q" "$TABLE"
 has "...both of them"                                       "esc"    "$TABLE"
-# The order is the spec's (dashboard-keys, "Table of keys"), not what the code prints. The table marks the verbs the list runs itself with a leading colon, and gives the ? line the verb `none`; both are normalised here, the ? line by its key.
+# The verb column exactly as the spec has it (dashboard-keys, "Table of keys"): the spec's order, a leading colon on what the list runs itself, :none on the ? line and :quit on the esc line.
 ok "the verbs come in the spec's order, then the esc line" \
-   "open beside new pick shell goto send rename undock kill tree preview refresh columns usage closed keys quit esc" \
-   "$(run --keys | awk -F'\t' '{ v = $2; sub(/^:/, "", v); if ($1 == "?") v = "keys"; if ($1 == "esc") v = "esc"; printf "%s%s", (NR > 1 ? " " : ""), v }')"
+   "open beside new pick shell goto send rename undock kill :tree :preview :refresh :columns :usage :closed :none :quit :quit" \
+   "$(run --keys | cut -f2 | paste -s -d ' ' -)"
 
 # AND IT REALLY RUNS THE KEY. Undock, end to end: a chat joined beside another
 # window's chat is broken out into its home session, exactly as ctrl-u would do.
