@@ -20,6 +20,7 @@ KEY_DEFAULTS="open enter K_OPEN
 beside ctrl-s K_BESIDE
 new ctrl-n K_NEW
 pick ctrl-p K_PICK
+shell ctrl-a K_SHELL
 goto ctrl-g K_GOTO
 send ctrl-e K_SEND
 rename ctrl-r K_RENAME
@@ -159,6 +160,7 @@ keys_table() {  # key<TAB>verb<TAB>what it does
 "$K_BESIDE${TAB}beside${TAB}join it into the window on screen, beside its chat" \
 "$K_NEW${TAB}new${TAB}start a new agent in this project" \
 "$K_PICK${TAB}pick${TAB}the same, picking the account it starts on" \
+"$K_SHELL${TAB}shell${TAB}open a plain shell in a new window of this group" \
 "$K_GOTO${TAB}goto${TAB}go to the agent where it lives" \
 "$K_SEND${TAB}send${TAB}send a line straight into it" \
 "$K_RENAME${TAB}rename${TAB}rename this agent — an empty name restores its title" \
@@ -253,7 +255,7 @@ on the row the cursor was on · esc closes")
     :usage)      ask_usage ;;
     # Same again: this body is already a terminal of its own, and the picker
     # resumes on its own rather than reporting a verb back to the list.
-    :closed)     ask_closed "$port" "$(row_group "$pane")" ;;
+    :closed)     ask_closed "$port" "$(row_session "$pane")" ;;
     *)           "$SELF" --act "$verb" "$pane" "$state" "$sid" "$dir"
                  post_fzf "$port" "reload-sync($SELF --list)" ;;
   esac

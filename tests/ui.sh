@@ -305,8 +305,9 @@ if mkdir -p "$CONTROL" &&
    [ -s "$CONTROL/tagents" ] && [ -r "$CONTROL/lib/tagents/core.sh" ]; then
   agenorm() { sed 's/[0-9]*:[0-9][0-9]/AGE/g'; }
   before=$(env TMUX="$TMUXV" TA_COLS=140 TA_MARKS=0 TA_CONFIG=/nonexistent/config.yaml \
-             bash "$CONTROL/tagents" --list | strip | agenorm)
-  after=$(rows_at 140 TA_CONFIG=/nonexistent/config.yaml | agenorm)
+             bash "$CONTROL/tagents" --list | strip | agenorm | awk 'index($0, "\342\226\276 tatest-dash ") == 0')
+  # Every session is a group now, so the session that holds only the dashboard is a header with no row; the control is the committed tree, which lists it too since that change, so both sides drop it and the rest is compared.
+  after=$(rows_at 140 TA_CONFIG=/nonexistent/config.yaml | agenorm | awk 'index($0, "\342\226\276 tatest-dash ") == 0')
   ok "no config: the rows are what they were before any of this" "$before" "$after"
 else
   printf '  --   no committed tagents to compare against, skipping the control run\n'
@@ -456,6 +457,10 @@ t "3. the ? window"
 TABLE=$(run --keys | cut -f1 | sort)
 has "the two that cannot be run from here are still listed" "ctrl-q" "$TABLE"
 has "...both of them"                                       "esc"    "$TABLE"
+# The verb column exactly as the spec has it (dashboard-keys, "Table of keys"): the spec's order, a leading colon on what the list runs itself, :none on the ? line and :quit on the esc line.
+ok "the verbs come in the spec's order, then the esc line" \
+   "open beside new pick shell goto send rename undock kill :tree :preview :refresh :columns :usage :closed :none :quit :quit" \
+   "$(run --keys | cut -f2 | paste -s -d ' ' -)"
 
 # AND IT REALLY RUNS THE KEY. Undock, end to end: a chat joined beside another
 # window's chat is broken out into its home session, exactly as ctrl-u would do.
@@ -660,6 +665,12 @@ ok "the popup list still gets its preview" 1 \
    "$(printf '%s\n' "$POPUP" | grep -c '^--preview=' | tr -d ' ')"
 has "...beside the list, as before"        "--preview-window=right,55%,border-left,wrap" "$POPUP"
 has "...where ctrl-v is fzf's own toggle"  "--bind=ctrl-v:toggle-preview" "$POPUP"
+# ctrl-a in the popup closes the list after the shell window is made; in the sidebar the list stays. Whole-line matches, so the sidebar's line cannot satisfy the popup check and the other way round.
+SHELLBIND="--bind=ctrl-a:execute-silent($SELF --act shell {1} {3} {4} {5})"
+printf '%s\n' "$POPUP" | grep -x -F -q -e "$SHELLBIND+abort"
+ok "the popup's ctrl-a closes the list" 0 "$?"
+printf '%s\n' "$SIDEBAR" | grep -x -F -q -e "$SHELLBIND"
+ok "...the sidebar's ctrl-a is the same binding without the abort" 0 "$?"
 
 # THE TABLE AND THE BINDINGS CANNOT DRIFT, and this is the only honest place to
 # say so: every key comes out of the config now, so what is bound is whatever
@@ -728,6 +739,19 @@ ok  "...and nothing is bound to the name itself" 0 \
 has "...and --keys says why" \
     "# keys.closed: 'bogus' is not a key fzf knows — using ctrl-y" \
     "$(env TMUX="$TMUXV" TA_CONFIG="$BCFG" bash "$TA" --keys)"
+
+# THE SHELL KEY MOVED: ctrl-a is its default, and a config that gives it alt-s leaves ctrl-a bound to nothing.
+SCFG="$ROOT/keys-shell.yaml"
+printf 'keys:\n  shell: alt-s\n' >"$SCFG"
+SDUMP=$(dumpargs "$ROOT/fzf-shell" "TA_CONFIG='$SCFG'")
+has "shell: alt-s binds alt-s to a shell window" \
+    "--bind=alt-s:execute-silent($SELF --act shell {1} {3} {4} {5})" "$SDUMP"
+ok  "...and nothing is bound to ctrl-a" 0 \
+    "$(printf '%s\n' "$SDUMP" | grep -c '^--bind=ctrl-a:' | tr -d ' ')"
+has "...and --keys lists alt-s for shell" "alt-s${TAB}shell" \
+    "$(env TMUX="$TMUXV" TA_CONFIG="$SCFG" bash "$TA" --keys)"
+has "the default binds ctrl-a" "--bind=ctrl-a:execute-silent($SELF --act shell {1} {3} {4} {5})" \
+    "$(dumpargs "$ROOT/fzf-shell0" "TA_CONFIG='$ROOT/none.yaml'")"
 
 # TWO VERBS ON ONE KEY IS ONE VERB GONE — fzf keeps the last --bind silently, so
 # the collision is settled here instead: the verb that owns the key by the
@@ -887,7 +911,7 @@ WROW=$(tm display -p -t tatest-work:0 '#{window_id}')
 groups() { rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") > 0 { split($2, a, " "); print a[2] }' | tr '\n' ' '; }
 order()  { rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") == 0 { print $1 }' | tr '\n' ' '; }
 ok "groups sort by name, and the one with no window is last" \
-   "tatest-work tatest-zeta no " "$(groups)"
+   "tatest-dash tatest-work tatest-zeta no " "$(groups)"
 ok "inside a group the newest conversation is on top, the window row below it, and the closed ones are the last group" \
    "$A2 $A $WROW %8004 %8010 %8001 %8002 %8003 " \
    "$(order | sed "s/$B //")"
@@ -896,7 +920,7 @@ ok "inside a group the newest conversation is on top, the window row below it, a
 # said so; here nothing moves at all, because a state change is not one.
 live "$B" blocked sid-liveZ "$REPO2"
 ok "a blocked agent does not drag its group up the list" \
-   "tatest-work tatest-zeta no " "$(groups)"
+   "tatest-dash tatest-work tatest-zeta no " "$(groups)"
 live "$A" blocked sid-live "$REPO"
 ok "...nor its own row up its group" \
    "$A2 $A $WROW %8004 %8010 %8001 %8002 %8003 " "$(order | sed "s/$B //")"
@@ -912,7 +936,7 @@ said "$A" 600
 # rather than the most urgent — enter on a header and enter on its first row
 # must still mean the same agent.
 ok "the header carries the pane id of the row below it" "$A2" \
-   "$(rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") > 0 { print $1; exit }')"
+   "$(rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") > 0 { split($2, a, " "); if (a[2] == "tatest-work") { print $1; exit } }')"
 
 # ---------------------------------------------------------------------------
 t "10b. the age column is time since YOUR last message"

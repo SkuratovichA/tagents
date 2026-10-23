@@ -173,12 +173,11 @@ resurrect_target() {  # <session> <window index> <place> <kind: p or empty>
       $1 == want { print $2; exit }'
 }
 
-# Where a chat goes back: its own pane when tmux-resurrect put an idle shell there, a new window in its session when that pane is busy, gone, the sidebar or an editor, or the row has no window and pane (a joined chat), a new session (marked as made by tagents) when even the session is gone. The other panes of the window are never touched. Prints the pane id.
+# Where a chat goes back: its own pane when tmux-resurrect put an idle shell there, a new window in its session when that pane is busy, gone, the sidebar or an editor, or the row has no window and pane (a joined chat), a new session when even the session is gone. The other panes of the window are never touched. Prints the pane id.
 resurrect_place() {  # <session> <window index> <place> <dir> <cmd> [kind]
   local sess=$1 widx=$2 pidx=$3 dir=$4 cmd=$5 kind=${6:-} t cur p
   if ! tmux has-session -t "=$sess" 2>/dev/null; then
     p=$(tmux new-session -d -s "$sess" -x 200 -y 50 -c "$dir" -P -F '#{pane_id}' "$cmd" 2>/dev/null) || return 1
-    mark_session_made "$sess"
     printf '%s' "$p"
     return 0
   fi
@@ -193,7 +192,7 @@ resurrect_place() {  # <session> <window index> <place> <dir> <cmd> [kind]
       fi
     fi
   fi
-  tmux new-window -d -t "=$sess:" -P -F '#{pane_id}' -c "$dir" "$cmd" 2>/dev/null
+  new_pane_window "$sess" "$dir" "$cmd"
 }
 
 # The sidebar back: a list as the leftmost full-height pane of the window the D row names when that window exists after the restore, of the first restored chat's window otherwise; a running list is moved there instead of a second one started. A window tmux-resurrect left from an older version's dashboard is an ordinary window and keeps what it runs.

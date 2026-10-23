@@ -378,3 +378,6 @@ Flow control eats the byte until fzf has put the tty in raw mode, so a test that
 
 ## New test variables clobbered later sections of tests/window-rows.sh (23.10.2026)
 The suite is one shell scope, and its sections reuse short names such as `W2`, `W3` and `W5`; the new kill tests set them too, and F15 and F17 further down then ran against the wrong windows. Variables of a new section get a prefix of their own (`XW2`), never a bare name another section might use.
+
+## A window made by `tmux new-window` without `-c` starts in the list process's directory (23.10.2026)
+A window tagents makes as a command client, with `tmux new-window` and no `-c`, starts in the directory the list process runs in, not in the session's. `leave_window_for_kill` made the sidebar's replacement window that way until it went through `new_pane_window`, which always passes `-c`; the review of the all-sessions-groups branch caught it, and R50 now asserts the directory.

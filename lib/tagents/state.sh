@@ -325,8 +325,8 @@ collect() {
   tmux list-windows -a -F "W|@|#{window_id}|@|#{session_name}|@|#{window_index}|@|#{window_name}" 2>/dev/null |
     LC_ALL=C awk -v OFS="$TAB" '{ n = split($0, a, "\\|@\\|"); t = a[5]; for (i = 6; i <= n; i++) t = t "|@|" a[i]; print a[1], a[2], a[3], a[4], t }'
   # G and not S: the S records are the state files.
-  tmux list-sessions -F "G|@|#{session_name}|@|#{?@tagents_made,1,0}|@|#{session_path}" 2>/dev/null |
-    LC_ALL=C awk -v OFS="$TAB" '{ n = split($0, a, "\\|@\\|"); print a[1], a[2], a[3], a[4] }'
+  tmux list-sessions -F "G|@|#{session_name}|@|#{session_path}" 2>/dev/null |
+    LC_ALL=C awk -v OFS="$TAB" '{ n = split($0, a, "\\|@\\|"); print a[1], a[2], a[3] }'
   live_panes | sed "s/^/L${TAB}/"
   dir_roots
   [ -e "$LABELS" ] && LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '{ print "N", $1, $2 }' "$LABELS"

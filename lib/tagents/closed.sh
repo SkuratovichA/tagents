@@ -251,7 +251,7 @@ ask_closed() {  # <port> [session] — the picker itself, normally the body of t
 
 closed_window() {  # ctrl-y [key of the row under the cursor] — the modal, or the same body inline where a popup cannot open
   local port=${FZF_PORT:-} sess
-  sess=$(row_group "${1:-}")
+  sess=$(row_session "${1:-}")
   prompt_at 90% 85% --ask-closed "$port" "$sess" && return 0
   ask_closed "$port" "$sess"
   return 0

@@ -51,25 +51,6 @@ legacy_seats_present() {
   [ -n "$(tmux list-panes -a -F '#{@tagents_slot}#{@tagents_docked}' 2>/dev/null | tr -d '\n ')" ]
 }
 
-chat_in_session() {  # <session> — does it hold a pane a Claude is running in
-  local live p
-  live=$(live_set)
-  for p in $(tmux list-panes -s -t "=$1" -F '#{pane_id}' 2>/dev/null); do
-    case "$live" in *" $p "*) return 0 ;; esac
-  done
-  return 1
-}
-# A group is a session that holds a chat or that tagents created (mark_session_made); a scratch session never is.
-# `=name:` and not `=name`: set and show take a pane target, and tmux 3.7b answers "no such session: =name" to the bare exact form.
-session_is_group() {  # <session>
-  [ -n "${1:-}" ] || return 1
-  [ "$(tmux show -v -t "=$1:" @tagents_made 2>/dev/null)" = 1 ] && return 0
-  chat_in_session "$1"
-}
-mark_session_made() {  # <session>
-  tmux set -t "=$1:" @tagents_made 1 2>/dev/null
-}
-
 win_widths() {  # <window-id> <sidebar pane> -> "%id:width " of the other panes, left to right
   tmux list-panes -t "$1" -F '#{pane_left} #{pane_id} #{pane_width}' 2>/dev/null |
     LC_ALL=C sort -n | LC_ALL=C awk -v sb="$2" '$2 != sb { printf "%s:%s ", $2, $3 }'
@@ -125,7 +106,8 @@ sidebar_move_now() {  # <window-id> — sidebar_move without the lock
   return 0
 }
 
-# The list cursor onto the row of a window: the row of the first of its panes that has one (a chat), else the window's own row (@id).
+# The list cursor onto the row of a window: the row of the first of its panes that has one (a chat), else the window's own row (@id), else the
+# first group header that stands in for the window (a session holding nothing but the sidebar has a header and no row).
 cursor_to_window() {  # <window-id>
   local sb port panes n
   sb=$(dash_pane)
@@ -133,19 +115,20 @@ cursor_to_window() {  # <window-id>
   port=$(tmux show -pv -t "$sb" @tagents_port 2>/dev/null)
   [ -n "$port" ] || return 0
   panes=$(tmux list-panes -t "$1" -F '#{pane_id}' 2>/dev/null | tr '\n' ' ')
-  # Rows only: a group header carries its stand-in's key too, and it is the line with the ▾ in it.
+  # Rows first: a group header carries its stand-in's key too, and it is the line with the ▾ in it, so it is used only when no row matched.
   n=$("$SELF" --list 2>/dev/null |
         LC_ALL=C awk -F"$TAB" -v keys="$panes" -v w="$1" '
           BEGIN { nk = split(keys, K, " ") }
           index($2, "\342\226\276") == 0 && !($1 in line) { line[$1] = NR }
+          index($2, "\342\226\276") > 0 && !($1 in hline) { hline[$1] = NR }
           END { for (i = 1; i <= nk; i++) if (K[i] in line) { print line[K[i]]; exit }
-                if (w in line) print line[w] }')
+                if (w in line) print line[w]; else if (w in hline) print hline[w] }')
   [ -n "$n" ] && post_fzf "$port" "pos($n)"
   return 0
 }
 
 # The sidebar into the window the client shows now. Does nothing, and says nothing, when there is no client, the sidebar is already there,
-# the window is in a session that is not a group, or old seats are still standing. When no list runs but one is wanted (its pane, window or
+# or old seats are still standing. When no list runs but one is wanted (its pane, window or
 # session was killed, which no key does), a new one is started in that window: a window or a session killed on screen takes the sidebar with
 # it, since it follows the user, and tmux then lands the client elsewhere and fires the hook that got us here. Serialised by a lock, so a storm
 # of hooks starts one list and not several, and repeated up to three times while the client's window keeps changing, so the storm settles on
@@ -153,7 +136,7 @@ cursor_to_window() {  # <window-id>
 # TA_FOLLOW_WINDOW is for the tests: a window id used instead of the client's, so a window that closes between the hook and the move can
 # be made to happen.
 follow() {  # [client]
-  local client=${1:-} win sess sb locked="" i=0
+  local client=${1:-} win sb locked="" i=0
   legacy_seats_present && return 0
   follow_lock && locked=1
   while [ "$i" -lt 3 ]; do
@@ -166,11 +149,6 @@ follow() {  # [client]
     else
       sidebar_wanted || break
       win_alive "$win" || break
-    fi
-    # A window that is gone goes on to sidebar_move, which says so once; a live one must be in a group.
-    if win_alive "$win"; then
-      sess=$(tmux display -p -t "$win" '#{session_name}' 2>/dev/null)
-      session_is_group "$sess" || break
     fi
     if [ -z "$sb" ]; then
       # The new list claims the sidebar itself and runs one follow of its own. A start that fails (no fzf, a pane too small) ends the wish, or

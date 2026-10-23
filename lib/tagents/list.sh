@@ -410,7 +410,7 @@ list() {
     }
     $1=="P" { alive[$2]=1; loc[$2]=$3; title[$2]=$4; path[$2]=$5; pwin[$2]=$6; psb[$2]=$7 + 0; ppi[$2]=$8 + 0; next }
     $1=="W" { nwin++; wlist[nwin]=$2; wsess[$2]=$3; wix[$2]=$4 + 0; wnm[$2]=$5; next }
-    $1=="G" { smade[$2]=$3; spath[$2]=$4; next }
+    $1=="G" { spath[$2]=$3; next }
     $1=="L" { live[$2]=1; next }
     $1=="R" { root[$2]=$3; next }
     $1=="N" { lab[$2]=$3; next }
@@ -471,16 +471,14 @@ list() {
       # is filed in the group of its PARENT, which may well come later in
       # this unordered walk. The expression is the one both loops below make —
       # the live cwd where there is one, the path of the pane otherwise.
-      # A session is a group when it holds a live chat (any live pane, as session_is_group says: a Claude that has not fired a hook yet counts) or tagents made it; a row whose pane is gone (closed) or that never had one
+      # Every session is a group: the group of a pane is its session whenever it has one. A row whose pane is gone (closed) or that never had one
       # (headless) is in the trailing group "w:" (no window).
-      for (p in alive) if ((p in live) && (p in pwin) && psb[p] != 1) hasChat[wsess[pwin[p]]] = 1
-      for (sx in smade) if (smade[sx] == 1) hasChat[sx] = 1
       for (p in seen) {
         rdir[p] = (p in st && cwd[p] != "") ? cwd[p] : path[p]
         if (rdir[p] == "") rdir[p] = "(unknown)"
         rroot[p] = (rdir[p] in root) ? root[rdir[p]] : rdir[p]
         sn = ((p in alive) && (p in pwin)) ? wsess[pwin[p]] : ""
-        gk[p] = (sn != "" && (sn in hasChat)) ? "s:" sn : "w:"
+        gk[p] = (sn != "") ? "s:" sn : "w:"
       }
 
       # The row names, measured before any row is drawn — the same selection
@@ -709,18 +707,19 @@ list() {
         gcount[grpkey SUBSEP s]++
       }
 
-      # A WINDOW OF A GROUP WITH NO CHAT ROW ON A PANE BESIDES THE SIDEBAR IS A DIMMED ROW, keyed on its window id: a pane with a live chat or a
-      # closed row is the row of its window already, and the window is not listed twice. A window that holds only the sidebar gets none. Not in flat
-      # mode: a flat list has no groups to hold them.
+      # A WINDOW WITH NO CHAT ROW ON A PANE BESIDES THE SIDEBAR IS A DIMMED ROW, keyed on its window id: a pane with a live chat or a
+      # closed row is the row of its window already, and the window is not listed twice. A window that holds only the sidebar gets none of its
+      # own: it is remembered per session (sbonly), and a session with nothing else listed gets a header with no row under it, whose stand-in is
+      # that window. Not in flat mode: a flat list has no groups to hold them.
       nd = 0
       if (grp) {
         for (q in alive) if ((q in kept) && (q in pwin) && psb[q] != 1) wchat[pwin[q]] = 1
         for (dmi = 1; dmi <= nwin; dmi++) {
           dmw = wlist[dmi]; dms = wsess[dmw]
-          if (!(dms in hasChat) || (dmw in wchat)) continue
+          if (dmw in wchat) continue
           dmf = ""; dmx = 1000000
           for (q in pwin) if (pwin[q] == dmw && psb[q] != 1 && ppi[q] < dmx) { dmx = ppi[q]; dmf = q }
-          if (dmf == "") continue
+          if (dmf == "") { sbonly[dms] = dmw; continue }
           dmg = "s:" dms
           if (!(dmg in gtotal)) gmin[dmg] = 4.5; else if (4.5 < gmin[dmg]) gmin[dmg] = 4.5   # counts as not closed (prio dead is 5)
           gtotal[dmg]++
@@ -728,6 +727,12 @@ list() {
           nd++; dg[nd] = dmg; dk[nd] = dmw; dix[nd] = wix[dmw]
           dbody[nd] = DIM uclip(wnm[dmw], cols - 10) R
           ddir[nd] = (dmf in path) ? path[dmf] : ""
+        }
+        for (sx in sbonly) {
+          dmg = "s:" sx
+          if (dmg in gtotal) continue          # the session has rows after all
+          gmin[dmg] = 4.5; gtotal[dmg] += 0    # counts as not closed; a group with no rows
+          standin(dmg, 0, 1, wix[sbonly[sx]], sbonly[sx], "none", "", spath[sx])
         }
       }
       if (grp) {

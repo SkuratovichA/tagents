@@ -84,7 +84,6 @@ tm set -g default-shell /bin/sh >/dev/null 2>&1
 tm set -g default-command '' >/dev/null 2>&1
 tm new-session -d -s tatest-personal -x 200 -y 50 -c "$REPO" "exec sleep 600" >/dev/null 2>&1
 tm new-session -d -s tatest-scratch -x 200 -y 50 -c "$REPO" "exec sleep 600" >/dev/null 2>&1
-tm set -t =tatest-work: @tagents_made 1; tm set -t =tatest-personal: @tagents_made 1
 WRSOCK=$(tm display -p '#{socket_path}' 2>/dev/null)
 [ -n "$WRSOCK" ] || { echo "window-rows.sh: no socket for $WRS"; exit 1; }
 
@@ -183,9 +182,8 @@ mkshell() {  # <session> [name] [dir] — a detached window with no chat in it (
   LASTPANE=$(tm new-window -d -t "=$1:" -P -F '#{pane_id}' -c "${3:-$REPO}" ${2:+-n "$2"} "exec sleep 600")
   LASTWIN=$(wid "$LASTPANE")
 }
-newsess() {  # <name> — a made session with one shell-less window. Sets LASTWIN.
+newsess() {  # <name> — a session with one shell-less window. Sets LASTWIN.
   tm new-session -d -s "$1" -x 200 -y 50 -c "$REPO" "exec sleep 600" >/dev/null 2>&1
-  tm set -t "=$1:" @tagents_made 1
   LASTWIN=$(wid "=$1:")
 }
 to() { tm switch-client -c "$CLIENT" -t "=$1:" 2>/dev/null; }      # the keeper client to a session
@@ -221,12 +219,13 @@ run --follow "$CLIENT"; rc=$?
 ok "F2 exit 0" 0 "$rc"
 ok "F2 nothing moved" "$before" "$(tm list-panes -t "$W2" -F '#{pane_id}:#{pane_left}:#{pane_width}')"
 
-t "F3 a window of a session that is not a group is left alone"
+t "F3 the sidebar follows into a session without a chat"
 to tatest-scratch
 run --follow "$CLIENT"; rc=$?
 ok "F3 exit 0" 0 "$rc"
-ok "F3 the sidebar stays" "$W2" "$(sbwin)"
-to tatest-work; tm select-window -t "$W2"
+ok "F3 the sidebar is in the window of that session" "$(wid =tatest-scratch:)" "$(sbwin)"
+to tatest-work; tm select-window -t "$W2"; run --follow "$CLIENT"
+ok "F3 and back in the window of the other session" "$W2" "$(sbwin)"
 
 t "F4 the width is TA_WIDTH percent of the window; F5 out and back gives the other panes their widths"
 mkchat tatest-work three; W3=$LASTWIN; P3=$LASTPANE
@@ -334,7 +333,7 @@ ok "F28 the lock is free again" no "$([ -d "$WRSTATE/.follow.lock" ] && echo yes
 tm select-window -t "$W3"; run --follow "$CLIENT"
 
 t "F29 a join tmux refuses is told on the client's status line, and the sidebar stays"
-tm new-session -d -s tatest-tiny -x 6 -y 3 "exec sleep 600"; tm set -t =tatest-tiny: @tagents_made 1
+tm new-session -d -s tatest-tiny -x 6 -y 3 "exec sleep 600"
 while tm split-window -d -h -t =tatest-tiny: "exec sleep 600" 2>/dev/null; do :; done
 WTINY=$(wid =tatest-tiny:); before=$(sbwin)
 tm display-message reset
@@ -398,7 +397,7 @@ ok "F22 the window killed: the client is still attached" 1 "$(nclients)"
 ok "F22 the list claimed a pane, so the follow hook brings a sidebar back where the client landed" "$(cwin)" "$(wait_eq_long "$(cwin)" sbwin)"
 ok "F22 one list" 1 "$(nsbs)"
 kill_sidebars; unhook                                # no list, no wish, no hooks: the same kills now leave nothing behind
-tm new-session -d -s tatest-extra -x 200 -y 50 -c "$REPO" "exec sleep 600"; tm set -t =tatest-extra: @tagents_made 1
+tm new-session -d -s tatest-extra -x 200 -y 50 -c "$REPO" "exec sleep 600"
 XW=$(wid =tatest-extra:); stamp_sidebar "$(tm list-panes -t "$XW" -F '#{pane_id}' | head -1)"
 tm kill-session -t =tatest-extra; settle 0.4
 ok "F22 the session killed: the client stays on its session" tatest-work "$(csess)"
@@ -463,11 +462,13 @@ ok "F33 in the window on screen" "$(cwin)" "$(wait_eq_long "$(cwin)" sbwin)"
 ok "F33 no lock left" no "$(wait_eq_long no lockheld)"
 tm select-window -t "$WFB"; kill_sidebars; settle 0.3; unhook
 
-t "F34 a window of a session that is not a group gets no new sidebar either"
+t "F34 a sidebar that was killed comes back in a session without a chat"
 tm set -g @tagents_sidebar_on 1; to tatest-scratch
-run --follow "$CLIENT"; settle 0.5
-ok "F34 none started" 0 "$(nlists)"
-to tatest-work; tm set -gu @tagents_sidebar_on
+run --follow "$CLIENT"
+ok "F34 one list started" 1 "$(wait_eq_long 1 nlists)"
+ok "F34 in the window of that session" "$(wid =tatest-scratch:)" "$(wait_eq_long "$(wid =tatest-scratch:)" sbwin)"
+kill_sidebars; settle 0.3; unhook
+to tatest-work
 
 t "F23 F24 F25 the user moves the sidebar by hand"
 mkchat tatest-work hand; WH=$LASTWIN; PH=$LASTPANE; SH=$LASTSID
@@ -493,15 +494,16 @@ tm new-session -d -s 'release notes' -x 200 -y 50 -c "$REPO" "exec '$BIN/claude'
 RNP=$(tm list-panes -t '=release notes:' -F '#{pane_id}' | head -1); chatrec "$RNP" sid-rn
 to 'release notes'; run --follow "$CLIENT"
 ok "F26 follow into 'release notes'" "$(wid '=release notes:')" "$(wait_eq "$(wid '=release notes:')" sbwin)"
-tm new-session -d -s 'a.b' -x 200 -y 50 -c "$REPO" "exec '$BIN/claude' 600"; tm set -t '=a.b:' @tagents_made 1
+tm new-session -d -s 'a.b' -x 200 -y 50 -c "$REPO" "exec '$BIN/claude' 600"
 DOTP=$(tm list-panes -t '=a.b:' -F '#{pane_id}' | head -1); chatrec "$DOTP" sid-dot
 to 'a.b'; run --follow "$CLIENT"                 # tmux 3.7b keeps the dot in a session name (probed); a name with a dot must still be a usable target
 ok "F26 follow into a session named a.b" "$(wid '=a.b:')" "$(wait_eq "$(wid '=a.b:')" sbwin)"
 to tatest-work
 
-t "F27 a made session whose only window holds just the sidebar has no header and no row"
+t "F27 a session whose only window holds just the sidebar is a header with no row"
 newsess tatest-empty; EW=$LASTWIN; stamp_sidebar "$(tm list-panes -t "$EW" -F '#{pane_id}' | head -1)"
-hasnt "F27 no header" tatest-empty "$(hdrs)"
+has "F27 the header" tatest-empty "$(hdrs)"
+ok "F27 and no row under it" "" "$(rows_of tatest-empty)"
 tm kill-session -t =tatest-empty
 
 # ---------------------------------------------------------------------------------------------------------------------------------
@@ -636,7 +638,6 @@ ok "R20 broken out into its home session" tatest-j4 "$(tm display -p -t "$PJD" '
 
 t "R36 ctrl-s refuses a chat that is alone in the only window of its session"
 tm new-session -d -s tatest-j5 -x 200 -y 50 -c "$REPO" "exec '$BIN/claude' 600" >/dev/null 2>&1
-tm set -t "=tatest-j5:" @tagents_made 1
 PJE=$(tm list-panes -t "=tatest-j5:" -F '#{pane_id}' | head -1); chatrec "$PJE" sid-je working
 to tatest-j3; tm select-window -t "$JC"; tm display-message reset
 act beside "$PJE" working sid-je "$REPO"
@@ -677,7 +678,7 @@ mkchat tatest-k1 k3; KW3=$LASTWIN; KP3=$LASTPANE
 modrun end_agent "$KP3"
 ok "R25 a chat in a window not on screen dies" no "$(paneok "$KP3")"
 ok "R25 the sidebar did not move" "$KW2" "$(sbwin)"
-tm new-session -d -s tatest-k2 -x 200 -y 50 -c "$REPO" "exec '$BIN/claude' 600"; tm set -t =tatest-k2: @tagents_made 1
+tm new-session -d -s tatest-k2 -x 200 -y 50 -c "$REPO" "exec '$BIN/claude' 600"
 K2P=$(tm list-panes -t =tatest-k2: -F '#{pane_id}'); chatrec "$K2P" sid-k2
 to tatest-k2; run --follow "$CLIENT"
 modrun end_agent "$K2P"; settle 0.3
@@ -766,6 +767,7 @@ hasnt "R50 no session line, the sidebar keeps it" "the session ends with it" "$q
 ok "R50 the session survives" 0 "$(tm has-session -t =tatest-w5 2>/dev/null; echo $?)"
 ok "R50 the window is gone" no "$(winlive "$XW5")"
 ok "R50 a new window holds the sidebar" tatest-w5 "$(tm display -p -t "$(sbpane)" '#{session_name}')"
+ok "R50 the other pane of that window starts in the session's directory" "$(cd "$REPO" && pwd -P)" "$(tm list-panes -t "$(sbwin)" -F '#{pane_id} #{pane_current_path}' | awk -v s="$(sbpane)" '$1 != s { print $2; exit }')"
 ok "R50 and is on the client" "$(sbwin)" "$(cwin)"
 ok "R50 one sidebar" 1 "$(nsbs)"
 
@@ -788,6 +790,95 @@ has "R52 notice" "tagents: that is the dashboard itself" "$(msgs)"
 ok "R52 the window survives" yes "$(winlive "$XW7")"
 ok "R52 and the sidebar" 1 "$(nsbs)"
 kill_sidebars; tm kill-session -t =tatest-w7
+
+t "AG1 AG2 AG3 a session holding only the sidebar: the header alone, ctrl-x on it, ctrl-n on it"
+kill_sidebars; newsess tatest-ag1; XAGW=$LASTWIN; XAGSB=$(tm list-panes -t "$XAGW" -F '#{pane_id}' | head -1); stamp_sidebar "$XAGSB"
+XAGH=$(lst | strip | awk -F'\t' 'index($2, "\342\226\276 tatest-ag1") { print $1 "|" $3 "|" $4 "|" $5; exit }')
+ok "AG1 the header carries the window, the state none, no session id and the session's directory" "$XAGW|none||$REPO" "$XAGH"
+ok "AG1 and no row under it" "" "$(rows_of tatest-ag1)"
+tm display-message reset
+TA_MODE=popup act kill "$XAGW" none "" "$REPO" </dev/null
+has "AG2 ctrl-x on the header says it is the dashboard" "tagents: that is the dashboard itself" "$(msgs)"
+ok "AG2 and kills no window" yes "$(winlive "$XAGW")"
+to tatest-ag1
+XAGN=$(TA_NEW_CMD="exec '$BIN/claude' 600" act new "$XAGW" none "" "$REPO"; settle 0.5; tm list-windows -t =tatest-ag1: -F x | wc -l | tr -d ' ')
+ok "AG3 ctrl-n on the header: the session ends with one window" 1 "$XAGN"
+ok "AG3 the sidebar is in it" "$(wid =tatest-ag1:)" "$(sbwin)"
+ok "AG3 beside the new chat" 2 "$(npanes "$(wid =tatest-ag1:)")"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-ag1
+
+t "SH1-SH7 ctrl-a opens a shell: dimmed row, chat row, no window, only the sidebar, directory gone, nothing left, by hand"
+shnew() {  # <session> — the window with the highest index, the one a launch just made
+  tm list-windows -t "=$1:" -F '#{window_index} #{window_id}' | sort -n | tail -1 | awk '{ print $2 }'
+}
+shcnt() { tm list-windows -t "=$1:" -F x | wc -l | tr -d ' '; }
+shpwd() { ( cd "$1" && pwd -P ); }   # tmux reports the resolved path
+mkdir -p "$WRROOT/shd" "$WRROOT/shown" "$WRROOT/shs4" "$WRROOT/shs5" "$WRROOT/shs6"
+kill_sidebars; to tatest-work; SB=$(fake_sidebar "$(wid =tatest-work:)")
+tm new-session -d -s tatest-sh1 -x 200 -y 50 -c "$WRROOT/shd" "exec sleep 600" >/dev/null 2>&1; XSH1=$(wid =tatest-sh1:)
+tm display-message reset
+act shell "$XSH1" none "" "$WRROOT/shd"; settle 0.5
+XSH1N=$(shnew tatest-sh1)
+ok "SH1 ctrl-a on a dimmed row adds a window to its session" 2 "$(shcnt tatest-sh1)"
+ok "SH1 it runs tmux's default shell" "" "$(tm display -p -t "$XSH1N" '#{pane_start_command}')"
+ok "SH1 in the row's directory" "$(shpwd "$WRROOT/shd")" "$(tm display -p -t "$XSH1N" '#{pane_current_path}')"
+ok "SH1 the sidebar and the client are in it" "tatest-sh1:$XSH1N" "$(csess):$(sbwin)"
+has "SH1 the notice names the directory, the session and the index" "tagents: new shell in shd (tatest-sh1:$(tm display -p -t "$XSH1N" '#{window_index}'))" "$(msgs)"
+hasnt "SH1 and the window does not say it runs no chat" "runs no chat" "$(msgs)"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-sh1
+
+newsess tatest-sh2; mkchat tatest-sh2 shc; PSH2=$LASTPANE; WSH2=$LASTWIN; SSH2=$LASTSID
+kill_sidebars; to tatest-work; SB=$(fake_sidebar "$(wid =tatest-work:)")
+n=$(shcnt tatest-sh2)
+act shell "$PSH2" working "$SSH2" "$REPO"; settle 0.5
+ok "SH2 ctrl-a on a chat row adds a window to the chat's session" "$((n + 1))" "$(shcnt tatest-sh2)"
+ok "SH2 the new window runs a shell" "" "$(tm display -p -t "$(shnew tatest-sh2)" '#{pane_start_command}')"
+ok "SH2 and the chat's window still holds the chat" "$WSH2" "$(wid "$PSH2")"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-sh2
+
+newsess tatest-sh3; mkchat tatest-sh3 own "$WRROOT/shown"; n=$(shcnt tatest-sh3); to tatest-work
+act shell "%993" dead sid-sh3 "$WRROOT/shown"; settle 0.5
+ok "SH3 ctrl-a on a no-window row goes to the session that owns the project" "$((n + 1))" "$(shcnt tatest-sh3)"
+to tatest-work; tm kill-session -t =tatest-sh3
+
+kill_sidebars; tm new-session -d -s tatest-sh4 -x 200 -y 50 -c "$WRROOT/shs4" "exec sleep 600" >/dev/null 2>&1; XSH4=$(wid =tatest-sh4:)
+stamp_sidebar "$(tm list-panes -t "$XSH4" -F '#{pane_id}' | head -1)"; to tatest-sh4
+act shell "$XSH4" none "" "$WRROOT/shs4"; settle 0.5
+ok "SH4 ctrl-a on the header of a session holding only the sidebar: one window" 1 "$(shcnt tatest-sh4)"
+ok "SH4 the sidebar is in it" "$(wid =tatest-sh4:)" "$(sbwin)"
+ok "SH4 it started in the session's directory" "$(shpwd "$WRROOT/shs4")" "$(tm display -p -t "$(shnew tatest-sh4)" '#{pane_current_path}')"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-sh4
+
+kill_sidebars; to tatest-work; SB=$(fake_sidebar "$(wid =tatest-work:)")
+tm new-session -d -s tatest-sh5 -x 200 -y 50 -c "$WRROOT/shs5" "exec sleep 600" >/dev/null 2>&1; XSH5=$(wid =tatest-sh5:)
+act shell "$XSH5" none "" "$WRROOT/no-such-dir"; settle 0.5
+ok "SH5 with the row's directory gone the shell starts in the session's" "$(shpwd "$WRROOT/shs5")" "$(tm display -p -t "$(shnew tatest-sh5)" '#{pane_current_path}')"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-sh5
+
+kill_sidebars; to tatest-work; SB=$(fake_sidebar "$(wid =tatest-work:)")
+tm new-session -d -s tatest-sh6 -x 200 -y 50 -c "$WRROOT/shs6" "exec sleep 600" >/dev/null 2>&1; XSH6=$(wid =tatest-sh6:)
+rmdir "$WRROOT/shs6"; tm display-message reset
+act shell "$XSH6" none "" "$WRROOT/no-such-dir"; settle 0.5
+ok "SH6 with nothing left to start in the shell starts in the home directory" "$(shpwd "$HOME")" "$(tm display -p -t "$(shnew tatest-sh6)" '#{pane_current_path}')"
+has "SH6 and the notice reads ~" "tagents: new shell in ~ (tatest-sh6:" "$(msgs)"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-sh6
+
+kill_sidebars; to tatest-work; SB=$(fake_sidebar "$(wid =tatest-work:)")
+mkdir -p "$WRROOT/shhand"; newsess tatest-sh7; XSH7=$LASTWIN
+run --act shell "$XSH7" none '' "$WRROOT/shhand"; settle 0.5
+ok "SH7 tagents --act shell @window none '' dir: a window of that window's session, in dir" "2 $(shpwd "$WRROOT/shhand")" "$(shcnt tatest-sh7) $(tm display -p -t "$(shnew tatest-sh7)" '#{pane_current_path}')"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-sh7
+
+t "TH1 TH2 the home directory itself reads ~"
+ok "TH1 tilde_of writes ~ for the home directory" "~" "$(modrun tilde_of "$HOME")"
+ok "TH1 and ~/x for a path in it" "~/x" "$(modrun tilde_of "$HOME/x")"
+ok "TH1 and a path outside it untouched" "$HOME-x" "$(modrun tilde_of "$HOME-x")"
+XTHH="$WRROOT/thhome"; mkdir -p "$XTHH"
+newsess tatest-th1; mkshell tatest-th1 homewin "$XTHH"; XTHW=$LASTWIN
+kill_sidebars; to tatest-work
+q=$(printf 'n\n' | env HOME="$XTHH" TMUX="$WRSOCK,0,0" bash "$TA" --ask-kill "$XTHW" "" | strip)
+ok "TH2 the window question shows ~ for a pane in the home directory" "  0  sleep  ~" "$(printf '%s\n' "$q" | grep '^  0  sleep  ')"
+tm kill-session -t =tatest-th1
 
 t "R53 act kill on a dimmed row goes through the question"
 newsess tatest-w8; mkshell tatest-w8 dev8; XW8=$LASTWIN
@@ -842,6 +933,14 @@ ok "R31 not in the other" "$nw0" "$(tm list-windows -t =tatest-n1: -F x | wc -l 
 mkchat tatest-n1 own "$WRROOT/own"; nw0=$(tm list-windows -t =tatest-n1: -F x | wc -l | tr -d ' '); to tatest-work
 TA_NEW_CMD="exec '$BIN/claude' 600" act new "%994" dead sid-y "$WRROOT/own"; settle 0.5
 ok "R31 on no window, a project a session owns: the new chat opens there (chat-launch spec)" "$((nw0 + 1))" "$(tm list-windows -t =tatest-n1: -F x | wc -l | tr -d ' ')"
+newsess tatest-n13; XN13W=$LASTWIN
+kill_sidebars; to tatest-work; SB=$(fake_sidebar "$(wid =tatest-work:)")
+has "R31 the window of a session where no chat ever ran is a dimmed row" "$XN13W" "$(keys)"
+XN13N=$(tm list-windows -t =tatest-n13: -F x | wc -l | tr -d ' ')
+TA_NEW_CMD="exec '$BIN/claude' 600" act new "$XN13W" none "" "$REPO"; settle 0.5
+ok "R31 ctrl-n on that dimmed row adds a window to its session" "$((XN13N + 1))" "$(tm list-windows -t =tatest-n13: -F x | wc -l | tr -d ' ')"
+ok "R31 the sidebar and the client are in it" "tatest-n13:$(wid =tatest-n13:)" "$(csess):$(sbwin)"
+kill_sidebars; to tatest-work; tm kill-session -t =tatest-n13
 
 t "R35 ctrl-y with the cursor in another group: the resumed chat opens in that group's session (the bind passes the row's key)"
 newsess tatest-y1; mkchat tatest-y1 yy; PYY=$LASTPANE; SYY=$LASTSID
@@ -875,7 +974,7 @@ ok "R32 it is in the chat's window" "$(wid "$PN")" "$(sbwin)"
 tm kill-pane -t "$(sbpane)"; unhook
 
 t "R37 a list marker whose process is gone does not make a chat pane the sidebar"
-tm new-session -d -s tatest-st1 -x 200 -y 50 -c "$REPO" "exec '$BIN/claude' 600" >/dev/null 2>&1      # not made by tagents: only a live chat makes it a group
+tm new-session -d -s tatest-st1 -x 200 -y 50 -c "$REPO" "exec '$BIN/claude' 600" >/dev/null 2>&1      # a session tagents did not create: every session is a group
 PST=$(tm list-panes -t "=tatest-st1:" -F '#{pane_id}' | head -1); chatrec "$PST" sid-st working
 ok "R37 the session is a group while the pane is unmarked" tatest-st1 "$(grp_of "$PST")"
 GONE=$(sh -c 'echo $$')                                                                                  # the pid of a shell that has exited
@@ -966,8 +1065,16 @@ WR_PRE='post_fzf() { echo "$2" >>"'"$WRROOT"'/post.log"; }' modrun cursor_to_win
 want=$(lst | awk -F'\t' -v k="$PCUR" 'index($2, "\342\226\276") == 0 && $1 == k { print NR; exit }')
 ok "R34 pos(n) is posted for the chat row of the window" "pos($want)" "$(tail -1 "$WRROOT/post.log")"
 to tatest-scratch; : >"$WRROOT/post.log"; WR_PRE='post_fzf() { echo "$2" >>"'"$WRROOT"'/post.log"; }' modrun follow "$CLIENT"
-ok "R34 a window outside every group posts nothing" "" "$(cat "$WRROOT/post.log")"
+want=$(lst | awk -F'\t' -v k="$(wid =tatest-scratch:)" 'index($2, "\342\226\276") == 0 && $1 == k { print NR; exit }')
+ok "R34 a window of a session without a chat posts the cursor onto its dimmed row" "pos($want)" "$(tail -1 "$WRROOT/post.log")"
 to tatest-work
+kill_sidebars; newsess tatest-r34e; XRE=$LASTWIN; XRESB=$(tm list-panes -t "$XRE" -F '#{pane_id}' | head -1); stamp_sidebar "$XRESB"; tm set -p -t "$XRESB" @tagents_port 9
+: >"$WRROOT/post.log"
+WR_PRE='post_fzf() { echo "$2" >>"'"$WRROOT"'/post.log"; }' modrun cursor_to_window "$XRE"
+want=$(lst | awk -F'\t' -v k="$XRE" 'index($2, "\342\226\276") && $1 == k { print NR; exit }')
+ok "R34 pos(n) is posted for the header of a session holding only the sidebar" "pos($want)" "$(tail -1 "$WRROOT/post.log")"
+has "R34 and that line is the header of that session" "▾ tatest-r34e" "$(lst | strip | sed -n "${want}p")"
+kill_sidebars; tm kill-session -t =tatest-r34e
 
 t "W1 window names: the sidebar does not stop a window being named"
 kill_sidebars; mkchat tatest-work; WN=$LASTWIN; PN1=$LASTPANE; SN1=$LASTSID             # no -n: the window keeps tmux's automatic name, which sync may replace
@@ -983,7 +1090,7 @@ run --label "$SN1" "named by hand"
 ok "W1 --label renames a window that holds the sidebar" "named by hand" "$(tm display -p -t "$WN" '#{window_name}')"
 
 # ---------------------------------------------------------------------------------------------------------------------------------
-t "L1 L2 L3 L12 sessions are groups; a directory does not group; scratch sessions stay out; names with a space and a dot"
+t "L1 L2 L3 L12 sessions are groups; a directory does not group; a session without a chat is a group too; names with a space and a dot"
 kill_sidebars; to tatest-work
 pos() { hdrs | awk -v n="$1" '$0 == n { print NR; exit }'; }
 mkdir -p "$WRROOT/d1" "$WRROOT/d2"
@@ -994,15 +1101,23 @@ has "L1 header work" tatest-l-work "$(hdrs)"; has "L1 header personal" tatest-l-
 ok "L1 personal before work" yes "$([ "$(pos tatest-l-personal)" -lt "$(pos tatest-l-work)" ] && echo yes || echo no)"
 ok "L1 the personal chat is under personal" tatest-l-personal "$(grp_of "$LP1")"
 ok "L2 two directories, one header" "tatest-l-work:tatest-l-work" "$(grp_of "$LW1"):$(grp_of "$LW2")"
-hasnt "L3 a scratch session has no header" tatest-scratch "$(hdrs)"
+has "L3 a session without a chat has a header" tatest-scratch "$(hdrs)"
+ok "L3 over its dimmed row" tatest-scratch "$(grp_of "$(wid =tatest-scratch:)")"
 newsess tatest-l-made; mkshell tatest-l-made devsrv; LDEV=$LASTWIN
-has "L3 a made session without a chat is a group" tatest-l-made "$(hdrs)"; has "L3 its window is listed" "$LDEV" "$(keys)"
+has "L3 a session of a shell window only has a header" tatest-l-made "$(hdrs)"; has "L3 its window is listed" "$LDEV" "$(keys)"
 has "L12 a session with a space in its name" "release notes" "$(hdrs)"
 has "L12 a session with a dot in its name: tmux 3.7b keeps the dot, so the header is a.b" "a.b" "$(hdrs)"
 ok "L12 its chat is under that header" "a.b" "$(grp_of "$DOTP")"
 kill_sidebars; to 'a.b'; SB=$(fake_sidebar "$(wid '=a.b:')"); act open "$DOTP" working sid-dot "$REPO"
 ok "L12 selection works in a session with a dot" "$(wid "$DOTP")" "$(sbwin)"
 to tatest-work
+
+# A session tagents made for a chat that has since exited stays a group: the old version's leftover mark on a live session means nothing now.
+newsess tatest-made; tm set -t =tatest-made @tagents_made 1; mkchat tatest-made; LMCP=$LASTPANE
+mkshell tatest-made sh; LMSH=$LASTWIN
+tm kill-pane -t "$LMCP"; settle 0.3
+has "L12 a session whose chat exited is still a group" tatest-made "$(hdrs)"
+has "L12 and its shell window is still listed" "$LMSH" "$(keys)"
 
 t "L4 a dimmed window row"
 ln=$(line_of "$LDEV")
@@ -1028,7 +1143,7 @@ ok "L6 a session of windows only: window id, state none, no session id" "$LONLY|
 t "L7 L14 the no-window group is last; a closed-only session sinks below live ones; groups keep their place"
 chatrec "%994" sid-ngone dead
 newsess "no window"; mkchat "no window" nwc; LNW=$LASTPANE
-tm new-session -d -s tatest-l-aaa -x 200 -y 50 -c "$REPO" "exec sleep 600"; tm set -t =tatest-l-aaa: @tagents_made 1
+tm new-session -d -s tatest-l-aaa -x 200 -y 50 -c "$REPO" "exec sleep 600"
 AAP=$(tm list-panes -t =tatest-l-aaa: -F '#{pane_id}'); chatrec "$AAP" sid-aaa dead
 ok "L7 a row whose pane is gone is under no window" "no window" "$(grp_of %994)"
 ok "L7 the session called no window is a group of its own" 2 "$(hdrs | grep -c '^no window$')"
@@ -1197,7 +1312,7 @@ ok "Z5 the chat replaced the idle shell in place" "$Z5A" "$(rp sid-r5)"
 ok "Z5 the shell beside it is untouched" yes "$(paneok "$Z5B")"
 ok "Z6 a busy pane keeps running and the chat got a new window of that session" "yes:tatest-z6:new" "$(paneok "$Z6P"):$(tm display -p -t "$(rp sid-r6)" '#{session_name}'):$([ "$(wid "$(rp sid-r6)")" != "$(wid "$Z6P")" ] && echo new)"
 tm has-session -t =tatest-z6new 2>/dev/null; ok "Z6 the missing session was created" 0 "$?"
-ok "Z6 ...and marked as made by tagents" 1 "$(tm show -v -t =tatest-z6new: @tagents_made)"
+ok "Z6 ...and the created session has a header" tatest-z6new "$(hdrs | grep -x tatest-z6new)"
 tm has-session -t =tatest-z9gone 2>/dev/null; ok "Z9 a joined chat's missing home session was created" 0 "$?"
 ok "Z7 the idle shell titled tagents-sidebar is closed" no "$(paneok "$Z5L1")"
 ok "Z7 the busy pane with that title is left running" yes "$(paneok "$Z5L2")"

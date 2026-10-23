@@ -34,7 +34,7 @@ In popup mode `esc` SHALL close the list. When fzf exits for any reason in popup
 - **THEN** the popup closes and the dashboard process ends
 
 ### Requirement: A completed action closes the popup
-In popup mode these keys SHALL close the list once their action has been issued: `enter`, double-click, `ctrl-s`, `ctrl-g`, `ctrl-o`, `ctrl-e`, `ctrl-n`, `ctrl-p`, `ctrl-y` and `?`. The keys that change the list or a record instead — `ctrl-r`, `F2`, `ctrl-u`, `ctrl-x`, `ctrl-t`, `ctrl-l`, `ctrl-w`, `$`, `ctrl-v` — SHALL leave the popup open.
+In popup mode these keys SHALL close the list once their action has been issued: `enter`, double-click, `ctrl-s`, `ctrl-g`, `ctrl-o`, `ctrl-e`, `ctrl-n`, `ctrl-p`, `ctrl-a`, `ctrl-y` and `?`. The keys that change the list or a record instead — `ctrl-r`, `F2`, `ctrl-u`, `ctrl-x`, `ctrl-t`, `ctrl-l`, `ctrl-w`, `$`, `ctrl-v` — SHALL leave the popup open.
 
 #### Scenario: Go to an agent
 - **WHEN** the user presses `ctrl-g` in a popup list
@@ -43,6 +43,10 @@ In popup mode these keys SHALL close the list once their action has been issued:
 #### Scenario: Toggle columns
 - **WHEN** the user presses `ctrl-w` and hides a column
 - **THEN** the popup list is still open, redrawn without that column
+
+#### Scenario: A shell from the popup
+- **WHEN** the user presses `ctrl-a` in a popup list
+- **THEN** the client is shown the new shell window and the popup closes
 
 ### Requirement: Prompts are asked inline
 Keys that ask a question — rename, send, kill, new on an account to be asked, pick and the column picker — SHALL run in the popup's own terminal, since a popup cannot open a second popup. The same SHALL hold on a tmux with no `display-popup`, where the sidebar asks in place too.

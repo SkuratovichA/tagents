@@ -33,7 +33,7 @@ US=$'\037'   # unit separator: unlike tab it is not IFS whitespace, so `read`
 # no room for /Users/<name>/ on every one of them.
 tilde_of() {  # <path>
   local p=${1:-}
-  case $p in "$HOME"/*) printf '~%s' "${p#$HOME}" ;; *) printf '%s' "$p" ;; esac
+  case $p in "$HOME") printf '~' ;; "$HOME"/*) printf '~%s' "${p#$HOME}" ;; *) printf '%s' "$p" ;; esac
 }
 
 # What an idle pane looks like to tmux: the shell itself in front, nothing it
