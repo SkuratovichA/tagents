@@ -143,15 +143,19 @@ undock() {  # <chat pane> — ctrl-u: a joined chat gets a window of its own in 
   return 0
 }
 
-# Before a chat is killed: when the sidebar sits in the chat's window and nothing but the sidebar and the chat would be left, the window is about to close, so the sidebar goes first to the window the client lands on. With a pane of the user's in the window it stays. When the chat is the last window of its session a shell window is made first, so neither the session nor the sidebar goes with it.
-leave_window_for_kill() {  # <chat pane>
+# Before a chat or a whole window is killed: when the sidebar sits in the chat's window and nothing but the sidebar and the chat would be left, the window is about to close, so the sidebar goes first to the window the client lands on. With a pane of the user's in the window it stays, unless the whole window is to go (a window id): then the sidebar leaves whatever else the window holds. When the chat is the last window of its session a shell window is made first, so neither the session nor the sidebar goes with it.
+leave_window_for_kill() {  # <chat pane | window id>
   local pane=${1:-} win sb others dest sess
   sb=$(dash_pane)
   [ -n "$sb" ] || return 0
   win=$(tmux display -p -t "$pane" '#{window_id}' 2>/dev/null)
   [ "$(tmux display -p -t "$sb" '#{window_id}' 2>/dev/null)" = "$win" ] || return 0
-  others=$(tmux list-panes -t "$win" -F '#{pane_id}' 2>/dev/null | LC_ALL=C awk -v a="$pane" -v b="$sb" '$1 != a && $1 != b')
-  [ -z "$others" ] || return 0
+  case "$pane" in
+    @*) ;;
+    *)
+      others=$(tmux list-panes -t "$win" -F '#{pane_id}' 2>/dev/null | LC_ALL=C awk -v a="$pane" -v b="$sb" '$1 != a && $1 != b')
+      [ -z "$others" ] || return 0 ;;
+  esac
   dest=$(landing_window "$win")
   if [ -z "$dest" ]; then
     sess=$(tmux display -p -t "$win" '#{session_name}' 2>/dev/null)

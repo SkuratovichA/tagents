@@ -166,7 +166,7 @@ Keys inside the dashboard:
 | `ctrl-e` | type a line straight into that agent without leaving |
 | `ctrl-r` | name this agent (`F2` too) |
 | `ctrl-u` | break a joined chat out into a window of its own |
-| `ctrl-x` | kill this agent — hang up its Claude and close its pane (asks first). On a row that is already closed, forget it instead |
+| `ctrl-x` | kill this agent — hang up its Claude and close its pane (asks first). On a row that is already closed, forget it instead. On a dimmed window row, close the window with every pane in it (asks first, listing what runs there) |
 | `ctrl-t` | toggle tree / flat |
 | `ctrl-v` | the preview — cost per subagent, the tail of the transcript — in a modal window of its own, scrollable, `q` closes it (with no `less` on `$PATH` it is printed instead and any key closes it). In the `prefix+a` popup, and on a tmux with no popups at all, it stays fzf's own preview beside the list: a popup cannot open a second popup |
 | `ctrl-l` | refresh now |
@@ -323,7 +323,7 @@ The sidebar follows you. tmux's own switches (`prefix n`, `prefix s`, a click on
 
 `ctrl-s` joins another chat's pane into the window on screen, to the right of its chat; the pane remembers its home session in `@tagents_joined`, and `ctrl-u` breaks it out into a window of its own. A window with no chat in it is listed as a dimmed row; `enter` on it selects the window.
 
-Closing a chat's pane or window is plain tmux: there are no seats and no placeholders, so `prefix+x` and `prefix+&` need no binding of tagents' own, and `ctrl-x` on the only chat of a window moves the sidebar out before the window closes.
+Closing a chat's pane or window is plain tmux: there are no seats and no placeholders, so `prefix+x` and `prefix+&` need no binding of tagents' own, and `ctrl-x` on the only chat of a window moves the sidebar out before the window closes. `ctrl-x` on a dimmed row asks about the whole window, listing its panes, and closes it with all of them; the sidebar moves out of that window first, and when it was the last window of its session a new window is made for the sidebar so the session survives.
 
 tmux-resurrect saves the sidebar's split and gives its window back an idle shell titled `tagents-sidebar`; `tagents --resurrect` closes those shells after the restore.
 

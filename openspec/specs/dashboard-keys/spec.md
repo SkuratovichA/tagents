@@ -186,15 +186,22 @@ On a row with no pane left, `ctrl-x` SHALL ask `forget this closed session?` and
 - **THEN** the row does not appear in the list
 
 ### Requirement: Pane verbs refuse pane-less rows
-On a headless or child row, `enter`, `ctrl-s`, `ctrl-g`, `ctrl-e` and `ctrl-r` SHALL only show a one-line notice: `tagents: headless session — no pane to open, type into or rename (ctrl-v follows its log)` or, for a child, `tagents: child session — no pane to open, type into or rename (ctrl-v shows its transcript)`. On a dimmed window row only `enter` and `ctrl-g` act, selecting the window; `ctrl-s`, `ctrl-u`, `ctrl-e`, `ctrl-r` and `ctrl-x` SHALL only show `tagents: that window runs no chat`.
+On a headless or child row, `enter`, `ctrl-s`, `ctrl-g`, `ctrl-e` and `ctrl-r` SHALL only show a one-line notice: `tagents: headless session — no pane to open, type into or rename (ctrl-v follows its log)` or, for a child, `tagents: child session — no pane to open, type into or rename (ctrl-v shows its transcript)`.
 
 #### Scenario: Headless enter
 - **WHEN** the user presses `enter` on a headless row
 - **THEN** the headless notice is shown and no window is created
 
+### Requirement: A dimmed row takes only enter, goto and kill
+On a dimmed window row `enter` and `ctrl-g` SHALL select the window and `ctrl-x` SHALL ask to kill it, as the `window-rows` capability describes, while `ctrl-s`, `ctrl-u`, `ctrl-e` and `ctrl-r` SHALL only show `tagents: that window runs no chat`.
+
 #### Scenario: Dimmed row
 - **WHEN** the user presses `ctrl-e` on a dimmed window row
 - **THEN** nothing is typed anywhere and `tagents: that window runs no chat` is shown
+
+#### Scenario: ctrl-x on a dimmed row asks
+- **WHEN** the user presses `ctrl-x` on a dimmed window row
+- **THEN** `kill this window?` is asked and `tagents: that window runs no chat` is not shown
 
 ### Requirement: Dashboard-level keys
 `ctrl-t` toggles tree and flat, `ctrl-l` reloads the list now, `ctrl-w` opens the column picker, `ctrl-v` the preview (all in `dashboard-list`), `$` opens the month's usage per day (the `usage-accounting` capability), `ctrl-y` the closed-session picker (`closed-sessions`), and `ctrl-n` and `ctrl-p` start an agent (`chat-launch`). The list SHALL also reload when its window is resized.

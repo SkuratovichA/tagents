@@ -359,3 +359,6 @@ Flow control eats the byte until fzf has put the tty in raw mode, so a test that
 
 ## A dead holder's lock taken over by two takers at once (23.10.2026)
 `lock_dir` removed a lock whose owner pid was gone, then made its own; a second taker that had read the same dead owner a moment earlier removed the lock the first had just made, and both held it (17 of 30 rounds with eight takers). A takeover now runs inside `<dir>.take` and checks the holder again there (`lock_dead`); tests/resurrect.sh runs eight takers three times and wants one holder.
+
+## New test variables clobbered later sections of tests/window-rows.sh (23.10.2026)
+The suite is one shell scope, and its sections reuse short names such as `W2`, `W3` and `W5`; the new kill tests set them too, and F15 and F17 further down then ran against the wrong windows. Variables of a new section get a prefix of their own (`XW2`), never a bare name another section might use.
