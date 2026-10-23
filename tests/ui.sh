@@ -457,6 +457,10 @@ t "3. the ? window"
 TABLE=$(run --keys | cut -f1 | sort)
 has "the two that cannot be run from here are still listed" "ctrl-q" "$TABLE"
 has "...both of them"                                       "esc"    "$TABLE"
+# The order is the spec's (dashboard-keys, "Table of keys"), not what the code prints. The table marks the verbs the list runs itself with a leading colon, and gives the ? line the verb `none`; both are normalised here, the ? line by its key.
+ok "the verbs come in the spec's order, then the esc line" \
+   "open beside new pick shell goto send rename undock kill tree preview refresh columns usage closed keys quit esc" \
+   "$(run --keys | awk -F'\t' '{ v = $2; sub(/^:/, "", v); if ($1 == "?") v = "keys"; if ($1 == "esc") v = "esc"; printf "%s%s", (NR > 1 ? " " : ""), v }')"
 
 # AND IT REALLY RUNS THE KEY. Undock, end to end: a chat joined beside another
 # window's chat is broken out into its home session, exactly as ctrl-u would do.
@@ -661,6 +665,12 @@ ok "the popup list still gets its preview" 1 \
    "$(printf '%s\n' "$POPUP" | grep -c '^--preview=' | tr -d ' ')"
 has "...beside the list, as before"        "--preview-window=right,55%,border-left,wrap" "$POPUP"
 has "...where ctrl-v is fzf's own toggle"  "--bind=ctrl-v:toggle-preview" "$POPUP"
+# ctrl-a in the popup closes the list after the shell window is made; in the sidebar the list stays. Whole-line matches, so the sidebar's line cannot satisfy the popup check and the other way round.
+SHELLBIND="--bind=ctrl-a:execute-silent($SELF --act shell {1} {3} {4} {5})"
+printf '%s\n' "$POPUP" | grep -x -F -q -e "$SHELLBIND+abort"
+ok "the popup's ctrl-a closes the list" 0 "$?"
+printf '%s\n' "$SIDEBAR" | grep -x -F -q -e "$SHELLBIND"
+ok "...the sidebar's ctrl-a is the same binding without the abort" 0 "$?"
 
 # THE TABLE AND THE BINDINGS CANNOT DRIFT, and this is the only honest place to
 # say so: every key comes out of the config now, so what is bound is whatever

@@ -192,7 +192,7 @@ resurrect_place() {  # <session> <window index> <place> <dir> <cmd> [kind]
       fi
     fi
   fi
-  tmux new-window -d -t "=$sess:" -P -F '#{pane_id}' -c "$dir" "$cmd" 2>/dev/null
+  new_pane_window "$sess" "$dir" "$cmd"
 }
 
 # The sidebar back: a list as the leftmost full-height pane of the window the D row names when that window exists after the restore, of the first restored chat's window otherwise; a running list is moved there instead of a second one started. A window tmux-resurrect left from an older version's dashboard is an ordinary window and keeps what it runs.

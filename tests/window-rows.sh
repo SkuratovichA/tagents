@@ -767,6 +767,7 @@ hasnt "R50 no session line, the sidebar keeps it" "the session ends with it" "$q
 ok "R50 the session survives" 0 "$(tm has-session -t =tatest-w5 2>/dev/null; echo $?)"
 ok "R50 the window is gone" no "$(winlive "$XW5")"
 ok "R50 a new window holds the sidebar" tatest-w5 "$(tm display -p -t "$(sbpane)" '#{session_name}')"
+ok "R50 the other pane of that window starts in the session's directory" "$(cd "$REPO" && pwd -P)" "$(tm list-panes -t "$(sbwin)" -F '#{pane_id} #{pane_current_path}' | awk -v s="$(sbpane)" '$1 != s { print $2; exit }')"
 ok "R50 and is on the client" "$(sbwin)" "$(cwin)"
 ok "R50 one sidebar" 1 "$(nsbs)"
 
@@ -1110,6 +1111,13 @@ ok "L12 its chat is under that header" "a.b" "$(grp_of "$DOTP")"
 kill_sidebars; to 'a.b'; SB=$(fake_sidebar "$(wid '=a.b:')"); act open "$DOTP" working sid-dot "$REPO"
 ok "L12 selection works in a session with a dot" "$(wid "$DOTP")" "$(sbwin)"
 to tatest-work
+
+# A session tagents made for a chat that has since exited stays a group: the old version's leftover mark on a live session means nothing now.
+newsess tatest-made; tm set -t =tatest-made @tagents_made 1; mkchat tatest-made; LMCP=$LASTPANE
+mkshell tatest-made sh; LMSH=$LASTWIN
+tm kill-pane -t "$LMCP"; settle 0.3
+has "L12 a session whose chat exited is still a group" tatest-made "$(hdrs)"
+has "L12 and its shell window is still listed" "$LMSH" "$(keys)"
 
 t "L4 a dimmed window row"
 ln=$(line_of "$LDEV")

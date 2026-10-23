@@ -151,7 +151,8 @@ leave_window_for_kill() {  # <chat pane | window id>
   dest=$(landing_window "$win")
   if [ -z "$dest" ]; then
     sess=$(tmux display -p -t "$win" '#{session_name}' 2>/dev/null)
-    dest=$(tmux new-window -d -t "=$sess:" -P -F '#{window_id}' 2>/dev/null)
+    dest=$(new_pane_window "$sess" "$(tmux display -p -t "$win" '#{session_path}' 2>/dev/null)") &&
+      dest=$(tmux display -p -t "$dest" '#{window_id}' 2>/dev/null)
   fi
   [ -n "$dest" ] || return 0
   show_window "$dest" ""
