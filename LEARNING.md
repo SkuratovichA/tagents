@@ -423,3 +423,11 @@ With only `tagents` left, `client_session ""` and `tmux display -p '#{session_na
 
 ## A test that greps `ps` for the server's socket could not fail (24.10.2026)
 `ring_wait` runs a plain `tmux if-shell` inside a pane, which finds the server through `TMUX`, so the waiter's argv has no `-L <socket>` and "A quit leaves no waiter behind" counted zero with or without a leak; `cpwaiters` in tests/cockpit.sh reads the process environment (`ps -A -ww -E`) for the socket instead, and the leak itself is caught by "The viewport's wait stops its waiter", because a leaked waiter in a dead pane is hung up with the pane and only a live one outlasts the loop.
+
+## `tagents update` rolls back when the machine's pnpm is older than `packageManager` (24.10.2026)
+
+The cockpit release pinned `pnpm@9.15.4`; the global pnpm was 9.1.4, the build died on `ERR_PNPM_BAD_PM_VERSION` and the updater put the copy back on the old commit. `pnpm add -g pnpm@9.15.4` (run outside any project) fixed it. Suites under `tests/` also need `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)"`; bare they refuse to start.
+
+## tmux 3.4 fails `tests/cockpit.sh` and seven checks of `tests/window-rows.sh` (24.10.2026)
+
+Both are measured on tmux 3.7b (dot kept in session names, a refused join-pane, no-detach-on-destroy behaviour); on 3.4 the cockpit suite fails and then hangs. The default `follow` layout is unaffected. Do not run it in a loop that waits for it.
