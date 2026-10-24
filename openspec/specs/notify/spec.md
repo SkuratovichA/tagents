@@ -2,9 +2,7 @@
 
 ## Purpose
 Desktop notifications for tagents, the part that decides what is worth a banner: which agent events raise a notice, what a notice says, when it is withdrawn, the prompt-cache warning, what a click does, and the plugin's options. The service, the macOS helper and the commands are in the `notify-service` capability.
-
 ## Requirements
-
 ### Requirement: Notices come only from pane agents
 The notify service SHALL raise notices only for agents, meaning a Claude session in a tmux pane of its own whose state key is that pane's number. A session whose key starts with `s-` (a child session that an agent started from its Bash tool, or a headless session with no pane) SHALL never raise a notice or arm a cache deadline, and no option turns this on.
 
@@ -170,7 +168,7 @@ When the person answers or the session moves on, the service SHALL withdraw the 
 - **THEN** that notice is withdrawn
 
 ### Requirement: Notices for a chat that is on screen
-When `skip_visible` is on for a kind and the agent's tmux pane is in some client's current window, the notice SHALL be handed to the backend marked to be dropped if that client's terminal is the frontmost application. With `skip_visible` off, or when tmux cannot say which client shows the pane, or the terminal is not found, the notice is posted unmarked.
+When `skip_visible` is on for a kind and the agent's tmux pane is in some client's current window, the notice SHALL be handed to the backend marked to be dropped if that client's terminal is the frontmost application; for the cockpit's viewport that is the terminal of a client on the dashboard. With `skip_visible` off, or when tmux cannot say which client shows the pane, or the terminal is not found, the notice is posted unmarked.
 
 #### Scenario: the pane is in front
 - **WHEN** a Stop arrives, `events.turn_done.skip_visible` is on, the pane is in a client's window and that terminal is frontmost
@@ -183,6 +181,14 @@ When `skip_visible` is on for a kind and the agent's tmux pane is in some client
 #### Scenario: tmux does not answer
 - **WHEN** the screen probe fails or finds nothing
 - **THEN** the notice is posted without a terminal and without a skip mark
+
+#### Scenario: Seen through the viewport
+- **WHEN** a Stop arrives, `events.turn_done.skip_visible` is on, the pane is in the window the viewport shows and a terminal attached to the session `tagents` is frontmost
+- **THEN** the notice is marked to skip if that terminal is frontmost, and names that terminal for the click
+
+#### Scenario: The dashboard is not on screen
+- **WHEN** `events.turn_done.skip_visible` is on, the pane is in the window the viewport shows, no other client shows it and no terminal is attached to the session `tagents`
+- **THEN** the notice is posted without a skip mark
 
 ### Requirement: Withdrawal when the notice is dropped
 A notice the backend drops (for example because the chat is on screen) leaves the older notice with the same id on screen, saying something that is no longer so, so the service SHALL withdraw that older notice, but only if the backend showed it.
@@ -422,3 +428,4 @@ The service SHALL watch the real path of the `plugins` directory, so a config di
 #### Scenario: no config directory
 - **WHEN** the config directory does not exist
 - **THEN** the service runs and logs that options reload is off
+

@@ -2,9 +2,7 @@
 
 ## Purpose
 The main tagents config file, `config.yaml`: where it lives, the YAML subset it is read with, the per-machine overlay files laid over it, the keys that other capabilities read, and `tagents --config` and `tagents --check`, which say how the file is read and what is wrong with it.
-
 ## Requirements
-
 ### Requirement: Where the config file is
 The config file SHALL be `$TA_CONFIG` when that is set, else `$XDG_CONFIG_HOME/tagents/config.yaml`, else `~/.config/tagents/config.yaml`. The file is optional: without it nothing it controls happens, and every agent is started exactly as it always was (a plain `claude --dangerously-skip-permissions`, environment inherited, no dialog ever).
 
@@ -103,11 +101,15 @@ Tab indentation, flow style (`{}` or `[]` as a value), block scalars (`|` or `>`
 - **THEN** the command fails with exit 1
 
 ### Requirement: Keys the file carries
-The file SHALL carry these top-level sections, each read by the capability named: `claude` (args, profiles, rules, default; `accounts`), `usage` (watch, monthly_limit_usd, safety_margin_pct, workdays, meter; `usage-accounting`), `notes` (send; `notes-workspace`), `resurrect` (auto, every, notes; `resurrect`), `keys` (`dashboard-keys`) and `plugins` (`plugin-system`). A key this version does not read SHALL be ignored.
+The file SHALL carry these top-level sections, each read by the capability named: `claude` (args, profiles, rules, default; `accounts`), `usage` (watch, monthly_limit_usd, safety_margin_pct, workdays, meter; `usage-accounting`), `notes` (send; `notes-workspace`), `resurrect` (auto, every, notes; `resurrect`), `dashboard` (layout; `cockpit`), `keys` (`dashboard-keys`) and `plugins` (`plugin-system`). A key this version does not read SHALL be ignored.
 
 #### Scenario: Unknown key
 - **WHEN** the file has a section `something_newer` with a nested key that this version does not read
 - **THEN** `tagents --check` has nothing to say about it and the leaves still print in `--config`
+
+#### Scenario: The dashboard section
+- **WHEN** the file sets `dashboard.layout` to `cockpit`
+- **THEN** `tagents --check` has nothing to say about it and `tagents --config` prints the leaf `dashboard.layout` with the value `cockpit`
 
 ### Requirement: Checking the config
 `tagents --check` SHALL print one line per problem on stdout, each in the shape `<file>: <key>: <what is wrong> — <what to do>`, and exit 1 while any problem exists. A good config SHALL print nothing and exit 0. A line the parser refused SHALL appear as `<file>:<line>: <why>` without a key. Each problem is in one list that `--check`, the dashboard header and the status bar share, so the count they show is the whole truth.
@@ -207,3 +209,12 @@ A resumed conversation SHALL run on the account recorded for it, never on the ru
 #### Scenario: Resume on another login's repository
 - **WHEN** a closed session ran on `work` in a directory a rule maps to `personal`
 - **THEN** resuming it uses `work`
+
+### Requirement: A dashboard layout that cannot be read
+`--check` SHALL report a `dashboard.layout` that is not `follow` or `cockpit` (read as `follow`).
+
+#### Scenario: A misspelt layout
+- **WHEN** `dashboard.layout` is `ide`
+- **THEN** `--check` has the line `dashboard.layout: "ide" is not one of follow, cockpit — read as follow`
+- **AND** `tagents --ensure-dash` puts the sidebar into the client's window and creates no session `tagents`
+
