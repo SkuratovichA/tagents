@@ -115,12 +115,12 @@ claim_dash() {
     LC_ALL=C awk -v me="$me" '$2 == "1" && $1 != me { print $1 }' |
     while IFS= read -r old; do tmux set -up -t "$old" @tagents_dash 2>/dev/null; done
   tmux set -p -t "$me" @tagents_list "$$" \; set -p -t "$me" @tagents_dash 1 \; set -up -t "$me" @tagents_starting 2>/dev/null
-  # A sidebar is wanted from now until a ctrl-q: if its pane, window or session is killed, the next follow starts another (follow).
-  tmux set -g @tagents_sidebar_on 1 2>/dev/null
+  # A sidebar is wanted from now until a ctrl-q: if its pane, window or session is killed, the next follow starts another (follow). The cockpit's list never sets the flag, and no follow moves it.
+  pane_in_cockpit "$me" || tmux set -g @tagents_sidebar_on 1 2>/dev/null
   # tmux-resurrect saves the title with the layout; a restore sweeps the idle shells that come back with it (resurrect_sweep).
   tmux select-pane -T tagents-sidebar -t "$me" 2>/dev/null
   # A window switch made while this list was starting ran a follow that found no sidebar: catch up once.
-  follow "" >/dev/null 2>&1
+  pane_in_cockpit "$me" || follow "" >/dev/null 2>&1
   return 0
 }
 
@@ -180,6 +180,7 @@ start_sidebar() {  # <window-id>
 ensure_dash() {
   local win
   migrate_seats
+  if cockpit_want; then cockpit_ensure; return $?; fi
   win=$(client_window "")
   [ -n "$win" ] || return 1
   [ -n "$(dash_pane)" ] || start_sidebar "$win" >/dev/null || return 1

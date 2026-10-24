@@ -167,6 +167,11 @@ signal_ev() {
   return 0
 }
 
+# ONE WAIT FOR A RING, for the refresher's loop and the cockpit's viewport alike. The condition and the wait are one tmux command, evaluated in the server one after the other with nothing in between: the count of rings is compared with <seen>, and only if it has not moved does the wait begin. Moved already, the command ends at once. Output is dropped; the status is tmux's own.
+ring_wait() {  # <seen: the @tagents_evgen the caller last read, 0 when unset>
+  tmux if-shell -F "#{==:#{?@tagents_evgen,#{@tagents_evgen},0},${1:-0}}" 'wait-for tagents-ev' >/dev/null 2>&1
+}
+
 # IS A REFRESHER ALIVE? By the start marker each one keeps (.refresher.<pid>.start,
 # see refresher), whose pid has to pass kill -0: a refresher that was killed with
 # -9 leaves its marker behind until the next one's sweep. Builtins only, no

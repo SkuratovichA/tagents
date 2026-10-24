@@ -137,6 +137,7 @@ cursor_to_window() {  # <window-id>
 # be made to happen.
 follow() {  # [client]
   local client=${1:-} win sb locked="" i=0
+  cockpit_up && return 0   # in the cockpit no pane changes window; the cockpit's own follow (the cursor after the viewport) comes with its viewport
   legacy_seats_present && return 0
   follow_lock && locked=1
   while [ "$i" -lt 3 ]; do

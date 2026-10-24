@@ -85,6 +85,10 @@ stays worth reacting to.
                           width. One line, which is the whole point of it
   tagents --ensure-dash   put the sidebar in the window the client is in: a running
                           list is moved there, none running is started there
+  tagents --viewport      the right pane of the cockpit (dashboard.layout: cockpit),
+                          started by the dashboard itself: it keeps a second client of
+                          this tmux server attached to the session being shown. Anywhere
+                          else it prints an error and exits 1
   tagents --follow [CLIENT]
                           move the sidebar into the window CLIENT shows (default:
                           the most recent client); tmux's own hooks run this. With

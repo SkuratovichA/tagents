@@ -117,10 +117,14 @@ ok "an argument with a space stays one argument" 4 "$(wc -l < "$ARGV" | tr -d ' 
 t "2. the dashboard's own flags never reach it"
 # ---------------------------------------------------------------------------
 
-for flag in --help --keys --hidden-cols --config --check --header; do
+for flag in --help --keys --hidden-cols --config --check --header --viewport; do
   run "$SOLO/tagents" "$BIN:$BARE" "$flag" >/dev/null
   ok "$flag is answered here"   ""  "$(argv)"
 done
+run "$SOLO/tagents" "$BIN:$BARE" --help >/dev/null
+contains "the help lists --viewport" "tagents --viewport" "$out"
+run "$SOLO/tagents" "$BIN:$BARE" --viewport >/dev/null
+ok       "--viewport outside tmux is refused" 1 "$rc"
 
 # A --flag the dashboard does not know is a typo in ITS vocabulary, and stays
 # the error it always was rather than becoming somebody else's problem.

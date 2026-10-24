@@ -528,8 +528,7 @@ refresher() {
 }
 
 # ONE WAIT FOR A RING, in the background, answering through the FIFO the loop reads.
-# The condition and the wait are one tmux command, evaluated in the server one after
-# the other with nothing in between: the count of rings is compared with the one the
+# The condition and the wait are ring_wait (core.sh): the count of rings is compared with the one the
 # last snapshot saw, and only if it has not moved does the wait begin. Moved already,
 # the command ends at once and the loop is woken for a ring that came in since. The
 # status is a line, 0 for either, and anything else when tmux is gone (see the
@@ -538,7 +537,7 @@ refresher() {
 # for it: a tmux that outlives the loop must not hold them open.
 ev_wait() {
   (
-    tmux if-shell -F "#{==:#{?@tagents_evgen,#{@tagents_evgen},0},$seen}" 'wait-for tagents-ev' >/dev/null 2>&1
+    ring_wait "$seen"
     # Opened for reading AND writing: a plain write-only open of a FIFO blocks until
     # somebody reads it, and the loop that was to read this may be gone (killed with
     # -9, a TERM it has no trap for) and its tmux with it. This waiter would then sit

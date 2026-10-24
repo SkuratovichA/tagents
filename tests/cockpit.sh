@@ -58,7 +58,7 @@ kclient() {  # <n> <session> [attach flags…]
   local n=$1 s=$2 before i=0 after; shift 2
   before=$(clients)
   ( { sleep 300 & printf '%s\n' "$!" >"$CPROOT/keeper$n.pid"; wait; } |
-      script -q /dev/null env -u TMUX tmux -S "$CPSOCK" attach "$@" -t "=$s:" >/dev/null 2>&1 & ) >/dev/null 2>&1
+      script -q /dev/null sh -c 'stty cols 200 rows 50; exec env -u TMUX tmux -S "$0" attach "$@"' "$CPSOCK" "$@" -t "=$s:" >/dev/null 2>&1 & ) >/dev/null 2>&1
   KC=""
   while [ "$i" -lt 40 ]; do
     after=$(clients)
@@ -209,6 +209,175 @@ tm set-hook -gu 'after-kill-pane[42]'; tm set -gu @kpn
 # ---------------------------------------------------------------------------------------------------------------------------------
 # end of the contract section; later sections go here
 # ---------------------------------------------------------------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------------------------------------------------------------
+# the cockpit itself: tagents run against the server above, restarted for every section so that no session or hook is left over
+# ---------------------------------------------------------------------------------------------------------------------------------
+
+TA="$HERE/../tagents"
+BIN="$CPROOT/bin";       mkdir -p "$BIN"
+CPSTATE="$CPROOT/state"; mkdir -p "$CPSTATE"
+CPCONF="$CPROOT/config.yaml"
+printf '#!/bin/sh\nexit 0\n' >"$BIN/tusage"
+printf '#!/bin/sh\nexec sleep 600\n' >"$BIN/vim"
+chmod +x "$BIN/tusage" "$BIN/vim"
+ln -sf "$TA" "$BIN/tagents"
+export PATH="$BIN:$PATH"
+export TA_STATE_DIR="$CPSTATE"
+export TA_CONFIG="$CPCONF"
+unset TA_MODE TA_FLAT TA_COLS TA_NEW_CMD TA_RESUME_CMD TA_HOME TA_SESSION TA_FOLLOW_WINDOW TA_WIDTH CLAUDE_CONFIG_DIR CLAUDE_PID
+
+ta()    { env TMUX="$CPSOCK,0,0" bash "$TA" "$@"; }
+cpcfg() { if [ "$1" = none ]; then rm -f "$CPCONF"; else printf 'dashboard:\n  layout: %s\n' "$1" >"$CPCONF"; fi; }   # <cockpit|follow|none>
+cplist() { tm list-sessions -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' '; }
+
+# A fresh server with work (windows 1 and 2, the second one a shell), personal and scratch, no client and no hooks.
+cpstart() {
+  local k
+  for k in "$CPROOT"/keeper*.pid; do [ -s "$k" ] && kill "$(cat "$k")" 2>/dev/null; done
+  rm -f "$CPROOT"/keeper*.pid
+  tm kill-server >/dev/null 2>&1; sleep 0.3
+  rm -rf "$CPSTATE"; mkdir -p "$CPSTATE"
+  tm -f /dev/null new-session -d -s work -x 200 -y 50 -n one "exec sleep 600" || exit 1
+  tm set -g default-shell /bin/sh >/dev/null 2>&1
+  tm set -g default-command '' >/dev/null 2>&1
+  tm new-window -d -t '=work:2' -n two
+  tm select-window -t '=work:2'
+  for k in personal scratch; do tm new-session -d -s "$k" -x 200 -y 50 "exec sleep 600" >/dev/null 2>&1; done
+}
+vpane()  { tm list-panes -t '=tagents:' -F '#{pane_at_left} #{pane_id}' 2>/dev/null | awk '$1 == 0 { print $2 }'; }
+lpane()  { tm list-panes -t '=tagents:' -F '#{pane_at_left} #{pane_id}' 2>/dev/null | awk '$1 == 1 { print $2 }'; }
+vtty()   { opt @tagents_viewport_tty; }
+vshows() { csess "$(vtty)"; }                                    # the session the viewport's client is on
+vwin()   { tm list-clients -F '#{client_name} #{session_name}:#{window_index}' 2>/dev/null | awk -v c="$(vtty)" '$1 == c { print $2 }'; }
+left_of() {  # <window target> — 1 when its leftmost pane runs the list
+  tm list-panes -t "$1" -F '#{pane_at_left} #{pane_start_command}' 2>/dev/null | awk '$1 == 1 && $0 ~ /tagents/ && $0 !~ /--viewport/ { n = 1 } END { print n + 0 }'
+}
+
+t "Cockpit chosen, A new dashboard, From another session, The pane and its client"
+cpcfg cockpit; cpstart
+kclient 11 work;                                           U=$KC
+ta --ensure-dash >"$CPROOT/ed.out" 2>&1; rc=$?
+ok "Cockpit chosen: --ensure-dash exits 0" 0 "$rc"
+ok "Cockpit chosen: the session tagents exists beside the others" "personal scratch tagents work " "$(cplist)"
+has "Cockpit chosen: the list is on its left" tagents "$(tm display -p -t "$(lpane)" '#{pane_start_command}')"
+hasnt "Cockpit chosen: ...and is not the viewport" --viewport "$(tm display -p -t "$(lpane)" '#{pane_start_command}')"
+has "Cockpit chosen: the viewport is on its right" --viewport "$(tm display -p -t "$(vpane)" '#{pane_start_command}')"
+ok "A new dashboard: one window" 1 "$(tm list-windows -t '=tagents:' | wc -l | tr -d ' ')"
+near "A new dashboard: the list is 90 columns wide" 90 "$(tm display -p -t "$(lpane)" '#{pane_width}')"
+ok "A new dashboard: @tagents_cockpit is 1" 1 "$(tm show -qv -t '=tagents:' @tagents_cockpit)"
+ok "A new dashboard: the status line is off" off "$(tm show -v -t '=tagents:' status)"
+ok "A new dashboard: the sidebar flag was not set" "" "$(opt @tagents_sidebar_on)"
+ok "From another session: the viewport shows work:2" work:2 "$(wait_eq work:2 vwin)"
+ok "From another session: the terminal shows the session tagents" tagents "$(wait_eq tagents csess "$U")"
+ok "The pane and its client: the right pane is titled tagents-viewport" tagents-viewport "$(wait_eq tagents-viewport tm display -p -t "$(vpane)" '#{pane_title}')"
+ok "The pane and its client: @tagents_viewport is 1" 1 "$(tm display -p -t "$(vpane)" '#{@tagents_viewport}')"
+ok "The pane and its client: the viewport's client is on work and its tty is @tagents_viewport_tty" work "$(vshows)"
+ok "The pane and its client: that tty is the pane's own" "$(tm display -p -t "$(vpane)" '#{pane_tty}')" "$(vtty)"
+
+t "A title set from inside"
+tm set -g set-titles on
+tm switch-client -c "$(vtty)" -t '=work:1'
+wait_eq work:1 vwin >/dev/null
+tm switch-client -c "$(vtty)" -t '=work:2'
+wait_eq work:2 vwin >/dev/null
+settle
+ok "A title set from inside: the pane keeps its title" tagents-viewport "$(tm display -p -t "$(vpane)" '#{pane_title}')"
+tm set -g set-titles off
+
+t "Anywhere else"
+wp=$(tm list-panes -t '=work:2' -F '#{pane_id}' | head -1)
+for who in "$(lpane)" "$wp" ""; do
+  err=$(env TMUX="$CPSOCK,0,0" TMUX_PANE="$who" bash "$TA" --viewport 2>&1 >/dev/null); rc=$?
+  ok "Anywhere else: pane [${who:-none}] is refused with the line" "tagents: --viewport runs only in the cockpit's viewport pane" "$err"
+  ok "Anywhere else: pane [${who:-none}] exits 1" 1 "$rc"
+done
+
+t "From the viewport"
+tm bind -n F9 run-shell "bash '$TA' --ensure-dash"
+tm select-pane -t "$(vpane)"
+tm send-keys -K -c "$(vtty)" F9
+ok "From the viewport: the list is the active pane" "$(lpane)" "$(wait_eq "$(lpane)" tm display -p -t '=tagents:' '#{pane_id}')"
+ok "From the viewport: the viewport still shows the window it showed" work:2 "$(vwin)"
+ok "From the viewport: no second dashboard was made" "personal scratch tagents work " "$(cplist)"
+tm unbind -n F9
+
+t "Changed while the cockpit is up, Its terminals outlive it"
+cpcfg follow
+ta --ensure-dash >/dev/null 2>&1; rc=$?
+ok "Changed while the cockpit is up: --ensure-dash still exits 0" 0 "$rc"
+ok "Changed while the cockpit is up: the cockpit stays" 1 "$(tm show -qv -t '=tagents:' @tagents_cockpit)"
+ok "Changed while the cockpit is up: no sidebar went into work:2" 0 "$(left_of '=work:2')"
+tm kill-session -t '=tagents:'
+ok "Its terminals outlive it: the terminal is still attached" 1 "$(wait_eq 1 present "$U")"
+ok "Its terminals outlive it: it shows work" work "$(wait_eq work csess "$U")"
+ta --ensure-dash >/dev/null 2>&1
+ok "Changed while the cockpit is up: the next list uses the follow layout, a sidebar in the client's window" 1 "$(wait_eq_long 1 left_of '=work:2')"
+ok "Changed while the cockpit is up: ...and no session tagents exists" 0 "$(tm list-sessions -F '#{session_name}' | grep -cx tagents)"
+
+t "No dashboard section"
+cpcfg none; cpstart
+kclient 12 work
+ta --ensure-dash >/dev/null 2>&1
+ok "No dashboard section: the sidebar is the leftmost pane of work:2" 1 "$(wait_eq_long 1 left_of '=work:2')"
+ok "No dashboard section: no session tagents exists" 0 "$(tm list-sessions -F '#{session_name}' | grep -cx tagents)"
+
+t "Someone else's session"
+cpcfg cockpit; cpstart
+kclient 13 work
+tm new-session -d -s tagents -x 200 -y 50 "exec '$BIN/vim'"
+vpid=$(tm display -p -t '=tagents:' '#{pane_pid}')
+err=$(ta --ensure-dash 2>&1 >/dev/null); rc=$?
+ok "Someone else's session: the refusal line on standard error" "tagents: session tagents is taken — rename it or set dashboard.layout: follow" "$err"
+ok "Someone else's session: exit 1" 1 "$rc"
+has "Someone else's session: that session still runs vim" "/bin/vim" "$(tm display -p -t '=tagents:' '#{pane_start_command}')"
+ok "Someone else's session: ...in the same process" "$vpid" "$(tm display -p -t '=tagents:' '#{pane_pid}')"
+ok "Someone else's session: no session was created" "personal scratch tagents work " "$(cplist)"
+ok "Someone else's session: no window was added to it" 1 "$(tm list-panes -t '=tagents:' | wc -l | tr -d ' ')"
+
+t "tagents typed in a shell"
+shell_idle() { tm display -p -t '=work:2' '#{pane_current_command}' | grep -cE '^(sh|bash)$'; }
+cpcfg cockpit; cpstart
+kclient 14 work;                                           U=$KC
+tm send-keys -t '=work:2' 'tagents' Enter
+ok "tagents typed in a shell: the session tagents exists" tagents "$(wait_eq_long tagents tm list-sessions -F '#{session_name}' | grep -x tagents)"
+ok "tagents typed in a shell: the viewport shows work:2" work:2 "$(wait_eq_long work:2 vwin)"
+ok "tagents typed in a shell: the terminal shows the session tagents" tagents "$(wait_eq tagents csess "$U")"
+ok "tagents typed in a shell: the shell pane is back at its prompt" 1 "$(wait_eq 1 shell_idle)"
+
+t "No client"
+cpcfg cockpit; cpstart
+err=$(ta --ensure-dash 2>&1 >/dev/null); rc=$?
+ok "No client: exit 1" 1 "$rc"
+ok "No client: no session tagents exists" 0 "$(tm list-sessions -F '#{session_name}' | grep -cx tagents)"
+
+t "Detach and come back"
+cpcfg cockpit; cpstart
+kclient 15 work;                                           U=$KC
+ta --ensure-dash >/dev/null 2>&1
+wait_eq work:2 vwin >/dev/null
+VT=$(vtty)
+tm send-keys -K -c "$VT" C-b
+tm send-keys -K -c "$VT" d
+ok "Detach and come back: the user's terminal is detached" 0 "$(wait_eq 0 present "$U")"
+ok "Detach and come back: the session tagents has a viewport attached to work again" work "$(wait_eq work csess "$VT")"
+ok "Detach and come back: the viewport kept its tty" "$VT" "$(vtty)"
+kclient 16 tagents;                                        U=$KC
+ok "Detach and come back: after attach the user is on tagents" tagents "$(csess "$U")"
+ok "Detach and come back: ...with the viewport on work:2" work:2 "$(vwin)"
+
+t "Nothing else to show"
+vp_text() { tm capture-pane -p -t "$(vpane)" | grep -o 'tagents: no session to show' | head -1; }
+# Stand-in for the guard of the dashboard's hooks: a viewport client that lands on tagents is marked idle and detached.
+GUARD='if -F "#{&&:#{==:#{hook_client},#{@tagents_viewport_tty}},#{==:#{session_name},tagents}}" "run-shell -C \"set -g @tagents_viewport_idle 1 ; detach-client -t #{hook_client}\""'
+tm set-hook -g 'client-session-changed[44]' "$GUARD"
+for s in personal scratch work; do tm kill-session -t "=$s:"; done
+ok "Nothing else to show: the viewport reads that there is no session" "tagents: no session to show" "$(wait_eq_long "tagents: no session to show" vp_text)"
+ok "Nothing else to show: the user's terminal stayed attached" 1 "$(present "$U")"
+tm new-session -d -s scratch -x 200 -y 50 "exec sleep 600"
+ok "Nothing else to show: once scratch exists the viewport shows it" scratch "$(wait_eq_long scratch vshows)"
+tm set-hook -gu 'client-session-changed[44]'
+
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

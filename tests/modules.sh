@@ -75,6 +75,8 @@ done
 ok "every module on disk is in the list" "" "$orphan"
 
 dupes=$(grep -hE '^[A-Za-z_][A-Za-z0-9_]*\(\)' "$LIB"/*.sh | sed 's/().*//' | sort | uniq -d | tr '\n' ' ')
+case " $LISTED " in *" cockpit dash "*|*" cockpit "*" dash "*) cd_order=before ;; *) cd_order=after ;; esac
+ok "the cockpit module is sourced before the dashboard's" before "$cd_order"
 ok "no function is defined in two modules" "" "${dupes% }"
 # The glyph rule is awk source in one variable (AWK_UNTITLE, names.sh), spliced into the three awk programs that need it: it must not be copied back in.
 ok "the glyph rule is written once" 1 "$(cat "$LIB"/*.sh | grep -c 'function untitle')"
