@@ -220,7 +220,10 @@ CPSTATE="$CPROOT/state"; mkdir -p "$CPSTATE"
 CPCONF="$CPROOT/config.yaml"
 printf '#!/bin/sh\nexit 0\n' >"$BIN/tusage"
 printf '#!/bin/sh\nexec sleep 600\n' >"$BIN/vim"
-chmod +x "$BIN/tusage" "$BIN/vim"
+cp /bin/sleep "$BIN/claude" || exit 1
+codesign --remove-signature "$BIN/claude" >/dev/null 2>&1
+codesign -f -s - "$BIN/claude" >/dev/null 2>&1
+chmod +x "$BIN/tusage" "$BIN/vim" "$BIN/claude"
 ln -sf "$TA" "$BIN/tagents"
 export PATH="$BIN:$PATH"
 export TA_STATE_DIR="$CPSTATE"
@@ -378,6 +381,108 @@ tm new-session -d -s scratch -x 200 -y 50 "exec sleep 600"
 ok "Nothing else to show: once scratch exists the viewport shows it" scratch "$(wait_eq_long scratch vshows)"
 tm set-hook -gu 'client-session-changed[44]'
 
+
+# ---------------------------------------------------------------------------------------------------------------------------------
+# selecting a row: the viewport's client moves, no pane does
+# ---------------------------------------------------------------------------------------------------------------------------------
+
+mkwin()    { tm new-window -d -P -F '#{pane_id}' -t "=$1:" -n "$2" "exec '$BIN/claude' 600"; }   # <session> <name> -> the new pane
+panes_of() { tm list-panes -a -F '#{pane_id}=#{window_id}' | sort | tr '\n' ' '; }       # every pane with the window it is in
+headers()  { ta --list 2>/dev/null | cut -f2 | grep '▾' | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/[^[:alpha:] ]//g' | tr -s ' ' | tr '\n' ' '; }
+allsess()  { tm list-clients -F '#{client_name}=#{session_name}' | sort | tr '\n' ' '; }
+vact()     { tm display -p -t '=tagents:' '#{pane_id}'; }                                  # the dashboard's active pane
+
+# work (two windows, the viewport on the second), personal with a chat in a window of its own ($PCW); the dashboard's terminal on tagents.
+cpselect_up() {
+  cpcfg cockpit; cpstart
+  PCHAT=$(mkwin personal chat)
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%s)" working sid-sel "$HOME" "" "agent sel" "" >"$CPSTATE/${PCHAT#%}.tsv"
+  kclient "$1" work;                                       U=$KC
+  ta --ensure-dash >/dev/null 2>&1
+  wait_eq work:2 vwin >/dev/null
+  wait_eq tagents csess "$U" >/dev/null
+  PCW=personal:$(tm display -p -t "$PCHAT" '#{window_index}')
+}
+
+t "Enter on a chat, Nothing moves"
+cpselect_up 21
+before=$(panes_of)
+ta --act open "$PCHAT" working sid-sel "$HOME" >/dev/null 2>&1; rc=$?
+ok "Enter on a chat: exit 0" 0 "$rc"
+ok "Enter on a chat: the viewport shows the chat's window" "$PCW" "$(wait_eq $PCW vwin)"
+ok "Enter on a chat: the chat's pane is active in its window" "$PCHAT" "$(tm display -p -t "=$PCW" '#{pane_id}')"
+ok "Enter on a chat: the viewport is the dashboard's active pane" "$(vpane)" "$(vact)"
+ok "Enter on a chat: the user's terminal still shows the session tagents" tagents "$(csess "$U")"
+ok "Nothing moves: every pane is in the window it was in" "$before" "$(panes_of)"
+ok "Nothing moves: the list is still the dashboard's left pane" 1 "$(left_of '=tagents:')"
+ok "Nothing moves: the dashboard has two panes" 2 "$(tm list-panes -t '=tagents:' | wc -l | tr -d ' ')"
+
+t "A header"
+tm select-pane -t "$(lpane)"
+tm select-window -t '=work:one'
+hk=$(ta --list 2>/dev/null | awk -F'\t' '$2 ~ /▾/ && $2 ~ /work/ { print $1; exit }')
+ta --act open "$hk" none "" "" "▾ work" >/dev/null 2>&1
+ok "A header: the viewport shows the current window of work" work:0 "$(wait_eq work:0 vwin)"
+ok "A header: the viewport is the dashboard's active pane" "$(vpane)" "$(vact)"
+ok "A header: the terminal still shows tagents" tagents "$(csess "$U")"
+
+t "Not listed, Still two panes"
+ok "Not listed: the headers are work and personal and scratch" "personal scratch work " "$(headers | tr ' ' '\n' | grep . | sort | tr '\n' ' ')"
+hasnt "Not listed: no header tagents" tagents "$(headers)"
+wk=$(tm list-panes -t '=work:2' -F '#{pane_id}' | head -1)
+nwin_before=$(tm list-windows -a | wc -l | tr -d ' ')
+TA_NEW_CMD="sleep 600" ta --new "$HOME" >/dev/null 2>&1
+ta --act shell "$wk" none "" "$HOME" >/dev/null 2>&1
+nwin_after=$(tm list-windows -a | wc -l | tr -d ' ')
+ta --act beside "$PCHAT" working sid-sel "$HOME" >/dev/null 2>&1
+ok "Still two panes: a chat and a shell were made elsewhere" 2 "$((nwin_after - nwin_before))"
+ok "Still two panes: the session tagents has one window" 1 "$(tm list-windows -t '=tagents:' | wc -l | tr -d ' ')"
+ok "Still two panes: ...with the list and the viewport only" 2 "$(tm list-panes -t '=tagents:' | wc -l | tr -d ' ')"
+ok "Still two panes: the list is still on the left" 1 "$(left_of '=tagents:')"
+
+t "ctrl-s"
+cpselect_up 22
+tm select-window -t '=work:2'
+tm switch-client -c "$(vtty)" -t '=work:2'
+wait_eq work:2 vwin >/dev/null
+ta --act beside "$PCHAT" working sid-sel "$HOME" >/dev/null 2>&1
+ok "ctrl-s: the chat's pane is in the window work:2" "$(tm display -p -t '=work:2' '#{window_id}')" "$(wait_eq "$(tm display -p -t '=work:2' '#{window_id}')" tm display -p -t "$PCHAT" '#{window_id}')"
+ok "ctrl-s: nothing was added to the dashboard" 2 "$(tm list-panes -t '=tagents:' | wc -l | tr -d ' ')"
+
+t "A new chat from outside tmux"
+cpselect_up 23
+tm switch-client -c "$(vtty)" -t '=work:2'
+wait_eq work:2 vwin >/dev/null
+nd="$CPROOT/proj"; mkdir -p "$nd"
+nw_before=$(tm list-windows -t '=work:' | wc -l | tr -d ' ')
+TA_NEW_CMD="sleep 600" ta --new "$nd" >/dev/null 2>&1
+ok "A new chat from outside tmux: work gained a window" "$((nw_before + 1))" "$(wait_eq_long "$((nw_before + 1))" sh -c "tm() { tmux -L $CPS \"\$@\"; }; tm list-windows -t '=work:' | wc -l | tr -d ' '")"
+ok "A new chat from outside tmux: no window was made in tagents" 1 "$(tm list-windows -t '=tagents:' | wc -l | tr -d ' ')"
+ok "A new chat from outside tmux: the viewport shows work" work "$(wait_eq work vshows)"
+
+t "A popup's enter"
+cpselect_up 24
+TA_MODE=popup ta --act open "$PCHAT" working sid-sel "$HOME" >/dev/null 2>&1
+ok "A popup's enter: the viewport shows the chat's window" "$PCW" "$(wait_eq "$PCW" vwin)"
+ok "A popup's enter: the list is still the dashboard's left pane" 1 "$(left_of '=tagents:')"
+ok "A popup's enter: no extra list was started" 2 "$(tm list-panes -t '=tagents:' | wc -l | tr -d ' ')"
+
+t "A popup from another session"
+cpselect_up 25
+kclient 26 scratch;                                        W=$KC
+tm send-keys -K -c "$W" F12
+TA_MODE=popup ta --act open "$PCHAT" working sid-sel "$HOME" >/dev/null 2>&1
+ok "A popup from another session: the viewport shows the chat's window" "$PCW" "$(wait_eq $PCW vwin)"
+ok "A popup from another session: that terminal shows the session tagents" tagents "$(wait_eq tagents csess "$W")"
+ok "A popup from another session: the dashboard's terminal stayed" tagents "$(csess "$U")"
+
+t "A notification clicked"
+cpselect_up 27
+tm send-keys -K -c "$U" F12
+sess_before=$(allsess)
+ta --goto "$PCHAT" >/dev/null 2>&1
+ok "A notification clicked: the viewport shows the window of the chat" "$PCW" "$(wait_eq "$PCW" vwin)"
+ok "A notification clicked: no client changed session except the viewport's" "$(printf '%s' "$sess_before" | sed "s|$(vtty)=[a-z]* |$(vtty)=personal |")" "$(allsess)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

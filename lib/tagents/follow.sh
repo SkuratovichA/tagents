@@ -34,13 +34,22 @@ win_alive() {  # <window-id> — one display: a window that is gone prints nothi
 }
 
 # One value of what a client shows: <format> for the named client, or, with none named, for the most recently active one. The value is the last thing on the line, so a session name with spaces comes through whole.
+# In the cockpit (the viewport's tty is stored in @tagents_viewport_tty) a client attached to the dashboard and the viewport's own client both answer with the viewport client's values, since the window on screen is the one the viewport shows; and with none named the viewport's tty is never the most active, because it is nobody's terminal. Without a viewport this is the plain lookup.
 client_attr() {  # <format> [client name]
-  tmux list-clients -F "#{client_activity} #{client_name} $1" 2>/dev/null |
-    LC_ALL=C awk -v c="${2:-}" '
-      { v = $0; sub(/^[^ ]+ [^ ]+ /, "", v) }
-      c != "" { if ($2 == c) { print v; exit } next }
-      $1 + 0 >= m { m = $1 + 0; best = v }
-      END { if (c == "" && best != "") print best }'
+  local vtty
+  vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
+  tmux list-clients -F "#{client_activity} #{client_name} #{?#{@tagents_cockpit},1,0} $1" 2>/dev/null |
+    LC_ALL=C awk -v c="${2:-}" -v v="$vtty" '
+      { x = $0; sub(/^[^ ]+ [^ ]+ [^ ]+ /, "", x); a[NR] = $1 + 0; n[NR] = $2; f[NR] = $3; val[NR] = x; if (v != "" && $2 == v) vv = x; if (v != "" && $2 == v) hasv = 1 }
+      END {
+        for (i = 1; i <= NR; i++) {
+          if (c != "") { if (n[i] != c) continue; pick = i; break }
+          if (v != "" && n[i] == v) continue
+          if (a[i] >= m) { m = a[i]; pick = i }
+        }
+        if (!pick) exit
+        if (hasv && (f[pick] == 1 || n[pick] == v)) print vv; else print val[pick]
+      }'
 }
 client_window()  { client_attr '#{window_id}' "${1:-}"; }     # [client name]
 client_session() { client_attr '#{session_name}' "${1:-}"; }  # [client name]

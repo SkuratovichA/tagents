@@ -142,8 +142,9 @@ resume_with() {  # <pane> <sid> <dir> <profile> [session] [after]
 session_for_dir() {  # <dir> -> session name, empty when the project has no windows
   local dir=$1
   [ -n "$dir" ] || return 1
-  tmux list-panes -a -F "#{session_name}$TAB#{pane_current_path}" 2>/dev/null |
+  tmux list-panes -a -F "#{session_name}$TAB#{pane_current_path}$TAB#{?#{@tagents_cockpit},1,0}" 2>/dev/null |
     LC_ALL=C awk -F"$TAB" -v dir="$dir" '
+      $3 == 1 { next }
       $2 == dir || index($2, dir "/") == 1 { c[$1]++ }
       END {
         best = ""; n = -1

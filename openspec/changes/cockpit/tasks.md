@@ -26,11 +26,11 @@
 
 ## 5. Selecting a row
 
-- [ ] 5.1 Teach `client_attr` (`lib/tagents/follow.sh`) the cockpit: flag the clients attached to the dashboard, answer with the viewport client's values when the settled client is on the dashboard or is the viewport's, and never let the viewport's tty be the most active client. Proved by `tests/cockpit.sh` ("ctrl-s", "A new chat from outside tmux") and `tests/window-rows.sh` (the follow layout answers as before).
-- [ ] 5.2 Make `show_window` (`lib/tagents/rows.sh`) in the cockpit switch the viewport's client to the window, select the viewport pane, put the cursor on the row and switch the acting terminal to `tagents` only when it is on neither, without calling `sidebar_move` or moving a pane. Proved by `tests/cockpit.sh` ("Enter on a chat", "A header", "Nothing moves").
-- [ ] 5.3 Route `--goto`, `--act open`, a double click, `ctrl-g`, a new chat and a new shell through that selection, and make a popup's enter and `tnotes toggle` stand in for the follow layout's moves. Proved by `tests/cockpit.sh` ("A popup's enter", "A popup from another session", "A notification clicked") and `tests/launch.sh`.
-- [ ] 5.4 Skip a session carrying `@tagents_cockpit` in the groups (`lib/tagents/state.sh`) and in `session_for_dir` (`lib/tagents/launch.sh`), and keep the dashboard at two panes after `ctrl-n`, `ctrl-a` and `ctrl-s`. Proved by `tests/cockpit.sh` ("Not listed", "Still two panes").
-- [ ] 5.5 Check that the new cases catch what they are for: with the `@tagents_cockpit` skip removed from `state.sh` the "Not listed" case fails. Proved by `tests/cockpit.sh` failing on the mutation.
+- [x] 5.1 Teach `client_attr` (`lib/tagents/follow.sh`) the cockpit: flag the clients attached to the dashboard, answer with the viewport client's values when the settled client is on the dashboard or is the viewport's, and never let the viewport's tty be the most active client. Proved by `tests/cockpit.sh` ("ctrl-s", "A new chat from outside tmux") and `tests/window-rows.sh` (the follow layout answers as before).
+- [x] 5.2 Make `show_window` (`lib/tagents/rows.sh`) in the cockpit switch the viewport's client to the window, select the viewport pane, put the cursor on the row and switch the acting terminal to `tagents` only when it is on neither, without calling `sidebar_move` or moving a pane. Proved by `tests/cockpit.sh` ("Enter on a chat", "A header", "Nothing moves").
+- [x] 5.3 Route `--goto`, `--act open`, a double click, `ctrl-g`, a new chat and a new shell through that selection, and make a popup's enter and `tnotes toggle` stand in for the follow layout's moves. Proved by `tests/cockpit.sh` ("A popup's enter", "A popup from another session", "A notification clicked") and `tests/launch.sh`.
+- [x] 5.4 Skip a session carrying `@tagents_cockpit` in the groups (`lib/tagents/state.sh`) and in `session_for_dir` (`lib/tagents/launch.sh`), and keep the dashboard at two panes after `ctrl-n`, `ctrl-a` and `ctrl-s`. Proved by `tests/cockpit.sh` ("Not listed", "Still two panes").
+- [x] 5.5 Check that the new cases catch what they are for: with the `@tagents_cockpit` skip removed from `state.sh` the "Not listed" case fails. Proved by `tests/cockpit.sh` failing on the mutation.
 
 ## 6. Keeping the viewport off the dashboard
 

@@ -199,3 +199,25 @@ cockpit_ensure() {  # [client name]
   [ -n "$lp" ] && tmux select-pane -t "$lp" 2>/dev/null
   return 0
 }
+
+# show_window in the cockpit: the viewport's client to the window (which also selects it in its session), the viewport the dashboard's active pane, the cursor on the row, and the terminal that acts switched to `tagents` only when it is on neither the dashboard nor the viewport. No pane changes window.
+cockpit_select() {  # <window-id> [pane]
+  local win=${1:-} pane=${2:-} sess vtty vp client
+  sess=$(tmux display -p -t "$win" '#{session_name}' 2>/dev/null)
+  vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
+  if [ -z "$sess" ] || [ -z "$vtty" ]; then
+    tmux display-message "tagents: the viewport is not running" 2>/dev/null
+    echo "tagents: the viewport is not running — nothing moved" >&2
+    return 1
+  fi
+  client=$(client_raw '#{client_name}')
+  vp=$(cockpit_pane right)
+  tmux switch-client -c "$vtty" -t "=$sess:$win" 2>/dev/null
+  [ -n "$vp" ] && tmux select-pane -t "$vp" 2>/dev/null
+  [ -n "$pane" ] && tmux select-pane -t "$pane" 2>/dev/null
+  cursor_to_window "$win"
+  if [ -n "$client" ] && [ "$(client_raw '#{?#{@tagents_cockpit},1,0}' "$client")" != 1 ]; then
+    tmux switch-client -c "$client" -t '=tagents:' 2>/dev/null
+  fi
+  return 0
+}

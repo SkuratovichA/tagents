@@ -43,6 +43,7 @@ show_window() {  # <window-id> [pane]
     echo "tagents: window $win is gone — nothing moved" >&2
     return 1
   fi
+  if cockpit_up; then cockpit_select "$win" "$pane"; return $?; fi
   sess=$(tmux display -p -t "$win" '#{session_name}' 2>/dev/null)
   tmux select-window -t "$win" 2>/dev/null
   [ -n "$sess" ] && tmux switch-client -t "=$sess" 2>/dev/null
@@ -65,7 +66,7 @@ open_agent() {  # <pane or @window key> — enter on a row
     return 1
   fi
   # A popup claims no pane, so there may be no sidebar yet: bring one to the client's window first.
-  [ "${TA_MODE:-}" = popup ] && [ -z "$(dash_pane)" ] && ensure_dash >/dev/null 2>&1
+  [ "${TA_MODE:-}" = popup ] && ! cockpit_up && [ -z "$(dash_pane)" ] && ensure_dash >/dev/null 2>&1
   show_window "$win" "$pane"
 }
 goto() { open_agent "${1:-}"; }   # ctrl-g and --goto: the same selection; only the closed-row notice differs, and act says that

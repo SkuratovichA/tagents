@@ -430,5 +430,17 @@ ok "a session no record names exits 0" 0 "$rc"
 ok "...and resumes nothing" 0 "$(ls "$OUT" 2>/dev/null | wc -l | tr -d ' ')"
 rm -f "$STATE/${GP#%}.tsv"
 
+t "11. a session marked @tagents_cockpit never owns a project"
+CPD="$ROOT/personal/cp-project"; mkdir -p "$CPD/.git"
+tm new-session -d -s tatest-cpv -c "$CPD" 'sleep 600' >/dev/null 2>&1
+tm new-session -d -s tatest-cpd -c "$CPD" 'sleep 600' >/dev/null 2>&1
+tm split-window -d -t '=tatest-cpd:' -c "$CPD" 'sleep 600' >/dev/null 2>&1
+tm set -t '=tatest-cpd:' @tagents_cockpit 1 >/dev/null 2>&1
+clear_out
+run --new "$CPD" >/dev/null 2>&1
+f=$(waitout)
+ok "a new chat for the project goes to the session that is not the dashboard" tatest-cpv "$(sess_of_out "$f")"
+tm kill-session -t '=tatest-cpd:' >/dev/null 2>&1; tm kill-session -t '=tatest-cpv:' >/dev/null 2>&1
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
