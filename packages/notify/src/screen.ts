@@ -33,7 +33,12 @@ interface Client {
   readonly activity: number;
   readonly pid: number;
   readonly windowId: string;
+  readonly tty: string;
+  readonly session: string;
 }
+
+/** The cockpit's dashboard session: the terminals attached to it stand in for the viewport that shows a chat inside it. */
+const DASHBOARD_SESSION = 'tagents';
 
 function mostActive(clients: readonly Client[]): Client | undefined {
   let best: Client | undefined;
@@ -49,20 +54,32 @@ function mostActive(clients: readonly Client[]): Client | undefined {
  */
 export function parseScreen(out: string): Screen | null | typeof NO_SUCH_PANE {
   let pane: { windowId: string; title: string } | null = null;
+  let viewportTty = '';
   const clients: Client[] = [];
   for (const line of out.split('\n')) {
     const f = line.split(SEP);
     if (f[0] === 'P' && pane === null && f.length >= 3) {
       pane = { windowId: f[1] ?? '', title: f.slice(2).join(SEP) };
-    } else if (f[0] === 'C' && f.length === 4) {
-      const [, activity = '', pid = '', windowId = ''] = f;
-      if (DIGITS.test(activity) && DIGITS.test(pid)) clients.push({ activity: Number(activity), pid: Number(pid), windowId });
+    } else if (f[0] === 'V' && f.length === 2) {
+      viewportTty = f[1] ?? '';
+    } else if (f[0] === 'C' && (f.length === 4 || f.length === 6)) {
+      const [, activity = '', pid = '', windowId = '', tty = '', session = ''] = f;
+      if (DIGITS.test(activity) && DIGITS.test(pid)) clients.push({ activity: Number(activity), pid: Number(pid), windowId, tty, session });
     }
   }
   if (pane === null) return null;
   if (pane.windowId === '') return NO_SUCH_PANE;
-  const showing = mostActive(clients.filter((c) => c.windowId === pane.windowId));
-  const client = showing ?? mostActive(clients);
+  // The viewport is a nested tmux client: it is never the terminal the person looks at, so it is no candidate for the pid,
+  // and a pane it shows is on screen only through the most active terminal attached to the dashboard.
+  const viewport = viewportTty === '' ? undefined : clients.find((c) => c.tty === viewportTty);
+  const real = viewport === undefined ? clients : clients.filter((c) => c !== viewport);
+  const direct = mostActive(real.filter((c) => c.windowId === pane.windowId));
+  const throughViewport =
+    direct === undefined && viewport?.windowId === pane.windowId
+      ? mostActive(real.filter((c) => c.session === DASHBOARD_SESSION))
+      : undefined;
+  const showing = direct ?? throughViewport;
+  const client = showing ?? mostActive(real);
   return {
     visible: showing !== undefined,
     ...(client !== undefined ? { clientPid: client.pid } : {}),
@@ -85,7 +102,13 @@ export function tmuxScreen(exec: Exec = execText): ScreenProbe {
           ';',
           'list-clients',
           '-F',
-          `C${SEP}#{client_activity}${SEP}#{client_pid}${SEP}#{window_id}`,
+          `C${SEP}#{client_activity}${SEP}#{client_pid}${SEP}#{window_id}${SEP}#{client_tty}${SEP}#{client_session}`,
+          ';',
+          'display',
+          '-p',
+          '-t',
+          pane,
+          `V${SEP}#{@tagents_viewport_tty}`,
         ],
         { timeoutMs: 2000 }
       );
