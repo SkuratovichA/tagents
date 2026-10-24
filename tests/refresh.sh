@@ -890,6 +890,17 @@ ok "a hook set without an index leaves nothing of ours in the event" 0 "$(grep -
 ok "...and the slow pass of the wake that follows has put [42] back" 1 "$(awk -v e="pane-focus-in[42] $EVSHOW" '$0 == e' "$D/hooks.after" | wc -l | tr -d ' ')"
 ok "...beside the one that wiped it" 1 "$(grep -c '^pane-focus-in\[0\] set-option -g @mine x' "$D/hooks.after")"
 
+# With the cockpit up the slow pass sets the viewport's guard at [44] as well, and a guard something outside removed comes back.
+newrun heal44
+SLOW=0
+tm new-session -d -s tagents -x 80 -y 24 'sleep 600' \; set -t '=tagents:' @tagents_cockpit 1
+act 2 '"$RF_TMUX" -L "$RF_S" set-hook -gu "client-session-changed[44]"; "$RF_TMUX" -L "$RF_S" show-hooks -g >"$RF_DIR/hooks.before"'
+act 4 '"$RF_TMUX" -L "$RF_S" show-hooks -g >"$RF_DIR/hooks.after"'
+go 4
+ok "a removed guard is gone before the slow pass" 0 "$(grep -c '^client-session-changed\[44\]' "$D/hooks.before")"
+ok "...and the slow pass has put the guard back at [44], once" 1 "$(grep -c '^client-session-changed\[44\] if-shell -F' "$D/hooks.after")"
+tm kill-session -t '=tagents:'; tm set-hook -gu 'client-session-changed[44]'
+
 # ---------------------------------------------------------------------------
 t "24. a refresher started from fzf ends with its fzf, though the bash around it lives on"
 # ---------------------------------------------------------------------------

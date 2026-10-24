@@ -136,6 +136,33 @@ cursor_to_window() {  # <window-id>
   return 0
 }
 
+# --follow in the cockpit: no pane changes window, and the client it is given is no use (the hook's is whichever tmux finds best), so it reads the viewport's client. It keeps @tagents_viewport_shown, takes a viewport whose session was closed to the newest one that still exists, and moves the list's cursor only when the window the viewport shows is not the one it last moved the cursor to.
+cockpit_follow() {
+  local vtty info sid sess win newest target
+  vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
+  [ -n "$vtty" ] || return 0
+  info=$(client_raw '#{session_id} #{session_name} #{window_id}' "$vtty")
+  [ -n "$info" ] || return 0
+  read -r sid sess win <<<"$info"
+  [ "$sess" = tagents ] && return 0
+  newest=$(tmux show -gqv @tagents_viewport_shown 2>/dev/null)
+  newest=${newest%% *}
+  if [ -n "$newest" ] && [ "$newest" != "$sid" ] && ! tmux list-sessions -F '#{session_id}' 2>/dev/null | grep -qxF "$newest"; then
+    target=$(viewport_target)
+    [ -n "$target" ] && tmux switch-client -c "$vtty" -t "=$target:" 2>/dev/null
+    info=$(client_raw '#{session_id} #{session_name} #{window_id}' "$vtty")
+    [ -n "$info" ] || return 0
+    read -r sid sess win <<<"$info"
+    [ "$sess" = tagents ] && return 0
+  fi
+  viewport_shown_push "$sid"
+  if [ "$win" != "$(tmux show -gqv @tagents_viewport_window 2>/dev/null)" ]; then
+    tmux set -g @tagents_viewport_window "$win" 2>/dev/null
+    cursor_to_window "$win"
+  fi
+  return 0
+}
+
 # The sidebar into the window the client shows now. Does nothing, and says nothing, when there is no client, the sidebar is already there,
 # or old seats are still standing. When no list runs but one is wanted (its pane, window or
 # session was killed, which no key does), a new one is started in that window: a window or a session killed on screen takes the sidebar with
@@ -146,7 +173,7 @@ cursor_to_window() {  # <window-id>
 # be made to happen.
 follow() {  # [client]
   local client=${1:-} win sb locked="" i=0
-  cockpit_up && return 0   # in the cockpit no pane changes window; the cockpit's own follow (the cursor after the viewport) comes with its viewport
+  cockpit_up && { cockpit_follow; return 0; }
   legacy_seats_present && return 0
   follow_lock && locked=1
   while [ "$i" -lt 3 ]; do

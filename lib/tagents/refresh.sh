@@ -659,6 +659,7 @@ install_event_hooks() {
     done
   fi
   install_follow_hooks
+  cockpit_up && cockpit_guard_install
   return 0
 }
 

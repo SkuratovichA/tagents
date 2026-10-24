@@ -15,6 +15,21 @@ pane_in_cockpit() {  # <pane-id>
 # The one reader of dashboard.layout: only a start asks. Anything but `cockpit` is the follow layout.
 cockpit_layout() { [ "$(cfg_get dashboard.layout 2>/dev/null)" = cockpit ]; }
 
+# The guard that keeps the viewport's client off `tagents`: a global client-session-changed hook that runs inside the server, with no shell between the switch and the step. `if -F` does not format-expand its action and `run-shell -C` does, so the command is expanded where it runs. LS is the hook client's own last session (a bare #{client_last_session} in a hook names another client's as soon as a second one is attached). The direction of the step off `tagents` follows the table in the design: the session left sorts before `tagents` and none sorts between, or it sorts after and some sort between, steps -n; the other two step -p; no last session (it was closed) steps -n; with `tagents` the only session the viewport's client is detached and marked idle for the loop.
+GUARD_HOOK_INDEX=44
+cockpit_guard_cmd() {
+  local ls cond before after dir
+  ls='#{L:#{?#{==:#{client_name},#{hook_client}},#{client_last_session},}}'
+  cond='#{&&:#{==:#{hook_client},#{@tagents_viewport_tty}},#{@tagents_cockpit}}'
+  before="#{?#{S:#{?#{&&:#{>:#{session_name},$ls},#{<:#{session_name},tagents}},1,}},p,n}"
+  after="#{?#{S:#{?#{&&:#{>:#{session_name},tagents},#{<:#{session_name},$ls}},1,}},n,p}"
+  dir="#{?$ls,#{?#{<:$ls,tagents},$before,$after},n}"
+  printf '%s' "if -F \"$cond\" \"run-shell -C \\\"#{?#{==:#{server_sessions},1},set -g @tagents_viewport_idle 1 ; detach-client -t #{hook_client},switch-client -c #{hook_client} -$dir}\\\"\""
+}
+cockpit_guard_install() {
+  tmux set-hook -g "client-session-changed[$GUARD_HOOK_INDEX]" "$(cockpit_guard_cmd)" 2>/dev/null
+}
+
 # Does a start act in the cockpit: it is up already, or the config asks for it.
 cockpit_want() { cockpit_up || cockpit_layout; }
 
@@ -183,10 +198,12 @@ cockpit_ensure() {  # [client name]
     tmux new-session -d -s tagents -x "$w" -y "$h" -n dashboard -c "$HOME" "exec '$SELF'" \; \
          set -t '=tagents:' @tagents_cockpit 1 \; set -t '=tagents:' status off \; set -t '=tagents:' detach-on-destroy off \; \
          set -gu @tagents_sidebar_on 2>/dev/null || return 1
+    cockpit_guard_install
     tmux split-window -d -h -l "$vw" -c "$HOME" -t '=tagents:' "exec '$SELF' --viewport" 2>/dev/null || return 1
     await_list >/dev/null
   else
     tmux set -gu @tagents_sidebar_on 2>/dev/null
+    cockpit_guard_install
     cockpit_restart_half
   fi
   cockpit_await_viewport || true

@@ -132,7 +132,6 @@ tm switch-client -c "$N" -t '=delta:'
 probe=$(wait_eq delta opt @probe)
 hasnt "e: the probe is not the literal format" '#{' "$probe"
 ok "e: the probe holds the name of the session switched to" delta "$probe"
-tm set-hook -gu 'client-session-changed[44]'
 tm set -gu @probe
 tm switch-client -c "$N" -t '=beta:'
 wait_eq beta csess "$N" >/dev/null
@@ -371,9 +370,6 @@ ok "Detach and come back: ...with the viewport on work:2" work:2 "$(vwin)"
 
 t "Nothing else to show"
 vp_text() { tm capture-pane -p -t "$(vpane)" | grep -o 'tagents: no session to show' | head -1; }
-# Stand-in for the guard of the dashboard's hooks: a viewport client that lands on tagents is marked idle and detached.
-GUARD='if -F "#{&&:#{==:#{hook_client},#{@tagents_viewport_tty}},#{==:#{session_name},tagents}}" "run-shell -C \"set -g @tagents_viewport_idle 1 ; detach-client -t #{hook_client}\""'
-tm set-hook -g 'client-session-changed[44]' "$GUARD"
 for s in personal scratch work; do tm kill-session -t "=$s:"; done
 ok "Nothing else to show: the viewport reads that there is no session" "tagents: no session to show" "$(wait_eq_long "tagents: no session to show" vp_text)"
 ok "Nothing else to show: the user's terminal stayed attached" 1 "$(present "$U")"
@@ -483,6 +479,119 @@ sess_before=$(allsess)
 ta --goto "$PCHAT" >/dev/null 2>&1
 ok "A notification clicked: the viewport shows the window of the chat" "$PCW" "$(wait_eq "$PCW" vwin)"
 ok "A notification clicked: no client changed session except the viewport's" "$(printf '%s' "$sess_before" | sed "s|$(vtty)=[a-z]* |$(vtty)=personal |")" "$(allsess)"
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------
+# the viewport never shows the dashboard (the guard at client-session-changed[44]) and --follow in the cockpit
+# ---------------------------------------------------------------------------------------------------------------------------------
+
+LISTED_MODS=$(awk '/^[[:space:]]*for ta_mod in/ { grab = 1 } grab { l = $0; sub(/^[[:space:]]*for ta_mod in[[:space:]]*/, "", l); fin = (l ~ /;[[:space:]]*do[[:space:]]*$/); sub(/;[[:space:]]*do[[:space:]]*$/, "", l); sub(/\\[[:space:]]*$/, "", l); printf "%s ", l; if (fin) exit }' "$TA")
+cpmods() {  # <code> — runs it in a shell with every module sourced, against this suite's server and state
+  env TMUX="$CPSOCK,0,0" TA_STATE_DIR="$CPSTATE" TA_CONFIG="$CPCONF" SELF="$TA" \
+      /bin/bash -c 'for m in '"$LISTED_MODS"'; do . "'"$HERE"'/../lib/tagents/$m.sh"; done; '"$1" >/dev/null 2>&1
+}
+hook44() { tm show-hooks -g 2>/dev/null | grep -c '^client-session-changed\[44\]'; }
+wid()    { tm display -p -t "$1" '#{window_id}'; }                       # <window target>
+vwid()   { tm list-clients -F '#{client_name} #{window_id}' 2>/dev/null | awk -v c="$(vtty)" '$1 == c { print $2 }'; }
+# The line number (counted from 1 in `ta --list`) under the list's cursor, as fzf reports it on its listen port.
+curpos() {
+  local port j; port=$(tm show -pv -t "$(lpane)" @tagents_port 2>/dev/null)
+  [ -n "$port" ] || return 0
+  j=$(curl -s "http://127.0.0.1:$port" 2>/dev/null)
+  [ -n "${CP_DEBUG:-}" ] && printf '%s\n' "$j" | cut -c1-300 >&2
+  printf '%s' "$j" | sed -n 's/.*"current":{"index":\([0-9]*\).*/\1/p' | awk '{ print $1 + 1 }'
+}
+# 1 once the list has read its input: a cursor posted before that is lost.
+listready() {
+  local port; port=$(tm show -pv -t "$(lpane)" @tagents_port 2>/dev/null)
+  [ -n "$port" ] && curl -s "http://127.0.0.1:$port" 2>/dev/null | grep -c '"reading":false'
+}
+# The line the cursor must be on for a window, by the rule of cursor_to_window: the first of its panes with a row, else the window's own row, else the header standing in for it.
+rowof() {  # <window target>
+  local w panes; w=$(wid "$1"); panes=$(tm list-panes -t "$1" -F '#{pane_id}' | tr '\n' ' ')
+  ta --list 2>/dev/null | LC_ALL=C awk -F'\t' -v keys="$panes" -v w="$w" '
+    BEGIN { nk = split(keys, K, " ") }
+    index($2, "\342\226\276") == 0 && !($1 in line) { line[$1] = NR }
+    index($2, "\342\226\276") > 0 && !($1 in hline) { hline[$1] = NR }
+    END { for (i = 1; i <= nk; i++) if (K[i] in line) { print line[K[i]]; exit }
+          if (w in line) print line[w]; else if (w in hline) print hline[w] }'
+}
+# The sessions work, personal and tagents with a terminal on work, the dashboard up, the hooks as the refresher sets them.
+cpguard_up() {  # <n>
+  cpcfg cockpit; cpstart
+  tm kill-session -t '=scratch:'
+  kclient "$1" work;                                       U=$KC
+  ta --ensure-dash >/dev/null 2>&1
+  wait_eq work:2 vwin >/dev/null
+  wait_eq_long 1 listready >/dev/null; sleep 1
+  cpmods install_event_hooks
+}
+vgo() { tm switch-client -c "$(vtty)" -t "=$1:"; }                       # <session> — the viewport's client, named as a key binding names it
+vkeys() { tm send-keys -K -c "$(vtty)" C-b "$@"; }
+
+t "Next, past the dashboard, Previous, past the dashboard, Picked in the chooser"
+cpguard_up 31
+ok "the real guard is installed at client-session-changed[44]" 1 "$(hook44)"
+vgo personal; wait_eq personal vshows >/dev/null
+vkeys ')'
+ok "Next, past the dashboard: the viewport shows work" work "$(wait_eq_long work vshows)"
+vkeys '('
+ok "Previous, past the dashboard: from work the viewport shows personal" personal "$(wait_eq_long personal vshows)"
+vgo work; wait_eq work vshows >/dev/null
+vkeys '('
+ok "Previous, past the dashboard: the viewport shows personal" personal "$(wait_eq_long personal vshows)"
+vgo work; wait_eq work vshows >/dev/null
+vgo tagents
+ok "Picked in the chooser: a pick of tagents from work shows personal" personal "$(wait_eq_long personal vshows)"
+ok "Picked in the chooser: the dashboard's terminal stayed on tagents" tagents "$(csess "$U")"
+
+t "Round the end of the order"
+cpcfg cockpit; cpstart
+tm new-session -d -s alpha -x 200 -y 50 "exec sleep 600"; tm new-session -d -s beta -x 200 -y 50 "exec sleep 600"
+kclient 32 beta;                                           U=$KC
+for s in work personal scratch; do tm kill-session -t "=$s:"; done
+ta --ensure-dash >/dev/null 2>&1
+wait_eq beta vshows >/dev/null
+cpmods install_event_hooks
+vkeys ')'
+ok "Round the end of the order: past the dashboard the viewport wraps to alpha" alpha "$(wait_eq_long alpha vshows)"
+vkeys '('
+ok "Round the end of the order: a prefix ( next shows beta again" beta "$(wait_eq_long beta vshows)"
+
+t "The shown session is closed"
+cpguard_up 33
+vgo personal; wait_eq "$(tm display -p -t '=personal:' '#{session_id}')" sh -c "tmux -L $CPS show -gqv @tagents_viewport_shown | cut -d' ' -f1" >/dev/null
+vgo work;     wait_eq "$(tm display -p -t '=work:' '#{session_id}')" sh -c "tmux -L $CPS show -gqv @tagents_viewport_shown | cut -d' ' -f1" >/dev/null
+ok "the shown ids are work then personal" "$(tm display -p -t '=work:' '#{session_id}') $(tm display -p -t '=personal:' '#{session_id}')" "$(opt @tagents_viewport_shown | cut -d' ' -f1-2)"
+tm kill-session -t '=work:'
+ok "The shown session is closed: the viewport shows personal" personal "$(wait_eq_long personal vshows)"
+ok "The shown session is closed: the dashboard's terminal stayed on tagents" tagents "$(csess "$U")"
+
+t "A tab click"
+cpguard_up 34
+before=$(panes_of)
+vkeys 0
+ok "A tab click: the viewport shows window 0 of work" work:0 "$(wait_eq_long work:0 vwin)"
+ok "A tab click: the recorded window is the viewport's" "$(vwid)" "$(wait_eq "$(vwid)" opt @tagents_viewport_window)"
+ok "A tab click: the cursor is on the row of the window" "$(rowof '=work:0')" "$(wait_eq_long "$(rowof '=work:0')" curpos)"
+ok "A tab click: every pane is in the window it was in" "$before" "$(panes_of)"
+
+t "Another terminal, The shown session changes window elsewhere"
+cpguard_up 35
+vgo personal; wait_eq "$(wid '=personal:')" opt @tagents_viewport_window >/dev/null
+row_before=$(wait_eq_long "$(rowof '=personal:')" curpos)
+before=$(panes_of)
+kclient 36 work;                                           V=$KC
+tm send-keys -K -c "$V" C-b 0
+ok "Another terminal: the other terminal changed window" work:0 "$(wait_eq work:0 sh -c "tmux -L $CPS list-clients -F '#{client_name} #{session_name}:#{window_index}' | awk -v c=$V '\$1 == c { print \$2 }'")"
+sleep 1
+ok "Another terminal: the viewport still shows personal" personal "$(vshows)"
+ok "Another terminal: the cursor stays on the row of personal" "$row_before" "$(curpos)"
+ok "Another terminal: no pane changed window" "$before" "$(panes_of)"
+vgo work; wait_eq "$(wid '=work:0')" opt @tagents_viewport_window >/dev/null
+tm send-keys -K -c "$V" C-b 2
+ok "The shown session changes window elsewhere: the viewport shows work:2" work:2 "$(wait_eq_long work:2 vwin)"
+ok "The shown session changes window elsewhere: the cursor is on its row" "$(rowof '=work:2')" "$(wait_eq_long "$(rowof '=work:2')" curpos)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
