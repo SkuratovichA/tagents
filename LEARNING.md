@@ -430,4 +430,4 @@ The cockpit release pinned `pnpm@9.15.4`; the global pnpm was 9.1.4, the build d
 
 ## tmux 3.4 fails `tests/cockpit.sh` and seven checks of `tests/window-rows.sh` (24.10.2026)
 
-Both are measured on tmux 3.7b (dot kept in session names, a refused join-pane, no-detach-on-destroy behaviour); on 3.4 the cockpit suite fails and then hangs. The default `follow` layout is unaffected. Do not run it in a loop that waits for it.
+Both are measured on tmux 3.7b (dot kept in session names, a refused join-pane, no-detach-on-destroy behaviour); on 3.4 the cockpit suite fails and then hangs. Fix: `brew upgrade tmux` (3.8) and restart the server; on 3.8 cockpit.sh passes 228/0 and window-rows.sh 563/0. A 3.8 client cannot talk to a running 3.4 server (protocol mismatch), so the restart has to be driven from a terminal outside tmux: `kill <server pid>`, then any `tmux new-session -d` lets continuum restore the layout and the tagents hook resume the chats.
