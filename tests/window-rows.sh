@@ -36,18 +36,7 @@ trap 'tmux -L "$WRS" kill-server >/dev/null 2>&1; tmux -L "${WRS}b" kill-server 
       [ -n "$WRSOCK" ] && rm -f "$WRSOCK"; [ -n "$WRSOCKB" ] && rm -f "$WRSOCKB"
       rm -rf "$WRROOT"' EXIT INT TERM
 
-pass=0; fail=0
-ok()   { if [ "$2" = "$3" ]; then pass=$((pass+1)); printf '  ok   %s\n' "$1"
-         else fail=$((fail+1)); printf '  FAIL %s\n       expected: [%s]\n       actual:   [%s]\n' "$1" "$2" "$3"; fi; }
-has()  { case "$3" in *"$2"*) pass=$((pass+1)); printf '  ok   %s\n' "$1" ;;
-         *) fail=$((fail+1)); printf '  FAIL %s\n       expected to contain: %s\n       actual: %s\n' "$1" "$2" "$3" ;; esac; }
-hasnt(){ case "$3" in *"$2"*) fail=$((fail+1)); printf '  FAIL %s\n       must not contain: %s\n       actual: %s\n' "$1" "$2" "$3" ;;
-         *) pass=$((pass+1)); printf '  ok   %s\n' "$1" ;; esac; }
-t()    { printf '\n%s\n' "$1"; }
-near() {  # <name> <expected> <actual> — within one column
-  local d=$(( $2 - $3 )); [ "$d" -lt 0 ] && d=$(( -d ))
-  if [ "$d" -le 1 ]; then pass=$((pass+1)); printf '  ok   %s\n' "$1"
-  else fail=$((fail+1)); printf '  FAIL %s\n       expected: %s (±1)\n       actual:   %s\n' "$1" "$2" "$3"; fi; }
+. "$HERE/wait.sh"
 
 BIN="$WRROOT/bin";       mkdir -p "$BIN"
 WRSTATE="$WRROOT/state"; mkdir -p "$WRSTATE"
@@ -107,18 +96,7 @@ modrun() {  # <function or builtin> [args…]
     . "$L/core.sh"; for f in "$L"/*.sh; do case $f in */core.sh) ;; *) . "$f" ;; esac; done
     eval "$WR_PRE"; "$@"' _ "$TA" "$@"
 }
-wait_eq() {  # <expected> <cmd...> — polls ~3 s, prints the last value seen
-  local want=$1 got i=0; shift
-  while :; do got=$("$@"); [ "$got" = "$want" ] && break; i=$((i + 1)); [ "$i" -ge 30 ] && break; sleep 0.1; done
-  printf '%s' "$got"
-}
-wait_eq_long() {  # <expected> <cmd...> — the same, up to ~8 s: for a list that a hook starts, which is a fresh fzf and a fresh bash
-  local want=$1 got i=0; shift
-  while :; do got=$("$@"); [ "$got" = "$want" ] && break; i=$((i + 1)); [ "$i" -ge 80 ] && break; sleep 0.1; done
-  printf '%s' "$got"
-}
 lockheld() { [ -d "$WRSTATE/.follow.lock" ] && echo yes || echo no; }
-settle() { sleep "${1:-0.6}"; }
 # The first start after an upgrade asks tnotes for one sync in the background (migrate_seats), and a sync may close a pane: a check that compares the server before and after waits for it to end. Quiet is no tnotes sync of this tree's for four samples in a row, which also covers the gap between the fork and the exec.
 wait_syncs() {
   local i=0 quiet=0

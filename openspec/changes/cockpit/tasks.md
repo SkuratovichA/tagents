@@ -1,8 +1,8 @@
 ## 1. The suite and what the design measured
 
-- [ ] 1.1 Move `wait_eq` and the scratch-server helpers that `tests/window-rows.sh` and the new suite both need into a sourced `tests/wait.sh`, and make `tests/window-rows.sh` source it. Proved by `tests/window-rows.sh` passing unchanged on its own.
-- [ ] 1.2 Add `tests/cockpit.sh` with the tmux contract cases first: a client attached with `TMUX` unset to the socket `TMUX` names, `switch-client -c` moving only the named client, a key table forwarding a prefix key, the guard hook's `if -F` and `run-shell -C`, the client loop reading the hook client's own last session with two clients attached, a session-level hook shadowing the global one, `prefix d` against a killed session, and the `after-kill-pane` event. Proved by `tests/cockpit.sh` ("tmux contract" cases) passing on tmux 3.7b.
-- [ ] 1.3 Check that the new cases catch what they are for: with `-c` removed from the `switch-client` case the case for the single moved client fails, and with the client loop replaced by a bare `#{client_last_session}` the two-client case fails. Proved by `tests/cockpit.sh` failing on each mutation and passing once restored.
+- [x] 1.1 Move `wait_eq` and the scratch-server helpers that `tests/window-rows.sh` and the new suite both need into a sourced `tests/wait.sh`, and make `tests/window-rows.sh` source it. Proved by `tests/window-rows.sh` passing unchanged on its own.
+- [x] 1.2 Add `tests/cockpit.sh` with the tmux contract cases first: a client attached with `TMUX` unset to the socket `TMUX` names, `switch-client -c` moving only the named client, a key table forwarding a prefix key, the guard hook's `if -F` and `run-shell -C`, the client loop reading the hook client's own last session with two clients attached, a session-level hook shadowing the global one, `prefix d` against a killed session, and the `after-kill-pane` event. Proved by `tests/cockpit.sh` ("tmux contract" cases) passing on tmux 3.7b.
+- [x] 1.3 Check that the new cases catch what they are for: with `-c` removed from the `switch-client` case the case for the single moved client fails, and with the client loop replaced by a bare `#{client_last_session}` the two-client case fails. Proved by `tests/cockpit.sh` failing on each mutation and passing once restored.
 
 ## 2. Configuration
 
