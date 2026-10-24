@@ -40,9 +40,9 @@
 
 ## 7. Keys, popups and messages
 
-- [ ] 7.1 Set `prefix` and `prefix2` to `None` and `key-table` to `tagents-cockpit` on the session, bind each prefix key the user has to select the viewport pane and send the key, and load the root table's mouse, wheel and click bindings into the table without the ones that run `display-menu`. Proved by `tests/cockpit.sh` ("Prefix from the list", "The list's own keys", "A click on the list", "A root binding").
+- [x] 7.1 Set `prefix` and `prefix2` to `None` and `key-table` to `tagents-cockpit` on the session, bind each prefix key the user has to select the viewport pane and send the key, and load the root table's mouse, wheel and click bindings into the table without the ones that run `display-menu`. Proved by `tests/cockpit.sh` ("Prefix from the list", "The list's own keys", "A click on the list", "A root binding").
 - [x] 7.2 Add the `notice` helper to `lib/tagents/core.sh`, use it at every `display-message` in `tagents` and `lib/tagents` that shows a message, and keep popups opening on the dashboard terminal. Proved by `tests/cockpit.sh` ("The keys window", "A new shell's message") and by `tests/modules.sh`, whose static check fails on a message site that does not call `notice`.
-- [ ] 7.3 Check that the new cases catch what they are for: with one message site back on bare `display-message` the static check fails, and with the key table unset the "Prefix from the list" case fails. Proved by `tests/modules.sh` and `tests/cockpit.sh` failing on each mutation.
+- [x] 7.3 Check that the new cases catch what they are for: with one message site back on bare `display-message` the static check fails, and with the key table unset the "Prefix from the list" case fails. Proved by `tests/modules.sh` and `tests/cockpit.sh` failing on each mutation.
 
 ## 8. Leaving and coming back
 

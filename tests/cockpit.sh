@@ -663,5 +663,81 @@ ok "tnotes toggle: the viewport shows the editor's window" "$NWIN" "$(wait_eq_lo
 ok "tnotes toggle: the editor's pane is active in it" "$NED" "$(wait_eq "$NED" tm display -p -t "=$NWIN" '#{pane_id}')"
 ok "tnotes toggle: the user's terminal still shows the session tagents" tagents "$(csess "$U")"
 
+# ---------------------------------------------------------------------------------------------------------------------------------
+# the dashboard's keys: the prefix is forwarded to the viewport, every other key reaches the active pane, the mouse bindings come along
+# ---------------------------------------------------------------------------------------------------------------------------------
+
+# A terminal whose keys the test types: kclientlog with a fifo read by a cat as stdin (script refuses a fifo itself), so that bytes written to $CPROOT/in<n> reach the client as typed. KC is the client.
+kclientio() {  # <n> <session>
+  local n=$1 s=$2 before i=0 after
+  before=$(clients)
+  rm -f "$CPROOT/in$n"; mkfifo "$CPROOT/in$n"
+  ( { sleep 300 >"$CPROOT/in$n" & printf '%s\n' "$!" >"$CPROOT/keeper$n.pid"; }
+    cat <"$CPROOT/in$n" | script -q "$CPROOT/u$n.log" sh -c 'stty cols 200 rows 50; exec env -u TMUX tmux -S "$0" attach -t "$1"' "$CPSOCK" "=$s:" >/dev/null 2>&1 & ) >/dev/null 2>&1
+  KC=""
+  while [ "$i" -lt 40 ]; do
+    after=$(clients)
+    KC=$(printf '%s\n' "$after" | grep -vxFf <(printf '%s\n' "$before") | head -1)
+    [ -n "$KC" ] && break
+    i=$((i + 1)); sleep 0.1
+  done
+  sleep 0.5
+}
+typed() { printf "$2" >"$CPROOT/in$1"; }                                  # <n> <printf format> — bytes the user types at terminal n
+# work:2 in the viewport, the list ready, a terminal that takes typed keys on the session tagents.
+cpkeys_up() {  # <n> [tmux command to run before the cockpit starts]
+  local n=$1
+  cpcfg cockpit; cpstart
+  [ -z "${2:-}" ] || tm $2
+  tm set-environment -g TA_NEW_CMD "sleep 600"
+  kclientio "$n" work;                                     U=$KC
+  ta --ensure-dash >/dev/null 2>&1
+  wait_eq work:2 vwin >/dev/null
+  wait_eq tagents csess "$U" >/dev/null
+  wait_eq_long 1 listready >/dev/null; sleep 1
+}
+
+t "Prefix from the list"
+cpkeys_up 61
+tm select-pane -t "$(lpane)"
+ok "Prefix from the list: the list is the active pane" "$(lpane)" "$(vact)"
+nw=$(tm list-windows -t '=work:' | wc -l | tr -d ' ')
+typed 61 '\002'; sleep 0.5; typed 61 'c'     # a person types the second key after the first has acted; one write would race the table
+ok "Prefix from the list: work gained a window" "$((nw + 1))" "$(wait_eq_long "$((nw + 1))" sh -c "tmux -L $CPS list-windows -t '=work:' | wc -l | tr -d ' '")"
+NWI=$(tm display -p -t '=work:' '#{window_index}')
+ok "Prefix from the list: the new window is not work:2" 1 "$([ "$NWI" != 2 ] && echo 1 || echo 0)"
+ok "Prefix from the list: the viewport shows the new window" work:$NWI "$(wait_eq_long work:$NWI vwin)"
+ok "Prefix from the list: the viewport is the active pane" "$(vpane)" "$(vact)"
+ok "Prefix from the list: the user's terminal still shows tagents" tagents "$(csess "$U")"
+
+t "The list's own keys"
+cpkeys_up 62
+tm select-pane -t "$(lpane)"
+nall=$(tm list-windows -a -F '#{session_name}' | grep -vc '^tagents$')
+typed 62 '\016'
+ok "The list's own keys: ctrl-n started a chat in a new window" "$((nall + 1))" "$(wait_eq_long "$((nall + 1))" sh -c "tmux -L $CPS list-windows -a -F '#{session_name}' | grep -vc '^tagents\$'")"
+ok "The list's own keys: no window was made in tagents" 1 "$(tm list-windows -t '=tagents:' | wc -l | tr -d ' ')"
+
+t "A click on the list"
+cpkeys_up 63 "set -g mouse on"
+tm select-pane -t "$(vpane)"
+ok "A click on the list: the viewport is the active pane" "$(vpane)" "$(vact)"
+# The screen row of a list line is found from the list's own text: the first group header is the list's first line, the window one is the row to click.
+CLKTOP=$(tm capture-pane -p -t "$(lpane)" | grep -n '▾' | head -1 | cut -d: -f1)
+CLK=$(tm capture-pane -p -t "$(lpane)" | grep -n '├─ one' | head -1 | cut -d: -f1)
+CLKROW=$((CLK - CLKTOP + 1))
+ok "A click on the list: the cursor starts on another row" 1 "$(curpos)"
+typed 63 "\033[<0;6;${CLK}M\033[<0;6;${CLK}m"
+ok "A click on the list: the list is the active pane" "$(lpane)" "$(wait_eq "$(lpane)" vact)"
+ok "A click on the list: the cursor is on the clicked row" "$CLKROW" "$(wait_eq "$CLKROW" curpos)"
+
+t "A root binding"
+cpkeys_up 64 "bind -n M-h set -wF @mh #{window_id}"
+tm select-pane -t "$(vpane)"
+W2=$(wid work:2)
+typed 64 '\033h'
+ok "A root binding: the binding ran in the window the viewport shows" "$W2" "$(wait_eq_long "$W2" sh -c "tmux -L $CPS show -wqv -t '=work:2' @mh")"
+ok "A root binding: ...and not in the dashboard window" "" "$(tm show -wqv -t '=tagents:' @mh)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

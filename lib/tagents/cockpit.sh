@@ -133,6 +133,28 @@ cockpit_pane() {  # left|right
     LC_ALL=C awk -v w="$want" '$1 == w { print $2; exit }'
 }
 
+# Make the session `tagents` forward the user's prefix to the viewport: the table `tagents-cockpit` binds each prefix key to make the viewport the active pane and send it the key, and holds the root table's mouse bindings that open no menu; the session options that select it are set last, so no key reaches a half-built table. Called again with the new viewport pane whenever a viewport is started again.
+cockpit_keys_install() {
+  local vp k tmp
+  vp=$(cockpit_pane right)
+  [ -n "$vp" ] || return 1
+  tmux unbind-key -a -T tagents-cockpit 2>/dev/null
+  for k in $(tmux show -gqv prefix 2>/dev/null) $(tmux show -gqv prefix2 2>/dev/null); do
+    case $k in ''|None) continue ;; esac
+    tmux bind-key -T tagents-cockpit "$k" select-pane -t "$vp" '\;' send-keys -t "$vp" "$k" 2>/dev/null
+  done
+  tmp=$(mktemp "${TMPDIR:-/tmp}/tagents-keys.XXXXXX") || return 1
+  tmux list-keys -T root 2>/dev/null | LC_ALL=C awk '
+    function flush() { if (blk != "" && key ~ /Mouse|Wheel|Click/ && blk !~ /display-menu/) printf "%s", blk; blk = "" }
+    /^bind-key/ { flush(); key = $0; sub(/^.* -T root +/, "", key); sub(/ .*$/, "", key) }
+    { blk = blk $0 "\n" }
+    END { flush() }' |
+    sed 's/ -T root / -T tagents-cockpit /' >"$tmp"
+  [ ! -s "$tmp" ] || tmux source-file "$tmp" 2>/dev/null
+  rm -f "$tmp"
+  tmux set -t '=tagents:' prefix None \; set -t '=tagents:' prefix2 None \; set -t '=tagents:' key-table tagents-cockpit 2>/dev/null
+}
+
 # Wait for the viewport pane to have attached its client: the tty it stored is its own pane's and a client of that name is listed.
 cockpit_await_viewport() {
   local i=0 vp ptty vtty
@@ -158,7 +180,7 @@ cockpit_restart_half() {
     tmux split-window -d -b -h -l "${DASH_WIDTH}%" -c "$HOME" -t "$p" "exec '$SELF'" 2>/dev/null
     await_list
   elif list_in_pane "$p"; then
-    tmux split-window -d -h -l "$((100 - DASH_WIDTH))%" -c "$HOME" -t "$p" "exec '$SELF' --viewport" 2>/dev/null
+    tmux split-window -d -h -l "$((100 - DASH_WIDTH))%" -c "$HOME" -t "$p" "exec '$SELF' --viewport" 2>/dev/null && cockpit_keys_install
   fi
   return 0
 }
@@ -200,6 +222,7 @@ cockpit_ensure() {  # [client name]
          set -gu @tagents_sidebar_on 2>/dev/null || return 1
     cockpit_guard_install
     tmux split-window -d -h -l "$vw" -c "$HOME" -t '=tagents:' "exec '$SELF' --viewport" 2>/dev/null || return 1
+    cockpit_keys_install
     await_list >/dev/null
   else
     tmux set -gu @tagents_sidebar_on 2>/dev/null
