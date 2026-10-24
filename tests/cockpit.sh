@@ -809,5 +809,60 @@ wait_eq_long "personal scratch work " cplist >/dev/null
 sleep 1
 ok "A quit leaves no waiter behind: no wait-for client of this server is left" 0 "$(ps -A -o command= | grep -F "$CPS" | grep -F 'wait-for tagents-ev' | grep -vc grep)"
 
+# ---------------------------------------------------------------------------------------------------------------------------------
+# a dashboard tmux-resurrect left behind is rebuilt in the cockpit and closed in the follow layout
+# ---------------------------------------------------------------------------------------------------------------------------------
+
+# What tmux-resurrect brings back of a cockpit: the session tagents of one window and two idle shells, titled as the list and the viewport were, with none of the options the dashboard carries, and a terminal attached to it. LS and LV are the shells.
+cpleft() {  # <n> <cockpit|follow>
+  cpcfg "$2"; cpstart
+  # The lists of the server before this one are still exiting, and the exit trap of one clears the title of a pane id the new server has handed out again: let them finish first.
+  sleep 2
+  tm new-session -d -s tagents -x 200 -y 50 -n dashboard
+  LS=$(tm list-panes -t '=tagents:' -F '#{pane_id}' | head -1)
+  LV=$(tm split-window -d -h -t "$LS" -P -F '#{pane_id}')
+  # A shell that sets its own title would overwrite the one the restore left on the pane.
+  tm set -p -t "$LS" allow-set-title off; tm set -p -t "$LV" allow-set-title off
+  tm select-pane -T tagents-sidebar -t "$LS"; tm select-pane -T tagents-viewport -t "$LV"
+  kclientio "$1" tagents; U=$KC
+  printf 'D\twork\t2\n' >"$CPROOT/snap.tsv"
+}
+lrunning() {  # the list runs in the left pane of the dashboard
+  local pid; pid=$(tm display -p -t "$(lpane)" '#{@tagents_list}' 2>/dev/null)
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo 1
+}
+vrunning() { tm display -p -t "$(vpane)" '#{@tagents_viewport}' 2>/dev/null; }
+# What a rebuild in place has to leave: the two shells now run the halves, nothing was made or detached, the terminal is still on the dashboard.
+leftover_rebuilt() {  # <label> <n>
+  ok "$1: the left pane runs the list" 1 "$(wait_eq_long 1 lrunning)"
+  ok "$1: the right pane runs the viewport" 1 "$(wait_eq_long 1 vrunning)"
+  ok "$1: @tagents_cockpit is 1" 1 "$(tm show -qv -t '=tagents:' @tagents_cockpit)"
+  ok "$1: the same two panes are there" "$LS $LV" "$(lpane) $(vpane)"
+  ok "$1: the dashboard has two panes" 2 "$(tm list-panes -t '=tagents:' | wc -l | tr -d ' ')"
+  ok "$1: the terminal is still listed, on the session tagents" tagents "$(csess "$U")"
+  ok "$1: ...and was never detached" 0 "$(grep -c 'detached' "$CPROOT/u$2.log" 2>/dev/null)"
+}
+
+t "Restored in the cockpit"
+cpleft 81 cockpit
+ta --resurrect --from "$CPROOT/snap.tsv" >"$CPROOT/r81.log" 2>&1
+leftover_rebuilt "Restored in the cockpit" 81
+ok "Restored in the cockpit: the viewport shows work:2" work:2 "$(wait_eq_long work:2 vwin)"
+has "Restored in the cockpit: the report says dashboard" "✓ dashboard" "$(cat "$CPROOT/r81.log")"
+
+t "Restored in the follow layout"
+cpleft 82 follow
+ta --resurrect --from "$CPROOT/snap.tsv" >"$CPROOT/r82.log" 2>&1
+ok "Restored in the follow layout: the terminal shows work:2, the window the sidebar is in" work:2 "$(wait_eq_long work:2 cwin "$U")"
+ok "Restored in the follow layout: no session tagents exists" "personal scratch work " "$(cplist)"
+ok "Restored in the follow layout: the list runs in work:2" 1 "$(left_of '=work:2')"
+ok "Restored in the follow layout: the terminal is still listed" 1 "$(present "$U")"
+
+t "Restored in the cockpit through --ensure-dash"
+cpleft 83 cockpit
+ta --ensure-dash >"$CPROOT/r83.log" 2>&1; ok "Restored in the cockpit through --ensure-dash: exit 0" 0 "$?"
+leftover_rebuilt "Restored in the cockpit through --ensure-dash" 83
+ok "Restored in the cockpit through --ensure-dash: the viewport has a client" 1 "$(present "$(vtty)")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

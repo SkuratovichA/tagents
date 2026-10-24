@@ -181,6 +181,8 @@ ensure_dash() {
   local win
   migrate_seats
   if cockpit_want; then cockpit_ensure; return $?; fi
+  # A leftover dashboard from tmux-resurrect is closed first, its terminals going to the sidebar's window, else to an ordinary one.
+  cockpit_leftover >/dev/null && cockpit_leftover_close "$(dash_window)"
   win=$(client_window "")
   [ -n "$win" ] || return 1
   [ -n "$(dash_pane)" ] || start_sidebar "$win" >/dev/null || return 1

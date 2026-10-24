@@ -243,9 +243,79 @@ cockpit_client_of_pane() {  # <pane-id>
   printf '%s' "$c"
 }
 
+# The dashboard made from nothing: the session `tagents` of the given size with the list in it, its options, the guard, the viewport beside the list and the key table. The size is the client's, 200x50 when it is not a number. cockpit_ensure calls it for the terminal that asks, and the restore for the viewport it points at a window, switching no terminal.
+cockpit_make() {  # <width> <height>
+  local w=${1:-} h=${2:-} lw vw
+  case $w in ''|*[!0-9]*|0) w=200 ;; esac
+  case $h in ''|*[!0-9]*|0) h=50 ;; esac
+  lw=$((w * DASH_WIDTH / 100)); vw=$((w - lw - 1))
+  tmux set -gu @tagents_viewport_tty 2>/dev/null
+  # -x/-y: a detached session is 80x24 until a client attaches, and the list's width is a share of the window (LEARNING.md, 12.09.2026).
+  tmux new-session -d -s tagents -x "$w" -y "$h" -n dashboard -c "$HOME" "exec '$SELF'" \; \
+       set -t '=tagents:' @tagents_cockpit 1 \; set -t '=tagents:' status off \; set -t '=tagents:' detach-on-destroy off \; \
+       set -gu @tagents_sidebar_on 2>/dev/null || return 1
+  cockpit_guard_install
+  tmux split-window -d -h -l "$vw" -c "$HOME" -t '=tagents:' "exec '$SELF' --viewport" 2>/dev/null || return 1
+  cockpit_keys_install
+  await_list >/dev/null
+}
+
+# A leftover dashboard, as tmux-resurrect restores a cockpit: a session `tagents` without @tagents_cockpit whose only window holds two panes, the sidebar's title on the left one and the viewport's on the right one, both idle shells with neither mark of a running half. Prints "<sidebar pane> <viewport pane>"; anything else is not a leftover and `tagents` stays a taken name.
+cockpit_leftover() {
+  local rows sb vp c1 c2
+  tmux has-session -t '=tagents:' 2>/dev/null || return 1
+  [ "$(tmux show -qv -t '=tagents:' @tagents_cockpit 2>/dev/null)" = 1 ] && return 1
+  [ "$(tmux list-windows -t '=tagents:' -F x 2>/dev/null | wc -l | tr -d ' ')" = 1 ] || return 1
+  rows=$(tmux list-panes -t '=tagents:' -F '#{pane_id}|@|#{pane_title}|@|#{pane_at_left}|@|#{pane_current_command}|@|#{@tagents_list}#{@tagents_viewport}' 2>/dev/null |
+    LC_ALL=C awk -F'\\|@\\|' -v OFS="$TAB" '
+      { n++ }
+      $2 == "tagents-sidebar" && $3 == 1 && $5 == "" { sb = $1; c1 = $4 }
+      $2 == "tagents-viewport" && $3 == 0 && $5 == "" { vp = $1; c2 = $4 }
+      END { if (n == 2 && sb != "" && vp != "") print sb, vp, c1, c2 }')
+  [ -n "$rows" ] || return 1
+  IFS="$TAB" read -r sb vp c1 c2 <<<"$rows"
+  is_shell_cmd "$c1" && is_shell_cmd "$c2" || return 1
+  printf '%s %s\n' "$sb" "$vp"
+}
+
+# The leftover made the cockpit where it stands: the options the dashboard carries, the guard, the list and the viewport started in the two idle shells (respawn-pane -k is safe on them: they run no list whose exit trap could race), the key table. No pane is made and no client is switched or detached.
+cockpit_leftover_rebuild() {
+  local lo sb vp
+  lo=$(cockpit_leftover) || return 1
+  read -r sb vp <<<"$lo"
+  tmux set -t '=tagents:' @tagents_cockpit 1 \; set -t '=tagents:' status off \; set -t '=tagents:' detach-on-destroy off \; \
+       set -gu @tagents_sidebar_on \; set -gu @tagents_viewport_tty 2>/dev/null
+  cockpit_guard_install
+  tmux respawn-pane -k -t "$sb" -c "$HOME" "exec '$SELF'" 2>/dev/null
+  tmux respawn-pane -k -t "$vp" -c "$HOME" "exec '$SELF' --viewport" 2>/dev/null
+  cockpit_keys_install
+  await_list >/dev/null
+  cockpit_await_viewport || true
+  return 0
+}
+
+# The leftover closed (the follow layout): every terminal on it goes to the window given, else to the live list's window, else to the active window of the first other session, or is detached when no session is left; then the session goes.
+cockpit_leftover_close() {  # [window id]
+  local win=${1:-} c s
+  if [ -z "$win" ] || ! tmux list-windows -a -F '#{window_id}' 2>/dev/null | grep -qxF -- "$win"; then
+    win=$(dash_window)
+    if [ -z "$win" ]; then
+      s=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | LC_ALL=C awk '$0 != "tagents" { print; exit }')
+      [ -z "$s" ] || win=$(tmux display -p -t "=$s:" '#{window_id}' 2>/dev/null)
+    fi
+  fi
+  for c in $(tmux list-clients -F '#{client_name} #{session_name}' 2>/dev/null | LC_ALL=C awk '$2 == "tagents" { print $1 }'); do
+    if [ -n "$win" ]; then tmux switch-client -c "$c" -t "$win" 2>/dev/null; else tmux detach-client -t "$c" 2>/dev/null; fi
+  done
+  tmux kill-session -t '=tagents:' 2>/dev/null
+  return 0
+}
+
 # --ensure-dash in the cockpit: make the dashboard when it is not up, start again a half that is gone, point the viewport at the window the client was in and take that client to the dashboard. A client on the dashboard or the viewport's own switches nothing and the list becomes the active pane. 1 with no client, and 1 on a taken name.
 cockpit_ensure() {  # [client name]
-  local client=${1:-} info w h win sid sess vtty lp lw vw on_dash=""
+  local client=${1:-} info w h win sid sess vtty lp on_dash=""
+  # Before the taken-name check below, which would call a leftover a taken name.
+  cockpit_leftover >/dev/null && cockpit_leftover_rebuild
   if ! cockpit_up && tmux has-session -t '=tagents:' 2>/dev/null; then
     echo "tagents: session tagents is taken — rename it or set dashboard.layout: follow" >&2
     return 1
@@ -258,19 +328,8 @@ cockpit_ensure() {  # [client name]
   vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
   if [ "$sess" = tagents ] || [ "$client" = "$vtty" ]; then on_dash=1; fi
   if ! cockpit_up; then
-    case $w in ''|*[!0-9]*|0) w=200 ;; esac
-    case $h in ''|*[!0-9]*|0) h=50 ;; esac
-    lw=$((w * DASH_WIDTH / 100)); vw=$((w - lw - 1))
-    tmux set -gu @tagents_viewport_tty 2>/dev/null
     [ -n "$on_dash" ] || viewport_shown_push "$sid"
-    # -x/-y: a detached session is 80x24 until a client attaches, and the list's width is a share of the window (LEARNING.md, 12.09.2026).
-    tmux new-session -d -s tagents -x "$w" -y "$h" -n dashboard -c "$HOME" "exec '$SELF'" \; \
-         set -t '=tagents:' @tagents_cockpit 1 \; set -t '=tagents:' status off \; set -t '=tagents:' detach-on-destroy off \; \
-         set -gu @tagents_sidebar_on 2>/dev/null || return 1
-    cockpit_guard_install
-    tmux split-window -d -h -l "$vw" -c "$HOME" -t '=tagents:' "exec '$SELF' --viewport" 2>/dev/null || return 1
-    cockpit_keys_install
-    await_list >/dev/null
+    cockpit_make "$w" "$h" || return 1
   else
     tmux set -gu @tagents_sidebar_on 2>/dev/null
     cockpit_guard_install

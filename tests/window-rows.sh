@@ -1495,5 +1495,22 @@ ok "F15 once the list claims, it is in the window on screen" "$W3" "$(wait_eq "$
 ok "F15 it is the pane that was started" "$LP" "$(sbpane)"
 tm kill-pane -t "$(sbpane)"; unhook
 
+t "A leftover viewport shell"
+kill_sidebars; unhook; to tatest-work
+tm new-session -d -s tatest-lv -x 200 -y 50 -c "$REPO" "exec sleep 600"
+tm new-window -d -t =tatest-lv:2 -c "$REPO"
+LVA=$(tm list-panes -t =tatest-lv:2 -F '#{pane_id}' | head -1)                                 # the user's own shell
+LVL=$(tm split-window -d -h -t "$LVA" -P -F '#{pane_id}' -c "$REPO"); tm select-pane -T tagents-viewport -t "$LVL"   # a leftover
+LVB=$(tm split-window -d -h -t "$LVA" -P -F '#{pane_id}' "exec sleep 600"); tm select-pane -T tagents-viewport -t "$LVB"   # a busy pane with that title
+LVV=$(tm split-window -d -h -t "$LVA" -P -F '#{pane_id}' -c "$REPO"); tm select-pane -T tagents-viewport -t "$LVV"; tm set -p -t "$LVV" @tagents_viewport 1   # a live viewport
+printf 'A\tsid-lv-none\t%s\t1\ttatest-lv\t2\t0\tw\t\t%s\t\t\t\t\n' "$CFGD" "$REPO" >"$WRROOT/lv.tsv"
+resume_run --resurrect --from "$WRROOT/lv.tsv" >/dev/null 2>&1
+settle 0.5
+ok "A leftover viewport shell: the idle shell titled tagents-viewport is closed" no "$(paneok "$LVL")"
+ok "A leftover viewport shell: the other pane of work:2 is untouched" yes "$(paneok "$LVA")"
+ok "A leftover viewport shell: a busy pane with that title is left running" yes "$(paneok "$LVB")"
+ok "A leftover viewport shell: a live viewport is left" yes "$(paneok "$LVV")"
+tm kill-session -t =tatest-lv
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -52,9 +52,9 @@
 
 ## 9. Resurrect
 
-- [ ] 9.1 Save the cockpit's `D` row as `D/work/2` with no `tagents` row, restore the sidebar "where it was" (`lib/tagents/resurrect.sh`), and sweep idle shells titled `tagents-viewport` as well as `tagents-sidebar`. Proved by `tests/resurrect.sh` (the cockpit scenarios of "The sidebar comes back" and the sweep).
-- [ ] 9.2 Detect a leftover dashboard, a session `tagents` without `@tagents_cockpit` holding two idle shells titled `tagents-sidebar` and `tagents-viewport`, before the taken-name check and the sweep, rebuild it in place with `respawn-pane -k` on the idle shells in the cockpit and switch its clients and close it in the follow layout. Proved by `tests/cockpit.sh` ("Restored in the cockpit", "Restored in the follow layout") and `tests/window-rows.sh` ("A leftover viewport shell").
-- [ ] 9.3 Check that the new cases catch what they are for: with the leftover check after the taken-name check the "Restored in the cockpit" case fails. Proved by `tests/cockpit.sh` failing on the mutation.
+- [x] 9.1 Save the cockpit's `D` row as `D/work/2` with no `tagents` row, restore the sidebar "where it was" (`lib/tagents/resurrect.sh`), and sweep idle shells titled `tagents-viewport` as well as `tagents-sidebar`. Proved by `tests/resurrect.sh` (the cockpit scenarios of "The sidebar comes back" and the sweep).
+- [x] 9.2 Detect a leftover dashboard, a session `tagents` without `@tagents_cockpit` holding two idle shells titled `tagents-sidebar` and `tagents-viewport`, before the taken-name check and the sweep, rebuild it in place with `respawn-pane -k` on the idle shells in the cockpit and switch its clients and close it in the follow layout. Proved by `tests/cockpit.sh` ("Restored in the cockpit", "Restored in the follow layout") and `tests/window-rows.sh` ("A leftover viewport shell").
+- [x] 9.3 Check that the new cases catch what they are for: with the leftover rebuild after the taken-name check in `cockpit_ensure` the "Restored in the cockpit through --ensure-dash" case fails, and with the cockpit rebuild after `resurrect_sweep` the "Restored in the cockpit" case fails (the restore never reaches the taken-name check, so these two are the pair). Proved by `tests/cockpit.sh` failing on each mutation.
 
 ## 10. tnotes and notify
 
@@ -67,7 +67,7 @@
 - [ ] 11.1 Describe the cockpit, its keys and its limits in `README.md`, then regenerate the plugin references with `pnpm plugin:gen`. Proved by `pnpm plugin:check` exiting 0.
 - [ ] 11.2 Add the lessons of this change to `LEARNING.md` by date. Proved by the entry being there.
 - [ ] 11.3 Run every suite under `tests/` on its own scratch tmux server with the live server's global hook count the same before and after, and run `pnpm test`, `pnpm spec:check` and `pnpm plugin:check`. Proved by the run's summary and the exit codes.
-- [ ] 11.4 Check the cockpit on the live server with `dashboard.layout: cockpit` once the change is merged and installed: start it, select rows in two sessions, press `prefix n` and `ctrl-q`. Proved by the observed behaviour, written down in the pull request.
+- [ ] 11.4 Check the cockpit on the live server with `dashboard.layout: cockpit` once the change is merged and installed: start it, select rows in two sessions, press `prefix n` and `ctrl-q`. Proved by the observed behaviour, written down as a comment on the pull request.
 
 ## Workflow follow-up
 
