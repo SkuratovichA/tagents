@@ -578,6 +578,30 @@ contains "a key fzf does not know, in the same list" \
    "values.yaml: keys.new: 'ctrl-1' is not a key fzf knows" "$out"
 ok "five problems, five lines" 5 "$(nlines "$out")"
 
+# dashboard.layout: follow and cockpit are read, anything else is follow and says so.
+printf 'dashboard:\n  layout: cockpit\n' >"$TMP/cockpit.yaml"
+ok       "Cockpit chosen: --check has nothing to say" "" "$(ck "$TMP/cockpit.yaml")"
+contains "...and --config prints the leaf" "dashboard.layout${TAB}cockpit" "$(TA_CONFIG="$TMP/cockpit.yaml" bash "$TA" --config 2>/dev/null)"
+printf 'usage:\n  workdays: true\n' >"$TMP/nodash.yaml"
+ok       "No dashboard section: --check has nothing to say" "" "$(ck "$TMP/nodash.yaml")"
+ok       "...and no dashboard.layout leaf exists, which every reader takes as follow" "" \
+   "$(TA_CONFIG="$TMP/nodash.yaml" bash "$TA" --config 2>/dev/null | grep '^dashboard\.')"
+printf 'dashboard:\n  layout: ide\n' >"$TMP/badlayout.yaml"
+out=$(ck "$TMP/badlayout.yaml")
+contains "A dashboard layout that cannot be read" \
+   "dashboard.layout: \"ide\" is not one of follow, cockpit — read as follow" "$out"
+ok "...one line for one problem" 1 "$(nlines "$out")"
+
+# The README's "The file" section: every top-level key it lists is a section the file carries.
+readme_keys=$(awk '/^### The file/ {on=1; next} /^### / {on=0} on && /^[a-z_]+:/ {sub(/:.*/, ""); print}' "$HERE/../README.md")
+for k in $readme_keys; do
+  case $k in
+    claude|usage|notes|resurrect|dashboard|keys|plugins) ok "README lists $k, a section the file carries" 1 1 ;;
+    *) ok "README lists $k, a section the file carries" known "$k" ;;
+  esac
+done
+contains "...and dashboard is among them" "dashboard" "$readme_keys"
+
 # The parser's own refusals, which used to be stderr and nothing else.
 out=$(ck "$TMP/tabs.yaml")
 contains "a tab-indented line is in the list" "tabs.yaml:3: tab indentation is not supported" "$out"

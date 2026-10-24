@@ -418,6 +418,12 @@ claude:
   # When nothing matches. `ask` (the default) opens a picker; a profile name
   # settles it silently.
   default: ask
+
+dashboard:
+  # How the sidebar is laid out: `follow` (the default) puts it beside the
+  # window you are in; `cockpit` is the opt-in alternative. Anything else is
+  # read as `follow`, and `tagents --check` says so.
+  layout: follow
 ```
 
 ### One config, several machines

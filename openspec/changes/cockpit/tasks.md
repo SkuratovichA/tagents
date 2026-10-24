@@ -6,8 +6,8 @@
 
 ## 2. Configuration
 
-- [ ] 2.1 Read `dashboard.layout` with `cfg_get`, accept `follow` and `cockpit`, read any other value as `follow` and make `--check` report it as `dashboard.layout: "<value>" is not one of follow, cockpit — read as follow`, and list `dashboard` among the keys the file carries. Proved by `tests/config.sh` ("A dashboard layout that cannot be read", "Cockpit chosen", "No dashboard section").
-- [ ] 2.2 Describe the key in the README's `### The file` section. Proved by `tests/config.sh` (the keys listed in the README are the keys `--check` knows).
+- [x] 2.1 Read `dashboard.layout` with `cfg_get`, accept `follow` and `cockpit`, read any other value as `follow` and make `--check` report it as `dashboard.layout: "<value>" is not one of follow, cockpit — read as follow`, and list `dashboard` among the keys the file carries. Proved by `tests/config.sh` ("A dashboard layout that cannot be read", "Cockpit chosen", "No dashboard section").
+- [x] 2.2 Describe the key in the README's `### The file` section. Proved by `tests/config.sh` (the keys listed in the README are the keys `--check` knows).
 
 ## 3. The module, the session and the viewport
 
@@ -59,8 +59,8 @@
 ## 10. tnotes and notify
 
 - [ ] 10.1 Make `tnotes toggle` call `tagents --goto <editor pane>` behind its own one-line cockpit check in place of switching the client, and give its `die()` the same lines as `notice`, pinned against `core.sh` by a test. Proved by `tests/notes.sh` ("tnotes toggle") and `tests/modules.sh` (the copy matches).
-- [ ] 10.2 Make notify's probe (`packages/notify/src/screen.ts`) also read each client's tty and session and `@tagents_viewport_tty`, count a pane the viewport shows as on screen only through the most active terminal on `tagents`, and never use the viewport's pid as the client pid. Proved by `cd packages/notify && node --test "test/**/*.test.ts"` ("Seen through the viewport", "The dashboard is not on screen") and `tsc --noEmit`.
-- [ ] 10.3 Check that the new cases catch what they are for: with the viewport's pid taken as the client pid the "Seen through the viewport" case fails. Proved by the notify tests failing on the mutation.
+- [x] 10.2 Make notify's probe (`packages/notify/src/screen.ts`) also read each client's tty and session and `@tagents_viewport_tty`, count a pane the viewport shows as on screen only through the most active terminal on `tagents`, and never use the viewport's pid as the client pid. Proved by `cd packages/notify && node --test "test/**/*.test.ts"` ("Seen through the viewport", "The dashboard is not on screen") and `tsc --noEmit`.
+- [x] 10.3 Check that the new cases catch what they are for: with the viewport's pid taken as the client pid the "Seen through the viewport" case fails. Proved by the notify tests failing on the mutation.
 
 ## 11. The whole tree
 

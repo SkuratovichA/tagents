@@ -567,6 +567,11 @@ EOF
           reference|paste|submit) ;;
           *) cfg_note "$k" "\"$v\" is not one of reference, paste, submit — tnotes uses reference" ;;
         esac ;;
+      dashboard.layout)
+        case $v in
+          follow|cockpit) ;;
+          *) cfg_note "$k" "\"$v\" is not one of follow, cockpit — read as follow" ;;
+        esac ;;
       resurrect.every)
         # due_every reads anything but a positive number as off, so a "5m"
         # would quietly stop the capture a reboot depends on.
