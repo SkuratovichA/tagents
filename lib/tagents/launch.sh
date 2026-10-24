@@ -29,7 +29,7 @@ ask_profile() {  # <new|pick|resume> <args…>
   for p in $(cfg_children claude.profiles); do
     [ ${#p} -gt "$w" ] && w=${#p}
   done
-  [ "$w" -gt 0 ] || { tmux display-message "tagents: no claude profiles in $CONFIG_FILE" 2>/dev/null; return 0; }
+  [ "$w" -gt 0 ] || { notice "tagents: no claude profiles in $CONFIG_FILE"; return 0; }
   # The name is column 1 and never shown; what you read is column 2, where the
   # config dir sits next to it — the profile name alone does not say which login
   # it is, and that is the whole question being asked.
@@ -88,7 +88,7 @@ $note")
 resume_agent() {  # <pane> <sid> <dir> [after]
   local pane=$1 sid=$2 dir=$3 after=${4:-open_agent} cfgd hascfg sess prof
   if [ -z "$sid" ]; then
-    tmux display-message "tagents: no session id recorded — cannot resume" 2>/dev/null
+    notice "tagents: no session id recorded — cannot resume"
     return 1
   fi
   [ -d "$dir" ] || dir=$HOME
@@ -110,7 +110,7 @@ resume_with() {  # <pane> <sid> <dir> <profile> [session] [after]
   local pane=$1 sid=$2 dir=$3 prof=${4:-} sess=${5:-} after=${6:-open_agent} cmd cur newpane
   # A refusal must not become an empty string: the first path below TYPES this into somebody's shell, where `cd "$dir" && ` is a syntax error in their pane.
   cmd=$(agent_cmd "$prof" resume "$sid") || {
-    tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
+    notice "tagents: no claude profile \"$prof\" in $CONFIG_FILE"
     return 1; }
 
   if [ -n "$pane" ] && tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx -- "$pane"; then
@@ -132,7 +132,7 @@ resume_with() {  # <pane> <sid> <dir> <profile> [session] [after]
   [ -n "$sess" ] || sess=$(client_session "")
   [ -n "$sess" ] || sess=$(tmux display -p '#{session_name}' 2>/dev/null)
   newpane=$(new_pane_window "$sess" "$dir" "$cmd") || {
-    tmux display-message "tagents: could not open a window in $sess" 2>/dev/null; return 1; }
+    notice "tagents: could not open a window in $sess"; return 1; }
   # Before <after>, whose status is this function's: the capture waits for the SessionStart record anyway, so it does not care which runs first.
   resurrect_soon
   "$after" "$newpane"
@@ -181,11 +181,11 @@ new_pane_window() {  # <session> <dir> [cmd]
 new_agent() {  # <dir> [profile] [session]
   local dir=${1:-} prof=${2:-} sess=${3:-} root
   [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
-  [ -d "$dir" ] || { tmux display-message "tagents: $dir is not a directory" 2>/dev/null; return 1; }
+  [ -d "$dir" ] || { notice "tagents: $dir is not a directory"; return 1; }
   # A NAME THAT CAME FROM A HUMAN IS CHECKED FIRST, before a window is created for it. profile_for only ever returns names the config already has; `tagents --new <dir> personl` used to sail straight through to a launch on the default account, which is the exact silent wrong login all of this exists to end. Not profile_named: nothing is being skipped here, the launch is refused. `ask` passes — it is not a profile, it is the instruction to ask for one.
   if [ -n "$prof" ] && [ "$prof" != ask ] && ! profile_exists "$prof"; then
     echo "tagents: no claude profile \"$prof\" in $CONFIG_FILE" >&2
-    tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
+    notice "tagents: no claude profile \"$prof\" in $CONFIG_FILE"
     return 1
   fi
   root=$(repo_root "$dir") || root=$dir
@@ -204,10 +204,10 @@ new_agent() {  # <dir> [profile] [session]
 new_agent_pick() {  # <dir> [session]
   local dir=${1:-} sess=${2:-} root
   [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
-  [ -d "$dir" ] || { tmux display-message "tagents: $dir is not a directory" 2>/dev/null; return 1; }
+  [ -d "$dir" ] || { notice "tagents: $dir is not a directory"; return 1; }
   # Asked before anything is created: with nothing to choose between, a window out of nowhere for a dialog that cannot open would be for no reason.
   if [ -z "$(cfg_children claude.profiles)" ]; then
-    tmux display-message "tagents: no claude profiles in $CONFIG_FILE" 2>/dev/null
+    notice "tagents: no claude profiles in $CONFIG_FILE"
     return 0
   fi
   root=$(repo_root "$dir") || root=$dir
@@ -224,10 +224,10 @@ new_shell() {  # <dir> [session]
   [ -n "$dir" ] || dir=$(tmux display -p -t "=$sess:" '#{session_path}' 2>/dev/null)
   [ -n "$dir" ] && [ -d "$dir" ] || dir=$HOME
   pane=$(new_pane_window "$sess" "$dir") || {
-    tmux display-message "tagents: could not open a window in $sess" 2>/dev/null; return 1; }
+    notice "tagents: could not open a window in $sess"; return 1; }
   idx=$(tmux display -p -t "$pane" '#{window_index}' 2>/dev/null)
   open_agent "$pane"
-  tmux display-message "tagents: new shell in $(basename "$(tilde_of "$dir")") ($sess:$idx)" 2>/dev/null
+  notice "tagents: new shell in $(basename "$(tilde_of "$dir")") ($sess:$idx)"
 }
 
 # The one place a fresh agent gets a window. Both entry points come through here so the command, the message and the "it is selected like any row" policy are decided once.
@@ -235,18 +235,18 @@ start_agent() {  # <root> <session> <profile>
   local root=$1 sess=$2 prof=${3:-} newpane idx cmd
   # Built before the window exists: agent_cmd refuses a profile it cannot account for, and a window on an empty command string would be a bare shell where an agent was asked for.
   cmd=$(agent_cmd "$prof" new) || {
-    tmux display-message "tagents: no claude profile \"$prof\" in $CONFIG_FILE" 2>/dev/null
+    notice "tagents: no claude profile \"$prof\" in $CONFIG_FILE"
     return 1; }
   # -d so the window is not selected as a side effect of being created, half built and before its pane id is even known; it is selected once, deliberately, below.
   # The last resort session does not exist yet (no tmux server running, or none with a session): it is created with the chat as its first window. Any other name that is gone is a session killed under the caller, and it stays gone.
   newpane=$(new_pane_window "$sess" "$root" "$cmd")
   [ -n "$newpane" ] || {
-    tmux display-message "tagents: could not open a window in $sess" 2>/dev/null; return 1; }
+    notice "tagents: could not open a window in $sess"; return 1; }
   idx=$(tmux display -p -t "$newpane" '#{window_index}' 2>/dev/null)
   # OPENED LIKE ANY OTHER AGENT: the client goes to it, the sidebar follows, the cursor is in it. Asking for an agent from the sidebar and being left looking at the previous one was never what the key meant. With no sidebar the client is simply taken to the new window.
   open_agent "$newpane"
   resurrect_soon
-  tmux display-message \
-    "tagents: new agent in $(basename "$root") ($sess:$idx)${prof:+ as $prof}" 2>/dev/null
+  notice \
+    "tagents: new agent in $(basename "$root") ($sess:$idx)${prof:+ as $prof}"
   return 0
 }

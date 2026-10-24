@@ -322,7 +322,7 @@ resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
     [ "$n" -gt 0 ] && resurrect_soon "$RESURRECT_RETAKE"
   fi
   echo "tagents: $n resumed, $k skipped, $total recorded ($(tilde_of "$file"))"
-  [ "$auto" = 1 ] && tmux display-message "tagents: resurrected $n agents, $k skipped — $(tilde_of "$RESURRECT_LOG")" 2>/dev/null
+  [ "$auto" = 1 ] && notice "tagents: resurrected $n agents, $k skipped — $(tilde_of "$RESURRECT_LOG")"
   return 0
 }
 

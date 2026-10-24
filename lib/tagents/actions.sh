@@ -55,20 +55,20 @@ kill_agent() {
   [ "$pane" = "-" ] && return 0
   # The list itself is a pane in the same window as the chat it sits beside, and it is never an agent row — but a marker can drift, and killing the list from the list is not a mistake worth allowing.
   if [ "$pane" = "$(dash_pane)" ]; then
-    tmux display-message "tagents: that is the dashboard itself" 2>/dev/null
+    notice "tagents: that is the dashboard itself"
     return 0
   fi
   case "$pane" in
     @*)
       # A dimmed row's window: the question lists its panes, so the popup grows with them.
       if ! tmux list-windows -a -F '#{window_id}' 2>/dev/null | grep -qx -- "$pane"; then
-        tmux display-message "tagents: that window is gone" 2>/dev/null
+        notice "tagents: that window is gone"
         return 0
       fi
       local n
       n=$(window_panes "$pane" | wc -l | tr -d ' ')
       if [ "$n" = 0 ]; then
-        tmux display-message "tagents: that is the dashboard itself" 2>/dev/null
+        notice "tagents: that is the dashboard itself"
         return 0
       fi
       [ "$n" -gt 12 ] && n=13
@@ -88,7 +88,7 @@ window_panes() {  # <window id> — "index<TAB>command<TAB>path" of each pane bu
 ask_kill_window() {  # <window id> — the question for a window that runs no chat
   local win=${1:-} ans rows n i=0 idx cmd dir sb last
   if ! tmux list-windows -a -F '#{window_id}' 2>/dev/null | grep -qx -- "$win"; then
-    tmux display-message "tagents: that window is gone" 2>/dev/null
+    notice "tagents: that window is gone"
     return 0
   fi
   printf '\033[1mkill this window?\033[0m\n'
@@ -224,7 +224,7 @@ open_chat() {  # <open_agent|open_beside> <pane> <sid> <dir>
       if [ -z "$key" ] && [ -z "$newest" ]; then
         # Also on stderr: the notice helper logs a click's stderr, which is the only trace of why this click selected nothing.
         msg="tagents: that chat has ended and left no record — ctrl-y lists closed sessions"
-        tmux display-message "$msg" 2>/dev/null
+        notice "$msg"
         printf '%s\n' "$msg" >&2
         return 0
       fi
@@ -254,11 +254,11 @@ act() {
         open|beside|goto|send|rename)
           # A CHILD IS THE SAME REFUSAL FOR A DIFFERENT REASON, and the reason is what the notice is for: it is not a daemon nobody is watching, it is a `claude -p` the agent above it started, and there is no log to follow either — ctrl-v shows its transcript instead.
           if [ -n "$(LC_ALL=C awk -F"$TAB" 'NR==1 { print $11; exit }' "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)" ]; then
-            tmux display-message \
-              "tagents: child session — no pane to open, type into or rename (ctrl-v shows its transcript)" 2>/dev/null
+            notice \
+              "tagents: child session — no pane to open, type into or rename (ctrl-v shows its transcript)"
           else
-            tmux display-message \
-              "tagents: headless session — no pane to open, type into or rename (ctrl-v follows its log)" 2>/dev/null
+            notice \
+              "tagents: headless session — no pane to open, type into or rename (ctrl-v follows its log)"
           fi
           return 0 ;;
       esac ;;
@@ -270,7 +270,7 @@ act() {
           return 0 ;;
         kill) kill_agent "$pane" ""; return 0 ;;
         beside|undock|send|rename|preview)
-          tmux display-message "tagents: that window runs no chat" 2>/dev/null
+          notice "tagents: that window runs no chat"
           return 0 ;;
       esac ;;
   esac
@@ -287,7 +287,7 @@ act() {
       else open_chat open_beside "$pane" "$sid" "$dir"; fi ;;
     goto)
       if [ -n "$sess" ]; then open_session "$pane"
-      elif [ "$state" = dead ]; then tmux display-message "tagents: that chat is closed — enter resumes it" 2>/dev/null
+      elif [ "$state" = dead ]; then notice "tagents: that chat is closed — enter resumes it"
       else goto "$pane"; fi ;;
     send)   send_line "$pane" ;;
     rename) rename_agent "$pane" "$sid" ;;

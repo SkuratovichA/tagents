@@ -223,7 +223,7 @@ cockpit_select() {  # <window-id> [pane]
   sess=$(tmux display -p -t "$win" '#{session_name}' 2>/dev/null)
   vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
   if [ -z "$sess" ] || [ -z "$vtty" ]; then
-    tmux display-message "tagents: the viewport is not running" 2>/dev/null
+    notice "tagents: the viewport is not running"
     echo "tagents: the viewport is not running — nothing moved" >&2
     return 1
   fi

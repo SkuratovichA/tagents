@@ -117,7 +117,7 @@ key_warn() {  # [prefix] — no prefix means tmux display-message
   while IFS= read -r n; do
     [ -n "$n" ] || continue
     if [ -n "$pre" ]; then printf '%s%s\n' "$pre" "$n"
-    else tmux display-message "tagents: $n" 2>/dev/null || true
+    else notice "tagents: $n" || true
     fi
   done <<EOF
 $KEY_NOTES

@@ -191,8 +191,8 @@ resume_closed() {  # <sid> <dir> <profile> [session]
   local sid=${1:-} dir=${2:-} prof=${3:-} sess=${4:-}
   [ -n "$sid" ] || return 1
   if [ -z "$dir" ] || [ ! -d "$dir" ]; then
-    tmux display-message \
-      "tagents: $(tilde_of "${dir:-its directory}") is gone — resuming in $(tilde_of "$HOME")" 2>/dev/null
+    notice \
+      "tagents: $(tilde_of "${dir:-its directory}") is gone — resuming in $(tilde_of "$HOME")"
     dir=$HOME
   fi
   # An account nobody can name is not an account to launch on: fall through to the default login rather than making agent_cmd refuse a profile called "?".
@@ -207,7 +207,7 @@ ask_closed() {  # <port> [session] — the picker itself, normally the body of t
 '
   rows=$(closed_rows)
   if [ -z "$rows" ]; then
-    tmux display-message "tagents: no closed sessions on record yet" 2>/dev/null
+    notice "tagents: no closed sessions on record yet"
     return 0
   fi
   # Column 1 is the id and is never shown; column 2 is the line you read, built

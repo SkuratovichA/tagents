@@ -41,7 +41,7 @@
 ## 7. Keys, popups and messages
 
 - [ ] 7.1 Set `prefix` and `prefix2` to `None` and `key-table` to `tagents-cockpit` on the session, bind each prefix key the user has to select the viewport pane and send the key, and load the root table's mouse, wheel and click bindings into the table without the ones that run `display-menu`. Proved by `tests/cockpit.sh` ("Prefix from the list", "The list's own keys", "A click on the list", "A root binding").
-- [ ] 7.2 Add the `notice` helper to `lib/tagents/core.sh`, use it at every `display-message` in `tagents` and `lib/tagents` that shows a message, and keep popups opening on the dashboard terminal. Proved by `tests/cockpit.sh` ("The keys window", "A new shell's message") and by `tests/modules.sh`, whose static check fails on a message site that does not call `notice`.
+- [x] 7.2 Add the `notice` helper to `lib/tagents/core.sh`, use it at every `display-message` in `tagents` and `lib/tagents` that shows a message, and keep popups opening on the dashboard terminal. Proved by `tests/cockpit.sh` ("The keys window", "A new shell's message") and by `tests/modules.sh`, whose static check fails on a message site that does not call `notice`.
 - [ ] 7.3 Check that the new cases catch what they are for: with one message site back on bare `display-message` the static check fails, and with the key table unset the "Prefix from the list" case fails. Proved by `tests/modules.sh` and `tests/cockpit.sh` failing on each mutation.
 
 ## 8. Leaving and coming back
@@ -58,7 +58,7 @@
 
 ## 10. tnotes and notify
 
-- [ ] 10.1 Make `tnotes toggle` call `tagents --goto <editor pane>` behind its own one-line cockpit check in place of switching the client, and give its `die()` the same lines as `notice`, pinned against `core.sh` by a test. Proved by `tests/notes.sh` ("tnotes toggle") and `tests/modules.sh` (the copy matches).
+- [x] 10.1 Make `tnotes toggle` call `tagents --goto <editor pane>` behind its own one-line cockpit check in place of switching the client, and give its `die()` the same lines as `notice`, pinned against `core.sh` by a test. Proved by `tests/notes.sh` ("tnotes toggle") and `tests/modules.sh` (the copy matches).
 - [x] 10.2 Make notify's probe (`packages/notify/src/screen.ts`) also read each client's tty and session and `@tagents_viewport_tty`, count a pane the viewport shows as on screen only through the most active terminal on `tagents`, and never use the viewport's pid as the client pid. Proved by `cd packages/notify && node --test "test/**/*.test.ts"` ("Seen through the viewport", "The dashboard is not on screen") and `tsc --noEmit`.
 - [x] 10.3 Check that the new cases catch what they are for: with the viewport's pid taken as the client pid the "Seen through the viewport" case fails. Proved by the notify tests failing on the mutation.
 

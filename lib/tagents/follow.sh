@@ -104,7 +104,7 @@ sidebar_move_now() {  # <window-id> — sidebar_move without the lock
     # Lost a race to another follow, which is a success; the window closing in between is not.
     [ "$(tmux display -p -t "$sb" '#{window_id}' 2>/dev/null)" = "$win" ] && return 0
     echo "tagents: could not move the sidebar into $win — it stays where it is (${err:-no reason given})" >&2
-    tmux display-message "tagents: could not move the sidebar — ${err:-no reason given}" 2>/dev/null
+    notice "tagents: could not move the sidebar — ${err:-no reason given}"
     return 1
   fi
   # A join into a window whose active pane is zoomed can leave the sidebar behind the zoomed pane: unzoom, then put the widths back.

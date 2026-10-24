@@ -593,5 +593,75 @@ tm send-keys -K -c "$V" C-b 2
 ok "The shown session changes window elsewhere: the viewport shows work:2" work:2 "$(wait_eq_long work:2 vwin)"
 ok "The shown session changes window elsewhere: the cursor is on its row" "$(rowof '=work:2')" "$(wait_eq_long "$(rowof '=work:2')" curpos)"
 
+# ---------------------------------------------------------------------------------------------------------------------------------
+# messages and popups: the dashboard's own status line is off, so a message appears on the viewport's client; a popup is on the user's terminal
+# ---------------------------------------------------------------------------------------------------------------------------------
+
+# kclient with the client's output kept in a file ($CPROOT/u<n>.log), so that a test can read what reached that terminal. KC is the new client.
+kclientlog() {  # <n> <session>
+  local n=$1 s=$2 before i=0 after
+  before=$(clients)
+  ( { sleep 300 & printf '%s\n' "$!" >"$CPROOT/keeper$n.pid"; wait; } |
+      script -q "$CPROOT/u$n.log" sh -c 'stty cols 200 rows 50; exec env -u TMUX tmux -S "$0" attach -t "$1"' "$CPSOCK" "=$s:" >/dev/null 2>&1 & ) >/dev/null 2>&1
+  KC=""
+  while [ "$i" -lt 40 ]; do
+    after=$(clients)
+    KC=$(printf '%s\n' "$after" | grep -vxFf <(printf '%s\n' "$before") | head -1)
+    [ -n "$KC" ] && break
+    i=$((i + 1)); sleep 0.1
+  done
+  sleep 0.5
+}
+vscreen() { tm capture-pane -p -t "$(vpane)" 2>/dev/null; }                     # what the viewport's client draws, its status line included
+vmsg()    { tm show-messages 2>/dev/null | grep -F " $(vtty) message: " | tail -1 | sed 's/.* message: //'; }   # the last message that client was shown
+keysshown() { grep -c 'every key' "$CPROOT/u$1.log" 2>/dev/null; }
+
+t "The keys window"
+cpcfg cockpit; cpstart
+kclientlog 51 work;                                        U=$KC
+ta --ensure-dash >/dev/null 2>&1
+wait_eq work:2 vwin >/dev/null
+wait_eq tagents csess "$U" >/dev/null
+settle
+: >"$CPROOT/u51.log"
+TMUX_PANE=$(lpane) ta --act keys "$(lpane)" none "" "" >/dev/null 2>&1 &
+ok "The keys window: it opens on the user's terminal" 1 "$(wait_eq_long 1 sh -c "[ \"\$(grep -c 'every key' '$CPROOT/u51.log')\" -gt 0 ] && echo 1 || echo 0")"
+hasnt "The keys window: ...and not in the viewport" 'every key' "$(vscreen)"
+tm send-keys -K -c "$U" Escape
+wait; sleep 0.3
+
+t "A new shell's message"
+cpselect_up 52
+tm set -g display-time 20000
+tm kill-session -t '=scratch:'
+mkdir -p "$CPROOT/app"
+tm new-session -d -s scratch -x 200 -y 50 -c "$CPROOT/app" "exec sleep 600"
+SP=$(tm list-panes -t '=scratch:' -F '#{pane_id}' | head -1)
+# From the list's pane, as the key runs: a plain display-message from there lands on the client of the session tagents, the user's terminal.
+TMUX_PANE=$(lpane) ta --act shell "$SP" none "" "$CPROOT/app" >/dev/null 2>&1; rc=$?
+ok "A new shell's message: exit 0" 0 "$rc"
+SW=$(tm list-windows -t '=scratch:' -F '#{window_index}' | sort -n | tail -1)
+ok "A new shell's message: scratch gained a window" 1 "$SW"
+ok "A new shell's message: the viewport shows it" scratch:$SW "$(wait_eq_long scratch:$SW vwin)"
+has "A new shell's message: the viewport's client was shown it" "tagents: new shell in app (scratch:$SW)" "$(wait_eq_long "tagents: new shell in app (scratch:$SW)" vmsg)"
+has "A new shell's message: ...and its status line draws it" "tagents: new shell in app (scratch:$SW)" "$(wait_eq_long "tagents: new shell in app (scratch:$SW)" sh -c "tmux -L $CPS capture-pane -p -t $(vpane) | grep -o 'tagents: new shell in app (scratch:$SW)' | head -1")"
+ok "A new shell's message: the user's terminal still shows the session tagents" tagents "$(csess "$U")"
+tm set -gu display-time
+
+t "tnotes toggle"
+cpselect_up 53
+NCH=$(mkwin work notes-chat)
+NED=$(tm split-window -d -P -F '#{pane_id}' -t "$NCH" "exec sleep 600")
+tm set -p -t "$NCH" @ta_notes "$NED"; tm set -p -t "$NED" @ta_notes_for "$NCH"
+NWIN=work:$(tm display -p -t "$NCH" '#{window_index}')
+tm switch-client -c "$(vtty)" -t '=work:0'
+ok "tnotes toggle: the viewport shows work:0 first" work:0 "$(wait_eq work:0 vwin)"
+ok "tnotes toggle: the editor is not the active pane of its window" "$NCH" "$(tm display -p -t "=$NWIN" '#{pane_id}')"
+env TMUX="$CPSOCK,0,0" bash "$HERE/../tnotes" toggle "$NCH" >/dev/null 2>&1; rc=$?
+ok "tnotes toggle: exit 0" 0 "$rc"
+ok "tnotes toggle: the viewport shows the editor's window" "$NWIN" "$(wait_eq_long "$NWIN" vwin)"
+ok "tnotes toggle: the editor's pane is active in it" "$NED" "$(wait_eq "$NED" tm display -p -t "=$NWIN" '#{pane_id}')"
+ok "tnotes toggle: the user's terminal still shows the session tagents" tagents "$(csess "$U")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

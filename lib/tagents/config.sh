@@ -611,7 +611,7 @@ cfg_warn() {  # [prefix] — no argument means tmux display-message
   cfg_check
   [ -n "$CFG_NOTES" ] || return 0
   if [ $# -eq 0 ]; then
-    tmux display-message "tagents: $CFG_SUMMARY" 2>/dev/null || true
+    notice "tagents: $CFG_SUMMARY" || true
     return 0
   fi
   while IFS= read -r n; do
