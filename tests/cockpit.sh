@@ -370,6 +370,11 @@ ok "Detach and come back: ...with the viewport on work:2" work:2 "$(vwin)"
 
 t "Nothing else to show"
 vp_text() { tm capture-pane -p -t "$(vpane)" | grep -o 'tagents: no session to show' | head -1; }
+# The wait-for clients this server has: `ring_wait` runs a plain `tmux if-shell` inside a pane, which reaches the server through the pane's TMUX, so the argv carries no -L; ps -E appends the environment, whose TMUX names the socket. Only a client (`tmux if-shell`) counts, not the server whose argv holds the command.
+cpwaiters() { ps -A -ww -E -o command= 2>/dev/null | grep -F 'tmux if-shell' | grep -F 'wait-for tagents-ev' | grep -cF "TMUX=$CPSOCK,"; }
+cporphans() { ps -A -ww -E -o ppid=,command= 2>/dev/null | awk '$1 == 1' | grep -F 'tmux if-shell' | grep -F 'wait-for tagents-ev' | grep -cF "TMUX=$CPSOCK,"; }   # the waiters whose parent is gone: a leaked client is reparented to pid 1
+cpwaiting() { [ "$(cpwaiters)" -ge 1 ] && echo 1; }
+settle
 for s in personal scratch work; do tm kill-session -t "=$s:"; done
 ok "Nothing else to show: the viewport reads that there is no session" "tagents: no session to show" "$(wait_eq_long "tagents: no session to show" vp_text)"
 ok "Nothing else to show: the user's terminal stayed attached" 1 "$(present "$U")"
@@ -490,6 +495,10 @@ cpmods() {  # <code> — runs it in a shell with every module sourced, against t
   env TMUX="$CPSOCK,0,0" TA_STATE_DIR="$CPSTATE" TA_CONFIG="$CPCONF" SELF="$TA" \
       /bin/bash -c 'for m in '"$LISTED_MODS"'; do . "'"$HERE"'/../lib/tagents/$m.sh"; done; '"$1" >/dev/null 2>&1
 }
+cpout() {  # <function> [args…] — runs it with every module sourced and prints what it prints, against this suite's server and state
+  env TMUX="$CPSOCK,0,0" TA_STATE_DIR="$CPSTATE" TA_CONFIG="$CPCONF" SELF="$TA" \
+      /bin/bash -c 'for m in '"$LISTED_MODS"'; do . "'"$HERE"'/../lib/tagents/$m.sh"; done; "$@"' cpout "$@" 2>/dev/null
+}
 hook44() { tm show-hooks -g 2>/dev/null | grep -c '^client-session-changed\[44\]'; }
 wid()    { tm display -p -t "$1" '#{window_id}'; }                       # <window target>
 vwid()   { tm list-clients -F '#{client_name} #{window_id}' 2>/dev/null | awk -v c="$(vtty)" '$1 == c { print $2 }'; }
@@ -592,6 +601,87 @@ vgo work; wait_eq "$(wid '=work:0')" opt @tagents_viewport_window >/dev/null
 tm send-keys -K -c "$V" C-b 2
 ok "The shown session changes window elsewhere: the viewport shows work:2" work:2 "$(wait_eq_long work:2 vwin)"
 ok "The shown session changes window elsewhere: the cursor is on its row" "$(rowof '=work:2')" "$(wait_eq_long "$(rowof '=work:2')" curpos)"
+
+# Only the session tagents is left and the viewport is idle: a client's session and the session of a command run from a pane both read tagents. The viewport's shell is stopped for the case, so that a session made here is not picked up and the dashboard stays the only one a lookup can name.
+t "The dashboard is never where a chat or a shell lands"
+cpcfg cockpit; cpstart
+kclient 41 work;                                           U=$KC
+ta --ensure-dash >/dev/null 2>&1
+wait_eq work:2 vwin >/dev/null
+for s in personal scratch work; do tm kill-session -t "=$s:"; done
+wait_eq_long "tagents: no session to show" vp_text >/dev/null
+VPID=$(tm display -p -t "$(vpane)" '#{pane_pid}')
+kill -STOP "$VPID"
+TA_NEW_CMD="sleep 600" ta --new "$HOME" >/dev/null 2>&1
+ok "No home for a chat: the session tagents still has one window" 1 "$(tm list-windows -t '=tagents:' | wc -l | tr -d ' ')"
+ok "No home for a chat: ...with the list and the viewport only" 2 "$(tm list-panes -t '=tagents:' | wc -l | tr -d ' ')"
+ok "No home for a chat: it went to the last resort session" "agents tagents " "$(cplist)"
+ok "No home for a chat: launch_session does not answer tagents" agents "$(cpout launch_session '')"
+tm new-session -d -s scratch -x 200 -y 50 "exec sleep 600"; tm new-window -d -t '=scratch:' "exec sleep 600"
+SPANE=$(tm list-panes -t '=scratch:' -F '#{pane_id}' | head -1)
+cpout open_beside "$SPANE"
+ok "No window to put it beside: the dashboard keeps its two panes" 2 "$(tm list-panes -t '=tagents:' | wc -l | tr -d ' ')"
+ok "No window to put it beside: the chat's pane stayed in its session" scratch "$(tm display -p -t "$SPANE" '#{session_name}')"
+kill -CONT "$VPID"
+tm set-hook -gu 'client-session-changed[44]'
+
+t "A session named with a space, A session named 0"
+cpguard_up 37
+tm new-session -d -s "my work" -x 200 -y 50 "exec sleep 600"
+vgo "my work"
+vshows_whole() { tm list-clients -F "#{client_name}"$'\t'"#{session_name}" 2>/dev/null | awk -F'\t' -v c="$(vtty)" '$1 == c { print $2 }'; }   # the whole name, spaces and all
+ok "A session named with a space: the viewport shows it" "my work" "$(wait_eq_long "my work" vshows_whole)"
+ok "A session named with a space: the recorded window is the window id alone" "$(tm display -p -t '=my work:' '#{window_id}')" "$(wait_eq_long "$(tm display -p -t '=my work:' '#{window_id}')" opt @tagents_viewport_window)"
+
+cpcfg cockpit; cpstart
+tm new-session -d -s 0 -x 200 -y 50 "exec sleep 600"; tm new-session -d -s 1 -x 200 -y 50 "exec sleep 600"
+kclient 38 0;                                              U=$KC
+for s in work personal scratch; do tm kill-session -t "=$s:"; done
+ta --ensure-dash >/dev/null 2>&1
+wait_eq 0 vshows >/dev/null
+cpmods install_event_hooks
+vkeys '('
+ok "A session named 0: previous from 0 lands on tagents and the guard steps on to 1, not back to 0" 1 "$(wait_eq_long 1 vshows)"
+
+# client_raw (cockpit.sh) and client_attr (follow.sh) are two copies of the rule "the most recently active client"; with no viewport stored they must name the same client, with and without a name. Three clients of different activity times, the last two of the same second.
+t "client_raw and client_attr agree"
+cpcfg none; cpstart
+tm set -g status off
+touch_client() { tm send-keys -K -c "$1" x; }                                    # <client> — activity is stamped by a key
+kclient 61 work;     CA=$KC
+kclient 62 personal; CB=$KC
+kclient 63 scratch;  CC=$KC
+tie=0; tries=0
+while [ "$tie" != 1 ] && [ "$tries" -lt 6 ]; do
+  tries=$((tries + 1))
+  touch_client "$CA"; sleep 1.1
+  tm send-keys -K -c "$CB" x \; send-keys -K -c "$CC" x
+  acts=$(tm list-clients -F '#{client_name} #{client_activity}' | awk -v b="$CB" -v c="$CC" '$1 == b { x = $2 } $1 == c { y = $2 } $1 != b && $1 != c { z = $2 } END { print (x == y && x > z) ? 1 : 0 }')
+  tie=$acts
+done
+ok "client_raw and client_attr: the clients are set up with the last two tied and the first older" 1 "$tie"
+ok "client_raw and client_attr: no viewport is stored" "" "$(opt @tagents_viewport_tty)"
+ok "client_raw and client_attr: the same client is the most recently active" "$(cpout client_attr '#{client_name}')" "$(cpout client_raw '#{client_name}')"
+hasnt "client_raw and client_attr: ...and it is not the oldest one" "$CA" "$(cpout client_raw '#{client_name}')"
+for c in "$CA" "$CB" "$CC"; do
+  ok "client_raw and client_attr: with the name $c both name its session" "$(csess "$c")" "$(cpout client_raw '#{session_name}' "$c")"
+  ok "client_raw and client_attr: with the name $c the two agree" "$(cpout client_attr '#{session_name}' "$c")" "$(cpout client_raw '#{session_name}' "$c")"
+done
+
+# viewport_wait on its own, on a server with no refresher and no ring hooks: nothing rings the channel, so only the loop's own look at the sessions ends the wait, and the waiter (a tmux client, the child of the backgrounded ring_wait) has to be stopped by the loop. A waiter left behind has lost its parent and is the child of pid 1. The window keeps running afterwards, because the death of a pane would hang the leftover up.
+t "The viewport's wait stops its waiter"
+tm kill-server >/dev/null 2>&1; sleep 0.3
+tm -f /dev/null new-session -d -s tagents -x 200 -y 50 "exec sleep 600" || exit 1
+tm set -t '=tagents:' @tagents_cockpit 1
+tm set -g @tagents_viewport_tty /dev/none
+rm -f "$CPROOT/vw.done"
+tm new-window -d -t '=tagents:' "env TA_STATE_DIR='$CPSTATE' bash -c 'for m in $LISTED_MODS; do . \"$HERE/../lib/tagents/\$m.sh\"; done; viewport_wait /dev/none; : >\"$CPROOT/vw.done\"; sleep 30'"
+ok "The viewport's wait stops its waiter: the wait has its waiter while there is nothing to show" 1 "$(wait_eq 1 cpwaiting)"
+tm new-session -d -s other -x 200 -y 50 "exec sleep 600"
+vw_done() { [ -e "$CPROOT/vw.done" ] && echo 1 || echo 0; }
+ok "The viewport's wait stops its waiter: a session made ends the wait" 1 "$(wait_eq_long 1 vw_done)"
+ok "The viewport's wait stops its waiter: no waiter of this server is left without its parent" 0 "$(sleep 0.5; cporphans)"
+ok "The viewport's wait stops its waiter: ...and none is left at all" 0 "$(wait_eq 0 cpwaiters)"
 
 # ---------------------------------------------------------------------------------------------------------------------------------
 # messages and popups: the dashboard's own status line is off, so a message appears on the viewport's client; a popup is on the user's terminal
@@ -804,10 +894,11 @@ ok "The list is killed: the new list has claimed the sidebar" 1 "$(wait_eq_long 
 t "A quit leaves no waiter behind"
 cpkeys_up 76
 tm select-pane -t "$(lpane)"
+ok "A quit leaves no waiter behind: while the cockpit is up the list's watcher has a waiter, so the count can see one" 1 "$(wait_eq 1 cpwaiting)"
 typed 76 '\021'
 wait_eq_long "personal scratch work " cplist >/dev/null
 sleep 1
-ok "A quit leaves no waiter behind: no wait-for client of this server is left" 0 "$(ps -A -o command= | grep -F "$CPS" | grep -F 'wait-for tagents-ev' | grep -vc grep)"
+ok "A quit leaves no waiter behind: no wait-for client of this server is left" 0 "$(wait_eq 0 cpwaiters)"
 
 # ---------------------------------------------------------------------------------------------------------------------------------
 # a dashboard tmux-resurrect left behind is rebuilt in the cockpit and closed in the follow layout

@@ -93,6 +93,10 @@ open_beside() {  # <chat pane>
   here=$(client_window "")
   [ -n "$here" ] || here=$(dash_window)
   [ -n "$here" ] || return 1
+  if [ "$(tmux display -p -t "$here" '#{@tagents_cockpit}' 2>/dev/null)" = 1 ]; then
+    notice "tagents: no window to put it beside"
+    return 1
+  fi
   # Already in the window on screen: only focus it.
   if [ "$win" = "$here" ]; then tmux select-pane -t "$pane" 2>/dev/null; return 0; fi
   # A chat alone in the only window of its session cannot be joined: tmux closes a session when its last window empties, and the session with it.

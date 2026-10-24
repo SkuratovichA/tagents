@@ -411,3 +411,15 @@ The cockpit suite types into a user terminal that runs under `script`; `script` 
 
 ## An extra `tmux` call per refresher wake broke the "asks tmux once" cases (24.10.2026)
 The first version of the refresher's viewport restore read `@tagents_viewport_tty` with its own `tmux show` on every wake, which tests/refresh.sh counts as a second call; the tty now rides on the snapshot's existing `display -p` call (`g<gen>:<tty>`), so a layout without the cockpit pays nothing and the restore is asked only when the tty is set.
+
+## tmux's `#{?}` read a session named `0` as no session (24.10.2026)
+The cockpit's guard used `#{?$ls,…,n}` to ask whether the user had a last session, and tmux treats a condition as false when it is empty or exactly `0`, which is a name tmux hands out by default, so the guard stepped `-n` instead of `-p` from a session called `0`; the test is now `#{?#{!=:$ls,},…}` (`cockpit_guard_cmd`), and the cockpit suite's "A session named 0" case runs it with sessions `0`, `1` and the dashboard.
+
+## A `read` with the session name in the middle split a name with a space (24.10.2026)
+`cockpit_follow` read `#{session_id} #{session_name} #{window_id}` into three variables, so a session called `my work` left `work @5` in the window variable and `@tagents_viewport_window` held it; the name goes last in every `client_raw`/`client_attr` format now, as the other callers already had it.
+
+## A dashboard session was a valid place for a new chat (24.10.2026)
+With only `tagents` left, `client_session ""` and `tmux display -p '#{session_name}'` both answered `tagents`, so `launch_session` and `resume_with` opened the chat in a session the list hides, and `open_beside` joined a chat into the dashboard window; `session_is_cockpit` (cockpit.sh) drops that answer at each step and ends at the last-resort session, and `open_beside` gives a notice instead.
+
+## A test that greps `ps` for the server's socket could not fail (24.10.2026)
+`ring_wait` runs a plain `tmux if-shell` inside a pane, which finds the server through `TMUX`, so the waiter's argv has no `-L <socket>` and "A quit leaves no waiter behind" counted zero with or without a leak; `cpwaiters` in tests/cockpit.sh reads the process environment (`ps -A -ww -E`) for the socket instead, and the leak itself is caught by "The viewport's wait stops its waiter", because a leaked waiter in a dead pane is hung up with the pane and only a live one outlasts the loop.

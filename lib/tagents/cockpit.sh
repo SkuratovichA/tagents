@@ -7,6 +7,11 @@
 # The exact-match target needs its colon: `=tagents` alone is not an exact session match for every command (LEARNING.md, 22.10.2026).
 cockpit_up() { [ "$(tmux show -qv -t '=tagents:' @tagents_cockpit 2>/dev/null)" = 1 ]; }
 
+# Is this tmux session the cockpit's dashboard: never a group and never a destination.
+session_is_cockpit() {  # <session name>
+  [ -n "${1:-}" ] && [ "$(tmux show -qv -t "=$1:" @tagents_cockpit 2>/dev/null)" = 1 ]
+}
+
 # Is this pane in the cockpit's session? True for the dashboard's own panes, false for every other pane.
 pane_in_cockpit() {  # <pane-id>
   [ -n "${1:-}" ] && [ "$(tmux display -p -t "$1" '#{@tagents_cockpit}' 2>/dev/null)" = 1 ]
@@ -23,7 +28,7 @@ cockpit_guard_cmd() {
   cond='#{&&:#{==:#{hook_client},#{@tagents_viewport_tty}},#{@tagents_cockpit}}'
   before="#{?#{S:#{?#{&&:#{>:#{session_name},$ls},#{<:#{session_name},tagents}},1,}},p,n}"
   after="#{?#{S:#{?#{&&:#{>:#{session_name},tagents},#{<:#{session_name},$ls}},1,}},n,p}"
-  dir="#{?$ls,#{?#{<:$ls,tagents},$before,$after},n}"
+  dir="#{?#{!=:$ls,},#{?#{<:$ls,tagents},$before,$after},n}"
   printf '%s' "if -F \"$cond\" \"run-shell -C \\\"#{?#{==:#{server_sessions},1},set -g @tagents_viewport_idle 1 ; detach-client -t #{hook_client},switch-client -c #{hook_client} -$dir}\\\"\""
 }
 cockpit_guard_install() {
@@ -33,7 +38,7 @@ cockpit_guard_install() {
 # Does a start act in the cockpit: it is up already, or the config asks for it.
 cockpit_want() { cockpit_up || cockpit_layout; }
 
-# A value of what a client shows, like client_attr (follow.sh) but never answering with the viewport's own client when none is named: its tty is nobody's terminal. This is the lookup that never substitutes, for the questions that need the real terminal.
+# A value of what a client shows, like client_attr (follow.sh; the same most-recently-active rule, and tests/cockpit.sh pins the two) but never answering with the viewport's own client when none is named: its tty is nobody's terminal. This is the lookup that never substitutes, for the questions that need the real terminal.
 client_raw() {  # <format> [client name]
   local vtty
   vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
@@ -80,6 +85,12 @@ viewport_target() {
   printf '%s' "${line#*$TAB}"
 }
 
+# Stops a backgrounded ring_wait: the subshell and the tmux client it waits with, which would otherwise stay until the next ring.
+ring_wait_stop() {  # <pid of a backgrounded ring_wait>
+  [ -z "${1:-}" ] || { pkill -P "$1" 2>/dev/null; kill "$1" 2>/dev/null; wait "$1" 2>/dev/null; }
+  return 0
+}
+
 # Nothing to show: wait on the refresher's ring (a session is made, a pane dies), and look at the sessions once every half second as well, because a server whose refresher is not running rings nobody. Ends when there is a session to show or the quit cleared the tty.
 viewport_wait() {  # <tty>
   local seen w
@@ -91,8 +102,7 @@ viewport_wait() {  # <tty>
     [ "$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)" = "$1" ] || break
     sleep 0.5
   done
-  kill "$w" 2>/dev/null
-  wait "$w" 2>/dev/null
+  ring_wait_stop "$w"
   return 0
 }
 
@@ -201,7 +211,7 @@ cockpit_restore() {  # <list|viewport>
 # The viewport loop's second waiter, in the background: on each ring of the refresher's channel it starts a missing list again. It reads the generation before it acts, so a ring that comes while it acts is not slept through. It ends when the loop does (cockpit_watch_stop), taking the tmux client it waits with.
 cockpit_list_watch() {  # <tty>
   local seen c=""
-  trap '[ -z "$c" ] || { pkill -P "$c" 2>/dev/null; kill "$c" 2>/dev/null; }; exit 0' TERM
+  trap 'ring_wait_stop "$c"; exit 0' TERM
   while [ "$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)" = "$1" ]; do
     seen=$(tmux show -gqv @tagents_evgen 2>/dev/null)
     cockpit_restore list

@@ -33,7 +33,7 @@ win_alive() {  # <window-id> — one display: a window that is gone prints nothi
   [ "$(tmux display -p -t "$1" '#{window_id}' 2>/dev/null)" = "$1" ]
 }
 
-# One value of what a client shows: <format> for the named client, or, with none named, for the most recently active one. The value is the last thing on the line, so a session name with spaces comes through whole.
+# One value of what a client shows (client_raw in cockpit.sh is the same rule; tests/cockpit.sh pins the two): <format> for the named client, or, with none named, for the most recently active one. The value is the last thing on the line, so a session name with spaces comes through whole.
 # In the cockpit (the viewport's tty is stored in @tagents_viewport_tty) a client attached to the dashboard and the viewport's own client both answer with the viewport client's values, since the window on screen is the one the viewport shows; and with none named the viewport's tty is never the most active, because it is nobody's terminal. Without a viewport this is the plain lookup.
 client_attr() {  # <format> [client name]
   local vtty
@@ -141,18 +141,18 @@ cockpit_follow() {
   local vtty info sid sess win newest target
   vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
   [ -n "$vtty" ] || return 0
-  info=$(client_raw '#{session_id} #{session_name} #{window_id}' "$vtty")
+  info=$(client_raw '#{session_id} #{window_id} #{session_name}' "$vtty")
   [ -n "$info" ] || return 0
-  read -r sid sess win <<<"$info"
+  read -r sid win sess <<<"$info"
   [ "$sess" = tagents ] && return 0
   newest=$(tmux show -gqv @tagents_viewport_shown 2>/dev/null)
   newest=${newest%% *}
   if [ -n "$newest" ] && [ "$newest" != "$sid" ] && ! tmux list-sessions -F '#{session_id}' 2>/dev/null | grep -qxF "$newest"; then
     target=$(viewport_target)
     [ -n "$target" ] && tmux switch-client -c "$vtty" -t "=$target:" 2>/dev/null
-    info=$(client_raw '#{session_id} #{session_name} #{window_id}' "$vtty")
+    info=$(client_raw '#{session_id} #{window_id} #{session_name}' "$vtty")
     [ -n "$info" ] || return 0
-    read -r sid sess win <<<"$info"
+    read -r sid win sess <<<"$info"
     [ "$sess" = tagents ] && return 0
   fi
   viewport_shown_push "$sid"

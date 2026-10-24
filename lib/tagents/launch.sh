@@ -129,8 +129,12 @@ resume_with() {  # <pane> <sid> <dir> <profile> [session] [after]
   # Pane is gone, or busy with something else — do not type into it.
   rm -f "$STATE_DIR/${pane#%}.tsv"
   [ -n "$sess" ] || sess=$(row_session "$pane")
+  ! session_is_cockpit "$sess" || sess=""
   [ -n "$sess" ] || sess=$(client_session "")
+  ! session_is_cockpit "$sess" || sess=""
   [ -n "$sess" ] || sess=$(tmux display -p '#{session_name}' 2>/dev/null)
+  ! session_is_cockpit "$sess" || sess=""
+  [ -n "$sess" ] || sess=$LAST_RESORT_SESSION
   newpane=$(new_pane_window "$sess" "$dir" "$cmd") || {
     notice "tagents: could not open a window in $sess"; return 1; }
   # Before <after>, whose status is this function's: the capture waits for the SessionStart record anyway, so it does not care which runs first.
@@ -160,8 +164,11 @@ LAST_RESORT_SESSION=agents
 launch_session() {  # <root> -> session name
   local root=${1:-} sess=""
   [ -z "$root" ] || sess=$(session_for_dir "$root")
+  ! session_is_cockpit "$sess" || sess=""
   [ -n "$sess" ] || sess=$(client_session "")
+  ! session_is_cockpit "$sess" || sess=""
   [ -n "$sess" ] || sess=$(tmux display -p '#{session_name}' 2>/dev/null)
+  ! session_is_cockpit "$sess" || sess=""
   [ -n "$sess" ] || sess=$LAST_RESORT_SESSION
   printf '%s\n' "$sess"
 }
