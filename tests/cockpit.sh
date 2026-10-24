@@ -739,5 +739,75 @@ typed 64 '\033h'
 ok "A root binding: the binding ran in the window the viewport shows" "$W2" "$(wait_eq_long "$W2" sh -c "tmux -L $CPS show -wqv -t '=work:2' @mh")"
 ok "A root binding: ...and not in the dashboard window" "" "$(tm show -wqv -t '=tagents:' @mh)"
 
+# ---------------------------------------------------------------------------------------------------------------------------------
+# ctrl-q takes the cockpit down, and a killed half comes back
+# ---------------------------------------------------------------------------------------------------------------------------------
+
+qleft() {  # what the cockpit installs on the server, one line each; empty when nothing is left
+  tm show-hooks -g 2>/dev/null | grep '^client-session-changed\[44\]'
+  tm show -g 2>/dev/null | grep '^@tagents_viewport'
+  tm list-keys -T tagents-cockpit 2>/dev/null
+  tm show -gqv @tagents_sidebar_on
+}
+cwin() { tm list-clients -F '#{client_name} #{session_name}:#{window_index}' 2>/dev/null | awk -v c="$1" '$1 == c { print $2 }'; }   # <client>
+
+t "Quit"
+cpkeys_up 71
+tm select-pane -t "$(lpane)"
+ok "Quit: the viewport shows work:2 first" work:2 "$(vwin)"
+typed 71 '\021'
+ok "Quit: the user's terminal shows work:2" work:2 "$(wait_eq_long work:2 cwin "$U")"
+ok "Quit: no session tagents is left" "personal scratch work " "$(wait_eq_long "personal scratch work " cplist)"
+ok "Quit: the table tagents-cockpit lists nothing" "" "$(tm list-keys -T tagents-cockpit 2>/dev/null)"
+ok "Quit: @tagents_viewport_tty is unset" "" "$(opt @tagents_viewport_tty)"
+ok "Quit: no sidebar wish, option or hook of the cockpit is left" "" "$(qleft)"
+sleep 1
+ok "Quit: ...and nothing comes back a second later" "personal scratch work " "$(cplist)"
+
+t "Quit with no window to show"
+cpkeys_up 72
+tm select-pane -t "$(lpane)"
+tm set -g @tagents_viewport_tty /dev/none     # a name no client has: the window to show cannot be read
+typed 72 '\021'
+ok "Quit with no window to show: the user's terminal is detached" 0 "$(wait_eq_long 0 present "$U")"
+ok "Quit with no window to show: no session tagents is left" "personal scratch work " "$(wait_eq_long "personal scratch work " cplist)"
+ok "Quit with no window to show: nothing of the cockpit is left" "" "$(qleft)"
+
+t "The viewport's loop after the tty is cleared"
+cpkeys_up 73
+OLDV=$(vtty)
+tm set -gu @tagents_viewport_tty
+tm detach-client -t "$OLDV"
+sleep 2
+# A quit clears the tty and the session goes a moment later; a loop that ignored the cleared tty would attach again in that moment. The detach stands for the end of the attach.
+ok "The viewport's loop after the tty is cleared: the viewport's client does not attach again" 0 "$(present "$OLDV")"
+
+t "The viewport is killed"
+cpkeys_up 74
+OLDV=$(vpane); OLDL=$(lpane)
+tm kill-pane -t "$OLDV"
+ok "The viewport is killed: a new viewport is the right pane" 1 "$(wait_eq_long 1 sh -c "[ -n \"\$(tmux -L $CPS list-panes -t '=tagents:' -F '#{pane_at_left} #{pane_id}' | awk '\$1 == 0 && \$2 != \"$OLDV\" { print 1 }')\" ] && echo 1")"
+ok "The viewport is killed: it shows work:2 again" work:2 "$(wait_eq_long work:2 vwin)"
+ok "The viewport is killed: the list is the one it was" "$OLDL" "$(lpane)"
+ok "The viewport is killed: the dashboard has two panes" 2 "$(tm list-panes -t '=tagents:' | wc -l | tr -d ' ')"
+has "The viewport is killed: the key table points at the new pane" "select-pane -t \"$(vpane)\"" "$(tm list-keys -T tagents-cockpit | grep 'C-b')"
+
+t "The list is killed"
+cpkeys_up 75
+OLDV=$(vpane); OLDL=$(lpane)
+tm kill-pane -t "$OLDL"
+ok "The list is killed: a new list is the left pane" 1 "$(wait_eq_long 1 sh -c "[ -n \"\$(tmux -L $CPS list-panes -t '=tagents:' -F '#{pane_at_left} #{pane_id} #{pane_start_command}' | awk '\$1 == 1 && \$2 != \"$OLDL\" && \$0 !~ /--viewport/ { print 1 }')\" ] && echo 1")"
+ok "The list is killed: the viewport is the one it was" "$OLDV" "$(vpane)"
+near "The list is killed: the new list is 90 columns wide" 90 "$(tm display -p -t "$(lpane)" '#{pane_width}')"
+ok "The list is killed: the new list has claimed the sidebar" 1 "$(wait_eq_long 1 sh -c "p=\$(tmux -L $CPS display -p -t '$(lpane)' '#{@tagents_list}'); [ -n \"\$p\" ] && kill -0 \"\$p\" 2>/dev/null && echo 1")"
+
+t "A quit leaves no waiter behind"
+cpkeys_up 76
+tm select-pane -t "$(lpane)"
+typed 76 '\021'
+wait_eq_long "personal scratch work " cplist >/dev/null
+sleep 1
+ok "A quit leaves no waiter behind: no wait-for client of this server is left" 0 "$(ps -A -o command= | grep -F "$CPS" | grep -F 'wait-for tagents-ev' | grep -vc grep)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

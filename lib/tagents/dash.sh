@@ -262,7 +262,8 @@ dash() {
     key=$(printf '%s\n' "$out" | sed -n 1p)
     # A deliberate quit ends the wish for a sidebar; the pane being killed does not (follow starts another then).
     if [ "$key" = ctrl-q ]; then
-      [ "$sidebar" = 1 ] && tmux set -gu @tagents_sidebar_on 2>/dev/null
+      if pane_in_cockpit "${TMUX_PANE:-}"; then cockpit_quit
+      elif [ "$sidebar" = 1 ]; then tmux set -gu @tagents_sidebar_on 2>/dev/null; fi
       break
     fi
     [ "$mode" = popup ] && break

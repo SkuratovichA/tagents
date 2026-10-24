@@ -98,7 +98,7 @@ viewport_wait() {  # <tty>
 
 # tagents --viewport: the right pane of the dashboard. It marks its own pane (title, @tagents_viewport, allow-set-title off) and then keeps a client of this same server attached: TMUX unset and the socket by path, which tmux allows, makes it one more client of the one server. The loop is bash with the attach as its child, so the pane keeps one tty for its whole life and @tagents_viewport_tty stays true across attaches.
 viewport() {
-  local pane=${TMUX_PANE:-} sock tty target idle term
+  local pane=${TMUX_PANE:-} sock tty target idle term watcher=
   if [ -z "$pane" ] || [ "$(tmux display -p -t "$pane" '#{?#{&&:#{==:#{@tagents_cockpit},1},#{==:#{pane_at_left},0}},1,0}' 2>/dev/null)" != 1 ]; then
     echo "tagents: --viewport runs only in the cockpit's viewport pane" >&2
     return 1
@@ -107,6 +107,9 @@ viewport() {
   tty=$(tty)
   sock=${TMUX%%,*}
   tmux set -g @tagents_viewport_tty "$tty"
+  cockpit_list_watch "$tty" &
+  watcher=$!
+  trap 'cockpit_watch_stop "$watcher"' EXIT
   while :; do
     [ "$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)" = "$tty" ] || break   # ctrl-q cleared it
     target=$(viewport_target)
@@ -122,6 +125,7 @@ viewport() {
     # The guard sets the mark when it detached the client because `tagents` was the only session; with neither mark the client ended by itself, which is prefix d.
     if [ -z "$idle" ]; then term=$(dash_terminal); [ -z "$term" ] || tmux detach-client -t "$term" 2>/dev/null; fi
   done
+  cockpit_watch_stop "$watcher"; watcher=
   return 0
 }
 
@@ -170,18 +174,61 @@ cockpit_await_viewport() {
   return 1
 }
 
-# Start whichever half of the dashboard is gone, when the window holds one pane and that pane is the other half; a pane that is not marked yet is a dashboard still starting and is left alone.
-cockpit_restart_half() {
+# Start whichever half of the dashboard is gone, when the window holds one pane and that pane is the other half; a pane that is not marked yet is a dashboard still starting and is left alone. With an argument only that half is started: `list` for the viewport's loop, `viewport` for the refresher.
+cockpit_restart_half() {  # [list|viewport]
   local n p
   n=$(tmux list-panes -t '=tagents:' -F x 2>/dev/null | wc -l | tr -d ' ')
   [ "$n" = 1 ] || return 0
   p=$(tmux list-panes -t '=tagents:' -F '#{pane_id}' 2>/dev/null)
   if [ "$(tmux display -p -t "$p" '#{@tagents_viewport}' 2>/dev/null)" = 1 ]; then
+    [ -z "${1:-}" ] || [ "$1" = list ] || return 0
     tmux split-window -d -b -h -l "${DASH_WIDTH}%" -c "$HOME" -t "$p" "exec '$SELF'" 2>/dev/null
     await_list
   elif list_in_pane "$p"; then
+    [ -z "${1:-}" ] || [ "$1" = viewport ] || return 0
     tmux split-window -d -h -l "$((100 - DASH_WIDTH))%" -c "$HOME" -t "$p" "exec '$SELF' --viewport" 2>/dev/null && cockpit_keys_install
   fi
+  return 0
+}
+
+# The restorers of a killed half (the refresher starts the viewport, the viewport's loop starts the list). Nothing while @tagents_viewport_tty is unset: it is unset before the first viewport has started and from the first step of a quit on, so a quit is never undone.
+cockpit_restore() {  # <list|viewport>
+  [ -n "$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)" ] || return 0
+  cockpit_up || return 0
+  cockpit_restart_half "$1"
+}
+
+# The viewport loop's second waiter, in the background: on each ring of the refresher's channel it starts a missing list again. It reads the generation before it acts, so a ring that comes while it acts is not slept through. It ends when the loop does (cockpit_watch_stop), taking the tmux client it waits with.
+cockpit_list_watch() {  # <tty>
+  local seen c=""
+  trap '[ -z "$c" ] || { pkill -P "$c" 2>/dev/null; kill "$c" 2>/dev/null; }; exit 0' TERM
+  while [ "$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)" = "$1" ]; do
+    seen=$(tmux show -gqv @tagents_evgen 2>/dev/null)
+    cockpit_restore list
+    ring_wait "${seen:-0}" &
+    c=$!
+    wait "$c"
+    c=""
+  done
+}
+cockpit_watch_stop() {  # <pid>
+  [ -z "${1:-}" ] || { kill "$1" 2>/dev/null; wait "$1" 2>/dev/null; }
+  return 0
+}
+
+# ctrl-q in the cockpit's list, in the order of the design: the session is killed last because this runs in a pane that goes with it. The window the viewport shows is read first; the tty and the sidebar wish go in one call, so the guard, notice, the viewport's loop and both restorers stop matching; every other terminal on `tagents` is moved to that window, or detached when there is none; then the hook, the table and the other viewport options go.
+cockpit_quit() {
+  local vtty win c
+  vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
+  [ -z "$vtty" ] || win=$(client_raw '#{window_id}' "$vtty")
+  tmux set -gu @tagents_sidebar_on \; set -gu @tagents_viewport_tty 2>/dev/null
+  release_dash
+  for c in $(tmux list-clients -F '#{client_name} #{session_name}' 2>/dev/null | LC_ALL=C awk -v v="$vtty" '$2 == "tagents" && $1 != v { print $1 }'); do
+    if [ -n "${win:-}" ]; then tmux switch-client -c "$c" -t "$win" 2>/dev/null; else tmux detach-client -t "$c" 2>/dev/null; fi
+  done
+  tmux set-hook -gu "client-session-changed[$GUARD_HOOK_INDEX]" \; unbind-key -a -T tagents-cockpit \; \
+       set -gu @tagents_viewport_shown \; set -gu @tagents_viewport_window \; set -gu @tagents_viewport_idle 2>/dev/null
+  tmux kill-session -t '=tagents:' 2>/dev/null
   return 0
 }
 

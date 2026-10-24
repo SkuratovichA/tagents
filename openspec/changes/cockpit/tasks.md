@@ -15,7 +15,7 @@
 - [x] 3.2 Dispatch `--viewport` in `tagents`, accepting only a pane of the dashboard's window that is not the list and printing `tagents: --viewport runs only in the cockpit's viewport pane` with exit 1 anywhere else, and set the pane's title, `@tagents_viewport` and `allow-set-title off` before it attaches. Proved by `tests/dispatch.sh` (the verb table has `--viewport`) and `tests/cockpit.sh` ("The pane and its client", "A title set from inside", "Anywhere else").
 - [x] 3.3 Write the viewport loop: store its tty in `@tagents_viewport_tty`, attach to the newest live entry of `@tagents_viewport_shown` else the other session used last, print `tagents: no session to show` and wait on the ring when there is none, end on the cleared tty, wait on the idle mark, and on an end with neither mark detach the dashboard terminal used last and attach again. Proved by `tests/cockpit.sh` ("Detach and come back", "Nothing else to show").
 - [x] 3.4 Describe `--viewport` in the help text of `tagents` and the cockpit keys in the `?` line of `lib/tagents/keys.sh`. Proved by `tests/dispatch.sh` (the help lists the verb) and `tests/ui.sh` (the `?` window shows the line).
-- [ ] 3.5 Check that the new cases catch what they are for: with the idle mark never set the "Nothing else to show" case fails, and with the tty check removed from the loop `ctrl-q` in group 8 leaves the loop attaching. Proved by `tests/cockpit.sh` failing on each mutation.
+- [x] 3.5 Check that the new cases catch what they are for: with the idle mark never set the "Nothing else to show" case fails, and with the tty check removed from the loop `ctrl-q` in group 8 leaves the loop attaching. Proved by `tests/cockpit.sh` failing on each mutation.
 
 ## 4. Starting, reusing and refusing the dashboard
 
@@ -46,9 +46,9 @@
 
 ## 8. Leaving and coming back
 
-- [ ] 8.1 Make `ctrl-q` take the cockpit down in the design's order: read the viewport's window, unset `@tagents_sidebar_on` and `@tagents_viewport_tty` in one call, `release_dash`, switch the dashboard's terminals to that window or detach them, remove the hook at index 44, the key table and the other `@tagents_viewport_*` options, and kill the session last. Proved by `tests/cockpit.sh` ("Quit") and `tests/refresh.sh` (no cockpit option or hook is left on the server).
-- [ ] 8.2 Restore a killed viewport from the refresher with `split-window` to the right of the list, restore a killed list from the viewport's own ring waiter with `split-window -b` at `TA_WIDTH` percent, never split a dashboard that is still starting, and do nothing while `@tagents_viewport_tty` is unset. Proved by `tests/cockpit.sh` ("The viewport is killed", "The list is killed").
-- [ ] 8.3 Check that the new cases catch what they are for: with the tty unset step removed from `ctrl-q` a restorer undoes the quit and the "Quit" case fails. Proved by `tests/cockpit.sh` failing on the mutation.
+- [x] 8.1 Make `ctrl-q` take the cockpit down in the design's order: read the viewport's window, unset `@tagents_sidebar_on` and `@tagents_viewport_tty` in one call, `release_dash`, switch the dashboard's terminals to that window or detach them, remove the hook at index 44, the key table and the other `@tagents_viewport_*` options, and kill the session last. Proved by `tests/cockpit.sh` ("Quit") and `tests/refresh.sh` (no cockpit option or hook is left on the server).
+- [x] 8.2 Restore a killed viewport from the refresher with `split-window` to the right of the list, restore a killed list from the viewport's own ring waiter with `split-window -b` at `TA_WIDTH` percent, never split a dashboard that is still starting, and do nothing while `@tagents_viewport_tty` is unset. Proved by `tests/cockpit.sh` ("The viewport is killed", "The list is killed").
+- [x] 8.3 Check that the new cases catch what they are for: with the tty unset step removed from `ctrl-q` a restorer undoes the quit and the "Quit" case fails. Proved by `tests/cockpit.sh` failing on the mutation.
 
 ## 9. Resurrect
 

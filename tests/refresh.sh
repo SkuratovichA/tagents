@@ -983,5 +983,20 @@ ok "...and leaves it alone while another refresher is alive" kept "$(tm show -gv
 kill "$alive" 2>/dev/null; rm -f "$STATE"/.refresher.*; tm set -gu @tagents_counts
 tm set -p -t "$DP" @tagents_list "$$"
 
+# ctrl-q in the cockpit (cockpit_quit, cockpit.sh) leaves the server as it was before the cockpit: no hook at [44], no table, no viewport option, no sidebar wish, and no session tagents.
+newrun cquit
+cq_hooks() { tm show-hooks -g 2>/dev/null; }
+cq_before=$(cq_hooks)
+tm new-session -d -s tagents -x 80 -y 24 'sleep 600' \; set -t '=tagents:' @tagents_cockpit 1
+modsh 'cockpit_guard_install; tmux bind-key -T tagents-cockpit C-b select-pane; tmux set -g @tagents_viewport_tty /dev/x \; set -g @tagents_viewport_shown "$1" \; set -g @tagents_viewport_window w \; set -g @tagents_viewport_idle 1 \; set -g @tagents_sidebar_on 1'
+ok "the cockpit's hook, table and options are on the server before the quit" 1 "$(tm show-hooks -g | grep -c '^client-session-changed\[44\]')"
+modsh 'cockpit_quit'
+ok "after the quit no hook of the cockpit is left" "$cq_before" "$(cq_hooks)"
+ok "...no viewport option is left" "" "$(tm show -g 2>/dev/null | grep '^@tagents_viewport')"
+ok "...no key table is left" "" "$(tm list-keys -T tagents-cockpit 2>/dev/null)"
+ok "...no sidebar wish is left" "" "$(tm show -gqv @tagents_sidebar_on)"
+ok "...and the session tagents is gone" 0 "$(tm has-session -t '=tagents:' 2>/dev/null && echo 1 || echo 0)"
+tm set -p -t "$DP" @tagents_list "$$"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
