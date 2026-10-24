@@ -396,3 +396,18 @@ The list started by `start_sidebar` took the directory of the shell that ran `ta
 
 ## An update ran the installer of the commit it left, so install.sh changes landed one update late (23.10.2026)
 sh parses install.sh's single `main` before running it, so after `git checkout` moved the managed copy the rest of the run was still the old commit's program: the update that brought the node pin wrote the wrappers in the old `exec node` form and only the next update pinned them, and no case in tests/install.sh could see it because the test origin carried no install.sh; the run that moves the copy now execs the install.sh the copy holds with `TAGENTS_MOVED_FROM` set (only when that file names the variable, and never after a clone), the lock survives the exec because `acquire_lock` keeps a lock that holds its own pid, the test origin carries the tree's install.sh, and cases 11 and 12 check the hand-over and an old target installer.
+
+## A `\;` in a `bind-key` command ended the bind-key itself (24.10.2026)
+The key table's binding `select-pane -t <viewport> \; send-keys -t <viewport> <key>` written the way the design sketched it was split by tmux's command parser at the `\;`, so the bind-key held only the `select-pane` and `send-keys` ran when the table was installed; the separator has to reach tmux as one quoted argument (`'\;'`), as `cockpit_keys_install` passes it, and the cockpit cases "Prefix from the list" and "A root binding" type the real keys and fail when the forwarding is lost.
+
+## A bare `#{client_*}` in a hook names the best client, not the hook's (24.10.2026)
+`#{client_last_session}` in `client-session-changed` returned another client's last session as soon as a second client was attached, so the guard stepped the viewport's client the wrong way; the hook now compares `#{client_name}` with `#{hook_client}` inside an `#{L:…}` loop (`cockpit_guard_cmd`), and its action runs through `run-shell -C` because `if -F` does not format-expand its action.
+
+## A message shown with a bare `display-message` was lost in the cockpit (24.10.2026)
+The dashboard session has its status line off, and a `display-message` run without `-c` lands on whichever client tmux picks, so the cockpit's messages never reached the user; every message now goes through `notice()` in core.sh (tnotes carries a copy), and section 5 of tests/modules.sh fails on any other line that runs `display-message` and pins the two copies to each other.
+
+## `script` would not take a fifo, and a prefix typed with its key in one write raced (24.10.2026)
+The cockpit suite types into a user terminal that runs under `script`; `script` refuses a fifo as its stdin, so `kclientio` feeds it as `cat < fifo | script …`, and a keystroke written in the same `write` as the prefix reached the pane before tmux had switched tables, so the harness sends the prefix and the next key in two writes 0.5 s apart.
+
+## An extra `tmux` call per refresher wake broke the "asks tmux once" cases (24.10.2026)
+The first version of the refresher's viewport restore read `@tagents_viewport_tty` with its own `tmux show` on every wake, which tests/refresh.sh counts as a second call; the tty now rides on the snapshot's existing `display -p` call (`g<gen>:<tty>`), so a layout without the cockpit pays nothing and the restore is asked only when the tty is set.

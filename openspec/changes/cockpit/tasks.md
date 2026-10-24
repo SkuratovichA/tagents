@@ -64,12 +64,11 @@
 
 ## 11. The whole tree
 
-- [ ] 11.1 Describe the cockpit, its keys and its limits in `README.md`, then regenerate the plugin references with `pnpm plugin:gen`. Proved by `pnpm plugin:check` exiting 0.
-- [ ] 11.2 Add the lessons of this change to `LEARNING.md` by date. Proved by the entry being there.
-- [ ] 11.3 Run every suite under `tests/` on its own scratch tmux server with the live server's global hook count the same before and after, and run `pnpm test`, `pnpm spec:check` and `pnpm plugin:check`. Proved by the run's summary and the exit codes.
-- [ ] 11.4 Check the cockpit on the live server with `dashboard.layout: cockpit` once the change is merged and installed: start it, select rows in two sessions, press `prefix n` and `ctrl-q`. Proved by the observed behaviour, written down as a comment on the pull request.
-
+- [x] 11.1 Describe the cockpit, its keys and its limits in `README.md`, then regenerate the plugin references with `pnpm plugin:gen`. Proved by `pnpm plugin:check` exiting 0.
+- [x] 11.2 Add the lessons of this change to `LEARNING.md` by date. Proved by the entry being there.
+- [x] 11.3 Run every suite under `tests/` on its own scratch tmux server with the live server's global hook count the same before and after, and run `pnpm test`, `pnpm spec:check` and `pnpm plugin:check`. Proved by the run's summary and the exit codes.
 ## Workflow follow-up
 
 - Archive the change inside the branch before the pull request is merged.
 - After the merge: `tagents update`, the plugin update in both Claude config stores, and a sidebar restart.
+- Then check the cockpit on the live server with `dashboard.layout: cockpit`: start it, select rows in two sessions, press `prefix n` and `ctrl-q`, and write the observed behaviour down as a comment on the pull request. It waits for the merge because the layout is opt-in and the live install is the code under test.
