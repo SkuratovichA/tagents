@@ -60,6 +60,41 @@ test('a client line that is not numbers is skipped, not trusted', () => {
   assert.deepEqual(s, { visible: false, clientPid: 8, paneTitle: 't' });
 });
 
+const VIEWPORT = 'C|@|1700000900|@|5555|@|@3|@|/dev/ttys009|@|alpha';
+
+test('Seen through the viewport: the dashboard terminal stands in for the viewport, and its pid is the one used', () => {
+  const out = [
+    'P|@|@3|@|build',
+    'V|@|/dev/ttys009',
+    VIEWPORT,
+    'C|@|1700000100|@|4001|@|@7|@|/dev/ttys001|@|tagents',
+    'C|@|1700000300|@|4002|@|@7|@|/dev/ttys002|@|tagents',
+    'C|@|1700009999|@|4003|@|@1|@|/dev/ttys003|@|beta',
+    '',
+  ].join('\n');
+  assert.deepEqual(parseScreen(out), { visible: true, clientPid: 4002, paneTitle: 'build' });
+});
+
+test('The dashboard is not on screen: a pane only the viewport shows is not visible, and the viewport pid is no candidate', () => {
+  const out = [
+    'P|@|@3|@|build',
+    'V|@|/dev/ttys009',
+    VIEWPORT,
+    'C|@|1700000100|@|4003|@|@1|@|/dev/ttys003|@|beta',
+    '',
+  ].join('\n');
+  assert.deepEqual(parseScreen(out), { visible: false, clientPid: 4003, paneTitle: 'build' });
+  const alone = parseScreen(['P|@|@3|@|build', 'V|@|/dev/ttys009', VIEWPORT].join('\n'));
+  assert.deepEqual(alone, { visible: false, paneTitle: 'build' });
+});
+
+test('a real client on the window beats the viewport, and with the option unset the extra fields change nothing', () => {
+  const direct = ['P|@|@3|@|b', 'V|@|/dev/ttys009', VIEWPORT, 'C|@|1|@|4001|@|@3|@|/dev/ttys001|@|beta', 'C|@|2|@|4002|@|@7|@|/dev/ttys002|@|tagents'].join('\n');
+  assert.deepEqual(parseScreen(direct), { visible: true, clientPid: 4001, paneTitle: 'b' });
+  const unset = ['P|@|@3|@|b', 'V|@|', 'C|@|5|@|5555|@|@3|@|/dev/ttys009|@|alpha', 'C|@|2|@|4002|@|@7|@|/dev/ttys002|@|tagents'].join('\n');
+  assert.deepEqual(parseScreen(unset), { visible: true, clientPid: 5555, paneTitle: 'b' });
+});
+
 function fakeExec(result: Awaited<ReturnType<Exec>> | Error) {
   const calls: Array<{ file: string; args: readonly string[]; timeoutMs: number }> = [];
   const exec: Exec = (file, args, o) => {
@@ -86,7 +121,13 @@ test('tmuxScreen asks tmux once, with two commands and no tab in a format', asyn
     ';',
     'list-clients',
     '-F',
-    'C|@|#{client_activity}|@|#{client_pid}|@|#{window_id}',
+    'C|@|#{client_activity}|@|#{client_pid}|@|#{window_id}|@|#{client_tty}|@|#{client_session}',
+    ';',
+    'display',
+    '-p',
+    '-t',
+    '%12',
+    'V|@|#{@tagents_viewport_tty}',
   ]);
   assert.equal(calls[0]?.timeoutMs, 2000);
   for (const a of calls[0]?.args ?? []) assert.ok(!a.includes('\t'), 'a literal tab in a tmux format renders as _ without a UTF-8 locale');

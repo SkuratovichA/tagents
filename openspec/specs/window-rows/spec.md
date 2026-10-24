@@ -2,9 +2,7 @@
 
 ## Purpose
 Every row of the dashboard is a tmux window and every group is a tmux session. The one sidebar pane moves into whichever window is on screen, and selecting a row puts the sidebar and the client in its window, so there are no seats, no docking and no placeholder panes.
-
 ## Requirements
-
 ### Requirement: A row is a tmux window
 The dashboard SHALL show every chat as a row that stands for the tmux window its pane is in. The chat is the window's first pane, not counting the sidebar. A chat joined into another window by `ctrl-s` has a row of its own that stands for the window it is in now. Selecting a row acts on the window, not on the pane alone.
 
@@ -32,7 +30,7 @@ Every pane of a window other than the chat and the sidebar SHALL belong to the u
 - **AND** it was not on screen while B's window was
 
 ### Requirement: A group is a tmux session
-The list SHALL group rows by the tmux session of their window, and a group header SHALL name the session. Every tmux session SHALL be a group, whether or not a chat has ever run in it, and every window of a group is listed (see the dimmed rows below), whichever directory its panes are in. A session whose only window holds nothing but the sidebar SHALL be a group with a header and no row under it, as the `dashboard-list` capability describes.
+The list SHALL group rows by the tmux session of their window, and a group header SHALL name the session. Every tmux session but the cockpit's dashboard SHALL be a group, whether or not a chat has ever run in it, and every window of a group is listed (see the dimmed rows below), whichever directory its panes are in. A session whose only window holds nothing but the sidebar SHALL be a group with a header and no row under it, as the `dashboard-list` capability describes.
 
 #### Scenario: Two sessions
 - **WHEN** session `work` holds two chats and session `personal` holds one
@@ -53,6 +51,10 @@ The list SHALL group rows by the tmux session of their window, and a group heade
 #### Scenario: Only the sidebar
 - **WHEN** the client is in session `empty`, whose only window holds nothing but the sidebar
 - **THEN** the list has a header `empty` and no row under it
+
+#### Scenario: The cockpit's dashboard
+- **WHEN** the cockpit is up and the sessions `work`, `personal` and `tagents` exist
+- **THEN** the list has the headers `work` and `personal` and none named `tagents`
 
 ### Requirement: A new chat opens in the group the cursor is in
 A chat started from the dashboard (`ctrl-n`, `ctrl-p`) SHALL open as a new window, created detached, in the session of the group the cursor is in, whether the cursor is on a chat row, a dimmed row or a header, and then be selected like any row. When the cursor is on the group `no window`, the chat SHALL open as `chat-launch` says for a chat started with no group.
@@ -217,7 +219,7 @@ The pane a list claims as the sidebar SHALL carry the pane title `tagents-sideba
 - **THEN** its pane no longer carries the title `tagents-sidebar`, and a title that someone else set is left as it is
 
 ### Requirement: A restore closes the panes left where the sidebar was
-After a restore (`tagents --resurrect`, and `tagents --resurrect --auto` from the tmux-resurrect hook), every pane titled `tagents-sidebar` that is not the live list SHALL be closed when it is an idle shell. A pane running anything but a shell SHALL never be touched, and a dry run SHALL close nothing.
+After a restore (`tagents --resurrect`, and `tagents --resurrect --auto` from the tmux-resurrect hook), every pane titled `tagents-sidebar` that is not the live list, and every pane titled `tagents-viewport` that is not the live viewport, SHALL be closed when it is an idle shell; a leftover dashboard is rebuilt or closed as the `cockpit` capability describes. A pane running anything but a shell SHALL never be touched, and a dry run SHALL close nothing.
 
 #### Scenario: Leftover shells
 - **WHEN** tmux-resurrect restored three windows, each with an idle shell titled `tagents-sidebar` where the sidebar was, and the restore has started a live list
@@ -226,6 +228,10 @@ After a restore (`tagents --resurrect`, and `tagents --resurrect --auto` from th
 #### Scenario: A busy pane with that title
 - **WHEN** a pane titled `tagents-sidebar` runs `sleep`
 - **THEN** it is left running
+
+#### Scenario: A leftover viewport shell
+- **WHEN** a restore finds an idle shell titled `tagents-viewport` in the window `work:2`, outside the session `tagents`
+- **THEN** that shell is closed and the other panes of `work:2` are untouched
 
 ### Requirement: Windows without a chat are dimmed rows
 Every window of a group whose first pane, not counting the sidebar, carries no agent state SHALL get a dimmed row showing the window's name and nothing else: no state, age, context, cost, model or account. The line of such a row for fzf SHALL start with the window id (`@7`), carry the state `none` and an empty session id, and end with the directory of the window's first pane. `enter` on it SHALL select the window like any row, and `ctrl-x` on it SHALL kill the window after asking.
@@ -452,3 +458,15 @@ A list that tagents starts as the sidebar, for `tagents --ensure-dash` or when a
 #### Scenario: A sidebar brought back by a window switch
 - **WHEN** the window holding the sidebar is killed and the follow hook starts a new list in the window the client lands in
 - **THEN** the new list's pane reports `$HOME` as its working directory
+
+### Requirement: Moving the sidebar belongs to the follow layout
+What this capability says about moving the sidebar — by `tagents --ensure-dash`, by `tagents --follow` and by selecting a row — and about switching a client to the selected window SHALL hold in the `follow` layout, the default. In the `cockpit` layout the `cockpit` capability says what those do instead, and the rest of this capability holds as written.
+
+#### Scenario: The follow layout
+- **WHEN** `dashboard.layout` is unset, the client shows `work:1` and the user presses `enter` on the row of a chat in `personal:2`
+- **THEN** the sidebar is the leftmost pane of `personal:2` and the client shows `personal:2`
+
+#### Scenario: The cockpit layout
+- **WHEN** `dashboard.layout` is `cockpit` and the user presses `enter` on the row of a chat in `personal:2`
+- **THEN** no pane changes window, the viewport shows `personal:2` and the user's terminal still shows the session `tagents`
+

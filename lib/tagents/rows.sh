@@ -39,10 +39,11 @@ landing_window() {  # <window-id>
 show_window() {  # <window-id> [pane]
   local win=${1:-} pane=${2:-} sess
   if ! win_alive "$win"; then
-    tmux display-message "tagents: that window is gone" 2>/dev/null
+    notice "tagents: that window is gone"
     echo "tagents: window $win is gone — nothing moved" >&2
     return 1
   fi
+  if cockpit_up; then cockpit_select "$win" "$pane"; return $?; fi
   sess=$(tmux display -p -t "$win" '#{session_name}' 2>/dev/null)
   tmux select-window -t "$win" 2>/dev/null
   [ -n "$sess" ] && tmux switch-client -t "=$sess" 2>/dev/null
@@ -61,11 +62,11 @@ open_agent() {  # <pane or @window key> — enter on a row
     *)  return 1 ;;
   esac
   if [ -z "$win" ]; then
-    tmux display-message "tagents: that window is gone" 2>/dev/null
+    notice "tagents: that window is gone"
     return 1
   fi
   # A popup claims no pane, so there may be no sidebar yet: bring one to the client's window first.
-  [ "${TA_MODE:-}" = popup ] && [ -z "$(dash_pane)" ] && ensure_dash >/dev/null 2>&1
+  [ "${TA_MODE:-}" = popup ] && ! cockpit_up && [ -z "$(dash_pane)" ] && ensure_dash >/dev/null 2>&1
   show_window "$win" "$pane"
 }
 goto() { open_agent "${1:-}"; }   # ctrl-g and --goto: the same selection; only the closed-row notice differs, and act says that
@@ -86,17 +87,21 @@ open_beside() {  # <chat pane>
   [ "$pane" = "-" ] && return 0
   win=$(tmux display -p -t "$pane" '#{window_id}' 2>/dev/null)
   if [ -z "$win" ]; then
-    tmux display-message "tagents: that window is gone" 2>/dev/null
+    notice "tagents: that window is gone"
     return 1
   fi
   here=$(client_window "")
   [ -n "$here" ] || here=$(dash_window)
   [ -n "$here" ] || return 1
+  if [ "$(tmux display -p -t "$here" '#{@tagents_cockpit}' 2>/dev/null)" = 1 ]; then
+    notice "tagents: no window to put it beside"
+    return 1
+  fi
   # Already in the window on screen: only focus it.
   if [ "$win" = "$here" ]; then tmux select-pane -t "$pane" 2>/dev/null; return 0; fi
   # A chat alone in the only window of its session cannot be joined: tmux closes a session when its last window empties, and the session with it.
   if [ "$(tmux display -p -t "$pane" '#{window_panes} #{session_windows}' 2>/dev/null)" = "1 1" ]; then
-    tmux display-message "tagents: that chat is alone in its session — joining it would close the session" 2>/dev/null
+    notice "tagents: that chat is alone in its session — joining it would close the session"
     return 0
   fi
   # The first home is kept when a chat is joined again.
@@ -117,7 +122,7 @@ undock() {  # <chat pane> — ctrl-u: a joined chat gets a window of its own in 
   local pane=${1:-} home cur win
   home=$(tmux show -pv -t "$pane" @tagents_joined 2>/dev/null)
   if [ -z "$home" ]; then
-    tmux display-message "tagents: that chat is not joined to another window" 2>/dev/null
+    notice "tagents: that chat is not joined to another window"
     return 0
   fi
   cur=$(tmux display -p -t "$pane" '#{session_name}' 2>/dev/null)

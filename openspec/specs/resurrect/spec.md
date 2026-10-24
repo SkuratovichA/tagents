@@ -2,9 +2,7 @@
 
 ## Purpose
 After a reboot or any other loss of the tmux server, every Claude chat that had a pane comes back at the same session, window and pane, resumed on the login it ran on with the model it was set to. tagents keeps a snapshot of the live chats keyed by session id, and a restore turns the idle shells that tmux-resurrect leaves behind back into `claude --resume`.
-
 ## Requirements
-
 ### Requirement: A snapshot holds one row per live chat
 A capture SHALL write one `A` row per live chat that has a state record with a session id, whether tagents started the chat or it was typed by hand. A pane that has a record but no Claude process, and the sidebar, SHALL get no row. A row is a tab-separated line of 14 columns, listed in the next requirement.
 
@@ -392,11 +390,15 @@ A chat joined into another window with `ctrl-s` SHALL be recorded under the sess
 - **THEN** its row says session `personal` and has empty window and pane columns
 
 ### Requirement: The sidebar is filed by its window
-When the sidebar is up the snapshot SHALL hold one `D` row of three columns: `D`, the session name and the window index of the window the sidebar is in.
+When the sidebar is up the snapshot SHALL hold one `D` row of three columns: `D`, the session name and the window index of the window the sidebar is in, or, in the cockpit, of the window the viewport shows.
 
 #### Scenario: Sidebar window
 - **WHEN** the sidebar is in window 3 of session `work`
 - **THEN** the snapshot has the row `D`, `work`, `3`
+
+#### Scenario: The cockpit
+- **WHEN** the cockpit is up and the viewport shows window 2 of session `work`
+- **THEN** the snapshot has the row `D`, `work`, `2`, and no row names the session `tagents`
 
 ### Requirement: The notes column says whether the chat has its editor beside it
 The notes column SHALL be `1` when the chat's notes editor is a pane of the chat's own window, and empty when the chat has none.
@@ -410,7 +412,7 @@ The notes column SHALL be `1` when the chat's notes editor is a pane of the chat
 - **THEN** the notes column is `1`
 
 ### Requirement: The sidebar comes back
-When the snapshot holds a `D` row, the restore SHALL bring the sidebar back once the chats are placed and report `✓ dashboard`: the list is started as the leftmost full-height pane of the recorded window when that window exists after the restore, and of the window of the first chat restored otherwise. A window that tmux-resurrect left from an older snapshot's dashboard SHALL be an ordinary window and keep what it runs.
+When the snapshot holds a `D` row, the restore SHALL bring the sidebar back once the chats are placed and report `✓ dashboard`, in the recorded window if it exists after the restore, else in the first restored chat's window: the list is started as that window's leftmost full-height pane, or, in the cockpit, the dashboard is made if it is not up and its viewport shows that window. A window tmux-resurrect left from an older snapshot's dashboard SHALL be an ordinary window and keep what it runs.
 
 #### Scenario: Dashboard row
 - **WHEN** the snapshot holds a `D` row whose window is restored
@@ -420,8 +422,12 @@ When the snapshot holds a `D` row, the restore SHALL bring the sidebar back once
 - **WHEN** the `D` row names a window that does not exist after the restore
 - **THEN** the sidebar is in the window of the first chat restored
 
+#### Scenario: The cockpit
+- **WHEN** the layout is `cockpit`, the snapshot's `D` row names `work:2`, which is restored, and a terminal is attached to the session `work`
+- **THEN** the report says `✓ dashboard`, the session `tagents` exists with its viewport showing `work:2`, and that terminal still shows the session `work`
+
 ### Requirement: The restore closes the sidebar's leftover panes
-After the chats and the sidebar are up, the restore SHALL close every idle shell titled `tagents-sidebar` that is not the live list, as the `window-rows` capability says, and SHALL touch no other pane. A dry run SHALL close nothing.
+After the chats and the sidebar are up, the restore SHALL close every idle shell titled `tagents-sidebar` that is not the live list and every idle shell titled `tagents-viewport` that is not the live viewport, as the `window-rows` capability says, and SHALL touch no other pane; a leftover dashboard is rebuilt or closed as the `cockpit` capability says. A dry run SHALL close nothing.
 
 #### Scenario: Shells where the sidebar was
 - **WHEN** the snapshot's windows were restored with an idle shell titled `tagents-sidebar` in each
@@ -430,3 +436,8 @@ After the chats and the sidebar are up, the restore SHALL close every idle shell
 #### Scenario: Dry run
 - **WHEN** `tagents --resurrect --dry-run` runs
 - **THEN** no pane is closed
+
+#### Scenario: A leftover dashboard in the follow layout
+- **WHEN** the layout is `follow` and tmux-resurrect restored a session `tagents` holding two idle shells titled `tagents-sidebar` and `tagents-viewport`
+- **THEN** after `tagents --resurrect` no session `tagents` exists and the chats are untouched
+

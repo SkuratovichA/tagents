@@ -151,7 +151,7 @@ preview_window() {  # <pane> <state> — what ctrl-v runs
   # had, so this is only reached when popups went away underneath a running
   # list. Say so rather than printing a screenful into a pane fzf is drawing
   # over — that is the invisible freeze the popups exist to avoid.
-  tmux display-message "tagents: no popup here to show the preview in" 2>/dev/null
+  notice "tagents: no popup here to show the preview in"
   return 0
 }
 

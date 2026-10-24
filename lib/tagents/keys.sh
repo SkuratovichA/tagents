@@ -117,7 +117,7 @@ key_warn() {  # [prefix] — no prefix means tmux display-message
   while IFS= read -r n; do
     [ -n "$n" ] || continue
     if [ -n "$pre" ]; then printf '%s%s\n' "$pre" "$n"
-    else tmux display-message "tagents: $n" 2>/dev/null || true
+    else notice "tagents: $n" || true
     fi
   done <<EOF
 $KEY_NOTES
@@ -172,7 +172,7 @@ keys_table() {  # key<TAB>verb<TAB>what it does
 "$K_COLUMNS${TAB}:columns${TAB}show or hide columns" \
 "$K_USAGE${TAB}:usage${TAB}usage this month, per day" \
 "$K_CLOSED${TAB}:closed${TAB}closed sessions — pick one to resume" \
-"$K_KEYS${TAB}:none${TAB}this window" \
+"$K_KEYS${TAB}:none${TAB}this window — in the cockpit the tmux prefix keys go to the viewport and ctrl-q leaves the cockpit" \
 "$K_QUIT${TAB}:quit${TAB}quit the dashboard — from the list itself, not from here" \
 "esc${TAB}:quit${TAB}in the popup, close it — from the list itself, not from here" |
     LC_ALL=C awk -F"$TAB" 'length($1) > 0'

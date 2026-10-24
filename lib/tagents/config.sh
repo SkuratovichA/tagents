@@ -567,6 +567,11 @@ EOF
           reference|paste|submit) ;;
           *) cfg_note "$k" "\"$v\" is not one of reference, paste, submit — tnotes uses reference" ;;
         esac ;;
+      dashboard.layout)
+        case $v in
+          follow|cockpit) ;;
+          *) cfg_note "$k" "\"$v\" is not one of follow, cockpit — read as follow" ;;
+        esac ;;
       resurrect.every)
         # due_every reads anything but a positive number as off, so a "5m"
         # would quietly stop the capture a reboot depends on.
@@ -606,7 +611,7 @@ cfg_warn() {  # [prefix] — no argument means tmux display-message
   cfg_check
   [ -n "$CFG_NOTES" ] || return 0
   if [ $# -eq 0 ]; then
-    tmux display-message "tagents: $CFG_SUMMARY" 2>/dev/null || true
+    notice "tagents: $CFG_SUMMARY" || true
     return 0
   fi
   while IFS= read -r n; do

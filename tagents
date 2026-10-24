@@ -78,6 +78,10 @@
 #                           width. One line, which is the whole point of it
 #   tagents --ensure-dash   put the sidebar in the window the client is in: a running
 #                           list is moved there, none running is started there
+#   tagents --viewport      the right pane of the cockpit (dashboard.layout: cockpit),
+#                           started by the dashboard itself: it keeps a second client of
+#                           this tmux server attached to the session being shown. Anywhere
+#                           else it prints an error and exits 1
 #   tagents --follow [CLIENT]
 #                           move the sidebar into the window CLIENT shows (default:
 #                           the most recent client); tmux's own hooks run this. With
@@ -436,7 +440,7 @@ if [ "${1:-}" != -h ] && [ "${1:-}" != --help ]; then
   # the module's own last line and says nothing about whether it was found.
   for ta_mod in core config accounts usage state names columns list \
                 timeline preview actions refresh sidebar follow migrate rows closed \
-                resurrect launch keys dash; do
+                resurrect launch keys cockpit dash; do
     if [ ! -r "$TA_LIB/$ta_mod.sh" ]; then
       echo "tagents: cannot load $TA_LIB/$ta_mod.sh" >&2
       echo "tagents: this is the entry point of a checkout, not a file to copy alone" >&2
@@ -536,7 +540,8 @@ case "${1:-}" in
   # run. A debugging aid, and what tests/names.sh asserts on.
   --sync-names)   sync_window_names ;;
   --refresher)    refresher ;;
-  --ensure-dash)  ensure_dash ;;
+  --ensure-dash)  cfg_load; ensure_dash ;;
+  --viewport)     viewport ;;
   # The sidebar into the window the client shows now (tmux's own session-window-changed / client-session-changed hooks run this).
   --follow)       follow "${2:-}" ;;
   --goto)         goto "${2:-}" ;;

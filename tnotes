@@ -43,8 +43,17 @@ NOTES_SESSION=ta-notes
 NOTES_WIDTH=45          # percent of the chat's window the editor takes
 STATE_DIR=${TA_STATE_DIR:-$HOME/.claude/agent-state}
 
+# A copy of notice() in lib/tagents/core.sh, which this script does not source; tests/modules.sh pins the two bodies against each other.
+notice() {  # <message>: on the viewport's client while the cockpit is up, where tmux puts it otherwise
+  local vtty; vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
+  { [ -n "$vtty" ] && tmux display-message -c "$vtty" "$1" 2>/dev/null; } || tmux display-message "$1" 2>/dev/null
+}
+
+# A copy of cockpit_up() in lib/tagents/cockpit.sh (pinned by tests/modules.sh).
+cockpit_on() { [ "$(tmux show -qv -t '=tagents:' @tagents_cockpit 2>/dev/null)" = 1 ]; }
+
 die() {  # <message> — say it where the user is looking, then fail
-  tmux display-message "tnotes: $1" 2>/dev/null || printf 'tnotes: %s\n' "$1" >&2
+  notice "tnotes: $1" || printf 'tnotes: %s\n' "$1" >&2
   exit 1
 }
 
@@ -150,6 +159,8 @@ cmd_toggle() {
     if [ "$(opt_of pane_active "$ed")" = 1 ] && [ "$(opt_of window_active "$ed")" = 1 ] &&
        [ "$(opt_of session_attached "$ed")" != 0 ]; then
       tmux select-pane -t "$chat" 2>/dev/null
+    elif cockpit_on; then
+      "${SELF%/*}/tagents" --goto "$ed" >/dev/null 2>&1
     else
       tmux switch-client -t "=$(opt_of session_name "$ed")" 2>/dev/null
       tmux select-window -t "$(opt_of window_id "$ed")" 2>/dev/null
@@ -335,7 +346,7 @@ cmd_send() {
   # state record does not: a record outlives a Claude that exited, and pasting
   # into the shell it left behind is precisely what this guard exists to stop.
   if ! is_claude_cmd "$cmd"; then
-    tmux display-message "tnotes: $chat is not running claude — prompt kept" 2>/dev/null
+    notice "tnotes: $chat is not running claude — prompt kept"
     exit 1
   fi
 

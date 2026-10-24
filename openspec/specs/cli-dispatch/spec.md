@@ -2,9 +2,7 @@
 
 ## Purpose
 The `tagents` script is the one name that reaches all of tagents: it answers its own `--flag` vocabulary itself and hands every other verb to `tagents-core` unchanged. This capability covers what the script's top level handles, how it finds `tagents-core`, what an unknown option does, and the rules for loading its modules that a user can observe.
-
 ## Requirements
-
 ### Requirement: No argument opens the dashboard
 Running `tagents` with no argument SHALL start the interactive dashboard, after loading the configuration. What the dashboard shows and does is the business of the `dashboard-list` and `dashboard-keys` capabilities.
 
@@ -20,7 +18,7 @@ Every option that starts with `-` and that the dashboard knows SHALL be answered
 - **THEN** the script handles it itself
 
 #### Scenario: The rest of the flags
-- **WHEN** one of `--new`, `--profile-for`, `--config`, `--check`, `--agent-cmd`, `--counts`, `--preview`, `--ask-preview`, `--preview-popup`, `--follow`, `--sync-names`, `--refresher`, `--ensure-dash`, `--goto` is given
+- **WHEN** one of `--new`, `--profile-for`, `--config`, `--check`, `--agent-cmd`, `--counts`, `--preview`, `--ask-preview`, `--preview-popup`, `--follow`, `--sync-names`, `--refresher`, `--ensure-dash`, `--goto`, `--viewport` is given
 - **THEN** the script handles it itself
 
 #### Scenario: Removed flags
@@ -110,3 +108,4 @@ The list of modules the script loads and the files in `lib/tagents/` SHALL name 
 #### Scenario: Every dispatched function exists
 - **WHEN** each function the dispatch calls is looked up
 - **THEN** it is defined in a module, in the script or on `PATH`
+

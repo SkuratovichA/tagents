@@ -100,6 +100,12 @@ host_title() {  # <title> — true when it is only the host name
 # cannot hurt the list.
 has_popup() { tmux list-commands display-popup >/dev/null 2>&1; }
 
+# One helper for every message: the dashboard's own status line is off in the cockpit, so a message shown there would never be seen. tnotes carries a copy of this body (it sources nothing from lib/); tests/modules.sh pins the two.
+notice() {  # <message>: on the viewport's client while the cockpit is up, where tmux puts it otherwise
+  local vtty; vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
+  { [ -n "$vtty" ] && tmux display-message -c "$vtty" "$1" 2>/dev/null; } || tmux display-message "$1" 2>/dev/null
+}
+
 # Non-zero means "this tmux cannot do popups — ask in place instead". A popup
 # that could have opened but did not (nobody attached to this session, say) is
 # NOT a reason to fall back: dash() only binds the in-place prompt to `execute`
@@ -133,7 +139,7 @@ prompt_at() {  # <width> <height> <args for $SELF...>
     tmux display-popup -E -w "$w" -h "$h" -t "$TMUX_PANE" "$SELF" "$@" 2>/dev/null
   else
     tmux display-popup -E -w "$w" -h "$h" "$SELF" "$@" 2>/dev/null
-  fi || tmux display-message "tagents: no client here to prompt on" 2>/dev/null
+  fi || notice "tagents: no client here to prompt on"
   return 0
 }
 
@@ -165,6 +171,11 @@ signal_ev() {
   [ -n "${TMUX:-}" ] || return 0
   tmux "${RING_EV[@]}" 2>/dev/null
   return 0
+}
+
+# ONE WAIT FOR A RING, for the refresher's loop and the cockpit's viewport alike. The condition and the wait are one tmux command, evaluated in the server one after the other with nothing in between: the count of rings is compared with <seen>, and only if it has not moved does the wait begin. Moved already, the command ends at once. Output is dropped; the status is tmux's own.
+ring_wait() {  # <seen: the @tagents_evgen the caller last read, 0 when unset>
+  tmux if-shell -F "#{==:#{?@tagents_evgen,#{@tagents_evgen},0},${1:-0}}" 'wait-for tagents-ev' >/dev/null 2>&1
 }
 
 # IS A REFRESHER ALIVE? By the start marker each one keeps (.refresher.<pid>.start,

@@ -75,6 +75,8 @@ done
 ok "every module on disk is in the list" "" "$orphan"
 
 dupes=$(grep -hE '^[A-Za-z_][A-Za-z0-9_]*\(\)' "$LIB"/*.sh | sed 's/().*//' | sort | uniq -d | tr '\n' ' ')
+case " $LISTED " in *" cockpit dash "*|*" cockpit "*" dash "*) cd_order=before ;; *) cd_order=after ;; esac
+ok "the cockpit module is sourced before the dashboard's" before "$cd_order"
 ok "no function is defined in two modules" "" "${dupes% }"
 # The glyph rule is awk source in one variable (AWK_UNTITLE, names.sh), spliced into the three awk programs that need it: it must not be copied back in.
 ok "the glyph rule is written once" 1 "$(cat "$LIB"/*.sh | grep -c 'function untitle')"
@@ -143,6 +145,31 @@ out=$(TA_STATE_DIR="$TMP/state" TA_CONFIG="$TMP/none.yaml" /bin/bash "$TMP/lonel
 ok "a copy of the entry on its own refuses to run" 1 "$rc"
 contains "...and says what is missing" "cannot load" "$out"
 contains "...and that it is an entry point, not a script" "entry point of a checkout" "$out"
+
+# ---------------------------------------------------------------------------
+t "5. every message goes through notice, and tnotes' copies match the originals"
+# ---------------------------------------------------------------------------
+# The dashboard's own status line is off in the cockpit, so a message shown with a bare display-message never reaches the user. notice() in core.sh is the one place that names the viewport's client; a line anywhere else that runs display-message is a message that will be lost there. Comments, and the one definition, are not sites.
+NOTICE_BODY=$(awk '/^notice\(\) \{/ { grab = 1 } grab { print } grab && /^\}/ { exit }' "$LIB/core.sh")
+DEF_LINE=$(printf '%s\n' "$NOTICE_BODY" | grep -F 'display-message "$1"')
+sites=$(for f in "$TA" "$LIB"/*.sh "$HERE/../tnotes"; do
+          awk -v f="${f##*/}" -v def="$DEF_LINE" '
+            { l = $0 }
+            l == def { next }
+            { sub(/^[ \t]+/, "", l); if (l ~ /^#/) next; sub(/[ \t]#[ \t].*$/, "", l) }
+            l ~ /display-message/ { print f ":" NR ": " l }' "$f"
+        done)
+ok "no line outside notice() runs display-message" "" "$sites"
+contains "notice() is defined in core.sh" 'notice() {' "$NOTICE_BODY"
+contains "...and it names the viewport's client" '@tagents_viewport_tty' "$NOTICE_BODY"
+
+# tnotes sources nothing from lib/, so it carries copies of notice() and of cockpit_up(); they are the same lines.
+TN_BODY=$(awk '/^notice\(\) \{/ { grab = 1 } grab { print } grab && /^\}/ { exit }' "$HERE/../tnotes")
+ok "tnotes' notice() has the body of core.sh's" "$NOTICE_BODY" "$TN_BODY"
+UP_LINE=$(grep -h '^cockpit_up()' "$LIB/cockpit.sh")
+ON_LINE=$(grep -h '^cockpit_on()' "$HERE/../tnotes")
+ok "tnotes' cockpit check has the body of cockpit_up()" "${UP_LINE#cockpit_up}" "${ON_LINE#cockpit_on}"
+ok "...and the original is there to compare with" yes "$([ -n "$UP_LINE" ] && echo yes || echo no)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

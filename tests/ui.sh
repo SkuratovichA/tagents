@@ -462,6 +462,8 @@ ok "the verbs come in the spec's order, then the esc line" \
    "open beside new pick shell goto send rename undock kill :tree :preview :refresh :columns :usage :closed :none :quit :quit" \
    "$(run --keys | cut -f2 | paste -s -d ' ' -)"
 
+has "the ? line describes the cockpit's keys" "cockpit" "$(run --keys | LC_ALL=C awk -F'\t' '$2 == ":none"')"
+
 # AND IT REALLY RUNS THE KEY. Undock, end to end: a chat joined beside another
 # window's chat is broken out into its home session, exactly as ctrl-u would do.
 run --act beside "$A" live sid-live "$REPO" >/dev/null 2>&1; sleep 0.5

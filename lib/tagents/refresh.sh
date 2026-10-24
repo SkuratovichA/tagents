@@ -177,7 +177,7 @@ refresher() {
   local startmark t0 live="" lasttl="" lasttext="" cdirty=1
   local cfgseen="" ovlseen="" cfgnow ovlnow nstate rstate="" sf
   local idle slow lastslow evq nap waiter="" outstanding="" seen="" gen ringed kind rc line
-  local lpid="" wt slowdue again="" strict claimed="" snap2 min lastpost owed=""
+  local vtty lpid="" wt slowdue again="" strict claimed="" snap2 min lastpost owed=""
   [ -z "$port" ] && return 0
   idle=${TA_REFRESH_IDLE:-60}; slow=${TA_REFRESH_SLOW:-10}; min=${TA_REFRESH_MIN:-2}
   case $idle in ''|*[!0-9]*|0) idle=60 ;; esac
@@ -364,14 +364,16 @@ refresher() {
     # command substitution would eat an empty one), and it stays OUT of the snapshot
     # the passes compare, or every ring would look like a change. What the wait asks
     # for is this number, so a ring from here on is not slept through (see above).
-    snap=$(tmux list-panes -a -F "$REFRESH_SNAP_FMT" \; display -p 'g#{@tagents_evgen}' 2>/dev/null)
-    gen=${snap##*$'\n'}
+    snap=$(tmux list-panes -a -F "$REFRESH_SNAP_FMT" \; display -p 'g#{@tagents_evgen}:#{@tagents_viewport_tty}' 2>/dev/null)
+    gen=${snap##*$'\n'}; vtty=""
     case $gen in
-      g*) gen=${gen#g}
+      g*) gen=${gen#g}; case $gen in *:*) vtty=${gen#*:}; gen=${gen%%:*} ;; esac
           case $snap in *$'\n'*) snap=${snap%$'\n'*} ;; *) snap="" ;; esac ;;
       *) gen=0 ;;
     esac
     case $gen in ''|*[!0-9]*) gen=0 ;; esac
+    # In the cockpit (the viewport's tty is set) a viewport that was killed is started again, on each wake and each pass; the tty rides on the snapshot's call, so a layout without the cockpit pays nothing.
+    [ -z "$vtty" ] || cockpit_restore viewport
     ringed=""; [ "$gen" != "$seen" ] && ringed=1
     seen=$gen
     if [ -n "$slowdue" ]; then
@@ -528,8 +530,7 @@ refresher() {
 }
 
 # ONE WAIT FOR A RING, in the background, answering through the FIFO the loop reads.
-# The condition and the wait are one tmux command, evaluated in the server one after
-# the other with nothing in between: the count of rings is compared with the one the
+# The condition and the wait are ring_wait (core.sh): the count of rings is compared with the one the
 # last snapshot saw, and only if it has not moved does the wait begin. Moved already,
 # the command ends at once and the loop is woken for a ring that came in since. The
 # status is a line, 0 for either, and anything else when tmux is gone (see the
@@ -538,7 +539,7 @@ refresher() {
 # for it: a tmux that outlives the loop must not hold them open.
 ev_wait() {
   (
-    tmux if-shell -F "#{==:#{?@tagents_evgen,#{@tagents_evgen},0},$seen}" 'wait-for tagents-ev' >/dev/null 2>&1
+    ring_wait "$seen"
     # Opened for reading AND writing: a plain write-only open of a FIFO blocks until
     # somebody reads it, and the loop that was to read this may be gone (killed with
     # -9, a TERM it has no trap for) and its tmux with it. This waiter would then sit
@@ -660,6 +661,7 @@ install_event_hooks() {
     done
   fi
   install_follow_hooks
+  cockpit_up && cockpit_guard_install
   return 0
 }
 

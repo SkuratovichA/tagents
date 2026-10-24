@@ -330,6 +330,16 @@ tmux-resurrect saves the sidebar's split and gives its window back an idle shell
 
 The previous version swapped chats into seats of an `agents:1` window. On the first start after the upgrade tagents sends every docked chat home, closes the placeholders and removes the old options and hooks, once; a `bind-key x … --undock-pane` line in your `tmux.conf` then falls through to a plain `kill-pane`, and a `bind-key & … --undock-window` line prints "unknown option" before its `kill-window`, so both can be deleted. `TA_SESSION` is no longer read. A dashboard that was already running when you upgraded is the previous version's process, and tagents does not stop it for you: it carries the same markers as a current one, so it cannot be told apart safely, and its quit key is yours to rebind. It keeps the previous version's key bindings, so `ctrl-o` (borrow) in it calls an action that no longer exists. Restart it once: `ctrl-q` in it, then `tagents --ensure-dash` to start a sidebar in the window you are in.
 
+### The cockpit
+
+`dashboard.layout: cockpit` in the config (the default, `follow`, is everything above) puts the dashboard in a session of its own, named `tagents`: the list is the left pane at `TA_WIDTH` percent, and the right pane, the viewport, is a second client of the same tmux server that shows the window you select, so no pane ever moves between windows. `tagents --ensure-dash` starts it, `enter` on a row points the viewport at that row's window, and a selection made for a terminal that is attached elsewhere (a popup, a notification click) points the viewport the same way and brings that terminal to the session `tagents`. A list or a viewport that is killed comes back within about a second, and a session that is already named `tagents` and is not a dashboard stops the cockpit with a message: rename it, or set the layout back to `follow`.
+
+The session `tagents` has no prefix of its own. The list keeps its keys (`ctrl-n`, `ctrl-s` and the rest work as before), and your tmux prefix, typed in the list, is sent on to the viewport, which becomes the active pane, so `prefix c` opens a window in the session the viewport shows and `prefix d` detaches your terminal and leaves the viewport attached to the session it showed, ready for the next `tmux attach -t tagents`. The mouse bindings of the root table that do not open a menu work in the list too. Messages and popups appear on the viewport's client, because the dashboard's own status line is off.
+
+Root bindings (`bind -n …`) do not fire while the list is the active pane; they do in the viewport, where they act in the window it shows, so press the prefix first or click into the viewport. `ctrl-q` in the list is the way out: it shows your terminal the window the viewport showed, removes the key table, the hook and the options the cockpit set, and closes the session `tagents`, and every other terminal attached to it moves to that window too. All of it is measured on tmux 3.7b only.
+
+The resurrect snapshot files the sidebar under the window the viewport showed (`D`, `work`, `2`, never the session `tagents`), and `tagents --resurrect` brings the cockpit back with its viewport on that window and leaves your terminal where it is. A session `tagents` that tmux-resurrect left as two idle shells titled `tagents-sidebar` and `tagents-viewport` is rebuilt in place, without detaching anyone (in the follow layout it is closed instead, and its terminals move to the sidebar's window), and the idle shells with those titles left in other windows are closed.
+
 ## Windows are named after their agents
 
 The dashboard is one way to find an agent. `prefix+w`, the status bar and `tmux
@@ -418,6 +428,12 @@ claude:
   # When nothing matches. `ask` (the default) opens a picker; a profile name
   # settles it silently.
   default: ask
+
+dashboard:
+  # How the sidebar is laid out: `follow` (the default) puts it beside the
+  # window you are in; `cockpit` is the opt-in alternative. Anything else is
+  # read as `follow`, and `tagents --check` says so.
+  layout: follow
 ```
 
 ### One config, several machines

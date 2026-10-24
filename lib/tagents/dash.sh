@@ -99,6 +99,11 @@ dash() {
     echo "tagents: not inside tmux" >&2
     return 1
   fi
+  # IN THE COCKPIT A LIST STARTED OUTSIDE THE DASHBOARD DOES WHAT --ensure-dash DOES for the client that shows its pane, and ends: the shell it was typed in gets its prompt back. The dashboard's own list, in a pane of the session `tagents`, runs as any list.
+  if [ "$mode" != popup ] && [ -n "${TMUX_PANE:-}" ] && ! pane_in_cockpit "$TMUX_PANE" && cockpit_want; then
+    cockpit_ensure "$(cockpit_client_of_pane "$TMUX_PANE")"
+    return $?
+  fi
   # In a popup Esc is the natural "close this overlay". In the dedicated
   # dashboard session it must not close anything: the window is the session's
   # reason to exist, and losing it leaves you staring at whatever else is there.
@@ -257,7 +262,8 @@ dash() {
     key=$(printf '%s\n' "$out" | sed -n 1p)
     # A deliberate quit ends the wish for a sidebar; the pane being killed does not (follow starts another then).
     if [ "$key" = ctrl-q ]; then
-      [ "$sidebar" = 1 ] && tmux set -gu @tagents_sidebar_on 2>/dev/null
+      if pane_in_cockpit "${TMUX_PANE:-}"; then cockpit_quit
+      elif [ "$sidebar" = 1 ]; then tmux set -gu @tagents_sidebar_on 2>/dev/null; fi
       break
     fi
     [ "$mode" = popup ] && break

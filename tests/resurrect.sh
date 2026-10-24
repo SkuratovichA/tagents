@@ -871,6 +871,41 @@ ok "off: the second orphan is left" there "$(gone "$O2")"
 ok "off: tnotes is not asked" "" "$(cat "$OUT/tnotes.log" 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
+t "17b. the cockpit: the D row names the window the viewport shows, and the restore brings the cockpit back without moving a terminal"
+# ---------------------------------------------------------------------------
+CKCFG="$ROOT/config-cockpit.yaml"
+{ cat "$CFG"; printf 'dashboard:\n  layout: cockpit\n'; } >"$CKCFG"
+tm new-session -d -s tatest-ck -x 200 -y 50 'sleep 600'
+tm new-window -d -t =tatest-ck:2 'sleep 600'
+tm select-window -t =tatest-ck:0
+( { sleep 300 & printf '%s\n' "$!" >"$ROOT/keeper-ck.pid"; wait; } |
+    script -q /dev/null sh -c 'stty cols 200 rows 50; exec tmux -L "$0" attach -t "$1"' "$S" =tatest-ck: >/dev/null 2>&1 & ) >/dev/null 2>&1
+sleep 1
+ckviewport() {  # the session:window the viewport's client shows
+  tm list-clients -F '#{client_name} #{session_name}:#{window_index}' 2>/dev/null | awk -v c="$(tm show -gqv @tagents_viewport_tty)" '$1 == c { print $2 }'
+}
+ckterminal() {  # the session the terminal that is not the viewport shows
+  tm list-clients -F '#{client_name} #{session_name}' 2>/dev/null | awk -v c="$(tm show -gqv @tagents_viewport_tty)" '$1 != c { print $2 }'
+}
+waitck() {  # <expected> <function> — the function's answer, once it is the expected one (~8 s)
+  local i=0 got
+  while [ "$i" -lt 80 ]; do got=$($2); [ "$got" = "$1" ] && break; i=$((i + 1)); sleep 0.1; done
+  printf '%s' "$got"
+}
+printf 'D\ttatest-ck\t2\n' >"$SNAP/ck.tsv"
+out=$(TA_CONFIG="$CKCFG" run --resurrect --from "$SNAP/ck.tsv" 2>&1); ok "the cockpit restore succeeds" 0 "$?"
+has "the report says dashboard" "✓ dashboard" "$out"
+tm has-session -t '=tagents:' 2>/dev/null; ok "the session tagents exists" 0 "$?"
+ok "its viewport shows the window the row names" tatest-ck:2 "$(waitck tatest-ck:2 ckviewport)"
+ok "the terminal attached to the session still shows it" tatest-ck "$(ckterminal)"
+booted; run --resurrect-save; rows=$(cat "$STATE/resurrect/$(newest)")
+ok "the snapshot of the cockpit holds the window the viewport shows" "$(printf 'D\ttatest-ck\t2')" "$(printf '%s\n' "$rows" | awk -F'\t' '$1 == "D"')"
+ok "...and no row names the session tagents" 0 "$(printf '%s\n' "$rows" | awk -F'\t' '$2 == "tagents" || $5 == "tagents"' | wc -l | tr -d ' ')"
+tm set -gu @tagents_viewport_tty; tm set-hook -gu 'client-session-changed[44]'
+tm kill-session -t '=tagents:' 2>/dev/null; tm kill-session -t =tatest-ck 2>/dev/null
+[ -s "$ROOT/keeper-ck.pid" ] && kill "$(cat "$ROOT/keeper-ck.pid")" 2>/dev/null
+
+# ---------------------------------------------------------------------------
 t "18. --help names the three entry points and the keys that steer them"
 # ---------------------------------------------------------------------------
 # The header comment is the help; a verb missing from it is a verb nobody finds
