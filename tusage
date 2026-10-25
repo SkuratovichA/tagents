@@ -315,7 +315,25 @@ mtime_of() {  # <abs path> -> epoch seconds, 0 if unknown
 }
 
 # facts rows: bucket, project-slug, sid, agentid, agenttype, kind, model,
-#             reqs, in, cw5, cw1h, cr, out, maxctx
+#             reqs, in, cw5, cw1h, cr, out, maxctx, lastctx
+#
+# maxctx is the largest context of any request in the bucket; lastctx is the
+# context of the NEWEST request of the bucket's session and agent, by timestamp.
+# They differ exactly when the context shrank inside the bucket, which is what a
+# compaction does, and only lastctx answers "how big is this chat now".
+#
+# lastctx is per (bucket, session, agent), not per row: a row is also split by
+# model and kind, so a zero-token "<synthetic>" placeholder written after the
+# real request would otherwise be the newest of a row of its own, and a model
+# switch inside the bucket would make the answer depend on which row came first.
+# A request with no context at all never counts as the newest — it is not a
+# request that says anything about the size of the chat.
+#
+# THE TWO FORMATS. facts.tsv is append-only and is trimmed, never rewritten, so
+# rows written before this column existed keep 14 fields for as long as they
+# live. A reader tells them apart by NF: a row with 15 fields has a lastctx, a
+# row with 14 has only maxctx, which then stands in for it. No --rebuild is
+# needed, and the stand-in is only wrong for a bucket that held a compaction.
 fold_rows() {  # <project-slug> <carried ids> <origin> ; extracted TSV on stdin
   LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v proj="$1" -v seen0="$2" -v origin="$3" -v bucket="$BUCKET" '
     BEGIN { n = split(seen0, carry, ","); for (i = 1; i <= n; i++) if (carry[i] != "") seen[carry[i]] = 1 }
@@ -336,6 +354,8 @@ fold_rows() {  # <project-slug> <carried ids> <origin> ; extracted TSV on stdin
       ctx = $8 + $9 + $10 + $11
       R[k]++; I[k] += $8; C5[k] += $9; C1[k] += $10; CR[k] += $11; O[k] += $12
       if (ctx > X[k]) X[k] = ctx
+      g = b SUBSEP $3 SUBSEP $4; G[k] = g
+      if (ctx > 0 && (!(g in LT) || $2 + 0 >= LT[g])) { LT[g] = $2 + 0; LX[g] = ctx }
       if (!($3 in fts) || $2 < fts[$3]) fts[$3] = $2
       if (!($3 in lts) || $2 > lts[$3]) lts[$3] = $2
       mdl[$3] = $7
@@ -343,7 +363,7 @@ fold_rows() {  # <project-slug> <carried ids> <origin> ; extracted TSV on stdin
     END {
       for (i = 1; i <= m; i++) {
         k = order[i]; split(k, a, SUBSEP)
-        print "F", a[1], proj, a[2], a[3], a[4], a[5], a[6], R[k], I[k], C5[k], C1[k], CR[k], O[k], X[k]
+        print "F", a[1], proj, a[2], a[3], a[4], a[5], a[6], R[k], I[k], C5[k], C1[k], CR[k], O[k], X[k], LX[G[k]] + 0
       }
       for (s in fts) print "M", s, proj, fts[s], lts[s], mdl[s]
       # the last few ids, so the next incremental read does not double-count a
@@ -566,7 +586,8 @@ update() {
 # reporting
 # ---------------------------------------------------------------------------
 # facts columns: 1 bucket 2 slug 3 sid 4 agentid 5 agenttype 6 kind 7 model
-#                8 reqs 9 in 10 cw5 11 cw1h 12 cr 13 out
+#                8 reqs 9 in 10 cw5 11 cw1h 12 cr 13 out 14 maxctx 15 lastctx
+# (15 is absent from rows an older version wrote; see fold_rows)
 
 # Local 00:00 of the 1st of the current month. BSD date wants the format spelt
 # out, GNU date parses the bare date; try each in that order.
@@ -1119,8 +1140,15 @@ report_by() {
 
 # sid, cost, reqs, ctx, last_ts, slug, subagent_cost, live_subagents, cost_5h,
 #   model, usd, usd_5h, usd_subagent, unpriced
-# ctx is the largest context seen in the last hour — the number that says
-# "this session is fat, compact it", which an average over the window hides.
+# ctx is the context of the session's newest main-chain request (agent id "-"),
+# the number that says "this session is fat, compact it". It used to be the
+# largest context of the last hour, which answered a different question: "how
+# big did this chat get". After a /compact that kept showing the size from
+# before the compaction for up to an hour, and a subagent's own large context
+# could show as the session's. A session that has made no main-chain request in
+# the window reports 0. The newest request is the one of the newest bucket,
+# and of the later row when two rows share a bucket; a row from an index that
+# predates the lastctx column falls back to its maxctx (see fold_rows).
 #
 # `model` is the session's CURRENT model — the one the newest row was billed at,
 # which is what a status line should show. The dollar figures are emphatically
@@ -1147,8 +1175,10 @@ sessions() {
       C[s] += c; R[s] += $8; P[s] = $2
       D[s] += d
       if ($1 + 0 >= h5) { C5H[s] += c; D5H[s] += d }
-      if ($1 + 0 >= h1 && $14 + 0 > X[s]) X[s] = $14 + 0
-      if ($14 + 0 > XMAX[s]) XMAX[s] = $14 + 0
+      if ($4 == "-") {
+        v = (NF >= 15) ? $15 + 0 : $14 + 0
+        if (v > 0 && $1 + 0 >= XB[s]) { XB[s] = $1 + 0; X[s] = v }
+      }
       if ($1 + 0 > L[s]) L[s] = $1 + 0
       # The newest row that actually spent something wins the model column, so a
       # mid-session /model shows up at once — but the placeholder never does.
@@ -1158,7 +1188,7 @@ sessions() {
     END { for (s in C) {
         k = 0
         for (q in NSUB) { split(q, a, SUBSEP); if (a[1] == s && NSUB[q] >= h1) k++ }
-        print s, int(C[s]), R[s], int(X[s] ? X[s] : XMAX[s]), L[s], P[s],
+        print s, int(C[s]), R[s], int(X[s]), L[s], P[s],
               int(SUB[s]), k, int(C5H[s]),
               MDL[s], sprintf("%.6f", D[s]), sprintf("%.6f", D5H[s]),
               sprintf("%.6f", DSUB[s]), UNP[s] + 0 } }' "$FACTS"
