@@ -10,9 +10,10 @@ The `claude-code-plugin` spec has gone stale beside them: it still describes a f
 
 - The timeline asks the controlling terminal for its width, so a pipe or a command substitution does not shrink it to 80. An exported `COLUMNS` still overrides.
 - The young-server hold-off applies only while `@resurrect-hook-post-restore-all` runs `tagents --resurrect`. A by-hand `--resurrect-save` that is held off says why on stderr, when stderr is a terminal, and exits 0.
-- `claude-code-plugin`: the install requirement states what `install.sh` observably does (the managed copy, the wrappers, the hooks directories, the hook and status line left manual), the dotfiles sentence that nothing supports is dropped, the hook scripts are no longer called "installed by hand", and the list of packages names `notify` and `contract`.
+- `claude-code-plugin`: the install requirement states what `install.sh` observably does (the managed copy, the wrappers, the hooks directories, the hook and status line left manual), the dotfiles sentence that nothing supports is dropped, the hook scripts are no longer called "installed by hand", and the list of packages names `notify` and `contract`. The skill names `@tagents/notify` too and routes it to `references/notify.api.md`, which was generated all along but reachable from nowhere.
+- The dashboard list's last-resort width, used only when neither fzf nor tmux reports one, asks the terminal the same way instead of `tput cols`.
 
 ## Impact
 
 - Affected specs: `dashboard-list`, `resurrect`, `claude-code-plugin`.
-- Affected code: `lib/tagents/core.sh` (`tty_cols`), `lib/tagents/timeline.sh`, `lib/tagents/dash.sh`, `lib/tagents/resurrect.sh`, `tagents` (the `--resurrect-save` manual), `skills/tagents/references/scripts.md`, `tests/headless.sh`, `tests/resurrect.sh`, `LEARNING.md`.
+- Affected code: `lib/tagents/core.sh` (`tty_cols`), `lib/tagents/timeline.sh`, `lib/tagents/dash.sh`, `lib/tagents/list.sh`, `skills/tagents/SKILL.md`, `lib/tagents/resurrect.sh`, `tagents` (the `--resurrect-save` manual), `skills/tagents/references/scripts.md`, `tests/headless.sh`, `tests/resurrect.sh`, `LEARNING.md`.

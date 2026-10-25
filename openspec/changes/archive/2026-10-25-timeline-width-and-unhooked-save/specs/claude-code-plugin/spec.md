@@ -42,6 +42,25 @@ The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeS
 - **WHEN** a user types `tagents plugin list`, `tagents session list` or `tagents doctor`
 - **THEN** it works from the dashboard's name, because the verb is forwarded to `tagents-core`
 
+### Requirement: The plugin gives a session the tagents skill
+The plugin SHALL ship one skill, `tagents`, in `skills/tagents/SKILL.md`. Its description SHALL say when to load it: driving tagents from a session or a script, and writing code or a plugin against `@tagents/core`, `@tagents/knowledge`, `@tagents/notify` or `@tagents/telegram`. Its body is a hand-written index that sends the reader to the generated reference for the surface in question.
+
+#### Scenario: When it applies
+- **WHEN** a session opens, prompts, lists or aborts headless sessions, finds a past session, searches the knowledge documents, reads cost with `tusage`, or calls a flag of the dashboard or of `tnotes`
+- **THEN** the skill's description matches the task
+
+#### Scenario: Which reference
+- **WHEN** a session needs to open, prompt, list or abort a headless session, or manage plugins
+- **THEN** the skill points it to `tagents-core` and `references/cli.md`
+
+#### Scenario: Other surfaces
+- **WHEN** a session needs MCP tools, cost accounting, dashboard or notes flags, or the TypeScript API
+- **THEN** the skill points to `references/mcp.md`, `references/scripts.md` or the `*.api.md` of the package respectively
+
+#### Scenario: The contract as data
+- **WHEN** a script wants to check a verb or a tool schema
+- **THEN** the skill names `contract.json` in the plugin root as the same contract as data
+
 ## ADDED Requirements
 
 ### Requirement: The installer writes wrappers, not symlinks

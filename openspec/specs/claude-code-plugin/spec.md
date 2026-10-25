@@ -20,7 +20,7 @@ With Claude Code 2.1.275 or later the plugin SHALL be installable with `/plugin 
 - **THEN** the skill and the MCP server described below become available to sessions
 
 ### Requirement: The plugin gives a session the tagents skill
-The plugin SHALL ship one skill, `tagents`, in `skills/tagents/SKILL.md`. Its description SHALL say when to load it: driving tagents from a session or a script, and writing code or a plugin against `@tagents/core`, `@tagents/knowledge` or `@tagents/telegram`. Its body is a hand-written index that sends the reader to the generated reference for the surface in question.
+The plugin SHALL ship one skill, `tagents`, in `skills/tagents/SKILL.md`. Its description SHALL say when to load it: driving tagents from a session or a script, and writing code or a plugin against `@tagents/core`, `@tagents/knowledge`, `@tagents/notify` or `@tagents/telegram`. Its body is a hand-written index that sends the reader to the generated reference for the surface in question.
 
 #### Scenario: When it applies
 - **WHEN** a session opens, prompts, lists or aborts headless sessions, finds a past session, searches the knowledge documents, reads cost with `tusage`, or calls a flag of the dashboard or of `tnotes`
