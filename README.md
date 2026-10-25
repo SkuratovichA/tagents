@@ -22,6 +22,31 @@ Both stay blank for a session whose state record predates them rather than
 guessing, and with no profiles configured the badge column does not exist at
 all.
 
+## What it is for
+
+Running several Claude Code sessions at once, the hard part is knowing which one needs you. tagents answers that from one place: every session under tmux, grouped by project, with its state, how long it has been in that state, and the last thing it said.
+
+![The tagents dashboard: sessions grouped by project, one working, two blocked on a question or a permission, one idle](docs/images/dashboard.png)
+
+- **See what is blocked.** A session waiting on a permission prompt or an answer is marked `BLOCKED` and counted in its group's header, so nothing waits unnoticed behind another window.
+- **Jump straight to it.** `enter` on a row brings that session's window to you; the dashboard itself lives in a sidebar that follows you from window to window.
+- **Pick up where you left off.** Closed sessions stay in the list and `enter` resumes them. After a reboot, `tagents --resurrect` brings the windows and the sessions back.
+- **Know what it costs.** With `tusage` switched on, each row carries its context size and spend, and the list can tell several Claude logins apart.
+- **Reach it from scripts.** `tagents-core` spawns, prompts and reads headless sessions, and plugins add verbs, services and MCP tools of their own.
+
+### The Claude Code plugin
+
+The same repo installs into Claude Code as a plugin, so the sessions the dashboard watches also know how to use it:
+
+```
+/plugin install tagents --marketplace SkuratovichA/tagents
+```
+
+- **The `tagents` skill** gives Claude the exact contract of `tagents-core`, `tagents-knowledge`, `tagents`, `tusage` and `tnotes`: every verb and flag, every MCP tool schema, the public TypeScript API. It is generated from the code, so it never goes stale; Claude loads it when a task touches tagents instead of guessing at flags.
+- **The `knowledge` MCP server** gives every session search and read access to your markdown notes (`tagents-knowledge`), through one shared server per machine so each session stays light.
+
+The plugin does not register the state hook or the status line that feed the dashboard; those are steps of [Install](#install). Details are under [The Claude Code plugin](#the-claude-code-plugin).
+
 ## What is in here
 
 | file | what it does |

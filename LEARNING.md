@@ -423,3 +423,15 @@ With only `tagents` left, `client_session ""` and `tmux display -p '#{session_na
 
 ## A test that greps `ps` for the server's socket could not fail (24.10.2026)
 `ring_wait` runs a plain `tmux if-shell` inside a pane, which finds the server through `TMUX`, so the waiter's argv has no `-L <socket>` and "A quit leaves no waiter behind" counted zero with or without a leak; `cpwaiters` in tests/cockpit.sh reads the process environment (`ps -A -ww -E`) for the socket instead, and the leak itself is caught by "The viewport's wait stops its waiter", because a leaked waiter in a dead pane is hung up with the pane and only a live one outlasts the loop.
+
+## `tagents update` rolls back when the machine's pnpm is older than `packageManager` (24.10.2026)
+
+The cockpit release pinned `pnpm@9.15.4`; the global pnpm was 9.1.4, the build died on `ERR_PNPM_BAD_PM_VERSION` and the updater put the copy back on the old commit. `pnpm add -g pnpm@9.15.4` (run outside any project) fixed it. Suites under `tests/` also need `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)"`; bare they refuse to start.
+
+## tmux 3.4 fails `tests/cockpit.sh` and seven checks of `tests/window-rows.sh` (24.10.2026)
+
+Both are measured on tmux 3.7b (dot kept in session names, a refused join-pane, no-detach-on-destroy behaviour); on 3.4 the cockpit suite fails and then hangs. Fix: `brew upgrade tmux` (3.8) and restart the server; on 3.8 cockpit.sh passes 228/0 and window-rows.sh 563/0. A 3.8 client cannot talk to a running 3.4 server (protocol mismatch), so the restart has to be driven from a terminal outside tmux: `kill <server pid>`, then any `tmux new-session -d` lets continuum restore the layout and the tagents hook resume the chats.
+
+## `tagents --ensure-dash` from outside tmux exits 1 and says nothing (24.10.2026)
+
+In the cockpit it works on a client: with no terminal attached to the server there is none to take to the session `tagents`, so it returns 1 silently and creates nothing. Attach a terminal first (`tmux attach -t <session>`), then run it, or press `prefix + A` in that terminal.
