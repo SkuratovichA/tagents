@@ -128,7 +128,8 @@ viewport() {
       viewport_wait "$tty"
       continue
     fi
-    env -u TMUX tmux -S "$sock" attach -f no-detach-on-destroy -t "=$target:" || sleep 1
+    # The client opens the terminal by path, read-write, instead of inheriting the pane's descriptors. The server draws through a dup of the client's stdin, and every tmux client sets its stdin, stdout and stderr back to blocking when it exits; on an inherited descriptor any tmux call in this pane (the watcher's, the loop's own) flips the server's write end to blocking, and the server, which is also the only reader of this pane, then blocks writing to it forever while every other client spins at 100% CPU.
+    env -u TMUX tmux -S "$sock" attach -f no-detach-on-destroy -t "=$target:" 0<>"$tty" 1>&0 2>&0 || sleep 1
     [ "$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)" = "$tty" ] || break
     idle=$(tmux show -gqv @tagents_viewport_idle 2>/dev/null)
     tmux set -gu @tagents_viewport_idle 2>/dev/null

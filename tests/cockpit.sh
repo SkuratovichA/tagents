@@ -49,6 +49,9 @@ nclients() { tm list-clients 2>/dev/null | wc -l | tr -d ' '; }
 csess()    { tm list-clients -F '#{client_name} #{client_session}' 2>/dev/null | awk -v c="$1" '$1 == c { print $2 }'; }
 present()  { tm list-clients -F '#{client_name}' 2>/dev/null | grep -cxF "$1"; }   # <client> — 1 while attached, 0 once gone
 opt()      { tm show -gqv "$1" 2>/dev/null; }
+# W,NB when every descriptor the server holds on <tty> is writable and non-blocking (lsof prints the flags as R,W,NB,...), otherwise how many of how many are.
+srv_nb()   { lsof +fg -a -p "$(tm display -p '#{pid}')" -- "$1" 2>/dev/null |
+               awk 'NR > 1 { n++; if ($6 ~ /(^|,)W(,|$)/ && $6 ~ /(^|,)NB(,|;|$)/) ok++ } END { if (n && n == ok) print "W,NB"; else printf "%d of %d writable and non-blocking\n", ok, n }'; }
 
 # A client on a pty, attached to <session> by the nested route: TMUX unset, the socket by path. <n> numbers its pid file, <session> is a
 # bare name (the target gets the colon, `=name` alone is not an exact match), <attach flags…> go to `attach` (-f no-detach-on-destroy).
@@ -890,6 +893,8 @@ ok "The list is killed: a new list is the left pane" 1 "$(wait_eq_long 1 sh -c "
 ok "The list is killed: the viewport is the one it was" "$OLDV" "$(vpane)"
 near "The list is killed: the new list is 90 columns wide" 90 "$(tm display -p -t "$(lpane)" '#{pane_width}')"
 ok "The list is killed: the new list has claimed the sidebar" 1 "$(wait_eq_long 1 sh -c "p=\$(tmux -L $CPS display -p -t '$(lpane)' '#{@tagents_list}'); [ -n \"\$p\" ] && kill -0 \"\$p\" 2>/dev/null && echo 1")"
+# The split that brought the list back ran in the viewport's pane with stdout on its terminal, and a tmux client sets its stdin, stdout and stderr back to blocking when it exits. The server writes to the viewport's client through a dup of that client's stdin; had it been the pane's descriptor, the split left it blocking and the server, the only reader of that pane, hangs on its next large write.
+ok "The list is killed: the server still writes to the viewport's client without blocking" W,NB "$(srv_nb "$(vtty)")"
 
 t "A quit leaves no waiter behind"
 cpkeys_up 76
