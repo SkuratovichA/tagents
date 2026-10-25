@@ -54,6 +54,13 @@ The dashboard's right pane SHALL be the viewport: titled `tagents-viewport`, wit
 - **WHEN** `tagents --viewport` runs in a pane that is not the dashboard's right pane
 - **THEN** it prints `tagents: --viewport runs only in the cockpit's viewport pane` on standard error and exits 1
 
+### Requirement: The viewport's client has a terminal descriptor of its own
+The viewport's client SHALL take its standard input, output and error from one read-write open of the viewport's tty by its path, not from the pane, so that no other process in the pane shares the descriptor the server writes to it through: a tmux client sets its standard input, output and error back to blocking when it exits, and the server is the only reader of the pane it would block writing to.
+
+#### Scenario: A tmux call in the viewport's pane
+- **WHEN** the list is killed and the viewport's pane brings it back with a `tmux split-window` whose standard output is the pane
+- **THEN** every descriptor the tmux server holds on the value of `@tagents_viewport_tty` is still writable and non-blocking
+
 ### Requirement: Selecting a row points the viewport
 In the cockpit, selecting a row as the `window-rows` capability describes it — `enter`, a double-click, `ctrl-g`, a header, `tagents --goto`, `tagents --act open`, a new chat or shell — SHALL switch the viewport's client to that window, or to the session's current window for a header, and make the viewport the dashboard's active pane. No pane SHALL change window, and a terminal attached to the dashboard SHALL stay on it.
 
