@@ -1,831 +1,167 @@
+<div align="center">
+
 # tagents
 
-A live dashboard of every Claude Code session running under tmux — what each one is doing, which is blocked on you, how much context it is holding and what it has spent — as a sidebar that moves into the window of the chat you select, so you can type into it without leaving.
+**Know which Claude Code session needs you, without leaving tmux.**
 
-```
-▾ .dotfiles    ~/git/.dotfiles           ●1
-  └─ ● working   0:31  p dotfiles   71k  $44.0  opus5    personal  %3
-▾ storefront   ~/git/storefront          ⚠1 ✓1 ●1   $31.4/5h
-  ├─ ● working   0:08  w web        38k   $9.1  sonnet5  work      %44  ⑂2
-  ├─ ⚠ BLOCKED   2:14  w api       142k  $38.3  opus5    work      %31
-  └─ ✓ IDLE     17:02  w worker     12k   $2.7  haiku4.5 work      %12
-```
+[Docs](https://skuratovicha.github.io/tagents/) · [Install](#install) · [Getting started](https://skuratovicha.github.io/tagents/guide/getting-started) · [Resurrect](#never-lose-a-session)
 
-state · since you last typed · **badge** · name · context · cost · model · **account** · pane.
-Both bold columns say which Claude login the session is on, named after the
-profile in `config.yaml` that claims its `CLAUDE_CONFIG_DIR` — see
-[Configuration](#configuration). The account name appears on wide lists only;
-the badge is one or two characters and is on every row at every width — `p`,
-`w`, the first letter of the profile name unless `badge:` says otherwise (more
-than two is clipped to two, since the column is as wide as the widest of them).
-Both stay blank for a session whose state record predates them rather than
-guessing, and with no profiles configured the badge column does not exist at
-all.
+<img src="docs/images/hero.gif" alt="The tagents sidebar: chats grouped by project, one turns BLOCKED, enter opens it beside the list" width="900">
 
-## What it is for
+</div>
 
-Running several Claude Code sessions at once, the hard part is knowing which one needs you. tagents answers that from one place: every session under tmux, grouped by project, with its state, how long it has been in that state, and the last thing it said.
+tagents is a live sidebar for every Claude Code chat you run in tmux: what each one is doing, which one is waiting on you, how much context it holds and what it has spent. Pick a row and the chat opens right beside the list, so you can answer it and move on.
 
-![The tagents dashboard: sessions grouped by project, one working, two blocked on a question or a permission, one idle](docs/images/dashboard.png)
+It grew up in parallel to [herdr](https://herdr.dev), around the same idea, for people who would rather keep tmux: no new multiplexer, no new terminal, and your own config and key bindings stay yours.
 
-- **See what is blocked.** A session waiting on a permission prompt or an answer is marked `BLOCKED` and counted in its group's header, so nothing waits unnoticed behind another window.
-- **Jump straight to it.** `enter` on a row brings that session's window to you; the dashboard itself lives in a sidebar that follows you from window to window.
-- **Pick up where you left off.** Closed sessions stay in the list and `enter` resumes them. After a reboot, `tagents --resurrect` brings the windows and the sessions back.
-- **Know what it costs.** With `tusage` switched on, each row carries its context size and spend, and the list can tell several Claude logins apart.
-- **Reach it from scripts.** `tagents-core` spawns, prompts and reads headless sessions, and plugins add verbs, services and MCP tools of their own.
+---
 
-### The Claude Code plugin
+## What it does
 
-The same repo installs into Claude Code as a plugin, so the sessions the dashboard watches also know how to use it:
+- **Shows who is waiting on you.** A chat stuck on a question or a permission turns `BLOCKED` and is counted in its project's header, so nothing waits unnoticed in a window you are not looking at.
+- **Taps you on the shoulder.** A desktop notification when a chat asks something, wants a permission or finishes its turn; click it and you land in that chat.
+- **Follows you around.** The sidebar moves into whichever window is on screen. `enter` on a row brings that chat beside the list.
+- **Survives a reboot.** Close the laptop, restart, kill the tmux server: every chat comes back in its window, on its account, with its model.
+- **Forgets nothing.** Closed chats stay one keystroke away, with their last prompts, and resume where they ran.
+- **Keeps your accounts apart.** Work and personal Claude logins, chosen per directory, with a badge on every row so you always know which one is paying.
+- **Counts the cost.** Context size and spend per chat, what each project burned in the last five hours, and the month so far against your plan's limit.
 
-```
-/plugin install tagents --marketplace SkuratovichA/tagents
-```
-
-- **The `tagents` skill** gives Claude the exact contract of `tagents-core`, `tagents-knowledge`, `tagents`, `tusage` and `tnotes`: every verb and flag, every MCP tool schema, the public TypeScript API. It is generated from the code, so it never goes stale; Claude loads it when a task touches tagents instead of guessing at flags.
-- **The `knowledge` MCP server** gives every session search and read access to your markdown notes (`tagents-knowledge`), through one shared server per machine so each session stays light.
-
-The plugin does not register the state hook or the status line that feed the dashboard; those are steps of [Install](#install). Details are under [The Claude Code plugin](#the-claude-code-plugin).
-
-## What is in here
-
-| file | what it does |
-|------|--------------|
-| `tagents` | the dashboard itself — the tree, the sidebar, the timeline |
-| `lib/tagents/` | what the dashboard is made of: one file per part, sourced by `tagents`. [What each one is](lib/tagents/README.md) |
-| `tusage`  | per-session cost, dollars and context accounting, read from the transcripts |
-| `hooks/tmux-agent-state.sh` | the Claude Code hook that publishes session state |
-| `hooks/claude-statusline.sh` | the Claude Code status line — and the only source for which model a session is *set* to |
-| `hooks/notes-context.sh` | the Claude Code hook that carries the notes folder's diff into the prompt |
-| `hooks/notes-autocommit.sh` | the Claude Code hook that commits what Claude writes into the notes folder |
-| `config.example.yaml` | a commented example of the optional per-directory account config |
-| `packages/core/` | `@tagents/core`, the TypeScript package for **headless** sessions |
-| `packages/knowledge/` | [`@tagents/knowledge`](packages/knowledge/README.md), the owner's notes as markdown documents with an FTS5 index, a `tagents-knowledge` CLI and an MCP server |
-| `packages/telegram/` | [`@tagents/telegram`](packages/telegram/README.md), the Telegram Bot API typed and small — one client for every plugin that has a bot token |
-| `packages/contract/` | `@tagents/contract`, private — generates the contract of the [Claude Code plugin](#the-claude-code-plugin) from the code and moves the plugin's version |
-| `.claude-plugin/`, `skills/tagents/`, `contract.json` | the [Claude Code plugin](#the-claude-code-plugin): its manifest, its skill, and the contract generated from the code |
-| `openspec/` | the [specs](#specs): what every part of tagents does, one capability per spec, and the changes proposed against them |
-
-They are one system. The hook writes a record per session into
-`~/.claude/agent-state/`; `tagents` joins that with the live tmux pane list and
-renders it; `tusage` supplies the two cost columns, joined on the session id.
-`tusage` is only run once `usage.watch` names a profile (see `config.example.yaml`); without it no cost is shown anywhere.
-`tagents` degrades gracefully when `tusage` or the status line is missing, but
-without the state hook there is nothing to show.
-
-### Sessions with no pane
-
-Everything above is about sessions you can look at. The ones a bot or a cron job
-runs headlessly (`claude -p`) have no pane and no window, and the dashboard sees
-them only through the same hook. Spawning, prompting and reading THOSE lives in
-[`packages/core`](packages/core/README.md) — a TypeScript package
-(`@tagents/core`) with a `tagents-core` CLI, so bash gets it too. It is a
-separate workspace at the root of this repo; the scripts above neither import it
-nor need it.
-
-## The ecosystem
-
-| package | what it is |
-|---------|------------|
-| `tagents` (this script) | the dashboard: tmux, fzf, the tree, the sidebar. Bash, no dependencies of its own — the entry point, with the rest of it in `lib/tagents/` |
-| [`@tagents/core`](packages/core/README.md) | headless sessions — spawn, prompt, read, list — plus the plugin contract and host, behind a `tagents-core` CLI |
-| [`@tagents/knowledge`](packages/knowledge/README.md) | the owner's notes as markdown documents with an FTS5 index, a `tagents-knowledge` CLI and an MCP server |
-| [`@tagents/telegram`](packages/telegram/README.md) | the Telegram Bot API, typed and small: one envelope-parsing `call()`, the methods a bot actually uses, and the 4096-character split |
-| plugins, e.g. `@tagents/plugin-telegram` | a package the config names: one `definePlugin({ … })` object offering CLI verbs, long-running services and MCP tools |
-
-One name reaches all of it. A verb `tagents` has no flag for — `tagents plugin
-list`, `tagents session list`, `tagents doctor` — is handed to `tagents-core`
-unchanged, found on `$PATH` or beside this script in a checkout.
-
-**The plugin model.** A plugin is an ordinary package that default-exports one
-`definePlugin({ name, apiVersion: 1, commands, services, mcpTools, locales })`
-object and declares where that object lives in its own package.json:
-`"tagents": { "apiVersion": 1, "entry": "./src/plugin.ts" }`. `tagents plugin
-add <package-or-path>` checks that manifest — without importing anything — and
-writes the package under `plugins:` in `~/.config/tagents/config.yaml`; the host
-loads exactly what that map names and never scans `node_modules`, because
-scanning is how a machine ends up running code nobody chose. `tagents plugin
-new <name>` scaffolds a package that is already a plugin and typechecks as
-written. See [packages/core/README.md](packages/core/README.md#plugins).
-
-## The Claude Code plugin
-
-This repo is also a Claude Code plugin, and its own marketplace:
-
-```
-/plugin install tagents --marketplace SkuratovichA/tagents
-```
-
-That one line needs Claude Code 2.1.275 or later; before it, `/plugin marketplace add SkuratovichA/tagents` and then `/plugin install tagents@tagents`.
-
-It gives a session the `tagents` skill, which is the contract described below, and the `knowledge` MCP server.
-
-The plugin registers `packages/knowledge/bin/knowledge-mcp` as the `knowledge` MCP server. It asks `tagents-knowledge serve` for the unix socket of one shared knowledge server per environment and joins the session to it with `nc -U`, which keeps a session at about 1.4 MB instead of a 30 MB node process. The server starts on demand and exits after 10 minutes without a client. If `serve` fails, a checkout predates it, or there is no `nc`, the script runs `tagents-knowledge mcp` as before. `tagents-knowledge` has to be on `$PATH`.
-
-If that server is already registered by hand with `claude mcp add`, remove the hand-made entry or its tools appear twice. The plugin registers no hooks: the state hook and the status line stay steps 3 and 4 of [Install](#install), because a plugin cannot set a status line.
-
-**The contract is generated, never written.** `pnpm plugin:gen` reads four things out of the code and rewrites `contract.json` and `skills/tagents/references/`:
-
-| what | read from | lands in |
-|------|-----------|----------|
-| every verb, flag and exit code of `tagents-core` and `tagents-knowledge` | the command specs `parseArgs` itself is handed, `packages/*/src/cli/spec.ts` | `contract.json`, `references/cli.md` |
-| every MCP tool and its input schema | the server `createServer()` builds, asked for its tool list the way a client asks | `contract.json`, `references/mcp.md` |
-| the public TypeScript API of each package | declarations emitted from the sources, through [API Extractor](https://api-extractor.com/) | `references/*.api.md`, and a hash of each in `contract.json` |
-| the flags of `tagents`, `tusage` and `tnotes` | each script's own `--help` | `references/scripts.md` |
-
-**The version moves by itself.** `plugin.json` carries a digest of everything the plugin ships: the generated files, the skill and the manifests. When a regeneration changes that digest, the version moves with it — a minor bump when the structure of the contract changed (a verb, a flag, a tool, a schema, an exported signature), a patch bump when only text did. The bash scripts have no spec to read, so a change in their help counts as text. Text that is part of an exported type is a signature: `@tagents/core` and `@tagents/knowledge` export their English string table with literal types, so an edited English message there is a minor bump too. An installed plugin stays on its version until the version changes, which is why the bump is not left to memory.
-
-**Three things keep it honest.** `.githooks/pre-commit`, switched on for the clone by `pnpm install` unless the clone already has a `core.hooksPath` of its own, regenerates when a commit touches a source of the contract and adds the result to that same commit; when the regeneration itself fails, the commit is refused. `pnpm test` fails when the files on disk are stale. CI runs `pnpm plugin:check` and `claude plugin validate --strict`. Two branches that both moved the version conflict on `version` and `digest` in `plugin.json`: take either side and run `pnpm plugin:gen`.
+---
 
 ## Install
 
 ```sh
-git clone https://github.com/SkuratovichA/tagents.git ~/.local/share/tagents
-sh ~/.local/share/tagents/install.sh --hooks-dir ~/.claude/hooks
+curl -fsSL https://raw.githubusercontent.com/SkuratovichA/tagents/main/install.sh | sh
 ```
 
-`install.sh` keeps one managed copy in `~/.local/share/tagents` (`TAGENTS_HOME` moves it): a clone detached on `origin/main`, built, and never developed in. What the machine runs are small real files that `exec` into it, not symlinks: `tagents`, `tusage`, `tnotes`, `tagents-core` and `tagents-knowledge` in `~/.local/bin`, and one wrapper per `hooks/*.sh` in every `--hooks-dir` (give the flag once per Claude config directory; without it, `~/.claude/hooks`). A wrapper is only written over a symlink or over another wrapper; any other file with the name is left alone, with a warning and exit status 1.
+It puts one managed copy in `~/.local/share/tagents`, the commands in `~/.local/bin` and the Claude Code hooks in `~/.claude/hooks`. Run it again, or `tagents update`, to update. Needs `tmux`, `fzf`, `jq`, `git`, Node 22.18+ and `pnpm`.
 
-Running it again is the update, and so is `tagents update`: it fetches `origin/main`, moves the copy there, rebuilds, and rewrites the wrappers. A build that fails puts the copy back on the commit it was on. A copy with local changes is not moved, since the work belongs in a clone of its own. `tagents update --check` only says whether main has moved. `install.sh --launchd` adds a LaunchAgent that runs the update daily at 04:17 (macOS), remembering the `--hooks-dir` list and the `PATH` of the shell that installed, so node and pnpm are found. It needs git, node 22.18 or newer and pnpm.
+Then tell Claude Code about the hooks. Add this to `~/.claude/settings.json`:
 
-The last two steps are Claude Code's own settings and `install.sh` does not touch them:
+<details>
+<summary><b>settings.json</b></summary>
+
+```json
+{
+  "hooks": {
+    "SessionStart":     [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }],
+    "PreToolUse":       [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"", "async": true }] }],
+    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"", "async": true }] }],
+    "Notification":     [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }],
+    "Stop":             [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }],
+    "SubagentStop":     [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"", "async": true }] }],
+    "SessionEnd":       [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "sh \"$HOME/.claude/hooks/claude-statusline.sh\"",
+    "padding": 0,
+    "refreshInterval": 30
+  }
+}
+```
+
+</details>
+
+The hook is how a chat tells tagents what it is doing; the status line is where the model column comes from. [Getting started](https://skuratovicha.github.io/tagents/guide/getting-started) walks through both, and the Claude Code plugin.
+
+---
+
+## Start
 
 ```sh
-# 1. register the hook, so Claude actually calls it
-#    add tmux-agent-state.sh to ~/.claude/settings.json under "hooks" for
-#    SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Notification,
-#    Stop, SubagentStop and SessionEnd. PreToolUse/PostToolUse/SubagentStop
-#    should be "async": true so they never sit in the tool-call critical path.
-
-# 2. the status line, which is what feeds the model column
-#    "statusLine": {
-#      "type": "command",
-#      "command": "sh \"$HOME/.claude/hooks/claude-statusline.sh\"",
-#      "padding": 0
-#    }
+tagents
 ```
 
-To work on tagents, clone it somewhere else (`~/git/.../tagents`) and run the suites from there; the installed copy stays on main. `tagents` is the entry point of a checkout, not a file to copy on its own: the rest of it is `lib/tagents/*.sh` beside it, which it finds by following a symlink back to the real file, or by being run from where it lives, as the wrapper does. Copied alone it says so and stops, rather than half-working.
+That is the whole first run, inside any tmux session. Every Claude chat with the hook shows up on its own, whether tagents started it or you typed `claude` in a pane yourself.
 
-Needs `tmux`, `fzf`, `jq` and `awk`. Written for bash 3.2 on purpose, since macOS ships nothing newer.
+Press **`?`** for every key. Pick one from the list and `enter` runs it, so there is nothing to memorise, and the keys are yours to move in the config.
 
-[.dotfiles](https://github.com/SkuratovichA/.dotfiles) installs it this way: its bootstrap clones the copy and runs `install.sh` with the hook directories of both Claude accounts, and no longer carries tagents as a submodule.
+<img src="docs/images/new-chat.gif" alt="Starting a new chat in a project from the list" width="900">
 
-## Using it
+---
 
-```
-tagents               interactive dashboard
-tagents --timeline    who worked when over the last day, as bars
-tagents --counts      compact summary, for the tmux status bar
-```
+## Notifications
 
-Keys inside the dashboard:
+<!-- The three banners are captured by hand (docs/demo/README.md says how); uncomment once the files exist.
+<p>
+  <img src="docs/images/notify-question.png" alt="A notification: a chat is asking a question" width="32%">
+  <img src="docs/images/notify-permission.png" alt="A notification: a chat wants a permission" width="32%">
+  <img src="docs/images/notify-done.png" alt="A notification: a chat finished its turn" width="32%">
+</p>
+-->
 
-| key | |
-|-----|--|
-| `enter` | select the row: the sidebar moves into the chat's window and the client follows (a closed row is resumed first, a dimmed window row selects the window, a group header shows the session) |
-| `ctrl-s` | join the chat beside the chat of the window on screen — two chats side by side |
-| `ctrl-n` | start a new agent in the project under the cursor |
-| `ctrl-p` | the same, but choose the Claude account by hand whatever the rules say |
-| `ctrl-a` | open a plain shell in a new window of the session under the cursor, in the row's directory |
-| `ctrl-g` | go to the window the chat lives in; never resumes |
-| `ctrl-e` | type a line straight into that agent without leaving |
-| `ctrl-r` | name this agent (`F2` too) |
-| `ctrl-u` | break a joined chat out into a window of its own |
-| `ctrl-x` | kill this agent — hang up its Claude and close its pane (asks first). On a row that is already closed, forget it instead. On a dimmed window row, close the window with every pane in it (asks first, listing what runs there) |
-| `ctrl-t` | toggle tree / flat |
-| `ctrl-v` | the preview — cost per subagent, the tail of the transcript — in a modal window of its own, scrollable, `q` closes it (with no `less` on `$PATH` it is printed instead and any key closes it). In the `prefix+a` popup, and on a tmux with no popups at all, it stays fzf's own preview beside the list: a popup cannot open a second popup |
-| `ctrl-l` | refresh now |
-| `ctrl-w` | show or hide columns — see [Hiding columns](#hiding-columns) |
-| `?` | every key in a window of its own, and `enter` runs the one you pick |
-| `ctrl-q` | quit |
-
-The header above the list is one line: `enter · ? keys · ctrl-q quit`.
-Everything else is behind `?`, which acts on the row the cursor was on — so it
-is a way to *use* a key you half-remember, not a printed list. The direct keys
-above all still work. `?` is a printable character, so one thing it costs is
-typing a `?` into the filter query; `ctrl-w` costs the other — that was fzf's
-delete-the-word-before-the-cursor in the query. Those two keys are the whole
-bill, and the query is a project name long.
-
-Every one of those keys can be moved. A `keys:` block in
-`~/.config/tagents/config.yaml` maps a verb to a key — `closed: ctrl-y`,
-`send: alt-s` — and anything not named there keeps its default;
-`config.example.yaml` lists the lot with theirs. fzf's key names are what count
-(`ctrl-a`…`ctrl-z`, `alt-a`…`alt-z`, `alt-0`…`alt-9`, `f1`…`f12`, `enter`,
-`tab`, `btab`, `space`, `bspace`, `del`, the arrows, `home`, `end`, `pgup`,
-`pgdn`, `esc`, or any single printable character); a name fzf does not know
-would stop it starting, so it is refused with a message and the default kept,
-and so is a key another verb already has. `tagents --keys` prints where each one
-ended up, and the `?` window in the list shows the same thing live.
-
-`tagents --help` is the real documentation — the script's header explains the
-model, and every non-obvious decision in it is commented with the reason.
-
-## How the dashboard stays current
-
-**It waits; it does not poll.** The refresher beside the list sleeps on a tmux channel, `tagents-ev`, and does nothing at all until something rings it: no timer ticks, no program started on a quiet minute. `tmux wait-for -S <channel>` is the ring, and it wakes every waiter. Two signals with nobody waiting cancel each other, so every ring is also a count: it first adds one to a global option (`@tagents_evgen` for the refresher, `@tagents_gen` for the slots) in the same tmux call, and a waiter sleeps only while that number is the one it saw with its last look (`tmux if-shell -F` decides and waits in one step, inside the server). A ring that lands between two waits is a number that moved, never a lost signal.
-
-**Who rings.**
-
-- The agent-state hook, in the one `tmux` call it already makes: `tmux set -gF @tagents_evgen '#{e|+|:#{@tagents_evgen},1}' \; wait-for -S tagents-ev \; set -p -t "$pane" @agent "$state"`, the count and the signal first, so a pane that has just closed (a failed `set`) still announces the record that was written. An event with no pane rings on its own: a headless session or a child has no pane to set an option on, so it rings the default tmux server, one `tmux` program per event, and the list shows it at once. A subagent's file that appears or goes rings too; a rewrite of one that is already there does not.
-- tmux itself, through hooks that `tagents` puts at array index **42** (`set-hook -g after-new-window[42] …`): `after-new-window`, `after-split-window`, `after-new-session`, `after-kill-pane`, `pane-exited`, `pane-died`, `window-linked`, `window-unlinked`, `session-closed`, `window-renamed`, `session-renamed`, `window-layout-changed`, `client-attached`, `client-detached` and the four focus events (`pane-focus-in`, `after-select-pane`, `after-select-window`, `client-session-changed`). The index is fixed so that a hook of your own (`set-hook -g` without an index replaces the event's whole list, and `[0]` is somebody's) is left alone, and so that installing them again is installing them once. They are put in at every refresher start and every slow pass, so a `.tmux.conf` that sets one of those events without an index (which wipes the event's list, ours with it) is healed within `TA_REFRESH_SLOW` seconds. tmux 3.7 has no `after-swap-pane`, `after-join-pane`, `after-break-pane`, `after-move-window` or `after-respawn-pane`; `window-layout-changed` fires for a swap, a join and a break (for both windows when they differ), and a respawned pane changes nothing the list draws until the slow pass. The follow hooks (`tagents --follow` on `session-window-changed` and `client-session-changed`) sit beside them at `[43]` and put the sidebar in the window now on screen.
-- `tagents` itself, wherever it writes something the list draws without a tmux command of its own: a label, an origin, a hidden column, a forgotten row, a closed pane; the joins and breaks that move the sidebar ring the channel themselves, because tmux has no hook for them.
-
-**What a wake does.** One `tmux list-panes` for the snapshot, with the ring count read in the same call; a reload is posted into the list only if the snapshot moved, a file the list reads is newer than the marker, a state file was added or removed, or an earlier post was refused (retried every 2 s, the one place left that polls; five in a row end the loop). A burst of rings is one pass: the loop lets a second go by after a wake. **At most one reload is posted every `TA_REFRESH_MIN` seconds** (2, a whole number, one at the least): a single change after a quiet spell is posted at once, one that comes within the interval of a post is owed and made when the interval is over, with no ring needed. A pass that posted is looked at once more a second later; that second look is there for the marker (file times are compared in whole seconds, so a write in the second of a reload's touch would otherwise be drawn twice), not for a lost ring. A quiet wake starts two programs, that snapshot and one `tmux if-shell` for the next wait: one of each per pass and nothing per ring, and never more than one wait outstanding.
-
-**The slow pass** is what every fifth tick used to carry: the config re-read, `tusage --update` and the footer, window names, the resurrect snapshot, `tnotes sync`, and a reload whether or not anything moved (the age column, the pane titles and dead processes need that). It runs on the first wake after `TA_REFRESH_SLOW` seconds (10) since the last one, and always at the idle timeout `TA_REFRESH_IDLE` (60 s, two at the least), which is also how often a loop with no rings at all still looks. A config edited by hand is therefore seen within `TA_REFRESH_SLOW` of the next ring, or within `TA_REFRESH_IDLE` of none. The slow pass also puts the `[42]` hooks back.
-
-**The loop ends with its list.** It watches fzf itself (the start bind hands it `$PPID` of the shell fzf starts, not the bash that restarts fzf after an abort), checked at every wake, at every timeout and again after the delay, and closing the list rings the channel on the way out. A refresher that is killed, not asked, leaves its markers in the state directory; the next one sweeps them, and the list that closes takes `@tagents_counts` down if no refresher is left to.
-
-**The status bar is fed from the same loop.** While a refresher answers, it sets the global tmux option `@tagents_counts` to the text the bar prints (only when the text changes), on every pass, so the second look after a reload picks up the tally that reload wrote (a reload that is slower than that leaves the bar one pass behind until the next pass), and unsets it when the last refresher ends. A status line that prints the option and runs `tagents --counts` only when it is not set costs nothing per redraw:
-
-```tmux
-set -g status-right '#{?@tagents_counts,#{@tagents_counts},#(~/.local/bin/tagents --counts)}'
+```sh
+tagents plugin add ~/.local/share/tagents/packages/notify
+tagents notify install
 ```
 
-The `#()` in the branch that is not taken never runs. Without a refresher the option is not set, and the bar computes the counts itself, throttled by `TA_COUNTS_EVERY` as before. With a refresher alive, a bar that still runs `tagents --counts` (the old line) prints the cache whatever its age and starts no program.
+macOS asks once whether tagents may notify you. After that, a question, a permission prompt or a finished turn raises a banner, and a click opens that chat beside the list. A chat you are already looking at stays quiet, a notice that no longer applies is taken back, and an idle chat warns you before its prompt cache expires. [More on notifications](https://skuratovicha.github.io/tagents/guide/notifications)
 
-## Closed sessions
+---
 
-`ctrl-y` opens every session that is **not** running, newest activity first,
-under the name this dashboard knows it by — the one you typed on `ctrl-r`, else
-the one `$TA_LABEL` announced at launch, else the session's first prompt, else
-its bare id. The preview beside it is the last ten prompts of that conversation,
-the directory it ran in, and what it cost when `tusage` still has it. `enter`
-resumes the one you pick — on the account it actually ran on, and in the tmux
-session that owns its project; `esc` closes without doing anything.
+## Never lose a session
 
-Nothing here is a new store. Two files that were already being written are
-joined by session id: `$STATE_DIR/history.tsv`, which the state hook appends a
-line to on every session start, turn end and session end, and each account's own
-`<config dir>/history.jsonl`, which has a line per prompt typed into it. The
-file a prompt is in is also the answer to which login can resume the session,
-which is why the account column can be trusted. A session is browsable for as
-long as *either* file remembers it, and the directory a resume starts in is the
-last one the hook recorded (falling back to the prompt log's project, and to
-`$HOME` when that directory is gone).
+<img src="docs/images/resurrect.gif" alt="The tmux server dies; after tagents --resurrect every chat is back in its window" width="900">
 
-The closed rows *inside* the list are a different thing and still expire after
-`DEAD_TTL` (24 h): those are panes whose state record is still around, offered
-where you last saw the agent. `tagents --closed-rows` prints the machine-readable
-table this picker is built from.
+tmux-resurrect and tmux-continuum bring back your sessions, windows and splits, but a chat comes back as an empty shell: they cannot know which conversation it was. tagents remembers, and resumes each one in its place, on the account it ran on, with its model and its window name.
 
-## Resurrect
-
-After a reboot, or anything else that takes the tmux server down, every Claude chat that had a pane comes back in its window — resumed on the account it ran on, with the model it was set to, under the window name it had — without you starting anything. tmux-resurrect and tmux-continuum already bring back the sessions, windows, splits, directories and window names, and a chat among them as an idle shell in the right directory, because they cannot know which conversation it was. tagents keeps that missing fact: a snapshot of every live chat keyed by session id (which login, which conversation, which model, which window and pane), and a restore that turns each of those idle shells back into `claude --resume` at the same place.
-
-What comes back, and how:
-
-- **Every chat with a state record**, whether tagents started it or you typed `claude` by hand — the state hook runs in every Claude.
-- **At the same `session:window.pane`** when tmux-resurrect left an idle shell there; in a new window of that session when that pane is busy or gone; in a new session of that name when even the session is gone. A pane running anything but a shell is never touched, and nothing depends on tmux-resurrect having run: on a bare server the restore creates what is missing.
-- **On the login it ran on**, never the account rules and never a dialog — a hook has no terminal to ask in. A record from before the account field existed is resumed on the default login, and the report says so.
-- **With its model** (the status line records a `/model` switch too) and any `--effort` it was started with. `--resume` brings the permission mode back by itself.
-- **Under its window name**: a name tagents gave the window keeps following the agent, and one you typed stays yours.
-- **The dashboard**, when it was up. the list is started in the window the snapshot recorded for it (else the window of the first chat restored), as the leftmost pane at `TA_WIDTH` percent, and the idle shells tmux-resurrect brought back where the sidebar stood are closed. Every chat comes back in the window its pane was in; a chat that was joined into another window comes back in its home session.
-- **The notes editor** of every chat whose editor was on screen; one that was hidden stays hidden. The editors tmux-resurrect brought back, beside a chat in its own window or left in `ta-notes` by an older version, belong to no chat and hold their files open, so the next `prefix C-t` would run into a swap-file warning; they are closed first.
-- **Nothing twice.** A chat already running, by session id, is skipped, and so is one whose transcript is gone from its login. A directory that no longer exists is resumed in `$HOME`, and the report says so. The hook's `--auto` restores once per tmux server, and only within the server's first 5 minutes: tmux-resurrect fires the same hook on a `prefix + C-r` in a server that has been up for hours, where a restore would bring back every chat ended since the boot and replace idle shells that are yours now. `tagents --resurrect` by hand is the way to run it again.
-
-The snapshots are `$STATE_DIR/resurrect/<epoch>.tsv` (`~/.claude/agent-state/` by default). One is written on every tmux-resurrect save (every 15 minutes with continuum, and on `prefix + C-s`), a few seconds after every launch or kill by tagents, and by the status bar every `resurrect.every` seconds; one that says exactly what the newest already says is not written again, and the newest 50 are kept, plus the one a restore on this server would read however old it is. **The restore uses the newest snapshot written before this tmux server started**, so the captures taken after the boot can never shadow the set that was running before it. They are not harmless all the same: a capture of a server nothing has been restored on yet says "no chats", and a second server start soon after (a `kill-server`, a crash) would pick exactly that one. So while `resurrect.auto` is on, a new server is not captured until the hook has restored it (or until it is 5 minutes old, if the hook never fires), nothing is captured while a restore is placing chats, and the restore takes a snapshot of its own 15 seconds after it is done, once the chats it resumed have written their records. `tagents --resurrect-rows` prints that snapshot's raw rows, `tagents --resurrect-rows latest` the newest one of all.
-
-Two lines in `~/.tmux.conf`, after the tmux-resurrect plugin settings, make both halves happen on their own:
+Add two lines to `~/.tmux.conf`, after the tmux-resurrect settings:
 
 ```tmux
 set -g @resurrect-hook-post-save-layout '~/.local/bin/tagents --resurrect-save'
 set -g @resurrect-hook-post-restore-all '~/.local/bin/tagents --resurrect --auto'
 ```
 
-The first captures on every tmux-resurrect save, the second restores once continuum has put the layout back after a start. `tmux source-file ~/.tmux.conf` picks them up. `--auto` has no terminal, so its report goes to `$STATE_DIR/resurrect.log` (its last 2000 lines are kept) and the status line says `tagents: resurrected N agents, K skipped`.
+Without tmux-resurrect it still works: `tagents --resurrect` rebuilds what is missing. [How resurrect works](https://skuratovicha.github.io/tagents/guide/resurrect)
 
-The `resurrect:` leaf of the tagents config steers it; every key is optional and `tagents --check` names a value it cannot read:
+---
 
-```yaml
-resurrect:
-  auto: true       # restore when tmux-resurrect's post-restore-all hook fires (default true)
-  every: 300       # seconds between status-bar captures; 0 turns the periodic capture off
-  notes: reopen    # reopen the tnotes editor of every restored chat that had it on screen: reopen | off
-```
+## Several sessions, several accounts
 
-`auto: false` makes the hook do nothing at all; `tagents --resurrect` by hand still works.
+<img src="docs/images/dashboard.png" alt="The list: projects as groups, chats as rows with state, age, account, context, cost and model" width="900">
 
-### Before a planned reboot
-
-1. `prefix + C-s` — tmux-resurrect saves, and its hook takes the tagents snapshot at the same instant. Or `tagents --resurrect-save`.
-2. Optional: `tagents --resurrect --dry-run --from latest` lists what would come back.
-3. Reboot, open a terminal, start tmux as usual. Continuum restores the layout, the hook runs `tagents --resurrect --auto`, the status line says how many agents came back, and the line per chat is in `~/.claude/agent-state/resurrect.log`.
-4. If auto-restore is off or the hook did not fire: `tagents --resurrect` picks the newest snapshot from before the boot, and `tagents --resurrect --dry-run` shows it first.
-
-### What does not come back
-
-- A chat's scrollback: tmux-resurrect restores it and the resume replaces it, but Claude redraws the conversation anyway.
-- An `/effort` chosen inside a session is recorded nowhere; only an `--effort` on the command line is replayed. `/model` is covered.
-- A Claude on a login without the state hook has no record, so it is not captured.
-- Headless sessions (`s-*`) have no pane to go back into and are not resurrected.
-- A shell under a resumed chat: its pane runs `claude --resume` itself, like a chat started from the dashboard, so `/exit` closes the pane instead of dropping back to a prompt.
-- A chat started by hand in the last `resurrect.every` seconds before an unplanned crash (launches by tagents are captured a few seconds after they start). The procedure above closes that gap for a planned reboot.
-
-## Hiding columns
-
-`ctrl-w` opens a small window with a checkmark per column — `badge`, `ctx`,
-`cost`, `model`, `acct`, `loc`. `enter` toggles the one under the cursor and the
-list behind reloads immediately; the picker stays open, `esc` closes it.
-
-Hiding `cost` takes **every** figure in dollars with it: the column, the `⑂`
-subagent share and the project header's `/5h` total — money you are not
-currently spending against a limit is the distraction this exists for. (`⑂2`,
-the subagent *count*, is not money and stays.) Nothing is ever reordered: the
-freed width goes to the detail column, exactly as it does when the pane itself
-is narrow.
-
-What is hidden lives one key per line in `$STATE_DIR/cols`, so it survives a
-restart. `TA_HIDE_COLS=cost,model tagents` overrides that file for a single run,
-and `tagents --hidden-cols` prints what is in force.
-
-## Windows, sessions and the sidebar
-
-A row is a tmux window and a group is a tmux session: every session is a group, whether or not a chat has ever run in it, and a session whose only window holds nothing but the sidebar is a header with no row under it, which `ctrl-n`, `ctrl-p` and `ctrl-a` open a window in. `enter` on a row moves the one sidebar pane into that row's window, as its leftmost full-height pane at `TA_WIDTH` percent of the window (default 45), and switches the client there; `enter` on a group header shows that session's last-used window the same way. Anything else the window holds (a shell, a dev server, a tnotes editor) is yours: tagents never moves, resizes or kills it, and it leaves the screen with the window and comes back with it. The widths the other panes had are remembered per window and put back when the sidebar leaves.
-
-The sidebar follows you. tmux's own switches (`prefix n`, `prefix s`, a click on the status bar) fire `session-window-changed` and `client-session-changed`, and tagents hooks both with `tagents --follow`, which moves the sidebar into the window now on screen, in whichever session that is. When the window or the session that held the sidebar is killed, the client lands elsewhere, the same hook fires and, with no list running, starts a new one there (one, however many hooks fire): a list in a pane makes a sidebar wanted, and `ctrl-q` ends the want, so a quit stays a quit.
-
-`ctrl-s` joins another chat's pane into the window on screen, to the right of its chat; the pane remembers its home session in `@tagents_joined`, and `ctrl-u` breaks it out into a window of its own. A window with no chat in it is listed as a dimmed row; `enter` on it selects the window.
-
-Closing a chat's pane or window is plain tmux: there are no seats and no placeholders, so `prefix+x` and `prefix+&` need no binding of tagents' own, and `ctrl-x` on the only chat of a window moves the sidebar out before the window closes. `ctrl-x` on a dimmed row asks about the whole window, listing its panes, and closes it with all of them; the sidebar moves out of that window first, and when it was the last window of its session a new window is made for the sidebar so the session survives.
-
-tmux-resurrect saves the sidebar's split and gives its window back an idle shell titled `tagents-sidebar`; `tagents --resurrect` closes those shells after the restore.
-
-The previous version swapped chats into seats of an `agents:1` window. On the first start after the upgrade tagents sends every docked chat home, closes the placeholders and removes the old options and hooks, once. Until that start the old focus hooks still fire on every focus, and the verbs they and the old kill bindings call (`--poke`, `--unpark`, `--undock-pane`, `--undock-window`) exit 0 and do nothing, so tmux has no "returned 2" to show. A `bind-key x … --undock-pane` line in your `tmux.conf` then falls through to a plain `kill-pane`, and a `bind-key & … --undock-window` line to a plain `kill-window`, so both can be deleted. `TA_SESSION` is no longer read. A dashboard that was already running when you upgraded is the previous version's process, and tagents does not stop it for you: it carries the same markers as a current one, so it cannot be told apart safely, and its quit key is yours to rebind. It keeps the previous version's key bindings, so `ctrl-o` (borrow) in it calls an action that no longer exists. Restart it once: `ctrl-q` in it, then `tagents --ensure-dash` to start a sidebar in the window you are in.
-
-### The cockpit
-
-`dashboard.layout: cockpit` in the config (the default, `follow`, is everything above) puts the dashboard in a session of its own, named `tagents`: the list is the left pane at `TA_WIDTH` percent, and the right pane, the viewport, is a second client of the same tmux server that shows the window you select, so no pane ever moves between windows. `tagents --ensure-dash` starts it, `enter` on a row points the viewport at that row's window, and a selection made for a terminal that is attached elsewhere (a popup, a notification click) points the viewport the same way and brings that terminal to the session `tagents`. A list or a viewport that is killed comes back within about a second, and a session that is already named `tagents` and is not a dashboard stops the cockpit with a message: rename it, or set the layout back to `follow`.
-
-The session `tagents` has no prefix of its own. The list keeps its keys (`ctrl-n`, `ctrl-s` and the rest work as before), and your tmux prefix, typed in the list, is sent on to the viewport, which becomes the active pane, so `prefix c` opens a window in the session the viewport shows and `prefix d` detaches your terminal and leaves the viewport attached to the session it showed, ready for the next `tmux attach -t tagents`. The mouse bindings of the root table that do not open a menu work in the list too. Messages and popups appear on the viewport's client, because the dashboard's own status line is off.
-
-Root bindings (`bind -n …`) do not fire while the list is the active pane; they do in the viewport, where they act in the window it shows, so press the prefix first or click into the viewport. `ctrl-q` in the list is the way out: it shows your terminal the window the viewport showed, removes the key table, the hook and the options the cockpit set, and closes the session `tagents`, and every other terminal attached to it moves to that window too. All of it is measured on tmux 3.7b only.
-
-The resurrect snapshot files the sidebar under the window the viewport showed (`D`, `work`, `2`, never the session `tagents`), and `tagents --resurrect` brings the cockpit back with its viewport on that window and leaves your terminal where it is. A session `tagents` that tmux-resurrect left as two idle shells titled `tagents-sidebar` and `tagents-viewport` is rebuilt in place, without detaching anyone (in the follow layout it is closed instead, and its terminals move to the sidebar's window), and the idle shells with those titles left in other windows are closed.
-
-## Windows are named after their agents
-
-The dashboard is one way to find an agent. `prefix+w`, the status bar and `tmux
-ls` are the other, and they are the ones that work when the dashboard is not on
-screen — so the tmux window an agent lives in is named after that agent.
-
-The name is the one the list shows: the label you gave it with `ctrl-r`, or the
-session's terminal title (what Claude's `/rename` sets) when you have not. Never
-the directory — tmux's own `automatic-rename` already names a window after what
-is running in it, and that name is right. A window renames itself within about
-ten seconds of the name changing while the dashboard is up, and within thirty
-when it is not: the status bar runs the same pass, throttled, so this works with
-no dashboard open at all.
-
-**A window several agents share is named after the one with the newest
-activity** — the agent you are actually working with names the window. Panes
-with no name to give are not candidates, so a shell split off beside an agent
-never takes the window's name.
-
-**A name you typed is never overwritten.** A window is only ever renamed when
-its current name is tmux's automatic one, or the name `tagents` itself gave it
-last time (recorded in the window option `@tagents_name`). Rename a window by
-hand in tmux and nothing here touches it again, until the day its name coincides
-with one of those two. The sidebar does not stop a window being named: a window that holds the sidebar and a chat is named after the chat.
-
-`tagents --sync-names` runs one pass by hand, which is the way to see what it
-would do.
-
-## Configuration
-
-Optional, and only about one thing: **which Claude account an agent is started
-on**. Without `~/.config/tagents/config.yaml` (or `$TA_CONFIG`) nothing below
-happens and every agent is started exactly as it always was — a plain `claude
---dangerously-skip-permissions`, environment inherited, no dialog ever.
-
-### The bug it fixes
-
-`tmux new-window "<command>"` runs that command through `/bin/sh` as a direct
-child of the **tmux server**. Your interactive shell is never involved, so
-`.zshrc` never runs — and `.zshrc` is where a per-directory account is usually
-chosen. The tmux server has no `CLAUDE_CONFIG_DIR` of its own, so every agent
-started from the dashboard ran on the default account whatever directory it was
-in, silently and for as long as nobody looked.
-
-An account is a config dir, and it is a whole **login**, not a preference:
-Claude Code derives its keychain item from the literal path, so
-`~/.claude-personal` and `~/.claude` are two independent logins. Unset is a
-third thing again and is not the same as empty — which is why every launch goes
-out as `env -u CLAUDE_CONFIG_DIR [CLAUDE_CONFIG_DIR=…] claude …`, prefix carried
-in the command string so the identical string also works when it is typed into a
-shell (the resume-in-place path) and so it steps around any `claude()` shell
-function that would resolve the account all over again.
-
-### The file
+Every tmux session is a group and every chat a row. A small optional config at `~/.config/tagents/config.yaml` decides which Claude login a new chat starts on:
 
 ```yaml
 claude:
-  # What every agent is started with, unless a profile overrides it.
-  # A string (your own shell words, verbatim) or a list (each item quoted).
-  args: --dangerously-skip-permissions
-
   profiles:
     personal:
       config_dir: ~/.claude-personal
-      # badge: p    # the row column before the agent name. Defaults to the
-      #             # first character of the profile name, so personal and work
-      #             # are p and w already; set it when two accounts collide.
-    work:
-      # config_dir omitted: CLAUDE_CONFIG_DIR is UNSET for this one. Omit it,
-      # do not write ~/.claude — set and unset are different keychain items.
-      # command: claude                                     # binary or wrapper
-      # args: --dangerously-skip-permissions --model opus   # replaces claude.args
-      # env:
-      #   ANTHROPIC_BASE_URL: https://proxy.example.com
-
-  # First match wins. `dir` matches that directory and everything under it, by
-  # path component (~/git/personalx is not under ~/git/personal). `session`
-  # matches when the tmux session name CONTAINS the text. Both present means
-  # both must match; neither present is a catch-all.
+    work:                       # the default ~/.claude
   rules:
     - dir: ~/git/personal
       profile: personal
-    - session: work
+    - dir: ~/git/work
       profile: work
 
-  # When nothing matches. `ask` (the default) opens a picker; a profile name
-  # settles it silently.
-  default: ask
-
-dashboard:
-  # How the sidebar is laid out: `follow` (the default) puts it beside the
-  # window you are in; `cockpit` is the opt-in alternative. Anything else is
-  # read as `follow`, and `tagents --check` says so.
-  layout: follow
+usage:
+  watch: work                   # show context and cost for this login
 ```
 
-### One config, several machines
+Nothing is required: without a config every chat starts exactly as plain `claude` would. [The whole config](config.example.yaml) · [Accounts](https://skuratovicha.github.io/tagents/guide/accounts) · [Cost](https://skuratovicha.github.io/tagents/guide/cost)
 
-The file is shared through dotfiles, and the one thing in it that cannot be
-shared is the account table: on one laptop the default login is the employer's
-and `~/.claude-personal` is the second, on another the default is the personal
-account and the second is a client's. A profile pointing at a directory that
-does not exist on this machine starts a **logged-out** Claude, from a picker
-that looked perfectly fine.
+For the tmux status bar, a one-line tally of your chats by state:
 
-So `config.<hostname>.yaml` beside `config.yaml` (`hostname -s`) is laid over
-it. Every `a.b` subtree the overlay names — `claude.profiles`, `claude.rules`,
-`claude.default`, `notes.send`, … — replaces the base one wholesale; the rest is
-inherited. Wholesale rather than merged because profiles and rules are tables:
-a union would keep the other laptop's rows in this machine's picker, which is
-the exact thing being fixed. `tagents --config` prints the merged result;
-`TA_HOST` overrides the hostname, which is how the tests have one.
-
-A machine answers to more than one name, so the overlay is looked for under each: `hostname -s` first, then on a Mac the LocalHostName (`scutil --get LocalHostName`). The first is not an identity there — with HostName never set it is whatever macOS derived last, and one laptop answered `sukas-MBP` for weeks and `sukas-MacBook-Pro` after a reboot. Its overlay was not found, the base profiles applied without a word, and every chat on its second login was resumed logged out. Name the overlay after the LocalHostName and it is found whatever `hostname -s` says that day. `TA_HOST` is exactly one name: nothing else is tried.
-
-`tagents --check` lists what is wrong with the config, one `file: key: problem — what
-to do` line each, and exits 1 while anything is; the dashboard header carries the count
-and the status bar shows `cfg!N`. The first thing it looks for is a profile whose
-`config_dir` is not on this machine, which is what a shared dotfiles config produces on
-every machine but the one it was written on: the agent starts logged out, from a picker
-that looked fine.
-
-Every `config_dir` you name here needs its own copy of Install steps 2–4 — the
-`hooks/` symlinks and the `settings.json` entries — inside it. A config dir with
-no `settings.json` runs no state hook and no status line, so agents started on
-it never appear in the dashboard at all and have no model column, which reads as
-a `tagents` bug and is a config-dir one.
-
-The parser is a deliberate YAML subset — mappings, sequences, `#` comments,
-single- and double-quoted scalars. Tabs for indentation, flow style (`{}`,
-`[]`), block scalars (`|`, `>`) and anchors are refused with a one-line warning
-naming the line, and the rest of the file is still read.
-
-### Choosing by hand
-
-`profile: ask`, `default: ask`, or **`ctrl-p`** on any row open a small picker
-over the profiles. `ctrl-p` ignores the rules entirely, which is the answer to
-"this one agent in a personal repo has to run on the work account".
-
-**Resuming never consults the rules.** The account a closed session comes back
-on is the one it actually ran on, recorded as the 7th field of its state record
-by `hooks/tmux-agent-state.sh` — a conversation resumed on another login is
-simply not there. A record written before that field existed falls back to the
-rules, and asks if they say `ask`.
-
-### Checking it
-
-```sh
-tagents --config                    # the file as tagents reads it, path<TAB>value
-tagents --profile-for ~/git/work    # which profile the rules pick for a directory
-tagents --agent-cmd personal new    # the exact command string a launch would run
-tagents --new ~/git/thing personal  # start one from outside the dashboard
+```tmux
+set -g status-right '#{?@tagents_counts,#{@tagents_counts},#(~/.local/bin/tagents --counts)}'
 ```
 
-`--config` is the thing to look at when a rule will not fire: it prints one leaf
-per line (`claude.rules.0.dir`), which is also how a rule is referred to in the
-warnings.
+<img src="docs/images/statusbar.png" alt="The tmux status bar with the tagents tally: one blocked, one done, three working, and the month's spend" width="900">
 
-## States
+---
 
-| | | |
-|--|--|--|
-| `⚠` | **BLOCKED** | Claude asked something and cannot go on until you answer |
-| `✓` | **IDLE** | the turn ended; nothing is stuck, it is your move |
-| `●` | working | a prompt or a tool call is in flight |
-| `○` | new | the session just opened and has not been given anything yet |
-| `✗` | closed | no Claude process in that pane — `enter` resumes it, `ctrl-x` forgets it |
-| `●`… | headless | a session with no pane at all: same states, no pane to select |
-| `●`… | child | a headless session an agent started itself, drawn under that agent |
-
-Claude Code also pings a notification after about a minute of silence, which
-says nothing beyond "your move". That is folded into IDLE rather than shown as
-its own state with its own message, so `⚠` stays a signal worth reacting to —
-including on the tmux window tab, which flags `blocked` panes only.
-
-**Headless sessions.** A `claude -p` started by a daemon, a launchd job or a
-`nohup` has no tmux pane anywhere in its ancestry. It is listed all the same, in
-the group of the directory it was launched in, with `headless` where the
-location column names a pane for everybody else. It shows the ordinary states —
-liveness is the pid of its claude process, recorded by the hook, rather than a
-pane — and dims to `✗ closed` when that process is gone, without offering a
-resume it has nowhere to put.
-
-What you cannot do with one is anything that needs a pane: `enter`, `ctrl-s`,
-`ctrl-e` and `ctrl-r` refuse with a one-line notice. `ctrl-v` is the
-exception, and is the reason to look at such a row at all — it follows `$TA_LOG`
-with a live `tail -f`, and the sidebar preview shows the tail of the same file.
-So export the two variables before starting one:
-
-```sh
-TA_LABEL=ticket-agent TA_LOG=/tmp/ticket-agent.log \
-  nohup claude -p "$prompt" >>/tmp/ticket-agent.log 2>&1 &
-```
-
-`TA_LABEL` is the name the row shows (a headless session has no terminal title
-to borrow one from) and `TA_LOG` is what `ctrl-v` follows. Neither is required:
-without them the row is named after the title the session gave itself, or after
-its directory. A name can still be given from outside with `tagents --label
-<session id> NAME`.
-
-**Child sessions.** An agent that runs `claude -p` from its own Bash tool starts
-a separate conversation with a session id of its own — and one that inherits
-`$TMUX_PANE` from the agent that spawned it, which is how it used to overwrite
-that agent's row and then delete it. Such a session is listed **under** the
-agent that started it, one level deeper in the tree and in that agent's group
-rather than in whatever scratch worktree it runs in, with `child` where the
-location column names a pane:
+## Claude Code plugin
 
 ```
-▾ tagents  ~/git/tagents                      ●2
-  └─ ● working   2:14  dashboard      …   1.0     Edit list.sh
-     └─ ● working   0:41  the nightly sweep   …   child   ▸ Bash ls -la
+/plugin install tagents --marketplace SkuratovichA/tagents
 ```
 
-The `⑂` count on the parent counts it exactly as it counts a subagent, and a
-blocked child shows up in the group badges like any other row. It is named by
-`$TA_LABEL` where it has one of its own — a value it merely inherited names an
-ancestor rather than itself, so the hook drops it, and drops an inherited
-`$TA_LOG` with it, however many generations up the family the two came from —
-and otherwise by the title the session gave itself, read out of its transcript.
-A child rarely has a `$TA_LOG` of its own, so `ctrl-v` and the
-sidebar preview show the last turns of that transcript instead of a log tail,
-and the pane verbs refuse with a notice of their own. It is never offered in the
-closed-session picker: resuming somebody else's conversation would start a
-second one on the same transcript with nobody to type at it. The timeline still
-draws the hours it worked, marked with a `↳`. A child whose parent is no longer
-on the list falls back to a row of its own at the top level, and a grandchild
-joins the same block rather than opening a third level of indentation.
+Gives every chat the `tagents` skill, so it knows the exact commands and flags of tagents instead of guessing, and a `knowledge` MCP server that searches your markdown notes. [About the plugin](https://skuratovicha.github.io/tagents/guide/claude-code-plugin)
 
-## The order, and the clock the rows are sorted on
+---
 
-**Projects keep the place their path gives them.** The list is not sorted by how urgent anything is: a project does not climb when one of its agents blocks and does not drop back when you answer it, so the thing you were looking at is still where you left it. The only project that moves is one with nothing running in it at all — every agent closed — and it moves once, to the dim section at the bottom. What a project is doing is in its header badge (`⚠1 ✓1 ●1`), which is a thing to read rather than a thing that rearranges the page under you.
+## Learn more
 
-**Inside a project, rows are ordered by when YOU last typed into them** — the newest conversation on top, closed ones underneath. Not by state, and not by anything that moves during a turn: the state record is rewritten on every tool call, so ordering on it made two working agents trade places while they ran. The clock here moves exactly once per turn, when you press enter, which is also why the agent you just sent something to is the one at the top.
-
-**The second column is that same clock** — how long since your last message, not how long the session has been in its current state. It is the number that says how much of the one-hour prompt cache is left: while it reads `47:12` the next thing you send is still cheap, and once it has an `h` in it (`1h03`) the cache is gone and the whole conversation is re-read at full price. It is a floor, deliberately: a long turn keeps writing the cache after your prompt, so a row that says `58:00` may have a few more minutes in it than that, never fewer.
-
-It comes from one file per session under `$STATE_DIR/prompt/`, written by the hook on `UserPromptSubmit` and by nothing else, and removed with the record when the session ends. A session recorded before that file existed falls back to the time of its last event, which for a finished turn is within one turn of the right answer.
-
-## Cost
-
-Each row shows what the session has cost in dollars and which model it is on:
-
-```
-├─ ⚠ BLOCKED   2:14  api      142k  $38.3  fable5  %31  ⑂$6.94
-```
-
-**Where the number comes from.** Claude Code keeps its own cost ledger and
-publishes it to the status line, so for any session that is open the dollar
-figure IS that ledger — exact, and inclusive of the requests that never reach
-the transcript at all (retries, conversation titles, away summaries). The status
-line is registered with `refreshInterval: 30`, which matters more than it looks:
-without it an idle session never re-renders, so it would sit on a stale estimate
-precisely when you are staring at it wondering why the two disagree.
-
-A figure prefixed **`~` is an estimate** — `tusage` pricing the transcript,
-which is what closed sessions get, and what the `/5h` burn and the `⑂` subagent
-share always are, since the ledger publishes no breakdown. Measured against the
-ledger it lands within a few percent; never compare a `~` figure to the status
-line and expect them to match.
-
-**The fallback is priced per request, at the model that actually served it** —
-not at the model the session is on now. That matters more than it sounds: a
-session that starts on Fable ($10/MTok in) and finishes on Opus ($5), or that
-fans work out to subagents on a cheaper tier, is mispriced by about 2x if you
-multiply its token total by a single rate. Subagent spend is included in the
-session total and also shown separately (`⑂`), because "why is this session
-expensive when I have barely typed into it" is usually answered by a workflow.
-
-`tagents --preview` / `tusage --session <id>` breaks a session down per subagent
-and per model, so a mid-session switch shows up as two priced rows.
-
-**The model column is the model the session is set to now**, which is a
-different question with a different source. The transcript records the model of
-every assistant *message*, so it can only ever say what answered last — flip a
-session to Opus and say nothing, and the newest message on disk is still the
-Fable one from an hour ago. Nothing else on disk disagrees, and the only channel
-carrying the configured model is the status line payload, which is why
-`hooks/claude-statusline.sh` exists. Without it the column falls back to the
-last model billed, which is correct right up until you switch.
-
-One updater at a time: the index is append-only and each updater starts from
-the offset it read at entry, so two running at once append the same requests
-twice and the totals silently inflate — measured at 13 requests indexed as 21.
-`tusage` takes a lock (`agent-state/usage/.update.lock`); a background refresh
-that loses it just returns. If the totals ever look wrong, `tusage --rebuild`
-throws the index away and rescans.
-
-**A transcript is indexed by session, not by path.** Claude Code moves a
-session's files between project directories — one started in a worktree lives
-under the worktree's slug and reappears under the parent project's when the
-worktree is deleted — so an index keyed by absolute path saw a new file after
-every move and read it again from byte 0. One live session was indexed under
-three slugs and $162 of the $285 charged to it was the copies. `offsets.tsv`
-carries the session-relative key (the sid, plus the path below it for a subagent
-file) as a fourth field, adopts the stored offset when that key turns up
-somewhere new, and reads only the tail; rows written before the key existed
-still work. If both copies are on disk at once only the newest is indexed, and
-`--update`/`--rebuild` say how many were skipped.
-
-**The month is the meter, and the meter is fetched.** The estimate runs
-steadily beside the account's own meter without tracking it — $807 against $733
-one day, $1108 against $830 a fortnight later — and a ratio typed in by hand
-goes stale within days. So `tusage --meter` asks the account: a GET to
-`/api/oauth/usage` with the OAuth token Claude Code keeps in the keychain for
-the default config dir, giving the month-to-date spend and the limit behind it.
-The reading lands in `meter.tsv` (one row per account, refreshed at most every
-`TU_METER_TTL` seconds — 900 by default, 300 past 90% of the limit), re-prices
-the per-day factor so `--daily` and the sparkline agree with it, and `--update`
-refreshes it in passing, which is how the dashboard gets it for free.
-`TU_NO_METER=1` turns it off. The token is read into a variable, handed to curl
-as one header and dropped — never printed, never logged, never written down.
-
-On screen: while a reading is under two days old the limit is the meter's own
-and the month wears a `~`, with `~meter HH:MM` in the footer naming when it was
-read; `usage.monthly_limit_usd` is what shows when the meter cannot be reached.
-A seat with no meter (a plan, not credits) answers without a spend figure and is
-left alone for a day. `tusage --calibrate work 732.71` is still there as the
-manual fallback — the way to price an account whose meter this cannot read — and
-`usage.meter: "2026-09-10 15:30 = 684.66"` in the config overrides the fetched
-reading entirely. A typed reading from another month, or one implying a
-correction outside 0.5–1.5, is ignored and the footer says so.
-
-Rates live in `PRICES` at the top of `tusage`, in dollars per million tokens,
-with cache multipliers (5m write 1.25x, 1h write 2x, read 0.1x) applied on top.
-They are checked against the ledger rather than trusted: `fable` is 15/75 there,
-not the 10/50 of the public table, because 10/50 does not reproduce the bill —
-solving `ledger = a*fable + b*opus` across four sessions read at one instant
-gives a = 1.5 consistently. The header of `tusage` explains how to re-derive it.
-A model with no published rate is **never guessed at**: its usage is excluded
-and the figure is marked with a trailing `?` to say it is a floor. Add a rate
-without editing the file via `TU_PRICES`:
-
-```sh
-TU_PRICES='claude-opus-5 5 25;claude-fable-5 10 50' tagents
-```
-
-## Notes workspace
-
-A chat is a bad place to review a document. `.claude/notes/` — one per project,
-next to `.claude/settings.local.json` — is where the long-form output goes
-instead: Claude writes `<name>.md` files there, you open them in neovim, and
-what you type back reaches the session on your next prompt. Chat replies stay in
-chat; only documents go to the folder.
-
-`prefix + C-t` toggles it ("text"): the editor opens beside the Claude pane it
-was called from, on the notes folder of that pane's project, so it doubles as
-the place to write a long prompt without fighting the terminal's line editing.
-The editor itself is an ordinary split of the chat's window, beside the chat and beside whatever else the window holds; closing it gives the width back. `ta-notes` only matters to editors an older version parked there, which `tnotes sync` brings back beside their chats once.
-
-`:q` commits the draft and leaves `@.claude/notes/prompt.md ` in the chat's
-input. **You** press Enter, and the CLI reads the file at that moment — so
-until you do, `prefix + C-t` reopens the draft and whatever you change is what
-gets sent. Every other document in the folder that you changed since the
-session last saw it is mentioned right beside it (`@.claude/notes/review.md `),
-so a remark you left under a paragraph arrives with the whole file around it,
-not only as a `+` line in the diff. "Since the session last saw it" is the
-context hook's own marker, so the two agree; a document you annotate *after*
-the first `:q` is added to the line, and nothing is mentioned twice.
-Nothing under an `archive/` folder is ever mentioned (see below), and neither is a document that is gone. The
-`paste` and `submit` shapes send the draft alone. Nothing is truncated on the
-way out; the file is cleared for you the
-next time the editor opens *after* it was actually sent (the submit hook
-commits it as `user: <first line>` and records the sha in `.git/ta-sent`, and
-the editor starts blank only when the file still matches that commit).
-
-The `notes.send` leaf in the tagents config picks a different shape if you want
-one: `paste` puts the text itself in the input without pressing Enter, and
-`submit` is the original behaviour — paste, Enter, and clear the file at once.
-Absent or unrecognised means `reference`.
-
-The folder is a git repo of its own, and that is the whole mechanism:
-
-- **Claude's writes are committed for it** (`notes-autocommit.sh`, on
-  `PostToolUse`) as `claude: <file>`, and the marker `.git/ta-last-seen` moves
-  with them.
-- **Your edits are not**, until you commit them or `tnotes` does. On the next
-  prompt `notes-context.sh` injects everything since the marker: the commit
-  log, the diffstat, and the unified diff of the text files. Lines you added
-  arrive as `+` lines and are read as your comments — so `> is this right?` on
-  the line under a paragraph is a review remark, in place, with no quoting and
-  no re-reading of the file.
-- `prompt.md` is excluded from all of it (it was already delivered as a
-  prompt), and a diff over 60 KB is replaced by its stat with a note to open
-  the files.
-- **An `archive/` folder is out of the prompt** — at the top of the notes or inside a ticket's folder (`PROJ-1234/archive/`). A document whose conclusions have landed goes there to keep its reasoning without re-entering every turn: nothing under it is diffed or mentioned, a change made only inside one injects nothing, and a document you move into one arrives as a single line (`archived: plan.md => PROJ-1234/archive/plan.md`) rather than as its whole text deleted. A folder that merely contains the word (`notes-archive/`) is a folder like any other.
-
-`tnotes` is the command behind the key — `tnotes toggle <pane-id>` is what the
-binding runs; run `tnotes` with no arguments for the rest:
-
-- `tnotes toggle <pane>` — open the editor beside a Claude pane, or hide it again
-  when it is already there.
-- `tnotes sync` — close the editors whose chat is gone, bring back the editors an older version parked in `ta-notes`, and clean up after them. It takes no pane.
-- `tnotes send <chat> <dir>` — commit the notes and hand `prompt.md` to `<chat>`,
-  as a reference, a paste or a submitted paste (see `notes.send`).
-- `tnotes close <editor>` — ask the editor to write and quit, then make sure it did.
-- `tnotes editor <chat> <dir>` — the program the editor pane runs; not for you.
-
-The folder is ignored globally (`**/.claude/notes/` in `.gitignore_global`), so
-notes never land in the project's own history.
-
-To point the session at one document in particular, reference it from
-`prompt.md` as `@.claude/notes/<file>`: the mention attaches the file, no
-completion needed — `@`-completion does not offer paths inside a dot-directory,
-and does not have to. Usually you do not need it at all, since the diff already
-carries what changed.
-
-## Notes
-
-Agents are grouped by the directory they were **launched** in, not their current
-one: the hook reports a live cwd that follows the Bash tool's `cd`, so grouping
-on it made sessions hop between projects while you watched. The launch directory
-is recovered from the first `cwd` in the transcript and cached per session id.
-
-"Running" means a Claude process really is alive in that pane, checked against
-the process tree — a state file alone proves nothing. Panes whose Claude has
-exited are listed as closed and `enter` resumes them, on the account they ran
-on.
-
-`tests/config.sh` covers the config parser, the rules and the command builder
-with no tmux involved; `tests/launch.sh` starts and resumes real agents,
-`tests/window-rows.sh` selects, joins and kills rows across windows and sessions and follows the sidebar, `tests/ui.sh`
-covers what the row looks like — the badge column, the hidden ones, the `?`
-window running a real key, the one-line header, the `ctrl-v` modal and the
-order, which is checked by making a state change and asserting that nothing
-moved — and
-`tests/names.sh` covers the window naming above, including the refusal to
-overwrite a name you typed, and `tests/headless.sh` covers the sessions with no
-pane at all — what the hook writes for one, how the row reads while its process
-lives and once it does not, and that every verb needing a pane refuses.
-`tests/modules.sh` covers the layout itself — that every module is sourced and
-no module is orphaned, that nothing is defined twice, that a module only defines
-things, and that the entry point still finds its modules through a symlink and
-refuses to run without them. `tests/forks.sh` covers what one repaint costs in
-processes — that the number of programs `--list` starts does not grow with the
-records in the state directory, that `--counts` reads its config once and
-reuses its output for five seconds (`TA_COUNTS_EVERY=0` turns that off), and
-that a record which cannot be read does not take the ones after it down —
-because the status bar and the refresher run these hundreds of times a minute
-and the endpoint security agent inspects every process they start.
-`tests/refresh.sh` runs the real refresher loop with shims for its network and
-counts what a wake posts and which programs it starts, and `tests/events.sh`
-covers the hook's event stream and what the hook starts. Each runs
-against a throwaway tmux server of its
-own (`tmux -L tatest-$$`), never the default socket, and refuses to start unless
-it is run with a default socket of its own too, so that no stray `tmux` call
-reaches the server you are working in:
-`env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/<suite>.sh`
-(`tests/scratch-guard.sh`). All of them are bash 3.2,
-run every check, and exit non-zero when any of them fails.
-
-## Specs
-
-What tagents does is written down in [OpenSpec](https://github.com/Fission-AI/OpenSpec) specs under `openspec/specs/`, one capability per spec: the list, the keys, docking, the refresher, the agent-state hook, notes, usage, resurrect, configuration, the headless sessions, the plugin system and each package. They describe behaviour someone can observe (keys, verbs, flags, exit codes, config keys, the files and tmux options other parts read), not how the code gets there, and they replace the dated changelog this repository used to keep; the history stays in git.
-
-A change starts as a proposal under `openspec/changes/<name>/` (why, what changes, the tasks, and the spec deltas it makes) and is archived into the specs once it has landed. In a Claude Code session in this repository the `/opsx:propose`, `/opsx:apply` and `/opsx:archive` commands drive that; from a shell, the CLI is a pinned dev dependency:
-
-```sh
-pnpm exec openspec list --specs        # the capabilities
-pnpm exec openspec show refresher      # one of them
-pnpm spec:check                        # every spec and change validates (CI runs this too)
-```
-
-`LEARNING.md` stays: it records mistakes and how they were fixed, which a spec does not.
+The [docs](https://skuratovicha.github.io/tagents/) cover the rest: [the dashboard](https://skuratovicha.github.io/tagents/guide/dashboard) · [notifications](https://skuratovicha.github.io/tagents/guide/notifications) · [resurrect](https://skuratovicha.github.io/tagents/guide/resurrect) · [closed sessions](https://skuratovicha.github.io/tagents/guide/closed-sessions) · [accounts](https://skuratovicha.github.io/tagents/guide/accounts) · [cost](https://skuratovicha.github.io/tagents/guide/cost) · [notes](https://skuratovicha.github.io/tagents/guide/notes) · [keys](https://skuratovicha.github.io/tagents/guide/keys) · [architecture](https://skuratovicha.github.io/tagents/architecture/overview) · [development](https://skuratovicha.github.io/tagents/development)
