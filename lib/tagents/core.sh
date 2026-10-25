@@ -1,6 +1,6 @@
 # lib/tagents/core.sh — constants, and the plumbing every dialog is built on
 #
-# The globals the whole program reads (STATE_DIR and the TA_* overrides, the TAB/US separators) plus the four helpers that belong to no feature: has_popup/prompt/prompt_at (why a prompt must be a tmux popup and not an fzf `execute` child — that essay, lines 1775-1797, heads the file), post_fzf (how a popup pokes the list that spawned it), pane_exists (a row can be 2 s stale) and tilde_of — and the ones shared by the restart paths: is_shell_cmd (the one kind of pane safe to replace) and the mkdir lock lock_dir/lock_age/unlock_dir. Sourced first, so every STATE_DIR-derived global later is legal.
+# The globals the whole program reads (STATE_DIR and the TA_* overrides, the TAB/US separators) plus the four helpers that belong to no feature: has_popup/prompt/prompt_at (why a prompt must be a tmux popup and not an fzf `execute` child — that essay, lines 1775-1797, heads the file), post_fzf (how a popup pokes the list that spawned it), pane_exists (a row can be 2 s stale), tilde_of and tty_cols (the width of the terminal, asked of the controlling terminal) — and the ones shared by the restart paths: is_shell_cmd (the one kind of pane safe to replace) and the mkdir lock lock_dir/lock_age/unlock_dir. Sourced first, so every STATE_DIR-derived global later is legal.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -34,6 +34,14 @@ US=$'\037'   # unit separator: unlike tab it is not IFS whitespace, so `read`
 tilde_of() {  # <path>
   local p=${1:-}
   case $p in "$HOME") printf '~' ;; "$HOME"/*) printf '~%s' "${p#$HOME}" ;; *) printf '%s' "$p" ;; esac
+}
+
+# The width of the terminal tagents runs in, asked of the CONTROLLING terminal. `tput cols` is no way to ask: it measures whichever of stdin, stdout and stderr is a terminal, and when a script has redirected all three (`$(...)` with stderr to /dev/null and stdin from /dev/null, a pipeline, a hook) it answers terminfo's 80 although the terminal is wide. A popup has no pane to measure either, and the controlling terminal knows. Prints the number, or nothing and a non-zero status when there is no terminal or it answers no number.
+tty_cols() {
+  local c; c=$(stty size </dev/tty 2>/dev/null | cut -d' ' -f2)
+  case ${c:-x} in ''|*[!0-9]*) return 1 ;; esac
+  [ "$c" -gt 0 ] || return 1
+  printf '%s' "$c"
 }
 
 # What an idle pane looks like to tmux: the shell itself in front, nothing it

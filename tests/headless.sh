@@ -839,6 +839,11 @@ TL=$(COLUMNS=120 run --timeline | plain)
 has "the running one is named" "ticket-agent" "$TL"
 has "...and reads as still going" "now" "$TL"
 has "the finished one is there too" "iteration" "$TL"
+# Without COLUMNS the timeline is as wide as the terminal it runs in, though none of its stdin, stdout and stderr is that terminal (tput asks all three and answers terminfo's 80 when none is one): in a pane 160 columns wide the directory column, which is dropped below 100, is there.
+rm -f "$ROOT/tl.out" "$ROOT/tl.done"
+tm new-session -d -s tatest-tl -x 160 -y 30 "env -u COLUMNS bash $TA --timeline </dev/null 2>/dev/null | cat >$ROOT/tl.out; touch $ROOT/tl.done"
+for _ in $(seq 1 50); do [ -e "$ROOT/tl.done" ] && break; sleep 0.1; done
+has "without COLUMNS the timeline is as wide as its terminal: the directory column is there" " cwd " "$(plain <"$ROOT/tl.out")"
 
 # ---------------------------------------------------------------------------
 t "12. a headless session that is still running is not a closed one"
