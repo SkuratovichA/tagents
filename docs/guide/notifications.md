@@ -2,11 +2,7 @@
 
 tagents can post a desktop banner when an agent needs you, and a click on the banner takes you to that chat. It is how you find out about a question or a permission prompt while you are in another app. The macOS backend is the one that exists today.
 
-<!-- The three banners are captured by hand (docs/demo/README.md says how); uncomment once the files exist.
-![A banner for a question an agent is asking](../images/notify-question.png)
-![A banner for a permission prompt](../images/notify-permission.png)
-![A banner for a finished turn](../images/notify-done.png)
--->
+<img src="../images/notify.png" alt="Three notices: an agent asks a question, an agent needs a permission, an answer is ready" width="345">
 
 ## What raises a banner
 

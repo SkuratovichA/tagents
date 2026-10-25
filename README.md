@@ -84,13 +84,9 @@ Press **`?`** for every key. Pick one from the list and `enter` runs it, so ther
 
 ## Notifications
 
-<!-- The three banners are captured by hand (docs/demo/README.md says how); uncomment once the files exist.
-<p>
-  <img src="docs/images/notify-question.png" alt="A notification: a chat is asking a question" width="32%">
-  <img src="docs/images/notify-permission.png" alt="A notification: a chat wants a permission" width="32%">
-  <img src="docs/images/notify-done.png" alt="A notification: a chat finished its turn" width="32%">
+<p align="center">
+  <img src="docs/images/notify.png" alt="Three tagents notifications: a chat asks a question, a chat needs a permission, an answer is ready" width="345">
 </p>
--->
 
 ```sh
 tagents plugin add ~/.local/share/tagents/packages/notify

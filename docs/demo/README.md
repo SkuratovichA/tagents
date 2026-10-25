@@ -8,4 +8,4 @@ It needs `vhs` (with `ttyd` and `ffmpeg`), `tmux`, `jq` and the JetBrainsMono Ne
 
 The real `tagents` and the real hook run against a stand-in `claude` (`fake-claude.sh`) that sends the hook and status line events a chat would send. `env.sh` moves `HOME`, the tmux socket directory, `TA_STATE_DIR` and `TA_CONFIG` under `/tmp/tagents-demo`, so neither your tmux server nor your `~/.claude` is read or written. Logs of the last run are in `docs/demo/.cache/logs`.
 
-The three notification banners (`notify-question.png`, `notify-permission.png`, `notify-done.png`) are not part of `record.sh`: they are real macOS banners, raised with `tagents notify test --kind <kind>` outside tmux and cropped from a screen capture, which needs Screen Recording permission for the terminal.
+The notification picture (`notify.png`) is not part of `record.sh`: it is three real macOS notices, posted with `tagents notify test` and captured window by window by `docs/demo/notify.sh`, so nothing else on screen ends up in it. It needs the notify plugin installed and allowed, Screen Recording allowed for the terminal, and ImageMagick; the script's header has the details.
