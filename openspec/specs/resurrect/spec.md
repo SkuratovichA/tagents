@@ -2,7 +2,9 @@
 
 ## Purpose
 After a reboot or any other loss of the tmux server, every Claude chat that had a pane comes back at the same session, window and pane, resumed on the login it ran on with the model it was set to. tagents keeps a snapshot of the live chats keyed by session id, and a restore turns the idle shells that tmux-resurrect leaves behind back into `claude --resume`.
+
 ## Requirements
+
 ### Requirement: A snapshot holds one row per live chat
 A capture SHALL write one `A` row per live chat that has a state record with a session id, whether tagents started the chat or it was typed by hand. A pane that has a record but no Claude process, and the sidebar, SHALL get no row. A row is a tab-separated line of 14 columns, listed in the next requirement.
 
@@ -99,11 +101,15 @@ The status bar SHALL start a capture every `resurrect.every` seconds (default 30
 - **AND** with `resurrect.every` at 3600 a changed set is not captured
 
 ### Requirement: Captures are held off while they would mislead
-A capture SHALL be skipped, with exit 0, while a restore is placing chats (its lock is younger than 120 seconds; an older lock was left by a restore that died and holds nothing off). It SHALL also be skipped while the current tmux server is younger than 300 seconds, has not been restored by the hook yet, and `resurrect.auto` is on: a freshly started server holds none of its chats, and capturing it would write the empty set that a second server start would restore from.
+A capture SHALL be skipped, with exit 0, while a restore is placing chats (its lock is younger than 120 seconds; an older lock was left by a restore that died and holds nothing off). It SHALL also be skipped while the server is younger than 300 seconds, the hook has not restored it, `resurrect.auto` is on and `@resurrect-hook-post-restore-all` runs `tagents --resurrect`: a fresh server holds none of its chats, and capturing it would write the empty set a second start would restore from.
 
 #### Scenario: Young server not yet restored
-- **WHEN** the server is a few seconds old, `resurrect.auto` is on and the hook has not run
+- **WHEN** the server is a few seconds old, `resurrect.auto` is on, `@resurrect-hook-post-restore-all` runs `tagents --resurrect --auto` and the hook has not run
 - **THEN** `tagents --resurrect-save` writes no snapshot
+
+#### Scenario: Young server nothing will restore
+- **WHEN** the server is a few seconds old, `resurrect.auto` is on, `@resurrect-hook-post-restore-all` is not set or runs something else, and `tagents --resurrect-save` runs by hand
+- **THEN** it exits 0 and a snapshot is written
 
 #### Scenario: Restore in progress
 - **WHEN** the restore lock exists and is fresh
@@ -441,3 +447,13 @@ After the chats and the sidebar are up, the restore SHALL close every idle shell
 - **WHEN** the layout is `follow` and tmux-resurrect restored a session `tagents` holding two idle shells titled `tagents-sidebar` and `tagents-viewport`
 - **THEN** after `tagents --resurrect` no session `tagents` exists and the chats are untouched
 
+### Requirement: A capture held off by hand says why
+A capture held off because the server is young SHALL print one line on standard error, saying that nothing was saved, how many seconds ago the server started and that its resurrect hook has not restored it yet, and exit 0, but only when standard error is a terminal. The same capture runs from the status bar, after a launch and from tmux-resurrect's post-save-layout hook, where a line would land in the status line or a log.
+
+#### Scenario: Held off by hand
+- **WHEN** a person runs `tagents --resurrect-save` in a terminal on a young server whose restore hook has not run
+- **THEN** one line on standard error says nothing was saved and why, and the exit code is 0
+
+#### Scenario: Held off by the machine
+- **WHEN** the same capture is run by the status bar, after a launch or by tmux-resurrect's post-save-layout hook
+- **THEN** it prints nothing
