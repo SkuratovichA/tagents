@@ -621,12 +621,12 @@ contains "A dashboard layout that cannot be read" \
    "dashboard.layout: \"ide\" is not one of follow, cockpit — read as follow" "$out"
 ok "...one line for one problem" 1 "$(nlines "$out")"
 
-# The README's "The file" section: every top-level key it lists is a section the file carries.
-readme_keys=$(awk '/^### The file/ {on=1; next} /^### / {on=0} on && /^[a-z_]+:/ {sub(/:.*/, ""); print}' "$HERE/../README.md")
+# The docs page on accounts, "The file" section: every top-level key it lists is a section the file carries.
+readme_keys=$(awk '/^### The file/ {on=1; next} /^### / {on=0} on && /^[a-z_]+:/ {sub(/:.*/, ""); print}' "$HERE/../docs/guide/accounts.md")
 for k in $readme_keys; do
   case $k in
-    claude|usage|notes|resurrect|dashboard|keys|plugins) ok "README lists $k, a section the file carries" 1 1 ;;
-    *) ok "README lists $k, a section the file carries" known "$k" ;;
+    claude|usage|notes|resurrect|dashboard|keys|plugins) ok "docs list $k, a section the file carries" 1 1 ;;
+    *) ok "docs list $k, a section the file carries" known "$k" ;;
   esac
 done
 contains "...and dashboard is among them" "dashboard" "$readme_keys"
