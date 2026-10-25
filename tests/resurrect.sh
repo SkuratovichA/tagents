@@ -142,6 +142,9 @@ tm() { tmux -L "$S" "$@"; }
 tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 'sleep 600' || exit 1
 tm set -g default-shell /bin/sh >/dev/null 2>&1
 tm set -g default-command '' >/dev/null 2>&1
+# The wiring the README asks for: a restore is on its way to a young server, so its captures are held off until the hook has run. A server started again below is wired again; the one case without the hook unsets the option and puts it back.
+wire_hook() { tm set -g @resurrect-hook-post-restore-all "$TA --resurrect --auto"; }
+wire_hook
 tm new-session -d -s tatest-proj -c "$PERS" >/dev/null 2>&1
 tm new-session -d -s tatest-other -c "$NOR" >/dev/null 2>&1
 
@@ -254,9 +257,15 @@ printf '%s\tidle\tsid-sleep\t%s\t\t\t\n' "$(date +%s)" "$NOR" >"$STATE/$NS.tsv"
 waitrec "$N1"; ok "the first stub wrote its record" 0 "$?"
 waitrec "$N2"; ok "the second stub wrote its record" 0 "$?"
 
-# A server this young, which the hook has not restored yet, holds none of the chats it is about to get back.
+# A server this young, whose restore hook has not run yet, holds none of the chats it is about to get back.
 run --resurrect-save
 ok "a young server the hook has not restored is not captured" 0 "$(resurrect_files)"
+# No hook means no restore is coming: the first minutes of such a server are captured, and the file is removed so the cases below still start from none.
+tm set -gu @resurrect-hook-post-restore-all
+run --resurrect-save
+ok "a young server nothing will restore is captured" 1 "$(resurrect_files)"
+rm -f "$STATE"/resurrect/*.tsv
+wire_hook
 booted
 
 run --resurrect-save; ok "--resurrect-save succeeds" 0 "$?"
@@ -393,6 +402,7 @@ clear_out
 tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 'sleep 600' || exit 1
 tm set -g default-shell /bin/sh >/dev/null 2>&1
 tm set -g default-command '' >/dev/null 2>&1
+wire_hook
 # The size every window of this fresh server gets, with no client attached to
 # size it. Not `set -gw window-size manual`: under tmux 3.4 that makes the
 # next new-session or new-window kill the server ("server exited unexpectedly").
@@ -760,6 +770,7 @@ sleep 1
 tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 'sleep 600' || exit 1
 tm set -g default-shell /bin/sh >/dev/null 2>&1
 tm set -g default-command '' >/dev/null 2>&1
+wire_hook
 # The size every window of this fresh server gets, with no client attached to
 # size it. Not `set -gw window-size manual`: under tmux 3.4 that makes the
 # next new-session or new-window kill the server ("server exited unexpectedly").

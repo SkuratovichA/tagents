@@ -1,6 +1,6 @@
 ---
 name: tagents
-description: Use when driving tagents from a session or a script — opening, prompting, listing or aborting headless Claude Code sessions with tagents-core, finding a past session, searching the owner's knowledge documents with tagents-knowledge or its MCP tools, reading session cost with tusage, calling a flag of the tagents dashboard or of tnotes, or writing code or a tagents plugin (definePlugin) against @tagents/core, @tagents/knowledge or @tagents/telegram.
+description: Use when driving tagents from a session or a script — opening, prompting, listing or aborting headless Claude Code sessions with tagents-core, finding a past session, searching the owner's knowledge documents with tagents-knowledge or its MCP tools, reading session cost with tusage, calling a flag of the tagents dashboard or of tnotes, or writing code or a tagents plugin (definePlugin) against @tagents/core, @tagents/knowledge, @tagents/notify or @tagents/telegram.
 ---
 
 # tagents
@@ -18,7 +18,7 @@ tagents is a tmux dashboard for Claude Code sessions plus the packages that driv
 | search or read the owner's knowledge documents | the same `knowledge` MCP tools, or `tagents-knowledge` from a shell | `references/mcp.md`, `references/cli.md` |
 | read cost and context accounting per session | `tusage` | `references/scripts.md` |
 | call a flag of the dashboard or of the notes workspace | `tagents`, `tnotes` | `references/scripts.md` |
-| write code against a package, or a tagents plugin with `definePlugin` | `@tagents/core`, `@tagents/knowledge`, `@tagents/telegram` | `references/core.api.md`, `references/knowledge.api.md`, `references/telegram.api.md` |
+| write code against a package, or a tagents plugin with `definePlugin` | `@tagents/core`, `@tagents/knowledge`, `@tagents/notify`, `@tagents/telegram` | `references/core.api.md`, `references/knowledge.api.md`, `references/notify.api.md`, `references/telegram.api.md` |
 
 The same contract as data, for a script that wants to check a verb or a tool schema: `${CLAUDE_PLUGIN_ROOT}/contract.json`.
 

@@ -58,7 +58,10 @@ stays worth reacting to.
                           it back. tmux-resurrect's save hook, every launch
                           and kill, and the status bar every resurrect.every
                           seconds (300; 0 is never) run this; it is here to
-                          be run by hand before a planned reboot
+                          be run by hand before a planned reboot. A tmux
+                          server younger than 5 minutes is not captured while
+                          tmux-resurrect's restore hook runs tagents and has
+                          not restored it yet (a by-hand run says so)
   tagents --resurrect-rows [file|latest]
                           the raw rows of a snapshot, one TAB-separated line
                           per chat: the one --resurrect would use (the newest

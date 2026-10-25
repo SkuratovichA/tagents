@@ -1,6 +1,6 @@
 # lib/tagents/resurrect.sh — what comes back after a reboot
 #
-# The snapshot a restore works from: resurrect_rows (one A row per live chat, a D row when the sidebar is up — a chat filed where its pane is, a joined one under its home session — read pane by pane through resurrect_pane), resurrect_save (a full replacement, never twice the same, held off while a restore is pending or running, the newest RESURRECT_KEEP kept plus the one a restore would read), resurrect_files/resurrect_latest/resurrect_pick (every snapshot, the newest, and the newest one written before this tmux server started — the one a restore wants), resurrect_start/resurrect_young/resurrect_done (when this server started, whether that was a moment ago, and whether the hook has restored it), resurrect_rows_cmd (the raw rows, for the tests and for a curious person), and the two triggers: resurrect_soon after a launch, a kill or a restore, resurrect_due for the status bar. Then the restore that reads it: resurrect_place (the pane a chat goes back into — its own idle shell, else a new window, else a new session), resurrect_dashboard and resurrect_sweep (the sidebar back in the window it was in, and the idle shells tmux-resurrect left where it was closed), resurrect_restore (every row not already running, resumed on the login it ran on with its model and effort, and a report per row; from the hook once per server and only on a young one), with resurrect_auto_on and resurrect_has_transcript deciding whether to run at all and which rows are worth it, and resurrect_notes last (the orphaned editors closed, the editor of every restored chat that had one beside it opened again). The section banner heads the file.
+# The snapshot a restore works from: resurrect_rows (one A row per live chat, a D row when the sidebar is up — a chat filed where its pane is, a joined one under its home session — read pane by pane through resurrect_pane), resurrect_save (a full replacement, never twice the same, held off while a restore is pending or running (pending only when the restore hook is wired), the newest RESURRECT_KEEP kept plus the one a restore would read), resurrect_files/resurrect_latest/resurrect_pick (every snapshot, the newest, and the newest one written before this tmux server started — the one a restore wants), resurrect_start/resurrect_young/resurrect_done/resurrect_hooked (when this server started, whether that was a moment ago, whether the hook has restored it, and whether a restore hook is wired at all), resurrect_rows_cmd (the raw rows, for the tests and for a curious person), and the two triggers: resurrect_soon after a launch, a kill or a restore, resurrect_due for the status bar. Then the restore that reads it: resurrect_place (the pane a chat goes back into — its own idle shell, else a new window, else a new session), resurrect_dashboard and resurrect_sweep (the sidebar back in the window it was in, and the idle shells tmux-resurrect left where it was closed), resurrect_restore (every row not already running, resumed on the login it ran on with its model and effort, and a report per row; from the hook once per server and only on a young one), with resurrect_auto_on and resurrect_has_transcript deciding whether to run at all and which rows are worth it, and resurrect_notes last (the orphaned editors closed, the editor of every restored chat that had one beside it opened again). The section banner heads the file.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -20,7 +20,7 @@
 #
 # WHICH SNAPSHOT A RESTORE USES is the newest written BEFORE this tmux server started (#{start_time}, the same signal continuum judges by). The captures that run after the boot are newer and can never shadow the set that was running before it, and nothing has to be marked as used. A file is named after the second it was written; one that says exactly what the newest already says is not written at all (tmux-resurrect's own rule), and only the newest RESURRECT_KEEP stay, plus the one a restore on this server would read.
 #
-# A CAPTURE BEFORE THE RESTORE IS NOT HARMLESS all the same. A new server holds none of its chats yet, so its first capture says "no chats" and becomes the newest, and a second server start a minute later (a kill-server, a crash) would restore from exactly that one. So while the hook may restore, a young server is not captured until the hook has run on it, nothing is captured while a restore is placing chats, and the restore retakes the snapshot itself once the chats it resumed have written their records.
+# A CAPTURE BEFORE THE RESTORE IS NOT HARMLESS all the same. A new server holds none of its chats yet, so its first capture says "no chats" and becomes the newest, and a second server start a minute later (a kill-server, a crash) would restore from exactly that one. So while the hook may restore (resurrect.auto is on AND tmux-resurrect's @resurrect-hook-post-restore-all runs tagents: with no such hook nothing ever restores a server, and its first minutes would never be captured), a young server is not captured until the hook has run on it, and a by-hand run says so on stderr, nothing is captured while a restore is placing chats, and the restore retakes the snapshot itself once the chats it resumed have written their records.
 #
 # THE RESTORE PUTS `claude --resume` BACK AT THE SAME COORDINATES, and never rebuilds what tmux-resurrect already did: the idle shell it left where a chat was is replaced (respawn-pane, so nothing is typed into a shell that may still be reading its rc files), and only a missing or busy pane, or a chat that was joined into another window, gets a new window or a new session. The account is the one the chat ran on, never the rules, and never a dialog — a hook has no client to ask. Anything already running, by session id, is left alone. The hook restores once per server, and only in the server's first RESURRECT_YOUNG seconds: tmux-resurrect fires it on a prefix C-r hours later too, where it would bring back every chat ended since the boot.
 #
@@ -99,6 +99,12 @@ resurrect_start() {
 }
 resurrect_young() { [ $(( $(date +%s) - $1 )) -lt "$RESURRECT_YOUNG" ]; }       # <start time>
 resurrect_done()  { [ "$(cat "$RESURRECT_DONE" 2>/dev/null)" = "$1" ]; }        # <start time> — the hook has run on this server
+# A restore is on its way only when tmux-resurrect's restore hook runs tagents (README: set -g @resurrect-hook-post-restore-all '~/.local/bin/tagents --resurrect --auto'). A server without tmux-resurrect or without that line is never restored, so its first minutes hold nothing to protect and must be captured. The -- check stops at the end of a word, so --resurrect-save in that option does not count.
+resurrect_hooked() {
+  local h; h=$(tmux show -gqv @resurrect-hook-post-restore-all 2>/dev/null)
+  case $h in *--resurrect|*--resurrect[!-a-zA-Z0-9]*) return 0 ;; esac
+  return 1
+}
 
 # Strictly before: a capture in the server's own first second already saw the
 # new server — nothing live yet — and must not stand in for the set it replaced.
@@ -117,8 +123,11 @@ resurrect_save() {  # [ignored args: post-save-layout passes the state-file path
   st=$(resurrect_start) || return 1
   # A restore is placing chats, and half of them is not a set to keep. A lock left by a restore that died holds nothing off.
   [ -d "$RESURRECT_LOCK" ] && [ "$(lock_age "$RESURRECT_LOCK")" -le "$RESURRECT_LOCK_STALE" ] && return 0
-  # A server the hook is about to restore holds none of its chats yet: captured now, it is the empty set a second start would restore from.
-  resurrect_auto_on && ! resurrect_done "$st" && resurrect_young "$st" && return 0
+  # A server the hook is about to restore holds none of its chats yet: captured now, it is the empty set a second start would restore from. Only a hook that runs tagents restores anything, so without one there is nothing to protect. Said on stderr only when a person is reading it: this also runs from the status bar, from resurrect_soon and from tmux-resurrect's post-save-layout hook, where a line would land in the status line.
+  if resurrect_auto_on && resurrect_hooked && ! resurrect_done "$st" && resurrect_young "$st"; then
+    [ -t 2 ] && echo "tagents: not saved: this tmux server started $(( $(date +%s) - st ))s ago and tmux-resurrect's restore hook has not restored it yet" >&2
+    return 0
+  fi
   mkdir -p "$RESURRECT_DIR" 2>/dev/null || return 1
   tmpf=$(mktemp "$RESURRECT_DIR/.tmp.XXXXXX" 2>/dev/null) || return 1
   resurrect_rows >"$tmpf" 2>/dev/null || { rm -f "$tmpf"; return 1; }
