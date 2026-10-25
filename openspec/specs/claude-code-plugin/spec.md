@@ -20,7 +20,7 @@ With Claude Code 2.1.275 or later the plugin SHALL be installable with `/plugin 
 - **THEN** the skill and the MCP server described below become available to sessions
 
 ### Requirement: The plugin gives a session the tagents skill
-The plugin SHALL ship one skill, `tagents`, in `skills/tagents/SKILL.md`. Its description SHALL say when to load it: driving tagents from a session or a script, and writing code or a plugin against `@tagents/core`, `@tagents/knowledge` or `@tagents/telegram`. Its body is a hand-written index that sends the reader to the generated reference for the surface in question.
+The plugin SHALL ship one skill, `tagents`, in `skills/tagents/SKILL.md`. Its description SHALL say when to load it: driving tagents from a session or a script, and writing code or a plugin against `@tagents/core`, `@tagents/knowledge`, `@tagents/notify` or `@tagents/telegram`. Its body is a hand-written index that sends the reader to the generated reference for the surface in question.
 
 #### Scenario: When it applies
 - **WHEN** a session opens, prompts, lists or aborts headless sessions, finds a past session, searches the knowledge documents, reads cost with `tusage`, or calls a flag of the dashboard or of `tnotes`
@@ -76,10 +76,22 @@ The plugin SHALL register no Claude Code hooks and no status line. The agent-sta
 
 #### Scenario: Nothing hooked
 - **WHEN** the plugin's manifest and files are inspected
-- **THEN** there is no hooks declaration and no `hooks/` registration file; the hook scripts under `hooks/` are installed by hand
+- **THEN** there is no hooks declaration and no `hooks/` registration file; the hook scripts under `hooks/` reach `~/.claude/hooks` through `install.sh`, and registering them in `~/.claude/settings.json` is a manual step
 
-### Requirement: Installing tagents from a checkout
-Installing tagents from a checkout SHALL be four steps: put `tagents` and `tusage` on `PATH` by symlink; symlink `hooks/tmux-agent-state.sh` and `hooks/claude-statusline.sh` into `~/.claude/hooks`; register `tmux-agent-state.sh` in `~/.claude/settings.json` under `hooks`; and set `statusLine` to a command running `claude-statusline.sh`. When the repository is a submodule of a dotfiles repository, that repository's bootstrap script performs the steps.
+### Requirement: Installing tagents
+`sh install.sh` from a clone, or `curl -fsSL https://raw.githubusercontent.com/SkuratovichA/tagents/main/install.sh | sh`, SHALL install ONE managed copy in `$TAGENTS_HOME` (default `~/.local/share/tagents`): a clone detached on `origin/main`, made when absent, built with `pnpm install --frozen-lockfile && pnpm build`, not moved while it has local changes. It needs `git`, `node` 22.18 or newer and `pnpm`. Registering the hook and the status line in `~/.claude/settings.json` stays manual.
+
+#### Scenario: Piped from curl
+- **WHEN** the one-line `curl … | sh` runs on a machine with no managed copy
+- **THEN** the repository is cloned into `~/.local/share/tagents`, built, and the wrappers of the next requirement exist
+
+#### Scenario: A directory that is not a copy
+- **WHEN** `$TAGENTS_HOME` exists, holds files and is not a clone
+- **THEN** the installer refuses to touch it and exits 1
+
+#### Scenario: Local changes
+- **WHEN** the managed copy has local changes and `main` has moved
+- **THEN** the copy is not moved and the exit code is 1
 
 #### Scenario: The hook events
 - **WHEN** the hook is registered
@@ -97,7 +109,7 @@ Installing tagents from a checkout SHALL be four steps: put `tagents` and `tusag
 - **THEN** it refuses to run instead of half-working
 
 ### Requirement: The parts of the ecosystem
-The repository SHALL pair the bash dashboard `tagents` (tmux and fzf, no dependencies of its own) with TypeScript packages: `@tagents/core` (headless sessions and the plugin host, behind `tagents-core`), `@tagents/knowledge` (the owner's notes as searchable markdown documents, a CLI and an MCP server) and `@tagents/telegram` (a typed Telegram Bot API client). Plugins are further packages the config names. The bash scripts neither import nor need the TypeScript workspace.
+The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeScript packages: `@tagents/core` (headless sessions and plugins, behind `tagents-core`), `@tagents/knowledge` (the owner's notes as markdown, a CLI and an MCP server), `@tagents/telegram` (a typed Bot API client), `@tagents/notify` (desktop notifications) and `@tagents/contract` (the contract generator). Plugins are further packages the config names. The bash scripts neither import nor need the workspace.
 
 #### Scenario: One name reaches all of it
 - **WHEN** a user types `tagents plugin list`, `tagents session list` or `tagents doctor`
@@ -136,3 +148,18 @@ When an update moves the managed copy to another commit, `install.sh` SHALL hand
 #### Scenario: The new commit's installer does not take the hand-over
 - **WHEN** an update moves the copy to a commit whose `install.sh` does not take `TAGENTS_MOVED_FROM`
 - **THEN** the running installer builds the copy and writes the wrappers itself, and the update exits 0
+
+### Requirement: The installer writes wrappers, not symlinks
+`install.sh` SHALL write a real-file wrapper into `~/.local/bin` for each of `tagents`, `tusage`, `tnotes`, `tagents-core` and `tagents-knowledge`, and one per `hooks/*.sh` into `~/.claude/hooks` or each repeatable `--hooks-dir DIR`; a wrapper runs the same file of the managed copy. It writes only over a symlink or a file with the installer's marker line; any other file is left alone with a warning and exit 1 at the end. A wrapper whose hook the project dropped is removed.
+
+#### Scenario: Two Claude config directories
+- **WHEN** `install.sh --hooks-dir ~/.claude/hooks --hooks-dir ~/.claude-work/hooks` runs
+- **THEN** both directories hold a wrapper for every hook script
+
+#### Scenario: A file of somebody else's
+- **WHEN** `~/.local/bin/tusage` exists and was not written by the installer
+- **THEN** it is left as it was, a warning names it, and the exit code is 1
+
+#### Scenario: A hook the project dropped
+- **WHEN** an update brings a copy that no longer ships `hooks/old.sh`, and `~/.claude/hooks/old.sh` is a wrapper of the installer
+- **THEN** that wrapper is removed

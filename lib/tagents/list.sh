@@ -30,8 +30,10 @@ list() {
   # HOW WIDE IS THE ROW. fzf exports FZF_COLUMNS to the children of its execute
   # and reload bindings, which is exactly how --list is re-run, so that is the
   # honest number whether the dashboard is a 45% sidebar or a 92% popup. Falling
-  # back to `tput cols` would measure the terminal, not the pane, and every row
-  # would overflow the sidebar by more than half its width.
+  # back to the terminal's width would measure the terminal, not the pane, and
+  # every row would overflow the sidebar by more than half its width. The last
+  # resort is tty_cols, never `tput cols`: with no tty on any of its three
+  # streams (a hook, a `$(...)`) tput answers terminfo's 80.
   # FZF_COLUMNS first: it is set per reload, so it is the only value that keeps
   # up with the pane being resized. TA_COLS is the bootstrap for the very first
   # frame (and the hook for testing a width by hand), never an override.
@@ -39,7 +41,7 @@ list() {
   if [ -z "$cols" ] && [ -n "${TMUX_PANE:-}" ]; then
     cols=$(tmux display -p -t "$TMUX_PANE" '#{pane_width}' 2>/dev/null)
   fi
-  [ -z "$cols" ] && cols=$(tput cols 2>/dev/null)
+  [ -z "$cols" ] && cols=$(tty_cols)
   case ${cols:-x} in ''|*[!0-9]*) cols=100 ;; esac
   # A POPUP LIST IS NOT AS WIDE AS THE POPUP. FZF_COLUMNS is the whole window,
   # but in popup mode the preview sits beside the list and takes 55% of it, so

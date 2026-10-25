@@ -347,10 +347,10 @@ EOF
   ')
 }
 
-# THE MACHINE HAS MORE THAN ONE NAME. `hostname -s` is not an identity on a Mac whose HostName was never set (`scutil --get HostName` says "not set"): it is whatever macOS derived last, and the same laptop answered sukas-MBP for weeks and sukas-MacBook-Pro after a reboot. The overlay was not found, the base profiles applied without a word, and every chat on the second login was resumed logged out. So the overlay is looked for under each name the machine answers to: the reported one first, so that an overlay found today is the one found tomorrow, then the LocalHostName, which moves only when somebody renames the Mac. scutil is macOS only; elsewhere it is not there and adds nothing. TA_HOST is exactly one name, never a first guess.
+# THE MACHINE HAS MORE THAN ONE NAME. `hostname -s` is not an identity on a Mac whose HostName was never set (`scutil --get HostName` says "not set"): it is whatever macOS derived last, and the same laptop answered alex-MBP for weeks and alex-MacBook-Pro after a reboot. The overlay was not found, the base profiles applied without a word, and every chat on the second login was resumed logged out. So the overlay is looked for under each name the machine answers to: the reported one first, so that an overlay found today is the one found tomorrow, then the LocalHostName, which moves only when somebody renames the Mac. scutil is macOS only; elsewhere it is not there and adds nothing. TA_HOST is exactly one name, never a first guess.
 cfg_hosts() {
   [ -n "${TA_HOST:-}" ] && { printf '%s\n' "$TA_HOST"; return 0; }
-  { printf '%s\n' "$HOST_S"; scutil --get LocalHostName; } 2>/dev/null | awk 'NF && !seen[$0]++'
+  { printf '%s\n' "$HOST_S"; scutil --get LocalHostName; } 2>/dev/null | LC_ALL=C awk 'NF && !seen[$0]++'
   return 0
 }
 

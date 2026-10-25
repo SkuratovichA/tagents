@@ -17,7 +17,8 @@ timeline() {
   fi
 
   now=$(date +%s)
-  cols=${COLUMNS:-$(tput cols 2>/dev/null || echo 100)}
+  # An exported COLUMNS wins. The terminal is asked through tty_cols, not tput: tput answers 80 when none of the three standard streams is a terminal (see tty_cols).
+  cols=${COLUMNS:-$(tty_cols || echo 100)}
   # Give the bar room on a narrow pane by shrinking, then dropping, the cwd
   # column — the name usually says which project it is anyway.
   if   [ "$cols" -ge 120 ]; then namew=26; cwdw=22

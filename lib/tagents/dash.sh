@@ -210,10 +210,7 @@ dash() {
   # but the initial list is built before fzf exists. `tput cols` is unreliable
   # here (this runs inside a command substitution, so stdout is a pipe), and in
   # a popup there is no pane to measure — the controlling terminal knows.
-  if [ -z "${TA_COLS:-}" ]; then
-    TA_COLS=$(stty size </dev/tty 2>/dev/null | cut -d' ' -f2)
-    case ${TA_COLS:-x} in ''|*[!0-9]*) TA_COLS='' ;; esac
-  fi
+  [ -n "${TA_COLS:-}" ] || TA_COLS=$(tty_cols) || TA_COLS=''
 
   # Terminal flow control has to go. With ixon on, ctrl-s is XOFF: it blocks
   # every write to this tty, so the dashboard goes blank and stays blank, and
