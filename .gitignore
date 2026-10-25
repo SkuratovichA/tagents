@@ -1,3 +1,7 @@
 node_modules/
 dist/
 .cache/
+
+# The documentation site (VitePress, run through pnpm dlx)
+docs/.vitepress/cache/
+docs/.vitepress/dist/

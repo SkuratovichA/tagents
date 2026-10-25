@@ -1,0 +1,4 @@
+#!/bin/bash
+# The stand-in for the Claude Code CLI. It must be a process whose name ends in /claude (that is how tagents and the state hook tell an agent from a shell), and `exec -a` keeps the name while bash runs the real script.
+here=$(cd "$(dirname "$0")" && pwd)
+exec -a "$0" /bin/bash "$here/../fake-claude.sh" "$@"
