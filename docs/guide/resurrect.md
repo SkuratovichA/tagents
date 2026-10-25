@@ -70,7 +70,7 @@ One that says exactly what the newest already says is not written again. The new
 
 **The restore uses the newest snapshot written before this tmux server started**, so the captures taken after the boot can never shadow the set that was running before it. Those later captures are not harmless all the same: a capture of a server nothing has been restored on yet says "no chats", and a second server start soon after (a `kill-server`, a crash) would pick exactly that one. So while `resurrect.auto` is on:
 
-- a new server is not captured until the hook has restored it (or until it is 5 minutes old, if the hook never fires),
+- a new server is not captured until the hook has restored it, or until it is 5 minutes old if the hook never fires. This applies only when `@resurrect-hook-post-restore-all` runs `tagents --resurrect`: without that line nothing will restore the server, so it is captured from the start. A `tagents --resurrect-save` typed during the wait saves nothing and says why,
 - nothing is captured while a restore is placing chats,
 - and the restore takes a snapshot of its own 15 seconds after it is done, once the chats it resumed have written their records.
 
