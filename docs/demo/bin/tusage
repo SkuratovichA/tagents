@@ -1,0 +1,11 @@
+#!/bin/sh
+# A stand-in for tusage: the demo has no transcripts to price. Each fake chat writes the one row `tusage --sessions` would print for it into $DEMO_USAGE (field order as tests/ui.sh documents it), and --daily makes up a month of spend for the watched profile.
+case " $* " in
+  *" --sessions "*) cat "$DEMO_USAGE"/*.tsv 2>/dev/null ;;
+  *" --session "*)  sid=$3; [ -r "$DEMO_USAGE/$sid.txt" ] && cat "$DEMO_USAGE/$sid.txt" ;;
+  *" --daily "*)
+    today=$(date +%d); ym=$(date +%Y-%m)
+    awk -v t="$((10#$today))" -v ym="$ym" 'BEGIN { for (d = 1; d <= t; d++) { wd = (d * 5 + 2) % 7; if (wd >= 5) continue
+      printf "%s-%02d\twork\t%.2f\n", ym, d, 12 + ((d * 7) % 13) * 2.3 } }' ;;
+esac
+exit 0
