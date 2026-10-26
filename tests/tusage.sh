@@ -607,5 +607,103 @@ ok "...the new row has the new format, the old rows are left alone" "14 15" \
 export TU_STATE="$SAVE_STATE" TU_PROJECTS="$SAVE_PROJ"
 export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
 
+# ---------------------------------------------------------------------------
+t "11. an empty week, a lock and who holds it, an interrupted update, a long one"
+# On 27.10.2026 an index nobody had updated for seventeen days made `tusage`
+# die in awk on a division by zero, and `tusage --by day` sit silent through a
+# catch-up of two thousand transcripts until it was killed, which left its lock
+# behind. Each of those, here, on its own index.
+# ---------------------------------------------------------------------------
+SAVE_STATE=$TU_STATE; SAVE_PROJ=$TU_PROJECTS
+SAVE_ACCT=$TU_ACCOUNTS; SAVE_RULES=$TU_ACCOUNT_RULES
+export TU_STATE="$ROOT/lk/usage" TU_PROJECTS="$ROOT/lk/projects"
+export TU_ACCOUNTS="work=$ROOT/lk/acct/work" TU_ACCOUNT_RULES=""
+mkdir -p "$TU_STATE" "$TU_PROJECTS/-lk" "$ROOT/lk/acct/work" "$ROOT/lk/tmp" "$ROOT/lk/bin"
+held() { [ -e "$TU_STATE/.update.lock" ] && echo held || echo gone; }
+
+# 11a. Nothing in the last seven days: the newest row is ten days old.
+printf '%s\tk-slug\ts-old\t-\t-\t-\tclaude-opus-5\t1\t1000\t0\t0\t0\t0\t1000\n' $((NOW - 864000)) >"$TU_STATE/facts.tsv"
+out=$(bash "$TU" --no-update 2>&1); rc=$?
+ok "a summary of an empty week exits 0" 0 "$rc"
+contains "...and says the week is empty" "nothing in the last 7 days" "$out"
+ok "...with no awk error" 0 "$(printf '%s\n' "$out" | grep -c 'division')"
+
+# 11b. A window of nothing but the zero-token placeholder: a total of 0.
+printf '%s\tk-slug\ts-z\t-\t-\t-\t<synthetic>\t1\t0\t0\t0\t0\t0\t0\n' "$T2" >"$TU_STATE/facts.tsv"
+out=$(bash "$TU" --no-update --by model 2>&1); rc=$?
+ok "a window of zero-token requests is a table, not an awk error" 0 "$rc"
+contains "...at a share of 0%" " 0.0%" "$out"
+rm -f "$TU_STATE/facts.tsv" "$TU_STATE/sessions.tsv"
+
+# 11c. Who holds the lock is decided by its pid, not by its age.
+SID_LK=$SID; SID=f1f1f1f1-2222-3333-4444-555555555555
+rec q1 "$T2" >"$TU_PROJECTS/-lk/$SID.jsonl"
+sleep 0 & dead=$!; wait "$dead"
+mkdir "$TU_STATE/.update.lock"; echo "$dead" >"$TU_STATE/.update.lock/pid"
+bash "$TU" --update >/dev/null 2>&1
+ok "a lock whose updater is gone is taken over at once" "0.500000" "$(usd_of)"
+ok "...and is gone when that update ends" gone "$(held)"
+
+rec q2 $((T2 + 60)) >>"$TU_PROJECTS/-lk/$SID.jsonl"
+( exec -a tusage-holder sleep 30 ) & holder=$!
+mkdir "$TU_STATE/.update.lock"; echo "$holder" >"$TU_STATE/.update.lock/pid"
+touch -t 202001010000 "$TU_STATE/.update.lock"
+bash "$TU" --update >/dev/null 2>&1
+ok "a lock held by a running tusage is left alone, however old it is" "0.500000" "$(usd_of)"
+kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
+bash "$TU" --update >/dev/null 2>&1
+ok "...and taken over once that tusage is gone" "1.000000" "$(usd_of)"
+
+rec q3 $((T2 + 120)) >>"$TU_PROJECTS/-lk/$SID.jsonl"
+sleep 30 & other=$!
+mkdir "$TU_STATE/.update.lock"; echo "$other" >"$TU_STATE/.update.lock/pid"
+bash "$TU" --update >/dev/null 2>&1
+ok "a pid that now belongs to another program does not hold the lock" "1.500000" "$(usd_of)"
+kill "$other" 2>/dev/null; wait "$other" 2>/dev/null
+
+# A lock with no pid, as an older version took it, still goes by its age.
+rec q4 $((T2 + 180)) >>"$TU_PROJECTS/-lk/$SID.jsonl"
+mkdir "$TU_STATE/.update.lock"
+bash "$TU" --update >/dev/null 2>&1
+ok "a fresh lock with no pid is left alone" "1.500000" "$(usd_of)"
+touch -t 202001010000 "$TU_STATE/.update.lock"
+bash "$TU" --update >/dev/null 2>&1
+ok "...an old one is taken over" "2.000000" "$(usd_of)"
+
+# 11d. A TERM in the middle of the read, which a slow jq holds open. The kill is
+# sent once the side stamp exists: it is touched after the traps are set.
+REALJQ=$(command -v jq)
+printf '#!/bin/sh\nsleep 2\nexec "%s" "$@"\n' "$REALJQ" >"$ROOT/lk/bin/jq"; chmod +x "$ROOT/lk/bin/jq"
+rec q5 $((T2 + 240)) >>"$TU_PROJECTS/-lk/$SID.jsonl"
+PATH="$ROOT/lk/bin:$PATH" TMPDIR="$ROOT/lk/tmp" bash "$TU" --update >/dev/null 2>&1 & upd=$!
+i=0; while [ ! -e "$TU_STATE/.stamp.new" ] && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+kill -TERM "$upd" 2>/dev/null; wait "$upd"; rc=$?
+ok "a TERM ends the update with the signal's status" 143 "$rc"
+ok "...takes the lock with it" gone "$(held)"
+ok "...and its temp dir and side stamp" "0 0" \
+   "$(ls "$ROOT/lk/tmp" | grep -c .) $([ -e "$TU_STATE/.stamp.new" ] && echo 1 || echo 0)"
+ok "...and the index has none of the half-read update" "2.000000" "$(usd_of)"
+bash "$TU" --update >/dev/null 2>&1
+ok "the next update reads what the interrupted one did not" "2.500000" "$(usd_of)"
+
+# 11e. A record still being written is read up to its last newline and no further.
+rec q6 $((T2 + 300)) | tr -d '\n' >>"$TU_PROJECTS/-lk/$SID.jsonl"
+bash "$TU" --update >/dev/null 2>&1
+ok "a partial last line is not read" "2.500000" "$(usd_of)"
+printf '\n' >>"$TU_PROJECTS/-lk/$SID.jsonl"
+bash "$TU" --update >/dev/null 2>&1
+ok "...and is counted once it is complete" "3.000000" "$(usd_of)"
+
+# 11f. On a terminal, an update with enough to read says how far it got. The
+# threshold is lowered to one transcript; to a pipe it stays silent (8a).
+rec q7 $((T2 + 360)) >>"$TU_PROJECTS/-lk/$SID.jsonl"
+out=$(TU_PROGRESS_MIN=1 script -q /dev/null bash "$TU" --update 2>&1 </dev/null)
+contains "an update on a terminal says how far it got" "reading transcripts 1/1" "$out"
+ok "...and still counts what it read" "3.500000" "$(usd_of)"
+SID=$SID_LK
+
+export TU_STATE="$SAVE_STATE" TU_PROJECTS="$SAVE_PROJ"
+export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
