@@ -212,7 +212,7 @@ When at least one Claude profile is configured, every row SHALL carry a dim badg
 - **THEN** no badge column is drawn at any width
 
 ### Requirement: The list is laid out for the width of its pane
-The width of a list SHALL be taken from `$FZF_COLUMNS` of the running fzf, else `TA_COLS`, else the tmux pane width, else the terminal's, else 100, and never be less than 34. The available width is that minus 5 in the tree and minus 2 in a flat list. A row SHALL NOT be wider than the list it was built for. A surplus beyond 140 available columns SHALL widen the name and the location.
+The width of a list SHALL be taken from `$FZF_COLUMNS` of the running fzf, else `TA_COLS`, else the tmux pane width, else the terminal's, else 100, and never be less than 34. The available width is that minus 5 in the tree and minus 2 in a flat list. A row SHALL NOT be wider than the list it was built for.
 
 #### Scenario: No overflow
 - **WHEN** the list is built for 230 columns
@@ -222,23 +222,41 @@ The width of a list SHALL be taken from `$FZF_COLUMNS` of the running fzf, else 
 - **WHEN** the list runs in popup mode
 - **THEN** it is built for 45% of the window, since the preview takes the rest
 
-### Requirement: Columns drop in a fixed order as the pane narrows
-From 128 available columns every column is shown at full width. Below that, columns SHALL go in this order: model and account first (restored between 80 and 111 available columns while the detail keeps twelve columns), then the location with the project column of a flat list, then the state word, then the cost, then the context size. The name, the age and the glyph survive to the last, the name narrowing with the width. The detail text takes the width left and is cut with `…`.
+### Requirement: Columns are as wide as what is in them
+Every column SHALL be as wide as the widest thing it has to say on any row, and a column with nothing to say on any row SHALL take no room. Columns are let in one at a time in the order of what they answer: context size, cost, state word, the project of a flat row, location, model, account. The context needs only room for itself; every other column comes in only while the detail keeps ten columns, and a column that does not fit is skipped while a narrower one after it may still come in.
 
 #### Scenario: Wide list
-- **WHEN** the list is built for 140 columns
+- **WHEN** the list is built for 140 columns and every column has something to say
 - **THEN** state word, age, badge, name, context, cost, model, account and location are all shown
 
-#### Scenario: Sidebar width
-- **WHEN** the list is built for 45 columns
-- **THEN** the row shows the glyph, age, badge, name and context, but no cost, model, account, location or state word
+#### Scenario: Nothing to say
+- **WHEN** usage is off, so no session has a cost or a context size
+- **THEN** the list draws no context column and no cost column, and their width goes to the detail
 
-#### Scenario: Model fits at 87 columns
-- **WHEN** the list is built for 87 columns and the detail is short
-- **THEN** the model column is still present
+#### Scenario: A column that does not fit
+- **WHEN** the pane has room for the context column but not for the cost column with ten columns of detail left
+- **THEN** the context column is drawn, the cost column is not, and the detail keeps its width
+
+### Requirement: The figure columns keep their width
+The context and cost columns and the state word SHALL keep their full width whenever they are drawn, so that a figure growing a digit or an agent going idle never shifts the columns after them. A hidden column (`ctrl-w`) SHALL never be let in, its width going to the detail, and the order the columns are drawn in SHALL never change. The account badge SHALL be shown at every width unless it is hidden.
+
+#### Scenario: A figure grows a digit
+- **WHEN** a session's context grows from 99k to 100k tokens
+- **THEN** the columns after the context column stay where they were
+
+#### Scenario: A hidden column
+- **WHEN** the user hides the model column with `ctrl-w`
+- **THEN** the model column is not drawn, however wide the pane is, and its width goes to the detail
+
+### Requirement: The state word yields to the name
+The state word SHALL be let in only while the longest name can still grow to its full width, up to 64 columns, beside it, because the glyph already says the state in colour. On a narrow list with long names the name wins.
+
+#### Scenario: The name wins over the state word
+- **WHEN** the pane has room for a session's thirty-character name in full or for the state word beside a shortened one, but not both
+- **THEN** the state word is not drawn and the name is spelled out in full
 
 ### Requirement: The name column grows to the names that exist
-Once the rows are known, the name column SHALL grow to the longest name present, up to 64 columns and leaving at least ten columns for the detail, so that hiding other columns lets a long name be shown in full.
+The name SHALL keep what it needs before any other column is let in: 22 columns from 80 available, 18 from 50, 14 from 38, else 12, and no more than the longest name needs. Once the columns are in, it SHALL grow to the longest name present, up to 64 columns and leaving the detail as many columns as its widest line, up to ten, so that hiding other columns lets a long name be shown in full.
 
 #### Scenario: Names get the freed width
 - **WHEN** a 61-column list has every optional column hidden and a session is named with thirty characters
@@ -247,6 +265,10 @@ Once the rows are known, the name column SHALL grow to the longest name present,
 #### Scenario: Wide pane
 - **WHEN** a session is named with forty characters and the list is built for 230 columns
 - **THEN** the name is spelled out in full
+
+#### Scenario: Short names
+- **WHEN** every name in the list is eight characters long
+- **THEN** the name column is eight columns wide
 
 ### Requirement: The context column warns about long contexts
 The context column SHALL show the session's live context size as a token count (`150k`, `1.2M`), blank when unknown, in grey, in yellow from 200000 tokens and in bold red from 600000. The figure is supplied by the `usage-accounting` capability.
@@ -340,7 +362,7 @@ After the separator the preview SHALL show: for a live pane the last 60 lines of
 - **THEN** the preview says it is a child session with no pane and no log and shows the tail of its transcript
 
 ### Requirement: ctrl-v opens the preview in a modal window
-`ctrl-v` SHALL open the preview in a popup 80% wide and 85% high, headed by the agent's name. The body SHALL be paged with `less -R` and `q` closes it; where `less` is not on `$PATH` the text SHALL be printed and any key closes it. In a sidebar list there SHALL be no fzf preview window at all. Where tmux has no popups, or the list is itself a popup, `ctrl-v` toggles fzf's own preview instead (see `dashboard-popup`).
+`ctrl-v` SHALL open the preview in a popup 80% wide and 85% high, headed by the agent's name. The body SHALL be paged with `less -R` and `q` closes it; where `less` is not on `$PATH` the text SHALL be printed and any key closes it. In the dashboard's list there SHALL be no fzf preview window at all. Where tmux has no popups, or the list is itself a popup, `ctrl-v` toggles fzf's own preview instead (see `dashboard-popup`).
 
 #### Scenario: Modal text
 - **WHEN** the modal is opened for a session
@@ -430,14 +452,3 @@ A session started in a subdirectory of its repository SHALL show the subdirector
 #### Scenario: Subdirectory of a Cyrillic repository
 - **WHEN** a session runs in `~/projects/я/src`, below its own repository
 - **THEN** its detail text starts with `src`
-
-### Requirement: A session holding only the sidebar has a header alone
-When a session's only window holds nothing but the sidebar, its group SHALL be a header with no row under it. That header SHALL carry the window id of that window, the state `none`, no session id and the session's working directory, so that `ctrl-n`, `ctrl-p` and `ctrl-a` on it open a window in that session (the `window-rows` capability) and `ctrl-x` on it only shows `tagents: that is the dashboard itself`.
-
-#### Scenario: The header alone
-- **WHEN** the client shows session `empty`, whose working directory is `~/app` and whose only window holds nothing but the sidebar
-- **THEN** the list has a header `empty` and no row under it, and the header carries the window id of that window, the state `none`, no session id and the directory `~/app`
-
-#### Scenario: ctrl-x on the header alone
-- **WHEN** the user presses `ctrl-x` on the header of `empty`
-- **THEN** `tagents: that is the dashboard itself` is shown and no window is killed

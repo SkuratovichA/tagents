@@ -57,8 +57,8 @@ What a click does is the `click` option:
 
 | `click` | what it does |
 |---------|--------------|
-| `dock` (default) | the same as `enter` in the dashboard list: the sidebar moves into the chat's window |
-| `goto` | goes to the agent's own window |
+| `dock` (default) | the same as `enter` in the dashboard list: the viewport shows the chat's window and the terminal goes to the dashboard |
+| `goto` | takes the terminal to the agent's own session, window and pane |
 | `focus` | only raises the terminal. So does a click on a session with no pane |
 
 `dock` runs `tagents --act open <pane> live <sid> <cwd>`. The `tagents` it runs is the first one on the `PATH` of the shell that ran `install` (the one your dashboard runs; a symlink stays the symlink), else the checkout's own. `TA_NOTIFY_TAGENTS` overrides both. That matters because tagents re-points the global tmux focus hooks at whichever script ran, so a click running another one would move them away from the dashboard's.

@@ -1,4 +1,4 @@
-# tests/wait.sh — sourced by the tmux suites: the assertion helpers (ok, has, hasnt, t, near) with their pass/fail counters, and the polling helpers (wait_eq, wait_eq_long, settle).
+# tests/wait.sh — sourced by the tmux suites: the assertion helpers (ok, has, hasnt, t, near) with their pass/fail counters, the polling helpers (wait_eq, wait_eq_long, settle), and the readers of the tmux server a suite names tm: msgs (what a client status line showed, newest first) and cockpit_down.
 #
 # It sets no shell options and starts nothing. The suite prints its own summary from $pass and $fail. bash 3.2.
 
@@ -26,3 +26,13 @@ wait_eq_long() {  # <expected> <cmd...> — the same, up to ~8 s: for a list tha
   printf '%s' "$got"
 }
 settle() { sleep "${1:-0.6}"; }
+
+# Only what a client's status line showed: the message log also holds every command and every error. tmux lists the newest first, so `head -1` is the last notice.
+msgs() { tm show-messages 2>/dev/null | grep -E ' /dev/[^ ]+ message: ' | head -30; }
+# The world with no cockpit: the dashboard session gone, the viewport's tty and the hook that follows it unset. The client (default $CLIENT) goes to a session first, because a session killed under its client detaches it.
+cockpit_down() {  # [client-target-session]
+  [ -z "${1:-}" ] || tm switch-client -c "${CLIENT:-}" -t "=$1:" 2>/dev/null
+  tm set -gu @tagents_viewport_tty; tm set-hook -gu 'client-session-changed[44]'
+  tm kill-session -t '=tagents:' 2>/dev/null
+  return 0
+}

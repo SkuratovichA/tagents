@@ -372,7 +372,7 @@ refresher() {
       *) gen=0 ;;
     esac
     case $gen in ''|*[!0-9]*) gen=0 ;; esac
-    # In the cockpit (the viewport's tty is set) a viewport that was killed is started again, on each wake and each pass; the tty rides on the snapshot's call, so a layout without the cockpit pays nothing.
+    # In the cockpit (the viewport's tty is set) a viewport that was killed is started again, on each wake and each pass; the tty rides on the snapshot's call, so a popup's refresher, with no cockpit up, pays nothing.
     [ -z "$vtty" ] || cockpit_restore viewport
     ringed=""; [ "$gen" != "$seen" ] && ringed=1
     seen=$gen

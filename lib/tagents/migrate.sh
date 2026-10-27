@@ -1,6 +1,6 @@
 # lib/tagents/migrate.sh — the one pass that turns the seat model of the previous version into windows
 #
-# The previous version swapped a chat into a seat of the dashboard window and left a placeholder pane (@tagents_slot, @tagents_parked) in the chat's home window. Nothing swaps any more, so on the first start after the upgrade — and on every start while a placeholder or a docked chat remains — each docked chat is sent home with that old swap (kept here, for this pass only), a chat whose placeholder is gone is broken out into a window of its own, the placeholders are closed, the old options and focus hooks are removed, and tnotes is asked to bring parked editors back. The window the dashboard lived in stays as an ordinary window holding the sidebar. The state it leaves is one the previous version handles (every chat in its home window, no placeholder): that is the rollback path.
+# The previous version swapped a chat into a seat of the dashboard window and left a placeholder pane (@tagents_slot, @tagents_parked) in the chat's home window. Nothing swaps any more, so on the first start after the upgrade — and on every start while a placeholder or a docked chat remains — each docked chat is sent home with that old swap (kept here, for this pass only), a chat whose placeholder is gone is broken out into a window of its own, the placeholders are closed, the old options and focus hooks are removed, and tnotes is asked to bring parked editors back. The window the dashboard lived in stays as an ordinary window. The state it leaves is one the previous version handles (every chat in its home window, no placeholder): that is the rollback path.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -60,6 +60,11 @@ migrate_unhook() {
     done
   done
   return 0
+}
+
+# Placeholders and docked chats of the previous version: while any is left, migrate_seats has work to do.
+legacy_seats_present() {
+  [ -n "$(tmux list-panes -a -F '#{@tagents_slot}#{@tagents_docked}' 2>/dev/null | tr -d '\n ')" ]
 }
 
 # Idempotent: with the server marked and nothing of the seat model left it returns after one option read and one pane listing. The lock keeps two starters (a list, the refresher and a status bar run can start together) from sending the same chat home twice; the one that waits finds nothing left to do.

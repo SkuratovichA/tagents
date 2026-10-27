@@ -18,8 +18,8 @@ features:
     details: A session waiting on a permission prompt or an answer is marked BLOCKED and counted in its project's header, so nothing waits unnoticed behind another window.
     link: /guide/states
     linkText: The states
-  - title: A sidebar that follows you
-    details: The dashboard lives in one pane that moves into the window of the chat you select and follows you from window to window. Type into the chat without leaving.
+  - title: A dashboard with the chat beside it
+    details: The dashboard is a session of its own, with the list on the left and the chat you select on the right. Type into the chat without leaving.
     link: /guide/dashboard
     linkText: The dashboard
   - title: A banner when you are needed
@@ -42,7 +42,7 @@ features:
 
 <div class="hero-demo">
 
-![The tagents sidebar: chats grouped by project, one turns BLOCKED, enter opens it beside the list](./images/hero.gif)
+![The tagents dashboard: chats grouped by project, one turns BLOCKED, enter opens it beside the list](./images/hero.gif)
 
 </div>
 

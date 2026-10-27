@@ -51,20 +51,13 @@ claude:
   # When nothing matches. `ask` (the default) opens a picker; a profile name
   # settles it silently.
   default: ask
-
-dashboard:
-  # How the sidebar is laid out: `follow` (the default) puts it beside the
-  # window you are in; `cockpit` is the opt-in alternative. Anything else is
-  # read as `follow`, and `tagents --check` says so.
-  layout: follow
 ```
 
-The file has more sections than the two above. Each one is covered on the page that is about it, and [`config.example.yaml`](https://github.com/SkuratovichA/tagents/blob/main/config.example.yaml) shows them all with comments:
+The file has more sections than the one above. Each one is covered on the page that is about it, and [`config.example.yaml`](https://github.com/SkuratovichA/tagents/blob/main/config.example.yaml) shows them all with comments:
 
 | section | what it holds | page |
 |---------|---------------|------|
 | `claude` | profiles, rules and the default account | this page |
-| `dashboard` | the sidebar's layout | [The cockpit layout](./dashboard#the-cockpit-layout) |
 | `usage` | which profile's spend is tracked, the monthly limit | [Cost](./cost) |
 | `notes` | what `:q` does with the draft | [Notes workspace](./notes) |
 | `resurrect` | restoring chats after a reboot | [Resurrect](./resurrect) |

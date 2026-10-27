@@ -317,7 +317,11 @@ usage_body() {
 }
 
 usage_window() {  # $ — the modal, or the same body inline where a popup cannot open
-  usage_watch >/dev/null || return 0
+  # Off is said, not swallowed: a key that does nothing reads as a broken key.
+  if ! usage_watch >/dev/null; then
+    notice "tagents: usage is off — set usage.watch to the profile to track"
+    return 0
+  fi
   prompt_at 80% 85% --ask-usage && return 0
   ask_usage
   return 0

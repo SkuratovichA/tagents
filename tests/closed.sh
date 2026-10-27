@@ -44,14 +44,7 @@ trap 'tmux -L "$S" kill-server >/dev/null 2>&1
       [ -n "$SOCK" ] && rm -f "$SOCK"
       rm -rf "$ROOT"' EXIT INT TERM
 
-pass=0; fail=0
-ok()   { if [ "$2" = "$3" ]; then pass=$((pass+1)); printf '  ok   %s\n' "$1"
-         else fail=$((fail+1)); printf '  FAIL %s\n       expected: %s\n       actual:   %s\n' "$1" "$2" "$3"; fi; }
-has()  { case "$3" in *"$2"*) pass=$((pass+1)); printf '  ok   %s\n' "$1" ;;
-         *) fail=$((fail+1)); printf '  FAIL %s\n       expected to contain: %s\n       actual: %s\n' "$1" "$2" "$3" ;; esac; }
-hasnt(){ case "$3" in *"$2"*) fail=$((fail+1)); printf '  FAIL %s\n       must not contain: %s\n       actual: %s\n' "$1" "$2" "$3" ;;
-         *) pass=$((pass+1)); printf '  ok   %s\n' "$1" ;; esac; }
-t()    { printf '\n%s\n' "$1"; }
+. "$HERE/wait.sh"
 
 TAB=$(printf '\t')
 
@@ -154,8 +147,6 @@ sleep 0.5
 run() { env TMUX="$SOCK,0,0" bash "$TA" "$@"; }
 
 clear_out() { rm -f "$OUT"/*.out 2>/dev/null; return 0; }
-# The same one-liner as msgs() in tests/window-rows.sh (the suites share no helper file): only what a client's status line showed.
-msgs() { tm show-messages 2>/dev/null | grep -E ' /dev/[^ ]+ message: ' | tail -30; }
 
 waitout() {  # -> path of the first stub file to appear, or 1 after ~6s
   local i f

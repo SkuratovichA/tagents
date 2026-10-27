@@ -142,8 +142,8 @@ The `$` key, and `tagents --ask-usage`, SHALL show the month a day per row for t
 - **AND** shows nothing for an account that is not watched
 
 #### Scenario: Usage off
-- **WHEN** `usage.watch` is unset
-- **THEN** the `$` window shows nothing
+- **WHEN** `usage.watch` is unset and the user presses `$`
+- **THEN** no window opens and `tagents: usage is off — set usage.watch to the profile to track` is shown
 
 ### Requirement: The fetched meter sets the limit and wears a tilde
 While the fetched meter reading for the watched account has status `ok` and is less than two days old, the limit on screen SHALL be the limit the meter reports, the month SHALL wear a `~` and the footer SHALL carry `~meter HH:MM` naming the time of the reading. A stale reading, one past two days, and an `error` row SHALL be ignored, and then the configured `usage.monthly_limit_usd` SHALL show with no `~`.

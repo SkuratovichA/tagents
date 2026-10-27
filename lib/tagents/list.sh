@@ -29,9 +29,9 @@ list() {
 
   # HOW WIDE IS THE ROW. fzf exports FZF_COLUMNS to the children of its execute
   # and reload bindings, which is exactly how --list is re-run, so that is the
-  # honest number whether the dashboard is a 45% sidebar or a 92% popup. Falling
+  # honest number whether the dashboard is a 45% pane or a 92% popup. Falling
   # back to the terminal's width would measure the terminal, not the pane, and
-  # every row would overflow the sidebar by more than half its width. The last
+  # every row would overflow the pane by more than half its width. The last
   # resort is tty_cols, never `tput cols`: with no tty on any of its three
   # streams (a hook, a `$(...)`) tput answers terminfo's 80.
   # FZF_COLUMNS first: it is set per reload, so it is the only value that keeps
@@ -128,7 +128,7 @@ list() {
       if (v >= 1e3) return sprintf("%.0fk", v/1e3)
       return sprintf("%d", v)
     }
-    # Money, narrow enough for a sidebar column. A session that has spent
+    # Money, narrow enough for a column of the list. A session that has spent
     # something must never render as blank, hence the <$.01 floor.
     function money(d) {
       if (d <= 0)     return ""
@@ -187,7 +187,7 @@ list() {
     }
     # THE SAME ANSWER IN ONE CHARACTER, and that is the entire point of it: the
     # acct column is 8 wide and only exists on the two widest lists, while "which
-    # login is this" is a question worth answering on every row of a 45% sidebar.
+    # login is this" is a question worth answering on every row of a 45% list.
     # Resolved the way acctname resolves, spelled differently: the badge of the
     # profile that claims the dir, "·" for the
     # default account when no single profile claims it, "?" for a config dir no
@@ -210,13 +210,10 @@ list() {
       if (cv == "") return (bgc == 1) ? bgn : "·"
       return "?"
     }
-    # RESPONSIVE COLUMNS. A row that does not fit is not merely ugly: fzf hard
-    # -truncates it, so in a narrow sidebar the detail, then the location, then
-    # the cost silently vanished with nothing to say they had. Columns are now
-    # dropped in a deliberate order instead — the ones that answer "which agent
-    # and how urgent" survive to the very last, and the state word goes early
-    # because its icon already carries the same information in colour.
-    function fitcols(   avail, n) {
+    # COLUMNS AS WIDE AS WHAT IS IN THEM. A row that does not fit is not merely ugly: fzf hard-truncates it. The columns used to come from a table of widths per breakpoint, each one sized for the longest thing it might hold and dropped whole below its breakpoint, so a 95-column list lost the location to a reservation of 14 for `git:1.1`, cut `sonnet5.5` to eight, and kept six columns of context figure with no figure in them on a machine that tracks no usage. Now the rows are built first and measured, and every column is as wide as the widest thing it has to say. A column with nothing to say on any row takes no room at all.
+    #
+    # They are let in one at a time, in the order of what they answer: the context size first, which decides between going on and /compact, then the money, the state word (its glyph already says it in colour, so it also gives way to a long name), the project of a flat row, the location, the model and the account, which is checked once and then trusted. The context needs only room for itself; every other column comes in only while the detail keeps as many columns as its widest line, up to ten, so the last tool line is never squeezed out by a column further down the list. A column that does not fit is skipped, and a narrower one after it may still come in. The two figure columns and the state word keep their full width whenever they are drawn, so a figure growing a digit or an agent going idle never shifts the columns after them.
+    function fitcols(   avail, want) {
       # The tree prefix, or in flat mode the two columns the marker column is
       # drawn in, are both added after this and both have to be paid for here.
       # The tree gets its mark for nothing — it is drawn where the tee was
@@ -227,81 +224,37 @@ list() {
       # version before the marks, and the alternative — a mark only on the rows
       # that have one — would misalign the whole list.
       avail = cols - (grp ? 5 : 2)
-      # mdlw goes early in the drop order: which model a session is on matters
-      # less than what it is doing and what it has cost, and the cost column
-      # already implies the tier.
-      # acctw goes earlier still. Which account an agent is on is a thing you
-      # check once and then trust, unlike the state and the money; and on all but
-      # the widest lists it is answered by the project column beside it anyway.
-      if      (avail >= 128) { lw=7; namew=24; ctxw=5; burnw=6; mdlw=9; acctw=8; locw=16 }
-      else if (avail >= 112) { lw=7; namew=22; ctxw=5; burnw=6; mdlw=8; acctw=8; locw=12 }
-      else if (avail >=  98) { lw=7; namew=24; ctxw=5; burnw=6; mdlw=0; acctw=0; locw=14 }
-      else if (avail >=  80) { lw=7; namew=22; ctxw=5; burnw=6; mdlw=0; acctw=0; locw=0  }
-      else if (avail >=  66) { lw=0; namew=20; ctxw=5; burnw=6; mdlw=0; acctw=0; locw=0  }
-      else if (avail >=  50) { lw=0; namew=18; ctxw=5; burnw=0; mdlw=0; acctw=0; locw=0  }
-      else if (avail >=  38) { lw=0; namew=14; ctxw=5; burnw=0; mdlw=0; acctw=0; locw=0  }
-      else                   { lw=0; namew=12; ctxw=0; burnw=0; mdlw=0; acctw=0; locw=0  }
-      # ROOM TO SPARE IS ROOM FOR THE NAME. The table stops at 128 because that
-      # is where every column fits at its full width — but a 230-column pane was
-      # then laid out exactly like a 133-column one, with the whole surplus going
-      # to the detail and names still cut at 24. A third of the surplus goes to
-      # the name and a ninth of it to the location, capped so a very wide pane
-      # does not turn the list into a field of padding. It starts above 140
-      # rather than 128 so every width the tests pin renders byte for byte what
-      # it always did.
-      if (avail > 140) {
-        n = int((avail - 140) / 3)
-        if (n > 24) n = 24
-        namew += n
-        locw += int(n / 3)
-      }
-      # The badge is at EVERY breakpoint — two columns for the answer the 8-wide
-      # acct column gives only on the widest lists, which is what it is for. It
+      # What the name keeps before any other column is let in, and no more than the longest name needs.
+      if      (avail >= 80) namew = 22
+      else if (avail >= 50) namew = 18
+      else if (avail >= 38) namew = 14
+      else                  namew = 12
+      if (maxnm > 0 && maxnm < namew) namew = maxnm
+      # The badge is at EVERY width — two columns for the answer the account
+      # column gives only when there is room for it, which is what it is for. It
       # is zero when nothing is configured, so a user with no config file gets
-      # byte for byte the rows this printed before it existed.
-      bdgw = badgew
+      # no column at all rather than an empty one.
+      bdgw = ("badge" in hid) ? 0 : badgew
+      lw = 0; ctxw = 0; burnw = 0; projw = 0; locw = 0; mdlw = 0; acctw = 0
+      room = avail - fixedw() - 1
+      dmin = (mxdet < 10) ? mxdet : 10
+      # A hidden column is never let in, so its width goes to the detail exactly as a narrow pane would give it there. Nothing moves: the order the columns are drawn in never changes.
+      if (mxctx  && !("ctx"   in hid)) ctxw  = admit(5, 0)
+      if (mxcost && !("cost"  in hid)) burnw = admit(7, dmin)
+      # The state word says again what the colour of the glyph says, so it gives way to a name that would otherwise be cut: it is let in only while the longest name can still grow to its full width beside it.
+      want = capw(maxnm, 64) - namew
+      lw = admit(7, dmin + (want > 0 ? want : 0))
       # THE PROJECT COLUMN OF A FLAT ROW IS NOT THE LOCATION COLUMN. Flat mode
-      # has no group headers, so this 14-wide column is the only thing on the
-      # row that says which project the agent belongs to — and it was drawn
-      # under locw, which meant hiding `loc` ("which pane the agent is in")
-      # silently took the project away as well. Its own width, taken from the
-      # breakpoint before anything is hidden, so it still goes when the pane is
-      # genuinely too narrow for it and stays when a column is turned off.
-      projw = (!grp && locw) ? 14 : 0
-      # A hidden column is zeroed HERE, before the arithmetic below, so its width
-      # goes to the detail column exactly as a narrow pane would give it there.
-      # Nothing moves: the order the columns are drawn in never changes.
-      if ("badge" in hid) bdgw = 0
-      if ("ctx"   in hid) ctxw = 0
-      if ("cost"  in hid) burnw = 0
-      if ("model" in hid) mdlw = 0
-      if ("acct"  in hid) acctw = 0
-      if ("loc"   in hid) locw = 0
-      # A COLUMN IS ONLY WORTH DROPPING IF THE DETAIL NEEDS THE ROOM. Between 80
-      # and 112 columns the table drops the model and the account outright and
-      # hands their width to a detail line that is usually far shorter than the
-      # space it is handed. Put them back while the detail still has twelve
-      # columns left to say something in, model first — the reverse of the order
-      # they were dropped in, so the one that went last comes back first. A
-      # column the user has hidden stays hidden: this restores widths, not
-      # decisions.
-      if (avail >= 80 && avail < 112) {
-        if (!mdlw  && !("model" in hid) && avail - (fixedw() + 9) - 1 >= 12) mdlw  = 8
-        if (!acctw && !("acct"  in hid) && avail - (fixedw() + 9) - 1 >= 12) acctw = 8
-      }
-      # THE NAME COLUMN FITS THE NAMES. The tiers above guess a width before a
-      # single row is known, and every column hidden with ctrl-w hands its
-      # width to the detail on the right — a list with everything hidden was
-      # cutting names at 22 characters beside sixty columns of nothing. Once the
-      # rows are in (END measures them and calls this again), the column grows
-      # to the longest name present. The detail keeps ten columns and no more:
-      # it is the last tool line, worth having, but somebody who hid the other
-      # columns to see names on a 61-column sidebar wants the names — on that
-      # pane a 24-column floor was exactly all the slack there was. The cap
-      # keeps a pathological title from eating the row. maxnm is 0 on the first
-      # call, so BEGIN is unchanged.
+      # has no group headers, so this column is the only thing on the row that
+      # says which project the agent belongs to, and hiding `loc` ("which pane
+      # the agent is in") must not take it away as well.
+      if (!grp)                        projw = admit(capw(mxproj, 14), dmin)
+      if (mxloc  && !("loc"   in hid)) locw  = admit(capw(projw ? mxlocs : mxloc, 16), dmin)
+      if (mxmdl  && !("model" in hid)) mdlw  = admit(capw(mxmdl, 10), dmin)
+      if (mxacct && !("acct"  in hid)) acctw = admit(capw(mxacct, 10), dmin)
+      # THE NAME COLUMN FITS THE NAMES. Once the columns are in, the name grows to the longest name present. The detail keeps as many columns as its widest line, up to ten, and no more: it is the last tool line, worth having, but somebody who hid the other columns to see names on a 61-column list wants the names, and on that pane a 24-column floor was exactly all the slack there was. The cap keeps a pathological title from eating the row.
       if (maxnm > namew) {
-        slack = avail - fixedw() - 1 - 10
+        slack = avail - fixedw() - 1 - dmin
         grow = maxnm - namew
         if (grow > slack) grow = slack
         if (namew + grow > 64) grow = 64 - namew
@@ -310,6 +263,14 @@ list() {
       fixed = fixedw()
       detw = avail - fixed - 1
       if (detw < 6) detw = 0
+    }
+    function capw(w, cap) { return (w > cap) ? cap : w }
+    # Lets a column of width w in when the row still has room for it and leaves
+    # the detail at least floor columns; the width it got, or 0.
+    function admit(w, floor) {
+      if (w <= 0 || room - (w + 1) < floor) return 0
+      room -= w + 1
+      return w
     }
     # What every column but the detail costs, at the widths fitcols has settled
     # on so far — asked while it is still deciding, and once more when it has.
@@ -357,7 +318,7 @@ list() {
     }
     # ...and the row a GRANDCHILD hangs under: the nearest ancestor that is not
     # itself a child of somebody. Two deep and no deeper — a list that
-    # indents by generation is unreadable in a 45-column sidebar — so a whole
+    # indents by generation is unreadable in a 45-column list — so a whole
     # family renders flat under the one agent that owns a pane. Bounded, and it
     # gives up rather than looping if the records ever describe a cycle.
     function anc(p,   q, i) {
@@ -383,7 +344,7 @@ list() {
         # Two characters is the whole promise of this column, and a badge that
         # ignores it is not merely ugly: badgew is applied at EVERY breakpoint,
         # so `badge: personal!` widened every row by eight columns and took the
-        # detail column with it on a 45-column sidebar. Clipped rather than
+        # detail column with it on a 45-column list. Clipped rather than
         # refused — a config nobody reads an error from still names its account.
         # uclip, not substr: a badge may be one multi-byte glyph, and cutting it
         # by bytes would leave half a character in the column.
@@ -395,8 +356,6 @@ list() {
       }
       nhc = split(hidecols, hca, RSC)
       for (hci = 1; hci <= nhc; hci++) if (hca[hci] != "") hid[hca[hci]] = 1
-      # After the two tables above, not before: it reads both of them.
-      fitcols()
       R = "\033[0m"; DIM = "\033[90m"; BOLD = "\033[1m"
       # BLOCKED is reserved for an agent that has actually asked you something
       # and cannot go on until you answer. A turn that simply ended is IDLE —
@@ -535,9 +494,9 @@ list() {
         a = anc(p)
         if (a != "") { under[p] = a; if ((p in hless) && hlive[p]) livekids[a]++ }
       }
-      fitcols()
 
       n = 0
+      mxctx = 0; mxcost = 0; mxmdl = 0; mxacct = 0; mxloc = 0; mxlocs = 0; mxproj = 0; mxdet = 0
       for (p in seen) {
         isalive = (p in alive); islive = isalive && (p in live)
         if (p in hless) { isalive = hlive[p]; islive = hlive[p] }
@@ -604,6 +563,11 @@ list() {
           subp = substr(dir, length(rootkey) + 2) "  "
         else if (nest && dir != "") subp = base(dir) "  "
         else subp = ""
+        # IN THE TREE THE SESSION IS THE HEADER. A pane is named
+        # session:window.pane, and the group header above the row names the
+        # session already, so the row keeps the :window.pane half — `git:1.1`
+        # under `▾ git` said git twice in a column that had no room to say it once.
+        if (grp && index(where, gname(grpkey) ":") == 1) where = substr(where, length(gname(grpkey)) + 1)
 
         n++; rp[n] = p; rs[n] = s; rage[n] = age; rg[n] = grpkey; rr[n] = rootkey
         rdead[n] = (s == "dead") ? 1 : 0
@@ -635,21 +599,6 @@ list() {
         udsub = (sq in uusdsub) ? uusdsub[sq] : 0
         unp = (sq in uunp) ? uunp[sq] : 0
         gburn[grpkey] += (sq in uusd5h) ? uusd5h[sq] : 0
-        # Built field by field rather than as one format string: which fields
-        # exist at all depends on the width, and a %-Ns of a field that was
-        # dropped still costs its N spaces.
-        row = sprintf("%s%s%s%s", col[s], icon[s], (lw ? sprintf(" %-*s", lw, lbl[s]) : ""), R)
-        row = row sprintf(" %6s  ", agetxt)
-        # Immediately before the name, where the eye is already going. Padded
-        # with ufit rather than %-*s: "·" is three bytes and %-*s pads by them.
-        if (bdgw)
-          row = row sprintf("%s%s%s ", DIM,
-                            ufit(badgeof((p in cfgd) ? cfgd[p] : "",
-                                         (p in hascfg) ? hascfg[p] : 0), bdgw), R)
-        row = row ufit(nm, namew)
-        # Flat mode only: in the tree the group header above the row says this.
-        if (projw) row = row sprintf(" %s%-*.*s%s", DIM, projw, projw, gname(grpkey), R)
-        if (ctxw)  row = row sprintf(" %s%*s%s", ctxcol(cx), ctxw, tok(cx), R)
         # What this session has cost, priced per request at the model that ran
         # it. A trailing ? means some of it ran on a model with no published
         # rate, so the figure is a floor rather than the whole bill.
@@ -665,28 +614,27 @@ list() {
         udtxt = money(ud)
         if (udtxt != "")
           udtxt = (exact ? "" : "~") udtxt (!exact && unp > 0 ? "?" : "")
-        if (burnw) row = row sprintf(" %s%*s%s", DIM, burnw, udtxt, R)
-        if (mdlw)  row = row sprintf(" %s%-*.*s%s", DIM, mdlw, mdlw, curmodel(sq), R)
-        if (acctw) row = row sprintf(" %s%-*.*s%s", DIM, acctw, acctw,
-                                     acctname((p in cfgd) ? cfgd[p] : "",
-                                              (p in hascfg) ? hascfg[p] : 0), R)
-        if (locw)  row = row sprintf(" %s%-*s%s", DIM, locw, tailfit(where, locw), R)
-        # The subagent share of that money — the answer to "why is this session
-        # expensive when I have barely typed into it".
-        if (udsub > 0 && burnw) pre = pre sprintf("%s⑂%s%s ", DIM, money(udsub), R)
-        # THE DEEPER TEE IS PAID FOR OUT OF THE DETAIL OF THE CHILD. fitcols has
-        # one tree budget for the whole list, and widening it for a second level
-        # would move every column of every row on screen — including the paned
-        # rows the control run in tests/ui.sh compares byte for byte. So the
-        # three columns the second level costs come off this row and no other.
-        dw = detw - (nest ? 3 : 0)
-        if (dw < 0) dw = 0
-        if (dw) {
-          dtl = subp d
-          if (uclen(dtl) > dw) dtl = uclip(dtl, dw - 1) "…"
-          row = row " " pre DIM dtl R
-        } else if (pre != "") row = row " " pre
-        rbody[n] = row
+        # THE CELLS ARE KEPT, NOT DRAWN. How wide a column is depends on what
+        # every row puts in it, so each row is measured here and drawn after the
+        # loop, once fitcols has seen them all.
+        cagt[n] = agetxt; cnm[n] = nm; ccx[n] = cx; cud[n] = udtxt
+        cbdg[n] = badgeof((p in cfgd) ? cfgd[p] : "", (p in hascfg) ? hascfg[p] : 0)
+        cmdl[n] = curmodel(sq)
+        cacct[n] = acctname((p in cfgd) ? cfgd[p] : "", (p in hascfg) ? hascfg[p] : 0)
+        cwhere[n] = where; cpre[n] = pre; cusub[n] = udsub; cdtl[n] = subp d
+        if (cx > 0) mxctx = 1
+        if (udtxt != "") mxcost = 1
+        if (uclen(cmdl[n]) > mxmdl) mxmdl = uclen(cmdl[n])
+        if (uclen(cacct[n]) > mxacct) mxacct = uclen(cacct[n])
+        if (uclen(where) > mxloc) mxloc = uclen(where)
+        # A flat row has no header to name the session, but its project column
+        # does, when there is room for it: then the location loses the session
+        # the same way, and is measured both ways for fitcols to pick from.
+        if (!grp && index(where, gname(grpkey) ":") == 1) cwhere[n] = substr(where, length(gname(grpkey)) + 1)
+        if (uclen(cwhere[n]) > mxlocs) mxlocs = uclen(cwhere[n])
+        cwfull[n] = where
+        if (uclen(gname(grpkey)) > mxproj) mxproj = uclen(gname(grpkey))
+        if (uclen(pre subp d) > mxdet) mxdet = uclen(pre subp d)
 
         # The most urgent state in the project, which is what decides whether
         # its header is bold and whether the whole project sinks to the closed
@@ -715,10 +663,51 @@ list() {
         gcount[grpkey SUBSEP s]++
       }
 
-      # A WINDOW WITH NO CHAT ROW ON A PANE BESIDES THE SIDEBAR IS A DIMMED ROW, keyed on its window id: a pane with a live chat or a
-      # closed row is the row of its window already, and the window is not listed twice. A window that holds only the sidebar gets none of its
-      # own: it is remembered per session (sbonly), and a session with nothing else listed gets a header with no row under it, whose stand-in is
-      # that window. Not in flat mode: a flat list has no groups to hold them.
+      fitcols()
+      for (i = 1; i <= n; i++) {
+        s = rs[i]
+        # Built field by field rather than as one format string: which fields
+        # exist at all depends on the width, and a %-Ns of a field that was
+        # dropped still costs its N spaces. The text columns are padded with
+        # ufit rather than %-*s, which pads by bytes: "·", "—" and a Cyrillic
+        # session name are several bytes to the character.
+        row = sprintf("%s%s%s%s", col[s], icon[s], (lw ? sprintf(" %-*s", lw, lbl[s]) : ""), R)
+        row = row sprintf(" %6s  ", cagt[i])
+        # Immediately before the name, where the eye is already going.
+        if (bdgw)  row = row DIM ufit(cbdg[i], bdgw) R " "
+        row = row ufit(cnm[i], namew)
+        # Flat mode only: in the tree the group header above the row says this.
+        if (projw) row = row " " DIM ufit(gname(rg[i]), projw) R
+        if (ctxw)  row = row sprintf(" %s%*s%s", ctxcol(ccx[i]), ctxw, tok(ccx[i]), R)
+        if (burnw) row = row sprintf(" %s%*s%s", DIM, burnw, cud[i], R)
+        if (mdlw)  row = row " " DIM ufit(cmdl[i], mdlw) R
+        if (acctw) row = row " " DIM ufit(cacct[i], acctw) R
+        # The tail of a location is the part that tells two panes apart.
+        lt = projw ? cwhere[i] : cwfull[i]
+        if (locw)  row = row " " DIM ufit((uclen(lt) > locw) ? tailfit(lt, locw) : lt, locw) R
+        # The subagent share of that money — the answer to "why is this session
+        # expensive when I have barely typed into it".
+        pre = cpre[i]; prew = uclen(pre)
+        if (cusub[i] > 0 && burnw) {
+          pre = pre sprintf("%s⑂%s%s ", DIM, money(cusub[i]), R)
+          prew += uclen(money(cusub[i])) + 2
+        }
+        # THE DEEPER TEE IS PAID FOR OUT OF THE DETAIL OF THE CHILD. fitcols has
+        # one tree budget for the whole list, and widening it for a second level
+        # would move every column of every row on screen. So the three columns
+        # the second level costs come off this row and no other, and so do the
+        # columns the subagent prefix takes in front of the detail.
+        dw = detw - (rnest[i] ? 3 : 0)
+        if (dw < 0) dw = 0
+        if (dw) {
+          dtl = cdtl[i]
+          if (uclen(dtl) > dw - prew) dtl = (dw - prew > 1) ? uclip(dtl, dw - prew - 1) "…" : ""
+          row = row " " pre DIM dtl R
+        } else if (pre != "") row = row " " pre
+        rbody[i] = row
+      }
+
+      # A WINDOW WITH NO CHAT ROW IS A DIMMED ROW, keyed on its window id: a pane with a live chat or a closed row is the row of its window already, and the window is not listed twice. A window whose only pane is a list gets no row. Not in flat mode: a flat list has no groups to hold them.
       nd = 0
       if (grp) {
         for (q in alive) if ((q in kept) && (q in pwin) && psb[q] != 1) wchat[pwin[q]] = 1
@@ -727,7 +716,7 @@ list() {
           if (dmw in wchat) continue
           dmf = ""; dmx = 1000000
           for (q in pwin) if (pwin[q] == dmw && psb[q] != 1 && ppi[q] < dmx) { dmx = ppi[q]; dmf = q }
-          if (dmf == "") { sbonly[dms] = dmw; continue }
+          if (dmf == "") continue
           dmg = "s:" dms
           if (!(dmg in gtotal)) gmin[dmg] = 4.5; else if (4.5 < gmin[dmg]) gmin[dmg] = 4.5   # counts as not closed (prio dead is 5)
           gtotal[dmg]++
@@ -735,12 +724,6 @@ list() {
           nd++; dg[nd] = dmg; dk[nd] = dmw; dix[nd] = wix[dmw]
           dbody[nd] = DIM uclip(wnm[dmw], cols - 10) R
           ddir[nd] = (dmf in path) ? path[dmf] : ""
-        }
-        for (sx in sbonly) {
-          dmg = "s:" sx
-          if (dmg in gtotal) continue          # the session has rows after all
-          gmin[dmg] = 4.5; gtotal[dmg] += 0    # counts as not closed; a group with no rows
-          standin(dmg, 0, 1, wix[sbonly[sx]], sbonly[sx], "none", "", spath[sx])
         }
       }
       if (grp) {
@@ -837,7 +820,7 @@ list() {
       END {
         for (i = 1; i <= NR; i++) {
           # No row is marked as the one on screen: the window on screen is the
-          # one the sidebar is in, and the cursor is where the user left it.
+          # one the list is in, and the cursor is where the user left it.
           if (kind[i] == 0)       mk = DIM "─" R
           else                    mk = grp ? DIM "─" R : " "
           if (depth[i] > 0) mk = DIM "─" R

@@ -67,7 +67,7 @@ The notes folder for a chat SHALL be `.claude/notes` under the top level of the 
 
 #### Scenario: Seats are unaffected
 - **WHEN** editors are opened and closed
-- **THEN** panes that are not chats or editors stay in their windows, and the sidebar and the user's own panes are not moved by `tnotes`
+- **THEN** panes that are not chats or editors stay in their windows, and the user's own panes are not moved by `tnotes`
 
 #### Scenario: Another row selected
 - **WHEN** the user selects another row of the dashboard and then selects the chat's row again

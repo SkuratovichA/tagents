@@ -142,7 +142,7 @@ resume_with() {  # <pane> <sid> <dir> <profile> [session] [after]
   "$after" "$newpane"
 }
 
-# WHICH TMUX SESSION OWNS A PROJECT, for a chat started with no group to put it in (`tagents --new` from a shell): the session where most of the live panes sitting in that directory are. The sidebar's window is an ordinary window now and votes like any other.
+# WHICH TMUX SESSION OWNS A PROJECT, for a chat started with no group to put it in (`tagents --new` from a shell): the session where most of the live panes sitting in that directory are. The dashboard's own session never owns one: the caller skips it.
 session_for_dir() {  # <dir> -> session name, empty when the project has no windows
   local dir=$1
   [ -n "$dir" ] || return 1
@@ -250,7 +250,7 @@ start_agent() {  # <root> <session> <profile>
   [ -n "$newpane" ] || {
     notice "tagents: could not open a window in $sess"; return 1; }
   idx=$(tmux display -p -t "$newpane" '#{window_index}' 2>/dev/null)
-  # OPENED LIKE ANY OTHER AGENT: the client goes to it, the sidebar follows, the cursor is in it. Asking for an agent from the sidebar and being left looking at the previous one was never what the key meant. With no sidebar the client is simply taken to the new window.
+  # OPENED LIKE ANY OTHER AGENT: the viewport shows it and the cursor is on its row. Asking for an agent from the list and being left looking at the previous one was never what the key meant. With no dashboard up the client is simply taken to the new window.
   open_agent "$newpane"
   resurrect_soon
   notice \

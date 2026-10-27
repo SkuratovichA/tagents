@@ -22,7 +22,7 @@ A `claude -p` started by a daemon, a launchd job or a `nohup` has no tmux pane a
 
 It shows the ordinary states. Liveness is the pid of its claude process, recorded by the hook, rather than a pane, and the row dims to `✗ closed` when that process is gone, without offering a resume it has nowhere to put.
 
-What you cannot do with one is anything that needs a pane: `enter`, `ctrl-s`, `ctrl-e` and `ctrl-r` refuse with a one-line notice. `ctrl-v` is the exception, and the reason to look at such a row at all: it follows `$TA_LOG` with a live `tail -f`, and the sidebar preview shows the tail of the same file. So export the two variables before starting one:
+What you cannot do with one is anything that needs a pane: `enter`, `ctrl-s`, `ctrl-e` and `ctrl-r` refuse with a one-line notice. `ctrl-v` is the exception, and the reason to look at such a row at all: it follows `$TA_LOG` with a live `tail -f`, and the list's preview shows the tail of the same file. So export the two variables before starting one:
 
 ```sh
 TA_LABEL=ticket-agent TA_LOG=/tmp/ticket-agent.log \
@@ -52,7 +52,7 @@ How a child behaves:
 
 - **Counting.** The `⑂` count on the parent counts it exactly as it counts a subagent, and a blocked child shows up in the group badges like any other row.
 - **Naming.** It is named by `$TA_LABEL` where it has one of its own. A value it merely inherited names an ancestor rather than itself, so the hook drops it, and drops an inherited `$TA_LOG` with it, however many generations up the family the two came from. Otherwise it is named by the title the session gave itself, read out of its transcript.
-- **Preview.** A child rarely has a `$TA_LOG` of its own, so `ctrl-v` and the sidebar preview show the last turns of its transcript instead of a log tail, and the pane verbs refuse with a notice of their own.
+- **Preview.** A child rarely has a `$TA_LOG` of its own, so `ctrl-v` and the list's preview show the last turns of its transcript instead of a log tail, and the pane verbs refuse with a notice of their own.
 - **Resume.** It is never offered in the [closed-session](./closed-sessions) picker: resuming somebody else's conversation would start a second one on the same transcript with nobody to type at it.
 - **Timeline.** The timeline still draws the hours it worked, marked with a `↳`.
 - **Orphans.** A child whose parent is no longer on the list falls back to a row of its own at the top level. A grandchild joins the same block rather than opening a third level of indentation.

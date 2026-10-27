@@ -10,8 +10,10 @@
 # `tmux` shim on $PATH, which has already once let a test relocate a real pane
 # when the shim went missing.
 #
-# The dashboard is a REAL list: `tagents` running in a pane of that server,
-# claiming it, so the ? window has a sidebar in the window. The agents
+# The dashboard is a REAL list: `tagents` running in a pane of the session
+# `tagents` of that server, marked as the cockpit and claiming the pane, as the
+# cockpit's list does. The session tatest-dash is the user's terminal: one window
+# with nothing in it, which the keeper client is attached to. The agents
 # are a copy of /bin/sleep named `claude`, so the process walk in live_panes
 # counts them — a #!/bin/sh stub would be an `sh` to ps and never an agent.
 #
@@ -153,10 +155,14 @@ unset TA_HIDE_COLS CLAUDE_CONFIG_DIR FZF_DEFAULT_OPTS
 
 tm() { tmux -L "$S" "$@"; }
 
-tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 "exec '$TA'" || exit 1
+tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 "exec sleep 600" || exit 1
 tm set -g default-shell /bin/sh >/dev/null 2>&1
 tm set -g default-command '' >/dev/null 2>&1
 tm new-session -d -s tatest-work -c "$REPO" >/dev/null 2>&1
+# THE MARK IS SET BEFORE THE LIST STARTS: a list started outside a cockpit does what --ensure-dash does for its client and ends, so the pane is made with something else in it and the list replaces that.
+tm new-session -d -s tagents -x 200 -y 50 "exec sleep 600" >/dev/null 2>&1
+tm set -t =tagents: @tagents_cockpit 1 >/dev/null 2>&1
+tm respawn-pane -k -t =tagents:0.0 "exec '$TA'" >/dev/null 2>&1
 
 SOCK=$(tm display -p '#{socket_path}' 2>/dev/null)
 [ -n "$SOCK" ] || { echo "ui.sh: no socket for $S"; exit 1; }
@@ -228,8 +234,7 @@ mkrec 8002 sid-w ""                         # unset: the one profile with no dir
 mkrec 8003 sid-u "/tmp/.claude-nobody"      # a dir no profile has heard of
 mkrec 8004 sid-o -                          # written before the account was
 
-# The list claims the pane it runs in; the ? window needs that claim to have a
-# sidebar in the window.
+# The list claims the pane it runs in; the ? window and the actions find it by that claim.
 LIST=""
 i=0
 while [ "$i" -lt 80 ]; do
@@ -239,7 +244,8 @@ while [ "$i" -lt 80 ]; do
   i=$((i + 1)); sleep 0.25
 done
 [ -n "$LIST" ] || { echo "ui.sh: the list never claimed a pane"; exit 1; }
-DWIN=$(where "$LIST")
+# The window on screen: the one the keeper client shows, in the session of the user's terminal.
+DWIN=$(where "=tatest-dash:")
 
 # One live agent, for the columns that only exist for a pane that is really
 # there. Its own session id, and NOT one of the closed records above: a session
@@ -249,9 +255,9 @@ A=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" \
       "exec '$BIN/claude' 600" 2>/dev/null)
 # A title of its own. Nothing here sets one, and tmux then shows the machine
 # name — the FULL one, sukas-MacBook-Pro.local on a Mac — which names nothing
-# and is exactly what the name rule drops. The control run below compares this
-# tree byte for byte against the committed entry, so the name of this row must
-# not depend on what the machine is called.
+# and is exactly what the name rule drops. The no-config check below compares
+# this tree byte for byte, so the name of this row must not depend on what the
+# machine is called.
 tm select-pane -T "live agent" -t "$A"
 AHOME=$(sess_of "$A")
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
@@ -291,27 +297,36 @@ NOCFG=$(rows_at 140 TA_CONFIG=/nonexistent/config.yaml)
 ok "no profiles, no column"       "" "$(cell %8001 "$NOCFG" repo)"
 ok "...at every width"            "" "$(cell %8001 "$(rows_at 60 TA_CONFIG=/nonexistent/config.yaml)" repo)"
 
-# ...and the rows are the ones this printed before the column existed. The
-# control is the committed tagents, so this compares against the real thing
-# rather than against a description of it; the age is the one field that moves
-# between two runs a fraction of a second apart, so it is normalised away.
-# The control is a CHECKOUT, not a file. Since the program moved into
-# lib/tagents/*.sh the entry alone refuses to run, and a control that cannot run
-# prints nothing — which compares equal to nothing, so this case would have gone
-# on "passing" through the else branch below.
-CONTROL="$ROOT/tagents-control"
-if mkdir -p "$CONTROL" &&
-   git -C "$HERE/.." archive HEAD tagents lib/tagents 2>/dev/null | tar -x -C "$CONTROL" 2>/dev/null &&
-   [ -s "$CONTROL/tagents" ] && [ -r "$CONTROL/lib/tagents/core.sh" ]; then
-  agenorm() { sed 's/[0-9]*:[0-9][0-9]/AGE/g'; }
-  before=$(env TMUX="$TMUXV" TA_COLS=140 TA_MARKS=0 TA_CONFIG=/nonexistent/config.yaml \
-             bash "$CONTROL/tagents" --list | strip | agenorm | awk 'index($0, "\342\226\276 tatest-dash ") == 0')
-  # Every session is a group now, so the session that holds only the dashboard is a header with no row; the control is the committed tree, which lists it too since that change, so both sides drop it and the rest is compared.
-  after=$(rows_at 140 TA_CONFIG=/nonexistent/config.yaml | agenorm | awk 'index($0, "\342\226\276 tatest-dash ") == 0')
-  ok "no config: the rows are what they were before any of this" "$before" "$after"
-else
-  printf '  --   no committed tagents to compare against, skipping the control run\n'
-fi
+# ...and nothing else is on the rows either. With no profiles there is no badge
+# column, and with no usage watched there is no context, cost or model column
+# and no room kept for one. What is left is as wide as the widest value in it:
+# the state word seven, the location four (`:1.0` in the tree, which leaves its
+# session to the header), the account ten at most, so claude-personal is cut,
+# and the name as wide as the longest name, ten for "live agent". The age is the
+# one field that moves between two runs, so it is normalised away, and so is the
+# temp dir. The group of the user's terminal is left out: its row names the
+# directory the suite was started in.
+agenorm() { sed -e 's/[0-9]*:[0-9][0-9]/AGE/g' -e "s|$REPO|REPO|g"; }
+W0=$(where tatest-work:0)
+want=$(printf '%b' "$(cat <<EOF
+$A\t▾ tatest-work  REPO  ●1 \tworking\tsid-live\tREPO
+$A\t  ├─ ● working   AGE  live agent claude-pe… :1.0 on it\tworking\tsid-live\tREPO
+$W0\t  └─ bash\tnone\t\tREPO
+%8001\t▾ no window  ✗4 \tdead\tsid-p\tREPO
+%8001\t  ├─ ✗ closed    AGE  repo       claude-pe… —    closed — enter resumes it\tdead\tsid-p\tREPO
+%8002\t  ├─ ✗ closed    AGE  repo       default    —    closed — enter resumes it\tdead\tsid-w\tREPO
+%8003\t  ├─ ✗ closed    AGE  repo       claude-no… —    closed — enter resumes it\tdead\tsid-u\tREPO
+%8004\t  └─ ✗ closed    AGE  repo                  —    closed — enter resumes it\tdead\tsid-o\tREPO
+EOF
+)")
+ok "no config: no badge, context, cost or model column, and the others as wide as their widest value" \
+   "$want" "$(rows_at 140 TA_CONFIG=/nonexistent/config.yaml | awk -F'\t' -v k="$DWIN" '$1 != k' | agenorm)"
+
+# THE CASE THE WIDTH TABLE GOT WRONG: a pane of about 95 columns with no usage tracked. The table dropped the location below its breakpoint and kept six columns for a context figure that never comes, so the row lost the one thing that says where the agent is and spent the room on blanks. Now nothing is reserved for a column with no values in it, and the location stays.
+NINETY=$(row_of "$A" "$(rows_at 95 TA_CONFIG="$CFG")" | agenorm)
+has "95 columns, no usage tracked: the location column is kept" " :1.0 " "$NINETY"
+ok  "...and the room goes to what is there, not to empty context and cost columns" \
+    "  ├─ ● working   AGE  p live agent personal   :1.0 on it" "$NINETY"
 
 # ---------------------------------------------------------------------------
 t "1b. a pane wider than the table"
@@ -337,11 +352,23 @@ hasnt "at 110 columns with every column shown the long name is cut" "$LONG" "$(r
 has   "...but with the columns hidden it is spelled out" "$LONG" \
       "$(row_of %8009 "$(rows_at 110 TA_HIDE_COLS=ctx,cost,model,acct,loc)")"
 has   "at 140 columns the detail has spare room, so it is spelled out too" "$LONG" "$(row_of %8009 "$(rows_at 140)")"
-# A 61-column sidebar with the columns hidden: the tier would give the name 18;
-# the names get everything but ten columns of detail.
-has   "on a 61-column sidebar with the columns hidden the name gets the width" "${LONG:0:30}" \
+# A 61-column list with the columns hidden: the tier would give the name 18;
+# the names get everything but the columns the detail needs.
+has   "on a 61-column list with the columns hidden the name gets the width" "${LONG:0:30}" \
       "$(row_of %8009 "$(rows_at 61 TA_HIDE_COLS=ctx,cost,model,acct,loc)")"
 has   "...and at 230 it is spelled out in full"   "$LONG" "$(row_of %8009 "$WIDE")"
+
+# THE STATE WORD YIELDS TO THE NAME. Its glyph already says the state in colour, so on a list where the name could not be shown whole beside the word, the word is the one left out.
+HIDE5=ctx,cost,model,acct,loc
+has   "at 70 columns the long name is spelled out in full" "$LONG" "$(row_of %8009 "$(rows_at 70 TA_HIDE_COLS=$HIDE5)")"
+hasnt "...and the state word is not drawn, there being no room for both" "✗ closed" "$(row_of %8009 "$(rows_at 70 TA_HIDE_COLS=$HIDE5)")"
+has   "at 80 columns there is room for both, and the name is whole" "$LONG" "$(row_of %8009 "$(rows_at 80 TA_HIDE_COLS=$HIDE5)")"
+has   "...and the state word is drawn" "✗ closed" "$(row_of %8009 "$(rows_at 80 TA_HIDE_COLS=$HIDE5)")"
+
+# THE DETAIL KEEPS AS MANY COLUMNS AS ITS WIDEST LINE, up to ten, and the name takes the rest. With one row whose detail is `on it`, five columns, a 66-column list spells the long name out; a floor of ten for the detail would have cut it at 37.
+ONE="$ROOT/state-one"; mkdir -p "$ONE"; cp "$STATE/${A#%}.tsv" "$ONE/"
+printf 'sid-live\t%s\n' "$LONG" >"$ONE/labels.tsv"
+has   "a detail of five columns leaves the long name its room" "$LONG" "$(row_of "$A" "$(rows_at 66 TA_STATE_DIR="$ONE" TA_HIDE_COLS=$HIDE5)")"
 
 # The rows have to grow into the pane, not past it: fzf wraps anything wider and
 # a wrapped row is two rows.  Counted in characters, not bytes — the tree and the
@@ -383,8 +410,9 @@ hasnt "hiding model takes the model"        "opus5"    "$(row_of %8001 "$(rows_a
 hasnt "hiding acct takes the account name"  "personal" "$(row_of %8001 "$(rows_at 140 TA_HIDE_COLS=acct)")"
 ok    "hiding badge takes the indicator"    ""         "$(cell %8001 "$(rows_at 140 TA_HIDE_COLS=badge)" repo)"
 # loc is asked of the live agent: a closed row has no pane to name.
-has   "the location column is there"        "tatest-work:" "$(row_of "$A" "$(rows_at 140)")"
-hasnt "hiding loc takes it"                 "tatest-work:" "$(row_of "$A" "$(rows_at 140 TA_HIDE_COLS=loc)")"
+has   "the location column is there"        " :1.0 " "$(row_of "$A" "$(rows_at 140)")"
+hasnt "...without the session, which the header names" "tatest-work:" "$(row_of "$A" "$(rows_at 140)")"
+hasnt "hiding loc takes it"                 ":1.0"   "$(row_of "$A" "$(rows_at 140 TA_HIDE_COLS=loc)")"
 # AND IT TAKES NOTHING ELSE WITH IT. Flat mode has no group headers, so the
 # 14-wide group column (the session, or "no window") is the only thing on the row
 # that says which group an agent belongs to — and it was drawn under the location
@@ -467,7 +495,7 @@ has "the ? line describes the cockpit's keys" "cockpit" "$(run --keys | LC_ALL=C
 # AND IT REALLY RUNS THE KEY. Undock, end to end: a chat joined beside another
 # window's chat is broken out into its home session, exactly as ctrl-u would do.
 run --act beside "$A" live sid-live "$REPO" >/dev/null 2>&1; sleep 0.5
-ok "the agent is joined into the window the sidebar is in" "$DWIN" "$(where "$A")"
+ok "the agent is joined into the window on screen" "$DWIN" "$(where "$A")"
 # The picker searches the description column, where undock reads "break a joined chat out into a window of its own".
 env TMUX="$TMUXV" FZF_DEFAULT_OPTS="--exact --filter=break" bash "$TA" \
   --ask-keys "" "$A" live sid-live "$REPO" >/dev/null 2>&1
@@ -640,7 +668,7 @@ chmod +x "$FZFBIN/fzf"
 dumpargs() {  # <dump file> <extra env for the list> -> the argv, one per line
   local out=$1 envs=$2 w
   rm -f "$out"
-  w=$(tm new-window -d -t tatest-dash: -P -F '#{window_id}' \
+  w=$(tm new-window -d -t =tagents: -P -F '#{window_id}' \
         "PATH='$FZFBIN':\$PATH FZFDUMP='$out' $envs exec '$TA'" 2>/dev/null)
   i=0
   while [ "$i" -lt 40 ]; do
@@ -915,7 +943,7 @@ order()  { rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") == 0 { print $1 }
 ok "groups sort by name, and the one with no window is last" \
    "tatest-dash tatest-work tatest-zeta no " "$(groups)"
 ok "inside a group the newest conversation is on top, the window row below it, and the closed ones are the last group" \
-   "$A2 $A $WROW %8004 %8010 %8001 %8002 %8003 " \
+   "$DWIN $A2 $A $WROW %8004 %8010 %8001 %8002 %8003 " \
    "$(order | sed "s/$B //")"
 
 # THE CHECK THIS EXISTS FOR. Everything above moved only because a timestamp
@@ -925,13 +953,13 @@ ok "a blocked agent does not drag its group up the list" \
    "tatest-dash tatest-work tatest-zeta no " "$(groups)"
 live "$A" blocked sid-live "$REPO"
 ok "...nor its own row up its group" \
-   "$A2 $A $WROW %8004 %8010 %8001 %8002 %8003 " "$(order | sed "s/$B //")"
+   "$DWIN $A2 $A $WROW %8004 %8010 %8001 %8002 %8003 " "$(order | sed "s/$B //")"
 live "$A" working sid-live "$REPO"
 
 # ...and typing into it IS one: the only thing that reorders the list is you.
 said "$A" 1
 ok "answering it puts it on top, where you just left off" \
-   "$A $A2 $WROW %8004 %8010 %8001 %8002 %8003 " "$(order | sed "s/$B //")"
+   "$DWIN $A $A2 $WROW %8004 %8010 %8001 %8002 %8003 " "$(order | sed "s/$B //")"
 said "$A" 600
 
 # The header is a stand-in for the row under it, which is now the newest one

@@ -60,7 +60,7 @@ dash_header() {  # <cols> <enter label> [quit item]
   local items=()
   cfg_check   # before resolve_keys: one parse in this process, none per key
   resolve_keys
-  [ -n "$K_OPEN" ] && items[${#items[@]}]="$K_OPEN ${2:-open in sidebar}"
+  [ -n "$K_OPEN" ] && items[${#items[@]}]="$K_OPEN ${2:-open in dashboard}"
   [ -n "$K_KEYS" ] && items[${#items[@]}]="$K_KEYS keys"
   [ -n "${3:-}" ] && items[${#items[@]}]=$3
   # The one item that is not a key: a config with something wrong in it, on
@@ -82,7 +82,7 @@ dash() {
   local mode=${TA_MODE:-dash} out key rows
   local rc started fails=0 esc_act=ignore quit fl ft
   local header
-  local enter_lbl='open in sidebar' preview_win='' sidebar=0 after='' vact
+  local enter_lbl='open in dashboard' preview_win='' sidebar=0 after='' vact
   # The --preview pair, present only where ctrl-v still toggles one. An empty
   # array cannot be expanded under `set -u` in bash 3.2 without the
   # ${x[@]+"${x[@]}"} guard below, and empty is the ordinary case now.
@@ -99,15 +99,15 @@ dash() {
     echo "tagents: not inside tmux" >&2
     return 1
   fi
-  # IN THE COCKPIT A LIST STARTED OUTSIDE THE DASHBOARD DOES WHAT --ensure-dash DOES for the client that shows its pane, and ends: the shell it was typed in gets its prompt back. The dashboard's own list, in a pane of the session `tagents`, runs as any list.
-  if [ "$mode" != popup ] && [ -n "${TMUX_PANE:-}" ] && ! pane_in_cockpit "$TMUX_PANE" && cockpit_want; then
+  # A LIST STARTED OUTSIDE THE DASHBOARD DOES WHAT --ensure-dash DOES for the client that shows its pane, and ends: the shell it was typed in gets its prompt back. The dashboard's own list, in a pane of the session `tagents`, runs as any list.
+  if [ "$mode" != popup ] && [ -n "${TMUX_PANE:-}" ] && ! pane_in_cockpit "$TMUX_PANE"; then
     cockpit_ensure "$(cockpit_client_of_pane "$TMUX_PANE")"
     return $?
   fi
   # In a popup Esc is the natural "close this overlay". In the dedicated
   # dashboard session it must not close anything: the window is the session's
   # reason to exist, and losing it leaves you staring at whatever else is there.
-  # A popup also closes once it has done what you asked; the sidebar stays.
+  # A popup also closes once it has done what you asked; the dashboard stays.
   # Resolved before the header is built and before a single bind is made,
   # because every one of them now reads the answer out of these variables.
   # cfg_check first: it loads the config in THIS process, so the cfg_get calls
@@ -121,18 +121,16 @@ dash() {
   [ -n "$K_QUIT" ] && quit="$K_QUIT quit"
   if [ "$mode" = popup ]; then esc_act=abort; quit=''; after='+abort'; fi
 
-  # The seat model of the previous version, sent home once (migrate.sh), before the first claim and the first follow.
+  # The seat model of the previous version, sent home once (migrate.sh), before the first claim.
   migrate_seats
 
-  # A LIST RUNNING IN A PANE IS THE SIDEBAR. Not "is it running in the pane some
-  # marker points at" — it claims the pane, so enter selects the chat's window, the
-  # sidebar comes along and the cursor lands in the chat, whichever window that
-  # happens to be. Reading the marker instead is what sent you to another window:
-  # the marker had drifted onto a chat elsewhere, and enter followed the marker.
+  # THE DASHBOARD'S LIST CLAIMS ITS PANE (claim_dash), so callers that are not a
+  # list (a popup, a tmux hook, the status bar) find it by a live claim, never by
+  # a marker that may have drifted onto a chat.
   #
   # A popup is the one list with no pane of its own (TMUX_PANE is empty inside
-  # display-popup) and nowhere for the sidebar to be moved from, so it keeps the
-  # text preview and hands the chat to the dedicated sidebar instead.
+  # display-popup), so it keeps the text preview and hands the chat to the
+  # cockpit's viewport instead.
   if [ "$mode" != popup ] && [ -n "${TMUX_PANE:-}" ] && claim_dash; then
     trap release_dash EXIT INT TERM
     enter_lbl='open here'
@@ -246,7 +244,7 @@ dash() {
       # only if fzf is dying instantly, which would otherwise spin forever.
       if [ $(( SECONDS - started )) -lt 1 ]; then
         fails=$((fails + 1))
-        [ $fails -ge 5 ] && { echo "tagents: fzf keeps failing, giving up" >&2; [ "$sidebar" = 1 ] && tmux set -gu @tagents_sidebar_on 2>/dev/null; break; }
+        [ $fails -ge 5 ] && { echo "tagents: fzf keeps failing, giving up" >&2; break; }
       else
         fails=0
       fi
@@ -257,10 +255,9 @@ dash() {
     # Keys do their work inside fzf now, so reaching here means a deliberate
     # quit — or, in a popup, the abort that follows a completed action.
     key=$(printf '%s\n' "$out" | sed -n 1p)
-    # A deliberate quit ends the wish for a sidebar; the pane being killed does not (follow starts another then).
+    # A deliberate quit takes the dashboard down; the list's pane being killed does not (the viewport's loop starts another).
     if [ "$key" = ctrl-q ]; then
-      if pane_in_cockpit "${TMUX_PANE:-}"; then cockpit_quit
-      elif [ "$sidebar" = 1 ]; then tmux set -gu @tagents_sidebar_on 2>/dev/null; fi
+      pane_in_cockpit "${TMUX_PANE:-}" && cockpit_quit
       break
     fi
     [ "$mode" = popup ] && break

@@ -1,6 +1,6 @@
 # lib/tagents/rows.sh — what a key does to a row, now that a row is a tmux window
 #
-# enter selects: the client goes to the row's window, the sidebar follows it there, the cursor lands in the chat. ctrl-s joins a chat's pane into the window on screen beside its chat and remembers where it came from (@tagents_joined, a pane option holding the home session name); ctrl-u breaks it out again. ctrl-x moves the sidebar out of a window before the window closes with the chat. Nothing here moves, resizes, kills or marks a pane that is neither a chat it was asked about nor the sidebar: the other panes of a window belong to the user.
+# enter selects: the viewport shows the row's window and the cursor lands on its row; ctrl-g takes the terminal itself there. ctrl-s joins a chat's pane into the window on screen beside its chat and remembers where it came from (@tagents_joined, a pane option holding the home session name); ctrl-u breaks it out again. Nothing here moves, resizes, kills or marks a pane that is not a chat it was asked about: the other panes of a window belong to the user.
 #
 # Part of ./tagents; `tagents --help` is the model this implements. Sourced after follow.sh and migrate.sh.
 
@@ -9,7 +9,7 @@ row_session() {  # <pane or window key> -> its session name, empty when the key 
   tmux display -p -t "$1" '#{session_name}' 2>/dev/null
 }
 
-# The window's chat: the first pane, in pane order, that a Claude is running in. A user who split a shell before the chat (`split -b`) still has the chat found; a window with no live chat gets its first pane that is not the sidebar; one with only the sidebar, nothing.
+# The window's chat: the first pane, in pane order, that a Claude is running in. A user who split a shell before the chat (`split -b`) still has the chat found; a window with no live chat gets its first pane that is not a list; one with only a list, nothing.
 first_chat_pane() {  # <window-id>
   local live p first=""
   live=$(live_set)
@@ -21,21 +21,7 @@ first_chat_pane() {  # <window-id>
   printf '%s' "$first"
 }
 
-# tmux's own choice when a window closes: the session's last window, else the previous index, else the next (tmux source; the last-window flag is what `list-windows` reports and was checked on 3.7b, the other two are not). The client is moved there by show_window before the window closes, so what tmux would pick afterwards does not matter.
-landing_window() {  # <window-id>
-  tmux list-windows -t "$(tmux display -p -t "$1" '#{session_id}' 2>/dev/null)" \
-      -F '#{window_id} #{window_index} #{window_last_flag}' 2>/dev/null |
-    LC_ALL=C awk -v w="$1" '
-      $1 == w { cur = $2 + 0; next }
-      { n++; id[n] = $1; ix[n] = $2 + 0; if ($3 == 1) last = $1 }
-      END {
-        if (last != "") { print last; exit }
-        for (i = n; i >= 1; i--) if (ix[i] < cur) { print id[i]; exit }
-        for (i = 1; i <= n; i++) if (ix[i] > cur) { print id[i]; exit }
-      }'
-}
-
-# The client to the window, the sidebar into it, the cursor in <pane>. THE CLIENT GOES FIRST: the sidebar leaving a window it was alone in closes that window, and with it the session when it was the only window — and a client attached to a session that is destroyed under it is detached from the terminal (detach-on-destroy). The move itself starts no follow (see follow.sh).
+# The window shown: in the cockpit the viewport shows it (cockpit_select); with no dashboard up (a popup whose cockpit could not start, a --goto from a notification) the terminal itself goes there.
 show_window() {  # <window-id> [pane]
   local win=${1:-} pane=${2:-} sess
   if ! win_alive "$win"; then
@@ -47,13 +33,11 @@ show_window() {  # <window-id> [pane]
   sess=$(tmux display -p -t "$win" '#{session_name}' 2>/dev/null)
   tmux select-window -t "$win" 2>/dev/null
   [ -n "$sess" ] && tmux switch-client -t "=$sess" 2>/dev/null
-  sidebar_move "$win" >/dev/null 2>&1
   [ -n "$pane" ] && tmux select-pane -t "$pane" 2>/dev/null
-  cursor_to_window "$win"
   return 0
 }
 
-open_agent() {  # <pane or @window key> — enter on a row
+open_agent() {  # <pane or @window key> [goto] — enter on a row; ctrl-g with goto
   local key=${1:-} win pane=""
   case "$key" in
     -) return 0 ;;
@@ -65,22 +49,23 @@ open_agent() {  # <pane or @window key> — enter on a row
     notice "tagents: that window is gone"
     return 1
   fi
-  # A popup claims no pane, so there may be no sidebar yet: bring one to the client's window first.
-  [ "${TA_MODE:-}" = popup ] && ! cockpit_up && [ -z "$(dash_pane)" ] && ensure_dash >/dev/null 2>&1
+  if [ "${2:-}" = goto ]; then goto_window "$win" "$pane"; return $?; fi
+  # A popup has no viewport of its own: with no dashboard up, the cockpit comes up first and shows the chat.
+  [ "${TA_MODE:-}" = popup ] && ! cockpit_up && ensure_dash >/dev/null 2>&1
   show_window "$win" "$pane"
 }
-goto() { open_agent "${1:-}"; }   # ctrl-g and --goto: the same selection; only the closed-row notice differs, and act says that
+goto() { open_agent "${1:-}"; }   # --goto, a notification's click: the selection enter makes, so the chat shows in the viewport and the dashboard stays on screen
 
-open_session() {  # <key of the header's stand-in> — enter or ctrl-g on a session header: its last-used window
+open_session() {  # <key of the header's stand-in> [goto] — enter on a session header, or ctrl-g with goto: its last-used window
   local sess win
   sess=$(row_session "${1:-}")
   [ -n "$sess" ] || return 1
   win=$(tmux display -p -t "=$sess:" '#{window_id}' 2>/dev/null)   # the session's own selected window; selecting it again changes nothing
   [ -n "$win" ] || return 1
-  show_window "$win" ""
+  if [ "${2:-}" = goto ]; then goto_window "$win" ""; else show_window "$win" ""; fi
 }
 
-# ctrl-s: into the window the client shows, to the right of that window's chat. The window on screen is the client's; the sidebar's own window answers only when no client does (a call from a script).
+# ctrl-s: into the window the client shows, to the right of that window's chat. The window on screen is the client's; the list's own window answers only when no client does (a call from a script).
 open_beside() {  # <chat pane>
   local pane=${1:-} here win chat home
   [ -n "$pane" ] || return 1
@@ -110,7 +95,7 @@ open_beside() {  # <chat pane>
   chat=$(first_chat_pane "$here")
   if [ -n "$chat" ]; then
     tmux join-pane -h -d -s "$pane" -t "$chat" 2>/dev/null || return 1
-  else   # a window of the sidebar alone: the chat goes to the right of it, full height
+  else   # a window with no chat in it (a shell, or a list alone): the chat goes to the right of the window, full height
     tmux join-pane -h -d -f -s "$pane" -t "$here" 2>/dev/null || return 1
   fi
   tmux set -p -t "$pane" @tagents_joined "$home" 2>/dev/null
@@ -140,25 +125,3 @@ undock() {  # <chat pane> — ctrl-u: a joined chat gets a window of its own in 
   return 0
 }
 
-# Before a chat or a whole window is killed: when the sidebar sits in the chat's window and nothing but the sidebar and the chat would be left, the window is about to close, so the sidebar goes first to the window the client lands on. With a pane of the user's in the window it stays, unless the whole window is to go (a window id): then the sidebar leaves whatever else the window holds. When the chat is the last window of its session a shell window is made first, so neither the session nor the sidebar goes with it.
-leave_window_for_kill() {  # <chat pane | window id>
-  local pane=${1:-} win sb others dest sess
-  sb=$(dash_pane)
-  [ -n "$sb" ] || return 0
-  win=$(tmux display -p -t "$pane" '#{window_id}' 2>/dev/null)
-  [ "$(tmux display -p -t "$sb" '#{window_id}' 2>/dev/null)" = "$win" ] || return 0
-  case "$pane" in
-    @*) ;;
-    *)
-      others=$(tmux list-panes -t "$win" -F '#{pane_id}' 2>/dev/null | LC_ALL=C awk -v a="$pane" -v b="$sb" '$1 != a && $1 != b')
-      [ -z "$others" ] || return 0 ;;
-  esac
-  dest=$(landing_window "$win")
-  if [ -z "$dest" ]; then
-    sess=$(tmux display -p -t "$win" '#{session_name}' 2>/dev/null)
-    dest=$(new_pane_window "$sess" "$(tmux display -p -t "$win" '#{session_path}' 2>/dev/null)") &&
-      dest=$(tmux display -p -t "$dest" '#{window_id}' 2>/dev/null)
-  fi
-  [ -n "$dest" ] || return 0
-  show_window "$dest" ""
-}

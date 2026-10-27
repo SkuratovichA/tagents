@@ -16,7 +16,7 @@ The dashboard SHALL bind by default: `enter` and double-click open; `ctrl-s` joi
 
 #### Scenario: Header of a session acts on the session
 - **WHEN** the cursor is on the header of a session and the user presses `enter`
-- **THEN** the session's last-used window is shown with the sidebar in it
+- **THEN** the viewport shows the session's last-used window
 
 #### Scenario: Header acts on its stand-in
 - **WHEN** the cursor is on the header of a project group of rows with no window and the user presses `enter`
@@ -70,7 +70,7 @@ Complaints about keys SHALL be shown once per start of the dashboard as tmux mes
 - **THEN** the header contains `config: 1 problem (tagents --check)` and a good config shows no such item
 
 ### Requirement: The header is one line
-The header above the list SHALL be one line of items joined by ` · `: the `enter` key with its label (`open here` in a sidebar, `open in sidebar` in a popup), `? keys`, and `ctrl-q quit` (left out in a popup), then the config summary if there is one. When the items do not fit the pane, the header SHALL wrap at the list's width minus 4 onto at most four lines, never dropping an item. `tagents --header [COLS] [LABEL] [QUIT ITEM]` prints it for a width.
+The header above the list SHALL be one line of items joined by ` · `: the `enter` key with its label (`open here` in the dashboard's list, `open in dashboard` in a popup), `? keys`, and `ctrl-q quit` (left out in a popup), then the config summary if there is one. When the items do not fit the pane, the header SHALL wrap at the list's width minus 4 onto at most four lines, never dropping an item. `tagents --header [COLS] [LABEL] [QUIT ITEM]` prints it for a width.
 
 #### Scenario: One line
 - **WHEN** `tagents --header 100 'open here' 'ctrl-q quit'` is run
@@ -114,10 +114,10 @@ Verbs that ask a question — rename, send, kill, pick, and open on a closed row
 - **THEN** `bspace` still deletes characters
 
 ### Requirement: ctrl-q quits and esc does not
-In the sidebar `ctrl-q` SHALL end the dashboard and `esc` SHALL do nothing, so the dashboard cannot be closed by accident. The dashboard SHALL turn off terminal flow control so `ctrl-s` and `ctrl-q` reach the list. If fzf exits for any other reason the dashboard SHALL start it again, and give up with a message after five exits within a second of starting.
+In the dashboard's list `ctrl-q` SHALL end the dashboard and `esc` SHALL do nothing, so the dashboard cannot be closed by accident. The dashboard SHALL turn off terminal flow control so `ctrl-s` and `ctrl-q` reach the list. If fzf exits for any other reason the dashboard SHALL start it again, and give up with a message after five exits within a second of starting.
 
 #### Scenario: Esc ignored
-- **WHEN** the user presses `esc` in the sidebar
+- **WHEN** the user presses `esc` in the dashboard's list
 - **THEN** the list stays up
 
 #### Scenario: Not in tmux
@@ -125,7 +125,7 @@ In the sidebar `ctrl-q` SHALL end the dashboard and `esc` SHALL do nothing, so t
 - **THEN** it prints `tagents: not inside tmux` on standard error and exits 1
 
 ### Requirement: Open selects the agent's row and resumes closed ones
-`enter` SHALL select the agent's row as the `window-rows` capability describes, moving the sidebar into the agent's window and putting the cursor in the chat; on a closed row it SHALL resume the session and then select it (see `chat-launch`). A row marked live whose pane is no longer a running Claude SHALL be settled by session id, as the scenarios say.
+`enter` SHALL select the agent's row as the `window-rows` capability describes, showing the agent's window in the viewport and leaving the cursor on the row; on a closed row it SHALL resume the session and then select it (see `chat-launch`). A row marked live whose pane is no longer a running Claude SHALL be settled by session id, as the scenarios say.
 
 #### Scenario: Stale click
 - **WHEN** `--act open` is given a pane that has been killed but whose session id is on record
@@ -162,7 +162,7 @@ In the sidebar `ctrl-q` SHALL end the dashboard and `esc` SHALL do nothing, so t
 - **THEN** the same label is stored, and with an empty id the command prints a message and exits 2
 
 ### Requirement: ctrl-x kills an agent after asking
-`ctrl-x` SHALL ask `kill this agent?`, naming the agent, its tmux location and what will happen, and SHALL act only on `y`, `yes` or their capitals; anything else, or no answer within 60 seconds, cancels. Confirming SHALL hang up the Claude and close its pane (and its window when it was the only pane there besides the sidebar, the sidebar being moved to the window the client lands on first), ring the refresher's channel and leave the session resumable as a closed row.
+`ctrl-x` SHALL ask `kill this agent?`, naming the agent, its tmux location and what will happen, and SHALL act only on `y`, `yes` or their capitals; anything else, or no answer within 60 seconds, cancels. Confirming SHALL hang up the Claude and close its pane (and its window when it was the only pane there), ring the refresher's channel and leave the session resumable as a closed row.
 
 #### Scenario: Confirmed
 - **WHEN** the user answers `y` for a live agent
@@ -172,9 +172,9 @@ In the sidebar `ctrl-q` SHALL end the dashboard and `esc` SHALL do nothing, so t
 - **WHEN** the user answers `n` or presses enter on an empty line
 - **THEN** nothing is killed
 
-#### Scenario: The sidebar survives
-- **WHEN** the user confirms on the only chat of a window that holds nothing else but the sidebar
-- **THEN** the window is closed and the sidebar is in the window now on screen
+#### Scenario: The dashboard survives
+- **WHEN** the user confirms on the only chat of a window
+- **THEN** the window is closed and the dashboard still holds the list and the viewport
 
 ### Requirement: The kill question checks the pane when it is asked
 Whether the pane exists SHALL be checked when the question is asked, not taken from the row.
@@ -219,6 +219,13 @@ On a dimmed window row `enter` and `ctrl-g` SHALL select the window and `ctrl-x`
 - **WHEN** the user presses `ctrl-l`
 - **THEN** the list is rebuilt from the records at once
 
+### Requirement: $ says when usage is off
+`$` with `usage.watch` unset SHALL open nothing and show `tagents: usage is off — set usage.watch to the profile to track`, so that the key never looks broken.
+
+#### Scenario: Usage off
+- **WHEN** `usage.watch` is unset and the user presses `$`
+- **THEN** no window opens and `tagents: usage is off — set usage.watch to the profile to track` is shown
+
 ### Requirement: A verb can be run from outside with --act
 `tagents --act VERB PANE STATE SESSION DIR` SHALL run one of the verbs `open`, `beside`, `goto`, `send`, `rename`, `preview`, `new`, `pick`, `shell`, `undock`, `kill`, `usage`, `closed`, `keys`, `columns` exactly as its key does, with the fields of the row as arguments.
 
@@ -231,7 +238,7 @@ On a dimmed window row `enter` and `ctrl-g` SHALL select the window and `ctrl-x`
 - **THEN** a new window of `scratch` runs a shell in `~/app`
 
 ### Requirement: ctrl-s joins beside, ctrl-g goes there
-`ctrl-s` SHALL join the agent's pane into the window on screen beside its chat, as the `window-rows` capability describes; a closed row is resumed first and then joined. `ctrl-g` SHALL switch the client to the window the agent lives in and select its pane, and never resumes: on a closed row it SHALL do nothing but show `tagents: that chat is closed — enter resumes it`.
+`ctrl-s` SHALL join the agent's pane into the window on screen beside its chat, as the `window-rows` capability describes; a closed row is resumed first and then joined. `ctrl-g` SHALL take the terminal itself to where the agent lives, as the next requirement says, and never resumes: on a closed row it SHALL do nothing but show `tagents: that chat is closed — enter resumes it`.
 
 #### Scenario: Join keeps the cursor
 - **WHEN** the user presses `ctrl-s` on a live agent that lives in another window
@@ -240,6 +247,40 @@ On a dimmed window row `enter` and `ctrl-g` SHALL select the window and `ctrl-x`
 #### Scenario: Goto a closed row
 - **WHEN** the user presses `ctrl-g` on a closed row
 - **THEN** nothing is resumed and the message `tagents: that chat is closed — enter resumes it` is shown
+
+### Requirement: ctrl-g leaves the dashboard for the agent's own window
+With the cockpit up, `ctrl-g` on a live row SHALL switch the most recently active terminal that is not the viewport's to the agent's own session, select the window and the agent's pane, and so leave the dashboard. It SHALL NOT point the viewport anywhere. On a group header it SHALL go to that session's own selected window.
+
+#### Scenario: A live row
+- **WHEN** the cursor is on the row of a chat in `personal:2` and the user presses `ctrl-g`
+- **THEN** the user's terminal shows the session `personal` and its window 2, the chat's pane is active, and the terminal no longer shows the session `tagents`
+
+#### Scenario: A header
+- **WHEN** the user presses `ctrl-g` on the header `scratch`
+- **THEN** the user's terminal shows the window the session `scratch` has selected
+
+#### Scenario: A window that is gone
+- **WHEN** the row's window was closed after the row was drawn and the user presses `ctrl-g`
+- **THEN** nothing moves and `tagents: that window is gone` is shown
+
+#### Scenario: No terminal
+- **WHEN** `tagents --act goto` runs on a live row while no terminal is attached to the tmux server
+- **THEN** nothing moves and `tagents: no terminal to take there` is shown
+
+#### Scenario: A notification's click
+- **WHEN** `tagents --goto %12` runs with the cockpit up
+- **THEN** the viewport shows the window of `%12` and the terminal stays where it was, because that verb makes the selection `enter` makes
+
+### Requirement: ctrl-g shares the session with the viewport and works without a cockpit
+When the agent's window is in the session the viewport shows, the viewport SHALL show that window too, because a tmux session has one current window. With no cockpit up, `ctrl-g` SHALL select the window and switch the terminal to it, and SHALL NOT bring the cockpit up.
+
+#### Scenario: The agent lives in the session the viewport shows
+- **WHEN** the viewport shows `personal:1` and the user presses `ctrl-g` on a chat in `personal:2`
+- **THEN** the user's terminal shows `personal:2` and the viewport shows `personal:2` too
+
+#### Scenario: No cockpit
+- **WHEN** no cockpit is up and the user presses `ctrl-g` on a live row
+- **THEN** the window is selected, the terminal is switched to it and no session `tagents` appears
 
 ### Requirement: ctrl-u breaks a joined chat out
 `ctrl-u` SHALL break the chat of the row under the cursor out of the window it was joined into, as the `window-rows` capability describes. On a chat that is not joined it SHALL do nothing but show `tagents: that chat is not joined to another window`.

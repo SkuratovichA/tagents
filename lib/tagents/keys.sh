@@ -156,12 +156,12 @@ keys_table() {  # key<TAB>verb<TAB>what it does
   # is a lie in both directions: nothing is bound to it, and the ? window would
   # offer it anyway.
   printf '%s\n' \
-"$K_OPEN${TAB}open${TAB}select its row: the sidebar and the client move into its window" \
+"$K_OPEN${TAB}open${TAB}show its window in the viewport, beside the list" \
 "$K_BESIDE${TAB}beside${TAB}join it into the window on screen, beside its chat" \
 "$K_NEW${TAB}new${TAB}start a new agent in this project" \
 "$K_PICK${TAB}pick${TAB}the same, picking the account it starts on" \
 "$K_SHELL${TAB}shell${TAB}open a plain shell in a new window of this group" \
-"$K_GOTO${TAB}goto${TAB}go to the agent where it lives" \
+"$K_GOTO${TAB}goto${TAB}go to the agent where it lives: the terminal leaves the dashboard" \
 "$K_SEND${TAB}send${TAB}send a line straight into it" \
 "$K_RENAME${TAB}rename${TAB}rename this agent — an empty name restores its title" \
 "$K_UNDOCK${TAB}undock${TAB}break a joined chat out into a window of its own" \

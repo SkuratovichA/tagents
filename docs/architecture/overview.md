@@ -6,7 +6,7 @@ tagents is a bash dashboard plus a small family of TypeScript packages. This pag
 
 | path | what it does |
 |------|--------------|
-| `tagents` | the dashboard itself: the tree, the sidebar, the timeline |
+| `tagents` | the dashboard itself: the tree, the list and viewport, the timeline |
 | `lib/tagents/` | what the dashboard is made of: one file per part, sourced by `tagents`. [What each one is](https://github.com/SkuratovichA/tagents/blob/main/lib/tagents/README.md) |
 | `tusage` | per-session cost, dollars and context accounting, read from the transcripts |
 | `tnotes` | the notes editor beside a chat |
@@ -48,7 +48,7 @@ How such a session reads on the list is in [States and order](../guide/states#he
 
 | package | what it is |
 |---------|------------|
-| `tagents` (the script) | the dashboard: tmux, fzf, the tree, the sidebar. Bash, no dependencies of its own. The entry point, with the rest of it in `lib/tagents/` |
+| `tagents` (the script) | the dashboard: tmux, fzf, the tree, the cockpit. Bash, no dependencies of its own. The entry point, with the rest of it in `lib/tagents/` |
 | [`@tagents/core`](https://github.com/SkuratovichA/tagents/blob/main/packages/core/README.md) | headless sessions (spawn, prompt, read, list) plus the plugin contract and host, behind a `tagents-core` CLI |
 | [`@tagents/knowledge`](https://github.com/SkuratovichA/tagents/blob/main/packages/knowledge/README.md) | your notes as markdown documents with an FTS5 index, a `tagents-knowledge` CLI and an MCP server |
 | [`@tagents/telegram`](https://github.com/SkuratovichA/tagents/blob/main/packages/telegram/README.md) | the Telegram Bot API, typed and small: one envelope-parsing `call()`, the methods a bot actually uses, and the 4096-character split |

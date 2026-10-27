@@ -182,8 +182,6 @@ forget_agent() {  # <pane-key> — drop a closed session's record from the list
 
 end_agent() {  # <pane> — hang up the agent running in it
   local pane=$1 key=${pane#%}
-  # The sidebar leaves the window first when the window is about to close with the chat (rows.sh).
-  leave_window_for_kill "$pane"
   tmux kill-pane -t "$pane" 2>/dev/null || return 1
   # SessionEnd cannot fire for a pane that has been killed, so do the half of its cleanup that would otherwise show: the subagent files, which keep claiming this session has work fanned out under it. Its own record is kept on purpose — that is what leaves the row as "closed, enter resumes it".
   [ -n "$key" ] && rm -f "$STATE_DIR/sub/$key".* 2>/dev/null
@@ -195,7 +193,6 @@ end_agent() {  # <pane> — hang up the agent running in it
 
 end_window() {  # <window id> — close a window that runs no chat, with every pane in it
   local win=$1
-  leave_window_for_kill "$win"
   tmux kill-window -t "$win" 2>/dev/null || return 1
   signal_ev
   resurrect_soon
@@ -265,8 +262,11 @@ act() {
     @*)
       # A window that runs no chat: only selecting it and closing it make sense.
       case "$what" in
-        open|goto)
+        open)
           if [ "$hdr" = 1 ]; then open_session "$pane"; else open_agent "$pane"; fi
+          return 0 ;;
+        goto)
+          if [ "$hdr" = 1 ]; then open_session "$pane" goto; else open_agent "$pane" goto; fi
           return 0 ;;
         kill) kill_agent "$pane" ""; return 0 ;;
         beside|undock|send|rename|preview)
@@ -286,12 +286,12 @@ act() {
       if [ "$state" = dead ]; then resume_agent "$pane" "$sid" "$dir" open_beside
       else open_chat open_beside "$pane" "$sid" "$dir"; fi ;;
     goto)
-      if [ -n "$sess" ]; then open_session "$pane"
+      if [ -n "$sess" ]; then open_session "$pane" goto
       elif [ "$state" = dead ]; then notice "tagents: that chat is closed — enter resumes it"
-      else goto "$pane"; fi ;;
+      else open_agent "$pane" goto; fi ;;
     send)   send_line "$pane" ;;
     rename) rename_agent "$pane" "$sid" ;;
-    # ctrl-v in the sidebar: a modal, not a column taken off the list.
+    # ctrl-v in the list: a modal, not a column taken off the list.
     preview) preview_window "$pane" "$state" ;;
     new)    new_agent "$dir" "" "$(row_session "$pane")" ;;
     pick)   new_agent_pick "$dir" "$(row_session "$pane")" ;;
