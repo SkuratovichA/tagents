@@ -252,18 +252,23 @@ EXTRACT='
       ($u.output_tokens // 0)
     ] | @tsv'
 
-# Bytes of a file that end in a complete line. A transcript being appended to
-# right now usually has a partial last line; consuming it would corrupt the
-# offset and silently drop the record when the rest arrives.
-complete_bytes() {
-  local f=$1 sz
-  sz=$(wc -c <"$f" 2>/dev/null | tr -d ' ') || return 1
-  [ "${sz:-0}" -eq 0 ] && { printf '0'; return 0; }
-  if [ "$(tail -c 1 -- "$f" 2>/dev/null | wc -l | tr -d ' ')" -eq 1 ]; then
+# Bytes of a file that end in a complete line, out of its first <size>. A
+# transcript being appended to right now usually has a partial last line;
+# consuming it would corrupt the offset and silently drop the record when the
+# rest arrives. The size is the one the update took when it started, and every
+# byte looked at here and parsed later is cut at it, so an append landing in
+# between cannot make this answer and the bytes that are read disagree.
+complete_bytes() {  # <file> <size>
+  local f=$1 sz=${2:-0} part from
+  [ "$sz" -gt 0 ] || { printf '0'; return 0; }
+  # $( ) strips a trailing newline, so the byte comes back empty exactly when it
+  # is one; dd seeks to it rather than reading the file up to it.
+  if [ -z "$(dd if="$f" bs=1 skip=$((sz - 1)) count=1 2>/dev/null)" ]; then
     printf '%s' "$sz"
   else
-    local part
-    part=$(tail -c 4194304 -- "$f" 2>/dev/null | tail -1 | wc -c | tr -d ' ')
+    from=$(( sz > 4194304 ? sz - 4194303 : 1 ))
+    part=$(tail -c "+$from" -- "$f" 2>/dev/null | head -c "$((sz - from + 1))" |
+             tail -1 | wc -c | tr -d ' ')
     printf '%s' "$(( sz - ${part:-0} ))"
   fi
 }
@@ -276,13 +281,17 @@ complete_bytes() {
 # the project must come from the first path component, not from dirname, or every
 # workflow shows up as a project of its own. Verified: no requestId appears in
 # both a parent file and a nested one, so per-file dedupe cannot double-count.
-path_facets() {  # <abs path> -> "slug<TAB>origin" where origin = main|sub|wf:<id>
-  local rel=${1#"$PROJECTS"/} slug rest
-  slug=${rel%%/*}; rest=${rel#*/}
+#
+# The answer is set in PF_SLUG and PF_ORIGIN (main|sub|wf:<id>) rather than
+# printed: this runs once per transcript an update reads, and a subshell for
+# each was a good part of what a catch-up over two thousand of them cost.
+path_facets() {  # <abs path>
+  local rel=${1#"$PROJECTS"/} rest
+  PF_SLUG=${rel%%/*}; rest=${rel#*/}
   case "$rest" in
-    */workflows/wf_*/*) rest=${rest#*/workflows/}; printf '%s\t%s' "$slug" "wf:${rest%%/*}" ;;
-    */subagents/*)      printf '%s\t%s' "$slug" "sub" ;;
-    *)                  printf '%s\t%s' "$slug" "main" ;;
+    */workflows/wf_*/*) rest=${rest#*/workflows/}; PF_ORIGIN="wf:${rest%%/*}" ;;
+    */subagents/*)      PF_ORIGIN=sub ;;
+    *)                  PF_ORIGIN=main ;;
   esac
 }
 
@@ -297,21 +306,31 @@ path_facets() {  # <abs path> -> "slug<TAB>origin" where origin = main|sub|wf:<i
 # transcript, and the sid plus the path below its directory for a subagent or
 # workflow file. Everything above that (the project slug) is where the file
 # happens to live today.
-transcript_key() {  # <abs path> -> "<sid>" | "<sid>/subagents/..."
-  local rel=${1#"$PROJECTS"/} rest
-  rest=${rel#*/}
-  printf '%s' "${rest%.jsonl}"
-}
+#
+# In awk, because every pass that keys paths keys a whole list of them at once.
+# The caller passes -v pref="$PROJECTS/".
+AWK_KEY='
+  function tkey(p,   i) {  # <abs path> -> "<sid>" | "<sid>/subagents/..."
+    if (index(p, pref) == 1) p = substr(p, length(pref) + 1)
+    i = index(p, "/"); if (i > 0) p = substr(p, i + 1)
+    sub(/\.jsonl$/, "", p)
+    return p
+  }
+'
 
-# Newest-copy-wins needs an mtime, and BSD and GNU stat spell it differently.
-# GNU answers -f with filesystem info instead of failing, so the BSD spelling is
-# accepted only when it comes back as digits.
-mtime_of() {  # <abs path> -> epoch seconds, 0 if unknown
-  local m
-  m=$(stat -f %m "$1" 2>/dev/null)
-  case "$m" in ''|*[!0-9]*) m=$(stat -c %Y "$1" 2>/dev/null) ;; esac
-  case "$m" in ''|*[!0-9]*) m=0 ;; esac
-  printf '%s' "$m"
+# mtime<TAB>size<TAB>path of every path listed in <in> that still exists, in one
+# stat for the lot instead of a stat per path. Newest-copy-wins needs the mtime
+# and the reader the size, and BSD and GNU stat spell both differently: GNU
+# answers -f with filesystem info instead of failing, so the BSD spelling is
+# kept only when its first line comes back as digits.
+stat_all() {  # <in: one path per line> <out>
+  : >"$2"
+  [ -s "$1" ] || return 0
+  tr '\n' '\0' <"$1" | xargs -0 stat -f '%m%t%z%t%N' >"$2" 2>/dev/null
+  case "$(head -1 "$2")" in
+    [0-9]*"$TAB"[0-9]*"$TAB"*) ;;
+    *) tr '\n' '\0' <"$1" | xargs -0 stat --printf '%Y\t%s\t%n\n' >"$2" 2>/dev/null ;;
+  esac
 }
 
 # facts rows: bucket, project-slug, sid, agentid, agenttype, kind, model,
@@ -334,8 +353,13 @@ mtime_of() {  # <abs path> -> epoch seconds, 0 if unknown
 # live. A reader tells them apart by NF: a row with 15 fields has a lastctx, a
 # row with 14 has only maxctx, which then stands in for it. No --rebuild is
 # needed, and the stand-in is only wrong for a bucket that held a compaction.
-fold_rows() {  # <project-slug> <carried ids> <origin> ; extracted TSV on stdin
-  LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v proj="$1" -v seen0="$2" -v origin="$3" -v bucket="$BUCKET" '
+#
+# The facts and session rows are appended straight to the two files named, and
+# only the ids to carry are printed, so the caller reads one line back instead
+# of sorting the output into three with a grep and a cut each.
+fold_rows() {  # <project-slug> <carried ids> <origin> <facts out> <sessions out> ; extracted TSV on stdin
+  LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v proj="$1" -v seen0="$2" -v origin="$3" -v bucket="$BUCKET" \
+      -v ff="$4" -v mf="$5" '
     BEGIN { n = split(seen0, carry, ","); for (i = 1; i <= n; i++) if (carry[i] != "") seen[carry[i]] = 1 }
     {
       id = $1
@@ -363,14 +387,14 @@ fold_rows() {  # <project-slug> <carried ids> <origin> ; extracted TSV on stdin
     END {
       for (i = 1; i <= m; i++) {
         k = order[i]; split(k, a, SUBSEP)
-        print "F", a[1], proj, a[2], a[3], a[4], a[5], a[6], R[k], I[k], C5[k], C1[k], CR[k], O[k], X[k], LX[G[k]] + 0
+        print a[1], proj, a[2], a[3], a[4], a[5], a[6], R[k], I[k], C5[k], C1[k], CR[k], O[k], X[k], LX[G[k]] + 0 >> ff
       }
-      for (s in fts) print "M", s, proj, fts[s], lts[s], mdl[s]
+      for (s in fts) print s, proj, fts[s], lts[s], mdl[s] >> mf
       # the last few ids, so the next incremental read does not double-count a
       # response whose content blocks straddle the seam
       out = ""
       for (i = (t > 32 ? t - 31 : 1); i <= t; i++) out = out (out == "" ? "" : ",") tail[i]
-      print "T", out
+      print out
     }'
 }
 
@@ -388,6 +412,36 @@ fold_rows() {  # <project-slug> <carried ids> <origin> ; extracted TSV on stdin
 # process would have, so it just returns and lets the next tick pick up.
 LOCK="$STATE/.update.lock"
 LOCK_STALE_MIN=${TU_LOCK_STALE_MIN:-5}
+
+# A LOCK IS STALE WHEN ITS UPDATER IS GONE, NOT WHEN IT IS OLD. The updater
+# writes its pid into the lock, and while that pid is a running tusage the lock
+# is held however long the update takes: a catch-up after weeks with no update
+# reads for minutes, and a lock taken over from a live updater counts every byte
+# both of them read twice. A pid that is gone, or that now belongs to some other
+# program, leaves the lock to be taken over at once. A lock with no pid in it —
+# an older version's, or one caught between its mkdir and the write — falls back
+# to its age.
+lock_stale() {
+  local pid
+  pid=$(cat "$LOCK/pid" 2>/dev/null)
+  case "$pid" in
+    ''|*[!0-9]*) [ -n "$(find "$LOCK" -maxdepth 0 -mmin "+$LOCK_STALE_MIN" 2>/dev/null)" ] ;;
+    *) kill -0 "$pid" 2>/dev/null || return 0
+       case "$(ps -p "$pid" -o command= 2>/dev/null)" in *tusage*) return 1 ;; esac
+       return 0 ;;
+  esac
+}
+
+# AN INTERRUPTED UPDATER TAKES ITS LOCK WITH IT. Ctrl-C in a report that was
+# catching up used to leave the lock behind, and every tusage for the next five
+# minutes then reported from the old index without a word. The RETURN trap does
+# not run on a signal, so these do the same cleaning and exit with the signal's
+# status; update() sets them once it holds the lock and drops them on return.
+update_abort() {  # <exit status>
+  rm -rf "${tmp:-}" "$LOCK" "$STAMP.new" 2>/dev/null
+  [ "${show:-0}" = 1 ] && printf '\r\033[K' >&2
+  exit "$1"
+}
 
 # NOTHING WRITTEN SINCE THE LAST COMPLETED UPDATE, NOTHING TO DO. The dashboard
 # calls --update after Claude events and once a minute when idle, and an update
@@ -411,7 +465,7 @@ update_has_work() {
 }
 
 update() {
-  local rebuild=${1:-0} loud=${2:-0} f sz off end slug seen tmp work newoff key state dups n=0
+  local rebuild=${1:-0} loud=${2:-0} f sz off end seen tmp newoff key state dups n=0
 
   if [ "$rebuild" != 1 ] && [ -e "$STAMP" ] && [ -s "$OFFSETS" ]; then
     update_has_work || return 0
@@ -425,7 +479,7 @@ update() {
   while [ "$tries" -gt 0 ]; do
     mkdir "$LOCK" 2>/dev/null && break
     # An updater killed mid-run would otherwise wedge the index for good.
-    if [ -n "$(find "$LOCK" -maxdepth 0 -mmin "+$LOCK_STALE_MIN" 2>/dev/null)" ]; then
+    if lock_stale; then
       rm -rf "$LOCK" 2>/dev/null
       mkdir "$LOCK" 2>/dev/null && break
     fi
@@ -438,8 +492,10 @@ update() {
     return 0
   fi
 
+  printf '%s\n' "$$" >"$LOCK/pid" 2>/dev/null
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/tusage.XXXXXX") || { rm -rf "$LOCK"; return 1; }
-  trap 'rm -rf "$tmp" "$LOCK"' RETURN
+  trap 'rm -rf "$tmp" "$LOCK"; trap - INT TERM HUP' RETURN
+  trap 'update_abort 130' INT; trap 'update_abort 143' TERM; trap 'update_abort 129' HUP
 
   [ "$rebuild" = 1 ] && rm -f "$OFFSETS" "$FACTS" "$META" "$STAMP"
 
@@ -471,75 +527,81 @@ update() {
   # path, so deriving it once on the way in costs nothing and the old three-field
   # rows keep working until the table is next written out.
   : >"$tmp/offk"
-  [ -s "$OFFSETS" ] && LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v pref="$PROJECTS/" '
-      { k = $4
-        if (k == "") {
-          p = $1
-          if (index(p, pref) == 1) p = substr(p, length(pref) + 1)
-          i = index(p, "/"); if (i > 0) p = substr(p, i + 1)
-          sub(/\.jsonl$/, "", p)
-          k = p
-        }
-        print $1, $2, $3, k }' "$OFFSETS" >"$tmp/offk"
+  [ -s "$OFFSETS" ] && LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v pref="$PROJECTS/" "$AWK_KEY"'
+      { print $1, $2, $3, ($4 == "" ? tkey($1) : $4) }' "$OFFSETS" >"$tmp/offk"
 
   # Key every candidate, and add any already-indexed copy of the same key that is
   # still on disk under its old path — mid-move, or a plain copy, both halves are
-  # there and only one of them may be counted.
+  # there and only one of them may be counted. One stat and one awk for each list,
+  # never a program per path: a catch-up after weeks without an update has
+  # thousands of them.
   : >"$tmp/keyed"; : >"$tmp/skipped"
-  while IFS= read -r f; do
-    [ -e "$f" ] || continue
-    printf '%s\t%s\t%s\tnew\n' "$(transcript_key "$f")" "$(mtime_of "$f")" "$f"
-  done <"$tmp/cand" >"$tmp/keyed"
-  if [ -s "$tmp/offk" ]; then
+  stat_all "$tmp/cand" "$tmp/cstat"
+  LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v pref="$PROJECTS/" "$AWK_KEY"'
+    { print tkey($3), $1, $3, "new", $2 }' "$tmp/cstat" >"$tmp/keyed"
+  if [ -s "$tmp/offk" ] && [ -s "$tmp/keyed" ]; then
     LC_ALL=C awk -F"$TAB" 'NR==FNR { ck[$1] = 1; cp[$3] = 1; next }
                   ($4 in ck) && !($1 in cp) { print $4 "\t" $1 }' \
-        "$tmp/keyed" "$tmp/offk" |
-      while IFS="$TAB" read -r k f; do
-        [ -e "$f" ] || continue
-        printf '%s\t%s\t%s\told\n' "$k" "$(mtime_of "$f")" "$f"
-      done >>"$tmp/keyed"
+        "$tmp/keyed" "$tmp/offk" >"$tmp/oldk"
+    cut -f2 "$tmp/oldk" >"$tmp/oldp"
+    stat_all "$tmp/oldp" "$tmp/ostat"
+    LC_ALL=C awk -F"$TAB" -v OFS="$TAB" 'FILENAME == ARGV[1] { mt[$3] = $1; sz[$3] = $2; next }
+        ($2 in mt) { print $1, mt[$2], $2, "old", sz[$2] }' "$tmp/ostat" "$tmp/oldk" >>"$tmp/keyed"
   fi
   # Newest mtime wins the key; the losers are not parsed at all. A loser that is
   # already indexed keeps its row, so the copy on disk is simply invisible.
+  #
+  # BY KEY, NOT BY PATH: a known key under a new path is the same transcript
+  # moved, so its offset and carried ids come along and only the tail is read.
+  # They are joined on here in one pass, the ids last: they can be empty, and
+  # read collapses an empty field between two tabs into the next one.
   sort -t"$TAB" -k1,1 -k2,2nr "$tmp/keyed" 2>/dev/null |
     LC_ALL=C awk -F"$TAB" -v skip="$tmp/skipped" '
-      { if (seen[$1]++) { print > skip; next } print }' >"$tmp/plan"
+      { if (seen[$1]++) { print > skip; next } print }' |
+    LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '
+      FILENAME == ARGV[1] { if (!($4 in off)) { off[$4] = $2 + 0; ids[$4] = $3 }; next }
+      { print $1, $2, $3, $4, $5, ($1 in off ? off[$1] : 0), ids[$1] }' "$tmp/offk" - >"$tmp/plan"
   dups=$(grep -c . "$tmp/skipped" 2>/dev/null); dups=${dups:-0}
 
   : >"$tmp/newfacts"; : >"$tmp/newmeta"; : >"$tmp/newoff"
 
-  while IFS="$TAB" read -r key _ f state; do
+  # A CATCH-UP SAYS HOW FAR IT GOT. Weeks of transcripts take minutes to read,
+  # and a report that sat through them in silence looked hung and was killed.
+  # Only on a terminal: the dashboard and every script read a pipe, and a
+  # handful of transcripts is read before anybody would wonder.
+  local total=0 i=0 show=0
+  total=$(grep -c "${TAB}new${TAB}" "$tmp/plan" 2>/dev/null); total=${total:-0}
+  [ -t 2 ] && [ "$total" -ge "${TU_PROGRESS_MIN:-100}" ] && show=1
+
+  while IFS="$TAB" read -r key _ f state sz off seen; do
     [ "$state" = new ] || continue
     [ -e "$f" ] || continue
-    off=0; seen=""
-    # BY KEY, NOT BY PATH: a known key under a new path is the same transcript
-    # moved, so its offset and carried ids come along and only the tail is read.
-    if [ -s "$tmp/offk" ]; then
-      IFS="$TAB" read -r _ off seen _ < <(LC_ALL=C awk -F"$TAB" -v k="$key" '$4==k { print; exit }' "$tmp/offk")
-      off=${off:-0}
-    fi
-    sz=$(wc -c <"$f" 2>/dev/null | tr -d ' '); sz=${sz:-0}
+    i=$((i + 1))
+    [ "$show" = 1 ] && [ $((i % 20)) -eq 1 ] &&
+      printf '\rtusage: reading transcripts %d/%d' "$i" "$total" >&2
     # Shorter than the offset it inherited: not that file after all, so read it
     # whole. Covers a rewritten transcript and a name reused by a shorter one.
     [ "$sz" -lt "$off" ] && { off=0; seen=""; }
-    end=$(complete_bytes "$f"); end=${end:-0}
+    end=$(complete_bytes "$f" "$sz"); end=${end:-0}
     if [ "$end" -le "$off" ]; then
       printf '%s\t%s\t%s\t%s\n' "$f" "$off" "$seen" "$key" >>"$tmp/newoff"
       continue
     fi
-    IFS="$TAB" read -r slug origin < <(path_facets "$f")
-    if [ "$off" -eq 0 ] && [ "$end" -eq "$sz" ]; then
-      jq -rc "$EXTRACT" -- "$f" 2>/dev/null
+    path_facets "$f"
+    # Cut at the complete bytes even from the start: the file may have grown
+    # since its size was taken, and bytes past the offset written down would be
+    # read again next time.
+    if [ "$off" -eq 0 ]; then
+      head -c "$end" -- "$f" 2>/dev/null
     else
-      tail -c "+$((off + 1))" -- "$f" 2>/dev/null | head -c "$((end - off))" |
-        jq -rc "$EXTRACT" 2>/dev/null
-    fi | fold_rows "$slug" "$seen" "$origin" >"$tmp/out"
-    grep '^F'"$TAB" "$tmp/out" 2>/dev/null | cut -f2- >>"$tmp/newfacts"
-    grep '^M'"$TAB" "$tmp/out" 2>/dev/null | cut -f2- >>"$tmp/newmeta"
-    newoff=$(grep '^T'"$TAB" "$tmp/out" 2>/dev/null | cut -f2- | head -1)
+      tail -c "+$((off + 1))" -- "$f" 2>/dev/null | head -c "$((end - off))"
+    fi | jq -rc "$EXTRACT" 2>/dev/null |
+      fold_rows "$PF_SLUG" "$seen" "$PF_ORIGIN" "$tmp/newfacts" "$tmp/newmeta" >"$tmp/out"
+    newoff=""; IFS= read -r newoff <"$tmp/out"
     printf '%s\t%s\t%s\t%s\n' "$f" "$end" "$newoff" "$key" >>"$tmp/newoff"
     n=$((n + 1))
   done <"$tmp/plan"
+  [ "$show" = 1 ] && printf '\r\033[K' >&2
 
   # merge offsets: untouched files keep their row, and a key that moved keeps
   # exactly one row — the new path's. The old path's row goes, or the next
@@ -1053,6 +1115,9 @@ AWK_FMT='
     return sprintf("%d", x)
   }
   function cost(i, c5, c1, cr, o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
+  # A share of nothing is 0%, not a division by zero: a week with no usage, or a
+  # window of nothing but zero-token placeholder requests, is a total of 0.
+  function pct(v, of) { return (of > 0) ? 100*v/of : 0 }
   function bar(v, mx, w,   n, s, i) {
     n = (mx > 0) ? int(v / mx * w + 0.5) : 0
     s = ""; for (i = 0; i < w; i++) s = s (i < n ? "█" : "·")
@@ -1132,7 +1197,7 @@ report_by() {
         printf "%-36.36s %8s %7d %8s %8s %8s %7.0fk  %s%s%s %s%4.1f%%%s\n",
                k, human(C[k]), REQ[k], human(C5[k] + C1[k]), human(CR[k]),
                human(OUT[k]), CX[k]/1000,
-               DIM, bar(C[k], mx, 14), R, DIM, 100*C[k]/TOT, R
+               DIM, bar(C[k], mx, 14), R, DIM, pct(C[k], TOT), R
       }
       printf "%s%-36s %8s %7d%s\n", DIM, "TOTAL", human(TOT), TREQ, R
     }'
@@ -1330,9 +1395,11 @@ summary() {
 
       printf "%swhere it goes (7 d)%s\n", B, R
       wcw = 1.25*CW5 + 2.0*CW1; wcr = 0.1*CR; wou = 5*OU; wt = INP + wcw + wcr + wou
-      printf "  cache WRITE %10s raw -> %9s  %s%s %2.0f%%%s\n", human(CW), human(wcw), DIM, bar(wcw, wt, 22), 100*wcw/wt, R
-      printf "  cache READ  %10s raw -> %9s  %s%s %2.0f%%%s\n", human(CR), human(wcr), DIM, bar(wcr, wt, 22), 100*wcr/wt, R
-      printf "  output      %10s raw -> %9s  %s%s %2.0f%%%s\n", human(OU), human(wou), DIM, bar(wou, wt, 22), 100*wou/wt, R
+      if (wt > 0) {
+        printf "  cache WRITE %10s raw -> %9s  %s%s %2.0f%%%s\n", human(CW), human(wcw), DIM, bar(wcw, wt, 22), pct(wcw, wt), R
+        printf "  cache READ  %10s raw -> %9s  %s%s %2.0f%%%s\n", human(CR), human(wcr), DIM, bar(wcr, wt, 22), pct(wcr, wt), R
+        printf "  output      %10s raw -> %9s  %s%s %2.0f%%%s\n", human(OU), human(wou), DIM, bar(wou, wt, 22), pct(wou, wt), R
+      } else printf "  %snothing in the last 7 days%s\n", DIM, R
       if (TREQ) printf "  %s%.0f%% of requests carry more than 200k of context%s\n", DIM, 100*BIG/TREQ, R
 
       printf "\n%stop projects (7 d)%s\n", B, R
