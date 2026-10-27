@@ -4,7 +4,7 @@
 #   world.sh up        build $DEMO_ROOT from scratch and start the scratch tmux server with the chats
 #   world.sh down      kill the scratch server
 #   world.sh ctl WIN CMD…   send a command to the fake agent in tmux window WIN (see fake-claude.sh)
-#   world.sh sidebar-when-attached   wait for a client, then start the sidebar in the window it shows
+#   world.sh dash-when-attached [DELAY] [zoom]   wait for a client, then bring up the dashboard and take that client to it; zoom fills the window with the list
 #
 # Isolation: env.sh moves HOME, TMUX_TMPDIR, TA_STATE_DIR and TA_CONFIG under $DEMO_ROOT, and every tmux call below goes to the server in $TMUX_TMPDIR.
 
@@ -206,8 +206,6 @@ set -g window-status-current-format ' #I #W '
 set -g pane-border-style 'fg=colour238'
 set -g pane-active-border-style 'fg=colour67'
 set -g set-titles off
-# keys a recording presses to make a chat do something at an exact frame (root table, so they never reach the pane)
-bind -n C-g run-shell -b "$DEMO_SRC/world.sh ctl api permit 'pnpm test --filter api'"
 TMUXCONF
 }
 
@@ -261,12 +259,14 @@ case ${1:-} in
   down) down ;;
   ctl) shift; ctl "$@" ;;
   save) tm run-shell "$REPO/tagents --resurrect-save" ;;
-  sidebar-when-attached)
+  dash-when-attached)
     i=0; while [ -z "$(tm list-clients 2>/dev/null)" ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
     sleep "${2:-0.5}"; tm run-shell "$REPO/tagents --ensure-dash"
-    # the list starts detached, so the keys would go to the chat: put the cursor of the terminal in the list
+    # the keys go to whichever pane of the dashboard is active: put the cursor of the terminal in the list
     p=$(tm list-panes -a -F '#{pane_id} #{@tagents_dash}' | awk '$2 == 1 { print $1; exit }')
     [ -n "$p" ] && tm select-pane -t "$p"
+    # the prefix typed in the list goes on to the viewport, so a recording cannot zoom the list itself
+    [ -n "$p" ] && [ "${3:-}" = zoom ] && tm resize-pane -Z -t "$p"
     # what tmux-resurrect's save hook would run, so a later --resurrect has a snapshot with the list in it
     tm run-shell "$REPO/tagents --resurrect-save"
     # the chats come back from a snapshot as resumed sessions: they do not replay their opening script
@@ -277,5 +277,5 @@ case ${1:-} in
     # the line the README tells you to add to the tmux config
     tm set -g status-right-length 80
     tm set -g status-right "#{?@tagents_counts,#{@tagents_counts},#($REPO/tagents --counts)} " ;;
-  *) echo "usage: world.sh up|down|ctl WIN CMD…|sidebar-when-attached|statusbar-when-attached" >&2; exit 2 ;;
+  *) echo "usage: world.sh up|down|ctl WIN CMD…|dash-when-attached|statusbar-when-attached" >&2; exit 2 ;;
 esac
