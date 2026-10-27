@@ -46,7 +46,7 @@ The tests read `tagents`, `tnotes` and `tusage` from the checkout as they run. A
 |-------|--------|
 | `tests/config.sh` | the config parser, the rules and the command builder, with no tmux involved |
 | `tests/launch.sh` | starting and resuming real agents |
-| `tests/window-rows.sh` | selecting, joining and killing rows across windows and sessions, and following the sidebar |
+| `tests/window-rows.sh` | selecting, joining and killing rows across windows and sessions, and the list's cursor following the viewport |
 | `tests/ui.sh` | what the row looks like: the badge column, the hidden ones, the `?` window running a real key, the one-line header, the `ctrl-v` modal, and the order, which is checked by making a state change and asserting that nothing moved |
 | `tests/names.sh` | the window naming, including the refusal to overwrite a name you typed |
 | `tests/headless.sh` | the sessions with no pane: what the hook writes for one, how the row reads while its process lives and once it does not, and that every verb needing a pane refuses |

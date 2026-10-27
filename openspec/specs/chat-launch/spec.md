@@ -68,11 +68,11 @@ The new agent's window SHALL be created, detached, in the tmux session of the gr
 - **THEN** a tmux server is started with a session named `agents` whose first window is the new agent
 
 ### Requirement: A new agent is opened like any other
-After its window is created the new agent SHALL be selected as `enter` on its row would do (the `window-rows` capability): the sidebar is moved into its window, the cursor is in the agent, and the client ends up looking at it. With no sidebar the client SHALL be taken to the new window. `tagents` SHALL show `tagents: new agent in <project> (<session>:<window>) as <profile>` (the last words only when a profile was used) and take a fresh snapshot for the `resurrect` capability.
+After its window is created the new agent SHALL be selected as `enter` on its row would do (the `window-rows` capability): the viewport shows its window and the cursor is on its row. With no dashboard up the client SHALL be taken to the new window. `tagents` SHALL show `tagents: new agent in <project> (<session>:<window>) as <profile>` (the last words only when a profile was used) and take a fresh snapshot for the `resurrect` capability.
 
 #### Scenario: Cursor lands in the agent
-- **WHEN** the user presses `ctrl-n` in the sidebar
-- **THEN** the client's current pane is the new agent and the sidebar is in its window
+- **WHEN** the user presses `ctrl-n` in the dashboard's list
+- **THEN** the viewport shows the new agent's window with the agent's pane active
 
 ### Requirement: The account dialog is a list of profiles
 When the rules say `ask`, or on `ctrl-p`, an `account> ` picker SHALL list every profile with its config directory (`default (~/.claude)` for a profile with none), under a header saying which project it is for (`which claude account for <project>?` or `start a new agent in <project> as…`) and the directory and session, ending with `esc cancels`. Choosing a profile starts the agent on it; `esc`, or a choice that is not a profile, starts nothing.

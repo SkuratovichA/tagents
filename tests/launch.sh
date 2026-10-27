@@ -355,24 +355,23 @@ ok "rename reads its answer inline" "newname" \
 t "9. a new agent gets the cursor"
 # ---------------------------------------------------------------------------
 # The window is still opened with -d in the project's session, but the new window
-# is then selected like enter would do, the sidebar comes along and the cursor
-# lands in the chat: ctrl-n leaves you looking at the agent you just asked for.
-# The sidebar is a pane that counts as one (the pid of its shell and the title);
-# the lists earlier sections started are closed first, so there is exactly one.
+# is then selected like enter would do: the viewport shows it and its pane is the
+# active one, so ctrl-n leaves you looking at the agent you just asked for. The
+# popup of section 4 started an agent with no dashboard up, which brings the
+# cockpit up first, so from here on the dashboard is the cockpit and the window
+# on screen is the one its viewport shows.
 clear_out
-for p in $(tm list-panes -a -F '#{pane_id} #{@tagents_dash}' 2>/dev/null | awk '$2 == 1 { print $1 }'); do tm kill-pane -t "$p" 2>/dev/null; done
-SBP=$(tm split-window -d -t tatest-dash: -P -F '#{pane_id}' 'sleep 600')
-tm set -p -t "$SBP" @tagents_list "$(tm display -p -t "$SBP" '#{pane_pid}')" \; set -p -t "$SBP" @tagents_dash 1 \; select-pane -T tagents-sidebar -t "$SBP"
+ok "the cockpit is up, brought by the popup of section 4" 1 "$(tm show -qv -t '=tagents:' @tagents_cockpit 2>/dev/null)"
 run --act new "%$PN" dead sid-focus "$PERS"
 f=$(waitout) || { echo "  FAIL nothing started"; fail=$((fail+1)); f=/dev/null; }
 sleep 0.8
 n=${f##*/}; n=${n%.out}
-csess=$(tm list-clients -F '#{client_session}' 2>/dev/null | head -1)
-ok "the client's current pane is the agent it just started" \
-   "%$n" "$(tm display -p -t "$csess:" '#{pane_id}' 2>/dev/null)"
-ok "and the sidebar is in its window" \
-   "$(tm display -p -t "%$n" '#{window_id}' 2>/dev/null)" "$(tm list-panes -a -F '#{window_id} #{@tagents_dash}' | awk '$2 == 1 { print $1 }')"
-tm kill-pane -t "$SBP" 2>/dev/null
+vt=$(tm show -gqv @tagents_viewport_tty 2>/dev/null)
+vw=$(tm list-clients -F '#{client_name} #{window_id}' 2>/dev/null | awk -v c="$vt" '$1 == c { print $2 }')
+ok "the viewport shows the window of the agent it just started" \
+   "$(tm display -p -t "%$n" '#{window_id}' 2>/dev/null)" "$vw"
+ok "...and the agent's pane is the active one there" \
+   "%$n" "$(tm display -p -t "$vw" '#{pane_id}' 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
 t "10. the hook records when you last typed, and nothing else touches it"

@@ -6,11 +6,11 @@
 
 [Docs](https://skuratovicha.github.io/tagents/) · [Install](#install) · [Getting started](https://skuratovicha.github.io/tagents/guide/getting-started) · [Resurrect](#never-lose-a-session)
 
-<img src="docs/images/hero.gif" alt="The tagents sidebar: chats grouped by project, one turns BLOCKED, enter opens it beside the list" width="900">
+<img src="docs/images/hero.gif" alt="The tagents dashboard: chats grouped by project, one turns BLOCKED, enter opens it beside the list" width="900">
 
 </div>
 
-tagents is a live sidebar for every Claude Code chat you run in tmux: what each one is doing, which one is waiting on you, how much context it holds and what it has spent. Pick a row and the chat opens right beside the list, so you can answer it and move on.
+tagents is a live dashboard for every Claude Code chat you run in tmux: what each one is doing, which one is waiting on you, how much context it holds and what it has spent. Pick a row and the chat opens right beside the list, so you can answer it and move on.
 
 It grew up in parallel to [herdr](https://herdr.dev), around the same idea, for people who would rather keep tmux: no new multiplexer, no new terminal, and your own config and key bindings stay yours.
 
@@ -20,7 +20,7 @@ It grew up in parallel to [herdr](https://herdr.dev), around the same idea, for 
 
 - **Shows who is waiting on you.** A chat stuck on a question or a permission turns `BLOCKED` and is counted in its project's header, so nothing waits unnoticed in a window you are not looking at.
 - **Taps you on the shoulder.** A desktop notification when a chat asks something, wants a permission or finishes its turn; click it and you land in that chat.
-- **Follows you around.** The sidebar moves into whichever window is on screen. `enter` on a row brings that chat beside the list.
+- **The chat beside the list.** The dashboard is a tmux session of its own: `enter` on a row shows that chat on the right, and `ctrl-g` takes your terminal to where it lives.
 - **Survives a reboot.** Close the laptop, restart, kill the tmux server: every chat comes back in its window, on its account, with its model.
 - **Forgets nothing.** Closed chats stay one keystroke away, with their last prompts, and resume where they ran.
 - **Keeps your accounts apart.** Work and personal Claude logins, chosen per directory, with a badge on every row so you always know which one is paying.

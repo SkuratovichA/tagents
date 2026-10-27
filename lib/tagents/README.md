@@ -26,10 +26,11 @@ others are built on `STATE_DIR` and `TAB`.
 | `preview.sh` | 205 | a row, up close |
 | `actions.sh` | 240 | what a key actually does |
 | `refresh.sh` | 671 | keeping a list current |
-| `sidebar.sh` | 189 | which pane is the dashboard right now |
-| `follow.sh` | 202 | moving the sidebar into the window on screen, and the hooks that do it |
-| `migrate.sh` | 83 | the one pass that sent the previous version's seats home |
-| `rows.sh` | 162 | what a key does to a row: select, join, break out, kill |
+| `sidebar.sh` | 147 | which pane is the dashboard right now |
+| `cockpit.sh` | 375 | the dashboard as a session of its own, the viewport beside the list |
+| `follow.sh` | 97 | the list cursor following the viewport, and the hooks that do it |
+| `migrate.sh` | 88 | the one pass that sent the previous version's seats home |
+| `rows.sh` | 127 | what a key does to a row: select, go to, join, break out, kill |
 | `closed.sh` | 258 | the sessions that stopped running |
 | `resurrect.sh` | 362 | every chat back where it was after a reboot |
 | `launch.sh` | 226 | starting an agent |
@@ -79,7 +80,7 @@ bindings have to name something runnable, and `${SELF%/*}` is also how `tnotes`
 and a checkout's `packages/core` are found. The modules are looked up
 separately, by following the symlink to the real file.
 
-**The tmux half.** Five files: `sidebar.sh` answers "which pane is the list, right now" (markers are only ever a fallback for a live pid), `follow.sh` moves it into the window on screen and owns the follow hooks, `rows.sh` is what a key does to a row (select, join, break out, kill), `migrate.sh` is the one pass that sent the previous version's seats home, and `refresh.sh` is everything that reacts to time or tmux.
+**The tmux half.** Six files: `cockpit.sh` is the dashboard, the session `tagents` with the list on the left and the viewport on the right, `sidebar.sh` answers "which pane is the list, right now" (markers are only ever a fallback for a live pid), `follow.sh` keeps the list's cursor on the window the viewport shows and owns the follow hooks, `rows.sh` is what a key does to a row (select, go to, join, break out, kill), `migrate.sh` is the one pass that sent the previous version's seats home, and `refresh.sh` is everything that reacts to time or tmux.
 
 **The channels.** Nothing in here polls. `tagents-ev` wakes the refresher; `tmux wait-for -S` rings, and wakes every waiter. Three things ring: the agent-state hook (the count and the signal are the first commands of the `tmux` call that sets `@agent`; an event with no pane rings the default server with one `tmux` program of its own), the tmux hooks at index 42 (`EV_EVENTS` in `refresh.sh`; tmux 3.7 has no `after-swap-pane` and its kin, so `window-layout-changed` stands in for them), and tagents' own writers through `signal_ev` in `core.sh`, which the sidebar's move, a join and a break call themselves. Two things to know before touching it. Two signals with no waiter cancel each other, so nothing may rely on being back in a wait in time; and for that reason every ring is also a count: `tagents-ev` adds one to the global option `@tagents_evgen` (`EV_BUMP`) before it signals. The refresher reads `@tagents_evgen` in the `list-panes` of its snapshot (as a line apart, which the snapshot compared by the passes leaves out) and waits with `tmux if-shell -F` on "the count is still the one I saw", which the server evaluates and waits on as one step, so a ring between two waits has moved the number and the wait does not happen. The refresher has one waiter outstanding at most, a background `tmux if-shell` per wait that writes its exit status into a FIFO the loop reads with a timeout. The agent-state hook is POSIX sh and carries a copy of `EV_BUMP`; `tests/refresh.sh` pins it to core.sh's.
 

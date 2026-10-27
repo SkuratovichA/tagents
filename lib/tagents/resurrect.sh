@@ -1,6 +1,6 @@
 # lib/tagents/resurrect.sh — what comes back after a reboot
 #
-# The snapshot a restore works from: resurrect_rows (one A row per live chat, a D row when the sidebar is up — a chat filed where its pane is, a joined one under its home session — read pane by pane through resurrect_pane), resurrect_save (a full replacement, never twice the same, held off while a restore is pending or running (pending only when the restore hook is wired), the newest RESURRECT_KEEP kept plus the one a restore would read), resurrect_files/resurrect_latest/resurrect_pick (every snapshot, the newest, and the newest one written before this tmux server started — the one a restore wants), resurrect_start/resurrect_young/resurrect_done/resurrect_hooked (when this server started, whether that was a moment ago, whether the hook has restored it, and whether a restore hook is wired at all), resurrect_rows_cmd (the raw rows, for the tests and for a curious person), and the two triggers: resurrect_soon after a launch, a kill or a restore, resurrect_due for the status bar. Then the restore that reads it: resurrect_place (the pane a chat goes back into — its own idle shell, else a new window, else a new session), resurrect_dashboard and resurrect_sweep (the sidebar back in the window it was in, and the idle shells tmux-resurrect left where it was closed), resurrect_restore (every row not already running, resumed on the login it ran on with its model and effort, and a report per row; from the hook once per server and only on a young one), with resurrect_auto_on and resurrect_has_transcript deciding whether to run at all and which rows are worth it, and resurrect_notes last (the orphaned editors closed, the editor of every restored chat that had one beside it opened again). The section banner heads the file.
+# The snapshot a restore works from: resurrect_rows (one A row per live chat, a D row when the cockpit is up — a chat filed where its pane is, a joined one under its home session — read pane by pane through resurrect_pane), resurrect_save (a full replacement, never twice the same, held off while a restore is pending or running (pending only when the restore hook is wired), the newest RESURRECT_KEEP kept plus the one a restore would read), resurrect_files/resurrect_latest/resurrect_pick (every snapshot, the newest, and the newest one written before this tmux server started — the one a restore wants), resurrect_start/resurrect_young/resurrect_done/resurrect_hooked (when this server started, whether that was a moment ago, whether the hook has restored it, and whether a restore hook is wired at all), resurrect_rows_cmd (the raw rows, for the tests and for a curious person), and the two triggers: resurrect_soon after a launch, a kill or a restore, resurrect_due for the status bar. Then the restore that reads it: resurrect_place (the pane a chat goes back into — its own idle shell, else a new window, else a new session), resurrect_dashboard and resurrect_sweep (the list back in the cockpit, and the idle shells tmux-resurrect left where it was closed), resurrect_restore (every row not already running, resumed on the login it ran on with its model and effort, and a report per row; from the hook once per server and only on a young one), with resurrect_auto_on and resurrect_has_transcript deciding whether to run at all and which rows are worth it, and resurrect_notes last (the orphaned editors closed, the editor of every restored chat that had one beside it opened again). The section banner heads the file.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -38,8 +38,8 @@ RESURRECT_YOUNG=${TA_RESURRECT_YOUNG:-300}    # seconds a server counts as just 
 RESURRECT_SOON=${TA_RESURRECT_SOON:-5}        # the capture after a launch or a kill
 RESURRECT_RETAKE=${TA_RESURRECT_RETAKE:-15}   # the capture after a restore
 
-# One pane of the list-panes map resurrect_rows builds, US-joined: session, window index, the pane's place, command, joined (the home session of a chat joined by ctrl-s), notes (1 when the chat's editor is a pane of its own window), tagents' own name for the window, directory, window name. The window name is last and may hold the separator. THE PANE'S PLACE counts the panes of its window that are not the sidebar and come before it (0 for the first): the sidebar moves from window to window, so a tmux pane index that counts it names a different pane once it has gone; the sidebar is the pane titled tagents-sidebar or <sidebar pane>.
-resurrect_pane() {  # <map> <pane id> [sidebar pane]
+# One pane of the list-panes map resurrect_rows builds, US-joined: session, window index, the pane's place, command, joined (the home session of a chat joined by ctrl-s), notes (1 when the chat's editor is a pane of its own window), tagents' own name for the window, directory, window name. The window name is last and may hold the separator. THE PANE'S PLACE counts the panes of its window that are not a list and come before it (0 for the first): a user may have a list in any window, and a tmux pane index that counts it names a different pane once it has gone; a list is the pane titled tagents-sidebar or <list pane>.
+resurrect_pane() {  # <map> <pane id> [list pane]
   printf '%s\n' "$1" | LC_ALL=C awk -F'\\|@\\|' -v OFS="$US" -v p="$2" -v sb="${3:-}" '
     { win[$1] = $2 SUBSEP $3; ses[$1] = $2; wix[$1] = $3; pix[$1] = $4 + 0; isb[$1] = ($1 == sb || $10 == 1)
       if (!d && $1 == p) { s = $2; wi = $3; pi = $4; c = $5; jn = $6; e = $7; tn = $8; dr = $9
@@ -50,7 +50,7 @@ resurrect_pane() {  # <map> <pane id> [sidebar pane]
           print s, wi, n, c, jn, ((e != "" && win[e] == s SUBSEP wi) ? 1 : ""), tn, dr, w }'
 }
 
-# One A row per live chat and a D row when the sidebar is up. A chat is recorded where tmux says its pane is, by its place among the panes of its window that are not the sidebar (the user's panes count; `p` in the column that once held the docked flag says so, and a snapshot without it holds a tmux pane index) — except a chat joined by ctrl-s, which is recorded under its home session with no window, no pane and no window names (the ones its pane reports are the host window's), so a restore gives it a window of its own there. The D row names the window the sidebar is in, in the cockpit the window the viewport shows (never the session tagents). The window's own name travels with @tagents_name only when the two still agree: that is how the naming sweep tells its name from one a person typed, and a restore must not hand a typed name back to the sweep. The A rows come sorted the way the restore walks them, so an unchanged set reads the same whatever order ps listed its chats in.
+# One A row per live chat and a D row when the cockpit is up. A chat is recorded where tmux says its pane is, by its place among the panes of its window that are not a list (the user's panes count; `p` in the column that once held the docked flag says so, and a snapshot without it holds a tmux pane index) — except a chat joined by ctrl-s, which is recorded under its home session with no window, no pane and no window names (the ones its pane reports are the host window's), so a restore gives it a window of its own there. The D row names the window the viewport shows (never the session tagents). The window's own name travels with @tagents_name only when the two still agree: that is how the naming sweep tells its name from one a person typed, and a restore must not hand a typed name back to the sweep. The A rows come sorted the way the restore walks them, so an unchanged set reads the same whatever order ps listed its chats in.
 resurrect_rows() {
   local map p pid sid cwd tr cfgd hascfg model argv sbp vtty
   local sess widx pidx cur joined notes tname dir wname
@@ -62,9 +62,6 @@ resurrect_rows() {
     vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
     [ -z "$vtty" ] || read -r widx sess <<<"$(client_raw '#{window_index} #{session_name}' "$vtty")"
     [ -n "${sess:-}" ] && [ "$sess" != tagents ] && printf 'D\t%s\t%s\n' "$sess" "$widx"
-  elif [ -n "$sbp" ]; then
-    IFS="$US" read -r sess widx _ < <(resurrect_pane "$map" "$sbp" "$sbp")
-    [ -n "$sess" ] && printf 'D\t%s\t%s\n' "$sess" "$widx"
   fi
   # Every pane the ps walk vouches for (with the claude pid) first, then the ones only the command name vouches for (no pid, so no argv); awk keeps the first line per pane, so a pane known both ways keeps its pid.
   { live_pane_pids; live_panes | sed "s/\$/$TAB/"; } | LC_ALL=C awk -F"$TAB" '!s[$1]++' |
@@ -187,7 +184,7 @@ resurrect_target() {  # <session> <window index> <place> <kind: p or empty>
       $1 == want { print $2; exit }'
 }
 
-# Where a chat goes back: its own pane when tmux-resurrect put an idle shell there, a new window in its session when that pane is busy, gone, the sidebar or an editor, or the row has no window and pane (a joined chat), a new session when even the session is gone. The other panes of the window are never touched. Prints the pane id.
+# Where a chat goes back: its own pane when tmux-resurrect put an idle shell there, a new window in its session when that pane is busy, gone, a list or an editor, or the row has no window and pane (a joined chat), a new session when even the session is gone. The other panes of the window are never touched. Prints the pane id.
 resurrect_place() {  # <session> <window index> <place> <dir> <cmd> [kind]
   local sess=$1 widx=$2 pidx=$3 dir=$4 cmd=$5 kind=${6:-} t cur p
   if ! tmux has-session -t "=$sess" 2>/dev/null; then
@@ -209,31 +206,19 @@ resurrect_place() {  # <session> <window index> <place> <dir> <cmd> [kind]
   new_pane_window "$sess" "$dir" "$cmd"
 }
 
-# The sidebar back: a list as the leftmost full-height pane of the window the D row names when that window exists after the restore, of the first restored chat's window otherwise; a running list is moved there instead of a second one started. A window tmux-resurrect left from an older version's dashboard is an ordinary window and keeps what it runs.
+# The dashboard back: the cockpit, its viewport showing the window the D row names when that window exists after the restore, the first restored chat's window otherwise.
 resurrect_dashboard() {  # <snapshot file> <window id of the first chat restored>
-  local file=$1 first=${2:-} drow ds di win sb np nw
+  local file=$1 first=${2:-} drow ds di win
   drow=$(LC_ALL=C awk -F"$TAB" '$1 == "D" { print $2 "\t" $3; exit }' "$file")
   [ -n "$drow" ] || return 1
   ds=${drow%%$TAB*}; di=${drow#*$TAB}
   win=$(tmux list-windows -t "=$ds:" -F '#{window_index} #{window_id}' 2>/dev/null | LC_ALL=C awk -v i="$di" '$1 == i { print $2; exit }')
   [ -n "$win" ] || win=$first
   [ -n "$win" ] || return 1
-  if cockpit_want; then resurrect_cockpit "$win"; return $?; fi
-  sb=$(dash_pane)
-  if [ -n "$sb" ]; then
-    # A list alone in its session's only window cannot be moved without taking that window and the session with it: it stays where it is.
-    read -r np nw <<EOF
-$(tmux display -p -t "$sb" '#{window_panes} #{session_windows}' 2>/dev/null)
-EOF
-    [ "${np:-0}" -le 1 ] && [ "${nw:-0}" -le 1 ] && return 0
-    sidebar_move "$win" || return 1
-  else
-    start_sidebar "$win" >/dev/null || return 1
-  fi
-  return 0
+  resurrect_cockpit "$win"
 }
 
-# The sidebar back in the cockpit: the dashboard made if it is not up, its viewport showing the window. No terminal is switched: the one attached to the window's session keeps showing it, and only the viewport's own client moves.
+# The list back in the cockpit: the dashboard made if it is not up, its viewport showing the window. No terminal is switched: the one attached to the window's session keeps showing it, and only the viewport's own client moves.
 resurrect_cockpit() {  # <window id>
   local win=$1 sid sess w h vtty
   read -r sid sess <<<"$(tmux display -p -t "$win" '#{session_id} #{session_name}' 2>/dev/null)"
@@ -274,7 +259,7 @@ resurrect_sweep() {
 resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
   local dry=0 auto=0 file="" live n=0 k=0 total notes_panes="" st lt root
   local t sid cfgd hascfg sess widx pidx wname tname dir kind notes model argv
-  local prof cmd pane note eff wid at at_w firstwin="" lo
+  local prof cmd pane note eff wid at at_w firstwin=""
   while [ $# -gt 0 ]; do
     case $1 in
       --dry-run) dry=1 ;;  --auto) auto=1 ;;  --from) shift; file=${1:-} ;;
@@ -347,11 +332,9 @@ resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
     echo "✓ $at ${tname:-$wname} → $pane${prof:+ ($prof)}${model:+ $model}${note}"; n=$((n + 1))
   done < <(LC_ALL=C awk -F"$TAB" -v OFS="$US" '$1 == "A" { $1 = $1; print }' "$file" | sort -t"$US" -k5,5 -k6,6n -k7,7n)
   if [ "$dry" != 1 ]; then
-    # A leftover dashboard (cockpit_leftover) is neither a taken name nor shells to sweep: in the cockpit it is rebuilt before the dashboard step, which then finds the cockpit up; in the follow layout it is closed after the sidebar is placed, whose window its terminals go to.
-    lo=0; cockpit_leftover >/dev/null && lo=1
-    [ "$lo" = 1 ] && cockpit_want && { cockpit_leftover_rebuild; lo=0; }
+    # A leftover dashboard (cockpit_leftover) is neither a taken name nor shells to sweep: it is rebuilt before the dashboard step, which then finds the cockpit up.
+    cockpit_leftover >/dev/null && cockpit_leftover_rebuild
     resurrect_dashboard "$file" "$firstwin" && echo "✓ dashboard"
-    [ "$lo" = 1 ] && cockpit_leftover_close
     resurrect_notes $notes_panes
     resurrect_sweep
     unlock_dir "$RESURRECT_LOCK"

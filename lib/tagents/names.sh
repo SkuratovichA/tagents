@@ -194,9 +194,7 @@ name_window() {
 # so a shell split off beside an agent never wins by being newer — its title is
 # the host name, which names nothing.
 #
-# WHAT IS LEFT OUT: nothing by geography. The sidebar is not a chat, so a window
-# that holds only the sidebar has no pane with a name to give and is never named,
-# and a window with the sidebar and a chat is named after the chat.
+# WHAT IS LEFT OUT: nothing by geography, except the dashboard's own window, which is never named: the list is not a chat, so the window that holds it has no pane with a name to give.
 #
 # AND A NAME A PERSON TYPED IS NEVER OVERWRITTEN. A window is renamed only when
 # its current name is tmux automatic one, or the name this function gave it last

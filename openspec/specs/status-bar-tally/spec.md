@@ -159,7 +159,7 @@ The text the refresher builds from the parts and a tally SHALL equal, byte for b
 - **THEN** the outputs are identical and contain the tally
 
 ### Requirement: The bar's text is also a tmux option
-While a refresher keeps the cache, it SHALL set the global tmux option `@tagents_counts` to the same text as `.counts.out`, byte for byte, and only when that text changes. It SHALL unset the option when it ends and no other refresher is alive, and a sidebar list that closes SHALL unset it when no refresher with a live process remains while a popup list SHALL NOT, so that a refresher killed with -9 does not leave the last text on the bar for good.
+While a refresher keeps the cache, it SHALL set the global tmux option `@tagents_counts` to the same text as `.counts.out`, byte for byte, and only when that text changes. It SHALL unset the option when it ends and no other refresher is alive, and a list in the dashboard's pane that closes SHALL unset it when no refresher with a live process remains while a popup list SHALL NOT, so that a refresher killed with -9 does not leave the last text on the bar for good.
 
 #### Scenario: The option follows the cache
 - **WHEN** the tally changes while a refresher runs

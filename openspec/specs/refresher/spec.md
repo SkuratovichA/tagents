@@ -1,7 +1,7 @@
 # refresher Specification
 
 ## Purpose
-The refresher is the background loop that keeps an open dashboard list current without redrawing it needlessly: it sleeps on a tmux channel until something rings it, posts a reload only when something the list draws moved, repairs the sidebar's seats, and keeps the port claim other processes use to reach the list. This capability also covers the tmux hooks that ring the channels, the tmux focus hooks that make a seat switch repaint the list at once, and the status-bar text the loop keeps in a tmux option.
+The refresher is the background loop that keeps an open dashboard list current without redrawing it needlessly: it sleeps on a tmux channel until something rings it, posts a reload only when something the list draws moved, sends the previous version's seats home, and keeps the port claim other processes use to reach the list. This capability also covers the tmux hooks that ring the channels, the tmux focus hooks that make a seat switch repaint the list at once, and the status-bar text the loop keeps in a tmux option.
 
 ## Requirements
 
@@ -31,7 +31,7 @@ The refresher SHALL wait on the tmux channel `tagents-ev` and SHALL do nothing b
 - **THEN** after the first pass no reload is posted and no program is started
 
 ### Requirement: Who rings the refresher
-`tagents-ev` SHALL be rung by the agent-state hook on its events, by the tmux hooks at index 42 of the events listed in this capability, by tagents wherever it writes what the list draws without a tmux event of its own (a label, an origin, a hidden column, the flat marker, a forgotten row, a hung-up agent), by a list that closes, and by the moves of the sidebar and the joins and breaks of chats.
+`tagents-ev` SHALL be rung by the agent-state hook on its events, by the tmux hooks at index 42 of the events listed in this capability, by tagents wherever it writes what the list draws without a tmux event of its own (a label, an origin, a hidden column, the flat marker, a forgotten row, a hung-up agent), by a list that closes, and by the joins and breaks of chats.
 
 #### Scenario: A hidden column
 - **WHEN** `tagents --toggle-col model` runs inside tmux
@@ -180,7 +180,7 @@ The refresher SHALL end when the list process is gone, asking `kill -0` about `T
 - **THEN** the refresher ends within the timeout and not by its refused posts
 
 ### Requirement: What the loop leaves behind
-When the loop ends it SHALL free the wait it has outstanding so that no `tmux` process of the loop stays in the server, remove its markers and FIFOs, remove its port claim if it is still its own, and unset the global option `@tagents_counts` unless another refresher is alive. A sidebar list that closes SHALL unset it when no refresher with a live process remains; a popup list SHALL NOT.
+When the loop ends it SHALL free the wait it has outstanding so that no `tmux` process of the loop stays in the server, remove its markers and FIFOs, remove its port claim if it is still its own, and unset the global option `@tagents_counts` unless another refresher is alive. A list in the dashboard's pane that closes SHALL unset it when no refresher with a live process remains; a popup list SHALL NOT.
 
 #### Scenario: No waiter left
 - **WHEN** a refresher has made a pass and then ends
@@ -239,14 +239,14 @@ Each focus event SHALL ring once; a change made with a client attached can fire 
 - **THEN** `@tagents_evgen` goes up by exactly one for each focus event that fires
 
 ### Requirement: Switching between unrelated panes starts no program
-The four focus events SHALL carry nothing but the ring, so that moving between panes starts no program. Only a switch of window or session runs a program, `tagents --follow` of the `window-rows` capability, which returns at once when the sidebar is already in the window on screen or the window is not in a group.
+The four focus events SHALL carry nothing but the ring, so that moving between panes starts no program. Only a switch of window or session runs a program, `tagents --follow` of the `window-rows` capability, which moves the list's cursor onto the row of the window the viewport shows and returns at once when no cockpit is up.
 
 #### Scenario: A plain terminal is focused
 - **WHEN** the user moves between two ordinary panes of one window
 - **THEN** none of the hook commands runs a program
 
 ### Requirement: What the tmux snapshot covers
-The tmux snapshot compared between passes SHALL cover each pane's id, position, window, current path, current command, pid and active and last flags, the sidebar markers `@tagents_list`, `@tagents_dash` and `@tagents_joined`, the port claim, and whether a pane carries `@ta_notes_for`. The pane title SHALL NOT be part of it, because Claude retitles a working pane several times a second; a title-only change waits for the next slow pass.
+The tmux snapshot compared between passes SHALL cover each pane's id, position, window, current path, current command, pid and active and last flags, the list markers `@tagents_list`, `@tagents_dash` and `@tagents_joined`, the port claim, and whether a pane carries `@ta_notes_for`. The pane title SHALL NOT be part of it, because Claude retitles a working pane several times a second; a title-only change waits for the next slow pass.
 
 #### Scenario: A joined chat
 - **WHEN** `@tagents_joined` of a chat pane is set between two idle passes

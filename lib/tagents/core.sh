@@ -13,7 +13,7 @@ STATE_DIR=${TA_STATE_DIR:-$HOME/.claude/agent-state}
 # command would silently drop out of the count.
 SUB_TTL=${TA_SUB_TTL:-1800}
 DEAD_TTL=${TA_DEAD_TTL:-86400}  # how long a closed session stays offered for resume
-DASH_WIDTH=${TA_WIDTH:-45}    # percent of a window's width the sidebar occupies wherever it is moved or started
+DASH_WIDTH=${TA_WIDTH:-45}    # percent of the cockpit's width the list takes
 RESUME_CMD=${TA_RESUME_CMD:-claude --dangerously-skip-permissions --resume}
 # Starting a fresh agent in a project, as opposed to resuming a closed one.
 NEW_CMD=${TA_NEW_CMD:-claude --dangerously-skip-permissions}

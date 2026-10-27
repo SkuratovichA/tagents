@@ -30,14 +30,7 @@ trap 'tmux -L "$S" kill-server >/dev/null 2>&1
       [ -n "$SOCK" ] && rm -f "$SOCK"
       rm -rf "$ROOT"' EXIT INT TERM
 
-pass=0; fail=0
-ok()   { if [ "$2" = "$3" ]; then pass=$((pass+1)); printf '  ok   %s\n' "$1"
-         else fail=$((fail+1)); printf '  FAIL %s\n       expected: [%s]\n       actual:   [%s]\n' "$1" "$2" "$3"; fi; }
-has()  { case "$3" in *"$2"*) pass=$((pass+1)); printf '  ok   %s\n' "$1" ;;
-         *) fail=$((fail+1)); printf '  FAIL %s\n       expected to contain: %s\n       actual: %s\n' "$1" "$2" "$3" ;; esac; }
-hasnt(){ case "$3" in *"$2"*) fail=$((fail+1)); printf '  FAIL %s\n       must not contain: %s\n       actual: %s\n' "$1" "$2" "$3" ;;
-         *) pass=$((pass+1)); printf '  ok   %s\n' "$1" ;; esac; }
-t()    { printf '\n%s\n' "$1"; }
+. "$HERE/wait.sh"
 
 TAB=$(printf '\t')
 ESC=$(printf '\033')
@@ -225,6 +218,20 @@ run "$NOWATCH" --list >/dev/null
 ok "with no watch the status bar and the list never run tusage" "" "$(grep '^ARGS=' "$ENVOUT")"
 has "...the cost column reads as hidden"     "cost" "$(run "$NOWATCH" --hidden-cols)"
 hasnt "...and the picker does not offer it"  "cost" "$(run "$NOWATCH" --col-rows)"
+
+# THE KEY IS NOT SWALLOWED: `$` with nothing to track says so. A notice is shown on a client, so one is attached on a pty (its stdin a sleep, so it never detaches by itself), and what it showed is read back from the server's message log, the newest first, the way tests/window-rows.sh reads it.
+( { sleep 60 & wait; } | script -q /dev/null tmux -L "$S" attach -t tatest-dash >/dev/null 2>&1 & ) >/dev/null 2>&1
+CLIENT=""; i=0
+while [ "$i" -lt 50 ] && [ -z "$CLIENT" ]; do CLIENT=$(tm list-clients -F '#{client_name}' 2>/dev/null | head -1); i=$((i + 1)); sleep 0.1; done
+shown() { msgs | head -1 | sed 's/.* message: //'; }
+tm display-message -c "$CLIENT" "nothing yet"
+run "$NOWATCH" --act usage >/dev/null
+ok "\$ with no usage.watch says that usage is off" \
+   "tagents: usage is off — set usage.watch to the profile to track" "$(shown)"
+tm display-message -c "$CLIENT" "nothing yet"
+run "$NOBLOCK" --act usage >/dev/null
+ok "...and so does a config with no usage block at all" \
+   "tagents: usage is off — set usage.watch to the profile to track" "$(shown)"
 : >"$ENVOUT"
 run "$CFG" --counts >/dev/null
 run "$CFG" --list >/dev/null

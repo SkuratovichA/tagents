@@ -60,14 +60,7 @@ trap 'tmux -L "$S" kill-server >/dev/null 2>&1
       [ -n "$SOCK" ] && rm -f "$SOCK"
       rm -rf "$ROOT"' EXIT INT TERM
 
-pass=0; fail=0
-ok()   { if [ "$2" = "$3" ]; then pass=$((pass+1)); printf '  ok   %s\n' "$1"
-         else fail=$((fail+1)); printf '  FAIL %s\n       expected: %s\n       actual:   %s\n' "$1" "$2" "$3"; fi; }
-has()  { case "$3" in *"$2"*) pass=$((pass+1)); printf '  ok   %s\n' "$1" ;;
-         *) fail=$((fail+1)); printf '  FAIL %s\n       expected to contain: %s\n       actual: %s\n' "$1" "$2" "$3" ;; esac; }
-hasnt(){ case "$3" in *"$2"*) fail=$((fail+1)); printf '  FAIL %s\n       must not contain: %s\n       actual: %s\n' "$1" "$2" "$3" ;;
-         *) pass=$((pass+1)); printf '  ok   %s\n' "$1" ;; esac; }
-t()    { printf '\n%s\n' "$1"; }
+. "$HERE/wait.sh"
 
 # ---------------------------------------------------------------------------
 # fixtures
@@ -337,10 +330,10 @@ ok "a named file is printed as it is" "$(row "$S1" "$SID2")" \
 rm -f "$STATE/resurrect/$((start - 10)).tsv" "$STATE/resurrect/$((start - 100)).tsv"
 
 # ---------------------------------------------------------------------------
-t "3. a joined chat is filed under its home session, and the sidebar is noted"
+t "3. a joined chat is filed under its home session, and a list outside a cockpit is not noted"
 # ---------------------------------------------------------------------------
 tm set -p -t "$P1" @tagents_joined tatest-proj
-# A sidebar the way a live list marks its pane: its pid, which is this suite's and so alive.
+# A list the way a live one marks its pane: its pid, which is this suite's and so alive. No cockpit is up, so it is not the dashboard.
 tm set -p -t tatest-dash:0.0 @tagents_list "$$"; tm set -p -t tatest-dash:0.0 @tagents_dash 1
 
 sleep 1
@@ -352,7 +345,7 @@ ok "joined: the home session"              tatest-proj "$(col "$r1" 5)"
 ok "joined: no window index"               ""          "$(col "$r1" 6)"
 ok "joined: no pane index"                 ""          "$(col "$r1" 7)"
 ok "joined: no place, so the column stays empty" ""    "$(col "$r1" 11)"
-ok "the sidebar window is a D row" "D	tatest-dash	0" "$(awk -F'\t' '$1 == "D"' "$S3")"
+ok "a list with no cockpit up is not a D row" "" "$(awk -F'\t' '$1 == "D"' "$S3")"
 
 tm set -up -t "$P1" @tagents_joined
 tm set -up -t tatest-dash:0.0 @tagents_list; tm set -up -t tatest-dash:0.0 @tagents_dash
@@ -617,13 +610,13 @@ t "12. an empty snapshot says so"
 has "nothing recorded" "nothing recorded" "$(run --resurrect --from "$SNAP/empty.tsv")"
 
 # ---------------------------------------------------------------------------
-t "13. a D row brings the dashboard back"
+t "13. a D row brings the cockpit back"
 # ---------------------------------------------------------------------------
+# What a restore leaves behind: the session tagents, the viewport client's tty and the hook that follows it. Test 13 leaves the cockpit up on purpose (test 14 counts on it); test 16 and test 17b take it down.
 printf 'D\ttatest-dash\t0\n' >"$SNAP/dash.tsv"
 out=$(run --resurrect --from "$SNAP/dash.tsv")
 has "the report says so" "✓ dashboard" "$out"
-ok "a pane of tatest-dash is the sidebar" 1 \
-   "$(tm list-panes -a -F '#{session_name} #{pane_title}' 2>/dev/null | grep -c '^tatest-dash tagents-sidebar$')"
+ok "the session tagents is the cockpit" 1 "$(tm show -qv -t '=tagents:' @tagents_cockpit 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
 t "13b. a snapshot written by the seat-based version still restores"
@@ -639,7 +632,7 @@ ok "the docked flag was ignored: no pane carries a seat option" "" "$(tm list-pa
 # ---------------------------------------------------------------------------
 t "14. the status bar captures, throttled; every: 0 turns it off"
 # ---------------------------------------------------------------------------
-# The save is started in the background by --counts, so a new file is waited for rather than expected at once. The dashboard test 13 brought back is in no snapshot yet (the retake in test 11 predates it), so a capture that should not happen would show.
+# The save is started in the background by --counts, so a new file is waited for rather than expected at once. The cockpit test 13 brought back is in no snapshot yet (the retake in test 11 predates it), so a capture that should not happen would show.
 before=$(resurrect_files)
 run --counts >/dev/null 2>&1
 sleep 2
@@ -762,9 +755,9 @@ ok "the kill ended it" 0 "$(panes_named "%$LN")"
 waitsnap "sid-$LN" absent; ok "...and it is out of the snapshot within seconds" 0 "$?"
 
 # ---------------------------------------------------------------------------
-t "16. the shell a reboot leaves where the sidebar was is closed, and the list starts in the D row's window"
+t "16. the shell a reboot leaves where the list was is closed, and the cockpit comes back with its list"
 # ---------------------------------------------------------------------------
-# Server C is the sidebar as tmux-resurrect restores it: its pane comes back an idle shell that still carries the title tagents-sidebar, in the window it was in.
+# Server C is the list of an earlier version as tmux-resurrect restores it: its pane comes back an idle shell that still carries the title tagents-sidebar, in the window it was in.
 tm kill-server >/dev/null 2>&1
 sleep 1
 tm -f /dev/null new-session -d -s tatest-dash -x 200 -y 50 'sleep 600' || exit 1
@@ -795,7 +788,7 @@ waitlists() {  # <window id> — a list has started in the window and claimed it
   return 1
 }
 
-# The whole of it in one restore, the way the hook runs it: a chat and the D row that brings the sidebar back.
+# The whole of it in one restore, the way the hook runs it: a chat and the D row that brings the dashboard back.
 transcript sid-ad
 { arow sid-ad "" 1 tatest-ad 0 0 Ad "" "$NOR" "" "" "" ""; printf 'D\ttatest-dash\t0\n'; } >"$SNAP/ad.tsv"
 out=$(run --resurrect --from "$SNAP/ad.tsv"); ok "--resurrect succeeds" 0 "$?"
@@ -803,14 +796,16 @@ pane=$(tm display -p -t tatest-ad:0.0 '#{pane_id}' 2>/dev/null)
 f=$(outof "$pane"); ok "the chat runs" 0 "$?"
 has "...resuming its conversation" "--resume sid-ad" "$(field ARGS "$f")"
 has "the dashboard comes back in the same run" "✓ dashboard" "$out"
-waitlists "$DW"; ok "the list runs in the window the D row names" 0 "$?"
-SB=$(tm list-panes -t "$DW" -F '#{pane_id} #{@tagents_list}' | awk 'NF == 2 { print $1 }')
+waitlists '=tagents:'; ok "the list runs in the cockpit" 0 "$?"
+SB=$(tm list-panes -t '=tagents:' -F '#{pane_id} #{@tagents_list}' | awk 'NF == 2 { print $1 }')
 has "...started there as a pane of its own" tagents "$(tm display -p -t "$SB" '#{pane_start_command}')"
-ok "...and it is the one list" 1 "$(tm list-panes -t "$DW" -F '#{@tagents_list}' 2>/dev/null | grep -c .)"
+ok "...and it is the one list" 1 "$(tm list-panes -a -F '#{@tagents_list}' 2>/dev/null | grep -c .)"
+ok "none went into the window the D row names" 0 "$(tm list-panes -t "$DW" -F '#{@tagents_list}' 2>/dev/null | grep -c .)"
 ok "the idle shell that still said tagents-sidebar is closed" 0 "$(panes_named "$LEFT")"
 ok "the user's own shell beside it stays" 1 "$(panes_named "$USERSH")"
 ok "...and so does the pane that was running something" 1 "$(panes_named "$RUNP")"
 ok "exactly one pane carries the title tagents-sidebar" 1 "$(tm list-panes -a -F '#{pane_title}' | grep -c '^tagents-sidebar$')"
+cockpit_down
 
 # ---------------------------------------------------------------------------
 t "17. the editors tmux-resurrect orphaned go, the ta-notes session of an older version with them; a restored chat's editor comes back"
@@ -884,8 +879,6 @@ ok "off: tnotes is not asked" "" "$(cat "$OUT/tnotes.log" 2>/dev/null)"
 # ---------------------------------------------------------------------------
 t "17b. the cockpit: the D row names the window the viewport shows, and the restore brings the cockpit back without moving a terminal"
 # ---------------------------------------------------------------------------
-CKCFG="$ROOT/config-cockpit.yaml"
-{ cat "$CFG"; printf 'dashboard:\n  layout: cockpit\n'; } >"$CKCFG"
 tm new-session -d -s tatest-ck -x 200 -y 50 'sleep 600'
 tm new-window -d -t =tatest-ck:2 'sleep 600'
 tm select-window -t =tatest-ck:0
@@ -904,7 +897,7 @@ waitck() {  # <expected> <function> — the function's answer, once it is the ex
   printf '%s' "$got"
 }
 printf 'D\ttatest-ck\t2\n' >"$SNAP/ck.tsv"
-out=$(TA_CONFIG="$CKCFG" run --resurrect --from "$SNAP/ck.tsv" 2>&1); ok "the cockpit restore succeeds" 0 "$?"
+out=$(run --resurrect --from "$SNAP/ck.tsv" 2>&1); ok "the cockpit restore succeeds" 0 "$?"
 has "the report says dashboard" "✓ dashboard" "$out"
 tm has-session -t '=tagents:' 2>/dev/null; ok "the session tagents exists" 0 "$?"
 ok "its viewport shows the window the row names" tatest-ck:2 "$(waitck tatest-ck:2 ckviewport)"
@@ -912,8 +905,7 @@ ok "the terminal attached to the session still shows it" tatest-ck "$(ckterminal
 booted; run --resurrect-save; rows=$(cat "$STATE/resurrect/$(newest)")
 ok "the snapshot of the cockpit holds the window the viewport shows" "$(printf 'D\ttatest-ck\t2')" "$(printf '%s\n' "$rows" | awk -F'\t' '$1 == "D"')"
 ok "...and no row names the session tagents" 0 "$(printf '%s\n' "$rows" | awk -F'\t' '$2 == "tagents" || $5 == "tagents"' | wc -l | tr -d ' ')"
-tm set -gu @tagents_viewport_tty; tm set-hook -gu 'client-session-changed[44]'
-tm kill-session -t '=tagents:' 2>/dev/null; tm kill-session -t =tatest-ck 2>/dev/null
+cockpit_down; tm kill-session -t =tatest-ck 2>/dev/null
 [ -s "$ROOT/keeper-ck.pid" ] && kill "$(cat "$ROOT/keeper-ck.pid")" 2>/dev/null
 
 # ---------------------------------------------------------------------------
