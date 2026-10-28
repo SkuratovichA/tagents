@@ -161,3 +161,7 @@ Gives every chat the `tagents` skill, so it knows the exact commands and flags o
 ## Learn more
 
 The [docs](https://skuratovicha.github.io/tagents/) cover the rest: [the dashboard](https://skuratovicha.github.io/tagents/guide/dashboard) · [notifications](https://skuratovicha.github.io/tagents/guide/notifications) · [resurrect](https://skuratovicha.github.io/tagents/guide/resurrect) · [closed sessions](https://skuratovicha.github.io/tagents/guide/closed-sessions) · [accounts](https://skuratovicha.github.io/tagents/guide/accounts) · [cost](https://skuratovicha.github.io/tagents/guide/cost) · [notes](https://skuratovicha.github.io/tagents/guide/notes) · [keys](https://skuratovicha.github.io/tagents/guide/keys) · [architecture](https://skuratovicha.github.io/tagents/architecture/overview) · [development](https://skuratovicha.github.io/tagents/development)
+
+## License
+
+MIT, see [LICENSE](LICENSE).
