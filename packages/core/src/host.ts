@@ -22,7 +22,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
-import { readConfigFile, resolveConfigFile } from './config-file.ts';
+import { configFormat, noticeFormat, parseConfigText, resolveConfigFile } from './config-file.ts';
 import { PLUGIN_API_VERSION, type PluginDef } from './plugin.ts';
 import { tryCatch } from './result.ts';
 
@@ -68,16 +68,21 @@ export interface LoadResult {
   readonly errors: readonly PluginError[];
 }
 
-/** The configured plugins, in file order. A missing config file is not an error. */
+/** The configured plugins, in file order. A file that cannot be read is no plugins; one that reads and does not parse throws, naming the file. */
 export function readPluginList(file = configFile()): PluginListing[] {
+  let text: string;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    return [];
+  }
   let raw: unknown;
   try {
-    raw = readConfigFile(file);
+    raw = parseConfigText(text, configFormat(file));
   } catch (e) {
-    // A file that is not there is no plugins; one that is there and does not parse is an error to say.
-    if (e instanceof Error && (e as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw e;
+    throw new Error(`${file}: ${e instanceof Error ? e.message : String(e)}`);
   }
+  noticeFormat(file);
   const parsed = ConfigSchema.safeParse(raw);
   if (!parsed.success) return [];
   return Object.entries(parsed.data.plugins ?? {}).map(([name, e]) => ({ name, from: e.from }));

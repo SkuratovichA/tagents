@@ -40,6 +40,33 @@ test('no config file at all is no plugins, not an error', async () => {
   assert.deepEqual(loaded.errors, []);
 });
 
+test('a config that cannot be read for any reason is no plugins', () => {
+  const dir = path.join(tmp, 'a-directory.toml');
+  fs.mkdirSync(dir, { recursive: true });
+  assert.deepEqual(readPluginList(dir), []);
+  if (process.getuid?.() === 0) return;
+  const locked = writeConfig('[plugins.x]\nfrom = "/one"\n');
+  fs.chmodSync(locked, 0o000);
+  try {
+    assert.deepEqual(readPluginList(locked), []);
+  } finally {
+    fs.chmodSync(locked, 0o600);
+  }
+});
+
+test('a config that reads but does not parse throws, naming the file', () => {
+  const toml = writeConfig('[plugins.x\nfrom = 1\n');
+  assert.throws(() => readPluginList(toml), (e: unknown) => e instanceof Error && e.message.includes(toml));
+  const yaml = path.join(tmp, 'broken.yaml');
+  fs.writeFileSync(yaml, 'plugins:\n  x: [unclosed\n');
+  assert.throws(() => readPluginList(yaml), (e: unknown) => e instanceof Error && e.message.includes(yaml));
+});
+
+test('a good TOML config lists its plugins', () => {
+  const file = writeConfig('[plugins.a]\nfrom = "/one"\n\n[plugins.b]\nfrom = "/two"\n');
+  assert.deepEqual(readPluginList(file), [{ name: 'a', from: '/one' }, { name: 'b', from: '/two' }]);
+});
+
 test('a config without a plugins table loads nothing', async () => {
   const file = writeConfig('[accounts]\npersonal = "~/.claude"\n');
   assert.deepEqual(readPluginList(file), []);
