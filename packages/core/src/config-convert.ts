@@ -187,6 +187,7 @@ function dumpOf(tagents: string, file: string, scratch: string, timeoutMs: numbe
   const r = spawnSync('/bin/bash', [tagents, '--config'], {
     encoding: 'utf8',
     timeout: timeoutMs,
+    killSignal: 'SIGKILL',
     maxBuffer: DUMP_MAX_BUFFER,
     env: {
       PATH: '/usr/bin:/bin:/usr/sbin:/sbin',

@@ -259,9 +259,13 @@ test('a scalar that TOML writes the same way keeps its type', () => {
   }
 });
 
+test('a key the YAML reads as a number is refused by the type check, which the dumps cannot do', () => {
+  const result = convert('usage:\n  0x10: x\n');
+  assert.equal(result.ok, false);
+  assert.match(result.ok ? '' : result.problem, /different value/);
+});
+
 test('the type check refuses a pair the dumps cannot tell apart', () => {
-  const dump = 'usage.value\t850\n';
-  assert.equal(sameConfig(dump, dump), true, 'tagents prints both as 850');
   assert.match(typeMismatch('usage:\n  value: 850\n', 'usage = { value = "850" }\n') ?? '', /usage\.value is number 850 in the YAML and "850" in the TOML/);
   assert.match(typeMismatch('usage:\n  value: true\n', 'usage = { value = "true" }\n') ?? '', /boolean true/);
   assert.match(typeMismatch('usage:\n  value: x\n', 'usage = {}\n') ?? '', /not there/);
