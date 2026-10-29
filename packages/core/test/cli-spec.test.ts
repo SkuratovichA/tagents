@@ -235,6 +235,36 @@ test('the schema refuses an unknown key, an empty path and an empty positional',
   assert.ok(keywords.has('/commands/0/positionals/0:minLength'), [...keywords].join(' '));
 });
 
+// The same seven mistakes crates/tagents-spec tests one by one: both loaders refuse each, and the schema states all but the last.
+const REFUSALS: readonly [name: string, mutate: (doc: Record<string, unknown>) => void, schemaStatesIt: boolean][] = [
+  ['an empty program', (doc) => { doc['program'] = ''; }, true],
+  ['an empty summary', (doc) => { for (const c of commandsOf(doc)) c['summary'] = ''; }, true],
+  ['an empty path', (doc) => { for (const c of commandsOf(doc)) c['path'] = []; }, true],
+  ['an empty word in a path', (doc) => { for (const c of commandsOf(doc)) c['path'] = ['']; }, true],
+  ['an empty positional', (doc) => { for (const c of commandsOf(doc)) c['positionals'] = ['']; }, true],
+  ['an empty required name', (doc) => { for (const c of commandsOf(doc)) c['required'] = ['']; }, true],
+  [
+    'two verbs with one path',
+    (doc) => {
+      const commands = commandsOf(doc);
+      const [first] = commands;
+      assert.ok(first);
+      commands.push({ ...first });
+    },
+    false,
+  ],
+];
+
+for (const [name, mutate, schemaStatesIt] of REFUSALS) {
+  test(`${name} is refused by the loader${schemaStatesIt ? ' and by the schema' : ', and the schema accepts it'}`, () => {
+    assert.throws(() => loadSpec(specWith(mutate)));
+    const doc = readDoc();
+    mutate(doc);
+    // The schema cannot state that no two verbs share a path (JSON Schema has no uniqueness over a property of array items), so only the loaders refuse that one.
+    assert.equal(schemaValidator()(doc), !schemaStatesIt);
+  });
+}
+
 test('two verbs with one path are refused: dispatch is by path and the second would never run', () => {
   const file = specWith((doc) => {
     const commands = commandsOf(doc);
