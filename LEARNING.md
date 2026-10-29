@@ -501,3 +501,6 @@ The footer links to `/docs/`, which VitePress fills after the site is built, so 
 
 ## A guard of two conditions needs a case per condition (29.10.2026)
 The wrapper the installer writes stops at a binary that is not a file or not executable, but the only run-time case removed the binary, which either condition alone satisfies, so deleting one of the two checks left the suite green. A guard of two conditions gets a case that only each one catches (a directory passes `-x`, a file without the bit passes `-f`) and a mutation that deletes each, because a test one condition satisfies pins neither.
+
+## Refused lines and skipped tables used two copies of the multi-line opener (29.10.2026)
+The awk reader opened the body of a multi-line string in two places that disagreed: the refused-line path took the first `=` of the raw line, and the skipped-table path needed a valid key, so a refused opener inside a skipped table leaked its body as tables and keys. Every place that must step over a refused or skipped line goes through the one `swallow` helper.
