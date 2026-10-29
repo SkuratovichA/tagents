@@ -1,11 +1,8 @@
 // Finding a plugin package, and editing the `plugins` entries of the config — nothing else in that file.
 //
-// The file is the OWNER'S. It carries comments explaining why a rule exists,
-// the key order they chose, the spacing they aligned by hand, and (see
-// config.example.toml) a sibling config.<hostname>.toml whose subtrees replace the ones here. A round trip through a stringifier keeps the meaning of all of that and still rewrites bytes it had no business touching: `args = x # why` loses the alignment somebody put there, and a TOML library has no comments to write back at all.
+// The file is the OWNER'S. It carries comments explaining why a rule exists, the key order they chose, the spacing they aligned by hand, and (see config.example.toml) a sibling config.<hostname>.toml whose subtrees replace the ones here. A round trip through a stringifier keeps the meaning of all of that and still rewrites bytes it had no business touching: `args = x # why` loses the alignment somebody put there, and a TOML library has no comments to write back at all.
 //
-// So the parse is the format's own — it knows whether an entry already exists
-// — and the EDIT is a splice of text. In a TOML config (the default) an entry is a `[plugins.NAME]` section appended at the end and cut out by its header lines; in a YAML config (the fallback) it is the byte range a yaml Document reports for the entry. Everything outside the splice comes back byte for byte, and the result is parsed again before it is written.
+// So the parse is the format's own — it knows whether an entry already exists — and the EDIT is a splice of text. In a TOML config (the default) an entry is a `[plugins.NAME]` section appended at the end and cut out by its header lines; in a YAML config (the fallback) it is the byte range a yaml Document reports for the entry. Everything outside the splice comes back byte for byte, and the result is parsed again before it is written.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';

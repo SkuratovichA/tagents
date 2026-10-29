@@ -1,12 +1,7 @@
 // `tagents-core <plugin> <command> [args]` — a configured plugin's own verbs,
 // run as the program.
 //
-// Hermetic, like the rest: every case points TAGENTS_CONFIG_DIR at a temp
-// directory holding a config.toml this file wrote, so the owner's real
-// ~/.config/tagents is never read and none of its plugins ever runs here. The
-// plugin under test is test/fixtures/plugin/good, whose definition calls itself
-// `fixture` while the key in the config is free to be anything — both spellings
-// have to reach the same commands.
+// Hermetic, like the rest: every case points TAGENTS_CONFIG_DIR at a temp directory holding a config.toml this file wrote, so the owner's real ~/.config/tagents is never read and none of its plugins ever runs here. The plugin under test is test/fixtures/plugin/good, whose definition calls itself `fixture` while the key in the config is free to be anything — both spellings have to reach the same commands.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';

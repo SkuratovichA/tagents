@@ -4,9 +4,7 @@
 //
 // A `<name>.yaml` written before there was a TOML reader is still read, as YAML, when no `<name>.toml` is there (the main config's rule, config-file.ts), and without the main config's conversion notice: `tagents config convert` is for the config, and an options file is short enough to translate by hand.
 //
-// Nothing here throws: a missing file is the schema's defaults, and a file that
-// does not parse or does not fit the schema comes back as a list of problems,
-// one line each, for the caller to print before it gives up.
+// Nothing here throws: a missing file is the schema's defaults, and a file that does not parse or does not fit the schema comes back as a list of problems, one line each, for the caller to print before it gives up.
 import path from 'node:path';
 import type { z } from 'zod';
 import { isFile, parseConfigFile } from './config-file.ts';

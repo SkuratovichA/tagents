@@ -225,8 +225,7 @@ cfg_parse() {  # [file name for warnings] stdin: yaml -> stdout: path<TAB>value,
     }'
 }
 
-# THE TOML READER: a deliberate subset of TOML 1.0, flattened to the same `path<TAB>value` stream cfg_parse makes, so nothing downstream knows which format a file was in. What it reads: comments, bare / "quoted" / 'literal' / dotted keys, [tables], [[arrays of tables]], strings (basic with the escapes
-# \" and \\ only, and literal), decimal integers and simple decimal floats, true / false, and arrays and inline tables of those. Everything else is refused on its own line with file:line — multi-line strings, any other escape (a decoded newline or tab cannot live in a line-oriented stream), dates and times, hex / octal / binary / exponent / inf / nan, arrays of tables or of arrays, nested inline tables — exactly as cfg_parse refuses flow style: a value half-understood is a login that silently is not the one asked for. A refused table header skips the keys under it, because keys given to the wrong table are worse than keys dropped.
+# THE TOML READER: a deliberate subset of TOML 1.0, flattened to the same `path<TAB>value` stream cfg_parse makes, so nothing downstream knows which format a file was in. What it reads: comments, bare / "quoted" / 'literal' / dotted keys, [tables], [[arrays of tables]], strings (basic with the escapes \" and \\ only, and literal), decimal integers and simple decimal floats, true / false, and arrays and inline tables of those. Everything else is refused on its own line with file:line — multi-line strings, any other escape (a decoded newline or tab cannot live in a line-oriented stream), dates and times, hex / octal / binary / exponent / inf / nan, arrays of tables or of arrays, nested inline tables — exactly as cfg_parse refuses flow style: a value half-understood is a login that silently is not the one asked for. A refused table header skips the keys under it, because keys given to the wrong table are worse than keys dropped.
 #
 # A table with no key and no sub-table is emitted as `path<TAB>` (a profile that is only a name: `[claude.profiles.work]`), the way YAML's `work:` is. The program is one single-quoted shell string: no apostrophe anywhere in it, SQ and DQ are built with sprintf.
 cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>value, refusals as !<TAB>file:line: why
@@ -511,14 +510,11 @@ cfg_read() {  # <file> -> the leaves, refusals as !<TAB>file:line: why
   esac
 }
 
-# Parsed once per process, however many lookups follow: every key press runs a
-# fresh copy of this script, so the cost that matters is one awk, not one per
-# cfg_get. A missing file is not an error anywhere but --config.
+# Parsed once per process, however many lookups follow: every key press runs a fresh copy of this script, so the cost that matters is one awk, not one per cfg_get. A missing file is not an error anywhere but --config.
 cfg_load() {
   [ "$CFG_LOADED" = 1 ] && return 0
   CFG_LOADED=1
-  # -f as well as -r: a directory is readable, and feeding one to awk gets a
-  # raw "i/o error occurred on /dev/stdin" on every single invocation.
+  # -f as well as -r: a directory is readable, and feeding one to awk gets a raw "i/o error occurred on /dev/stdin" on every single invocation.
   cfg_readable "$CONFIG_FILE" || return 1
   CFG=$(cfg_read "$CONFIG_FILE")
   cfg_sift "$CFG"; CFG=$CFG_SIFTED
@@ -526,16 +522,7 @@ cfg_load() {
   return 0
 }
 
-# EVERYTHING THE LOAD AND THE CHECK REMEMBER, PUT BACK TO WHAT A PROCESS STARTS
-# WITH. Each of those memos is written for a process that lives for one run: the
-# load is parsed once, cfg_check guards itself with CFG_CHECKED and adds to
-# CFG_NPROBLEMS and CFG_NOTES rather than setting them, and the parse and
-# overlay notes only ever grow. A refresher lives as long as its list, so when it
-# reads the config again it clears them here first — otherwise the old load's
-# refusals and overlay stay in, a problem count is never worked out again, and
-# the next check adds to the last one's. usage_env's exports go too: it sets them
-# only when there is something to set, so a rule removed from the config would
-# otherwise stay in the environment of every tusage the refresher starts.
+# EVERYTHING THE LOAD AND THE CHECK REMEMBER, PUT BACK TO WHAT A PROCESS STARTS WITH. Each of those memos is written for a process that lives for one run: the load is parsed once, cfg_check guards itself with CFG_CHECKED and adds to CFG_NPROBLEMS and CFG_NOTES rather than setting them, and the parse and overlay notes only ever grow. A refresher lives as long as its list, so when it reads the config again it clears them here first — otherwise the old load's refusals and overlay stay in, a problem count is never worked out again, and the next check adds to the last one's. usage_env's exports go too: it sets them only when there is something to set, so a rule removed from the config would otherwise stay in the environment of every tusage the refresher starts.
 cfg_reset() {
   CFG=''; CFG_LOADED=0
   CFG_PARSE_NOTES=''; CFG_OVER_FILE=''; CFG_OVER_TOPS=' '; CFG_OVER_TWIN=''
@@ -547,11 +534,7 @@ cfg_reset() {
   unset TU_ACCOUNTS TU_ACCOUNT_RULES
 }
 
-# THE PARSER'S REFUSALS, TAKEN BACK OUT OF ITS STREAM. Each goes to stderr in
-# the line it has always been — a scripted --config reads it there — and into
-# CFG_PARSE_NOTES for cfg_check, which is how it reaches a dashboard that has no
-# stderr anybody sees. A stream with no refusal in it is handed back untouched:
-# the loop is only paid for by a file with something wrong in it.
+# THE PARSER'S REFUSALS, TAKEN BACK OUT OF ITS STREAM. Each goes to stderr in the line it has always been — a scripted --config reads it there — and into CFG_PARSE_NOTES for cfg_check, which is how it reaches a dashboard that has no stderr anybody sees. A stream with no refusal in it is handed back untouched: the loop is only paid for by a file with something wrong in it.
 cfg_sift() {  # <parsed stream> -> CFG_SIFTED: the leaves alone
   local ln
   CFG_SIFTED=$1

@@ -166,8 +166,7 @@ and the day the wording changes, both sides change together.
 
 ## Plugins
 
-A plugin is a package that default-exports one `definePlugin({ … })` object and
-is **named explicitly** in `~/.config/tagents/config.toml`:
+A plugin is a package that default-exports one `definePlugin({ … })` object and is **named explicitly** in `~/.config/tagents/config.toml`:
 
 ```toml
 [plugins.tg-orchestrator]
@@ -176,9 +175,7 @@ from = "../telegram-bots/orchestrator"   # a path, or a package name
 
 A `config.yaml` with the same `plugins:` map is read when there is no `config.toml`, and says so once per process; `tagents config convert` turns it into TOML.
 
-The host never scans `node_modules` — scanning is how a machine ends up running
-code nobody chose. `from` points at a package; the package says where its code
-is in its own `package.json`:
+The host never scans `node_modules` — scanning is how a machine ends up running code nobody chose. `from` points at a package; the package says where its code is in its own `package.json`:
 
 ```json
 { "tagents": { "entry": "./dist/plugin.js" } }
@@ -199,9 +196,7 @@ tagents-core plugin remove notes
 
 `add` resolves a directory (stored as an absolute path — the host resolves a relative `from:` against the CONFIG, not your shell) or an installed package name (stored as the name). It reads package.json and stats the entry, and that is the whole check: **importing a stranger's code to decide whether to install it is the wrong way round.** In a `config.toml` the edit appends or cuts one `[plugins.NAME]` table as text, and the result is parsed again before it is written; in a `config.yaml` it goes in through yaml's Document API and is applied as a splice of the range it names. Either way every other key, comment and hand-aligned value in the file comes back byte for byte.
 
-Exit codes do the talking: **1** nothing resolved, **3** refused — something is
-there and it is not a plugin, or that name is already listed, and in both cases
-nothing was written.
+Exit codes do the talking: **1** nothing resolved, **3** refused — something is there and it is not a plugin, or that name is already listed, and in both cases nothing was written.
 
 ### Running what one offers
 
@@ -212,12 +207,7 @@ tagents-core telegram status       # the `status` CliCommand of the plugin `tele
 tagents-core telegram              # …or, with no command, what it offers (exit 2)
 ```
 
-The plugin is named by its key in the config or by the name its definition
-gives itself, whichever the caller has in front of them. **The core verbs are
-matched first and always win**: `session`, `sessions`, `plugin`, `doctor` and
-`help` mean the same thing on every machine, so a plugin that takes one of those
-names is simply not reachable as a verb (it still loads, and its services and
-tools are unaffected).
+The plugin is named by its key in the config or by the name its definition gives itself, whichever the caller has in front of them. **The core verbs are matched first and always win**: `session`, `sessions`, `plugin`, `doctor` and `help` mean the same thing on every machine, so a plugin that takes one of those names is simply not reachable as a verb (it still loads, and its services and tools are unaffected).
 
 Arguments are parsed without any knowledge of the command — `--key value`,
 `--key=value`, `--flag` → `true`, `--` ends the options — and the command's own
@@ -322,20 +312,7 @@ the source runs unbuilt under Node's type stripping.
 
 ## Changes
 
-**0.3.0** — additive, and it comes from the one thing the plugin contract could
-describe but not do: RUN a service. `createContext({ plugin, log, configDir,
-locale? })` builds the PluginContext a plugin is entitled to, and
-`runService(plugin, name, ctx, { signals? })` starts one named service under it
-and hands back `drain()` / `stop(reason?)` / `done`. Neither reads
-the config: `loadPlugins` still answers "which plugins did this machine
-choose", and these two answer "this process already knows, start it". The
-service handle gained two optional pieces to say what a real daemon does —
-`done`, for a service that decides its own exit (the orchestrator's runner ends
-on its own drain handshake, not because a supervisor asked), and a `reason` on
-`stop`, because "SIGTERM" and "SIGINT" are different lines in the log the
-daemon writes about its own shutdown. Both are optional: a service written
-against 0.2.0 keeps compiling, keeps loading and behaves identically, and no
-export was renamed or removed.
+**0.3.0** — additive, and it comes from the one thing the plugin contract could describe but not do: RUN a service. `createContext({ plugin, log, configDir, locale? })` builds the PluginContext a plugin is entitled to, and `runService(plugin, name, ctx, { signals? })` starts one named service under it and hands back `drain()` / `stop(reason?)` / `done`. Neither reads the config: `loadPlugins` still answers "which plugins did this machine choose", and these two answer "this process already knows, start it". The service handle gained two optional pieces to say what a real daemon does — `done`, for a service that decides its own exit (the orchestrator's runner ends on its own drain handshake, not because a supervisor asked), and a `reason` on `stop`, because "SIGTERM" and "SIGINT" are different lines in the log the daemon writes about its own shutdown. Both are optional: a service written against 0.2.0 keeps compiling, keeps loading and behaves identically, and no export was renamed or removed.
 
 **0.2.0** — additive, and both additions come from the same place: a caller has
 to be able to tell what a *failed* turn already did, and it has to be able to

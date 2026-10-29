@@ -1,8 +1,6 @@
 // Loading plugins.
 //
-// EXPLICIT LISTING ONLY. The host reads ~/.config/tagents/config.toml and imports exactly what the `plugins` table names — it never scans node_modules, never walks a directory looking for something that looks like a plugin.
-// Scanning is how a machine ends up running code nobody chose; a list is a
-// decision somebody can read.
+// EXPLICIT LISTING ONLY. The host reads ~/.config/tagents/config.toml and imports exactly what the `plugins` table names — it never scans node_modules, never walks a directory looking for something that looks like a plugin. Scanning is how a machine ends up running code nobody chose; a list is a decision somebody can read.
 //
 //   [plugins.tg-orchestrator]
 //   from = "../telegram-bots/orchestrator"   # a path, or a package name

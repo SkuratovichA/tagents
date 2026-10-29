@@ -217,8 +217,7 @@ function dumpOf(tagents: string, file: string, scratch: string, timeoutMs: numbe
 }
 
 /**
- * Do two `--config` dumps mean the same to tagents? Every line is there in both, and every parent's children come in the same order within their kind:
- * the plain keys among themselves, the tables among themselves. A plain key and a table of one parent may swap places (TOML cannot write a plain key after a table), but two profiles may not, because the order of the profiles is the order of the account picker.
+ * Do two `--config` dumps mean the same to tagents? Every line is there in both, and every parent's children come in the same order within their kind: the plain keys among themselves, the tables among themselves. A plain key and a table of one parent may swap places (TOML cannot write a plain key after a table), but two profiles may not, because the order of the profiles is the order of the account picker.
  */
 export function sameConfig(a: string, b: string): boolean {
   if (a === b) return true;
