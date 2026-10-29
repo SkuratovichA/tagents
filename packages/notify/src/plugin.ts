@@ -35,6 +35,7 @@ import {
   type PluginContext,
   type PluginDef,
 } from '@tagents/core';
+import { NOTIFY_EXIT, SEND_MESSAGE_MAX, SEND_TITLE_MAX } from './cli/spec.ts';
 import { buildNotice, clickFor, eventFromRow, noticeId } from './engine.ts';
 import { describe } from './errors.ts';
 import { execText, type Exec } from './exec.ts';
@@ -531,6 +532,15 @@ export function createNotifyPlugin(deps: CommandDeps = {}): PluginDef {
         describe: 'Post a notice with this message.',
         args: z.object({ [POSITIONALS]: z.array(z.string()).min(1), title: z.string().default('tagents') }),
         async run(a, ctx): Promise<number> {
+          const body = a._.join(' ');
+          if ([...a.title].length > SEND_TITLE_MAX) {
+            ctx.log(`the title is over ${SEND_TITLE_MAX} characters`);
+            return NOTIFY_EXIT.usage;
+          }
+          if ([...body].length > SEND_MESSAGE_MAX) {
+            ctx.log(`the message is over ${SEND_MESSAGE_MAX} characters`);
+            return NOTIFY_EXIT.usage;
+          }
           return postThrough(ctx, async (o) => {
             const e = await callerEvent('');
             return {
@@ -539,7 +549,7 @@ export function createNotifyPlugin(deps: CommandDeps = {}): PluginDef {
               kind: 'message',
               title: a.title,
               subtitle: '',
-              body: a._.join(' '),
+              body,
               click: clickFor(e, o.click, tagentsScript(env), env),
             };
           });

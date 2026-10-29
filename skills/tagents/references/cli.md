@@ -328,9 +328,9 @@ Usage: `tagents-notify test [--kind <kind>]`
 
 ### send
 
-posts a desktop notification with this message through the configured backend, which shows it on the screen; a click docks the pane the command runs in
+posts a desktop notification with this message (the words are joined with a space) through the configured backend, which shows it on the screen; a click docks the pane the command runs in; a title over 256 characters or a message over 2048 is refused
 
-Usage: `tagents-notify send <message> [--title <title>]`
+Usage: `tagents-notify send <message…> [--title <title>]`
 
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|

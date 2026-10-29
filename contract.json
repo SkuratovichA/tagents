@@ -547,7 +547,7 @@
             "send"
           ],
           "positionals": [
-            "<message>"
+            "<message…>"
           ],
           "options": {
             "title": {
@@ -555,7 +555,7 @@
             }
           },
           "required": [],
-          "summary": "posts a desktop notification with this message through the configured backend, which shows it on the screen; a click docks the pane the command runs in",
+          "summary": "posts a desktop notification with this message (the words are joined with a space) through the configured backend, which shows it on the screen; a click docks the pane the command runs in; a title over 256 characters or a message over 2048 is refused",
           "effect": "write"
         }
       ]
@@ -1031,12 +1031,16 @@
         },
         {
           "name": "notify_send",
-          "description": "Posts a desktop notification with this message through the configured backend, which shows it on the screen; a click docks the pane the command runs in.",
+          "description": "Posts a desktop notification with this message (the words are joined with a space) through the configured backend, which shows it on the screen; a click docks the pane the command runs in; a title over 256 characters or a message over 2048 is refused.",
           "inputSchema": {
             "type": "object",
             "properties": {
               "message": {
-                "type": "string"
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
               },
               "title": {
                 "type": "string"

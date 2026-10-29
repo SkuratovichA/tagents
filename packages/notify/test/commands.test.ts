@@ -10,6 +10,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createAgentFeed, createContext, eventsOn, runPluginBin, setEventsOn, tmpDir } from '@tagents/core';
+import { SEND_MESSAGE_MAX, SEND_TITLE_MAX } from '../src/cli/spec.ts';
 import type { Exec, ExecResult } from '../src/exec.ts';
 import type { Platform, RunSpec, ServiceStatus } from '../src/notifier.ts';
 import { tagentsScript } from '../src/paths.ts';
@@ -203,6 +204,44 @@ test('send docks $TMUX_PANE on a click, as test does, and only raises the termin
   const outside = rig({ os: 'linux', platform: { notifier } });
   assert.equal(await outside.run('send', 'hello'), 0, outside.err());
   assert.deepEqual(notifier.posts[1]?.click.argv, []);
+});
+
+test('send hands a title with quotes, an equals sign and a newline to the backend as it was given', async () => {
+  const notifier = recordingNotifier();
+  const r = rig({ os: 'linux', platform: { notifier } });
+  const title = 'He said "stop" it\'s a=b\nsecond line';
+  assert.equal(await r.run('send', `--title=${title}`, 'a "quoted" body', 'with\na newline'), 0, r.err());
+  assert.equal(notifier.posts[0]?.title, title);
+  assert.equal(notifier.posts[0]?.body, 'a "quoted" body with\na newline');
+});
+
+test('send takes a title of 256 characters and refuses one of 257, naming the limit, and posts nothing', async () => {
+  const notifier = recordingNotifier();
+  const r = rig({ os: 'linux', platform: { notifier } });
+  assert.equal(await r.run('send', `--title=${'t'.repeat(SEND_TITLE_MAX)}`, 'hello'), 0, r.err());
+  assert.equal(notifier.posts.length, 1);
+  assert.equal(await r.run('send', `--title=${'t'.repeat(SEND_TITLE_MAX + 1)}`, 'hello'), 2);
+  assert.match(r.err(), new RegExp(`title is over ${SEND_TITLE_MAX} characters`));
+  assert.equal(notifier.posts.length, 1, 'the refused call posted nothing');
+});
+
+test('send takes a message of 2048 characters, the words counted with the spaces between them, and refuses one of 2049, naming the limit', async () => {
+  const notifier = recordingNotifier();
+  const r = rig({ os: 'linux', platform: { notifier } });
+  const half = 'm'.repeat((SEND_MESSAGE_MAX - 1) / 2);
+  assert.equal(await r.run('send', half, `${half}m`), 0, r.err());
+  assert.equal(notifier.posts[0]?.body.length, SEND_MESSAGE_MAX);
+  assert.equal(await r.run('send', half, `${half}mm`), 2);
+  assert.match(r.err(), new RegExp(`message is over ${SEND_MESSAGE_MAX} characters`));
+  assert.equal(notifier.posts.length, 1, 'the refused call posted nothing');
+});
+
+test('the limits count characters, not bytes or UTF-16 units: 256 emoji are a title that fits', async () => {
+  const notifier = recordingNotifier();
+  const r = rig({ os: 'linux', platform: { notifier } });
+  assert.equal(await r.run('send', `--title=${'😀'.repeat(SEND_TITLE_MAX)}`, 'hello'), 0, r.err());
+  assert.equal(await r.run('send', `--title=${'😀'.repeat(SEND_TITLE_MAX + 1)}`, 'hello'), 2);
+  assert.equal(notifier.posts.length, 1);
 });
 
 test('send without a message is a usage error and posts nothing', async () => {

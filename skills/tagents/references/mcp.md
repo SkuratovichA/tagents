@@ -520,13 +520,13 @@ Writes index.md, the OKF table of contents of the folder, grouped by type; --che
 
 ### notify_send
 
-Posts a desktop notification with this message through the configured backend, which shows it on the screen; a click docks the pane the command runs in.
+Posts a desktop notification with this message (the words are joined with a space) through the configured backend, which shows it on the screen; a click docks the pane the command runs in; a title over 256 characters or a message over 2048 is refused.
 
 #### Inputs
 
 | Input | Type | Required | Description |
 |---|---|---|---|
-| `message` | string | yes |  |
+| `message` | string[] | yes |  |
 | `title` | string | no |  |
 
 #### Input schema
@@ -536,7 +536,11 @@ Posts a desktop notification with this message through the configured backend, w
   "type": "object",
   "properties": {
     "message": {
-      "type": "string"
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
     },
     "title": {
       "type": "string"
