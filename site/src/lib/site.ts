@@ -1,3 +1,4 @@
 export const GITHUB_URL = 'https://github.com/SkuratovichA/tagents'
-export const DOCS_URL = 'https://skuratovicha.github.io/tagents/'
+// The documentation is built by VitePress into docs/ of the same deployment; MOUNTS in build/links.ts names that directory.
+export const DOCS_URL = `${import.meta.env.BASE_URL}docs/`
 export const LICENCE_URL = `${GITHUB_URL}/blob/main/LICENSE`
