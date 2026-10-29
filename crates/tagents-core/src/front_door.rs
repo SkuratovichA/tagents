@@ -1,0 +1,140 @@
+//! The `tagents-core` front door.
+//!
+//! A verb the data file marks `impl: "rust"` is served here; every other word (an unported verb, help, `doctor`, a plugin's verb, a word nobody knows) is handed to the node CLI with the same arguments, environment and stdio, and the exit code is the node CLI's own, because the process is replaced, not waited for.
+//! The dispatch is by the first word, so a group of verbs is served wholly by one program: `sessions` and its misspellings behave as they always did, in either implementation.
+
+use std::{
+    ffi::{OsStr, OsString},
+    io::Write,
+    os::unix::process::CommandExt,
+    path::PathBuf,
+    process::{Command, ExitCode},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use tagents_spec::Spec;
+
+use crate::{
+    node,
+    sessions::{self, Output},
+    transcripts::Context,
+};
+
+/// Where the node CLI sits below the root of a checkout (or of `$TAGENTS_HOME`, which is one).
+const NODE_CLI: &str = "packages/core/dist/cli/main.js";
+/// The node binary the wrapper `install.sh` writes pinned, or `node` on `PATH`.
+const NODE_ENV: &str = "TAGENTS_NODE";
+/// The one argument the front door answers itself.
+const SPEC_FLAG: &str = "--spec";
+
+/// One first word the front door serves.
+struct Group {
+    word: &'static str,
+    verbs: &'static [&'static [&'static str]],
+    run: fn(&[String], &Context) -> Output,
+}
+
+const GROUPS: &[Group] = &[Group {
+    word: "sessions",
+    verbs: sessions::VERBS,
+    run: sessions::run,
+}];
+
+/// The data-file entries of the verbs this binary implements, as JSON: what `--spec` prints.
+pub fn served_spec() -> Result<String, String> {
+    let mut spec =
+        Spec::bundled().map_err(|e| format!("the embedded CLI spec does not load: {e}"))?;
+    spec.commands.retain(|c| {
+        GROUPS
+            .iter()
+            .flat_map(|g| g.verbs)
+            .any(|verb| verb.iter().copied().eq(c.path.iter().map(String::as_str)))
+    });
+    let mut text = serde_json::to_string_pretty(&spec).map_err(|e| e.to_string())?;
+    text.push('\n');
+    Ok(text)
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
+fn context() -> Context {
+    Context {
+        home: node::homedir(),
+        claude_homes: std::env::var_os("CLAUDE_HOMES").map(|v| v.to_string_lossy().into_owned()),
+        now_ms: now_ms(),
+    }
+}
+
+/// Write what was produced and ignore a reader that went away, as the node CLI does.
+fn emit(out: &Output) -> ExitCode {
+    let mut stdout = std::io::stdout().lock();
+    let _ = stdout.write_all(out.stdout.as_bytes());
+    let _ = stdout.flush();
+    let mut stderr = std::io::stderr().lock();
+    let _ = stderr.write_all(out.stderr.as_bytes());
+    let _ = stderr.flush();
+    ExitCode::from(out.code)
+}
+
+/// The node CLI that belongs to this binary: `<root>/target/{release,debug}/tagents-core` lives two directories below the root.
+fn node_cli() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?.canonicalize().ok()?;
+    let cli = exe.parent()?.parent()?.parent()?.join(NODE_CLI);
+    cli.is_file().then_some(cli)
+}
+
+/// Replace this process with the node CLI. Only returns when that could not be done.
+fn forward(args: &[OsString]) -> ExitCode {
+    let Some(cli) = node_cli() else {
+        eprintln!(
+            "tagents-core: the node CLI ({NODE_CLI}) is not built next to this binary; run: pnpm install && pnpm build"
+        );
+        return ExitCode::from(2);
+    };
+    let node = std::env::var_os(NODE_ENV)
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| OsString::from("node"));
+    let err = Command::new(&node).arg(cli).args(args).exec();
+    eprintln!("tagents-core: cannot run {}: {err}", node.to_string_lossy());
+    ExitCode::from(if err.kind() == std::io::ErrorKind::NotFound {
+        127
+    } else {
+        126
+    })
+}
+
+/// The program: `args` are the words after its name.
+pub fn run(args: Vec<OsString>) -> ExitCode {
+    if args.len() == 1 && args[0] == OsStr::new(SPEC_FLAG) {
+        return match served_spec() {
+            Ok(text) => emit(&Output {
+                stdout: text,
+                stderr: String::new(),
+                code: sessions::exit::OK,
+            }),
+            Err(message) => emit(&Output {
+                stdout: String::new(),
+                stderr: format!("tagents-core: {message}\n"),
+                code: 2,
+            }),
+        };
+    }
+    let group = args
+        .first()
+        .and_then(|first| first.to_str())
+        .and_then(|first| GROUPS.iter().find(|g| g.word == first));
+    match group {
+        Some(group) => {
+            let rest: Vec<String> = args[1..]
+                .iter()
+                .map(|a| a.to_string_lossy().into_owned())
+                .collect();
+            emit(&(group.run)(&rest, &context()))
+        }
+        None => forward(&args),
+    }
+}
