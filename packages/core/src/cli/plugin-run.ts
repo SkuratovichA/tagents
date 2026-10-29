@@ -3,7 +3,7 @@
 //   tagents-core telegram status
 //   ^ the program   ^ a plugin   ^ one of the CliCommands it declares
 //
-// The plugin is named by its CONFIG KEY (the `plugins:` key in config.yaml) or
+// The plugin is named by its CONFIG KEY (the `[plugins.<key>]` table of the config) or
 // by the name the definition gives itself, because a config key is free to
 // differ from it and both spellings are what a person has in front of them.
 // The core verbs are matched first, in main.ts, and always win: what `session`,
@@ -192,7 +192,7 @@ export async function runPluginCommand(name: string, argv: readonly string[], io
 
 /**
  * A plugin's own bin: `process.exitCode = await runPluginBin(plugin)`. The verbs
- * run with no config.yaml registration, which is what lets a LaunchAgent start
+ * run with no config registration, which is what lets a LaunchAgent start
  * one. Otherwise exactly runPluginCommand, down to the same runCommand.
  */
 export async function runPluginBin(

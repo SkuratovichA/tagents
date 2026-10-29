@@ -1,15 +1,17 @@
 // Loading plugins.
 //
-// EXPLICIT LISTING ONLY. The host reads ~/.config/tagents/config.yaml and
-// imports exactly what the `plugins:` map names — it never scans node_modules,
+// EXPLICIT LISTING ONLY. The host reads ~/.config/tagents/config.toml and
+// imports exactly what the `plugins` table names — it never scans node_modules,
 // never walks a directory looking for something that looks like a plugin.
 // Scanning is how a machine ends up running code nobody chose; a list is a
 // decision somebody can read.
 //
-//   plugins:
-//     tg-orchestrator:
-//       from: ../telegram-bots/orchestrator   # a path, or a package name
+//   [plugins.tg-orchestrator]
+//   from = "../telegram-bots/orchestrator"   # a path, or a package name
 //
+// A config.yaml with the same `plugins:` map is read when there is no
+// config.toml (see config-file.ts).
+
 // `from` points at a PACKAGE, and the package says where its code is in its own
 // package.json: { "tagents": { "entry": "./dist/plugin.js" } }. That indirection
 // is what lets a plugin move its build output without every config on the
@@ -19,12 +21,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
+import { readConfigFile, resolveConfigFile } from './config-file.ts';
 import { PLUGIN_API_VERSION, type PluginDef } from './plugin.ts';
 import { tryCatch } from './result.ts';
 
-export const CONFIG_BASENAME = 'config.yaml';
+/** The file a new config is written to; an existing config.yaml is found by configFile(). */
+export const CONFIG_BASENAME = 'config.toml';
 
 /** ~/.config/tagents, or $TAGENTS_CONFIG_DIR. */
 export function configDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -34,12 +37,14 @@ export function configDir(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(xdg && xdg.trim() ? xdg : path.join(os.homedir(), '.config'), 'tagents');
 }
 
+/** config.toml in the config dir, else config.yaml, else config.toml as the place for a new one. */
 export function configFile(env: NodeJS.ProcessEnv = process.env): string {
-  return path.join(configDir(env), CONFIG_BASENAME);
+  return resolveConfigFile(configDir(env));
 }
 
 const EntrySchema = z.object({ from: z.string().min(1) });
-const ConfigSchema = z.object({ plugins: z.record(z.string(), EntrySchema).optional() });
+/** The part of the config this host reads; schemas/config.schema.json describes it too, and test/config-schema.test.ts keeps the two from drifting. */
+export const ConfigSchema = z.object({ plugins: z.record(z.string(), EntrySchema).optional() });
 export type PluginEntry = z.infer<typeof EntrySchema>;
 
 export interface PluginListing {
@@ -65,13 +70,15 @@ export interface LoadResult {
 
 /** The configured plugins, in file order. A missing config file is not an error. */
 export function readPluginList(file = configFile()): PluginListing[] {
-  let text: string;
+  let raw: unknown;
   try {
-    text = fs.readFileSync(file, 'utf8');
-  } catch {
-    return [];
+    raw = readConfigFile(file);
+  } catch (e) {
+    // A file that is not there is no plugins; one that is there and does not parse is an error to say.
+    if (e instanceof Error && (e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw e;
   }
-  const parsed = ConfigSchema.safeParse(parseYaml(text) ?? {});
+  const parsed = ConfigSchema.safeParse(raw);
   if (!parsed.success) return [];
   return Object.entries(parsed.data.plugins ?? {}).map(([name, e]) => ({ name, from: e.from }));
 }

@@ -1,4 +1,4 @@
-// The options of `<configDir>/plugins/notify.yaml`.
+// The options of `<configDir>/plugins/notify.toml` (or the `notify.yaml` that is there instead).
 //
 // Every key is optional and the schema fills in the rest, so a file that says
 // only `click: goto` is a complete configuration. Objects are strict at every

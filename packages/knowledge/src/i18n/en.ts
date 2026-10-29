@@ -21,8 +21,7 @@ export const en = {
   noDir: [
     'no knowledge directory: set TAGENTS_KNOWLEDGE_DIR, pass --dir, or add to {{config}}',
     '',
-    '  knowledge:',
-    '    dir: ~/git/personal/knowledge',
+    '{{snippet}}',
   ].join('\n'),
   missingDir: 'knowledge directory {{dir}} does not exist',
   indexed:

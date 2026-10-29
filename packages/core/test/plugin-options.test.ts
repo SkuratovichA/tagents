@@ -1,4 +1,4 @@
-// A plugin's options live in <configDir>/plugins/<name>.yaml and are read through
+// A plugin's options live in <configDir>/plugins/<name>.toml (or .yaml) and are read through
 // one function that never throws: a missing file is the defaults, a broken one
 // is a list of problems a person can fix.
 import assert from 'node:assert/strict';
@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { z } from 'zod';
-import { loadPluginOptions, pluginOptionsFile } from '../src/plugin-options.ts';
+import { loadPluginOptions, pluginOptionsBasenames, pluginOptionsFile } from '../src/plugin-options.ts';
 import { tmpDir } from '../src/testkit.ts';
 
 const schema = z.object({ sound: z.string().default('ping'), volume: z.number().default(1) });
@@ -18,10 +18,42 @@ before(() => {
 });
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
-const write = (name: string, body: string): void => fs.writeFileSync(path.join(tmp, 'plugins', `${name}.yaml`), body);
+const write = (name: string, body: string, ext = 'yaml'): void =>
+  fs.writeFileSync(path.join(tmp, 'plugins', `${name}.${ext}`), body);
 
-test('the options file is <configDir>/plugins/<name>.yaml', () => {
-  assert.equal(pluginOptionsFile('/c', 'notify'), '/c/plugins/notify.yaml');
+test('the options file is <configDir>/plugins/<name>.toml, the place a new one goes', () => {
+  assert.equal(pluginOptionsFile('/c', 'notify'), '/c/plugins/notify.toml');
+  assert.deepEqual(pluginOptionsBasenames('notify'), ['notify.toml', 'notify.yaml']);
+});
+
+test('an options file that is only there as YAML is found and read as YAML, without a conversion notice', () => {
+  write('onlyyaml', 'sound: glass\n');
+  assert.equal(pluginOptionsFile(tmp, 'onlyyaml'), path.join(tmp, 'plugins', 'onlyyaml.yaml'));
+  const r = loadPluginOptions(tmp, 'onlyyaml', schema);
+  assert.deepEqual(r, { ok: true, value: { sound: 'glass', volume: 1 }, file: path.join(tmp, 'plugins', 'onlyyaml.yaml'), found: true });
+});
+
+test('a TOML options file is read as TOML', () => {
+  write('tomlonly', 'sound = "glass"\nvolume = 2\n', 'toml');
+  const r = loadPluginOptions(tmp, 'tomlonly', schema);
+  assert.deepEqual(r, { ok: true, value: { sound: 'glass', volume: 2 }, file: path.join(tmp, 'plugins', 'tomlonly.toml'), found: true });
+});
+
+test('with both, the TOML file wins', () => {
+  write('both', 'sound: yaml\n');
+  write('both', 'sound = "toml"\n', 'toml');
+  const r = loadPluginOptions(tmp, 'both', schema);
+  assert.equal(r.ok && r.value.sound, 'toml');
+  assert.equal(r.file, path.join(tmp, 'plugins', 'both.toml'));
+});
+
+test('broken TOML is one problem that names the file', () => {
+  write('brokentoml', 'sound = \n', 'toml');
+  const r = loadPluginOptions(tmp, 'brokentoml', schema);
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.equal(r.problems.length, 1);
+  assert.ok(r.problems[0]?.startsWith(`${r.file}: `));
 });
 
 test('a missing file gives the schema defaults and found: false', () => {

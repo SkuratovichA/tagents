@@ -176,7 +176,7 @@ test('doctor reports the machine, and says nothing on stderr', () => {
   assert.equal(r.stderr, '');
   assert.match(r.stdout, /^node v\d+\./);
   assert.match(r.stdout, new RegExp(`agent state ${state.replace(/[/\\]/g, '\\$&')} \\(1 record`));
-  assert.match(r.stdout, /config .*config\.yaml: missing/);
+  assert.match(r.stdout, /config .*config\.toml: missing/);
 });
 
 test('a half-read pipe is not a crash', () => {

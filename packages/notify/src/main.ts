@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The package's own bin: `tagents-notify <verb>`, and what the LaunchAgent runs
-// (`node dist/main.js run`). The verbs need no config.yaml registration here, so
+// (`node dist/main.js run`). The verbs need no entry in the config here, so
 // a service started by launchd works on a machine where the host never ran.
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';

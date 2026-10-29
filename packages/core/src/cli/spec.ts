@@ -141,6 +141,14 @@ export const PLUGIN_NEW = {
   summary: 'summaryPluginNew',
 } as const satisfies CommandSpec<CoreKey>;
 
+export const CONFIG_CONVERT = {
+  path: ['config', 'convert'],
+  positionals: ['[FILE]'],
+  options: { write: { type: 'boolean' }, all: { type: 'boolean' } },
+  required: [],
+  summary: 'summaryConfigConvert',
+} as const satisfies CommandSpec<CoreKey>;
+
 export const DOCTOR = {
   path: ['doctor'],
   positionals: [],
@@ -162,6 +170,7 @@ export const CORE_COMMANDS = [
   PLUGIN_ADD,
   PLUGIN_REMOVE,
   PLUGIN_NEW,
+  CONFIG_CONVERT,
   DOCTOR,
 ] as const satisfies readonly CommandSpec<CoreKey>[];
 

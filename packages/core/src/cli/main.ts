@@ -17,7 +17,7 @@
 // A verb this file does not know is offered to the configured plugins before it
 // is refused: `tagents-core telegram status` runs the `status` CliCommand of the
 // plugin named `telegram` (cli/plugin-run.ts). The core verbs are matched FIRST
-// and always win — what `session`, `sessions`, `plugin`, `doctor` and `help`
+// and always win — what `session`, `sessions`, `plugin`, `config`, `doctor` and `help`
 // mean must not depend on what somebody has installed.
 //
 // Exit codes: 0 ok · 1 error · 2 usage · 3 refused · 4 timeout.
@@ -36,6 +36,7 @@ import { parseSessionRef } from '../session-ref.ts';
 import { renderRecent, renderSearch, renderShow, SESSIONS_PROGRAM } from '../transcripts.ts';
 import { formatAttemptError, type TurnOutcome } from '../turn-outcome.ts';
 import { EXIT, json, stdio, type Io } from './exit.ts';
+import { config } from './config.ts';
 import { plugin } from './plugin.ts';
 import { runPluginCommand } from './plugin-run.ts';
 import { SESSION_LIST, SESSION_OPEN, SESSION_PROMPT } from './spec.ts';
@@ -272,6 +273,7 @@ export async function main(argv: string[], io: Io = stdio()): Promise<number> {
     if (verb === 'session') return await session(rest, io, t);
     if (verb === 'sessions') return sessions(rest, io);
     if (verb === 'plugin') return await plugin(rest, io, t);
+    if (verb === 'config') return config(rest, io, t);
     if (verb === 'doctor') return doctor(io, t);
     if (verb === undefined || verb === 'help' || verb === '--help' || verb === '-h') {
       io.out(`${t('usage')}\n`);

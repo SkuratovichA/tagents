@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { DB_BASENAME, USAGE_BASENAME, configuredDir, expandHome, resolveDb, resolveDir, resolveUsageDb } from '../src/paths.ts';
+import { DB_BASENAME, USAGE_BASENAME, configuredDir, dirSnippet, expandHome, resolveDb, resolveDir, resolveUsageDb } from '../src/paths.ts';
 import { copyKnowledge, removeDir, runCli, tmpDir } from './helpers.ts';
 
 test('~ is expanded, and only at the start', () => {
@@ -14,20 +14,39 @@ test('~ is expanded, and only at the start', () => {
   assert.equal(expandHome('relative/notes', '/Users/demo'), 'relative/notes');
 });
 
-test('knowledge.dir is read from config.yaml, relative to the config', () => {
+test('knowledge.dir is read from config.toml, relative to the config', () => {
   const root = tmpDir('config');
+  try {
+    const config = path.join(root, 'config.toml');
+    copyKnowledge(path.join(root, 'knowledge'));
+    fs.writeFileSync(config, '[plugins.something]\nfrom = "./x"\n\n[knowledge]\ndir = "./knowledge"\n');
+    assert.equal(configuredDir(config), path.join(root, 'knowledge'));
+
+    fs.writeFileSync(config, '[plugins]\n');
+    assert.equal(configuredDir(config), null);
+    assert.equal(configuredDir(path.join(root, 'no-such-config.toml')), null);
+
+    fs.writeFileSync(config, '[knowledge]\ndir = "~/knowledge"\n');
+    assert.equal(configuredDir(config), path.join(os.homedir(), 'knowledge'));
+
+    fs.writeFileSync(config, '[knowledge\ndir = 1\n');
+    assert.equal(configuredDir(config), null, 'a config that does not parse names no folder');
+  } finally {
+    removeDir(root);
+  }
+});
+
+test('knowledge.dir is still read from a config.yaml that has no TOML twin', () => {
+  const root = tmpDir('config-yaml');
   try {
     const config = path.join(root, 'config.yaml');
     copyKnowledge(path.join(root, 'knowledge'));
     fs.writeFileSync(config, 'plugins:\n  something:\n    from: ./x\nknowledge:\n  dir: ./knowledge\n');
     assert.equal(configuredDir(config), path.join(root, 'knowledge'));
+    assert.deepEqual(resolveDir(null, { TAGENTS_CONFIG_DIR: root }), { ok: true, dir: path.join(root, 'knowledge') });
 
     fs.writeFileSync(config, 'plugins: {}\n');
     assert.equal(configuredDir(config), null);
-    assert.equal(configuredDir(path.join(root, 'no-such-config.yaml')), null);
-
-    fs.writeFileSync(config, 'knowledge:\n  dir: ~/knowledge\n');
-    assert.equal(configuredDir(config), path.join(os.homedir(), 'knowledge'));
   } finally {
     removeDir(root);
   }
@@ -39,7 +58,7 @@ test('the environment beats the config, and an explicit path beats both', () => 
     const fromConfig = copyKnowledge(path.join(root, 'from-config'));
     const fromEnv = copyKnowledge(path.join(root, 'from-env'));
     const explicit = copyKnowledge(path.join(root, 'explicit'));
-    fs.writeFileSync(path.join(root, 'config.yaml'), `knowledge:\n  dir: ${fromConfig}\n`);
+    fs.writeFileSync(path.join(root, 'config.toml'), `[knowledge]\ndir = ${JSON.stringify(fromConfig)}\n`);
     const env = { TAGENTS_CONFIG_DIR: root };
 
     assert.deepEqual(resolveDir(null, env), { ok: true, dir: fromConfig });
@@ -93,16 +112,29 @@ test('the default usage store follows the index, however the index was chosen', 
   assert.equal(beside('/tmp/explicit/i.sqlite', { ...env, TAGENTS_KNOWLEDGE_DB: '/tmp/other/index.sqlite' }), path.join('/tmp/explicit', USAGE_BASENAME));
 });
 
-test('the CLI finds the folder through config.yaml alone', () => {
+test('the CLI finds the folder through config.toml alone', () => {
   const root = tmpDir('cli-config');
   try {
     copyKnowledge(path.join(root, 'knowledge'));
-    fs.writeFileSync(path.join(root, 'config.yaml'), 'knowledge:\n  dir: ./knowledge\n');
+    fs.writeFileSync(path.join(root, 'config.toml'), '[knowledge]\ndir = "./knowledge"\n');
     const r = runCli(['list', '--kind', 'map'], { TAGENTS_CONFIG_DIR: root });
     assert.equal(r.code, 0, r.stderr);
     assert.match(r.stdout, /^mashina-karta/);
     // The index landed next to the config, because nobody said otherwise.
     assert.ok(fs.existsSync(path.join(root, DB_BASENAME)));
+  } finally {
+    removeDir(root);
+  }
+});
+
+test('the hint for a missing folder is written in the format of the config it points at', () => {
+  assert.equal(dirSnippet('/c/config.toml'), '  [knowledge]\n  dir = "~/git/personal/knowledge"');
+  assert.equal(dirSnippet('/c/config.yaml'), '  knowledge:\n    dir: ~/git/personal/knowledge');
+  const root = tmpDir('no-dir');
+  try {
+    const r = runCli(['list'], { TAGENTS_CONFIG_DIR: root });
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /add to .*config\.toml\n\n {2}\[knowledge\]\n {2}dir = "~\/git\/personal\/knowledge"\n/);
   } finally {
     removeDir(root);
   }

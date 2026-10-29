@@ -34,6 +34,15 @@ function configDir(body?: string): string {
 
 const configText = (dir: string): string => fs.readFileSync(path.join(dir, 'config.yaml'), 'utf8');
 
+/** A fresh config dir holding `body` as its config.toml. */
+function tomlDir(body: string): string {
+  const dir = configDir();
+  fs.writeFileSync(path.join(dir, 'config.toml'), body);
+  return dir;
+}
+
+const tomlText = (dir: string): string => fs.readFileSync(path.join(dir, 'config.toml'), 'utf8');
+
 const inDir = (dir: string): Record<string, string> => ({ TAGENTS_CONFIG_DIR: dir });
 
 before(() => {
@@ -47,7 +56,7 @@ test('plugin list says so in words when nothing is configured', () => {
   const dir = configDir();
   const r = runCli(['plugin', 'list'], inDir(dir));
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /^no plugins configured in .*config\.yaml\n$/);
+  assert.match(r.stdout, /^no plugins configured in .*config\.toml\n$/);
 });
 
 test('plugin list --json is one JSON document, and the JSON is unchanged', () => {
@@ -57,7 +66,7 @@ test('plugin list --json is one JSON document, and the JSON is unchanged', () =>
   const listed = parseSingleJson(r.stdout) as { plugins: unknown[]; errors: unknown[]; file: string };
   assert.deepEqual(listed.plugins, []);
   assert.deepEqual(listed.errors, []);
-  assert.equal(listed.file, path.join(dir, 'config.yaml'));
+  assert.equal(listed.file, path.join(dir, 'config.toml'));
 });
 
 test('plugin list prints the config key and what the plugin offers', () => {
@@ -78,7 +87,7 @@ test('plugin add writes the entry the host then reads back', () => {
   const r = runCli(['plugin', 'add', GOOD], inDir(dir));
   assert.equal(r.code, 0);
   assert.match(r.stdout, /^added fixture-plugin → /);
-  assert.deepEqual(readPluginList(path.join(dir, 'config.yaml')), [{ name: 'fixture-plugin', from: GOOD }]);
+  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'fixture-plugin', from: GOOD }]);
 });
 
 test('a relative path is stored absolute — the host resolves from: against the CONFIG', () => {
@@ -86,18 +95,18 @@ test('a relative path is stored absolute — the host resolves from: against the
   const rel = path.relative(PLUGINS, GOOD);
   const r = runCli(['plugin', 'add', `./${rel}`], inDir(dir), PLUGINS);
   assert.equal(r.code, 0);
-  assert.deepEqual(readPluginList(path.join(dir, 'config.yaml')), [{ name: 'fixture-plugin', from: GOOD }]);
+  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'fixture-plugin', from: GOOD }]);
 });
 
 test('--name chooses the key, and a second add of the same key is refused', () => {
   const dir = configDir();
   assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
-  assert.deepEqual(readPluginList(path.join(dir, 'config.yaml')), [{ name: 'demo', from: GOOD }]);
+  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'demo', from: GOOD }]);
 
   const again = runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir));
   assert.equal(again.code, 3, 'already present is a refusal, not an error');
   assert.match(again.stderr, /demo is already listed in /);
-  assert.deepEqual(readPluginList(path.join(dir, 'config.yaml')), [{ name: 'demo', from: GOOD }], 'nothing changed');
+  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'demo', from: GOOD }], 'nothing changed');
 });
 
 test('a package with no tagents manifest is refused, and a manifest pointing nowhere too', () => {
@@ -110,7 +119,7 @@ test('a package with no tagents manifest is refused, and a manifest pointing now
   assert.equal(noEntry.code, 3);
   assert.match(noEntry.stderr, /which does not exist/);
 
-  assert.ok(!fs.existsSync(path.join(dir, 'config.yaml')), 'a refusal writes no config file at all');
+  assert.ok(!fs.existsSync(path.join(dir, 'config.toml')), 'a refusal writes no config file at all');
 });
 
 test('a package that is nowhere is an error, and no argument is a usage error', () => {
@@ -140,7 +149,7 @@ test('an installed package name is resolved from the cwd, and stored as the name
   const dir = configDir();
   const r = runCli(['plugin', 'add', 'demo-plugin'], inDir(dir), home);
   assert.equal(r.code, 0);
-  assert.deepEqual(readPluginList(path.join(dir, 'config.yaml')), [{ name: 'demo-plugin', from: 'demo-plugin' }]);
+  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'demo-plugin', from: 'demo-plugin' }]);
 });
 
 test('the default key is the package name without its scope or plugin- prefix', () => {
@@ -242,6 +251,124 @@ test('the two edits are also a library, for anything that is not this CLI', () =
   assert.equal(fs.readFileSync(file, 'utf8'), 'accounts:\n  personal: ~/.claude\n');
 });
 
+// ------------------------------------------ the same edits, in a TOML config ---
+
+const HAND_WRITTEN_TOML = `#:schema https://example.test/config.schema.json
+# tagents — which Claude account an agent is started on.
+[claude]
+args = "--dangerously-skip-permissions"   # a string, or a list of arguments
+
+[claude.profiles.personal]
+config_dir = "~/.claude-personal"          # aligned by hand, and it stays aligned
+
+[usage]
+monthly_limit_usd = 850
+
+# a trailing note nobody may touch
+`;
+
+test('with no config at all, plugin add creates config.toml', () => {
+  const dir = configDir();
+  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
+  assert.equal(tomlText(dir), `[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
+  assert.ok(!fs.existsSync(path.join(dir, 'config.yaml')), 'no YAML file is born');
+});
+
+test('adding to a TOML config appends one table and changes nothing before it, byte for byte', () => {
+  const dir = tomlDir(HAND_WRITTEN_TOML);
+  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
+
+  const after_ = tomlText(dir);
+  assert.equal(after_, `${HAND_WRITTEN_TOML}\n[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
+  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'demo', from: GOOD }]);
+});
+
+test('a TOML config without a final newline gets exactly one before the new table', () => {
+  const dir = tomlDir('[usage]\nworkdays = true');
+  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
+  assert.equal(tomlText(dir), `[usage]\nworkdays = true\n\n[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
+});
+
+test('a plugin name that is not a bare TOML key is quoted', () => {
+  const dir = configDir();
+  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'my.plugin'], inDir(dir)).code, 0);
+  assert.equal(tomlText(dir), `[plugins."my.plugin"]\nfrom = ${JSON.stringify(GOOD)}\n`);
+  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'my.plugin', from: GOOD }]);
+  assert.equal(runCli(['plugin', 'remove', 'my.plugin'], inDir(dir)).code, 0);
+  assert.equal(tomlText(dir), '');
+});
+
+test('a second add of the same key to a TOML config is refused and writes nothing', () => {
+  const dir = tomlDir(`[plugins.demo]\nfrom = "/one"\n`);
+  const r = runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir));
+  assert.equal(r.code, 3);
+  assert.match(r.stderr, /demo is already listed in .*config\.toml/);
+  assert.equal(tomlText(dir), `[plugins.demo]\nfrom = "/one"\n`);
+});
+
+test('a TOML config that does not parse is refused, not rewritten', () => {
+  const broken = '[claude\nargs = 1\n';
+  const dir = tomlDir(broken);
+  const r = runCli(['plugin', 'add', GOOD], inDir(dir));
+  assert.equal(r.code, 1);
+  assert.equal(tomlText(dir), broken);
+});
+
+test('a plugins table written inline cannot take a new table beside it, and the file is left alone', () => {
+  const inline = `plugins = { a = { from = "/one" } }\n`;
+  const dir = tomlDir(inline);
+  const r = runCli(['plugin', 'add', GOOD, '--name', 'b'], inDir(dir));
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /config\.toml/);
+  assert.equal(tomlText(dir), inline);
+});
+
+test('remove takes a TOML entry out and leaves the file as add found it', () => {
+  const dir = tomlDir(HAND_WRITTEN_TOML);
+  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
+  const r = runCli(['plugin', 'remove', 'demo'], inDir(dir));
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^removed demo from .*config\.toml\n$/);
+  assert.equal(tomlText(dir), HAND_WRITTEN_TOML);
+});
+
+test('removing one of several TOML entries takes its sub-tables with it and leaves the others and their comments', () => {
+  const dir = tomlDir(
+    `# why\n[plugins.a]\nfrom = "/one"\n\n[plugins.a.extra]\nx = 1\n\n[plugins.b]\nfrom = "/two"   # keep\n\n# after the plugins\n[usage]\nworkdays = true\n`
+  );
+  assert.equal(runCli(['plugin', 'remove', 'a'], inDir(dir)).code, 0);
+  assert.equal(
+    tomlText(dir),
+    `# why\n[plugins.b]\nfrom = "/two"   # keep\n\n# after the plugins\n[usage]\nworkdays = true\n`
+  );
+});
+
+test('removing something that is not in a TOML config is refused and writes nothing', () => {
+  const dir = tomlDir(HAND_WRITTEN_TOML);
+  const r = runCli(['plugin', 'remove', 'nope'], inDir(dir));
+  assert.equal(r.code, 3);
+  assert.match(r.stderr, /nope is not listed in .*config\.toml/);
+  assert.equal(tomlText(dir), HAND_WRITTEN_TOML);
+});
+
+test('the library edits a TOML file the same way', () => {
+  const file = path.join(tomlDir('[usage]\nworkdays = true\n'), 'config.toml');
+  assert.equal(addPluginEntry(file, 'x', '/pkg/x'), 'added');
+  assert.equal(addPluginEntry(file, 'x', '/pkg/x'), 'exists');
+  assert.equal(removePluginEntry(file, 'x'), 'removed');
+  assert.equal(removePluginEntry(file, 'x'), 'absent');
+  assert.equal(fs.readFileSync(file, 'utf8'), '[usage]\nworkdays = true\n');
+});
+
+test('with a config.yaml and no config.toml, plugin add keeps editing the YAML file', () => {
+  const dir = configDir('usage:\n  x: 1\n');
+  const r = runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir));
+  assert.equal(r.code, 0);
+  assert.equal(configText(dir), `usage:\n  x: 1\nplugins:\n  demo:\n    from: ${GOOD}\n`);
+  assert.ok(!fs.existsSync(path.join(dir, 'config.toml')));
+  assert.match(r.stderr, /config\.yaml is a YAML config, which is deprecated — run: tagents config convert/);
+});
+
 // -------------------------------------------------------------------- new ---
 
 test('plugin new scaffolds a package that plugin add then accepts', () => {
@@ -264,7 +391,7 @@ test('plugin new scaffolds a package that plugin add then accepts', () => {
 
   const cfg = configDir();
   assert.equal(runCli(['plugin', 'add', dir], inDir(cfg)).code, 0, 'its own manifest passes the check add makes');
-  assert.deepEqual(readPluginList(path.join(cfg, 'config.yaml')), [{ name: 'demo', from: dir }]);
+  assert.deepEqual(readPluginList(path.join(cfg, 'config.toml')), [{ name: 'demo', from: dir }]);
 });
 
 test('plugin new refuses a directory with something in it, and a name it cannot use', () => {

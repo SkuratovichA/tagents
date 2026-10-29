@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 /**
  * Every variable that changes what a tool answers, and where it is read:
  *   HOME                    os.homedir(): `~` in paths.ts, core's default config dir, transcripts.ts' home
- *   TAGENTS_CONFIG_DIR      core host.ts configDir(): the config.yaml that names the documents, and the default index
+ *   TAGENTS_CONFIG_DIR      core host.ts configDir(): the config.toml that names the documents, and the default index
  *   XDG_CONFIG_HOME         the same function, when the line above is unset
  *   TAGENTS_KNOWLEDGE_DIR   paths.ts resolveDir(): the documents
  *   TAGENTS_KNOWLEDGE_DB    paths.ts resolveDb(): the index

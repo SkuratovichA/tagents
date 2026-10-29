@@ -435,6 +435,14 @@ test('the options watch follows a symlinked config dir to the real one', async (
   );
 });
 
+test('the options may move to notify.toml while the service runs: that file is reloaded too', async () => {
+  const r = rig({ plugins: true });
+  await r.start();
+  await until('the reload', () => r.has('options reloaded'), () =>
+    writeAtomic(path.join(path.dirname(r.optionsFile), 'notify.toml'), 'click = "goto"\n')
+  );
+});
+
 test('linux with the auto backend: the service says there is no backend, follows nothing and releases the lock', async () => {
   const r = rig({ real: true, deps: { os: 'linux' } });
   const h = await r.start();

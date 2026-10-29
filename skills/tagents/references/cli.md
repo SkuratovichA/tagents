@@ -108,7 +108,7 @@ Usage: `tagents-core plugin list [--json]`
 
 ### plugin add
 
-validates a package manifest and writes the plugin into config.yaml
+validates a package manifest and writes the plugin into the config
 
 Usage: `tagents-core plugin add <package-or-path> [--name <name>]`
 
@@ -118,7 +118,7 @@ Usage: `tagents-core plugin add <package-or-path> [--name <name>]`
 
 ### plugin remove
 
-takes one plugin entry back out of config.yaml
+takes one plugin entry back out of the config
 
 Usage: `tagents-core plugin remove <name>`
 
@@ -133,6 +133,17 @@ Usage: `tagents-core plugin new <name> [--dir <dir>]`
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
 | `--dir` | string | no | no |
+
+### config convert
+
+turns config.yaml into config.toml: prints it by default, writes it beside the YAML with --write, and also converts the per-host overlays with --all
+
+Usage: `tagents-core config convert [FILE] [--write] [--all]`
+
+| Flag | Type | Required | Repeatable |
+|---|---|---|---|
+| `--write` | boolean | no | no |
+| `--all` | boolean | no | no |
 
 ### doctor
 

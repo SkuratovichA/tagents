@@ -180,7 +180,7 @@ test('exit codes: 0 ok · 1 error · 2 usage · 4 nothing found', () => {
     const unset = runCli(['list'], { TAGENTS_KNOWLEDGE_DB: env['TAGENTS_KNOWLEDGE_DB'] ?? '' });
     assert.equal(unset.code, 1);
     assert.match(unset.stderr, /TAGENTS_KNOWLEDGE_DIR/);
-    assert.match(unset.stderr, /config\.yaml/);
+    assert.match(unset.stderr, /config\.toml/);
 
     // They did, and it is not there.
     const missing = runCli(['list'], { ...env, TAGENTS_KNOWLEDGE_DIR: '/no/such/knowledge' });

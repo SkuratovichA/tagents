@@ -2,7 +2,7 @@
 // run as the program.
 //
 // Hermetic, like the rest: every case points TAGENTS_CONFIG_DIR at a temp
-// directory holding a config.yaml this file wrote, so the owner's real
+// directory holding a config.toml this file wrote, so the owner's real
 // ~/.config/tagents is never read and none of its plugins ever runs here. The
 // plugin under test is test/fixtures/plugin/good, whose definition calls itself
 // `fixture` while the key in the config is free to be anything — both spellings
@@ -24,12 +24,12 @@ const MISSING_ENTRY = path.join(PLUGINS, 'missing-entry');
 let tmp: string;
 let seq = 0;
 
-/** A config dir whose config.yaml lists `key: from` for each pair given. */
+/** A config dir whose config.toml lists `[plugins.key] from = …` for each pair given. */
 function configDir(entries: ReadonlyArray<readonly [string, string]>): string {
   const dir = path.join(tmp, `cfg-${++seq}`);
   fs.mkdirSync(dir, { recursive: true });
-  const body = ['plugins:', ...entries.map(([name, from]) => `  ${name}:\n    from: ${from}`), ''].join('\n');
-  fs.writeFileSync(path.join(dir, 'config.yaml'), body);
+  const body = entries.map(([name, from]) => `[plugins.${name}]\nfrom = ${JSON.stringify(from)}\n`).join('\n');
+  fs.writeFileSync(path.join(dir, 'config.toml'), body);
   return dir;
 }
 
@@ -139,7 +139,7 @@ test('the usage names the plugin line and the reserved words', () => {
   const r = runCli(['help'], installed());
   assert.equal(r.code, 0);
   assert.match(r.stdout, /^ {2}<plugin> <command> \[args]/m);
-  assert.match(r.stdout, /^reserved: session · sessions · plugin · doctor · help/m);
+  assert.match(r.stdout, /^reserved: session · sessions · plugin · config · doctor · help/m);
 });
 
 // ------------------------------------------------------------ the broken ---
@@ -186,7 +186,7 @@ test('only a schema that declares `_` is handed the positionals', () => {
   assert.equal(takesPositionals(z.string()), false);
 });
 
-// runPluginBin: a plugin's own bin, with no config.yaml in the way.
+// runPluginBin: a plugin's own bin, with no config.toml in the way.
 function capture(): { io: { out: (s: string) => void; err: (s: string) => void }; out: string[]; err: string[] } {
   const out: string[] = [];
   const err: string[] = [];

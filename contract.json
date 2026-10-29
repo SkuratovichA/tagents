@@ -182,7 +182,7 @@
             }
           },
           "required": [],
-          "summary": "validates a package manifest and writes the plugin into config.yaml"
+          "summary": "validates a package manifest and writes the plugin into the config"
         },
         {
           "path": [
@@ -194,7 +194,7 @@
           ],
           "options": {},
           "required": [],
-          "summary": "takes one plugin entry back out of config.yaml"
+          "summary": "takes one plugin entry back out of the config"
         },
         {
           "path": [
@@ -211,6 +211,25 @@
           },
           "required": [],
           "summary": "scaffolds a package that is already a plugin"
+        },
+        {
+          "path": [
+            "config",
+            "convert"
+          ],
+          "positionals": [
+            "[FILE]"
+          ],
+          "options": {
+            "write": {
+              "type": "boolean"
+            },
+            "all": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "summary": "turns config.yaml into config.toml: prints it by default, writes it beside the YAML with --write, and also converts the per-host overlays with --all"
         },
         {
           "path": [
@@ -609,7 +628,7 @@
     }
   },
   "api": {
-    "@tagents/core": "sha256:c127f03b660a5ff59bfc2a3a99ad3b0ecbc25ebba324442ae187beb7dca0fcbd",
+    "@tagents/core": "sha256:310fbe94b26c136370bb92103deaa10bb6a58540707fc1a8cca14b53a552bd7a",
     "@tagents/knowledge": "sha256:63465226fcb49e8f6a20867948332ff35da600f4a020fa9701ef88730f5c2d8a",
     "@tagents/notify": "sha256:82378079b87af196363505cb138618ae0e84223fea9f92d4eaa01ec4981564bf",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"
