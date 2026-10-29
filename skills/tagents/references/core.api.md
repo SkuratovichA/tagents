@@ -703,7 +703,6 @@ export const resources: {
             readonly configWrote: "wrote {{target}} — {{source}} is still there, and tagents reads the TOML first and says so while both exist";
             readonly configCommentsLost: "comments are not carried over to the TOML — copy the ones worth keeping by hand";
             readonly configWriteFailed: "could not write {{file}}: {{error}} — nothing was kept";
-            readonly configNotRemoved: "could not remove {{files}} — remove by hand";
             readonly doctorNode: "node {{version}} ({{path}})";
             readonly doctorStateDir: "agent state {{dir}} ({{count}} record(s))";
             readonly doctorConfig: "config {{file}}: {{status}}";
@@ -727,7 +726,7 @@ export const resources: {
         };
     };
     readonly ru: {
-        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "configNoSource" | "configNoFile" | "configNotYaml" | "configTargetExists" | "configWrote" | "configCommentsLost" | "configWriteFailed" | "configNotRemoved" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryConfigConvert" | "summaryDoctor", string>>;
+        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "configNoSource" | "configNoFile" | "configNotYaml" | "configTargetExists" | "configWrote" | "configCommentsLost" | "configWriteFailed" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryConfigConvert" | "summaryDoctor", string>>;
     };
 };
 

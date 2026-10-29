@@ -56,7 +56,6 @@ export const en = {
   configWrote: 'wrote {{target}} — {{source}} is still there, and tagents reads the TOML first and says so while both exist',
   configCommentsLost: 'comments are not carried over to the TOML — copy the ones worth keeping by hand',
   configWriteFailed: 'could not write {{file}}: {{error}} — nothing was kept',
-  configNotRemoved: 'could not remove {{files}} — remove by hand',
   doctorNode: 'node {{version}} ({{path}})',
   doctorStateDir: 'agent state {{dir}} ({{count}} record(s))',
   doctorConfig: 'config {{file}}: {{status}}',

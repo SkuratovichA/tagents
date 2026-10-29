@@ -98,7 +98,8 @@ function convert(argv: string[], io: Io, t: CoreT, env: NodeJS.ProcessEnv, cwd: 
       if (!(err instanceof Error && (err as NodeJS.ErrnoException).code === 'EEXIST')) written.push(c.target);
       const stuck = written.filter((file) => !removed(file));
       io.err(`${t('configWriteFailed', { file: c.target, error: err instanceof Error ? err.message : String(err) })}\n`);
-      if (stuck.length > 0) io.err(`${t('configNotRemoved', { files: stuck.join(', ') })}\n`);
+      // A file that could not be removed is told after the error, in the one generic `name: reason` message there is.
+      for (const file of stuck) io.err(`${t('pluginFailed', { name: file, error: 'could not be removed — remove it by hand' })}\n`);
       return EXIT.error;
     }
   }

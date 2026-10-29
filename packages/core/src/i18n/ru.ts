@@ -59,7 +59,6 @@ export const ru: Partial<Record<keyof typeof en, string>> = {
   configWrote: 'записан {{target}} — {{source}} остался на месте, tagents читает сначала TOML и предупреждает, пока есть оба',
   configCommentsLost: 'комментарии в TOML не переносятся — те, что нужны, перенесите руками',
   configWriteFailed: 'не удалось записать {{file}}: {{error}} — ничего не сохранено',
-  configNotRemoved: 'не удалось удалить {{files}} — удалите вручную',
   doctorConfig: 'конфиг {{file}}: {{status}}',
   doctorClaude: 'claude: {{status}}',
   present: 'есть',
