@@ -252,9 +252,9 @@ new_shell() {  # <dir> [session]
   notice "tagents: new shell in $(basename "$(tilde_of "$dir")") ($sess:$idx)"
 }
 
-# A directory made absolute, printed; it fails for an empty name (`cd -- ""` is a no-op that would answer with the current directory) and for one that is not a directory. The path is the PHYSICAL one (norm_dir), because tmux's pane_current_path and the session lookup compare physical paths. A relative name is the caller's, and everything downstream of a launch (the repository root, the session that owns it, tmux's `-c`) reads it as a path, so it is resolved here, once. CDPATH is emptied, or a relative name could be looked up elsewhere and `cd` would print where it went into the substitution.
+# A directory made absolute, printed; it fails for a name that is not a directory, an empty one included (`[ -d "" ]` is false), so neither caller needs a test of its own for it. The path is the PHYSICAL one (norm_dir), because tmux's pane_current_path and the session lookup compare physical paths. A relative name is the caller's, and everything downstream of a launch (the repository root, the session that owns it, tmux's `-c`) reads it as a path, so it is resolved here, once. CDPATH is emptied, or a relative name could be looked up elsewhere and `cd` would print where it went into the substitution.
 abs_dir() {  # <dir>
-  [ -n "$1" ] && [ -d "$1" ] && norm_dir "$1"
+  [ -d "$1" ] && norm_dir "$1"
 }
 
 # The line a caller finds its new window by: the pane, a tab, and where it is as session:window index. `--window` always prints it, `--new` only with `--detach`, whose caller is a program that cannot look at the screen.
