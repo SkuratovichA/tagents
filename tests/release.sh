@@ -310,7 +310,10 @@ mkrepo() {
   git_in add -A && git_in commit -q -m base
   git_in checkout -q -b change
 }
-bump() { sed -i.bak 's/^version = "0.1.0"/version = "0.1.1"/' "$REPO/Cargo.toml" && rm "$REPO/Cargo.toml.bak"; }
+version_from_to() {  # <from> <to>: the workspace version of the repo under test
+  sed -i.bak "s/^version = \"$1\"/version = \"$2\"/" "$REPO/Cargo.toml" && rm "$REPO/Cargo.toml.bak"
+}
+bump() { version_from_to 0.1.0 0.1.1; }
 commit_all() { git_in add -A && git_in commit -q -m change; }
 gate_after() {  # <description> <expected exit> <function that edits the repo>
   mkrepo
@@ -370,7 +373,6 @@ printf 'docs\n' >> "$REPO/docs/x.md"; commit_all
 git_in checkout -q main; touch_src; commit_all; git_in checkout -q change
 ok "main gained a source change and no bump while the branch changed only docs: passes (merge base, not tip)" 0 "$(code_of "$(rel "$REPO" gate main)")"
 # The version has to go up from the merge base, not merely differ from the tip of the base.
-version_from_to() { sed -i.bak "s/^version = \"$1\"/version = \"$2\"/" "$REPO/Cargo.toml" && rm "$REPO/Cargo.toml.bak"; }
 mkrepo
 git_in checkout -q main; version_from_to 0.1.0 0.1.1; commit_all; git_in checkout -q -B change main
 version_from_to 0.1.1 0.1.0; touch_src; commit_all
@@ -386,13 +388,27 @@ contains "and says the version stayed" "still 0.1.0" "$out"
 mkrepo
 git_in checkout -q main; version_from_to 0.1.0 0.1.1; commit_all; git_in checkout -q change
 touch_src; bump; commit_all
-ok "the same branch with a bump above the merge base's version: passes" 0 "$(code_of "$(rel "$REPO" gate main)")"
+ok "the same branch with a bump above the merge base's version, as the local reading at the branch head: passes" 0 "$(code_of "$(rel "$REPO" gate main)")"
+# In CI the job checks out the test-merge commit of the pull request into its base, so the merge base is the tip of the base: the same branch, merged, changed the source under a version that main already holds.
+git_in merge -q --no-ff -m "test merge" main
+out=$(rel "$REPO" gate main)
+ok "the same branch as the test-merge commit CI checks out (both sides made the identical bump): fails" 1 "$(code_of "$out")"
+contains "...and says the version stayed" "still 0.1.1" "$out"
 for pair in "0.1.9 0.1.10" "0.9.9 0.10.0" "9.9.9 10.0.0"; do
   set -- $pair
   mkrepo
   git_in checkout -q main; version_from_to 0.1.0 "$1"; commit_all; git_in checkout -q -B change main
   version_from_to "$1" "$2"; touch_src; commit_all
   ok "$1 to $2 is a bump (the numbers are compared as numbers, not as text)" 0 "$(code_of "$(rel "$REPO" gate main)")"
+done
+for pair in "1.0.0 0.9.9" "0.2.0 0.1.9"; do
+  set -- $pair
+  mkrepo
+  git_in checkout -q main; version_from_to 0.1.0 "$1"; commit_all; git_in checkout -q -B change main
+  version_from_to "$1" "$2"; touch_src; commit_all
+  out=$(rel "$REPO" gate main)
+  ok "a source change that lowers the version from $1 to $2 (an earlier number goes down, a later one goes up): fails" 1 "$(code_of "$out")"
+  contains "...and says the version went down" "went down from $1" "$out"
 done
 mkrepo
 out=$(rel "$REPO" gate no-such-ref)
@@ -480,27 +496,30 @@ t "6. release.yml and the code it relies on agree"
 WORKFLOW=$ROOT/.github/workflows/release.yml
 # is_input as core-release.sh defines it: its own text, not a copy.
 eval "$(sed -n '/^is_input() {/,/^}/p' "$RELEASE")"
-pr_paths=$(awk '
-  /^  pull_request:/ { in_pr = 1; next }
-  in_pr && /^  [a-z_]+:/ { in_pr = 0 }
-  in_pr && /^    paths:/ { in_paths = 1; next }
-  in_pr && in_paths && /^      - / { sub(/^      - /, ""); gsub(/\047/, ""); print; next }
-  in_pr && in_paths { in_paths = 0 }
-' "$WORKFLOW")
+pull_request_paths() {  # <workflow file>: the entries of on.pull_request.paths, one per line
+  awk '
+    /^  pull_request:/ { in_pr = 1; next }
+    in_pr && /^  [a-z_]+:/ { in_pr = 0 }
+    in_pr && /^    paths:/ { in_paths = 1; next }
+    in_pr && in_paths && /^      - / { sub(/^      - /, ""); gsub(/\047/, ""); print; next }
+    in_pr && in_paths { in_paths = 0 }
+  ' "$1"
+}
+pr_paths=$(pull_request_paths "$WORKFLOW")
 ok "release.yml lists paths for its pull_request trigger" yes "$([ -n "$pr_paths" ] && echo yes || echo no)"
 # A pattern of the workflow is a glob where ** is read as *, as in a case pattern.
-on_a_pr_path() {  # <file>
+on_a_path() {  # <file> <paths, one glob per line>
   local p
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     # shellcheck disable=SC2254
     case $1 in $p) return 0 ;; esac
-  done <<< "$pr_paths"
+  done <<< "$2"
   return 1
 }
 for f in Cargo.toml Cargo.lock rust-toolchain.toml crates/a/Cargo.toml crates/a/build.rs crates/a/src/lib.rs crates/a/src/x/y.rs spec/cli/tagents-core.json spec/cli/cli-spec.schema.json; do
   ok "is_input accepts $f" yes "$(is_input "$f" && echo yes || echo no)"
-  ok "...and a pull_request path of release.yml matches it, so the three builds run as a dry run for it" yes "$(on_a_pr_path "$f" && echo yes || echo no)"
+  ok "...and a pull_request path of release.yml matches it, so the three builds run as a dry run for it" yes "$(on_a_path "$f" "$pr_paths" && echo yes || echo no)"
 done
 for f in docs/x.md README.md crates/a/tests/t.rs packages/core/src/x.ts; do
   ok "is_input refuses $f" no "$(is_input "$f" && echo yes || echo no)"
@@ -518,6 +537,16 @@ core_triple")"
 done
 ok "...and refuses a target nobody builds" "" "$(TAGENTS_CORE_TARGET=riscv64-unknown-nothing sh -c "$core_triple_fn
 core_triple")"
+
+# ---------------------------------------------------------------------------
+t "7. rust.yml runs this suite for every file the suite reads"
+# ---------------------------------------------------------------------------
+# tests/release.sh is run by the release-path job of rust.yml only, so a pull request that edits only a file it pins has to start that workflow, or the pin never runs.
+rust_paths=$(pull_request_paths "$ROOT/.github/workflows/rust.yml")
+ok "rust.yml lists paths for its pull_request trigger" yes "$([ -n "$rust_paths" ] && echo yes || echo no)"
+for f in .github/scripts/core-release.sh .github/workflows/release.yml .github/workflows/rust.yml install.sh tests/install.sh tests/release.sh; do
+  ok "a pull_request path of rust.yml matches $f" yes "$(on_a_path "$f" "$rust_paths" && echo yes || echo no)"
+done
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
