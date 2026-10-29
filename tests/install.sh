@@ -54,13 +54,15 @@ mkorigin() {
   (
     cd "$ORIGIN" || exit 1
     git init -q -b main . && git config user.email t@example.com && git config user.name t
-    mkdir -p hooks packages/core/dist/cli packages/knowledge/dist/cli
+    mkdir -p hooks packages/core/dist/cli packages/knowledge/dist/cli packages/notify/dist packages/mcp/dist
     for f in tagents tusage tnotes; do printf '#!/bin/sh\necho "%s v1 $*"\n' "$f" > "$f"; chmod +x "$f"; done
     # The hook echoes its stdin: a wrapper that dropped it would break every hook.
     printf '#!/bin/sh\necho "state v1 $* <$(cat)>"\n' > hooks/tmux-agent-state.sh
     printf '#!/bin/sh\necho "notes v1"\n' > hooks/notes-context.sh
     printf '#!/usr/bin/env node\n' > packages/core/dist/cli/main.js
     printf '#!/usr/bin/env node\n' > packages/knowledge/dist/cli/main.js
+    printf '#!/usr/bin/env node\n' > packages/notify/dist/main.js
+    printf '#!/usr/bin/env node\n' > packages/mcp/dist/main.js
     # The tree's own installer, so an update that moves the copy hands over to the install.sh of the commit it lands on, as on a real machine.
     cp "$INSTALL" install.sh
     git add -A && git commit -q -m v1
@@ -96,7 +98,8 @@ ok "exit status" 0 "$rc"
 ok "the copy stands on origin/main" "$(git -C "$ORIGIN" rev-parse HEAD)" "$(git -C "$TAGENTS_HOME" rev-parse HEAD)"
 ok "detached, not on a branch" "HEAD" "$(git -C "$TAGENTS_HOME" rev-parse --abbrev-ref HEAD)"
 for f in "$TAGENTS_BIN/tagents" "$TAGENTS_BIN/tusage" "$TAGENTS_BIN/tnotes" "$TAGENTS_BIN/tagents-core" \
-         "$TAGENTS_BIN/tagents-knowledge" "$HOOKS_A/tmux-agent-state.sh" "$HOOKS_B/notes-context.sh"; do
+         "$TAGENTS_BIN/tagents-knowledge" "$TAGENTS_BIN/tagents-notify" "$TAGENTS_BIN/tagents-mcp" \
+         "$HOOKS_A/tmux-agent-state.sh" "$HOOKS_B/notes-context.sh"; do
   if [ -f "$f" ] && [ ! -L "$f" ] && [ -x "$f" ]; then
     pass=$((pass + 1)); printf '  ok   %s is an executable regular file\n' "${f#$HOME_DIR/}"
   else
@@ -106,6 +109,8 @@ done
 ok "a command wrapper reaches the copy and passes its arguments" "tagents v1 a b" "$("$TAGENTS_BIN/tagents" a b)"
 ok "a hook wrapper passes stdin and arguments through" "state v1 x <payload>" "$(printf payload | "$HOOKS_A/tmux-agent-state.sh" x)"
 contains "the node CLI wrapper execs the copy's cli file with all arguments" '"'"$TAGENTS_HOME"'/packages/core/dist/cli/main.js" "$@"' "$(cat "$TAGENTS_BIN/tagents-core")"
+contains "tagents-notify execs the notifier's entry, which the plugin's notification tool runs" '"'"$TAGENTS_HOME"'/packages/notify/dist/main.js" "$@"' "$(cat "$TAGENTS_BIN/tagents-notify")"
+contains "tagents-mcp execs the plugin's tool server" '"'"$TAGENTS_HOME"'/packages/mcp/dist/main.js" "$@"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
 contains "the wrapper says whose it is" "managed by tagents install.sh" "$(cat "$TAGENTS_BIN/tusage")"
 ok "no lock left behind" "no" "$([ -e "$TAGENTS_HOME.lock" ] && echo yes || echo no)"
 
@@ -248,6 +253,7 @@ out=$(PATH="$TMP/node-a:$PATH" run); rc=$?
 ok "an install with a node on PATH exits 0" 0 "$rc"
 contains "tagents-core pins the node found at install" 'n="'"$TMP"'/node-a/node"' "$(cat "$TAGENTS_BIN/tagents-core")"
 contains "tagents-knowledge pins it too" 'n="'"$TMP"'/node-a/node"' "$(cat "$TAGENTS_BIN/tagents-knowledge")"
+contains "tagents-notify and tagents-mcp pin it too" 'n="'"$TMP"'/node-a/node"' "$(cat "$TAGENTS_BIN/tagents-notify" "$TAGENTS_BIN/tagents-mcp")"
 ok "tagents-core runs the pinned node with no node on the caller's PATH" "node-a $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
 rm -f "$TMP/node-a/node"
 ok "tagents-knowledge falls back to the node on the caller's PATH once the pinned file is gone" "node-b $TAGENTS_HOME/packages/knowledge/dist/cli/main.js x" "$(env PATH="$TMP/node-b:/usr/bin:/bin" "$TAGENTS_BIN/tagents-knowledge" x)"

@@ -11,6 +11,8 @@
 #   ~/.local/bin/tagents tusage tnotes      exec $TAGENTS_HOME/<name>
 #   ~/.local/bin/tagents-core               exec <node> $TAGENTS_HOME/packages/core/dist/cli/main.js
 #   ~/.local/bin/tagents-knowledge          exec <node> $TAGENTS_HOME/packages/knowledge/dist/cli/main.js
+#   ~/.local/bin/tagents-notify             exec <node> $TAGENTS_HOME/packages/notify/dist/main.js
+#   ~/.local/bin/tagents-mcp                exec <node> $TAGENTS_HOME/packages/mcp/dist/main.js
 #   <hooks dir>/<name>.sh                   exec sh $TAGENTS_HOME/hooks/<name>.sh, one per hooks/*.sh
 #   <node> is the node the install found on PATH, or node on the caller's PATH once that file is gone.
 #
@@ -85,8 +87,8 @@ install_commands() {
   # The node CLIs pin the node this install found; none on PATH leaves them looking node up at run time.
   node_bin=$(command -v node || true)
   case $node_bin in /*) ;; *) node_bin=node ;; esac
-  for pair in tagents-core:core tagents-knowledge:knowledge; do
-    cli=$TAGENTS_HOME/packages/${pair#*:}/dist/cli/main.js
+  for pair in tagents-core:core/dist/cli/main.js tagents-knowledge:knowledge/dist/cli/main.js tagents-notify:notify/dist/main.js tagents-mcp:mcp/dist/main.js; do
+    cli=$TAGENTS_HOME/packages/${pair#*:}
     if [ -f "$cli" ]; then
       write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin"
     else
