@@ -5,7 +5,7 @@ The generator SHALL read four things from the code: the verbs, flags and exit co
 
 #### Scenario: Where the CLI and MCP parts come from
 - **WHEN** the CLI contracts and MCP tools are collected
-- **THEN** the `tagents-core` CLI is read from `spec/cli/tagents-core.json`, the `tagents-knowledge` CLI from the command spec it parses with, and the tools from the server's tool list without opening a database
+- **THEN** the `tagents-core` CLI is read as the requirement below says, the `tagents-knowledge` CLI from the command spec it parses with, and the tools from the server's tool list without opening a database
 
 #### Scenario: Reading the sources, not a build
 - **WHEN** a package's built output is older than its sources
