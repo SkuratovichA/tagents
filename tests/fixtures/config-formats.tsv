@@ -1,0 +1,10 @@
+config.toml	toml
+config.TOML	yaml
+Config.Toml	yaml
+config.yaml	yaml
+config.yml	yaml
+config.work.toml	toml
+config.toml.bak	yaml
+config	yaml
+.toml	toml
+x.toml/config	yaml

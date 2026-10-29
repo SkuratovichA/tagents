@@ -8,7 +8,7 @@ import { after, before, test } from 'node:test';
 import { configFile, loadPlugins, readPluginList } from '../src/host.ts';
 import { configFormat, parseConfigText, readConfigFile, resolveConfigFile } from '../src/config-file.ts';
 import { tmpDir } from '../src/testkit.ts';
-import { FIXTURES } from './helpers.ts';
+import { FIXTURES, PKG } from './helpers.ts';
 
 let tmp: string;
 let n = 0;
@@ -46,11 +46,17 @@ const GOOD = path.join(FIXTURES, 'plugin', 'good');
 // table called __proto__; a deep comparison against a literal wants plain ones.
 const plain = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 
-test('the extension picks the parser: .toml is TOML, everything else is YAML', () => {
-  assert.equal(configFormat('/x/config.toml'), 'toml');
-  assert.equal(configFormat('/x/config.yaml'), 'yaml');
-  assert.equal(configFormat('/x/config.yml'), 'yaml');
-  assert.equal(configFormat('/x/config'), 'yaml');
+// The same table tests/config-toml.sh walks through the bash reader, so the two cannot disagree about what a TOML file is.
+test('a name ending in .toml, case-sensitively, is TOML and everything else is YAML, as in the dashboard', () => {
+  const rows = fs
+    .readFileSync(path.join(PKG, '..', '..', 'tests', 'fixtures', 'config-formats.tsv'), 'utf8')
+    .split('\n')
+    .filter((row) => row !== '');
+  assert.ok(rows.length >= 10);
+  for (const row of rows) {
+    const [name, format] = row.split('\t');
+    assert.equal(configFormat(`/x/${name}`), format, name);
+  }
 });
 
 test('a TOML file and the YAML file it replaces parse to the same document', () => {

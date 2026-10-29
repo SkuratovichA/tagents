@@ -244,6 +244,16 @@ out=$(lookup "$TMP/none" --config 2>&1 >/dev/null); rc=$?
 contains "no file: the message names config.toml, the format to write" "tagents: no config at $TMP/none/tagents/config.toml" "$out"
 ok "...and --check is quiet, exit 0" "0" "$(lookup "$TMP/none" --check >/dev/null 2>&1; echo $?)"
 
+# The same table packages/core/test/config-file.test.ts checks configFormat against: which names are TOML.
+fmt=$TMP/formats; mkdir -p "$fmt"
+while IFS="$TAB" read -r name want; do
+  [ -n "$name" ] || continue
+  mkdir -p "$fmt/$(dirname "$name")"; : >"$fmt/$name"
+  out=$(TA_CONFIG="$fmt/$name" tg --check 2>&1)
+  case $out in *"YAML config is deprecated"*) got=yaml ;; *) got=toml ;; esac
+  ok "$name is read as $want" "$want" "$got"
+done <"$HERE/fixtures/config-formats.tsv"
+
 # $TA_CONFIG: the extension picks the reader.
 cp "$TMP/only-toml/tagents/config.toml" "$TMP/named.toml"
 cp "$TMP/only-yaml/tagents/config.yaml" "$TMP/named.yaml"

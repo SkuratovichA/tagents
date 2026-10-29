@@ -19,9 +19,9 @@ export type ConfigFormat = 'toml' | 'yaml';
 export const TOML_BASENAME = 'config.toml';
 export const YAML_BASENAME = 'config.yaml';
 
-/** `.toml` is TOML; anything else is YAML, which is what every config was before. */
+/** A name ending in `.toml`, case-sensitively, is TOML; anything else is YAML, which is what every config was before. The dashboard's `*.toml)` pattern is this rule (tests/fixtures/config-formats.tsv). */
 export function configFormat(file: string): ConfigFormat {
-  return path.extname(file).toLowerCase() === '.toml' ? 'toml' : 'yaml';
+  return file.endsWith('.toml') ? 'toml' : 'yaml';
 }
 
 /**
