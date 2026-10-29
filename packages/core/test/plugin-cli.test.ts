@@ -366,6 +366,12 @@ test('removing the only TOML entry, with another table after it, leaves the rest
   assert.equal(tomlText(dir), '[usage]\nworkdays = true\n');
 });
 
+test('a plugin path with a control character in it is refused for a TOML config, naming the file, and nothing is written', () => {
+  const file = path.join(tomlDir('[usage]\nworkdays = true\n'), 'config.toml');
+  assert.throws(() => addPluginEntry(file, 'x', '/pkg/a\tb'), (e: unknown) => e instanceof Error && e.message.includes(file));
+  assert.equal(fs.readFileSync(file, 'utf8'), '[usage]\nworkdays = true\n');
+});
+
 test('with a config.yaml and no config.toml, plugin add keeps editing the YAML file', () => {
   const dir = configDir('usage:\n  x: 1\n');
   const r = runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir));

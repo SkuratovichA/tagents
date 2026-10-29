@@ -14,6 +14,7 @@ import { after, before, test } from 'node:test';
 import { parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
 import { convertYamlConfig, sameConfig } from '../src/config-convert.ts';
+import { tomlString } from '../src/config-file.ts';
 import { tmpDir } from '../src/testkit.ts';
 import { HERE, runCli } from './helpers.ts';
 
@@ -180,6 +181,25 @@ test('an empty file converts to a file with nothing in it', () => {
   assert.deepEqual(plain(parseToml(result.toml)), {});
 });
 
+// -------------------------------------------------------------- strings ---
+
+test('a string tomlString writes is read back by tagents unchanged', () => {
+  const values = ['plain', 'Привет, мир', 'back\\slash', 'say "hi"', 'a # not a comment', 'a = b', '[x]', '  padded  ', "it's", 'a\\"b'];
+  for (const value of values) {
+    const written = tomlString(value);
+    assert.notEqual(written, null, value);
+    const file = path.join(dirWith({ 'config.toml': `k = ${written}\n` }), 'config.toml');
+    const r = dump(file);
+    assert.equal(r.stderr, '', value);
+    assert.equal(r.stdout, `k\t${value}\n`, value);
+  }
+});
+
+test('a string the dashboard could not read back is not written', () => {
+  for (const value of ['a\tb', 'a\u007fb', 'a\u0001b', 'a\nb', 'a\ud800b']) assert.equal(tomlString(value), null, JSON.stringify(value));
+  assert.equal(tomlString('\ud83d\ude00'), '"\ud83d\ude00"', 'a surrogate pair is a character, not a lone surrogate');
+});
+
 // ---------------------------------------------------------------- ordering ---
 
 test('a plain key that comes after a table in the YAML moves above it, and the reading is still the same', () => {
@@ -217,6 +237,14 @@ test('a YAML construct with no TOML twin is refused, naming the line', () => {
     const result = convert(yaml);
     assert.equal(result.ok, false, yaml);
     assert.match(result.ok ? '' : result.problem, expected, yaml);
+  }
+});
+
+test('a tab or another control character inside a YAML string is refused, naming the line', () => {
+  for (const yaml of ['usage:\n  note: "a\\tb"\n', 'usage:\n  note: "a\\u0001b"\n']) {
+    const result = convert(yaml);
+    assert.equal(result.ok, false, yaml);
+    assert.match(result.ok ? '' : result.problem, /config\.yaml:2: .*control character/, yaml);
   }
 });
 

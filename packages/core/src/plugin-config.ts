@@ -25,7 +25,7 @@ import { parse as parseToml } from 'smol-toml';
 import { isMap, isNode, isScalar, parseDocument, type Document, type Pair, type YAMLMap } from 'yaml';
 import { z } from 'zod';
 import { writeAtomic } from './atomic.ts';
-import { configFormat, noticeFormat, tomlKey } from './config-file.ts';
+import { configFormat, noticeFormat, tomlKey, tomlString } from './config-file.ts';
 import { PLUGIN_API_VERSION } from './plugin.ts';
 
 // ------------------------------------------------------------- the package ---
@@ -155,8 +155,11 @@ export function removePluginEntry(file: string, name: string): RemoveOutcome {
 
 // ------------------------------------------------------------------- toml ----
 
-// JSON's string escapes are all valid in a TOML basic string.
-const tomlEntry = (name: string, from: string): string => `[plugins.${tomlKey(name)}]\nfrom = ${JSON.stringify(from)}\n`;
+function tomlEntry(file: string, name: string, from: string): string {
+  const written = tomlString(from);
+  if (written === null) throw new Error(`${file}: ${JSON.stringify(from)} has a control character in it, which cannot be written in a config tagents reads`);
+  return `[plugins.${tomlKey(name)}]\nfrom = ${written}\n`;
+}
 
 const TomlDoc = z.object({ plugins: z.record(z.string(), z.unknown()).optional() });
 
@@ -188,7 +191,7 @@ function addTomlEntry(file: string, name: string, from: string): AddOutcome {
   if (Object.hasOwn(parseTomlFile(file, text).plugins, name)) return 'exists';
 
   const head = text === '' || text.endsWith('\n') ? text : `${text}\n`;
-  const next = `${head}${head === '' ? '' : '\n'}${tomlEntry(name, from)}`;
+  const next = `${head}${head === '' ? '' : '\n'}${tomlEntry(file, name, from)}`;
 
   const after = parseTomlFile(file, next, 'the edit would not parse: ');
   if (fromOf(after.plugins[name]) !== from) throw new Error(`${file}: the edit did not take`);

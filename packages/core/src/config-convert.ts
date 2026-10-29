@@ -23,7 +23,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LineCounter, isAlias, isMap, isNode, isScalar, isSeq, parseDocument, type Scalar, type YAMLMap } from 'yaml';
-import { tomlKey } from './config-file.ts';
+import { tomlKey, tomlString } from './config-file.ts';
 import { findOnPath } from './path-lookup.ts';
 
 /** What `#:schema` points a TOML language server at; the schema's own `$id` is this too (test/config-schema.test.ts). */
@@ -57,8 +57,6 @@ class Refusal extends Error {
 
 // A number as the YAML wrote it, which is also how TOML writes one: decimal digits, an optional fraction.
 const DECIMAL = /^-?(0|[1-9][0-9]*)(\.[0-9]+)?$/;
-// Control characters other than the tab: a TOML basic string needs them escaped, and the reader tagents has knows only \" and \\.
-const CONTROL = /[\u0000-\u0008\u000a-\u001f\u007f]/;
 
 function build(doc: ReturnType<typeof parseDocument>, lines: LineCounter): Table {
   const lineOf = (node: unknown): number => (isNode(node) && node.range ? lines.linePos(node.range[0]).line : 1);
@@ -79,8 +77,9 @@ function build(doc: ReturnType<typeof parseDocument>, lines: LineCounter): Table
     const value = node.value;
     if (typeof value === 'string') {
       if (value.includes('\n')) fail(node, 'a value with a line break in it cannot be one line of a config');
-      if (CONTROL.test(value)) fail(node, 'a control character in a value cannot be written in the TOML tagents reads');
-      return JSON.stringify(value);
+      const written = tomlString(value);
+      if (written === null) return fail(node, 'a control character (a tab included) in a value cannot be written in the TOML tagents reads');
+      return written;
     }
     const written = node.source ?? '';
     if (typeof value === 'boolean') return node.type === 'PLAIN' && (written === 'true' || written === 'false') ? written : JSON.stringify(written);
