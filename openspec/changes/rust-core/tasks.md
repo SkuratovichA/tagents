@@ -23,7 +23,7 @@
 ## 4. The seam in the shell
 
 - [x] 4.1 `forward_core` runs `target/release/tagents-core` when it is an executable file, after `PATH` and before the built node CLI (`tests/dispatch.sh`: section 3)
-- [x] 4.2 `install.sh` names the Rust binary in the `tagents-core` wrapper only when it is executable at install time, and with none the wrappers are byte for byte the old ones (`tests/install.sh`: section 13)
+- [x] 4.2 `install.sh` names the Rust binary in the `tagents-core` wrapper only when it is an executable file at install time, and with none the wrappers are byte for byte the old ones (`tests/install.sh`: section 13)
 - [x] 4.3 Compare the wrappers an installer of `origin/main` and this installer write, with and without a pinned node, and with no binary (`diff -r` of two scratch directories, in the pull request)
 
 ## 5. CI and documents

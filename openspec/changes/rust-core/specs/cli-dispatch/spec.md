@@ -23,6 +23,15 @@ The script SHALL use the `tagents-core` found on `PATH` first, because that is t
 - **WHEN** there is no `target/release/tagents-core` beside the script
 - **THEN** the verb is handled exactly as it was before the Rust binary existed
 
+### Requirement: Without tagents-core the verb says where it went
+When there is no `tagents-core` on `PATH`, no executable Rust binary and no built file beside the script, a forwarded verb SHALL print one line on stderr, `tagents: no tagents-core on PATH and none at <path to packages/core/dist/cli/main.js>, so "<verb>" goes nowhere`, and exit 2, the code of a usage error.
+
+#### Scenario: Nothing to forward to
+- **WHEN** `tagents session list` runs with neither a `tagents-core` on `PATH`, nor a Rust binary, nor a built core
+- **THEN** exactly one line is printed, naming the verb, saying there is no `tagents-core` on `PATH` and naming the built path, and the exit code is 2
+
+## ADDED Requirements
+
 ### Requirement: A Rust binary beside the script gets the verb whole
 The Rust binary serves the verbs ported to Rust and hands every other word to the node CLI, so the script SHALL pass it the whole argument list and return its exit code. A Rust binary that is present and cannot be run SHALL be an error of its own, never a reason to try the next lookup.
 
@@ -33,10 +42,3 @@ The Rust binary serves the verbs ported to Rust and hands every other word to th
 #### Scenario: A Rust binary that cannot run
 - **WHEN** an executable file `target/release/tagents-core` whose interpreter is missing sits beside the script and no `tagents-core` is on `PATH`
 - **THEN** the command fails with a non-zero exit code and a message on stderr, and the node CLI is not run
-
-### Requirement: Without tagents-core the verb says where it went
-When there is no `tagents-core` on `PATH`, no executable Rust binary and no built file beside the script, a forwarded verb SHALL print one line on stderr, `tagents: no tagents-core on PATH and none at <path to packages/core/dist/cli/main.js>, so "<verb>" goes nowhere`, and exit 2, the code of a usage error.
-
-#### Scenario: Nothing to forward to
-- **WHEN** `tagents session list` runs with neither a `tagents-core` on `PATH`, nor a Rust binary, nor a built core
-- **THEN** exactly one line is printed, naming the verb, saying there is no `tagents-core` on `PATH` and naming the built path, and the exit code is 2
