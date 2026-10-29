@@ -84,12 +84,12 @@ Every flag that `tagents.cli.json` describes SHALL appear in the script's `--hel
 - **WHEN** the contract is generated
 - **THEN** `contract.json` lists the tools of the knowledge server and of the `tagents` server, and one API report hash per public package
 
-### Requirement: The paths that trigger the pre-commit hook
-The pre-commit hook SHALL regenerate the contract files when a commit stages a file under `packages/<package>/src/`, a package's `package.json` or `tsconfig*.json`, `pnpm-lock.yaml`, `tagents`, `tagents.cli.json`, `tusage`, `tnotes`, anything under `skills/` or `.claude-plugin/`, and `contract.json`.
+### Requirement: What counts as a source of the contract
+A file SHALL be a source of the contract when it is under `packages/<package>/src/`, a package's `package.json` or `tsconfig*.json`, `pnpm-lock.yaml`, `tagents`, `tagents.cli.json`, `tusage`, `tnotes`, anything under `skills/` or `.claude-plugin/`, or `contract.json`.
 
-#### Scenario: A skill file changed
-- **WHEN** a commit stages a change under `skills/`
-- **THEN** the hook regenerates the contract files
+#### Scenario: A file the contract is generated from
+- **WHEN** a file is `tagents.cli.json`, the spec of the `tagents` script that its contract is generated from
+- **THEN** it is a source of the contract
 
 ## MODIFIED Requirements
 
@@ -121,6 +121,10 @@ The generator SHALL read four things from the code: the verbs, flags, exit codes
 
 #### Scenario: The script's spec changed
 - **WHEN** a commit stages a change to `tagents.cli.json`
+- **THEN** the regenerated contract files are in the same commit
+
+#### Scenario: A skill file changed
+- **WHEN** a commit stages a change under `skills/`
 - **THEN** the regenerated contract files are in the same commit
 
 #### Scenario: A partially staged file
