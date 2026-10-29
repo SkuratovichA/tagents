@@ -32,6 +32,8 @@ export type Converted = { ok: true; toml: string } | { ok: false; problem: strin
 export interface ConvertOptions {
   /** the `tagents` bash script to check against; by default the one in this checkout, else the first on PATH */
   tagents?: string;
+  /** how long one `tagents --config` run may take before the conversion is refused; DUMP_TIMEOUT_MS by default */
+  timeoutMs?: number;
 }
 
 // ------------------------------------------------------------- the model ----
@@ -182,12 +184,18 @@ function findTagents(): string | null {
   return fs.existsSync(sibling) ? sibling : findOnPath('tagents');
 }
 
+/** One `tagents --config` run is a few milliseconds; a script that takes this long is stuck, and output this large is not a config. */
+const DUMP_TIMEOUT_MS = 10_000;
+const DUMP_MAX_BUFFER = 16 * 1024 * 1024;
+
 const firstLine = (text: string): string => text.trim().split('\n')[0] ?? '';
 
 /** What tagents itself reads out of `file`: its own `--config` dump, on a scratch HOME and tmux server and with no host overlay. */
-function dumpOf(tagents: string, file: string, scratch: string): { ok: true; dump: string } | { ok: false; why: string } {
+function dumpOf(tagents: string, file: string, scratch: string, timeoutMs: number): { ok: true; dump: string } | { ok: false; why: string } {
   const r = spawnSync('/bin/bash', [tagents, '--config'], {
     encoding: 'utf8',
+    timeout: timeoutMs,
+    maxBuffer: DUMP_MAX_BUFFER,
     env: {
       PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
       HOME: scratch,
@@ -197,7 +205,12 @@ function dumpOf(tagents: string, file: string, scratch: string): { ok: true; dum
       TA_CONFIG: file,
     },
   });
-  if (r.error) return { ok: false, why: r.error.message };
+  if (r.error) {
+    const code = (r.error as NodeJS.ErrnoException).code;
+    if (code === 'ETIMEDOUT') return { ok: false, why: `tagents --config did not finish within ${timeoutMs / 1000} seconds` };
+    if (code === 'ENOBUFS') return { ok: false, why: `tagents --config printed more than ${DUMP_MAX_BUFFER / 1024 / 1024} MiB` };
+    return { ok: false, why: r.error.message };
+  }
   if (r.status !== 0 || r.stderr !== '') return { ok: false, why: firstLine(r.stderr) || `exit ${r.status}` };
   return { ok: true, dump: r.stdout };
 }
@@ -300,13 +313,14 @@ export function convertYamlConfig(file: string, options: ConvertOptions = {}): C
   if (tagents === null) {
     return refused('the conversion cannot be checked: there is no tagents script next to this package and none on PATH');
   }
+  const timeoutMs = options.timeoutMs ?? DUMP_TIMEOUT_MS;
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'tagents-convert-'));
   try {
     const converted = path.join(scratch, 'converted.toml');
     fs.writeFileSync(converted, toml);
-    const before = dumpOf(tagents, path.resolve(file), scratch);
+    const before = dumpOf(tagents, path.resolve(file), scratch, timeoutMs);
     if (!before.ok) return refused(`${file}: tagents does not read this file cleanly (${before.why}), so a conversion cannot be checked against it`);
-    const after = dumpOf(tagents, converted, scratch);
+    const after = dumpOf(tagents, converted, scratch, timeoutMs);
     if (!after.ok) return refused(`${file}: the TOML made from it is not read cleanly by tagents (${after.why}), so nothing is offered`);
     if (!sameConfig(before.dump, after.dump)) {
       return refused(`${file}: tagents would read the TOML made from it differently from the YAML, so nothing is offered — see \`tagents --config\` on both`);

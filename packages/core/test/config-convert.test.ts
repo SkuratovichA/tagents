@@ -287,6 +287,15 @@ test('YAML that does not parse is refused with the parser’s own message', () =
   assert.match(result.ok ? '' : result.problem, /config\.yaml/);
 });
 
+test('a tagents that never finishes is a refusal that names the timeout, not a hang', () => {
+  const dir = dirWith({ 'config.yaml': 'usage:\n  workdays: true\n', 'stuck.sh': 'exec sleep 5\n' });
+  const started = Date.now();
+  const result = convertYamlConfig(path.join(dir, 'config.yaml'), { tagents: path.join(dir, 'stuck.sh'), timeoutMs: 200 });
+  assert.ok(Date.now() - started < 2000, 'the refusal arrives within about a second');
+  assert.equal(result.ok, false);
+  assert.match(result.ok ? '' : result.problem, /did not finish within 0\.2 seconds/);
+});
+
 test('a YAML file tagents itself cannot read is refused before anything is converted', () => {
   // The bash reader takes a block-style subset. A flow mapping with a nested
   // flow list is outside it, so the dump of this file is not what the YAML says.
