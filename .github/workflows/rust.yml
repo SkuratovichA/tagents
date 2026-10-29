@@ -1,6 +1,6 @@
 name: rust
 
-# The Rust workspace and everything its tests compare it with: the shared CLI spec, the node CLI that stays the reference, and the parity suite. The shell suites for `tagents` and `install.sh` are not run here, so those files are not listed.
+# The Rust workspace and everything its tests compare it with: the shared CLI spec, the node CLI that stays the reference, and the parity suite. The `release-path` job holds the version gate and the two shell suites of the release path (the packaging script and the installer's fetch); the other shell suites for `tagents` are not run here, so those files are not listed.
 on:
   push:
     paths:
@@ -16,6 +16,10 @@ on:
       - pnpm-lock.yaml
       - tests/rust-parity-seed.mts
       - .github/workflows/rust.yml
+      - .github/scripts/core-release.sh
+      - tests/release.sh
+      - tests/install.sh
+      - install.sh
   pull_request:
     paths:
       - Cargo.toml
@@ -30,6 +34,10 @@ on:
       - pnpm-lock.yaml
       - tests/rust-parity-seed.mts
       - .github/workflows/rust.yml
+      - .github/scripts/core-release.sh
+      - tests/release.sh
+      - tests/install.sh
+      - install.sh
 
 permissions:
   contents: read
@@ -58,3 +66,20 @@ jobs:
           pnpm build
       - name: Parity with the node CLI, byte for byte
         run: bash tests/rust-parity.sh
+
+  # A change to what the tagents-core binary is built from must change the workspace version (docs/architecture/rust-core.md, "How a release is made"). Every such input is in the paths above, so a pull request that breaks the rule always runs this job. The history is deep because the gate compares with the merge base.
+  release-path:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: The workspace version moves with every change to the binary
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: sh .github/scripts/core-release.sh gate "origin/$BASE_REF"
+      - name: The packaging script, the version reader and the gate
+        run: bash tests/release.sh
+      - name: The installer, including the prebuilt tagents-core it fetches
+        run: bash tests/install.sh
