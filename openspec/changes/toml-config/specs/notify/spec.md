@@ -3,9 +3,13 @@
 ### Requirement: Plugin options and defaults
 The options SHALL live in `<configDir>/plugins/notify.toml`, or in `notify.yaml` there when there is no `notify.toml`, with every key optional: `backend = "auto"` (one of `auto`, `macos`, `log`, `none`); `click = "dock"` (one of `dock`, `goto`, `focus`); `icon` unset.
 
-#### Scenario: a key left out
+#### Scenario: a partial file
 - **WHEN** the file says only `click = "goto"`
-- **THEN** `backend` is still `auto` and `icon` is still unset
+- **THEN** every event setting is still its default
+
+#### Scenario: a partial event
+- **WHEN** the file says only `enabled = false` under `[events.question]`
+- **THEN** `events.question.skip_visible` is still `true`
 
 #### Scenario: a YAML file
 - **WHEN** only `notify.yaml` exists
@@ -31,13 +35,9 @@ The service SHALL watch the real path of the `plugins` directory, so a config di
 ### Requirement: Notify event defaults
 Each notification event SHALL have these settings when the file leaves them out: `events.question`, `events.permission` and `events.turn_done` each `enabled: true, skip_visible: true`; `events.cache_expiring` as `enabled: true, skip_visible: false, after: 50m, ttl: 60m`; `events.session_end` as `enabled: false, skip_visible: true`.
 
-#### Scenario: a partial file
-- **WHEN** the file says only `click = "goto"`
-- **THEN** every event setting is still its default
-
-#### Scenario: a partial event
-- **WHEN** the file says only `enabled = false` under `[events.question]`
-- **THEN** `events.question.skip_visible` is still `true`
+#### Scenario: no file
+- **WHEN** there is no options file
+- **THEN** `events.cache_expiring` is `enabled: true, skip_visible: false, after: 50m, ttl: 60m` and `events.session_end` is `enabled: false, skip_visible: true`
 
 ### Requirement: Which options files are watched
 `notify.toml` and `notify.yaml` SHALL both be watched, so options that move from one to the other while the service runs are seen. An options file that is itself a symlink is noticed only when the link is replaced, not when its target is edited.

@@ -82,6 +82,11 @@ In a YAML config, tab indentation, flow style (`{}` or `[]` as a value), block s
 ### Requirement: The per-machine overlay
 `config.<host>.toml` beside the config file (the file's name with its extension replaced by `.<host>.toml`) SHALL be laid over the base file, where `<host>` is the short hostname (`hostname -s`) or `TA_HOST` when that is set. When there is no `config.<host>.toml`, a `config.<host>.yaml` in the same place is used instead. Each overlay is read by the reader its own extension picks, whichever format the base file is in.
 
+#### Scenario: Replaced, not merged
+- **WHEN** the base defines profiles `personal` and `work`, and `config.mbp.toml` defines profiles `sasha` and `nuzhin` and one rule
+- **THEN** on host `mbp` the effective config has profiles `sasha` and `nuzhin` only, and the overlay's one rule only
+- **AND** `claude.args`, `notes.send` and `usage.*` are inherited from the base
+
 #### Scenario: A YAML overlay
 - **WHEN** only `config.mbp.yaml` exists beside a `config.toml`
 - **THEN** it is read as YAML and laid over the base in the same way
@@ -93,6 +98,10 @@ In a YAML config, tab indentation, flow style (`{}` or `[]` as a value), block s
 #### Scenario: Another machine
 - **WHEN** the host is `other` and there is no `config.other.toml` or `config.other.yaml`
 - **THEN** the effective config is the base alone
+
+#### Scenario: A base profile is unknown here
+- **WHEN** the overlay replaced the profiles and `tagents --agent-cmd personal new` names a base-only profile
+- **THEN** the command fails with exit 1
 
 ### Requirement: Keys the file carries
 The file SHALL carry these top-level sections, each read by the capability named: `claude` (args, profiles, rules, default; `accounts`), `usage` (watch, monthly_limit_usd, safety_margin_pct, workdays, meter; `usage-accounting`), `notes` (send; `notes-workspace`), `resurrect` (auto, every, notes; `resurrect`), `keys` (`dashboard-keys`), `plugins` (`plugin-system`) and `knowledge` (dir; `knowledge`). A key this version does not read SHALL be ignored.
@@ -151,14 +160,9 @@ Every value in the `tagents --config` output SHALL print as text: a TOML `true`,
 ### Requirement: An overlay replaces whole subtrees
 Every subtree of two path segments that the per-machine overlay mentions (`claude.profiles`, `claude.rules`, `notes.send`, …) SHALL replace the base's subtree wholesale, never merged; everything else is inherited.
 
-#### Scenario: Replaced, not merged
-- **WHEN** the base defines profiles `personal` and `work`, and `config.mbp.toml` defines profiles `sasha` and `nuzhin` and one rule
-- **THEN** on host `mbp` the effective config has profiles `sasha` and `nuzhin` only, and the overlay's one rule only
-- **AND** `claude.args`, `notes.send` and `usage.*` are inherited from the base
-
-#### Scenario: A base profile is unknown here
-- **WHEN** the overlay replaced the profiles and `tagents --agent-cmd personal new` names a base-only profile
-- **THEN** the command fails with exit 1
+#### Scenario: A subtree the overlay does not mention
+- **WHEN** the overlay defines only `claude.profiles`
+- **THEN** `claude.rules` and `claude.default` come from the base unchanged
 
 ### Requirement: The TOML subset
 A config file that is read as TOML SHALL be read as a deliberate subset of TOML: tables `[a.b]`, arrays of tables `[[a.b]]` (the items are numbered from 0 under the table's path), `key = value` lines with bare, quoted or dotted keys, `#` comments, basic and literal strings, decimal numbers, the booleans `true` and `false`, and one-line arrays and inline tables of those. A CRLF file reads as its LF twin.
