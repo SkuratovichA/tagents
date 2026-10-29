@@ -28,7 +28,7 @@ process.kill(-child.pid, 'SIGTERM'); // the whole group, on every way a call can
 
 ### 4. The verb declares its effect; the effect becomes the tool's annotations; an unclassified verb is conservative and reported, never refused
 
-`effect` (`read`, `write`, `spawn`, `destructive`, `serve`) and `requires: 'tmux'` are optional fields of a command spec; they are what a client's permission prompt sees (`readOnlyHint`, `destructiveHint`, `openWorldHint`). A verb with no effect gets `readOnlyHint: false` and nothing else, and `pnpm plugin:gen` and `plugin:check` print a `notice:` naming it without failing, so another change that adds a verb (the open `tagents-core config convert`) needs nothing from this one to come out as a cautious tool. Rejected: making a missing effect a test failure, which would block that change on this one's vocabulary.
+`effect` (`read`, `write`, `spawn`, `destructive`, `serve`) and `requires: 'tmux'` are optional fields of a command spec (`tagents-core` writes `effect` in its data file, where the schema lists the five words, and `requires` and `toolDefaults` only in the code of the specs that use them); they are what a client's permission prompt sees (`readOnlyHint`, `destructiveHint`, `openWorldHint`). A verb with no effect gets `readOnlyHint: false` and nothing else, and `pnpm plugin:gen` and `plugin:check` print a `notice:` naming it without failing, so another change that adds a verb (the open `tagents-core config convert`) needs nothing from this one to come out as a cautious tool. Rejected: making a missing effect a test failure, which would block that change on this one's vocabulary.
 
 ```ts
 const ANNOTATIONS = {
@@ -106,8 +106,19 @@ The reasons, by verb. `session open` makes a reference that only `session prompt
 
 Rejected: keeping both knowledge tool sets (two names for one thing double the context); making `install` a tool with a prompt (it still pops the macOS dialog and writes a LaunchAgent); keeping `session prompt` as a tool with a confirmation (an unattended turn can run 50 minutes and may skip permissions).
 
-```ts
-{ path: ['session', 'prompt'], summary: 'summarySessionPrompt', effect: 'spawn', tool: false }
+The verbs of `tagents-core` write it in the data file `spec/cli/tagents-core.json`, which `spec/cli/cli-spec.schema.json` checks (`"tool"` can only be `false`), and the other CLIs write it in the code of their specs:
+
+```json
+{
+  "path": ["session", "prompt"],
+  "positionals": ["<ref-json-or-id>", "<text>"],
+  "options": { "timeout": { "type": "string" }, "warn-before": { "type": "string" }, "events": { "type": "boolean" } },
+  "required": [],
+  "summary": "summarySessionPrompt",
+  "impl": "node",
+  "effect": "spawn",
+  "tool": false
+}
 ```
 
 ### D2. Windows opened by a tool do not take the screen: `--detach`, defaulted for tools by `toolDefaults`

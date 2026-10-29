@@ -29,7 +29,7 @@ The tool surface is therefore generated: a verb that is in a structured CLI spec
 
 ## Impact
 
-- Code: new package `packages/mcp`; `packages/core/src/cli/spec.ts` (`effect`, `requires`, `tool`, `toolDefaults`) and the verb specs of `core` and `knowledge`; `packages/notify` (`send`, `src/cli/spec.ts`); `packages/contract/src` (sources, tools, notice); `tagents`, `lib/tagents/launch.sh`, `tagents.cli.json`; `install.sh`; `.githooks/pre-commit`; `.claude-plugin/plugin.json`.
+- Code: new package `packages/mcp`; `spec/cli/tagents-core.json` with its schema and `crates/tagents-spec` (`effect`, `tool`), `packages/core/src/cli/spec.ts` (the types `effect`, `requires`, `tool`, `toolDefaults`) and the verb specs of `knowledge`; `packages/notify` (`send`, `src/cli/spec.ts`); `packages/contract/src` (sources, tools, notice); `tagents`, `lib/tagents/launch.sh`, `tagents.cli.json`; `install.sh`; `.githooks/pre-commit`; `.claude-plugin/plugin.json`.
 - Generated: `contract.json`, `skills/tagents/references/*.md` and the plugin version and digest, once, by `pnpm plugin:gen`.
 - Docs: `docs/guide/claude-code-plugin.md`, `docs/architecture/contract.md`, `skills/tagents/SKILL.md`.
 - Compatibility: nothing is removed. `tagents-knowledge` MCP tools stay as they are, and the `tagents` server does not repeat them: the knowledge CLI verbs that the `knowledge` server already offers are `tool: false` (decision D1 in `design.md`).

@@ -85,10 +85,14 @@ Every flag that `tagents.cli.json` describes SHALL appear in the script's `--hel
 - **THEN** `contract.json` lists the tools of the knowledge server and of the `tagents` server, and one API report hash per public package
 
 ### Requirement: What counts as a source of the contract
-A file SHALL be a source of the contract when it is under `packages/<package>/src/`, a package's `package.json` or `tsconfig*.json`, `pnpm-lock.yaml`, `tagents`, `tagents.cli.json`, `tusage`, `tnotes`, anything under `skills/` or `.claude-plugin/`, or `contract.json`.
+A file SHALL be a source of the contract when it is under `packages/<package>/src/`, a package's `package.json` or `tsconfig*.json`, `pnpm-lock.yaml`, `tagents`, `tagents.cli.json`, `tusage`, `tnotes`, anything under `spec/cli/`, `skills/` or `.claude-plugin/`, or `contract.json`.
 
 #### Scenario: A file the contract is generated from
 - **WHEN** a file is `tagents.cli.json`, the spec of the `tagents` script that its contract is generated from
+- **THEN** it is a source of the contract
+
+#### Scenario: The data file of tagents-core
+- **WHEN** a file is `spec/cli/tagents-core.json` or its schema
 - **THEN** it is a source of the contract
 
 ## MODIFIED Requirements
@@ -98,7 +102,7 @@ The generator SHALL read four things from the code: the verbs, flags, exit codes
 
 #### Scenario: Where the CLI and MCP parts come from
 - **WHEN** the CLI contracts and MCP tools are collected
-- **THEN** the CLIs are read from the command specs they parse with (and, for the script, from `tagents.cli.json`), the knowledge tools from the server's tool list without opening a database, and the `tagents` tools from the CLI contracts
+- **THEN** the `tagents-core` CLI is read from `spec/cli/tagents-core.json`, the other CLIs from the command specs they parse with (and, for the script, from `tagents.cli.json`), the knowledge tools from the server's tool list without opening a database, and the `tagents` tools from the CLI contracts
 
 #### Scenario: Reading the sources, not a build
 - **WHEN** a package's built output is older than its sources
