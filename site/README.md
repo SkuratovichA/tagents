@@ -1,0 +1,49 @@
+# tagents site
+
+The one-page site of [tagents](https://github.com/SkuratovichA/tagents): what it is, a recording of the real dashboard, and how to install it. It is a React app built with TanStack Start and prerendered at build time, so the page is plain HTML that reads before any script has loaded. Scripts only play the recordings and switch the theme.
+
+This directory is its own pnpm project: it has its own `package.json` and lockfile and is not part of the workspace at the repository root. Nothing in the repository links to the site, and nothing in it publishes it.
+
+## Requirements
+
+Node 22.18 or newer, because the scripts in `build/`, `capture/` and `src/mascot/` are TypeScript that Node runs directly, and pnpm 9. The exact pnpm version is the `packageManager` field of `package.json`, which `corepack enable` picks up.
+
+## Commands
+
+| Command            | What it does                                                                                                                                                                  |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install`     | Installs the dependencies from the lockfile.                                                                                                                                  |
+| `pnpm dev`         | Starts the dev server.                                                                                                                                                        |
+| `pnpm build`       | Builds the site, prerenders `/` and `404.html` and writes `robots.txt` and `.nojekyll`, and `CNAME` and `sitemap.xml` when `SITE_DOMAIN` is set. The result is `dist/client`. |
+| `pnpm preview`     | Runs `vite preview` on the last build. It is not GitHub Pages: it renders on the server and has no `404.html` fallback.                                                       |
+| `pnpm lint`        | ESLint with the strict type-aware rules, then a Prettier check.                                                                                                               |
+| `pnpm format`      | Rewrites the files with Prettier.                                                                                                                                             |
+| `pnpm typecheck`   | `tsc --noEmit`.                                                                                                                                                               |
+| `pnpm test`        | Vitest: the recordings, the page rendered as the server sends it and in the browser, the words on the page, the mascot, the build scripts.                                    |
+| `pnpm check:links` | Checks every internal link and fragment in `dist/client`. Run it after `pnpm build`, with the same `SITE_BASE`.                                                               |
+| `pnpm capture`     | Records the demos again from the real dashboard (see below).                                                                                                                  |
+| `pnpm font`        | Cuts the terminal font down to the characters the recordings use.                                                                                                             |
+| `pnpm mascot`      | Draws the mascot sprite and the icons again from `src/mascot/source/`.                                                                                                        |
+
+`src/routeTree.gen.ts` is written by TanStack Router whenever `pnpm dev` or `pnpm build` runs. It is committed, so that `pnpm typecheck` and `pnpm test` work on a fresh clone before any build.
+
+## Configuration
+
+Two environment variables, read when the site is built and nowhere else.
+
+- `SITE_BASE` is the path the site is served under, `/` by default. It sets the Vite `base`, and the router takes its basepath from that, so links, assets and `robots.txt` all follow it.
+- `SITE_DOMAIN` is a custom domain, unset by default. When it is set the build writes it to `CNAME`, and the sitemap, `robots.txt`, the canonical link and the link preview use `https://<domain>`. Without it the page names no address of its own, because a relative one would point nowhere.
+
+## The recordings
+
+The four terminals on the page are recordings of the real dashboard, not drawings. `pnpm capture [id ...]` starts the dashboard on a scratch tmux server with the made-up chats of `docs/demo/world.sh` (fake agents, a fake `claude`, a throwaway home), attaches a second scratch tmux server to it, plays the steps of `capture/scenes.ts` into it and samples the screen with `tmux capture-pane -e -p` every 100 milliseconds. `capture/ansi.ts` turns the escape sequences into styled runs and `capture/frames.ts` keeps each frame as the rows that changed. The result is `src/demos/data/<id>.ts`: typed data, about 100 KB before compression, committed. It needs `tmux`, `fzf` and `jq`, never touches the tmux server or the Claude accounts it is run from, and tears both scratch servers down when it ends.
+
+Colours are those of Catppuccin Mocha, the theme of the screenshots in `docs/images`. The terminal font is DejaVu Sans Mono, cut down by `pnpm font` (needs `pyftsubset` from fonttools, with brotli) to the characters the recordings use; its licence is in `public/fonts/LICENSE-DejaVu.txt`. A recording that uses a character the font lacks fails `pnpm font` and `pnpm test`; `⎿` is drawn as `└` for that reason.
+
+## The mascot
+
+Everything that names the mascot is in `src/mascot/` and `public/mascot/`; a test fails when any other source file does. The sprite is generated by `pnpm mascot` from the pictures in `src/mascot/source/`, and the footer carries the credit that `src/mascot/Mascot.tsx` exports. The artwork is third-party and belongs to its owners, and the footer says so.
+
+## Publishing
+
+This directory holds no deploy workflow, no `CNAME` and no address of the site: building it publishes nothing.
