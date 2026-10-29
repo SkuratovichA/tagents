@@ -5,9 +5,11 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { after, before, test } from 'node:test';
+import { after, before, mock, test } from 'node:test';
 import { parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
+import { config } from '../src/cli/config.ts';
+import { coreT, createT } from '../src/i18n/index.ts';
 import { convertYamlConfig, sameConfig, typeMismatch } from '../src/config-convert.ts';
 import { tomlString } from '../src/config-file.ts';
 import { tmpDir } from '../src/testkit.ts';
@@ -360,12 +362,57 @@ test('--write that loses a race for the second target removes the first and leav
   assert.ok(fs.lstatSync(theirs).isSymbolicLink(), 'the file that was already there stays');
 });
 
-test('--write gives the TOML the permission bits of the YAML it came from', () => {
+test('--write gives the TOML the permission bits of the YAML it came from, as the umask masks them', () => {
   const dir = dirWith({ 'config.yaml': 'usage:\n  workdays: true\n' });
-  fs.chmodSync(path.join(dir, 'config.yaml'), 0o600);
-  const r = runCli(['config', 'convert', '--write'], inDir(dir));
-  assert.equal(r.code, 0, r.stderr);
-  assert.equal(fs.statSync(path.join(dir, 'config.toml')).mode & 0o777, 0o600);
+  fs.chmodSync(path.join(dir, 'config.yaml'), 0o640);
+  const before = process.umask(0o022);
+  try {
+    const r = runCli(['config', 'convert', '--write'], inDir(dir));
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(fs.statSync(path.join(dir, 'config.toml')).mode & 0o777, 0o640);
+  } finally {
+    process.umask(before);
+  }
+});
+
+/** `config convert --all --write` in this process, with the write of `config.studio.toml` refused (the directory of the second target cannot be made read-only: both targets sit beside their sources) and `rmSync` as given. */
+function writeAllWithSecondTargetRefused(dir: string, rmSync?: (target: fs.PathLike, options?: fs.RmOptions) => void): { code: number; err: string } {
+  const realWrite = fs.writeFileSync;
+  const write = mock.method(fs, 'writeFileSync', (target: fs.PathOrFileDescriptor, data: string | NodeJS.ArrayBufferView, options?: fs.WriteFileOptions): void => {
+    if (String(target).endsWith('config.studio.toml')) throw Object.assign(new Error(`EACCES: permission denied, open '${String(target)}'`), { code: 'EACCES' });
+    realWrite(target, data, options);
+  });
+  const rm = rmSync === undefined ? undefined : mock.method(fs, 'rmSync', rmSync);
+  const err: string[] = [];
+  try {
+    const code = config(['convert', '--all', '--write'], { out: () => undefined, err: (text) => err.push(text) }, coreT(createT('en')), inDir(dir), dir);
+    return { code, err: err.join('') };
+  } finally {
+    write.mock.restore();
+    rm?.mock.restore();
+  }
+}
+
+test('--write that cannot write the second target removes the first, whatever the error is', () => {
+  const dir = dirWith({ 'config.yaml': 'usage:\n  workdays: true\n', 'config.studio.yaml': 'notes:\n  send: paste\n' });
+  const r = writeAllWithSecondTargetRefused(dir);
+  assert.equal(r.code, 1);
+  assert.match(r.err, /could not write .*config\.studio\.toml: EACCES.*nothing was kept/);
+  assert.deepEqual(fs.readdirSync(dir).filter((name) => name.endsWith('.toml')), [], 'no .toml is left behind');
+});
+
+test('a file that cannot be removed after a failed write is named, and the output does not claim nothing was kept', () => {
+  const dir = dirWith({ 'config.yaml': 'usage:\n  workdays: true\n', 'config.studio.yaml': 'notes:\n  send: paste\n' });
+  const realRm = fs.rmSync;
+  const r = writeAllWithSecondTargetRefused(dir, (target, options) => {
+    if (String(target).endsWith('config.toml')) throw new Error('EPERM: operation not permitted');
+    realRm(target, options);
+  });
+  assert.equal(r.code, 1);
+  assert.match(r.err, /config\.studio\.toml: EACCES/);
+  assert.match(r.err, /config\.toml: could not be removed — remove it by hand/);
+  assert.doesNotMatch(r.err, /nothing was kept/);
+  assert.ok(fs.existsSync(path.join(dir, 'config.toml')), 'the file stays, as the message says');
 });
 
 test('--all converts the per-host overlays too, and --write is all or nothing', () => {

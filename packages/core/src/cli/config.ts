@@ -92,8 +92,9 @@ function convert(argv: string[], io: Io, t: CoreT, env: NodeJS.ProcessEnv, cwd: 
       // `wx` has created the target by the time most failures happen, so it goes too; on EEXIST the file is somebody else's and stays.
       if (!(err instanceof Error && (err as NodeJS.ErrnoException).code === 'EEXIST')) written.push(c.target);
       const stuck = written.filter((file) => !removed(file));
-      io.err(`${t('configWriteFailed', { file: c.target, error: err instanceof Error ? err.message : String(err) })}\n`);
-      // A file that could not be removed is told after the error, in the one generic `name: reason` message there is.
+      const reason = err instanceof Error ? err.message : String(err);
+      // "nothing was kept" is true only when every file is gone: with files left behind the error goes in the generic `name: reason` message, and the files follow it.
+      io.err(`${stuck.length === 0 ? t('configWriteFailed', { file: c.target, error: reason }) : t('pluginFailed', { name: c.target, error: reason })}\n`);
       for (const file of stuck) io.err(`${t('pluginFailed', { name: file, error: 'could not be removed — remove it by hand' })}\n`);
       return EXIT.error;
     }
