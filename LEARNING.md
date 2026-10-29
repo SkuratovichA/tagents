@@ -492,3 +492,7 @@ With `usage.watch` unset nothing updates the usage index, and `tusage --by day` 
 ## A symlink test that asserted only what tmux reports could not fail (29.10.2026)
 
 tmux reports the physical cwd of a pane whatever path the window was opened with, so a test of a symlinked directory that checked `pane_current_path` passed with a logical path. The assertion that can fail is the session the window landed in, and it needs an owner other than the session the client sits in, because a window opened with a path that finds no owner falls back to the client's session: the first version of it passed under the mutation too. The proof of a test like this is the mutation that makes the code wrong.
+
+## A scenario cannot move out of a MODIFIED requirement into another one (29.10.2026)
+
+`openspec validate --strict` refuses a MODIFIED block that omits a scenario of the main requirement ("Copy the omitted scenarios into the MODIFIED block"), because the block replaces the whole requirement, so two scenarios moved to an added requirement made `pnpm spec:check` fail while the change itself looked right. A scenario of a requirement the change modifies stays in that block; to give a requirement of its own a scenario, write a new one, and run `pnpm spec:check` after every move of scenarios, not only the archive check.
