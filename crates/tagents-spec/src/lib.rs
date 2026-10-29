@@ -2,7 +2,8 @@
 //!
 //! The data is `spec/cli/tagents-core.json` at the repository root, described by `spec/cli/cli-spec.schema.json`.
 //! The node CLI and the contract generator read the same file (`packages/core/src/cli/spec.ts`).
-//! The model refuses a key the schema does not name, and what the schema and the node loader refuse (an empty path, an empty word, two verbs with one path), so a newer or wrong file fails here at load, not somewhere downstream.
+//! The model refuses a key the schema does not name, and the structural mistakes the schema and the node loader refuse (an empty program, summary, path or word, two verbs with one path), so a newer or wrong file fails here at load, not somewhere downstream.
+//! One input is still read differently: an `exit` value written `1.0` is the number 1 to the node loader and a refusal here, because the model holds it as a `u8`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -79,6 +80,9 @@ impl Spec {
     }
 
     fn check(&self) -> Result<(), String> {
+        if self.program.is_empty() {
+            return Err("the program name is empty".into());
+        }
         let mut seen = BTreeSet::new();
         for command in &self.commands {
             let at = command.path.join(" ");
@@ -86,6 +90,9 @@ impl Spec {
                 return Err(format!(
                     "a verb has an empty path or an empty word in it ({at:?})"
                 ));
+            }
+            if command.summary.is_empty() {
+                return Err(format!("{at}: an empty summary"));
             }
             if command.positionals.iter().any(String::is_empty) {
                 return Err(format!("{at}: an empty entry in positionals"));
@@ -196,6 +203,23 @@ mod tests {
     #[test]
     fn an_empty_required_option_is_refused() {
         assert!(refused(r#"["a"]"#, "[]", r#"[""]"#).contains("required"));
+    }
+
+    #[test]
+    fn an_empty_summary_is_refused() {
+        let text = spec_with(&[
+            &verb(r#"["a"]"#, "[]", "[]").replace(r#""summary":"k""#, r#""summary":"""#)
+        ]);
+        let err = Spec::parse(&text).expect_err("an empty summary");
+        assert!(err.to_string().contains("summary"), "{err}");
+    }
+
+    #[test]
+    fn an_empty_program_is_refused() {
+        let text = spec_with(&[&verb(r#"["a"]"#, "[]", "[]")])
+            .replace(r#""program":"p""#, r#""program":"""#);
+        let err = Spec::parse(&text).expect_err("an empty program");
+        assert!(err.to_string().contains("program"), "{err}");
     }
 
     #[test]

@@ -26,7 +26,7 @@ When it cannot find the node CLI it prints the path it looked at, says the binar
 
 The verbs live in `spec/cli/tagents-core.json`, described by `spec/cli/cli-spec.schema.json`. Each command says `"impl": "rust"` or `"impl": "node"`, and may carry one optional string, `effect`. The node CLI reads the file (`packages/core/src/cli/spec.ts`), the contract generator reads it through the node CLI, and the Rust crate `tagents-spec` embeds it, so moving a verb between languages is a one-word edit that leaves the generated plugin contract untouched. `pnpm plugin:gen` then shows no diff, and a test in `crates/tagents-core/tests/front_door.rs` checks that `tagents-core --spec` prints exactly the `rust` entries of the file.
 
-Both loaders refuse the same mistakes: a key the schema does not name, an empty `path`, an empty word in `path`, `positionals` or `required`, and two commands with one `path` (dispatch is by path, so the second would never run). The path to the data file in `packages/core/src/cli/spec.ts` (`SPEC_FILE`) leads out of `packages/core`, so the package works from a checkout and from `$TAGENTS_HOME`, which is one, and would not work from a packed tarball (`files` is `dist`, which does not hold the data file). Nothing publishes or packs the package, and the repository installs from a clone; the package is not marked `private` because the plugin contract lists the public API of every package that is not.
+Both loaders refuse the same structural mistakes the schema forbids: a key the schema does not name, an empty `program` or `summary`, an empty `path`, an empty word in `path`, `positionals` or `required`, and two commands with one `path` (dispatch is by path, so the second would never run). One input they still read differently is a known difference: an `exit` value written `1.0` is the number 1 to the node loader (zod) and a refusal in Rust, which holds it as a `u8`. The path to the data file in `packages/core/src/cli/spec.ts` (`SPEC_FILE`) leads out of `packages/core`, so the package works from a checkout and from `$TAGENTS_HOME`, which is one, and would not work from a packed tarball (`files` is `dist`, which does not hold the data file). Nothing publishes or packs the package, and the repository installs from a clone; the package is not marked `private` because the plugin contract lists the public API of every package that is not.
 
 The one-line summary of a command stays in the language catalogue (`packages/core/src/i18n/`), keyed by the `summary` field, so there is one source of the text.
 
@@ -69,7 +69,7 @@ These are the differences the port does not hide, and the suite does not cover t
 
 - `unsafe` is forbidden, and `unwrap` and `expect` are denied outside tests, for the whole workspace (`Cargo.toml`, `crates/clippy.toml`).
 - No async runtime. The only dependencies are `serde` and `serde_json`, for reading the spec file.
-- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test --workspace` run in CI (`.github/workflows/rust.yml`), together with the parity suite.
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings` and `cargo test --workspace --locked` run in CI (`.github/workflows/rust.yml`), together with the parity suite.
 
 ## What is not decided yet
 
