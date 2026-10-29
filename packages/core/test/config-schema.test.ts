@@ -247,6 +247,7 @@ test('the plugin entry the host reads is the one the schema describes', () => {
 // -------------------------------------------------------------- the editor ---
 
 const taplo = findOnPath('taplo');
+const SKIP_TAPLO = 'taplo is not installed (brew install taplo); this lint was not run';
 
 /** `taplo lint` of a TOML text against the schema file, offline: the #:schema URL would be fetched from GitHub. */
 function lint(toml: string): { code: number | null; out: string } {
@@ -264,12 +265,12 @@ function lint(toml: string): { code: number | null; out: string } {
   }
 }
 
-test('taplo lints config.example.toml clean against the schema', { skip: taplo === null ? 'taplo is not installed' : false }, () => {
+test('taplo lints config.example.toml clean against the schema', { skip: taplo === null ? SKIP_TAPLO : false }, () => {
   const r = lint(fs.readFileSync(EXAMPLE_TOML, 'utf8'));
   assert.equal(r.code, 0, r.out);
 });
 
-test('taplo applies the schema: a mistake in a config is an error', { skip: taplo === null ? 'taplo is not installed' : false }, () => {
+test('taplo applies the schema: a mistake in a config is an error', { skip: taplo === null ? SKIP_TAPLO : false }, () => {
   const r = lint('[usage]\nworkdays = "yes"\n');
   assert.notEqual(r.code, 0);
   assert.match(r.out, /not of type "boolean"/);

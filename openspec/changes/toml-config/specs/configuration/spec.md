@@ -19,6 +19,11 @@ The config file SHALL be `$TA_CONFIG` when that is set, else in `$XDG_CONFIG_HOM
 - **WHEN** `TA_CONFIG` names a file
 - **THEN** that file is read, by the reader its extension picks, and the default location is not
 
+#### Scenario: The file name picks the reader
+- **WHEN** a config file is named `config.toml`, `config.work.toml` or `.toml`
+- **THEN** it is read as TOML
+- **AND** a file named `config.TOML`, `Config.Toml`, `config.toml.bak`, `config.yaml`, `config.yml` or `config` is read as YAML, in the dashboard and in the TypeScript programs alike
+
 ### Requirement: TypeScript programs find the same directory
 Programs built on `@tagents/core` SHALL look for the config in the directory `$TAGENTS_CONFIG_DIR` when that is set and not blank, else `$XDG_CONFIG_HOME/tagents`, else `~/.config/tagents`, and in that directory choose `config.toml`, else `config.yaml`, with the same precedence as the dashboard. A missing file there means no plugins and is not an error.
 
@@ -157,6 +162,11 @@ In a TOML config, a table defined twice, a duplicate key, a multi-line string, a
 - **THEN** stderr says `c.toml:3` and `multi-line strings are not supported`, and `tagents --check` lists the same line
 - **AND** the other lines still flatten
 
+#### Scenario: The body of a refused multi-line string
+- **WHEN** a line says `a = """` (or `a = '''`), the lines after it say `b = 1`, `[fake]` and `c = 2`, and a line with the closing delimiter follows, then `d = 3`
+- **THEN** exactly one refusal is listed, for the line of the opening, `b` and `c` are not read, and `d` is read in the table the opening was in
+- **AND** a delimiter closed on the line that opens it (`a = """x"""`) leaves nothing to skip, and a backslash before a closing `"""` means it does not close
+
 #### Scenario: A value that is not a string, a number or a boolean
 - **WHEN** a line says `since = 1979-05-27`
 - **THEN** it is refused with `not a string, a decimal number or a boolean: 1979-05-27`
@@ -213,6 +223,14 @@ When `config.toml` and `config.yaml` are both in the config directory, tagents S
 - **WHEN** `tagents config convert --write` runs and there is no `config.toml`
 - **THEN** `config.toml` exists beside `config.yaml`, `config.yaml` is byte for byte unchanged, and the exit code is 0
 
+#### Scenario: The permission bits of the source
+- **WHEN** `config.yaml` has mode 0600 and `tagents config convert --write` runs
+- **THEN** `config.toml` has mode 0600
+
+#### Scenario: A write that fails halfway
+- **WHEN** `--all --write` has written `config.toml` and the next target cannot be written
+- **THEN** the exit code is 1, `config.toml` is removed, and a file that was already at the failing target is untouched
+
 #### Scenario: Never overwriting
 - **WHEN** `tagents config convert --write` runs and a `config.toml` exists
 - **THEN** it exits 3, names the file and writes nothing
@@ -222,11 +240,19 @@ When `config.toml` and `config.yaml` are both in the config directory, tagents S
 - **THEN** it names the line, exits 3 and no `.toml` was created
 
 ### Requirement: What the converted TOML says
-The converted TOML SHALL start with the `#:schema` line of the schema and a line saying which file it was converted from. A number or a boolean keeps its type only when the YAML wrote it as a plain `850` or `true`; every other scalar becomes a string. A key with no value becomes an empty table, and a key that is not letters, digits, `_` and `-` is quoted.
+The converted TOML SHALL start with the `#:schema` line of the schema and a line saying which file it was converted from. A number or a boolean keeps its type only when the YAML wrote it as a plain `850` or `true`; a quoted value is a string. A scalar with no TOML twin SHALL be refused, never turned into a string. A key with no value becomes an empty table, and a key that is not letters, digits, `_` and `-` is quoted.
 
 #### Scenario: Types kept only when plain
 - **WHEN** the YAML says `monthly_limit_usd: 850`, `workdays: true` and `meter: "850"`
 - **THEN** the TOML has `monthly_limit_usd = 850`, `workdays = true` and `meter = "850"`
+
+#### Scenario: A number with no TOML twin
+- **WHEN** line 5 of the YAML says `mode: 0644`, `ratio: .5`, `mask: 0x10`, `flag: True` or `nothing: ~`
+- **THEN** the conversion names line 5, says what to write instead (a plain decimal, `true` or `false`, or the value quoted), exits 3 and writes nothing
+
+#### Scenario: A control character in a value
+- **WHEN** a YAML string value has a tab or another control character in it
+- **THEN** the conversion names the line, says a control character cannot be written in the TOML tagents reads, exits 3 and writes nothing
 
 #### Scenario: A profile with nothing under it
 - **WHEN** the YAML says `work:` under `profiles:`
@@ -239,6 +265,14 @@ Before it offers a byte, `tagents config convert` SHALL read the YAML and the re
 - **WHEN** `config.example.yaml` from the test fixtures is converted
 - **THEN** `tagents --config` prints byte for byte the same lines for the YAML and for the TOML, under `/bin/bash` 3.2
 
+#### Scenario: A value that would change type
+- **WHEN** the dumps of the YAML and the TOML are the same but a string, number or boolean of the YAML comes back from the TOML as another type or value
+- **THEN** the conversion says the TOML would give a different value than the YAML, naming the key, exits 3 and writes nothing
+
+#### Scenario: A tagents that does not answer
+- **WHEN** `tagents --config` does not finish within 10 seconds or prints more than 16 MiB
+- **THEN** the conversion says so, exits 3 and writes nothing
+
 #### Scenario: An alias
 - **WHEN** the YAML has `other: *b`
 - **THEN** the conversion names the line, says an alias has no TOML twin, exits 3 and writes nothing
@@ -248,7 +282,7 @@ Before it offers a byte, `tagents config convert` SHALL read the YAML and the re
 - **THEN** the conversion says `tagents would read the TOML made from it differently from the YAML, so nothing is offered`, exits 3 and writes nothing
 
 ### Requirement: A JSON Schema describes the config
-The repository SHALL carry `schemas/config.schema.json`, a JSON Schema (draft 2020-12) of the TOML config whose `$id` is `https://raw.githubusercontent.com/SkuratovichA/tagents/main/schemas/config.schema.json`, with a `description` and an `examples` entry on every key. `config.example.toml` SHALL start with `#:schema <that URL>` so a TOML-aware editor finds it, and SHALL validate against the schema and lint clean with `taplo lint`.
+The repository SHALL carry `schemas/config.schema.json`, a JSON Schema (draft 2020-12) of the TOML config whose `$id` is `https://raw.githubusercontent.com/SkuratovichA/tagents/main/schemas/config.schema.json`, with a `description` and an `examples` entry on every key. `config.example.toml` SHALL start with `#:schema <that URL>` so a TOML-aware editor finds it, and SHALL validate against the schema; its test also runs `taplo lint` on it when `taplo` is on PATH, and says it skipped when not.
 
 #### Scenario: The example validates
 - **WHEN** `config.example.toml` is checked against the schema

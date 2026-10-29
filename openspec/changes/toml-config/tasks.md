@@ -24,7 +24,7 @@
 
 - [x] 4.1 Write `schemas/config.schema.json` and `config.example.toml` (which replaces `config.example.yaml`, moved to `tests/fixtures/`). Proved by `packages/core/test/config-schema.test.ts`: valid draft 2020-12, a description and an example on every key, the example and the converter's output validate.
 - [x] 4.2 Pin the schema to the keys the dashboard reads and to the zod schemas of the TypeScript readers. Proved by `packages/core/test/config-schema.test.ts` and `packages/knowledge/test/config-schema.test.ts`.
-- [x] 4.3 Lint the example with the schema in taplo. Proved by `taplo lint` in `packages/core/test/config-schema.test.ts`.
+- [x] 4.3 Lint the example with the schema in taplo. `packages/core/test/config-schema.test.ts` runs `taplo lint` when `taplo` is on PATH and says it skipped when it is not.
 
 ## 5. The existing suites
 
