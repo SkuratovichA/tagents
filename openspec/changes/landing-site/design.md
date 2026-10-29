@@ -77,9 +77,9 @@ Each decision is one line, the reason in a clause, what was rejected, and the co
     if (origin === null) return { meta, links: [] }
     ```
 
-12. **The words are the README's**, one paragraph per feature, with no claim about speed, memory or resources, no comparison and no licence (the repository has none). A test pins the install command, the `settings.json` and the other commands to `README.md` (skipped when the README is not beside the site), and a test fails on words of speed, memory or comparison.
+12. **The words are the README's**, one paragraph per feature, with no claim about speed, memory or resources and no comparison. A test pins the install command, the `settings.json` and the other commands to `README.md` (skipped when the README is not beside the site), and a test fails on words of speed, memory or comparison.
 
-13. **A workflow of its own, `site.yml`**, filtered to `site/**` and itself, with `contents: read` and the SHA-pinned actions of gsttt-site, because the root `ci.yml` runs the plugin and OpenSpec checks that a web change does not touch and the reverse. It has no deploy step. Rejected: a job in `ci.yml`, which would install the site's stack for every plugin change.
+13. **A workflow of its own, `site.yml`**, filtered to `site/**`, itself and `.node-version`, whose Node version it uses, with `contents: read` and the SHA-pinned actions of gsttt-site, because the root `ci.yml` runs the plugin and OpenSpec checks that a web change does not touch and the reverse. It has no deploy step. Rejected: a job in `ci.yml`, which would install the site's stack for every plugin change.
 
 14. **English only, one route.** No documentation pages, no language switcher; the documentation site stays where it is.
 
@@ -96,6 +96,6 @@ The domain is a CNAME record `tagents` for `arstoien.com` pointing at `skuratovi
 
 ## Open questions for Sasha
 
-1. Keep the Pikachu artwork or replace it? The picture comes from https://mystickermania.com/sticker-packs/memes/surprised-pikachu and the character belongs to The Pokémon Company; the footer says the site is an unaffiliated fan tribute. Replacing it is a change to `site/src/mascot/` and `site/public/mascot/` only.
+1. Keep the Pikachu artwork or replace it? The picture comes from https://mystickermania.com/sticker-packs/memes/surprised-pikachu and the character belongs to Nintendo, Creatures Inc., GAME FREAK inc. and The Pokémon Company; the footer says the mascot is a fan tribute, that the site is not affiliated with or endorsed by those four companies and that Pokémon and Pokémon character names are trademarks of Nintendo. That last sentence is the usual notice and is unverified against the official one, whose page could not be read while writing it. Replacing the artwork is a change to `site/src/mascot/` and `site/public/mascot/` only.
 2. Where and when to publish: a separate `SkuratovichA/tagents-site` repository on `tagents.arstoien.com` as recommended, or something else?
-3. The repository has no licence file, so the page says nothing about one. Should it, once there is one?
+3. The repository is MIT-licensed (`LICENSE` at its root), and the footer links to that file next to GitHub and Docs, the link built from the repository address in `site/src/lib/site.ts`. The words of the page still say nothing about a licence.

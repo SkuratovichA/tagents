@@ -28,12 +28,17 @@ describe('the sprite', () => {
 })
 
 describe('the credit', () => {
-  it('says the mascot is a fan tribute, that the site is not affiliated, and whose trademark it is', () => {
+  it('says the mascot is a fan tribute and names the four companies it owes the notice to', () => {
     expect(MASCOT.credit).toMatch(/fan tribute/)
-    expect(MASCOT.credit).toMatch(
-      /not affiliated with Nintendo, Creatures Inc\. or GAME FREAK inc\./,
-    )
-    expect(MASCOT.credit).toMatch(/trademark of Nintendo, Creatures Inc\. and GAME FREAK inc\./)
+    for (const owner of ['Nintendo', 'Creatures Inc.', 'GAME FREAK inc.', 'The Pokémon Company'])
+      expect(MASCOT.credit).toContain(owner)
+  })
+})
+
+describe('the colours', () => {
+  it('give the fur the same yellow as the accent of the page', () => {
+    const css = readFileSync(join(site, 'src', 'styles.css'), 'utf8')
+    expect(/--pika:\s*(#[0-9a-f]{6});/i.exec(css)?.[1]).toBe(PIKACHU_COLORS.Y)
   })
 })
 

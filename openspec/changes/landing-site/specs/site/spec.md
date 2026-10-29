@@ -52,7 +52,7 @@ The page SHALL cause no horizontal scrolling of the document at a width of 360 p
 - **AND** each recording can be scrolled sideways inside its terminal
 
 ### Requirement: The page makes no claim about speed or resources and compares with nothing
-The words on the page SHALL describe what tagents does as its README does. They SHALL give no figure or claim about speed, memory or processor use, no comparison with another tool and no licence. The install command and the `settings.json` SHALL be those of the README.
+The words on the page SHALL describe what tagents does as its README does. They SHALL give no figure or claim about speed, memory or processor use, no comparison with another tool. The install command and the `settings.json` SHALL be those of the README.
 
 #### Scenario: A change to the copy
 - **WHEN** a word about speed, memory or a comparison is added to the page
@@ -91,14 +91,19 @@ The site SHALL have its own `package.json` and lockfile, and installing or build
 - **THEN** `git status` of the repository lists no file outside `site/`
 
 ### Requirement: The mascot lives in one place and is credited
-Every file that names the mascot SHALL be in `site/src/mascot/` or `site/public/mascot/`, so that replacing the mascot is a change to those two directories alone. The footer SHALL say that the mascot is a fan tribute, that the site is not affiliated with the owners of the character and whose trademark it is.
+Every file that names the mascot SHALL be in `site/src/mascot/` or `site/public/mascot/`, so that replacing the mascot is a change to those two directories alone. The footer SHALL say that the mascot is a fan tribute, that the site is not affiliated with or endorsed by the owners of the character (Nintendo, Creatures Inc., GAME FREAK inc. and The Pokémon Company) and that Pokémon and Pokémon character names are trademarks of Nintendo. The footer SHALL also link to the repository's licence, the `LICENSE` file, next to the links to GitHub and the documentation.
+
+#### Scenario: Reading the footer
+- **WHEN** the footer is rendered
+- **THEN** it carries the credit of the mascot module
+- **AND** it links to GitHub, to the documentation and to the `LICENSE` file of the repository
 
 #### Scenario: Another source file names the mascot
 - **WHEN** a file of `site/src/` outside `site/src/mascot/` contains the mascot's name
 - **THEN** `pnpm test` in `site/` fails
 
 ### Requirement: Nothing in this repository publishes the site
-This repository SHALL hold no workflow, setting, domain file or link that deploys the site or names its address. Its workflow SHALL only lint, type-check, test, build and link-check, with read access to the repository, and SHALL run only when `site/` or the workflow itself changes.
+This repository SHALL hold no workflow, setting, domain file or link that deploys the site or names its address. Its workflow SHALL only lint, type-check, test, build and link-check, with read access to the repository, and SHALL run only when `site/`, the workflow itself or `.node-version` changes, and it SHALL take its Node version from `.node-version`.
 
 #### Scenario: A pull request that only edits the documentation
 - **WHEN** a pull request changes files under `docs/` only

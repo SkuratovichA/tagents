@@ -6,7 +6,7 @@ import { PIKACHU_COLORS, PIKACHU_ROWS } from './pikachu'
 export const MASCOT = {
   name: 'Pikachu',
   credit:
-    'The mascot is a fan tribute and the site is not affiliated with Nintendo, Creatures Inc. or GAME FREAK inc. Pikachu is a trademark of Nintendo, Creatures Inc. and GAME FREAK inc.',
+    'The mascot is a fan tribute. This site is not affiliated with or endorsed by Nintendo, Creatures Inc., GAME FREAK inc. or The Pokémon Company. Pokémon and Pokémon character names are trademarks of Nintendo.',
 } as const
 
 const WIDTH = Math.max(...PIKACHU_ROWS.map((row) => row.length))
