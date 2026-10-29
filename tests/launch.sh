@@ -531,16 +531,18 @@ ok "...the window that was selected still is" "$active_before" "$(tm display -p 
 tm kill-session -t '=tatest-winowner:' >/dev/null 2>&1
 
 clear_out
-run --new "$PERS" personal >/dev/null 2>&1
+plain=$(run --new "$PERS" personal 2>/dev/null)
 f=$(waitout) || { echo "  FAIL nothing started"; fail=$((fail+1)); f=/dev/null; }
 pane="%${f##*/}"; pane=${pane%.out}
 ok "without the flag the agent's window is selected, as enter on a row leaves it" 1 "$(tm display -p -t "$pane" '#{window_active}' 2>/dev/null)"
+ok "...and nothing is printed, as it always was" "" "$plain"
 
 clear_out
-run --new --detach "$PERS" personal >/dev/null 2>&1; rc=$?
+nline=$(run --new --detach "$PERS" personal 2>/dev/null); rc=$?
 f=$(waitout) || { echo "  FAIL nothing started"; fail=$((fail+1)); f=/dev/null; }
 pane="%${f##*/}"; pane=${pane%.out}
 ok "--new --detach succeeds" 0 "$rc"
+ok "...prints one line: the pane, a tab and where the window is, as --window does" "$pane	$(tm display -p -t "$pane" '#{session_name}:#{window_index}' 2>/dev/null)" "$nline"
 ok "...starts the agent on the account asked for" "$HOME/.claude-personal" "$(field CFG "$f")"
 ok "...in the session that owns the project" tatest-proj "$(sess_of_out "$f")"
 ok "...and its window is not selected" 0 "$(tm display -p -t "$pane" '#{window_active}' 2>/dev/null)"

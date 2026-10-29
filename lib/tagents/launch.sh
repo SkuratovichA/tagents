@@ -245,6 +245,11 @@ new_shell() {  # <dir> [session]
   notice "tagents: new shell in $(basename "$(tilde_of "$dir")") ($sess:$idx)"
 }
 
+# The line a caller finds its new window by: the pane, a tab, and where it is as session:window index. `--window` always prints it, `--new` only with `--detach`, whose caller is a program that cannot look at the screen.
+window_line() {  # <pane> <session> <index>
+  printf '%s\t%s:%s\n' "$1" "$2" "$3"
+}
+
 # `tagents --window [--detach] DIR COMMAND`: the twin of --new for anything that is not an agent, from outside the list. COMMAND is one string the window's shell runs, so the window closes when it ends: a long-running command is what this is for, and a bare `ls` is gone before anyone sees it. The window goes where a chat for DIR would, the session that owns it, is shown like any new window (open_agent) unless --detach, and the line printed is the new pane and where it is, TAB-separated, for a caller that wants to find it again. Exactly two words: a command typed without quotes arrives as several, and the extra ones would be dropped without a word.
 new_window() {  # <dir> <command>
   local dir cmd root sess pane idx
@@ -262,7 +267,7 @@ new_window() {  # <dir> <command>
   idx=$(tmux display -p -t "$pane" '#{window_index}' 2>/dev/null)
   [ -n "$LAUNCH_DETACH" ] || open_agent "$pane"
   notice "tagents: new window in $(basename "$(tilde_of "$dir")") ($sess:$idx)"
-  printf '%s\t%s:%s\n' "$pane" "$sess" "$idx"
+  window_line "$pane" "$sess" "$idx"
 }
 
 # The one place a fresh agent gets a window. Both entry points come through here so the command, the message and the "it is selected like any row" policy are decided once.
@@ -283,5 +288,6 @@ start_agent() {  # <root> <session> <profile>
   resurrect_soon
   notice \
     "tagents: new agent in $(basename "$root") ($sess:$idx)${prof:+ as $prof}"
+  [ -z "$LAUNCH_DETACH" ] || window_line "$newpane" "$sess" "$idx"
   return 0
 }

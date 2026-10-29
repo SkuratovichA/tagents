@@ -46,3 +46,7 @@
 - [x] 8.7 Refuse a title over 256 and a message over 2048 characters in `send` (`packages/notify` `test/commands.test.ts`).
 - [x] 8.8 Refuse `session abort` on a row that belongs to a tmux pane (`packages/core` `test/cli.test.ts`).
 - [x] 8.9 Update the plugin and contract pages, the README of `packages/mcp` and the specs of this change to the decisions above.
+- [x] 8.10 Schedule the capture a launch leaves for later in the tmux server (`run-shell -b`), so the process-group kill at the end of a call does not cancel it (`tests/resurrect.sh` section 15e).
+- [x] 8.11 Say in the skill which tools exist and that `session open` and `session prompt` are CLI only; document the limits of `send` in the README of `packages/notify`.
+- [x] 8.12 Mark each verb in `references/cli.md` as a tool or CLI only, from the function the tools are made by (`packages/contract` `test/render.test.ts`).
+- [x] 8.13 Print the pane and where the window is for `--new --detach`, the line `--window` prints (`tests/launch.sh` section 13).

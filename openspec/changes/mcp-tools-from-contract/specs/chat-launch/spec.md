@@ -42,7 +42,7 @@ A DIR that is not a directory SHALL print `tagents: <dir> is not a directory` on
 - **THEN** it exits 2, prints the same line and opens no window, instead of running `npm` and dropping `run dev`
 
 ### Requirement: `--detach` opens the window without taking the screen
-`tagents --new [--detach] [DIR] [PROFILE]` and `tagents --window [--detach] DIR COMMAND` SHALL, given `--detach` straight after the flag, make and register the window where it belongs without selecting it, without switching any client and without the tmux message. Without `--detach` both behave as before.
+`tagents --new [--detach] [DIR] [PROFILE]` and `tagents --window [--detach] DIR COMMAND` SHALL, given `--detach` straight after the flag, make and register the window where it belongs without selecting it, without switching any client and without the tmux message. Without `--detach` both behave as before. `--new` SHALL then print on standard output the one line `--window` prints, the new pane, a tab and `<session>:<window index>`, so a caller that cannot see the screen can say which window it opened; without `--detach` it prints nothing, as it always did.
 
 #### Scenario: A window that is not selected
 - **WHEN** `tagents --window --detach ~/projects/app "npm run dev"` runs while another window of that session is selected
@@ -50,11 +50,11 @@ A DIR that is not a directory SHALL print `tagents: <dir> is not a directory` on
 
 #### Scenario: An agent that is not selected
 - **WHEN** `tagents --new --detach ~/projects/app work` runs
-- **THEN** the agent starts on the account `work` in the session that owns the directory, and its window is not selected
+- **THEN** the agent starts on the account `work` in the session that owns the directory, its window is not selected, and standard output is one line: the agent's pane, a tab and `<session>:<window index>`
 
 #### Scenario: Without the flag
 - **WHEN** `tagents --new ~/projects/app work` runs
-- **THEN** the new window is selected, as `enter` on a row leaves it
+- **THEN** the new window is selected, as `enter` on a row leaves it, and nothing is printed on standard output
 
 ### Requirement: A detached `--new` never asks which account
 `tagents --new --detach` SHALL never open a dialog. When the rules for DIR resolve to asking which account to use, or the profile given is `ask`, it SHALL print `tagents: the config asks which account <dir> runs on, and --detach opens no dialog; name one of: <profiles>` on standard error with the configured profiles, exit 2, open no window and start nothing.
