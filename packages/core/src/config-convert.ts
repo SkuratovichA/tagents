@@ -253,7 +253,7 @@ export function typeMismatch(yamlText: string, toml: string): string | null {
   }
   const walk = (a: unknown, b: unknown, at: string): string | null => {
     if (typeof a === 'string' || typeof a === 'number' || typeof a === 'boolean') {
-      return typeof b === typeof a && b === a ? null : `${at || 'the top level'} is ${describe(a)} in the YAML and ${b === undefined ? 'missing' : describe(b)} in the TOML`;
+      return typeof b === typeof a && b === a ? null : `${at || 'the top level'} is ${describe(a)} in the YAML and ${b === undefined ? 'not there' : describe(b)} in the TOML`;
     }
     const entries: Array<[string, unknown, unknown]> = Array.isArray(a)
       ? a.map((item, i): [string, unknown, unknown] => [`${at}[${i}]`, item, Array.isArray(b) ? b[i] : undefined])

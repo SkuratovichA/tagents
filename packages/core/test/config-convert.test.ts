@@ -269,7 +269,7 @@ test('the type check refuses a pair the dumps cannot tell apart', () => {
   assert.equal(sameConfig(dump, dump), true, 'tagents prints both as 850');
   assert.match(typeMismatch('usage:\n  value: 850\n', 'usage = { value = "850" }\n') ?? '', /usage\.value is number 850 in the YAML and "850" in the TOML/);
   assert.match(typeMismatch('usage:\n  value: true\n', 'usage = { value = "true" }\n') ?? '', /boolean true/);
-  assert.match(typeMismatch('usage:\n  value: x\n', 'usage = {}\n') ?? '', /missing/);
+  assert.match(typeMismatch('usage:\n  value: x\n', 'usage = {}\n') ?? '', /not there/);
   assert.equal(typeMismatch('usage:\n  value: 850\n  list: [1, a]\n  empty:\n', 'empty = {}\n[usage]\nvalue = 850\nlist = [1, "a"]\n'), null);
 });
 
