@@ -4,7 +4,7 @@
 import { parseArgs } from 'node:util';
 import { silenceSqliteWarning } from '../../knowledge/src/db.ts';
 import { createT } from './i18n/index.ts';
-import { REPO_ROOT, applyPlan, changeLines, planTree, staleLines } from './tree.ts';
+import { REPO_ROOT, applyPlan, changeLines, noticeLines, planTree, staleLines } from './tree.ts';
 
 async function main(argv: readonly string[]): Promise<number> {
   // Collecting the MCP tools imports the knowledge server and with it node:sqlite, whose experimental notice would otherwise land in every commit's output.
@@ -21,11 +21,11 @@ async function main(argv: readonly string[]): Promise<number> {
     const plan = await planTree(REPO_ROOT, t);
     if (check) {
       const stale = staleLines(plan, t);
-      process.stdout.write(`${(stale.length === 0 ? [t('fresh')] : stale).join('\n')}\n`);
+      process.stdout.write(`${[...(stale.length === 0 ? [t('fresh')] : stale), ...noticeLines(plan, t)].join('\n')}\n`);
       return stale.length === 0 ? 0 : 1;
     }
     await applyPlan(REPO_ROOT, plan);
-    process.stdout.write(`${changeLines(plan, t).join('\n')}\n`);
+    process.stdout.write(`${[...changeLines(plan, t), ...noticeLines(plan, t)].join('\n')}\n`);
     return 0;
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

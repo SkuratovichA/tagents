@@ -27,8 +27,7 @@ export interface Notice {
     readonly click: ClickAction;
     // (undocumented)
     readonly id: string;
-    // (undocumented)
-    readonly kind: NoticeKind;
+    readonly kind: NoticeKind | 'message';
     // (undocumented)
     readonly skipIfFrontmost?: boolean;
     // (undocumented)

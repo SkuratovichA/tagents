@@ -58,6 +58,11 @@ export function staleLines(plan: Plan, t: Translate): string[] {
   return plan.stale.length === 0 ? [] : [...plan.stale.map((p) => t('stale', { path: p })), t('staleHint')];
 }
 
+/** What is worth knowing about the sources and is not a reason to fail: the verbs that declare no effect. Empty when there is nothing to say. */
+export function noticeLines(plan: Plan, t: Translate): string[] {
+  return plan.unclassified.length === 0 ? [] : [t('unclassified', { verbs: plan.unclassified.join(', ') })];
+}
+
 /** What a generation says it did, one line per change. */
 export function changeLines(plan: Plan, t: Translate): string[] {
   const lines = [

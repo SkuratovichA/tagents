@@ -102,6 +102,7 @@ events:
 | `tagents notify uninstall [--purge]` | boots the service out, deletes the plist and switches the event stream off; `--purge` deletes the app too |
 | `tagents notify status` | platform, backend, app (up to date, stale or missing), icon, permission and alert style, the script a click runs, the LaunchAgent, the stream, the options file and its problems, the service's memory |
 | `tagents notify test [--kind <kind>]` | posts one sample notice now; a click docks `$TMUX_PANE` when it is set |
+| `tagents notify send [--title <text>] <message…>` | posts a notice with this message now, through the configured backend, ignoring the per-kind switches and `skip_visible`; the title defaults to `tagents`, and a click docks `$TMUX_PANE` when it is set. This is what the `notify_send` tool of the [plugin](./claude-code-plugin) runs |
 | `tagents notify run` | the engine in the foreground until it is stopped. This is what the LaunchAgent runs |
 
 ## Troubleshooting

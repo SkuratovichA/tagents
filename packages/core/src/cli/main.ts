@@ -172,6 +172,11 @@ async function session(argv: string[], io: Io, t: CoreT): Promise<number> {
     // Across processes the only handle on a running turn is the pid the hook
     // records for a headless row; without one there is nothing here to stop.
     const row = readAgentState(stateDir()).find((r) => r.key === ref.id || r.sessionId === ref.claudeSessionId);
+    // A pane's key is its number and a session without a pane is keyed 's-<sid>' (hooks/tmux-agent-state.sh): the pid belongs to the second kind, and a row in a pane is somebody's open terminal.
+    if (row !== undefined && !row.key.startsWith('s-')) {
+      io.err(`${t('abortPaneAgent', { ref: raw })}\n`);
+      return EXIT.refused;
+    }
     const pid = row?.pid ?? null;
     if (pid === null || !isAlive(pid)) {
       io.err(`${t('nothingToAbort', { ref: raw })}\n`);

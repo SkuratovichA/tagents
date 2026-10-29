@@ -5,6 +5,17 @@ import { z } from 'zod';
 import { en } from '../i18n/en.ts';
 import { coreT, createT, type CoreKey } from '../i18n/index.ts';
 
+/**
+ * What running a verb does, for whoever decides whether to let it run: a person reading a permission prompt, or a client sorting tools by their hints.
+ * `read` changes nothing, `write` changes files, settings or what is on the screen, `spawn` starts a program or a window that does things of its own (a Claude turn, a Claude session in a window, a command), `destructive` removes or stops something that cannot be got back, and `serve` runs until it is stopped, so it is no request/response verb and gets no tool.
+ */
+export type Effect = 'read' | 'write' | 'spawn' | 'destructive' | 'serve';
+
+/** Every `Effect`, in the order spec/cli/cli-spec.schema.json lists them: the zod enum below reads it, and packages/contract/test/effects.test.ts pins it to the schema and to the server's reader. `satisfies` refuses a word that is no `Effect`, and the assertion under it refuses an `Effect` missing from the list. */
+export const EFFECTS = ['read', 'write', 'spawn', 'destructive', 'serve'] as const satisfies readonly Effect[];
+type Assert<T extends true> = T;
+type _EveryEffectIsListed = Assert<Effect extends (typeof EFFECTS)[number] ? true : false>;
+
 /** One verb of a CLI as data: what parseArgs is handed, and what the contract generator reads. */
 export interface CommandSpec<Key extends string = string> {
   /** the words after the program name that select the verb, e.g. ['session', 'open'] */
@@ -17,6 +28,12 @@ export interface CommandSpec<Key extends string = string> {
   readonly required: readonly string[];
   /** i18n key of the one-line summary of what the verb does or prints */
   readonly summary: Key;
+  /** What the verb does to the machine; a verb without one is treated as the least safe kind by everything that reads it. */
+  readonly effect?: Effect;
+  /** `false` keeps the verb out of the plugin's tools: it stays a CLI verb, in the contract and the references. */
+  readonly tool?: false;
+  /** Booleans a tool call carries when it leaves the option out: `{ detach: true }` runs the verb with `--detach` unless the call passes `detach: false`. The data file of `tagents-core` has no such key; the CLIs whose specs are written in code use it. */
+  readonly toolDefaults?: Readonly<Record<string, boolean>>;
 }
 
 /** A CLI's whole surface with the summaries resolved to English: the shape the contract generator consumes. */
@@ -29,6 +46,13 @@ export interface CliContract {
     readonly options: Readonly<Record<string, { readonly type: 'string' | 'boolean'; readonly multiple?: boolean }>>;
     readonly required: readonly string[];
     readonly summary: string;
+    readonly effect?: Effect;
+    /** `false` keeps the verb out of the plugin's tools: it stays a CLI verb, in the contract and the references. */
+    readonly tool?: false;
+    /** Booleans a tool call carries when it leaves the option out: `{ detach: true }` runs the verb with `--detach` unless the call passes `detach: false`. */
+    readonly toolDefaults?: Readonly<Record<string, boolean>>;
+    /** What the verb cannot run without, so a caller that lacks it refuses at once: `tmux` is a tmux server of the caller's own (`$TMUX`). */
+    readonly requires?: 'tmux';
   }[];
 }
 
@@ -39,7 +63,7 @@ export const SPEC_FILE = new URL('../../../../spec/cli/tagents-core.json', impor
 
 const isCoreKey = (key: string): key is CoreKey => Object.hasOwn(en, key);
 
-// Strict on purpose: a key the schema does not know is a typo or a newer file, and either is better found at load than ignored. `impl` (which program serves the verb) and `effect` (optional, read by nobody here) are in the file for the other readers; this CLI drops them.
+// Strict on purpose: a key the schema does not know is a typo or a newer file, and either is better found at load than ignored. `impl` (which program serves the verb) is in the file for the Rust front door and this CLI drops it, while `effect` and `tool` are the contract generator's and pass through to `coreCliContract`.
 const OptionFile = z.strictObject({ type: z.enum(['string', 'boolean']), multiple: z.boolean().optional() });
 const CommandFile = z.strictObject({
   path: z.array(z.string().min(1)).min(1),
@@ -48,7 +72,8 @@ const CommandFile = z.strictObject({
   required: z.array(z.string().min(1)),
   summary: z.string().refine(isCoreKey, { error: 'is not a key of the English catalogue' }),
   impl: z.enum(['rust', 'node']),
-  effect: z.string().optional(),
+  effect: z.enum(EFFECTS).optional(),
+  tool: z.literal(false).optional(),
 });
 const SpecFile = z.strictObject({
   $schema: z.string().optional(),
@@ -98,6 +123,8 @@ export function loadSpec(file: URL = SPEC_FILE): { program: string; exit: Readon
       options: optionsOf(c.options),
       required: c.required,
       summary: c.summary,
+      ...(c.effect === undefined ? {} : { effect: c.effect }),
+      ...(c.tool === undefined ? {} : { tool: c.tool }),
     })),
   };
 }
@@ -175,6 +202,8 @@ export function coreCliContract(): CliContract {
       options: c.options,
       required: c.required,
       summary: t(c.summary),
+      ...(c.effect === undefined ? {} : { effect: c.effect }),
+      ...(c.tool === undefined ? {} : { tool: c.tool }),
     })),
   };
 }

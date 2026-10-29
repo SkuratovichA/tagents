@@ -6,7 +6,7 @@
     {
       "name": "tagents",
       "source": "./",
-      "description": "Every tagents-core and tagents-knowledge verb and flag, every MCP tool schema and the public TypeScript API, regenerated from the code, plus the tagents-knowledge MCP server."
+      "description": "Every tagents-core and tagents-knowledge verb and flag, every MCP tool schema and the public TypeScript API, regenerated from the code, plus the tagents tool server and the tagents-knowledge MCP server."
     }
   ]
 }

@@ -12,6 +12,8 @@
 #   ~/.local/bin/tagents-core               exec <node> $TAGENTS_HOME/packages/core/dist/cli/main.js
 #                                           or $TAGENTS_HOME/target/release/tagents-core when that binary exists at install time (the node CLI stays the fallback)
 #   ~/.local/bin/tagents-knowledge          exec <node> $TAGENTS_HOME/packages/knowledge/dist/cli/main.js
+#   ~/.local/bin/tagents-notify             exec <node> $TAGENTS_HOME/packages/notify/dist/main.js
+#   ~/.local/bin/tagents-mcp                exec <node> $TAGENTS_HOME/packages/mcp/dist/main.js
 #   <hooks dir>/<name>.sh                   exec sh $TAGENTS_HOME/hooks/<name>.sh, one per hooks/*.sh
 #   <node> is the node the install found on PATH, or node on the caller's PATH once that file is gone.
 #
@@ -93,8 +95,8 @@ install_commands() {
   # The node CLIs pin the node this install found; none on PATH leaves them looking node up at run time.
   node_bin=$(command -v node || true)
   case $node_bin in /*) ;; *) node_bin=node ;; esac
-  for pair in tagents-core:core tagents-knowledge:knowledge; do
-    cli=$TAGENTS_HOME/packages/${pair#*:}/dist/cli/main.js
+  for pair in tagents-core:core/dist/cli/main.js tagents-knowledge:knowledge/dist/cli/main.js tagents-notify:notify/dist/main.js tagents-mcp:mcp/dist/main.js; do
+    cli=$TAGENTS_HOME/packages/${pair#*:}
     native=
     # tagents-core has a Rust front door that serves the verbs ported so far and hands every other word to the node CLI. The binary is never built or fetched here: it is used when a build or a release put it next to the node CLI.
     if [ "${pair%%:*}" = tagents-core ]; then

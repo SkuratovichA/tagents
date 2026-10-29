@@ -9,6 +9,7 @@ export const INDEX = {
   options: { dir: { type: 'string' }, db: { type: 'string' }, full: { type: 'boolean' } },
   required: [],
   summary: 'summaryIndex',
+  effect: 'write',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const SEARCH = {
@@ -27,6 +28,9 @@ export const SEARCH = {
   },
   required: [],
   summary: 'summarySearch',
+  effect: 'read',
+  // the `tagents-knowledge` MCP server already offers `knowledge_search`
+  tool: false,
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const SHOW = {
@@ -40,6 +44,9 @@ export const SHOW = {
   },
   required: [],
   summary: 'summaryShow',
+  effect: 'read',
+  // the `tagents-knowledge` MCP server already offers `knowledge_get`
+  tool: false,
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const LIST = {
@@ -55,6 +62,9 @@ export const LIST = {
   },
   required: [],
   summary: 'summaryList',
+  effect: 'read',
+  // the `tagents-knowledge` MCP server already offers `knowledge_list`
+  tool: false,
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const LINT = {
@@ -63,6 +73,7 @@ export const LINT = {
   options: { dir: { type: 'string' } },
   required: [],
   summary: 'summaryLint',
+  effect: 'read',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const TOC = {
@@ -71,6 +82,7 @@ export const TOC = {
   options: { dir: { type: 'string' }, check: { type: 'boolean' } },
   required: [],
   summary: 'summaryToc',
+  effect: 'write',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const USAGE = {
@@ -91,6 +103,9 @@ export const USAGE = {
   },
   required: [],
   summary: 'summaryUsage',
+  effect: 'read',
+  // the `tagents-knowledge` MCP server already offers `knowledge_usage`
+  tool: false,
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const MCP = {
@@ -99,6 +114,7 @@ export const MCP = {
   options: {},
   required: [],
   summary: 'summaryMcp',
+  effect: 'serve',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const SERVE = {
@@ -107,6 +123,7 @@ export const SERVE = {
   options: { idle: { type: 'string' }, foreground: { type: 'boolean' }, socket: { type: 'string' } },
   required: [],
   summary: 'summaryServe',
+  effect: 'serve',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const KNOWLEDGE_COMMANDS = [INDEX, SEARCH, SHOW, LIST, LINT, TOC, USAGE, MCP, SERVE] as const satisfies readonly CommandSpec<KnowledgeKey>[];
@@ -117,12 +134,19 @@ export function knowledgeCliContract(): CliContract {
   return {
     program: 'tagents-knowledge',
     exit: EXIT,
-    commands: KNOWLEDGE_COMMANDS.map((c) => ({
-      path: c.path,
-      positionals: c.positionals,
-      options: c.options,
-      required: c.required,
-      summary: t(c.summary),
-    })),
+    commands: KNOWLEDGE_COMMANDS.map((c) => {
+      // The optional keys are read through the spec's own type: no verb of this CLI has `toolDefaults`, so its literal type does not list the key.
+      const { effect, tool, toolDefaults }: Pick<CommandSpec, 'effect' | 'tool' | 'toolDefaults'> = c;
+      return {
+        path: c.path,
+        positionals: c.positionals,
+        options: c.options,
+        required: c.required,
+        summary: t(c.summary),
+        ...(effect === undefined ? {} : { effect }),
+        ...(tool === undefined ? {} : { tool }),
+        ...(toolDefaults === undefined ? {} : { toolDefaults }),
+      };
+    }),
   };
 }

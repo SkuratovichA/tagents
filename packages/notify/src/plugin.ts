@@ -9,6 +9,7 @@
 // a test points it at a temporary config and state dir without touching the
 // process's own environment. In production `deps.env` is the process's, and the
 // two agree.
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,6 +23,7 @@ import {
   isExecutableFile,
   labelsBySession,
   loadPluginOptions,
+  POSITIONALS,
   readAgentState,
   runService,
   setEventsOn,
@@ -33,11 +35,12 @@ import {
   type PluginContext,
   type PluginDef,
 } from '@tagents/core';
-import { buildNotice, eventFromRow } from './engine.ts';
+import { NOTIFY_EXIT, SEND_MESSAGE_MAX, SEND_TITLE_MAX } from './cli/spec.ts';
+import { buildNotice, clickFor, eventFromRow, noticeId } from './engine.ts';
 import { describe } from './errors.ts';
 import { execText, type Exec } from './exec.ts';
 import type { NoticeKind } from './kinds.ts';
-import type { Platform, RunSpec, ServiceManager } from './notifier.ts';
+import type { Notice, Platform, RunSpec, ServiceManager } from './notifier.ts';
 import { NotifyOptionsSchema, type NotifyOptions } from './options.ts';
 import { BUNDLE_ID, MAIN_JS, appPath, logPath, resolveIcon, tagentsScript, type ResolvedIcon } from './paths.ts';
 import { pickPlatform } from './platform/index.ts';
@@ -314,10 +317,10 @@ export function createNotifyPlugin(deps: CommandDeps = {}): PluginDef {
     return live ? seen.pid : null;
   }
 
-  async function sampleEvent(kind: NoticeKind): Promise<AgentEvent> {
+  /** The event of the pane this command runs in, saying `text`: what a notice posted by hand is built from, so its click docks that pane. */
+  async function callerEvent(text: string): Promise<AgentEvent> {
     const dir = stateDirOf(env);
     const pane = env['TMUX_PANE'] ?? '';
-    const text = SAMPLE_TEXT[kind];
     const row = pane === '' ? undefined : readAgentState(dir).find((x) => x.key === pane.replace(/^%/, ''));
     if (row !== undefined) return { ...eventFromRow(row, labelsBySession(dir)), at: Date.now(), text };
     // No hook has recorded this pane, as in a plain shell pane, but the click still docks the pane the command ran in.
@@ -337,6 +340,26 @@ export function createNotifyPlugin(deps: CommandDeps = {}): PluginDef {
       text,
       label: '',
     };
+  }
+
+  /** The one way a verb puts a notice up by hand: through the configured backend, saying how it went. `assemble` builds the notice once the backend and its options are known. */
+  async function postThrough(ctx: PluginContext, assemble: (o: NotifyOptions) => Promise<Notice>): Promise<number> {
+    const r = load();
+    if (!r.ok) for (const p of r.problems) ctx.log(`options: ${p}`);
+    const o = effective(r);
+    const platform = make(o.backend, ctx.log);
+    if (platform === null) {
+      say('error: backend is none, nothing posts');
+      return 1;
+    }
+    try {
+      const posted = await platform.notifier.post(await assemble(o));
+      say(posted.shown ? 'shown' : `dropped: ${posted.why ?? 'no reason given'}`);
+      return posted.shown ? 0 : 1;
+    } catch (e) {
+      say(`error: ${describe(e)}`);
+      return 1;
+    }
   }
 
   const plugin: PluginDef = definePlugin({
@@ -490,18 +513,10 @@ export function createNotifyPlugin(deps: CommandDeps = {}): PluginDef {
         args: z.object({ kind: z.enum(KINDS).default('turn_done') }),
         async run(a, ctx): Promise<number> {
           void KINDS_COVER_EVERY_KIND;
-          const r = load();
-          if (!r.ok) for (const p of r.problems) ctx.log(`options: ${p}`);
-          const o = effective(r);
-          const platform = make(o.backend, ctx.log);
-          if (platform === null) {
-            say('error: backend is none, nothing posts');
-            return 1;
-          }
-          const e = await sampleEvent(a.kind);
-          const extra = a.kind === 'cache_expiring' ? { idleMin: 50, leftMin: 10 } : {};
-          try {
-            const notice = await buildNotice(a.kind, e, extra, { skipVisible: false, click: o.click }, {
+          return postThrough(ctx, async (o) => {
+            const e = await callerEvent(SAMPLE_TEXT[a.kind]);
+            const extra = a.kind === 'cache_expiring' ? { idleMin: 50, leftMin: 10 } : {};
+            return buildNotice(a.kind, e, extra, { skipVisible: false, click: o.click }, {
               screen: tmuxScreen(deps.exec),
               labelsDir: stateDirOf(env),
               tagents: tagentsScript(env),
@@ -509,13 +524,35 @@ export function createNotifyPlugin(deps: CommandDeps = {}): PluginDef {
               env,
               log: ctx.log,
             });
-            const posted = await platform.notifier.post(notice);
-            say(posted.shown ? 'shown' : `dropped: ${posted.why ?? 'no reason given'}`);
-            return posted.shown ? 0 : 1;
-          } catch (e2) {
-            say(`error: ${describe(e2)}`);
-            return 1;
+          });
+        },
+      }),
+      verb({
+        name: 'send',
+        describe: 'Post a notice with this message.',
+        args: z.object({ [POSITIONALS]: z.array(z.string()).min(1), title: z.string().default('tagents') }),
+        async run(a, ctx): Promise<number> {
+          const body = a._.join(' ');
+          if ([...a.title].length > SEND_TITLE_MAX) {
+            ctx.log(`the title is over ${SEND_TITLE_MAX} characters`);
+            return NOTIFY_EXIT.usage;
           }
+          if ([...body].length > SEND_MESSAGE_MAX) {
+            ctx.log(`the message is over ${SEND_MESSAGE_MAX} characters`);
+            return NOTIFY_EXIT.usage;
+          }
+          return postThrough(ctx, async (o) => {
+            const e = await callerEvent('');
+            return {
+              id: noticeId(`send-${randomUUID()}`),
+              thread: 'tagents',
+              kind: 'message',
+              title: a.title,
+              subtitle: '',
+              body,
+              click: clickFor(e, o.click, tagentsScript(env), env),
+            };
+          });
         },
       }),
     ],
