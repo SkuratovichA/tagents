@@ -245,7 +245,7 @@ The skill SHALL state four things: a verb the `tagents` script has no flag for i
 - **THEN** it learns that `tagents session list` and `tagents-core session list` are the same call, as the `cli-dispatch` capability specifies
 
 ### Requirement: The parts of the ecosystem
-The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeScript packages: `@tagents/core` (headless sessions and plugins, behind `tagents-core`), `@tagents/knowledge` (the owner's notes, a CLI and an MCP server), `@tagents/telegram` (a Bot API client), `@tagents/notify` (desktop notifications), `@tagents/mcp` (the MCP server that turns the verbs of the contract into tools) and `@tagents/contract` (the contract generator). Plugins are further packages the config names.
+The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeScript packages: `@tagents/core` (headless sessions and plugins, behind `tagents-core`), `@tagents/knowledge` (the owner's notes, a CLI and an MCP server), `@tagents/telegram` (a Bot API client), `@tagents/notify` (desktop notifications), `@tagents/mcp` (the MCP server of the contract's tools) and `@tagents/contract` (the contract generator). Plugins are further packages the config names.
 
 #### Scenario: One name reaches all of it
 - **WHEN** a user types `tagents plugin list`, `tagents session list` or `tagents doctor`
