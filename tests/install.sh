@@ -8,6 +8,8 @@
 # the build step is TAGENTS_BUILD_CMD, a shell command each case sets to what it
 # wants to prove. Nothing outside the mktemp dir is written.
 #
+# The prebuilt Rust tagents-core (section 14) is fetched from a directory of release files built by the real .github/scripts/core-release.sh around a stub binary, through a file:// TAGENTS_CORE_BASE_URL; no case reaches the network.
+#
 # bash 3.2, runnable from any cwd, non-zero exit when any check fails.
 
 set -uo pipefail
@@ -78,7 +80,9 @@ fresh_env() {
   export TAGENTS_BUILD_CMD=true
   export HOOKS_A=$HOME_DIR/claude-a/hooks
   export HOOKS_B=$HOME_DIR/claude-b/hooks
-  unset TAGENTS_REF
+  # A directory that holds no release: a case that has not set up one must never reach GitHub, and finds the Rust tagents-core nowhere.
+  export TAGENTS_CORE_BASE_URL=file://$TMP/no-release
+  unset TAGENTS_REF TAGENTS_CORE_TARGET TAGENTS_NO_NATIVE
 }
 
 run() { sh "$INSTALL" --hooks-dir "$HOOKS_A" --hooks-dir "$HOOKS_B" "$@" 2>&1; }
@@ -398,6 +402,333 @@ printf '#!/bin/sh\necho "rust $# $*"\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
 out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
 contains "the wrapper names the binary under the spaced home" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
 ok "...and runs it with every argument" "rust 2 a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+
+# ---------------------------------------------------------------------------
+t "14. the prebuilt Rust tagents-core: fetched for the version of the checkout, checked, and never kept when it is another version"
+# ---------------------------------------------------------------------------
+RELEASES=$TMP/releases
+TRIPLE=aarch64-apple-darwin
+CURL_LOG=$TMP/curl.log
+REAL_CURL=$(command -v curl || true)
+mkdir -p "$TMP/curlspy" "$TMP/curlfail" "$TMP/fetch-tmp"
+# Passes every request on to the real curl and writes down its arguments; a file:// URL is all it is ever given here.
+printf '#!/bin/sh\necho "$*" >> "%s"\nexec "%s" "$@"\n' "$CURL_LOG" "$REAL_CURL" > "$TMP/curlspy/curl"; chmod 755 "$TMP/curlspy/curl"
+# Writes down its arguments and fails: the stand-in for GitHub being unreachable.
+printf '#!/bin/sh\necho "$*" >> "%s"\nexit 22\n' "$CURL_LOG" > "$TMP/curlfail/curl"; chmod 755 "$TMP/curlfail/curl"
+
+sha_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d ' ' -f 1; else shasum -a 256 "$1" | cut -d ' ' -f 1; fi; }
+exists() { if [ -e "$1" ] || [ -L "$1" ]; then echo yes; else echo no; fi; }
+calls() { if [ -f "$CURL_LOG" ]; then wc -l < "$CURL_LOG" | tr -d ' '; else echo 0; fi; }
+inodes() { ls -i "$RUST_BIN" "$RUST_BIN.release" 2>/dev/null | cut -d ' ' -f 1 | tr '\n' ' '; }
+# Every run here goes through the spy, with the fake node of section 13 first, and its calls counted from zero.
+run_native() { rm -f "$CURL_LOG"; PATH="$TMP/curlspy:$TMP/node-c:$PATH" run "$@"; }
+
+set_version() {  # <version> — origin/main moves to a Cargo.toml with that workspace version
+  advance sh -c 'printf "[workspace.package]\nversion = \"%s\"\n" "$1" > Cargo.toml' sh "$1"
+}
+make_release() {  # <version> <triple> [<version the binary claims>] — the two files of the release, made by the real packager around a stub binary
+  local v=$1 tr=$2 said=${3:-$1} src=$TMP/stub-$1-$2
+  rm -rf "$src"; mkdir -p "$src"
+  printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core %s"; exit 0; fi\necho "native-core %s $*"\n' "$said" "$v" > "$src/tagents-core"
+  chmod 755 "$src/tagents-core"; printf 'license\n' > "$src/LICENSE"
+  sh "$ROOT/.github/scripts/core-release.sh" package "$v" "$tr" "$src/tagents-core" "$src/LICENSE" "$RELEASES/v$v" >/dev/null
+}
+use_release() { export TAGENTS_CORE_BASE_URL=file://$RELEASES/v$1; }  # <version>
+fresh_native() {  # <version> — origin at that version, its release made, nothing installed
+  mkorigin; fresh_env; rm -rf "$RELEASES" "$TMP/fetch-tmp"; mkdir -p "$TMP/fetch-tmp"
+  set_version "$1"; export TAGENTS_CORE_TARGET=$TRIPLE
+  make_release "$1" "$TRIPLE"; use_release "$1"
+  RUST_BIN=$TAGENTS_HOME/target/release/tagents-core
+  ARCHIVE=tagents-core-$1-$TRIPLE.tar.gz
+}
+nothing_installed() {  # <name> — neither the binary nor its marker, and nothing else in target/release
+  ok "$1: no binary" no "$(exists "$RUST_BIN")"
+  ok "$1: no marker" no "$(exists "$RUST_BIN.release")"
+  ok "$1: nothing left in target/release" "" "$(ls -A "$TAGENTS_HOME/target/release" 2>/dev/null)"
+}
+node_cli_answers() {  # <name>
+  ok "$1: the wrapper runs the node CLI" "node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+}
+
+# --- the first install fetches, checks and installs --------------------------
+fresh_native 0.1.0
+out=$(TMPDIR=$TMP/fetch-tmp run_native); rc=$?
+ok "a first install exits 0" 0 "$rc"
+contains "it says what it installed" "installed the prebuilt tagents-core 0.1.0 ($TRIPLE)" "$out"
+ok "the binary is an executable regular file" yes "$([ -f "$RUST_BIN" ] && [ ! -L "$RUST_BIN" ] && [ -x "$RUST_BIN" ] && echo yes || echo no)"
+ok "the marker is one line: version, target, SHA-256 of the binary" "0.1.0 $TRIPLE $(sha_of "$RUST_BIN")" "$(cat "$RUST_BIN.release")"
+ok "target/release holds those two and nothing else" "tagents-core
+tagents-core.release" "$(ls -A "$TAGENTS_HOME/target/release")"
+contains "the wrapper names the binary" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+ok "the binary answers through the wrapper, with every argument" "native-core 0.1.0 a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+ok "two files were requested: the checksum, then the archive" "2" "$(calls)"
+contains "the checksum was asked for first" "$ARCHIVE.sha256" "$(head -n 1 "$CURL_LOG")"
+contains "every wait is bounded, whatever the URL" "--connect-timeout 15 --max-time 120" "$(cat "$CURL_LOG")"
+lacks "a directory given as the base is not held to HTTPS only" "--proto" "$(cat "$CURL_LOG")"
+ok "the temporary directory is removed" "" "$(ls -A "$TMP/fetch-tmp")"
+
+# --- the same version again: nothing happens, and the network is not touched --
+before=$(inodes); marker_before=$(cat "$RUST_BIN.release")
+export TAGENTS_CORE_BASE_URL=file://$TMP/does-not-exist
+out=$(run_native); rc=$?
+ok "a second run exits 0" 0 "$rc"
+ok "it made no request" 0 "$(calls)"
+ok "the binary and the marker are the same files" "$before" "$(inodes)"
+ok "and the marker says the same" "$marker_before" "$(cat "$RUST_BIN.release")"
+lacks "it says nothing about a binary" "prebuilt" "$out"
+
+# --- the version moves: the old binary is replaced ----------------------------
+set_version 0.1.1; make_release 0.1.1 "$TRIPLE"; use_release 0.1.1
+out=$(run_native); rc=$?
+ok "an update to a version with a release exits 0" 0 "$rc"
+ok "the marker moved to the new version" "0.1.1 $TRIPLE $(sha_of "$RUST_BIN")" "$(cat "$RUST_BIN.release")"
+ok "and the binary is the new one" "native-core 0.1.1 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+
+# --- the version moves and its release is missing: the old binary goes ---------
+set_version 0.1.2; use_release 0.1.2
+out=$(run_native); rc=$?
+ok "an update to a version with no release exits 0" 0 "$rc"
+contains "it says there is no release, with the URL it tried" "no prebuilt tagents-core 0.1.2 for $TRIPLE (file://$RELEASES/v0.1.2/tagents-core-0.1.2-$TRIPLE.tar.gz.sha256), using the node CLI" "$out"
+nothing_installed "the old binary of 0.1.1 is not kept"
+same_bytes "the wrapper is the plain node one" <(wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/core/dist/cli/main.js") "$TAGENTS_BIN/tagents-core"
+node_cli_answers "an install with no release"
+out=$(run_native --quiet); rc=$?
+ok "--quiet exits 0 too" 0 "$rc"
+lacks "and hides the line" "no prebuilt" "$out"
+
+# --- a download that fails its checks installs nothing, and fails the run -----
+fresh_native 0.1.0; run_native >/dev/null
+set_version 0.1.1; make_release 0.1.1 "$TRIPLE"; use_release 0.1.1
+printf 'x' >> "$RELEASES/v0.1.1/tagents-core-0.1.1-$TRIPLE.tar.gz"
+out=$(TMPDIR=$TMP/fetch-tmp run_native); rc=$?
+ok "an archive that is not the one the checksum is of exits 1" 1 "$rc"
+contains "the warning names the archive and both hashes" "the SHA-256 of tagents-core-0.1.1-$TRIPLE.tar.gz is" "$out"
+contains "and says what the run came to" "the prebuilt tagents-core was not installed, see above, so the node CLI is in use" "$out"
+nothing_installed "the 0.1.0 binary does not stay beside a failed 0.1.1"
+ok "the wrappers were written all the same" "tagents v1 " "$("$TAGENTS_BIN/tagents")"
+node_cli_answers "after a failed check"
+ok "the temporary directory is removed" "" "$(ls -A "$TMP/fetch-tmp")"
+make_release 0.1.1 "$TRIPLE"
+printf '%s  %s\n' "$(printf 0%.0s $(seq 1 64))" "tagents-core-0.1.1-$TRIPLE.tar.gz" > "$RELEASES/v0.1.1/tagents-core-0.1.1-$TRIPLE.tar.gz.sha256"
+out=$(run_native); rc=$?
+ok "a checksum file naming another hash exits 1" 1 "$rc"
+contains "...and says so" "the SHA-256 of tagents-core-0.1.1-$TRIPLE.tar.gz is" "$out"
+nothing_installed "nothing is installed for it"
+make_release 0.1.1 "$TRIPLE"
+out=$(run_native); rc=$?
+ok "the next run, with a release that checks out, installs it and exits 0" 0 "$rc"
+ok "...and the binary is there" "native-core 0.1.1 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+
+# --- a checksum file that is not a SHA-256 -------------------------------------
+fresh_native 0.1.0
+good=$(cut -d ' ' -f 1 "$RELEASES/v0.1.0/$ARCHIVE.sha256")
+for bad in "not-a-hash  $ARCHIVE" "${good%????}  $ARCHIVE" "${good}00  $ARCHIVE" "$(printf '%s' "$good" | tr a-f A-F)  $ARCHIVE" ""; do
+  printf '%s\n' "$bad" > "$RELEASES/v0.1.0/$ARCHIVE.sha256"
+  out=$(run_native); rc=$?
+  ok "a checksum file reading '${bad%%  *}' exits 1" 1 "$rc"
+  contains "...with the reason" "$ARCHIVE.sha256 does not start with a SHA-256" "$out"
+  nothing_installed "...and nothing is installed"
+done
+
+# --- an archive that is not exactly tagents-core and LICENSE ---------------------
+STAGE=$TMP/stage
+stage_files() {
+  rm -rf "$STAGE" "$TMP/stage-link" "$TMP/outside"; mkdir -p "$STAGE" "$TMP/stage-link"
+  printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.1.0"; exit 0; fi\n' > "$STAGE/tagents-core"; chmod 755 "$STAGE/tagents-core"
+  printf 'license\n' > "$STAGE/LICENSE"; printf 'extra\n' > "$STAGE/extra"; printf 'outside\n' > "$TMP/outside"
+  cp "$STAGE/LICENSE" "$TMP/stage-link/LICENSE"; ln -s "$STAGE/tagents-core" "$TMP/stage-link/tagents-core"
+}
+custom_archive() {  # <stage dir> <member…> — the release archive replaced by one with exactly those members and a checksum that matches it
+  local dir=$1; shift
+  ( cd "$dir" && tar -czPf "$RELEASES/v0.1.0/$ARCHIVE" "$@" )
+  printf '%s  %s\n' "$(sha_of "$RELEASES/v0.1.0/$ARCHIVE")" "$ARCHIVE" > "$RELEASES/v0.1.0/$ARCHIVE.sha256"
+}
+fresh_native 0.1.0; stage_files
+custom_archive "$STAGE" tagents-core LICENSE extra
+out=$(run_native); rc=$?
+ok "an archive with a third member exits 1" 1 "$rc"
+contains "...with the reason" "does not hold exactly tagents-core and LICENSE" "$out"
+nothing_installed "...and nothing is installed"
+custom_archive "$STAGE" tagents-core
+out=$(run_native); rc=$?
+ok "an archive without the LICENSE exits 1" 1 "$rc"
+nothing_installed "...and nothing is installed"
+custom_archive "$STAGE" tagents-core LICENSE ../outside
+out=$(run_native); rc=$?
+ok "an archive with a member outside its own directory exits 1" 1 "$rc"
+contains "...with the reason" "does not hold exactly tagents-core and LICENSE" "$out"
+nothing_installed "...and nothing is installed"
+custom_archive "$TMP/stage-link" tagents-core LICENSE
+out=$(run_native); rc=$?
+ok "an archive whose tagents-core is a symlink exits 1" 1 "$rc"
+contains "...with the reason" "does not unpack to a tagents-core file" "$out"
+nothing_installed "...and nothing is installed"
+custom_archive "$STAGE" tagents-core LICENSE
+out=$(run_native); rc=$?
+ok "the same stage with the right members installs" 0 "$rc"
+
+# --- a binary that does not say it is this version ------------------------------
+fresh_native 0.1.0
+make_release 0.1.0 "$TRIPLE" 9.9.9
+out=$(run_native); rc=$?
+ok "a binary whose --version says another version exits 1" 1 "$rc"
+contains "...and the warning quotes what it said" "says 'tagents-core 9.9.9' for --version, not 'tagents-core 0.1.0'" "$out"
+nothing_installed "...and nothing is installed"
+stage_files; printf '#!/bin/sh\nexit 1\n' > "$STAGE/tagents-core"
+custom_archive "$STAGE" tagents-core LICENSE
+out=$(run_native); rc=$?
+ok "a binary that fails --version exits 1" 1 "$rc"
+contains "...and the warning says it said nothing" "says '' for --version" "$out"
+nothing_installed "...and nothing is installed"
+
+# --- a binary built by hand is not ours ----------------------------------------
+fresh_native 0.1.0
+TAGENTS_NO_NATIVE=1 run_native >/dev/null
+mkdir -p "$(dirname "$RUST_BIN")"
+printf '#!/bin/sh\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+out=$(run_native); rc=$?
+ok "an install over a hand-built binary exits 0" 0 "$rc"
+ok "it made no request" 0 "$(calls)"
+ok "the binary is as it was" "handbuilt" "$("$RUST_BIN")"
+ok "and gained no marker" no "$(exists "$RUST_BIN.release")"
+ok "the wrapper names it" "handbuilt" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core")"
+out=$(TAGENTS_NO_NATIVE=1 run_native); rc=$?
+ok "TAGENTS_NO_NATIVE=1 leaves it alone as well" "handbuilt" "$("$RUST_BIN")"
+chmod 644 "$RUST_BIN"
+out=$(run_native); rc=$?
+ok "a hand-built file that is not executable is left alone too" yes "$(grep -q handbuilt "$RUST_BIN" && echo yes || echo no)"
+ok "...with no request" 0 "$(calls)"
+
+# --- TAGENTS_NO_NATIVE=1 --------------------------------------------------------
+fresh_native 0.1.0
+out=$(TAGENTS_NO_NATIVE=1 run_native); rc=$?
+ok "TAGENTS_NO_NATIVE=1 on a fresh install exits 0" 0 "$rc"
+ok "...fetches nothing" 0 "$(calls)"
+nothing_installed "...and installs nothing"
+run_native >/dev/null
+ok "without it the binary is installed" yes "$(exists "$RUST_BIN.release")"
+out=$(TAGENTS_NO_NATIVE=1 run_native); rc=$?
+ok "with it, a prebuilt binary is removed" 0 "$rc"
+contains "...and the line says why" "removed the prebuilt tagents-core: TAGENTS_NO_NATIVE=1" "$out"
+nothing_installed "...with its marker"
+node_cli_answers "after the removal"
+
+# --- a machine with no prebuilt binary -----------------------------------------
+fresh_native 0.1.0; run_native >/dev/null
+export TAGENTS_CORE_TARGET=riscv-nothing
+out=$(run_native); rc=$?
+ok "an unsupported target exits 0" 0 "$rc"
+contains "it says so and names the target" "no prebuilt tagents-core for riscv-nothing, using the node CLI" "$out"
+ok "...with no request" 0 "$(calls)"
+nothing_installed "...and the binary of another target does not stay"
+unset TAGENTS_CORE_TARGET
+fresh_native 0.1.0; unset TAGENTS_CORE_TARGET
+export TAGENTS_CORE_BASE_URL=file://$TMP/no-release
+for row in "Linux x86_64 0|x86_64-unknown-linux-musl" "Darwin x86_64 0|x86_64-apple-darwin" "Darwin x86_64 1|aarch64-apple-darwin" \
+           "Darwin arm64 0|aarch64-apple-darwin" "Linux aarch64 0|none"; do
+  read -r os arch translated <<< "${row%%|*}"; want=${row##*|}
+  shim=$TMP/uname-shim; rm -rf "$shim"; mkdir -p "$shim"
+  printf '#!/bin/sh\ncase "$1" in -m) echo %s ;; *) echo %s ;; esac\n' "$arch" "$os" > "$shim/uname"
+  printf '#!/bin/sh\necho %s\n' "$translated" > "$shim/sysctl"; chmod 755 "$shim/uname" "$shim/sysctl"
+  out=$(PATH="$shim:$PATH" run_native); rc=$?
+  ok "$os $arch (translated=$translated) exits 0" 0 "$rc"
+  if [ "$want" = none ]; then
+    contains "...and has no binary to fetch" "no prebuilt tagents-core for $os $arch, using the node CLI" "$out"
+  else
+    contains "...and asks for $want" "no prebuilt tagents-core 0.1.0 for $want (" "$out"
+  fi
+done
+
+# --- no curl, no tool for a SHA-256 ---------------------------------------------
+farm() {  # <dir> <names to leave out…> — a PATH of /usr/bin and /bin without those names, plus git
+  local d=$1 src n x skip; shift
+  rm -rf "$d"; mkdir -p "$d"
+  for src in /usr/bin/* /bin/*; do
+    n=${src##*/}; skip=0
+    for x in "$@"; do [ "$n" = "$x" ] && skip=1; done
+    if [ "$skip" = 0 ] && [ ! -e "$d/$n" ]; then ln -s "$src" "$d/$n"; fi
+  done
+  if [ ! -e "$d/git" ]; then ln -s "$(command -v git)" "$d/git"; fi
+}
+fresh_native 0.1.0
+farm "$TMP/farm-no-curl" curl
+out=$(PATH=$TMP/farm-no-curl run); rc=$?
+ok "an install with no curl exits 0" 0 "$rc"
+contains "...and says why there is no binary" "curl is not here to fetch the prebuilt tagents-core with, using the node CLI" "$out"
+nothing_installed "...and installs none"
+run_native >/dev/null
+before=$(inodes)
+out=$(PATH=$TMP/farm-no-curl run); rc=$?
+ok "a run with no curl keeps a binary that is the right one" "$before" "$(inodes)"
+farm "$TMP/farm-no-sha" sha256sum shasum
+out=$(PATH=$TMP/farm-no-sha run); rc=$?
+ok "an install with no SHA-256 tool exits 0" 0 "$rc"
+contains "...and says why" "neither sha256sum nor shasum is here" "$out"
+nothing_installed "...and a binary it cannot check is not kept"
+
+# --- the other states of a marked binary ---------------------------------------
+fresh_native 0.1.0; run_native >/dev/null
+printf '#!/bin/sh\necho evil\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+out=$(run_native); rc=$?
+ok "a marked binary changed since it was installed exits 0" 0 "$rc"
+ok "...and is replaced by a download" "native-core 0.1.0 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+ok "...with a marker for what is there now" "0.1.0 $TRIPLE $(sha_of "$RUST_BIN")" "$(cat "$RUST_BIN.release")"
+printf '0.1.0 x86_64-apple-darwin %s\n' "$(sha_of "$RUST_BIN")" > "$RUST_BIN.release"
+printf '#!/bin/sh\necho other-target\n' > "$RUST_BIN"; printf '0.1.0 x86_64-apple-darwin %s\n' "$(sha_of "$RUST_BIN")" > "$RUST_BIN.release"
+out=$(run_native); rc=$?
+ok "a binary installed for another target is replaced" "native-core 0.1.0 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+printf '0.1.0 %s %s extra\n' "$TRIPLE" "$(sha_of "$RUST_BIN")" > "$RUST_BIN.release"
+before=$(inodes)
+out=$(run_native); rc=$?
+ok "a marker with a fourth field is no marker of ours: the binary is fetched again" 2 "$(calls)"
+: > "$RUST_BIN.release"
+out=$(run_native); rc=$?
+ok "an empty marker is fetched again" 2 "$(calls)"
+ok "...and a good one written" "0.1.0 $TRIPLE $(sha_of "$RUST_BIN")" "$(cat "$RUST_BIN.release")"
+rm -f "$RUST_BIN"
+use_release 0.1.5
+out=$(run_native); rc=$?
+ok "a marker without its binary exits 0" 0 "$rc"
+nothing_installed "...and is removed when there is no release"
+fresh_native 0.1.0; run_native >/dev/null
+rm -f "$RUST_BIN"
+out=$(run_native); rc=$?
+ok "a marker without its binary, with a release, installs again" "native-core 0.1.0 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+rm -f "$RUST_BIN"; mkdir "$RUST_BIN"; touch "$RUST_BIN/inside"
+use_release 0.1.5
+out=$(run_native); rc=$?
+ok "a directory where a marked binary was is removed" 0 "$rc"
+nothing_installed "...with the marker"
+fresh_native 0.1.0; run_native >/dev/null
+advance sh -c 'printf "[workspace.package]\nversion = \"1.0\"\n" > Cargo.toml'
+out=$(run_native); rc=$?
+ok "a Cargo.toml with no usable version exits 0" 0 "$rc"
+contains "...says so" "no workspace version in $TAGENTS_HOME/Cargo.toml, using the node CLI" "$out"
+nothing_installed "...and keeps no binary"
+
+# --- a base URL with a trailing slash; the real URL and its flags ---------------
+fresh_native 0.1.0
+export TAGENTS_CORE_BASE_URL=file://$RELEASES/v0.1.0/
+out=$(run_native); rc=$?
+ok "a base URL ending in a slash works" "native-core 0.1.0 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+fresh_native 0.1.0; unset TAGENTS_CORE_BASE_URL
+rm -f "$CURL_LOG"
+out=$(PATH="$TMP/curlfail:$TMP/node-c:$PATH" run); rc=$?
+ok "GitHub being unreachable exits 0" 0 "$rc"
+contains "the URL is the release of the version, on GitHub" "(https://github.com/SkuratovichA/tagents/releases/download/v0.1.0/$ARCHIVE.sha256)" "$out"
+contains "the request is HTTPS only, TLS 1.2 or newer" "--proto =https --tlsv1.2" "$(cat "$CURL_LOG")"
+contains "...bounded in time" "--connect-timeout 15 --max-time 120" "$(cat "$CURL_LOG")"
+contains "...and retried" "--retry 2" "$(cat "$CURL_LOG")"
+nothing_installed "nothing is installed"
+
+# --- --check asks for nothing and touches nothing ------------------------------
+fresh_native 0.1.0; run_native >/dev/null
+before=$(inodes)
+set_version 0.1.1; use_release 0.1.1
+out=$(run_native --check); rc=$?
+ok "--check exits 0" 0 "$rc"
+ok "...makes no request" 0 "$(calls)"
+ok "...and leaves the binary and its marker as they are" "$before" "$(inodes)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
