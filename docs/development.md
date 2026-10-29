@@ -53,6 +53,7 @@ The tests read `tagents`, `tnotes` and `tusage` from the checkout as they run. A
 | `tests/modules.sh` | the layout itself: every module is sourced and none is orphaned, nothing is defined twice, a module only defines things, and the entry point still finds its modules through a symlink and refuses to run without them |
 | `tests/forks.sh` | what one repaint costs in processes: the number of programs `--list` starts does not grow with the records in the state directory, `--counts` reads its config once and reuses its output for five seconds (`TA_COUNTS_EVERY=0` turns that off), and a record that cannot be read does not take the ones after it down. The status bar and the refresher run these hundreds of times a minute, and the endpoint security agent inspects every process they start |
 | `tests/refresh.sh` | the real refresher loop with shims for its network: what a wake posts and which programs it starts |
+| `tests/rust-parity.sh` | the Rust `tagents-core` against the node CLI on one seeded home: the same stdout, stderr and exit code for every `sessions` case, including the awkward transcripts; needs `python3` and a built `packages/core`, and builds the debug binary when it is missing (after a Rust edit run `cargo build` first, the suite does not rebuild a binary that exists) |
 | `tests/events.sh` | the hook's event stream and what the hook starts |
 
 The other suites in `tests/` are named after the part they cover.
@@ -79,8 +80,10 @@ pnpm spec:check                        # every spec and change validates (CI run
 The site is [VitePress](https://vitepress.dev) in `docs/`, run through `pnpm dlx`, so the docs toolchain is not a dependency of the repository (and never rides along with the managed copy's `pnpm install`).
 
 ```sh
-pnpm docs:dev       # a live preview
+pnpm docs:dev       # a live preview, served under /docs/ like the published site
 pnpm docs:build     # the build CI publishes; it fails on a dead link
 ```
 
-Pushes to `main` that touch `docs/` publish the site to GitHub Pages.
+The documentation is published under `/docs/` of [tagents.arstoien.com](https://tagents.arstoien.com/), next to the one-page site of `site/` at `/`. The workflow `.github/workflows/site.yml` builds and checks both on every pull request that touches `docs/`, `site/` or one of the other files the workflow lists under `paths`, and a push to `main` deploys them as one GitHub Pages site, because a repository has one Pages artifact. The `base` of VitePress is `/docs/` for that reason (`docs/.vitepress/config.mjs`), and the site's link check requires `docs/index.html` in the assembled output without reading the pages of the documentation.
+
+The address is a CNAME record `tagents` for `arstoien.com` pointing at `skuratovicha.github.io`, and `tagents.arstoien.com` as the custom domain in the repository's Pages settings, with HTTPS enforced once GitHub has issued the certificate. The order matters: the CNAME record comes first and the Pages setting after it, then HTTPS, and all of it after a deployment built for the domain has succeeded, because from then on `skuratovicha.github.io/tagents/` redirects to the domain, and a site that is not there yet would break.

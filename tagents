@@ -478,6 +478,11 @@ forward_core() {  # <verb> [args…]
   if command -v tagents-core >/dev/null 2>&1; then
     exec tagents-core "$@"
   fi
+  # The Rust front door, when this tree has one built (cargo build --release): it answers the verbs ported to Rust and runs the node CLI below for every other word.
+  built=${SELF%/*}/target/release/tagents-core
+  if [ -f "$built" ] && [ -x "$built" ]; then
+    exec "$built" "$@"
+  fi
   # A repo checkout: built, never installed. Executable since the build chmods
   # it, but run through node when it is not — a fresh clone of the dist/.
   built=${SELF%/*}/packages/core/dist/cli/main.js

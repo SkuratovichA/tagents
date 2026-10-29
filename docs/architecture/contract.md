@@ -8,7 +8,7 @@ The Claude Code plugin tells a session exactly what every tagents command and pa
 
 | what | read from | lands in |
 |------|-----------|----------|
-| every verb, flag, exit code and effect of `tagents-core`, `tagents-knowledge` and `tagents-notify`, and of the flags of `tagents` that are not interactive | the command specs `parseArgs` itself is handed, `packages/*/src/cli/spec.ts`, and `tagents.cli.json` for the bash script | `contract.json`, `references/cli.md` |
+| every verb, flag, exit code and effect of `tagents-core`, `tagents-knowledge` and `tagents-notify`, and of the flags of `tagents` that are not interactive | the command specs `parseArgs` itself is handed: `spec/cli/tagents-core.json` for `tagents-core` (read through `packages/core/src/cli/spec.ts`), `packages/knowledge/src/cli/spec.ts` for `tagents-knowledge`, `packages/notify/src/cli/spec.ts` for `tagents-notify`, and `tagents.cli.json` for the bash script | `contract.json`, `references/cli.md` |
 | every MCP tool and its input schema | the knowledge server `createServer()` builds, asked for its tool list the way a client asks, and the tools of the `tagents` server, which `toolSpecs()` derives from the verbs above | `contract.json`, `references/mcp.md` |
 | the public TypeScript API of each package | declarations emitted from the sources, through [API Extractor](https://api-extractor.com/) | `references/*.api.md`, and a hash of each in `contract.json` |
 | the flags of `tagents`, `tusage` and `tnotes` | each script's own `--help` | `references/scripts.md` |

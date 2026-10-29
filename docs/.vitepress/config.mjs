@@ -4,7 +4,8 @@ export default {
   title: 'tagents',
   description: 'A dashboard of every Claude Code session running under tmux: which one is blocked on you, what each is doing and what it costs.',
   lang: 'en-US',
-  base: '/tagents/',
+  // The documentation is published under /docs/ of the site, next to the page at / (.github/workflows/site.yml).
+  base: '/docs/',
   cleanUrls: true,
   lastUpdated: false,
   srcExclude: ['demo/**'],
@@ -39,6 +40,7 @@ export default {
           { text: 'Overview', link: '/architecture/overview' },
           { text: 'How the dashboard stays current', link: '/architecture/refresh' },
           { text: 'The generated contract', link: '/architecture/contract' },
+          { text: 'The Rust core', link: '/architecture/rust-core' },
         ],
       },
       {
