@@ -5,33 +5,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { test } from 'node:test';
-import type { CliContract } from '@tagents/core';
-import { callTool, resultText } from '../src/run.ts';
-import { toolSpecs } from '../src/tools.ts';
+import { afterEach, test } from 'node:test';
+import { MAX_STREAM, callTool, resultText } from '../src/run.ts';
+import { fakeTool as tool, rig, stopRigs } from './rig.ts';
 
-const cli: CliContract = {
-  program: 'tagents-fake',
-  exit: { ok: 0, error: 1, usage: 2, refused: 3, timeout: 4 },
-  commands: [
-    { path: ['echo'], positionals: ['[text]'], options: { loud: { type: 'boolean' } }, required: [], summary: 'prints', effect: 'read' },
-    { path: ['stdin'], positionals: [], options: {}, required: [], summary: 'reads stdin', effect: 'read' },
-    { path: ['hang'], positionals: [], options: {}, required: [], summary: 'never ends', effect: 'read' },
-    { path: ['window'], positionals: [], options: {}, required: [], summary: 'opens a window', effect: 'spawn', requires: 'tmux' },
-  ],
-};
-const tool = (name: string) => {
-  const found = toolSpecs([cli]).find((t) => t.name === name);
-  assert.ok(found, name);
-  return found;
-};
-
-function rig(script: string): { env: NodeJS.ProcessEnv; dir: string } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-run-'));
-  const file = path.join(dir, 'tagents-fake');
-  fs.writeFileSync(file, `#!/bin/sh\n${script}\n`, { mode: 0o755 });
-  return { dir, env: { PATH: `${dir}:/usr/bin:/bin` } };
-}
+afterEach(stopRigs);
 
 test('a zero exit with JSON on stdout is an ok result holding the parsed document', async () => {
   const { env } = rig(`printf '{"a":[1,2]}\\n'`);
@@ -110,4 +88,78 @@ test('a verb that needs tmux is refused, without running, when the server has no
   const inTmux = await callTool(tool('fake_window'), {}, { env: { ...env, TMUX: '/tmp/tmux-1/default,1,0' }, timeoutMs: 5000 });
   assert.equal(inTmux.isError, false);
   assert.equal(fs.existsSync(path.join(dir, 'tagents-fake.ran')), true);
+});
+
+test('arguments travel as one word each: a newline or an equals sign inside a value does not split or re-read it', async () => {
+  const { env } = rig(`printf '%s' "$#"; printf '<%s>' "$@"`);
+  const r = await callTool(tool('fake_echo'), { name: 'a=b', text: 'line one\nline two=x' }, { env, timeoutMs: 5000 });
+  assert.equal(JSON.parse(resultText(r)).stdout, '3<echo><--name=a=b><line one\nline two=x>');
+});
+
+test('a program that cannot be started is a refusal, never a rejection: a NUL in the environment, a file that is not executable', async () => {
+  const withNul = rig(`exit 0`);
+  const nul = await callTool(tool('fake_echo'), {}, { env: { ...withNul.env, BAD: 'a\0b' }, timeoutMs: 5000 });
+  assert.equal(nul.isError, true);
+  assert.equal(JSON.parse(resultText(nul)).outcome, 'error');
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mcp-run-noexec-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'tagents-fake'), '#!/bin/sh\nexit 0\n', { mode: 0o644 });
+    const noexec = await callTool(tool('fake_echo'), {}, { env: { PATH: dir }, timeoutMs: 5000 });
+    assert.equal(noexec.isError, true);
+    assert.equal(JSON.parse(resultText(noexec)).outcome, 'error');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// The cap counts bytes of the stream, as the client's limit does, and cuts between characters.
+const MARKER = /\n\[output cut at \d+ bytes\]$/;
+const bytes = (text: string): number => Buffer.byteLength(text);
+
+test('output over the cap is cut on a character boundary with a marker, whatever the chunks were: a character that straddles the limit is dropped whole', async () => {
+  const { env } = rig(`head -c ${MAX_STREAM - 1} /dev/zero | tr '\\0' a; printf '\\303\\251'; head -c 1000 /dev/zero | tr '\\0' b`);
+  const body = JSON.parse(resultText(await callTool(tool('fake_echo'), {}, { env, timeoutMs: 20000 })));
+  assert.equal(body.truncated, true);
+  assert.ok(!body.stdout.includes('\uFFFD'), 'no replacement character');
+  assert.ok(!body.stdout.includes('\u00E9'), 'the half of the é that fit is dropped with the é');
+  assert.match(body.stdout, MARKER);
+  assert.equal(body.stdout.replace(MARKER, '').length, MAX_STREAM - 1);
+  assert.ok(bytes(body.stdout) <= MAX_STREAM + bytes(body.stdout.match(MARKER)?.[0] ?? ''));
+});
+
+test('a character that ends exactly at the limit stays', async () => {
+  const { env } = rig(`head -c ${MAX_STREAM - 2} /dev/zero | tr '\\0' a; printf '\\303\\251'; head -c 1000 /dev/zero | tr '\\0' b`);
+  const body = JSON.parse(resultText(await callTool(tool('fake_echo'), {}, { env, timeoutMs: 20000 })));
+  assert.equal(body.truncated, true);
+  assert.ok(body.stdout.replace(MARKER, '').endsWith('a\u00E9'));
+  assert.equal(bytes(body.stdout.replace(MARKER, '')), MAX_STREAM);
+});
+
+test('many small writes that add up past the cap are cut by bytes in total, not by the size of a chunk, and multi-byte text is counted in bytes', async () => {
+  const { env } = rig(`i=0; while [ $i -lt 400 ]; do printf '${'€'.repeat(300)}'; i=$((i+1)); done`);
+  const r = await callTool(tool('fake_echo'), {}, { env, timeoutMs: 20000 });
+  const body = JSON.parse(resultText(r));
+  assert.equal(body.truncated, true);
+  assert.match(body.stdout, MARKER);
+  const kept = body.stdout.replace(MARKER, '');
+  assert.ok(bytes(kept) <= MAX_STREAM && bytes(kept) > MAX_STREAM - 3, `kept ${bytes(kept)} bytes`);
+  assert.ok(!kept.includes('\uFFFD'));
+});
+
+test('a surrogate pair is never split by the cut, and stderr is capped on its own', async () => {
+  const { env } = rig(`printf a; yes '😀' | head -c ${MAX_STREAM * 2}; yes '😀' | head -c ${MAX_STREAM * 2} >&2`);
+  const body = JSON.parse(resultText(await callTool(tool('fake_echo'), {}, { env, timeoutMs: 20000 })));
+  for (const stream of [body.stdout, body.stderr]) {
+    assert.ok(stream.isWellFormed(), 'no lone surrogate');
+    assert.match(stream, MARKER);
+    assert.ok(bytes(stream.replace(MARKER, '')) <= MAX_STREAM);
+  }
+});
+
+test('output within the cap is whole and not marked', async () => {
+  const { env } = rig(`head -c ${MAX_STREAM} /dev/zero | tr '\\0' a`);
+  const body = JSON.parse(resultText(await callTool(tool('fake_echo'), {}, { env, timeoutMs: 20000 })));
+  assert.equal(body.truncated, undefined);
+  assert.equal(body.stdout.length, MAX_STREAM);
 });
