@@ -340,7 +340,7 @@ bump_only() { bump; }
 gate_after "a source file changed and the version did not: fails" 1 touch_src
 out=$(rel "$REPO" gate main)
 contains "it names the changed file" "crates/a/src/lib.rs" "$out"
-contains "and says the version is unchanged" "0.1.0" "$out"
+contains "and says the version is unchanged" "still 0.1.0" "$out"
 gate_after "a source file changed and the version moved: passes" 0 touch_src_and_bump
 contains "it says the version moved" "0.1.0 to 0.1.1" "$(rel "$REPO" gate main)"
 gate_after "only a test changed: passes" 0 touch_test
@@ -364,6 +364,33 @@ mkrepo
 printf 'docs\n' >> "$REPO/docs/x.md"; commit_all
 git_in checkout -q main; touch_src; bump; commit_all; git_in checkout -q change
 ok "what main gained after the branch left it does not count (merge base, not tip)" 0 "$(code_of "$(rel "$REPO" gate main)")"
+# The case only the three dots pass: main gains a source change and no bump, the branch changes docs. Compared tip to tip (two dots) the source change of main would look like the branch's own.
+mkrepo
+printf 'docs\n' >> "$REPO/docs/x.md"; commit_all
+git_in checkout -q main; touch_src; commit_all; git_in checkout -q change
+ok "main gained a source change and no bump while the branch changed only docs: passes (merge base, not tip)" 0 "$(code_of "$(rel "$REPO" gate main)")"
+# The version has to go up from the merge base, not merely differ from the tip of the base.
+version_from_to() { sed -i.bak "s/^version = \"$1\"/version = \"$2\"/" "$REPO/Cargo.toml" && rm "$REPO/Cargo.toml.bak"; }
+mkrepo
+git_in checkout -q main; version_from_to 0.1.0 0.1.1; commit_all; git_in checkout -q -B change main
+version_from_to 0.1.1 0.1.0; touch_src; commit_all
+out=$(rel "$REPO" gate main)
+ok "a source change that lowers the version from 0.1.1 to 0.1.0: fails" 1 "$(code_of "$out")"
+contains "and says the version went down" "went down from 0.1.1" "$out"
+mkrepo
+git_in checkout -q main; version_from_to 0.1.0 0.1.1; commit_all; git_in checkout -q change
+touch_src; commit_all
+out=$(rel "$REPO" gate main)
+ok "a branch that left main before main's bump, with a source change and no bump of its own: fails" 1 "$(code_of "$out")"
+contains "and says the version stayed" "still 0.1.0" "$out"
+mkrepo
+git_in checkout -q main; version_from_to 0.1.0 0.1.1; commit_all; git_in checkout -q change
+touch_src; bump; commit_all
+ok "the same branch with a bump above the merge base's version: passes" 0 "$(code_of "$(rel "$REPO" gate main)")"
+mkrepo
+sed -i.bak 's/^version = "0.1.0"/version = "0.9.9"/' "$REPO/Cargo.toml" && rm "$REPO/Cargo.toml.bak"; commit_all; git_in checkout -q -B main; git_in checkout -q -b change2
+sed -i.bak 's/^version = "0.9.9"/version = "0.10.0"/' "$REPO/Cargo.toml" && rm "$REPO/Cargo.toml.bak"; touch_src; commit_all
+ok "0.9.9 to 0.10.0 is a bump (the numbers are compared as numbers, not as text)" 0 "$(code_of "$(rel "$REPO" gate main)")"
 mkrepo
 out=$(rel "$REPO" gate no-such-ref)
 ok "a base that does not exist is an error" 1 "$(code_of "$out")"
@@ -429,6 +456,65 @@ for f in "$SHAPES"/*.toml; do
     contains "$name: install.sh reads $want" "no prebuilt tagents-core $want for aarch64-apple-darwin" "$said"
   fi
 done
+
+# The SHA-256 helper has three homes: install.sh (one standalone file), core-release.sh, and the inline checksum step of release.yml. The two functions run over the same files here and must print the same thing.
+printf 'sha pin\n' > "$TMP/sha-a"; : > "$TMP/sha-b"
+inst_sha=$(sed -n '/^sha256_of() {/,/^}/p' "$INSTALL")
+rel_sha=$(sed -n '/^have() /p;/^sha256_of() {/,/^}/p' "$RELEASE")
+ok "both scripts define sha256_of" 2 "$(printf '%s\n%s\n' "$inst_sha" "$rel_sha" | grep -c '^sha256_of() {')"
+for f in sha-a sha-b; do
+  from_installer=$(sh -c "$inst_sha
+sha256_of '$TMP/$f'")
+  from_script=$(sh -c "$rel_sha
+sha256_of '$TMP/$f'")
+  ok "install.sh and core-release.sh print the same SHA-256 for $f" "$from_script" "$from_installer"
+  ok "...and it is the real one" "$(sha_of "$TMP/$f")" "$from_installer"
+done
+
+# ---------------------------------------------------------------------------
+t "6. release.yml and the code it relies on agree"
+# ---------------------------------------------------------------------------
+WORKFLOW=$ROOT/.github/workflows/release.yml
+# is_input as core-release.sh defines it: its own text, not a copy.
+eval "$(sed -n '/^is_input() {/,/^}/p' "$RELEASE")"
+pr_paths=$(awk '
+  /^  pull_request:/ { in_pr = 1; next }
+  in_pr && /^  [a-z_]+:/ { in_pr = 0 }
+  in_pr && /^    paths:/ { in_paths = 1; next }
+  in_pr && in_paths && /^      - / { sub(/^      - /, ""); gsub(/\047/, ""); print; next }
+  in_pr && in_paths { in_paths = 0 }
+' "$WORKFLOW")
+ok "release.yml lists paths for its pull_request trigger" yes "$([ -n "$pr_paths" ] && echo yes || echo no)"
+# A pattern of the workflow is a glob where ** is read as *, as in a case pattern.
+on_a_pr_path() {  # <file>
+  local p
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    # shellcheck disable=SC2254
+    case $1 in $p) return 0 ;; esac
+  done <<< "$pr_paths"
+  return 1
+}
+for f in Cargo.toml Cargo.lock rust-toolchain.toml crates/a/Cargo.toml crates/a/build.rs crates/a/src/lib.rs crates/a/src/x/y.rs spec/cli/tagents-core.json spec/cli/cli-spec.schema.json; do
+  ok "is_input accepts $f" yes "$(is_input "$f" && echo yes || echo no)"
+  ok "...and a pull_request path of release.yml matches it, so the three builds run as a dry run for it" yes "$(on_a_pr_path "$f" && echo yes || echo no)"
+done
+for f in docs/x.md README.md crates/a/tests/t.rs packages/core/src/x.ts; do
+  ok "is_input refuses $f" no "$(is_input "$f" && echo yes || echo no)"
+done
+
+# The targets exist in three places: the build matrix and the publish loop of release.yml, and core_triple in install.sh.
+matrix_targets=$(awk '/^ *- target: /{ print $3 }' "$WORKFLOW" | sort | tr '\n' ' ')
+loop_targets=$(sed -n 's/^ *for target in \(.*\); do$/\1/p' "$WORKFLOW" | tr ' ' '\n' | sort | tr '\n' ' ')
+ok "the build matrix names three targets" 3 "$(printf '%s\n' $matrix_targets | wc -l | tr -d ' ')"
+ok "the publish loop names the same targets as the build matrix" "$matrix_targets" "$loop_targets"
+core_triple_fn=$(sed -n '/^core_triple() {/,/^}/p' "$INSTALL")
+for target in $matrix_targets; do
+  ok "install.sh takes $target through TAGENTS_CORE_TARGET" "$target" "$(TAGENTS_CORE_TARGET=$target sh -c "$core_triple_fn
+core_triple")"
+done
+ok "...and refuses a target nobody builds" "" "$(TAGENTS_CORE_TARGET=riscv64-unknown-nothing sh -c "$core_triple_fn
+core_triple")"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

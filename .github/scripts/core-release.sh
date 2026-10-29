@@ -5,7 +5,7 @@
 #   core-release.sh version [Cargo.toml|-]               print the workspace version, from the file (default: Cargo.toml) or from stdin
 #   core-release.sh package <version> <triple> <binary> <license-file> <outdir>
 #                                                       write tagents-core-<version>-<triple>.tar.gz and its .sha256 into <outdir>, print both names
-#   core-release.sh gate <base-ref>                      exit 1 when the pull request changes an input of the binary and leaves the workspace version alone
+#   core-release.sh gate <base-ref>                      exit 1 when the pull request changes an input of the binary and does not raise the workspace version above the one at the merge base
 #   core-release.sh verify <tag> <main-ref>              exit 1 unless <tag> is v<workspace version> and HEAD is on <main-ref>
 #
 # Every command works on the current directory, the root of a checkout. The version is the identity of the binary: `Cargo.toml` is the only place that holds it, a release is the tag `v<version>`, and install.sh fetches the archive of the version its checkout holds (docs/architecture/rust-core.md). install.sh keeps a second copy of the version reader (`core_version`) because it must stay one standalone file; tests/release.sh runs both over the same Cargo.toml shapes.
@@ -98,6 +98,25 @@ package() {
   printf '%s\n%s\n' "$name" "$name.sha256"
 }
 
+# 0 when the version $1 is strictly greater than $2, both <digits>.<digits>.<digits>, comparing the three numbers one by one (sort -V is not on every macOS).
+newer() {
+  old_ifs=$IFS
+  IFS=.
+  # shellcheck disable=SC2086 # split on the dots on purpose
+  set -- $1 $2
+  IFS=$old_ifs
+  if [ "$1" -ne "$4" ]; then
+    if [ "$1" -gt "$4" ]; then return 0; fi
+    return 1
+  fi
+  if [ "$2" -ne "$5" ]; then
+    if [ "$2" -gt "$5" ]; then return 0; fi
+    return 1
+  fi
+  if [ "$3" -gt "$6" ]; then return 0; fi
+  return 1
+}
+
 gate() {
   [ $# -eq 1 ] || fail "usage: gate <base-ref>"
   base=$1
@@ -112,13 +131,20 @@ gate() {
     echo "core-release: no input of the tagents-core binary changed since $base"
     return 0
   fi
-  before=$(git show "$base:Cargo.toml" | version -) || fail "$base has no workspace version to compare with"
+  # The version to beat is the one where the branch left the base, not the base's tip: a bump that landed on the base since then is not this branch's.
+  fork=$(git merge-base "$base" HEAD) || fail "$base and HEAD have no merge base"
+  before=$(git show "$fork:Cargo.toml" | version -) || fail "$fork, where HEAD left $base, has no workspace version to compare with"
   after=$(version Cargo.toml)
-  if [ "$before" = "$after" ]; then
+  if ! newer "$after" "$before"; then
+    if [ "$before" = "$after" ]; then
+      what="it is still $after at the merge base with $base and here"
+    else
+      what="it went down from $before at the merge base with $base to $after here"
+    fi
     {
-      printf 'core-release: this change touches what the tagents-core binary is built from, so the workspace version in Cargo.toml has to change with it (it is still %s on %s and here). Changed inputs:\n' "$after" "$base"
+      printf 'core-release: this change touches what the tagents-core binary is built from, so the workspace version in Cargo.toml has to go up with it (%s). Changed inputs:\n' "$what"
       printf '%s' "$inputs"
-      echo 'A binary of version V must come from the source of version V: bump [workspace.package] version, and run cargo update --workspace so Cargo.lock follows.'
+      echo 'A binary of version V must come from the source of version V: raise [workspace.package] version above the merge base'"'"'s, and run cargo update --workspace so Cargo.lock follows.'
     } >&2
     return 1
   fi
