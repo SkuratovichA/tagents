@@ -1,0 +1,179 @@
+name: release
+
+# Publishes the prebuilt `tagents-core` of one version as a GitHub release: three archives with a checksum each, which install.sh fetches for the managed copy that holds that version in its Cargo.toml (docs/architecture/rust-core.md, "How a release is made"). The logic lives in .github/scripts/core-release.sh; this file only calls it.
+#
+# A release is made by pushing the tag v<version> on a commit of main whose workspace version is <version>. The release of a tag that failed halfway is made by running this workflow by hand with that tag. A pull request that changes this file, the scripts or an input of the binary (the `pull_request.paths` below) runs the three builds as a dry run: the tag rules do not apply to it and nothing is published.
+on:
+  push:
+    tags:
+      - 'v[0-9]*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag to release, for example v0.1.0. It must exist already.
+        required: true
+        type: string
+  pull_request:
+    # The workflow and its scripts, and what the binary is built from: the paths is_input in .github/scripts/core-release.sh accepts, so that a link failure of the musl build or a failed cross-build shows on the pull request and not when the tag is pushed. tests/release.sh pins this list to is_input.
+    paths:
+      - .github/workflows/release.yml
+      - .github/scripts/**
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - crates/**
+      - spec/cli/**
+
+permissions:
+  contents: read
+
+# One release at a time and none cancelled halfway. A pull request run is the exception: it cancels the older run of its own ref, in a group of its own, so that it can never take the place of a release waiting for its turn.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('release-dry-run-{0}', github.ref) || 'release' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # The tag being released. In a pull request it is the name of the pull request ref and nothing reads it.
+  TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  # The rules a tag must meet, on a checkout of the tag with the whole history. It runs repository code with the read-only token only.
+  verify:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The commit the rules were checked on: build checks out this one, so a tag moved after verify is not built unverified.
+    outputs:
+      sha: ${{ steps.head.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: The tag is the workspace version of this commit, and the commit is on main
+        run: sh .github/scripts/core-release.sh verify "$TAG" origin/main
+      - name: Write down the commit that was verified
+        id: head
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: No release exists for the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if out=$(gh release view "$TAG" 2>&1); then
+            echo "::error::a release for $TAG exists already, and a release is never overwritten"
+            exit 1
+          fi
+          case $out in
+            *"release not found"*) ;;
+            *)
+              echo "::error::cannot tell whether a release for $TAG exists: $out"
+              exit 1
+              ;;
+          esac
+
+  build:
+    needs: verify
+    # verify is skipped in a pull request and must have succeeded otherwise.
+    if: ${{ !cancelled() && needs.verify.result != 'failure' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            native: true
+          # Built on the arm64 runner with the Apple toolchain, so it is not run here.
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            native: false
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            native: true
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.sha || needs.verify.outputs.sha }}
+          persist-credentials: false
+      - name: Install the toolchain rust-toolchain.toml pins
+        run: rustup toolchain install
+      - name: Add the target
+        run: rustup target add "$TARGET"
+      - name: Read the workspace version
+        id: version
+        run: |
+          version=$(sh .github/scripts/core-release.sh version)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: cargo build --locked --release --target "$TARGET" --package tagents-core
+      - name: Package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: sh .github/scripts/core-release.sh package "$VERSION" "$TARGET" "target/$TARGET/release/tagents-core" LICENSE dist
+      - name: Check the archive against its checksum, and the binary in it where this machine can run it
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          NATIVE: ${{ matrix.native }}
+        run: |
+          archive="tagents-core-$VERSION-$TARGET.tar.gz"
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd dist && sha256sum -c "$archive.sha256")
+          else
+            (cd dist && shasum -a 256 -c "$archive.sha256")
+          fi
+          if [ "$NATIVE" = true ]; then
+            unpacked=$(mktemp -d)
+            tar -xzf "dist/$archive" -C "$unpacked"
+            test "$("$unpacked/tagents-core" --version)" = "tagents-core $VERSION"
+            "$unpacked/tagents-core" --spec | grep -q '"program": "tagents-core"'
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-${{ matrix.target }}
+          path: |
+            dist/tagents-core-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz
+            dist/tagents-core-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  # The only job that can write, and it runs no repository code: it checks out nothing and only hands the six files to gh.
+  publish:
+    needs: [verify, build]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: dist
+      - name: Create the release from exactly the six expected files
+        run: |
+          version=${TAG#v}
+          set --
+          for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl; do
+            for file in "tagents-core-$version-$target.tar.gz" "tagents-core-$version-$target.tar.gz.sha256"; do
+              if [ ! -f "dist/$file" ]; then
+                echo "::error::dist/$file is missing"
+                exit 1
+              fi
+              set -- "$@" "dist/$file"
+            done
+          done
+          if [ "$(find dist -mindepth 1 | wc -l | tr -d ' ')" -ne 6 ]; then
+            echo "::error::dist holds more than the six expected files"
+            find dist -mindepth 1
+            exit 1
+          fi
+          gh release create "$TAG" "$@" --title "$TAG" --generate-notes --verify-tag

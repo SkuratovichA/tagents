@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: The tagents-core wrapper runs a Rust binary built before the install
-When `$TAGENTS_HOME/target/release/tagents-core` is an executable file at the time of the install, the `tagents-core` wrapper SHALL run it, with the node it pinned passed on as `TAGENTS_NODE`, for as long as it is an executable file, and the node CLI otherwise. Both files belong to the managed copy, so the wrapper runs nothing outside it, and the installer never builds or downloads that binary.
+When `$TAGENTS_HOME/target/release/tagents-core` is an executable file at the time of the install, the `tagents-core` wrapper SHALL run it, with the node it pinned passed on as `TAGENTS_NODE`, for as long as it is an executable file, and the node CLI otherwise. Both files belong to the managed copy, so the wrapper runs nothing outside it, and the installer never builds that binary.
 
 #### Scenario: A Rust binary built before the install
 - **WHEN** `$TAGENTS_HOME/target/release/tagents-core` is executable when the installer runs, and `tagents-core sessions recent` is run

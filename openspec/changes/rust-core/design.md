@@ -15,7 +15,7 @@ The road to a Rust core is long and each stone has to be walkable on its own. Th
 
 **Non-Goals:**
 
-- No binary is built, downloaded or installed on a user's machine by anything in this change. How a binary reaches a user (release assets with checksums) is a later slice and needs Sasha's word before the first tag.
+- No binary is built, downloaded or installed on a user's machine by anything in this change. How a binary reaches a user (release assets with checksums) is the next slice, `openspec/changes/rust-release/`, and needs Sasha's word before the first tag.
 - No plugin protocol, no service, no JavaScript engine: option (ii) below is described and not built.
 - No config is read from Rust yet. S0 and S1 read the environment and the transcripts, nothing else.
 - No change to the text of any verb, any exit code, any MCP tool, `openspec/specs/` or the generated contract.
@@ -238,10 +238,10 @@ The atomic write (`writeAtomic` in `atomic.ts`: a temp file in the same director
 ## Migration Plan
 
 1. Merge this change. Every user and every CI job behaves as before, since no binary exists on any machine.
-2. A contributor who wants the front door runs `cargo build --release`; `tagents` and, after the next install, the `tagents-core` wrapper then use it. Deleting `target/` returns to the old behaviour with no other step.
+2. A contributor who wants the front door runs `cargo build --release`; `tagents` and, after the next install, the `tagents-core` wrapper then use it. Deleting `target/` returns to the old behaviour with no other step until a release exists for the version the checkout holds: from then on the next install fetches the prebuilt binary again, and `TAGENTS_NO_NATIVE=1` keeps it away (`openspec/changes/rust-release/`).
 3. Rollback is reverting the commit: the wrappers an install wrote without a binary are the old ones byte for byte, and one written with a binary falls through to node when the binary is gone.
 
 ## Open Questions
 
-- Where do release binaries come from (GitHub Releases with a sha256, per the plan Sasha approved), and which target triples: decided with the slice that first ships one, not here.
+- Where do release binaries come from (GitHub Releases with a sha256, per the plan Sasha approved), and which target triples: settled by `openspec/changes/rust-release/` (three targets, one archive and one checksum each).
 - Whether S3 keeps the tmux and `claude` driver in one crate with the front door or in its own: it can wait until S3 starts, since the verbs are unchanged either way.

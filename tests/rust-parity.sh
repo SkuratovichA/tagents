@@ -7,6 +7,7 @@
 # The homes come from tests/rust-parity-seed.mts: the two sessions of the checked-in fixtures, and about 600 more built so that
 # JavaScript and a naive port disagree (UTF-16 lengths, white space, JSON.parse, rounding, sort order, case folding, windows, file kinds).
 # A few "tripwire" cases assert on the node output alone, so a seed that silently stopped provoking a divergence fails here instead of passing for nothing.
+# One case at the end is not a comparison: it packages the debug binary, serves it as a file:// release in a sandbox and runs the whole installer, which has to accept its `--version` line; it fails with a warning that says `for --version` when the version of the binary is not the one in Cargo.toml, because the suite builds a binary only when none exists.
 #
 # Needs a built node CLI (pnpm build) and python3 (the seed sets exact mtimes). Uses no real home, no tmux, no network. bash 3.2.
 
@@ -247,13 +248,39 @@ compare "recent 1000 into a closed pipe"
 
 # ------------------------------------------------------------ forwarded ---
 t "every other word reaches the node CLI untouched"
-for args in "help" "--help" "-h" "" "bogus" "sessionsx" "Sessions" "session" "session bogus" "session open --nope" "session list --nope" "session prompt" "plugin" "plugin list" "plugin list --json" "plugin bogus" "plugin new" "doctor" "doctor --x" "telegram status" "--version" "--" "-" "--spec2" "spec"; do
+# `--version` as the only argument is answered by the Rust binary itself and is a known difference (docs/architecture/rust-core.md); with another word after it, it is the node CLI's.
+for args in "help" "--help" "-h" "" "bogus" "sessionsx" "Sessions" "session" "session bogus" "session open --nope" "session list --nope" "session prompt" "plugin" "plugin list" "plugin list --json" "plugin bogus" "plugin new" "doctor" "doctor --x" "telegram status" "--version x" "--" "-" "--spec2" "spec"; do
   # shellcheck disable=SC2086
   parity "forward: $args" adv $args
 done
 parity "forward: an argument with a space and a quote" adv session open --label "a b 'c' \"d\""
 parity "forward: an empty argument" adv bogus ""
 parity "forward: an argument that is not UTF-8" adv bogus $'\xff'
+
+# ------------------------------------------------------ installer ---
+t "the installer accepts the --version of this binary"
+# install.sh compares the first line of `tagents-core --version` with the workspace version of the copy it installs, and installs nothing that differs. The binary of this checkout is packaged by the real packager, served as a file:// release, and installed by the whole installer in a sandbox: if the Rust side and the installer ever disagree about the shape of that line, the run ends with a warning here and not on a user's machine.
+INST=$TMP/installer
+# The tree holds the four entry files install.sh wraps: a wrapper whose entry is missing after the build is left alone with a warning, and the run ends with status 1.
+ORIGIN=$INST/origin; mkdir -p "$ORIGIN/packages/core/dist/cli" "$ORIGIN/packages/knowledge/dist/cli" "$ORIGIN/packages/notify/dist" "$ORIGIN/packages/mcp/dist" "$INST/home"
+cp "$REPO/Cargo.toml" "$ORIGIN/Cargo.toml"
+printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/core/dist/cli/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/knowledge/dist/cli/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/notify/dist/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/mcp/dist/main.js"
+git -C "$ORIGIN" init -q -b main && git -C "$ORIGIN" config user.email t@example.com && git -C "$ORIGIN" config user.name t && git -C "$ORIGIN" add -A && git -C "$ORIGIN" commit -q -m origin
+version=$(sh "$REPO/.github/scripts/core-release.sh" version "$REPO/Cargo.toml")
+sh "$REPO/.github/scripts/core-release.sh" package "$version" aarch64-apple-darwin "$RUST" "$REPO/LICENSE" "$INST/release/v$version" > /dev/null
+inst_out=$(env -i PATH="$(dirname "$NODE"):/usr/bin:/bin" HOME="$INST/home" TAGENTS_HOME="$INST/home/share/tagents" TAGENTS_BIN="$INST/home/bin" TAGENTS_REPO="$ORIGIN" \
+  TAGENTS_BUILD_CMD=true TAGENTS_CORE_BASE_URL="file://$INST/release/v$version" TAGENTS_CORE_TARGET=aarch64-apple-darwin \
+  sh "$REPO/install.sh" --hooks-dir "$INST/home/hooks" 2>&1); inst_code=$?
+if [ "$inst_code" -eq 0 ]; then ok; else bad "the installer exits 0" "exit $inst_code" "$(printf '%s\n' "$inst_out" | tail -5)"; fi
+case $inst_out in
+  *"installed the prebuilt tagents-core $version"*) ok ;;
+  *) bad "the installer installs the binary of this checkout (version $version)" "$(printf '%s\n' "$inst_out" | tail -5)" ;;
+esac
+case $inst_out in
+  *"for --version"*) bad "the installer finds nothing wrong with the output of --version" "$(printf '%s\n' "$inst_out" | grep 'for --version')" ;;
+  *) ok ;;
+esac
+if cmp -s "$INST/home/share/tagents/target/release/tagents-core" "$RUST"; then ok; else bad "the binary the installer placed is the packaged one"; fi
 
 printf '\nrust-parity: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
