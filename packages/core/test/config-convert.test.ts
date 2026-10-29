@@ -13,7 +13,7 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
-import { convertYamlConfig, sameConfig } from '../src/config-convert.ts';
+import { convertYamlConfig, sameConfig, typeMismatch } from '../src/config-convert.ts';
 import { tomlString } from '../src/config-file.ts';
 import { tmpDir } from '../src/testkit.ts';
 import { HERE, runCli } from './helpers.ts';
@@ -95,7 +95,7 @@ test('the output opens with the schema line, and says what it left behind', () =
 
 // ------------------------------------------------------------------ types ---
 
-test('numbers and booleans keep their type, everything else is a string, and an empty value is an empty table', () => {
+test('numbers and booleans keep their type, quoted ones stay strings, and an empty value is an empty table', () => {
   const result = convert(
     [
       'usage:',
@@ -104,8 +104,6 @@ test('numbers and booleans keep their type, everything else is a string, and an 
       '  workdays: true',
       '  watch: "work"',
       '  quoted_number: "5"',
-      '  odd_number: 0x10',
-      '  odd_bool: True',
       'claude:',
       '  profiles:',
       '    work:',
@@ -120,8 +118,6 @@ test('numbers and booleans keep their type, everything else is a string, and an 
     workdays: true,
     watch: 'work',
     quoted_number: '5',
-    odd_number: '0x10',
-    odd_bool: 'True',
   });
   assert.deepEqual(plain(doc['claude']), { profiles: { work: {} } });
 });
@@ -238,6 +234,43 @@ test('a YAML construct with no TOML twin is refused, naming the line', () => {
     assert.equal(result.ok, false, yaml);
     assert.match(result.ok ? '' : result.problem, expected, yaml);
   }
+});
+
+test('a number, boolean or null with no TOML twin is refused with its line, never turned into a string', () => {
+  const refused: Array<[string, RegExp]> = [
+    ['0644', /number/], ['.5', /number/], ['5.', /number/], ['1e3', /number/], ['0x10', /number/], ['0o7', /number/], ['+1', /number/], ['.inf', /number/],
+    ['True', /boolean/], ['TRUE', /boolean/], ['~', /null/], ['null', /null/],
+  ];
+  for (const [raw, why] of refused) {
+    const result = convert(`usage:\n  value: ${raw}\n`);
+    assert.equal(result.ok, false, raw);
+    const problem = result.ok ? '' : result.problem;
+    assert.match(problem, /config\.yaml:2: /, raw);
+    assert.match(problem, why, raw);
+    assert.match(problem, /quote it|write/, raw);
+  }
+  const inList = convert('claude:\n  args:\n    - a\n    - 0x10\n');
+  assert.match(inList.ok ? '' : inList.problem, /config\.yaml:4: /);
+});
+
+test('a scalar that TOML writes the same way keeps its type', () => {
+  const accepted = ['850', '-3', '0', '1.5', 'true', 'false', '"0644"', "'850'", 'plain text'];
+  for (const raw of accepted) {
+    const yaml = `usage:\n  value: ${raw}\n`;
+    const result = convert(yaml);
+    assert.ok(result.ok, `${raw}: ${result.ok ? '' : result.problem}`);
+    const back = plain(parseToml(result.toml));
+    assert.deepEqual(back, plain(parseYaml(yaml)), raw);
+  }
+});
+
+test('the type check refuses a pair the dumps cannot tell apart', () => {
+  const dump = 'usage.value\t850\n';
+  assert.equal(sameConfig(dump, dump), true, 'tagents prints both as 850');
+  assert.match(typeMismatch('usage:\n  value: 850\n', 'usage = { value = "850" }\n') ?? '', /usage\.value is number 850 in the YAML and "850" in the TOML/);
+  assert.match(typeMismatch('usage:\n  value: true\n', 'usage = { value = "true" }\n') ?? '', /boolean true/);
+  assert.match(typeMismatch('usage:\n  value: x\n', 'usage = {}\n') ?? '', /missing/);
+  assert.equal(typeMismatch('usage:\n  value: 850\n  list: [1, a]\n  empty:\n', 'empty = {}\n[usage]\nvalue = 850\nlist = [1, "a"]\n'), null);
 });
 
 test('a tab or another control character inside a YAML string is refused, naming the line', () => {

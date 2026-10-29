@@ -7,11 +7,9 @@
 // only way to get a wrong login out of this is for tagents to read the YAML
 // wrongly in the first place, and then it was already wrong.
 //
-// The types come from the YAML as it is WRITTEN, not as a YAML library
-// resolves it: `true` and `850` stay a boolean and a number, `True` and `0x10`
-// become the strings tagents has always seen there. Comments cannot be carried
-// across (a YAML parser does not keep them in a form that maps onto TOML's), and
-// the output says so on its second line.
+// The types come from the YAML as it is WRITTEN, not as a YAML library resolves it: `true` and `850` stay a boolean and a number. A scalar the YAML library reads as a number or a boolean that TOML writes differently (`0x10`, `.5`, `True`) or as null (`~`) is refused with what to write instead, never turned into a string; typeMismatch below is the check that nothing was retyped, because the `--config` dumps print every value as text and cannot show it.
+//
+// Comments cannot be carried across (a YAML parser does not keep them in a form that maps onto TOML's), and the output says so on its second line.
 //
 // TOML puts a table's plain keys above its sub-tables, so a plain key written
 // after a table in the YAML moves up. That changes the order of the dump's
@@ -23,7 +21,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LineCounter, isAlias, isMap, isNode, isScalar, isSeq, parseDocument, type Scalar, type YAMLMap } from 'yaml';
-import { tomlKey, tomlString } from './config-file.ts';
+import { parseConfigText, tomlKey, tomlString } from './config-file.ts';
 import { findOnPath } from './path-lookup.ts';
 
 /** What `#:schema` points a TOML language server at; the schema's own `$id` is this too (test/config-schema.test.ts). */
@@ -82,9 +80,16 @@ function build(doc: ReturnType<typeof parseDocument>, lines: LineCounter): Table
       return written;
     }
     const written = node.source ?? '';
-    if (typeof value === 'boolean') return node.type === 'PLAIN' && (written === 'true' || written === 'false') ? written : JSON.stringify(written);
-    if (typeof value === 'number') return node.type === 'PLAIN' && DECIMAL.test(written) ? written : JSON.stringify(written);
-    return JSON.stringify(written);
+    const quoted = JSON.stringify(written);
+    if (typeof value === 'boolean') {
+      if (node.type === 'PLAIN' && (written === 'true' || written === 'false')) return written;
+      return fail(node, `${written} is a boolean in YAML, which TOML writes only as true or false — write one of those, or quote it (${quoted}) to keep the text`);
+    }
+    if (typeof value === 'number') {
+      if (node.type === 'PLAIN' && DECIMAL.test(written)) return written;
+      return fail(node, `${written} is a number in YAML that TOML does not write that way — write it as a plain decimal (850, -3, 1.5), or quote it (${quoted}) to keep the text`);
+    }
+    return fail(node, `${written} is null in YAML, which has no TOML twin — quote it (${quoted}) to keep the text, or leave the value out`);
   };
 
   const keyText = (key: unknown): string => {
@@ -231,6 +236,39 @@ export function sameConfig(a: string, b: string): boolean {
   return shape(a) === shape(b);
 }
 
+/** A value as a person reads it in a message: a string quoted, anything else with its type. */
+const describe = (value: unknown): string => (typeof value === 'string' ? JSON.stringify(value) : `${typeof value} ${String(value)}`);
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** The check `tagents --config` cannot make, because it prints every value as text: does every string, number and boolean of the YAML come back from the TOML as the same type and the same value? Null and empty values are left out (an empty table is how TOML says them). Returns what differs, or null when nothing does. */
+export function typeMismatch(yamlText: string, toml: string): string | null {
+  let yamlDoc: unknown;
+  let tomlDoc: unknown;
+  try {
+    yamlDoc = parseConfigText(yamlText, 'yaml');
+    tomlDoc = parseConfigText(toml, 'toml');
+  } catch (err) {
+    return `the values cannot be compared: ${firstLine(err instanceof Error ? err.message : String(err))}`;
+  }
+  const walk = (a: unknown, b: unknown, at: string): string | null => {
+    if (typeof a === 'string' || typeof a === 'number' || typeof a === 'boolean') {
+      return typeof b === typeof a && b === a ? null : `${at || 'the top level'} is ${describe(a)} in the YAML and ${b === undefined ? 'missing' : describe(b)} in the TOML`;
+    }
+    const entries: Array<[string, unknown, unknown]> = Array.isArray(a)
+      ? a.map((item, i): [string, unknown, unknown] => [`${at}[${i}]`, item, Array.isArray(b) ? b[i] : undefined])
+      : isRecord(a)
+        ? Object.entries(a).map(([key, item]): [string, unknown, unknown] => [at === '' ? key : `${at}.${key}`, item, isRecord(b) ? b[key] : undefined])
+        : [];
+    for (const [where, left, right] of entries) {
+      const drift = walk(left, right, where);
+      if (drift !== null) return drift;
+    }
+    return null;
+  };
+  return walk(yamlDoc, tomlDoc, '');
+}
+
 // ---------------------------------------------------------------- the call ---
 
 const refused = (problem: string): Converted => ({ ok: false, problem });
@@ -273,6 +311,8 @@ export function convertYamlConfig(file: string, options: ConvertOptions = {}): C
     if (!sameConfig(before.dump, after.dump)) {
       return refused(`${file}: tagents would read the TOML made from it differently from the YAML, so nothing is offered — see \`tagents --config\` on both`);
     }
+    const retyped = typeMismatch(text, toml);
+    if (retyped !== null) return refused(`${file}: the TOML made from it would give a different value than the YAML (${retyped}), so nothing is offered`);
     return { ok: true, toml };
   } finally {
     fs.rmSync(scratch, { recursive: true, force: true });
