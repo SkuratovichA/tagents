@@ -20,7 +20,9 @@
       },
       "required": ["cwd"],
       "summary": "summarySessionOpen",
-      "impl": "node"
+      "impl": "node",
+      "effect": "read",
+      "tool": false
     },
     {
       "path": ["session", "prompt"],
@@ -32,7 +34,9 @@
       },
       "required": [],
       "summary": "summarySessionPrompt",
-      "impl": "node"
+      "impl": "node",
+      "effect": "spawn",
+      "tool": false
     },
     {
       "path": ["session", "last"],
@@ -40,7 +44,8 @@
       "options": {},
       "required": [],
       "summary": "summarySessionLast",
-      "impl": "node"
+      "impl": "node",
+      "effect": "read"
     },
     {
       "path": ["session", "list"],
@@ -51,7 +56,8 @@
       },
       "required": [],
       "summary": "summarySessionList",
-      "impl": "node"
+      "impl": "node",
+      "effect": "read"
     },
     {
       "path": ["session", "abort"],
@@ -59,7 +65,9 @@
       "options": {},
       "required": [],
       "summary": "summarySessionAbort",
-      "impl": "node"
+      "impl": "node",
+      "effect": "destructive",
+      "tool": false
     },
     {
       "path": ["sessions", "recent"],
@@ -67,7 +75,9 @@
       "options": {},
       "required": [],
       "summary": "summarySessionsRecent",
-      "impl": "rust"
+      "impl": "rust",
+      "effect": "read",
+      "tool": false
     },
     {
       "path": ["sessions", "search"],
@@ -75,7 +85,9 @@
       "options": {},
       "required": [],
       "summary": "summarySessionsSearch",
-      "impl": "rust"
+      "impl": "rust",
+      "effect": "read",
+      "tool": false
     },
     {
       "path": ["sessions", "show"],
@@ -83,7 +95,8 @@
       "options": {},
       "required": [],
       "summary": "summarySessionsShow",
-      "impl": "rust"
+      "impl": "rust",
+      "effect": "read"
     },
     {
       "path": ["plugin", "list"],
@@ -93,7 +106,8 @@
       },
       "required": [],
       "summary": "summaryPluginList",
-      "impl": "node"
+      "impl": "node",
+      "effect": "read"
     },
     {
       "path": ["plugin", "add"],
@@ -103,7 +117,9 @@
       },
       "required": [],
       "summary": "summaryPluginAdd",
-      "impl": "node"
+      "impl": "node",
+      "effect": "write",
+      "tool": false
     },
     {
       "path": ["plugin", "remove"],
@@ -111,7 +127,8 @@
       "options": {},
       "required": [],
       "summary": "summaryPluginRemove",
-      "impl": "node"
+      "impl": "node",
+      "effect": "destructive"
     },
     {
       "path": ["plugin", "new"],
@@ -121,7 +138,8 @@
       },
       "required": [],
       "summary": "summaryPluginNew",
-      "impl": "node"
+      "impl": "node",
+      "effect": "write"
     },
     {
       "path": ["doctor"],
@@ -129,7 +147,8 @@
       "options": {},
       "required": [],
       "summary": "summaryDoctor",
-      "impl": "node"
+      "impl": "node",
+      "effect": "read"
     }
   ]
 }
