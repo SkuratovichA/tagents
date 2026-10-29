@@ -575,11 +575,18 @@
             "[DIR]",
             "[PROFILE]"
           ],
-          "options": {},
+          "options": {
+            "detach": {
+              "type": "boolean"
+            }
+          },
           "required": [],
-          "summary": "starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists",
+          "summary": "starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists; detach (the default for a tool call) does not show or select the window and never opens a dialog, so when the rules say to ask which account it fails and names the profiles to pass",
           "effect": "spawn",
-          "requires": "tmux"
+          "requires": "tmux",
+          "toolDefaults": {
+            "detach": true
+          }
         },
         {
           "path": [
@@ -589,11 +596,18 @@
             "<DIR>",
             "<COMMAND>"
           ],
-          "options": {},
+          "options": {
+            "detach": {
+              "type": "boolean"
+            }
+          },
           "required": [],
-          "summary": "opens a tmux window in DIR that runs COMMAND, one string for the shell, and prints the new pane and where it is; the window closes when the command ends, and it lands in the session that owns DIR on the tmux server this runs in",
+          "summary": "opens a tmux window in DIR that runs COMMAND, one string for the shell, and prints the new pane and where it is; the window closes when the command ends, and it lands in the session that owns DIR on the tmux server this runs in; detach (the default for a tool call) does not show or select the window",
           "effect": "spawn",
-          "requires": "tmux"
+          "requires": "tmux",
+          "toolDefaults": {
+            "detach": true
+          }
         },
         {
           "path": [
@@ -1127,7 +1141,7 @@
         },
         {
           "name": "tagents_new",
-          "description": "Starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists.",
+          "description": "Starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists; detach (the default for a tool call) does not show or select the window and never opens a dialog, so when the rules say to ask which account it fails and names the profiles to pass.",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -1136,6 +1150,10 @@
               },
               "profile": {
                 "type": "string"
+              },
+              "detach": {
+                "type": "boolean",
+                "default": true
               }
             },
             "required": [],
@@ -1172,7 +1190,7 @@
         },
         {
           "name": "tagents_window",
-          "description": "Opens a tmux window in DIR that runs COMMAND, one string for the shell, and prints the new pane and where it is; the window closes when the command ends, and it lands in the session that owns DIR on the tmux server this runs in.",
+          "description": "Opens a tmux window in DIR that runs COMMAND, one string for the shell, and prints the new pane and where it is; the window closes when the command ends, and it lands in the session that owns DIR on the tmux server this runs in; detach (the default for a tool call) does not show or select the window.",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -1181,6 +1199,10 @@
               },
               "command": {
                 "type": "string"
+              },
+              "detach": {
+                "type": "boolean",
+                "default": true
               }
             },
             "required": [

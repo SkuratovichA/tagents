@@ -348,19 +348,23 @@ Usage: `tagents-notify send <message> [--title <title>]`
 
 ### --new
 
-starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists
+starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists; detach (the default for a tool call) does not show or select the window and never opens a dialog, so when the rules say to ask which account it fails and names the profiles to pass
 
-Usage: `tagents --new [DIR] [PROFILE]`
+Usage: `tagents --new [DIR] [PROFILE] [--detach]`
 
-This verb takes no flags.
+| Flag | Type | Required | Repeatable |
+|---|---|---|---|
+| `--detach` | boolean | no | no |
 
 ### --window
 
-opens a tmux window in DIR that runs COMMAND, one string for the shell, and prints the new pane and where it is; the window closes when the command ends, and it lands in the session that owns DIR on the tmux server this runs in
+opens a tmux window in DIR that runs COMMAND, one string for the shell, and prints the new pane and where it is; the window closes when the command ends, and it lands in the session that owns DIR on the tmux server this runs in; detach (the default for a tool call) does not show or select the window
 
-Usage: `tagents --window <DIR> <COMMAND>`
+Usage: `tagents --window <DIR> <COMMAND> [--detach]`
 
-This verb takes no flags.
+| Flag | Type | Required | Repeatable |
+|---|---|---|---|
+| `--detach` | boolean | no | no |
 
 ### --label
 

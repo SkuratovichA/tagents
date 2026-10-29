@@ -144,6 +144,18 @@ run() { env TMUX="$SOCK,0,0" bash "$TA" "$@"; }
 
 clear_out() { rm -f "$OUT"/*.out 2>/dev/null; return 0; }
 
+# A call that would wait for a person (a dialog) is cut off after ~10s with 124 instead of holding the suite: its stderr lands in $BOUNDED_ERR.
+BOUNDED_ERR=""
+run_bounded() {
+  local i=0 pid
+  BOUNDED_ERR=$OUT/bounded.err
+  run "$@" >/dev/null 2>"$BOUNDED_ERR" &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 40 ]; do i=$((i + 1)); sleep 0.25; done
+  if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; return 124; fi
+  wait "$pid"
+}
+
 waitout() {  # -> path of the first stub file to appear, or 1 after ~6s
   local i f
   i=0
@@ -473,14 +485,78 @@ ok "a relative directory is resolved where the command was typed" "$WD" "$(cat "
 before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
 err=$(run --window "$WD" 2>&1 >/dev/null); rc=$?
 ok "a missing command is a usage error" 2 "$rc"
-has "...that says what it needs" "needs a directory and a command" "$err"
+has "...that says what it needs" "--window takes a directory and one command, quoted" "$err"
 err=$(run --window 2>&1 >/dev/null); rc=$?
 ok "a missing directory is a usage error too" 2 "$rc"
+# A command typed without quotes arrives as several words; the extra ones used to be dropped and a different command run.
+err=$(run --window "$WD" echo hello 2>&1 >/dev/null); rc=$?
+ok "a command in more than one word is a usage error" 2 "$rc"
+has "...that says to quote it" "--window takes a directory and one command, quoted" "$err"
+err=$(run --window "$WD" "sleep 600" extra 2>&1 >/dev/null); rc=$?
+ok "so is one word too many after a quoted command" 2 "$rc"
 err=$(run --window "$ROOT/no-such-dir" "sleep 600" 2>&1 >/dev/null); rc=$?
 ok "a directory that is not there is refused" 1 "$rc"
 has "...by name" "$ROOT/no-such-dir" "$err"
 ok "none of the refusals opened a window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+
+# A command that starts with a dash is the command, not a flag of tmux: without `--` before it tmux refuses with "unknown flag" and no window opens. What the window's shell then makes of it is the shell's own business, so only the opening is checked.
+dashline=$(run --window "$WD" "-zzz-not-a-command" 2>/dev/null); rc=$?
+ok "a command that starts with a dash is not read as a tmux flag" 0 "$rc"
+has "...and the window it opened is printed" "%" "$dashline"
+
+# CDPATH is the caller's, and a relative name is looked up where the caller stands: with CDPATH set `cd` would take the same name from there and print where it went, into the very value the directory is read from.
+mkdir -p "$ROOT/cdp/window-project"
+rm -f "$OUT/cdp.txt"
+cdline=$(cd "$ROOT/personal" && CDPATH="$ROOT/cdp" run --window window-project "pwd > $OUT/cdp.txt; sleep 600" 2>/dev/null)
+i=0; while [ ! -s "$OUT/cdp.txt" ] && [ "$i" -lt 24 ]; do i=$((i + 1)); sleep 0.25; done
+ok "a CDPATH does not move a relative directory" "$WD" "$(cat "$OUT/cdp.txt" 2>/dev/null)"
+cdpane=${cdline%%	*}
+ok "...and what is printed is one line: the pane and where it is" "$(tm display -p -t "$cdpane" '#{session_name}:#{window_index}' 2>/dev/null)" "${cdline#*	}"
+ok "...a single line" 1 "$(printf '%s\n' "$cdline" | wc -l | tr -d ' ')"
 tm kill-session -t '=tatest-winowner:' >/dev/null 2>&1
+
+t "13. --detach makes the window and leaves the screen alone"
+# The default selects what it starts (open_agent), as enter on a row would; detached, the window is made where it belongs and nothing is selected or switched to, and no dialog is ever opened.
+tm new-session -d -s tatest-winowner -c "$WD" 'sleep 600' >/dev/null 2>&1
+active_before=$(tm display -p -t '=tatest-winowner:' '#{window_id}' 2>/dev/null)
+rm -f "$OUT/det.txt"
+line=$(run --window --detach "$WD" "pwd > $OUT/det.txt; sleep 600" 2>/dev/null); rc=$?
+i=0; while [ ! -s "$OUT/det.txt" ] && [ "$i" -lt 24 ]; do i=$((i + 1)); sleep 0.25; done
+dpane=${line%%	*}
+ok "--window --detach succeeds" 0 "$rc"
+ok "...runs the command in the directory" "$WD" "$(cat "$OUT/det.txt" 2>/dev/null)"
+ok "...prints the pane and where it is, as without the flag" "$(tm display -p -t "$dpane" '#{session_name}:#{window_index}' 2>/dev/null)" "${line#*	}"
+ok "...and the new window is not the selected one" 0 "$(tm display -p -t "$dpane" '#{window_active}' 2>/dev/null)"
+ok "...the window that was selected still is" "$active_before" "$(tm display -p -t '=tatest-winowner:' '#{window_id}' 2>/dev/null)"
+tm kill-session -t '=tatest-winowner:' >/dev/null 2>&1
+
+clear_out
+run --new "$PERS" personal >/dev/null 2>&1
+f=$(waitout) || { echo "  FAIL nothing started"; fail=$((fail+1)); f=/dev/null; }
+pane="%${f##*/}"; pane=${pane%.out}
+ok "without the flag the agent's window is selected, as enter on a row leaves it" 1 "$(tm display -p -t "$pane" '#{window_active}' 2>/dev/null)"
+
+clear_out
+run --new --detach "$PERS" personal >/dev/null 2>&1; rc=$?
+f=$(waitout) || { echo "  FAIL nothing started"; fail=$((fail+1)); f=/dev/null; }
+pane="%${f##*/}"; pane=${pane%.out}
+ok "--new --detach succeeds" 0 "$rc"
+ok "...starts the agent on the account asked for" "$HOME/.claude-personal" "$(field CFG "$f")"
+ok "...in the session that owns the project" tatest-proj "$(sess_of_out "$f")"
+ok "...and its window is not selected" 0 "$(tm display -p -t "$pane" '#{window_active}' 2>/dev/null)"
+
+# No rule matches $NOR, so the config says to ask which account: a dialog needs a person, a detached start has none.
+ok "the rules ask for this directory" ask "$(run --profile-for "$NOR" 2>/dev/null)"
+clear_out
+before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
+run_bounded --new --detach "$NOR"; rc=$?; err=$(cat "$BOUNDED_ERR")
+sleep 1
+ok "a detached start the rules cannot decide is a usage error" 2 "$rc"
+has "...that names the profiles to pass" "personal work" "$err"
+ok "...opens no window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+ok "...and starts nothing" 0 "$(ls "$OUT"/*.out 2>/dev/null | wc -l | tr -d ' ')"
+run_bounded --new --detach "$PERS" ask; rc=$?
+ok "asking for the question by name is refused the same way" 2 "$rc"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

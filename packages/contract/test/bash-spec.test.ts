@@ -40,7 +40,11 @@ interface HelpVerb {
   readonly verb: string;
   /** the usage tokens after the verb, as the help prints them: `DIR`, `[PROFILE]` */
   readonly tokens: readonly string[];
+  /** the flags the usage line prints in brackets, without the dashes: `detach` for `[--detach]` */
+  readonly flags: readonly string[];
 }
+
+const FLAG = /^\[--([a-z][a-z-]*)\]$/;
 
 /** The `  tagents <verb> …` lines of the help; the line that is the bare command (the dashboard) is not a verb. */
 function helpVerbs(help: string): HelpVerb[] {
@@ -48,9 +52,11 @@ function helpVerbs(help: string): HelpVerb[] {
   for (const line of help.split('\n')) {
     if (!line.startsWith('  tagents ')) continue;
     const usage = (line.trim().split(/ {2,}/)[0] ?? '').split(' ').slice(1);
-    const [verb, ...rest] = usage;
+    const [verb, ...all] = usage;
     if (verb === undefined || !/^(--|update$|<verb>$)/.test(verb)) continue;
-    verbs.push({ verb, tokens: rest.filter((token, i) => rest.slice(0, i + 1).every((t) => /^\[?[A-Z][A-Z-]*\]?$/.test(t))) });
+    const rest = all.filter((token) => !FLAG.test(token));
+    const flags = all.flatMap((token) => FLAG.exec(token)?.[1] ?? []);
+    verbs.push({ verb, flags, tokens: rest.filter((token, i) => rest.slice(0, i + 1).every((t) => /^\[?[A-Z][A-Z-]*\]?$/.test(t))) });
   }
   return verbs;
 }
@@ -71,6 +77,13 @@ test('every verb in the spec is in the help, with the positionals the help print
     assert.ok(printed !== undefined, `${verb} is not in tagents --help`);
     const theirs = printed.tokens.map((t) => (t.startsWith('[') ? t : `<${t}>`)).map(parsePositional);
     assert.deepEqual(command.positionals.map(parsePositional), theirs, verb);
+  }
+});
+
+test('every verb in the spec has the options the help prints as flags, and the help prints no flag the spec lacks', () => {
+  for (const command of spec.commands) {
+    const verb = command.path.join(' ');
+    assert.deepEqual(Object.keys(command.options).sort(), [...(inHelp.find((v) => v.verb === verb)?.flags ?? [])].sort(), `${verb}: options in the spec and flags in tagents --help`);
   }
 });
 

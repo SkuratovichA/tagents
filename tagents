@@ -92,17 +92,21 @@
 #                           viewport shows; tmux's own hooks run this on every window
 #                           switch. It takes no argument; one given by a hook an
 #                           earlier version installed is ignored
-#   tagents --new [DIR] [PROFILE]
+#   tagents --new [--detach] [DIR] [PROFILE]
 #                           start an agent in DIR from outside the list — a tmux
 #                           binding, a shell, anything. DIR defaults to $PWD and
-#                           the account to whatever the rules below pick
-#   tagents --window DIR COMMAND
+#                           the account to whatever the rules below pick.
+#                           --detach leaves the screen alone: the window is not
+#                           shown or selected, and when the rules say "ask" it exits
+#                           2 naming the profiles instead of opening a dialog
+#   tagents --window [--detach] DIR COMMAND
 #                           open a plain window in DIR running COMMAND, from outside
 #                           the list, the way --new opens an agent. COMMAND is one
 #                           string for the shell and the window closes when it ends;
 #                           it lands in the tmux session that owns DIR and is shown
-#                           like any new window. Prints the new pane and where it
-#                           is, TAB-separated
+#                           like any new window, unless --detach. Exactly two words
+#                           after the flag, exit 2 otherwise. Prints the new pane and
+#                           where it is, TAB-separated
 #   tagents --profile-for DIR [SESSION]
 #                           which account those rules pick, without launching
 #                           anything. Prints a profile name or "ask"; exits 1
@@ -532,8 +536,11 @@ case "${1:-}" in
                               "${4-${K_QUIT:+$K_QUIT quit}}" ;;
   --act)          shift; act "$@" ;;
   # Starting an agent from outside the list: a tmux binding, a shell, a script.
-  --new)          shift; new_agent "${1:-}" "${2:-}" ;;
-  --window)       shift; new_window "${1:-}" "${2:-}" ;;
+  # --detach, first, makes the window and leaves the screen alone: no dialog, nothing selected.
+  --new)          shift; if [ "${1:-}" = --detach ]; then LAUNCH_DETACH=1; shift; fi
+                  new_agent "${1:-}" "${2:-}" ;;
+  --window)       shift; if [ "${1:-}" = --detach ]; then LAUNCH_DETACH=1; shift; fi
+                  new_window "$@" ;;
   # ...and the two ways to ask what the config would do without doing it.
   # Prints nothing and exits 1 when there are no profiles, so a caller can tell
   # "the config decided nothing" from "the config said ask".
