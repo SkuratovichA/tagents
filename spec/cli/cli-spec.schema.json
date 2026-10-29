@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SkuratovichA/tagents/spec/cli/cli-spec.schema.json",
+  "title": "A tagents CLI spec",
+  "description": "Every verb of a command line program as data. The node CLI, the contract generator and the Rust front door all read the one file this describes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["program", "exit", "commands"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "program": { "type": "string", "minLength": 1 },
+    "exit": {
+      "description": "Exit code names to numbers.",
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0, "maximum": 255 }
+    },
+    "commands": { "type": "array", "items": { "$ref": "#/$defs/command" } }
+  },
+  "$defs": {
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "positionals", "options", "required", "summary", "impl"],
+      "properties": {
+        "path": {
+          "description": "The words after the program name that select the verb, e.g. [\"sessions\", \"recent\"].",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "positionals": {
+          "description": "Positionals exactly as the usage text prints them: <ref-json-or-id>, [N], <words…>.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "options": {
+          "description": "Option name without the dashes to its kind. The node CLI hands this to util.parseArgs unchanged.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/option" }
+        },
+        "required": {
+          "description": "Option names the verb refuses to run without.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "summary": {
+          "description": "i18n key of the one-line summary. The text lives in the language catalogue, not here.",
+          "type": "string",
+          "minLength": 1
+        },
+        "impl": {
+          "description": "Which program serves the verb: the Rust front door or the node CLI. The contract generator and the node CLI ignore it.",
+          "enum": ["rust", "node"]
+        },
+        "effect": {
+          "description": "Optional extra string kept for tooling that classifies verbs. The front door and the node CLI ignore it.",
+          "type": "string"
+        }
+      }
+    },
+    "option": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["string", "boolean"] },
+        "multiple": { "type": "boolean" }
+      }
+    }
+  }
+}

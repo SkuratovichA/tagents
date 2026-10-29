@@ -79,12 +79,12 @@ exit "${STUB_EXIT:-0}"
 EOF
 chmod +x "$REPO/packages/core/dist/cli/main.js"
 
-run() {  # <script> <PATH> [args…] — prints stdout+stderr, sets $rc
+run() {  # <script> <PATH> [args…] — prints stdout+stderr, sets $rc; with $ERR_FILE set, stderr goes there and $out is stdout only
   local script path_
   script=$1; path_=$2; shift 2
   rm -f "$ARGV"
   out=$(PATH="$path_" TA_STATE_DIR="$TMP/state" TA_CONFIG="$TMP/no-config.yaml" \
-        /bin/bash "$script" "$@" 2>&1)
+        /bin/bash "$script" "$@" 2>"${ERR_FILE:-/dev/stdout}")
   rc=$?
   printf '%s' "$out"
 }
@@ -156,6 +156,40 @@ ok "...and passes that exit code through too"                      5 "$rc"
 # On $PATH wins: that is the installed one, and it is the one the user chose.
 STUB_EXIT=0 run "$REPO/tagents" "$BIN:$BARE" doctor >/dev/null
 ok "an installed tagents-core is preferred to the checkout" "doctor" "$(argv)"
+
+# The Rust front door, built in the tree: it is a stub too, and says it was the one that ran.
+mkdir -p "$REPO/target/release"
+cat > "$REPO/target/release/tagents-core" <<'EOF'
+#!/bin/sh
+{ echo rust; printf '%s\n' "$@"; } > "$ARGV_FILE"
+exit "${STUB_EXIT:-0}"
+EOF
+chmod +x "$REPO/target/release/tagents-core"
+
+STUB_EXIT=4 run "$REPO/tagents" "$BARE" session list --label x >/dev/null
+ok "a Rust binary built beside the script runs, with the whole argv" "rust session list --label x" "$(argv)"
+ok "...and its exit code is the script's" 4 "$rc"
+STUB_EXIT=0 run "$REPO/tagents" "$BIN:$BARE" doctor >/dev/null
+ok "an installed tagents-core is still preferred to it" "doctor" "$(argv)"
+chmod -x "$REPO/target/release/tagents-core"
+STUB_EXIT=0 run "$REPO/tagents" "$BARE" session list >/dev/null
+ok "a Rust binary that is not executable is passed over for the node CLI" "session list" "$(argv)"
+# A binary that is there and executable but cannot run (its interpreter is missing) is an error, never a quiet fall back to the node CLI: the node CLI stub would leave its argv behind.
+printf '#!/nonexistent/interpreter\n' > "$REPO/target/release/tagents-core"
+chmod +x "$REPO/target/release/tagents-core"
+ERR_FILE="$TMP/cannot-run.err" STUB_EXIT=0 run "$REPO/tagents" "$BARE" session list >/dev/null
+if [ "$rc" -ne 0 ]; then rc_state=nonzero; else rc_state=zero; fi
+ok       "a Rust binary that cannot run fails with a non-zero exit" nonzero "$rc_state"
+ok       "...with a message on stderr" yes "$([ -s "$TMP/cannot-run.err" ] && echo yes || echo no)"
+ok       "...and nothing on stdout" "" "$out"
+ok       "...and the node CLI was not run" "" "$(argv)"
+# A directory at the binary's path is not a binary: the script goes on to the node CLI.
+rm -rf "$REPO/target/release/tagents-core"; mkdir "$REPO/target/release/tagents-core"
+STUB_EXIT=0 run "$REPO/tagents" "$BARE" session list >/dev/null
+ok       "a directory where the Rust binary would be is passed over for the node CLI" "session list" "$(argv)"
+rm -rf "$REPO/target"
+STUB_EXIT=0 run "$REPO/tagents" "$BARE" session list >/dev/null
+ok "with no Rust binary at all it is the node CLI, as before" "session list" "$(argv)"
 
 # ---------------------------------------------------------------------------
 t "4. with no tagents-core at all"

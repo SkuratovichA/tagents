@@ -1,0 +1,60 @@
+name: rust
+
+# The Rust workspace and everything its tests compare it with: the shared CLI spec, the node CLI that stays the reference, and the parity suite. The shell suites for `tagents` and `install.sh` are not run here, so those files are not listed.
+on:
+  push:
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - crates/**
+      - spec/**
+      - packages/core/**
+      - tests/rust-parity.sh
+      - .node-version
+      - package.json
+      - pnpm-lock.yaml
+      - tests/rust-parity-seed.mts
+      - .github/workflows/rust.yml
+  pull_request:
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - crates/**
+      - spec/**
+      - packages/core/**
+      - tests/rust-parity.sh
+      - .node-version
+      - package.json
+      - pnpm-lock.yaml
+      - tests/rust-parity-seed.mts
+      - .github/workflows/rust.yml
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain rust-toolchain.toml pins
+        run: rustup toolchain install
+      - name: Formatting
+        run: cargo fmt --all --check
+      - name: Lints, tests included
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Unit and integration tests
+        run: cargo test --workspace --locked
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Build the node CLI the Rust binary is compared with
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - name: Parity with the node CLI, byte for byte
+        run: bash tests/rust-parity.sh

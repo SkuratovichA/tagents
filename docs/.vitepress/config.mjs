@@ -40,6 +40,7 @@ export default {
           { text: 'Overview', link: '/architecture/overview' },
           { text: 'How the dashboard stays current', link: '/architecture/refresh' },
           { text: 'The generated contract', link: '/architecture/contract' },
+          { text: 'The Rust core', link: '/architecture/rust-core' },
         ],
       },
       {

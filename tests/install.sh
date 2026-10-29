@@ -295,5 +295,109 @@ lacks "the commit's own installer did not run" "the old installer ran" "$out"
 contains "the running installer installed" "install: installed " "$out"
 ok "no lock left behind" "no" "$([ -e "$TAGENTS_HOME.lock" ] && echo yes || echo no)"
 
+# ---------------------------------------------------------------------------
+t "13. a Rust tagents-core next to the node CLI is used when it is there, and changes nothing when it is not"
+# ---------------------------------------------------------------------------
+# What this installer wrote before a Rust binary existed, spelled out: with no binary the wrapper files must stay these exact bytes.
+wrapper_bytes() {  # <node or empty> <target> — the pinned form when a node path is given
+  if [ -n "$1" ]; then
+    printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nn="%s"\n[ -x "$n" ] || n=node\nexec "$n" "%s" "$@"\n' "$1" "$2"
+  else
+    printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nexec node "%s" "$@"\n' "$2"
+  fi
+}
+same_bytes() {  # <name> <expected file> <actual file>
+  if cmp -s "$2" "$3"; then pass=$((pass + 1)); printf '  ok   %s\n' "$1"; else
+    fail=$((fail + 1)); printf '  FAIL %s\n       expected: %s\n       actual:   %s\n' "$1" "$(cat "$2")" "$(cat "$3")"; fi
+}
+mkdir -p "$TMP/node-c"
+printf '#!/bin/sh\necho "node-c $*"\n' > "$TMP/node-c/node"; chmod 755 "$TMP/node-c/node"
+mkorigin; fresh_env
+out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
+ok "an install with no Rust binary exits 0" 0 "$rc"
+wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/core/dist/cli/main.js" > "$TMP/expected-core"
+wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/knowledge/dist/cli/main.js" > "$TMP/expected-knowledge"
+printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nexec sh "%s" "$@"\n' "$TAGENTS_HOME/hooks/tmux-agent-state.sh" > "$TMP/expected-hook"
+same_bytes "with no binary, tagents-core is byte for byte what it always was" "$TMP/expected-core" "$TAGENTS_BIN/tagents-core"
+same_bytes "tagents-knowledge too" "$TMP/expected-knowledge" "$TAGENTS_BIN/tagents-knowledge"
+same_bytes "and a hook wrapper" "$TMP/expected-hook" "$HOOKS_A/tmux-agent-state.sh"
+ok "the node CLI answers" "node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$("$TAGENTS_BIN/tagents-core" a b)"
+
+# A binary that is executable at install time is named by the wrapper, and gets the pinned node as TAGENTS_NODE.
+RUST_BIN=$TAGENTS_HOME/target/release/tagents-core
+mkdir -p "$(dirname "$RUST_BIN")"
+printf '#!/bin/sh\necho "rust node=${TAGENTS_NODE-unset} $*"\nexit 7\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
+ok "an install with a Rust binary exits 0" 0 "$rc"
+contains "the wrapper names the binary" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+contains "and still names the node CLI as the way out" 'exec "$n" "'"$TAGENTS_HOME"'/packages/core/dist/cli/main.js" "$@"' "$(cat "$TAGENTS_BIN/tagents-core")"
+ok "the wrapper runs the binary, with the pinned node and every argument" "rust node=$TMP/node-c/node a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a >/dev/null; rc=$?
+ok "its exit code comes through untouched" 7 "$rc"
+same_bytes "tagents-knowledge does not change" "$TMP/expected-knowledge" "$TAGENTS_BIN/tagents-knowledge"
+same_bytes "nor does a hook wrapper" "$TMP/expected-hook" "$HOOKS_A/tmux-agent-state.sh"
+# The wrapper's two guards are each pinned by a case only that guard catches, on the wrapper written for the real binary and without a reinstall.
+node_answer="node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b"
+rm -f "$RUST_BIN"; mkdir "$RUST_BIN"
+ok "a directory where the binary was (it passes -x, so only the -f guard stops it) falls through to the node CLI" "$node_answer" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+rmdir "$RUST_BIN"
+printf '#!/bin/sh\necho "rust"\n' > "$RUST_BIN"; chmod 644 "$RUST_BIN"
+ok "a file without the executable bit (only the -x guard stops it) falls through to the node CLI" "$node_answer" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+rm -f "$RUST_BIN"
+ok "once the binary is gone the same wrapper runs the node CLI" "node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+printf '#!/bin/sh\necho "rust"\n' > "$RUST_BIN"; chmod 644 "$RUST_BIN"
+out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
+same_bytes "a binary that is not executable is not named" "$TMP/expected-core" "$TAGENTS_BIN/tagents-core"
+rm -f "$RUST_BIN"
+out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
+same_bytes "after the binary is removed, the next update writes the old bytes back" "$TMP/expected-core" "$TAGENTS_BIN/tagents-core"
+
+# A binary that is present and executable but cannot run (its interpreter is missing) is an error: the wrapper must not fall back to the node CLI, which would print the marker.
+mkdir -p "$(dirname "$RUST_BIN")"
+printf '#!/nonexistent/interpreter\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+PATH="$TMP/node-c:$PATH" run >/dev/null
+contains "an install with a binary that cannot run still names it" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+out=$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b 2>"$TMP/cannot-run.err"); rc=$?
+if [ "$rc" -ne 0 ]; then rc_state=nonzero; else rc_state=zero; fi
+ok "a binary that cannot run fails with a non-zero exit" nonzero "$rc_state"
+ok "...with a message on stderr" yes "$([ -s "$TMP/cannot-run.err" ] && echo yes || echo no)"
+lacks "...and the node CLI was not run" "node-c" "$out"
+# A directory at the binary's path is not a binary: the plain wrapper is written, which goes straight to the node CLI.
+rm -f "$RUST_BIN"; mkdir "$RUST_BIN"
+out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
+lacks "an install with a directory at the binary's path does not name it" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+ok "...and the wrapper runs the node CLI" "node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+rmdir "$RUST_BIN"
+out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
+
+# No node on the installing shell's PATH: the wrapper looks node up at run time and has none to pass on.
+if [ -n "$(env PATH=/usr/bin:/bin sh -c 'command -v node' 2>/dev/null)" ]; then
+  printf '  skip /usr/bin or /bin holds a node\n'
+else
+  mkdir -p "$(dirname "$RUST_BIN")"
+  printf '#!/bin/sh\necho "rust node=${TAGENTS_NODE-unset} $*"\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+  out=$(PATH=/usr/bin:/bin run); rc=$?
+  ok "an install from a shell finding no node exits 0" 0 "$rc"
+  contains "the wrapper names the binary" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+  lacks "and pins no node" 'TAGENTS_NODE=' "$(cat "$TAGENTS_BIN/tagents-core")"
+  ok "the binary is run without a node handed to it" "rust node=unset a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+  rm -f "$RUST_BIN"
+  out=$(PATH=/usr/bin:/bin run); rc=$?
+  wrapper_bytes "" "$TAGENTS_HOME/packages/core/dist/cli/main.js" > "$TMP/expected-core-unpinned"
+  same_bytes "without the binary it is the old unpinned wrapper" "$TMP/expected-core-unpinned" "$TAGENTS_BIN/tagents-core"
+fi
+
+# A managed copy whose path holds a space: the wrapper must name the binary and run it with its arguments whole.
+mkorigin; fresh_env
+export TAGENTS_HOME="$HOME_DIR/share/a b/tagents"
+out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
+ok "an install into a home with a space exits 0" 0 "$rc"
+RUST_BIN=$TAGENTS_HOME/target/release/tagents-core
+mkdir -p "$(dirname "$RUST_BIN")"
+printf '#!/bin/sh\necho "rust $# $*"\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
+contains "the wrapper names the binary under the spaced home" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+ok "...and runs it with every argument" "rust 2 a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

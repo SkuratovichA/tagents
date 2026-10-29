@@ -1,4 +1,4 @@
-// Where the contract is read from: the code itself. The two CLI specs and the MCP server are imported by relative path, not through the package names, because a package name resolves to a built dist and a stale dist would write a stale contract.
+// Where the contract is read from: the code itself. The two CLI specs and the MCP server are imported by relative path, not through the package names, because a package name resolves to a built dist and a stale dist would write a stale contract. The core CLI spec is the data file spec/cli/tagents-core.json, read live by the loader in core's cli/spec.ts; only the English text of its summary keys comes from core's catalogue.
 import { execFile } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

@@ -1,17 +1,21 @@
 // node --test cli-spec.test.ts
 //
-// The command specs in src/cli/spec.ts are what parseArgs reads and what the contract generator reads; the usage text in i18n/en.ts is still hand-written. This file keeps the three from drifting: no inline option tables, the spec and the usage agree on every verb and flag, and every verb has a summary.
+// The command specs are spec/cli/tagents-core.json, read by src/cli/spec.ts: what parseArgs reads and what the contract generator reads; the usage text in i18n/en.ts is still hand-written. This file keeps the three from drifting: no inline option tables, the spec and the usage agree on every verb and flag, and every verb has a summary. The data file is also read by the Rust front door, so what it may contain is pinned here and in crates/tagents-spec.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test } from 'node:test';
+import { Ajv2020 } from 'ajv/dist/2020.js';
 import { en } from '../src/i18n/en.ts';
 import { ru } from '../src/i18n/ru.ts';
-import { CORE_COMMANDS, coreCliContract } from '../src/cli/spec.ts';
+import { EXIT } from '../src/cli/exit.ts';
+import { CORE_COMMANDS, SPEC_FILE, coreCliContract, loadSpec } from '../src/cli/spec.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI_DIR = path.resolve(HERE, '..', 'src', 'cli');
+const SCHEMA_FILE = path.resolve(HERE, '..', '..', '..', 'spec', 'cli', 'cli-spec.schema.json');
 
 /** The text of every `parseArgs(…)` call in a source, balanced on its parentheses. */
 function parseArgsCalls(src: string): string[] {
@@ -140,4 +144,133 @@ test('coreCliContract is English whatever the machine speaks', () => {
     if (before === undefined) delete process.env['TAGENTS_LOCALE'];
     else process.env['TAGENTS_LOCALE'] = before;
   }
+});
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function readDoc(): Record<string, unknown> {
+  const doc: unknown = JSON.parse(fs.readFileSync(SPEC_FILE, 'utf8'));
+  assert.ok(isRecord(doc));
+  return doc;
+}
+
+function commandsOf(doc: Record<string, unknown>): Record<string, unknown>[] {
+  const commands = doc['commands'];
+  assert.ok(Array.isArray(commands) && commands.every(isRecord));
+  return commands;
+}
+
+/** A copy of the data file with `change` applied to the whole document, written where only this test looks. */
+function specWith(change: (doc: Record<string, unknown>) => void): URL {
+  const doc = readDoc();
+  change(doc);
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cli-spec-')), 'spec.json');
+  fs.writeFileSync(file, JSON.stringify(doc));
+  return pathToFileURL(file);
+}
+
+/** `specWith` for a change to the first command only. */
+function specWithFirstCommand(change: (command: Record<string, unknown>) => void): URL {
+  return specWith((doc) => {
+    const [first] = commandsOf(doc);
+    assert.ok(first);
+    change(first);
+  });
+}
+
+test('the exit codes the contract prints are the ones the CLI exits with', () => {
+  assert.deepEqual(coreCliContract().exit, EXIT);
+});
+
+test('every verb says which program serves it, and a verb word is served by one program', () => {
+  const byWord = new Map<string, Set<unknown>>();
+  for (const command of commandsOf(readDoc())) {
+    const { path: words, impl } = command;
+    assert.ok(Array.isArray(words) && (impl === 'rust' || impl === 'node'), JSON.stringify(command));
+    const word = String(words[0]);
+    byWord.set(word, (byWord.get(word) ?? new Set()).add(impl));
+  }
+  for (const [word, impls] of byWord) assert.equal(impls.size, 1, `${word}: the group is split between ${[...impls].join(' and ')}`);
+});
+
+test('the loader keeps impl and effect out of what parseArgs and the contract see, and refuses a key it does not know', () => {
+  const before = loadSpec(SPEC_FILE).commands;
+  const withEffect = loadSpec(specWithFirstCommand((command) => { command['effect'] = 'writes'; }));
+  assert.deepEqual(withEffect.commands, before);
+  assert.throws(
+    () => loadSpec(specWithFirstCommand((command) => { command['surprise'] = 'x'; })),
+    /does not match spec\/cli\/cli-spec.schema.json/,
+  );
+  assert.throws(
+    () => loadSpec(specWithFirstCommand((command) => { command['summary'] = 'noSuchKey'; })),
+    /not a key of the English catalogue/,
+  );
+});
+
+function schemaValidator() {
+  const schema: unknown = JSON.parse(fs.readFileSync(SCHEMA_FILE, 'utf8'));
+  assert.ok(isRecord(schema));
+  return new Ajv2020({ strict: true, allErrors: true }).compile(schema);
+}
+
+test('the data file matches its schema', () => {
+  const validate = schemaValidator();
+  assert.ok(validate(readDoc()), JSON.stringify(validate.errors));
+});
+
+test('the schema refuses an unknown key, an empty path and an empty positional', () => {
+  const validate = schemaValidator();
+  const doc = readDoc();
+  const [first] = commandsOf(doc);
+  assert.ok(first);
+  first['surprise'] = 'x';
+  first['path'] = [];
+  first['positionals'] = [''];
+  assert.equal(validate(doc), false);
+  const keywords = new Set((validate.errors ?? []).map((e) => `${e.instancePath}:${e.keyword}`));
+  assert.ok(keywords.has('/commands/0:additionalProperties'), [...keywords].join(' '));
+  assert.ok(keywords.has('/commands/0/path:minItems'), [...keywords].join(' '));
+  assert.ok(keywords.has('/commands/0/positionals/0:minLength'), [...keywords].join(' '));
+});
+
+// The same seven mistakes crates/tagents-spec tests one by one: both loaders refuse each, and the schema states all but the last.
+const REFUSALS: readonly [name: string, mutate: (doc: Record<string, unknown>) => void, schemaStatesIt: boolean][] = [
+  ['an empty program', (doc) => { doc['program'] = ''; }, true],
+  ['an empty summary', (doc) => { for (const c of commandsOf(doc)) c['summary'] = ''; }, true],
+  ['an empty path', (doc) => { for (const c of commandsOf(doc)) c['path'] = []; }, true],
+  ['an empty word in a path', (doc) => { for (const c of commandsOf(doc)) c['path'] = ['']; }, true],
+  ['an empty positional', (doc) => { for (const c of commandsOf(doc)) c['positionals'] = ['']; }, true],
+  ['an empty required name', (doc) => { for (const c of commandsOf(doc)) c['required'] = ['']; }, true],
+  [
+    'two verbs with one path',
+    (doc) => {
+      const commands = commandsOf(doc);
+      const [first] = commands;
+      assert.ok(first);
+      commands.push({ ...first });
+    },
+    false,
+  ],
+];
+
+for (const [name, mutate, schemaStatesIt] of REFUSALS) {
+  test(`${name} is refused by the loader${schemaStatesIt ? ' and by the schema' : ', and the schema accepts it'}`, () => {
+    assert.throws(() => loadSpec(specWith(mutate)));
+    const doc = readDoc();
+    mutate(doc);
+    // The schema cannot state that no two verbs share a path (JSON Schema has no uniqueness over a property of array items), so only the loaders refuse that one.
+    assert.equal(schemaValidator()(doc), !schemaStatesIt);
+  });
+}
+
+test('two verbs with one path are refused: dispatch is by path and the second would never run', () => {
+  const file = specWith((doc) => {
+    const commands = commandsOf(doc);
+    const [first] = commands;
+    assert.ok(first);
+    commands.push({ ...first });
+  });
+  assert.throws(() => loadSpec(file), /^Error: tagents-core: \S+ has two verbs with the path "\S.*" \(dispatch is by path, so the second would never run\)$/);
 });
