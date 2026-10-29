@@ -59,8 +59,8 @@ short() { printf '%s' "$1" | cut -c1-7; }
 
 xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
-# A native binary is looked up in the tree and nothing rebuilds it: after `tagents update` or a `git pull` an old `cargo build --release` keeps answering the verbs it serves until the next `cargo build --release`, and the wrapper cannot tell. A release that ships versioned, checksummed binaries is what removes that risk.
 # A wrapper names the one file to run and passes everything through, stdin included, which is what a hook is fed on; an interpreter given by its absolute path is pinned, so the wrapper runs that file while it is executable and otherwise the interpreter of the same name on the caller's PATH. A native binary, when one is given, is run in place of the file, with the interpreter handed to it as TAGENTS_NODE.
+# A native binary is looked up in the tree and nothing rebuilds it: after `tagents update` or a `git pull` an old `cargo build --release` keeps answering the verbs it serves until the next `cargo build --release`, and the wrapper cannot tell. A release that ships versioned, checksummed binaries is what removes that risk.
 write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary]
   dest=$1; target=$2; interp=${3:-}; native=${4:-}
   if [ -L "$dest" ]; then
@@ -97,7 +97,8 @@ install_commands() {
     cli=$TAGENTS_HOME/packages/${pair#*:}/dist/cli/main.js
     native=
     # tagents-core has a Rust front door that serves the verbs ported so far and hands every other word to the node CLI. The binary is never built or fetched here: it is used when a build or a release put it next to the node CLI.
-    if [ "${pair%%:*}" = tagents-core ] && [ -x "$TAGENTS_HOME/target/release/tagents-core" ]; then native=$TAGENTS_HOME/target/release/tagents-core; fi
+    rust_bin=$TAGENTS_HOME/target/release/tagents-core
+    if [ "${pair%%:*}" = tagents-core ] && [ -f "$rust_bin" ] && [ -x "$rust_bin" ]; then native=$rust_bin; fi
     if [ -f "$cli" ]; then
       write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin" "$native"
     else
