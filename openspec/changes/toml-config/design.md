@@ -45,10 +45,14 @@ export function parseConfigText(text: string, format: ConfigFormat): unknown {
 }
 ```
 
-**`plugin add` and `plugin remove` edit text, in whichever format the file is.** A TOML config gets `[plugins.NAME]` appended after everything else behind one blank line (a table header at the end of a file is valid whatever precedes it, so nothing has to be understood to place it), removal cuts that table, its sub-tables and the comment lines that belong to its header, and the result is parsed again before it is written. A new config is created as `config.toml`; a YAML config is edited as before. Rejected: parse and serialise, which loses comments and the spacing somebody aligned by hand.
+**`plugin add` and `plugin remove` edit text, in whichever format the file is.** A TOML config gets `[plugins.NAME]` appended after everything else behind one blank line (a table header at the end of a file is valid whatever precedes it, so nothing has to be understood to place it), removal cuts that table, its sub-tables and the comment lines that belong to its header, and the result is parsed again before it is written. A name or a path with a character the dashboard's reader cannot take back out (a control character, a lone surrogate) is refused for a TOML config, naming the file, and nothing is written. A new config is created as `config.toml`; a YAML config is edited as before. Rejected: parse and serialise, which loses comments and the spacing somebody aligned by hand.
 
 ```ts
-const tomlEntry = (name: string, from: string) => `[plugins.${tomlKey(name)}]\nfrom = ${JSON.stringify(from)}\n`;
+// tomlString and tomlKey return null for text the dashboard's reader cannot take back out (a control character, a lone surrogate); the entry is refused then, naming the file, and nothing is written.
+const written = tomlString(from);
+const key = tomlKey(name);
+if (written === null || key === null) throw new Error(`${file}: ... cannot be written in a config tagents reads`);
+return `[plugins.${key}]\nfrom = ${written}\n`;
 ```
 
 **Plugin option files prefer `<name>.toml` and fall back to `<name>.yaml`, silently.** `notify.toml` is the file the docs show, and the notify watcher watches both names so a move from one to the other while the service runs is seen. No deprecation line, because `config convert` converts the main config and its overlays and cannot fix an options file, and a notice that names a command which does not help is noise. Rejected: converting options files too (they are optional, per plugin and owned by plugin authors).

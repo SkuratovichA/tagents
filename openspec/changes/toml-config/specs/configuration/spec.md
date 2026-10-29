@@ -276,8 +276,8 @@ The converted TOML SHALL start with the `#:schema` line of the schema and a line
 - **THEN** the conversion names line 5, says what to write instead (a plain decimal, `true` or `false`, or the value quoted), exits 3 and writes nothing
 
 #### Scenario: A control character in a value
-- **WHEN** a YAML string value has a tab or another control character in it
-- **THEN** the conversion names the line, says a control character cannot be written in the TOML tagents reads, exits 3 and writes nothing
+- **WHEN** a YAML string value has a tab, another control character or a lone surrogate in it
+- **THEN** the conversion names the line, says that character cannot be written in the TOML tagents reads, exits 3 and writes nothing
 
 #### Scenario: A profile with nothing under it
 - **WHEN** the YAML says `work:` under `profiles:`
