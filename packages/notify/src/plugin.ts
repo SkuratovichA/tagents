@@ -1,9 +1,6 @@
 // The notify plugin: what the host sees, and the five verbs a person types.
 //
-// Registering it in the config (`tagents plugin add`) gives `tagents notify <verb>`; the same verbs
-// run from the package's own bin (main.ts), which is what the LaunchAgent
-// starts. The service that actually posts notifications is `run`: under launchd
-// it is the process, and a host that merely lists plugins never starts it.
+// Registering it in the config (`tagents plugin add`) gives `tagents notify <verb>`; the same verbs run from the package's own bin (main.ts), which is what the LaunchAgent starts. The service that actually posts notifications is `run`: under launchd it is the process, and a host that merely lists plugins never starts it.
 //
 // Every verb takes its directories from `deps.env` and not from the context, so
 // a test points it at a temporary config and state dir without touching the

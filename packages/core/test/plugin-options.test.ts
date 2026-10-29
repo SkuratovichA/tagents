@@ -1,6 +1,4 @@
-// A plugin's options live in <configDir>/plugins/<name>.toml (or .yaml) and are read through
-// one function that never throws: a missing file is the defaults, a broken one
-// is a list of problems a person can fix.
+// A plugin's options live in <configDir>/plugins/<name>.toml (or .yaml) and are read through one function that never throws: a missing file is the defaults, a broken one is a list of problems a person can fix.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';

@@ -7,9 +7,7 @@
 # ---------------------------------------------------------------------------
 # config: which Claude account an agent is started on
 #
-# Everything here is inert without ~/.config/tagents/config.toml. No file means
-# no profiles, which means agent_cmd falls back to exactly the strings this
-# script has always used and nothing ever asks you anything.
+# Everything here is inert without ~/.config/tagents/config.toml. No file means no profiles, which means agent_cmd falls back to exactly the strings this script has always used and nothing ever asks you anything.
 #
 # Each parser is one awk program over a deliberate subset of its format — tables, sequences, quoted scalars, comments — flattened to `path<TAB>value`, one line per leaf, in file order. yq is not installed anywhere this has to run, and a config that decides which LOGIN an agent gets is not worth a python start-up on every keypress. Sequence items (a YAML list, a TOML array, a TOML [[table]]) are `path.N`, so a rule is claude.rules.0.dir and the whole thing stays greppable by hand: that is what --config prints.
 #
@@ -581,12 +579,7 @@ cfg_top_of() {  # <path> -> CFG_TOP
 # The same profile name pointing at a directory that does not exist on this
 # machine starts a logged-out Claude — silently, from a picker that looked fine.
 #
-# So config.<hostname>.toml (or .yaml) beside the config is laid over it, per machine and still in the repo, each file read by its own format. Granularity is the `a.b` subtree: every one the overlay
-# mentions (claude.profiles, claude.rules, claude.default, notes.send, …)
-# REPLACES the base subtree wholesale, the rest is inherited. Wholesale, not
-# merged, because profiles and rules are tables: a union would keep the base
-# laptop's ~/.claude-personal row in this machine's picker, which is the exact
-# thing being fixed, and rule indices from two files would collide.
+# So config.<hostname>.toml (or .yaml) beside the config is laid over it, per machine and still in the repo, each file read by its own format. Granularity is the `a.b` subtree: every one the overlay mentions (claude.profiles, claude.rules, claude.default, notes.send, …) REPLACES the base subtree wholesale, the rest is inherited. Wholesale, not merged, because profiles and rules are tables: a union would keep the base laptop's ~/.claude-personal row in this machine's picker, which is the exact thing being fixed, and rule indices from two files would collide.
 #
 # Overlay lines go FIRST: cfg_get takes the first match and cfg_children keeps
 # file order, so no lookup needs to know an overlay exists. TA_HOST stands in
@@ -801,15 +794,7 @@ cfg_note() {  # <key, or empty> <what is wrong — and what to do> [<the file it
 # status-bar tick. The profiles and the rules are accounts_check's, which knows
 # what a profile is; the file's own values are checked here.
 # WHAT THE STATUS BAR PAYS FOR THE CHECK, AND WHY IT DOES NOT PAY IT TWICE.
-# cfg_check parses the file and stats every profile directory: measured at ~50 ms
-# on every tick of every attached client, spent almost always to conclude that
-# nothing changed. So the count is remembered against the config's own identity
-# — is any config*.toml or config*.yaml in that directory newer than the stamp — which is a glob and a file test. The config's mtime is the main key: a config you have
-# just fixed clears the marker the next time the bar is recomputed (COUNTS_EVERY
-# seconds at most) rather than when a timer gets round to it. An age ceiling sits
-# behind it because a problem can be fixed WITHOUT touching the config — creating
-# the login directory the profile names is the obvious one — and a marker that
-# outlives its problem is its own lie.
+# cfg_check parses the file and stats every profile directory: measured at ~50 ms on every tick of every attached client, spent almost always to conclude that nothing changed. So the count is remembered against the config's own identity — is any config*.toml or config*.yaml in that directory newer than the stamp — which is a glob and a file test. The config's mtime is the main key: a config you have just fixed clears the marker the next time the bar is recomputed (COUNTS_EVERY seconds at most) rather than when a timer gets round to it. An age ceiling sits behind it because a problem can be fixed WITHOUT touching the config — creating the login directory the profile names is the obvious one — and a marker that outlives its problem is its own lie.
 cfg_count_cached() {  # sets CFG_NPROBLEMS, cheaply, for the status bar
   local f n when now path ident stale=0
   # No file at all is no problem, and the stamp of a config that has been

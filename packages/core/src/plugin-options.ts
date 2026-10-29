@@ -1,9 +1,6 @@
 // A plugin's options, read from a file of their own.
 //
-// The neovim way: config.toml holds the list of what is enabled, and each plugin's options live in `<configDir>/plugins/<name>.toml`. One file per
-// plugin keeps the enable list short enough to read at a glance, lets a plugin
-// grow options without anyone editing a shared file, and lets a dotfiles repo
-// commit each plugin's settings on their own.
+// The neovim way: config.toml holds the list of what is enabled, and each plugin's options live in `<configDir>/plugins/<name>.toml`. One file per plugin keeps the enable list short enough to read at a glance, lets a plugin grow options without anyone editing a shared file, and lets a dotfiles repo commit each plugin's settings on their own.
 //
 // A `<name>.yaml` written before there was a TOML reader is still read, as YAML, when no `<name>.toml` is there (the main config's rule, config-file.ts), and without the main config's conversion notice: `tagents config convert` is for the config, and an options file is short enough to translate by hand.
 //

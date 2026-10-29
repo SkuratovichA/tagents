@@ -1,5 +1,4 @@
-// Finding a plugin package, and editing the `plugins` entries of the config —
-// nothing else in that file.
+// Finding a plugin package, and editing the `plugins` entries of the config — nothing else in that file.
 //
 // The file is the OWNER'S. It carries comments explaining why a rule exists,
 // the key order they chose, the spacing they aligned by hand, and (see

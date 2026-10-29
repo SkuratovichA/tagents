@@ -302,9 +302,7 @@ accounts_check() {
         elif [ ! -d "$d" ]; then
           cfg_note "$k" "$v is not a directory — an agent on it starts logged out; fix the path"
         elif [ "$d" = "$HOME/.claude" ]; then
-          # config.example.toml says why: Claude keys its keychain item on the
-          # literal path, and a set CLAUDE_CONFIG_DIR is not the same item as
-          # an unset one, even at the default location.
+          # config.example.toml says why: Claude keys its keychain item on the literal path, and a set CLAUDE_CONFIG_DIR is not the same item as an unset one, even at the default location.
           cfg_note "$k" '~/.claude set explicitly is a different login from the default account — drop the key to mean the default account'
         elif [ ! -e "$d/.claude.json" ] && [ ! -e "$d/settings.json" ]; then
           cfg_note "$k" "$v has never been used by Claude (no .claude.json in it) — the first agent on it will ask you to log in"

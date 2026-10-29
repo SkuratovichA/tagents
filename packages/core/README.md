@@ -197,15 +197,7 @@ tagents-core plugin list               # …and this is what the host sees in it
 tagents-core plugin remove notes
 ```
 
-`add` resolves a directory (stored as an absolute path — the host resolves a
-relative `from:` against the CONFIG, not your shell) or an installed package
-name (stored as the name). It reads package.json and stats the entry, and that
-is the whole check: **importing a stranger's code to decide whether to install
-it is the wrong way round.** In a `config.toml` the edit appends or cuts one
-`[plugins.NAME]` table as text, and the result is parsed again before it is
-written; in a `config.yaml` it goes in through yaml's Document API and is
-applied as a splice of the range it names. Either way every other key, comment
-and hand-aligned value in the file comes back byte for byte.
+`add` resolves a directory (stored as an absolute path — the host resolves a relative `from:` against the CONFIG, not your shell) or an installed package name (stored as the name). It reads package.json and stats the entry, and that is the whole check: **importing a stranger's code to decide whether to install it is the wrong way round.** In a `config.toml` the edit appends or cuts one `[plugins.NAME]` table as text, and the result is parsed again before it is written; in a `config.yaml` it goes in through yaml's Document API and is applied as a splice of the range it names. Either way every other key, comment and hand-aligned value in the file comes back byte for byte.
 
 Exit codes do the talking: **1** nothing resolved, **3** refused — something is
 there and it is not a plugin, or that name is already listed, and in both cases

@@ -26,8 +26,7 @@ That is why every launch goes out as `env -u CLAUDE_CONFIG_DIR [CLAUDE_CONFIG_DI
 # A string (your own shell words, verbatim) or a list (each item quoted).
 args = "--dangerously-skip-permissions"
 
-# When nothing matches. `ask` (the default) opens a picker; a profile name
-# settles it silently.
+# When nothing matches. `ask` (the default) opens a picker; a profile name settles it silently.
 default = "ask"
 
 [claude.profiles.personal]
@@ -37,17 +36,13 @@ config_dir = "~/.claude-personal"
 #                # are p and w already; set it when two accounts collide.
 
 [claude.profiles.work]
-# config_dir omitted: CLAUDE_CONFIG_DIR is UNSET for this one. Omit it,
-# do not write ~/.claude — set and unset are different keychain items.
+# config_dir omitted: CLAUDE_CONFIG_DIR is UNSET for this one. Omit it, do not write ~/.claude — set and unset are different keychain items.
 # command = "claude"                                    # binary or wrapper
 # args = "--dangerously-skip-permissions --model opus"  # replaces claude.args
 # [claude.profiles.work.env]
 # ANTHROPIC_BASE_URL = "https://proxy.example.com"
 
-# First match wins. `dir` matches that directory and everything under it, by
-# path component (~/git/personalx is not under ~/git/personal). `session`
-# matches when the tmux session name CONTAINS the text. Both present means
-# both must match; neither present is a catch-all.
+# First match wins. `dir` matches that directory and everything under it, by path component (~/git/personalx is not under ~/git/personal). `session` matches when the tmux session name CONTAINS the text. Both present means both must match; neither present is a catch-all.
 [[claude.rules]]
 dir = "~/git/personal"
 profile = "personal"

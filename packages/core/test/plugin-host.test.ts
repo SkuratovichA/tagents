@@ -1,8 +1,6 @@
 // The plugin host: what it loads, and — more importantly — what it does not.
 //
-// EXPLICIT LISTING ONLY. There is a plugin package sitting in this repo's
-// fixtures; unless config.toml names it, the host must not find it. Scanning is
-// how a machine ends up running code nobody chose.
+// EXPLICIT LISTING ONLY. There is a plugin package sitting in this repo's fixtures; unless config.toml names it, the host must not find it. Scanning is how a machine ends up running code nobody chose.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
