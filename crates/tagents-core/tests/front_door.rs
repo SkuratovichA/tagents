@@ -376,6 +376,21 @@ fn an_argument_that_is_not_utf8_is_forwarded_byte_for_byte() {
         "{:?}",
         String::from_utf8_lossy(&recorded)
     );
+
+    // The verb position too: a first word that is not UTF-8 is not one the front door serves, so it is forwarded, and it must arrive as the same bytes. Its bytes differ from the second word's so a mixed-up pair would show.
+    let out = checkout
+        .command()
+        .arg(OsStr::from_bytes(b"\xfe\xff"))
+        .arg(OsStr::from_bytes(b"\xff\xfe"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let recorded = fs::read(&checkout.argv).unwrap();
+    assert!(
+        recorded.ends_with(b"arg=\xfe\xff\narg=\xff\xfe\n"),
+        "{:?}",
+        String::from_utf8_lossy(&recorded)
+    );
 }
 
 #[test]
@@ -437,7 +452,8 @@ fn a_node_that_cannot_run_is_exit_127_or_126() {
         .arg("doctor")
         .output()
         .unwrap();
-    assert_eq!(missing.status.code(), Some(exit::NOT_FOUND.into()));
+    // The shell's codes for "not found" and "found but cannot run", written out so that changing a constant in the code does not move the test with it.
+    assert_eq!(missing.status.code(), Some(127));
     assert!(
         String::from_utf8_lossy(&missing.stderr).contains("no-such-node"),
         "{:?}",
@@ -451,7 +467,7 @@ fn a_node_that_cannot_run_is_exit_127_or_126() {
         .arg("doctor")
         .output()
         .unwrap();
-    assert_eq!(denied.status.code(), Some(exit::CANNOT_EXECUTE.into()));
+    assert_eq!(denied.status.code(), Some(126));
 }
 
 #[test]
