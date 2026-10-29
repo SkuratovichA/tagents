@@ -1,3 +1,5 @@
+// The keys of each scene are the ones docs/demo/hero.tape, new-chat.tape and closed.tape press for the README's GIFs, but the two are kept apart on purpose and no test compares them: a tape also types the setup, presses `?` and Escape in the hero, and closed.tape stops at a screenshot without the Enter that resumes a chat, so the ordered key presses are not the same list, and the site records real tmux output where a tape records a GIF with its own timings.
+
 /** One thing done to the dashboard at `at` milliseconds into a recording: keys typed into it, or a line sent to a fake agent. */
 export type Step = { readonly at: number } & (
   | { readonly keys: readonly string[] }

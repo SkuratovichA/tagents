@@ -52,6 +52,8 @@ describe('parseLine', () => {
   it('refuses what it cannot draw instead of guessing', () => {
     expect(() => parseLine(`${sgr('5')}x`)).toThrow(/unknown SGR code 5/)
     expect(() => parseLine(`${sgr('38;9')}x`)).toThrow(/unknown colour mode/)
+    expect(() => parseLine(`${sgr('38;5;256')}x`)).toThrow(/256-colour palette/)
+    expect(() => parseLine(`${sgr('48;5;300')}x`)).toThrow(/256-colour palette/)
     expect(() => parseLine(`${ESC}[2Jx`)).toThrow(/not SGR/)
     expect(() => parseLine('日本')).toThrow(/wide character/)
   })

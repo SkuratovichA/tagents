@@ -1,5 +1,3 @@
-import { TERMINAL } from '../src/lib/screen.ts'
-
 /** The sixteen colours of Catppuccin Mocha, the theme the screenshots in docs/images are drawn with. */
 const ANSI = [
   '#45475a',
@@ -27,6 +25,8 @@ const hex = (r: number, g: number, b: number) =>
 
 /** The colour of an xterm palette index: 0-15 the theme, 16-231 the 6x6x6 cube, 232-255 the greys. */
 export function paletteColor(index: number): string {
+  if (!Number.isInteger(index) || index < 0 || index > 255)
+    throw new Error(`${index} is not an index of the 256-colour palette`)
   const theme = ANSI[index]
   if (theme !== undefined) return theme
   if (index >= 232 && index <= 255) {
@@ -39,5 +39,3 @@ export function paletteColor(index: number): string {
   )
   return hex(r, g, b)
 }
-
-export { TERMINAL }
