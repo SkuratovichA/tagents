@@ -14,9 +14,16 @@
       "args": [
         "${CLAUDE_PLUGIN_ROOT}/packages/knowledge/bin/knowledge-mcp"
       ]
+    },
+    "tagents": {
+      "command": "tagents-mcp",
+      "args": [
+        "--contract",
+        "${CLAUDE_PLUGIN_ROOT}/contract.json"
+      ]
     }
   },
   "metadata": {
-    "digest": "sha256:480768138086677ab0597b1ab77d77d091d0ecff4bdcfa0927eb448eeb018798"
+    "digest": "sha256:0bc9a3bdb8c5b6f65229e8983a4122cb8d96dcb907859482ff945e7b3b685098"
   }
 }
