@@ -510,9 +510,9 @@ ok "a directory that is not there is refused" 1 "$rc"
 has "...by name" "$ROOT/no-such-dir" "$err"
 ok "none of the refusals opened a window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
 
-# A directory that exists but cannot be entered (no search permission) is refused like one that is not there, whether it is named by an absolute path or by a relative one: handed on as typed, a relative name would reach tmux relative. Root can enter it, so there is nothing to refuse.
+# A directory that exists but cannot be entered (no search permission) is refused like one that is not there, by --window and by --new, whether it is named by an absolute path or by a relative one: handed on as typed, a relative name would reach tmux relative. Root can enter it, so there is nothing to refuse.
 if [ "$(id -u)" -eq 0 ]; then
-  printf '  skip: a directory without search permission can be entered as root\n'
+  printf '  SKIP a directory without search permission can be entered as root\n'
 else
   mkdir "$ROOT/locked-dir" && chmod 600 "$ROOT/locked-dir"
   for kind in absolute relative; do
@@ -520,6 +520,11 @@ else
     before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
     err=$( cd "$ROOT" && run --window "$name" "sleep 600" 2>&1 >/dev/null ); rc=$?
     ok "a directory that cannot be entered is refused ($kind name)" 1 "$rc"
+    has "...saying it is not a directory" "is not a directory" "$err"
+    ok "...opening no window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+    pushd "$ROOT" >/dev/null && { run_bounded --new --detach "$name"; rc=$?; popd >/dev/null; }
+    err=$(cat "$BOUNDED_ERR")
+    ok "--new --detach refuses it too ($kind name)" 1 "$rc"
     has "...saying it is not a directory" "is not a directory" "$err"
     ok "...opening no window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
   done
