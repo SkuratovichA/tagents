@@ -1,6 +1,6 @@
 name: rust
 
-# The Rust workspace and everything its tests compare it with: the shared CLI spec, the node CLI that stays the reference, and the parity suite.
+# The Rust workspace and everything its tests compare it with: the shared CLI spec, the node CLI that stays the reference, and the parity suite. The shell suites for `tagents` and `install.sh` are not run here, so those files are not listed.
 on:
   push:
     paths:
@@ -11,10 +11,6 @@ on:
       - spec/**
       - packages/core/**
       - tests/rust-parity.sh
-      - tests/dispatch.sh
-      - tests/install.sh
-      - install.sh
-      - tagents
       - .node-version
       - package.json
       - pnpm-lock.yaml
@@ -29,10 +25,6 @@ on:
       - spec/**
       - packages/core/**
       - tests/rust-parity.sh
-      - tests/dispatch.sh
-      - tests/install.sh
-      - install.sh
-      - tagents
       - .node-version
       - package.json
       - pnpm-lock.yaml
