@@ -208,6 +208,16 @@ out=$(dump "$TMP/multi3.toml")
 lacks    "a multi-line string opened in a skipped table: no table from its body" "fake" "$out"
 lacks    "...and no key from its body" "b${TAB}1" "$out"
 contains "...the table after its end reads" "usage.d${TAB}3" "$out"
+# ...and when the line that opens it is the one refused: a key that is not valid, or a key that is not followed by =, still has a body to swallow.
+for opener in '"""' "'''"; do
+  for key in '$x' 'a b'; do
+    printf '%s = %s\n[fake]\nx = 1\n%s\n[usage]\nd = 3\n' "$key" "$opener" "$opener" >"$TMP/multi4.toml"
+    out=$(dump "$TMP/multi4.toml")
+    ok       "a multi-line string opened on the refused line \"$key = $opener\": one warning" 1 "$(printf '%s\n' "$out" | grep -c 'multi4.toml:')"
+    lacks    "...no table from its body" "fake" "$out"
+    contains "...the table after its end reads" "usage.d${TAB}3" "$out"
+  done
+done
 
 # ---------------------------------------------------------------------------
 t "3. which file is read"
