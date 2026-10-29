@@ -122,7 +122,7 @@
           ],
           "options": {},
           "required": [],
-          "summary": "stops the turn running in a session and prints whether it did, with the id and pid, as JSON",
+          "summary": "stops the process of a session that has no pane and prints whether it did, with the id and pid, as JSON; a session in a tmux pane is refused with exit 3",
           "effect": "destructive",
           "tool": false
         },
@@ -1225,7 +1225,7 @@
     }
   },
   "api": {
-    "@tagents/core": "sha256:5d3b264c1a557fc00efb5f9f22cda0ad69716f8fc1a752bbf28231a0ebbff353",
+    "@tagents/core": "sha256:ed5ce91533cd52b4a6f18cb2eb7410c5d4d6036d79b9ddbb2d99c0d7819ac377",
     "@tagents/knowledge": "sha256:63465226fcb49e8f6a20867948332ff35da600f4a020fa9701ef88730f5c2d8a",
     "@tagents/notify": "sha256:9fd35c43c5dd7262667bfdd48944a46e39551f1e7441438455c7859a39f8fb7e",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"

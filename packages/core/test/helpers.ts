@@ -6,7 +6,7 @@
 // because the developer's real ~/.claude has hundreds of transcripts and would
 // make both the listings and the timings meaningless.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -170,6 +170,13 @@ export function writeStateRow(dir: string, r: StateRowInput): void {
   for (let i = 0; i < tail.length; i += 1) if (tail[i] !== undefined) last = i;
   for (let i = 0; i <= last; i += 1) fields.push(tail[i] ?? '');
   fs.writeFileSync(path.join(dir, `${r.key}.tsv`), `${fields.join('\t')}\n`);
+}
+
+/** A real process to stand behind a state row's pid: the caller stops it, and waits for `exit` to learn how it ended. */
+export function startSleeper(): ChildProcess & { readonly pid: number } {
+  const child = spawn('sleep', ['60'], { stdio: 'ignore' });
+  assert.ok(child.pid !== undefined, 'sleep did not start');
+  return Object.assign(child, { pid: child.pid });
 }
 
 export function writeHistory(

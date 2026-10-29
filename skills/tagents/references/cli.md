@@ -66,7 +66,7 @@ Usage: `tagents-core session list [--label <label>] [--state <state>…]`
 
 ### session abort
 
-stops the turn running in a session and prints whether it did, with the id and pid, as JSON
+stops the process of a session that has no pane and prints whether it did, with the id and pid, as JSON; a session in a tmux pane is refused with exit 3
 
 Usage: `tagents-core session abort <ref-json-or-id>`
 

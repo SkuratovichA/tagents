@@ -12,7 +12,7 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { fakeClaude, tmpDir } from '../src/testkit.ts';
 import { spawnSync } from 'node:child_process';
-import { baseEnv, cliEntry, expectFixture, NODE, parseSingleJson, runCli, seedSessions, writeStateRow } from './helpers.ts';
+import { baseEnv, cliEntry, expectFixture, NODE, parseSingleJson, runCli, seedSessions, startSleeper, writeStateRow } from './helpers.ts';
 
 let tmp: string;
 let claudeHome: string;
@@ -160,6 +160,41 @@ test('aborting something with no process behind it is refused, not faked', () =>
   const r = runCli(['session', 'abort', 'sess-live'], withHome());
   assert.equal(r.code, 3);
   assert.equal(r.stdout, '');
+});
+
+test('aborting a row that has a pane is refused, and the process behind it is left alone', async () => {
+  // The hook writes no pid for a row in a pane, so this row cannot come from it: the point is that a pid in the wrong kind of row is not a licence to kill.
+  const sleeper = startSleeper();
+  try {
+    writeStateRow(state, { key: '8', state: 'working', sessionId: 'sess-pane', cwd: '/Users/demo/git/demo', configDir: '', pid: sleeper.pid });
+    const r = runCli(['session', 'abort', '8'], withHome());
+    assert.equal(r.code, 3);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /8 runs in a tmux pane/);
+    assert.equal(sleeper.exitCode, null);
+    assert.equal(sleeper.signalCode, null);
+    assert.doesNotThrow(() => process.kill(sleeper.pid, 0), 'the process is still there');
+    assert.equal(runCli(['session', 'abort', 'sess-pane'], withHome()).code, 3, 'by session id too');
+    assert.equal(sleeper.signalCode, null);
+  } finally {
+    fs.rmSync(path.join(state, '8.tsv'), { force: true });
+    sleeper.kill('SIGKILL');
+  }
+});
+
+test('aborting a row without a pane stops its process', async () => {
+  const sleeper = startSleeper();
+  const ended = new Promise<string | null>((resolve) => sleeper.once('exit', (_code, signal) => resolve(signal)));
+  try {
+    writeStateRow(state, { key: 's-sess-headless', state: 'working', sessionId: 'sess-headless', cwd: '/Users/demo/git/demo', configDir: '', pid: sleeper.pid, logFile: '', label: 'job' });
+    const r = runCli(['session', 'abort', 's-sess-headless'], withHome());
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(parseSingleJson(r.stdout), { aborted: true, id: 's-sess-headless', pid: sleeper.pid });
+    assert.equal(await ended, 'SIGKILL');
+  } finally {
+    fs.rmSync(path.join(state, 's-sess-headless.tsv'), { force: true });
+    sleeper.kill('SIGKILL');
+  }
 });
 
 test('plugin list --json is JSON, and empty without a config', () => {

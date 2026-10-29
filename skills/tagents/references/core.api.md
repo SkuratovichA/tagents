@@ -672,6 +672,7 @@ export const resources: {
             readonly badRef: "no session matches {{ref}}";
             readonly noPrompt: "nothing to say: the prompt text is empty";
             readonly nothingToAbort: "nothing is running for {{ref}}";
+            readonly abortPaneAgent: "{{ref}} runs in a tmux pane and is not stopped from here: interrupt or close it in its pane";
             readonly pluginNone: "no plugins configured in {{file}}";
             readonly pluginFailed: "{{name}}: {{error}}";
             readonly pluginEntry: "{{name}} → {{from}}";
@@ -701,7 +702,7 @@ export const resources: {
             readonly summarySessionPrompt: "runs one Claude turn: sends the prompt to a session, waits for the answer and prints the TurnOutcome as JSON; with --events, NDJSON events with the outcome last";
             readonly summarySessionLast: "prints the last assistant text of a session and when it came, as JSON, or null";
             readonly summarySessionList: "prints the known sessions as a JSON array of SessionRef, filtered by label and state";
-            readonly summarySessionAbort: "stops the turn running in a session and prints whether it did, with the id and pid, as JSON";
+            readonly summarySessionAbort: "stops the process of a session that has no pane and prints whether it did, with the id and pid, as JSON; a session in a tmux pane is refused with exit 3";
             readonly summarySessionsRecent: "prints the most recent transcripts as text";
             readonly summarySessionsSearch: "prints the transcripts that match the words, as text";
             readonly summarySessionsShow: "prints the full text of one transcript, picked by id prefix";
@@ -713,7 +714,7 @@ export const resources: {
         };
     };
     readonly ru: {
-        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryDoctor", string>>;
+        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "abortPaneAgent" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryDoctor", string>>;
     };
 };
 
