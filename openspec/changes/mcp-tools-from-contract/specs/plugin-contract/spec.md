@@ -84,8 +84,8 @@ Every flag that `tagents.cli.json` describes SHALL appear in the script's `--hel
 - **WHEN** the contract is generated
 - **THEN** `contract.json` lists the tools of the knowledge server and of the `tagents` server, and one API report hash per public package
 
-### Requirement: The sources of the contract
-The sources of the contract SHALL be files under `packages/<package>/src/`, a package's `package.json` or `tsconfig*.json`, `pnpm-lock.yaml`, `tagents`, `tagents.cli.json`, `tusage`, `tnotes`, anything under `skills/` or `.claude-plugin/`, and `contract.json`.
+### Requirement: The paths that trigger the pre-commit hook
+The pre-commit hook SHALL regenerate the contract files when a commit stages a file under `packages/<package>/src/`, a package's `package.json` or `tsconfig*.json`, `pnpm-lock.yaml`, `tagents`, `tagents.cli.json`, `tusage`, `tnotes`, anything under `skills/` or `.claude-plugin/`, and `contract.json`.
 
 #### Scenario: A skill file changed
 - **WHEN** a commit stages a change under `skills/`

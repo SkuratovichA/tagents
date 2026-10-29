@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: `tagents --window` opens a plain window from outside the list
-`tagents --window DIR COMMAND` SHALL open a window in the tmux session that owns DIR, found as for a new agent, and run COMMAND in it, one string for the window's shell: the window closes when COMMAND ends. DIR is made absolute against the caller's directory, whatever `CDPATH` holds, and a COMMAND that starts with a dash is the command and not an option of tmux.
+`tagents --window DIR COMMAND` SHALL open a window in the tmux session that owns DIR, found as for a new agent, and run COMMAND in it, one string for the window's shell: the window closes when COMMAND ends. DIR is made absolute against the caller's directory, whatever `CDPATH` holds, as `tagents --new` does for its DIR, and a COMMAND that starts with a dash is the command and not an option of tmux.
 
 #### Scenario: A command in a project
 - **WHEN** `tagents --window ~/projects/app "npm run dev"` runs inside tmux
@@ -10,6 +10,10 @@
 #### Scenario: A relative directory
 - **WHEN** `tagents --window . "make watch"` runs from a shell whose directory differs from the tmux server's
 - **THEN** the window's working directory is the shell's
+
+#### Scenario: A relative directory for a new agent
+- **WHEN** `tagents --new plain-dir personal` runs from the directory that holds `plain-dir`
+- **THEN** the agent starts in the absolute path of `plain-dir`, in the session that owns it
 
 #### Scenario: A directory name with `CDPATH` set
 - **WHEN** `CDPATH` holds a directory that also contains a directory called `app`, and `tagents --window app "make watch"` runs

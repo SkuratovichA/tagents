@@ -79,6 +79,10 @@ The package SHALL describe its verbs as a structured CLI spec, which the plugin 
 - **WHEN** the plugin offers a verb that the CLI spec does not list
 - **THEN** the package's tests fail naming the verb
 
+#### Scenario: the spec follows the verbs
+- **WHEN** a verb gains an option and the CLI spec is not changed
+- **THEN** the package's tests fail naming the verb
+
 ## MODIFIED Requirements
 
 ### Requirement: Verbs and the standalone binary
@@ -91,7 +95,3 @@ The plugin SHALL provide the verbs `run`, `install`, `uninstall`, `status`, `tes
 #### Scenario: unknown verb
 - **WHEN** `tagents-notify bogus` runs
 - **THEN** it exits 2 and the output names `bogus`
-
-#### Scenario: the spec follows the verbs
-- **WHEN** a verb gains an option and the CLI spec is not changed
-- **THEN** the package's tests fail naming the verb

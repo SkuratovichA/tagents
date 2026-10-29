@@ -96,7 +96,7 @@ The pre-commit hook's source list also gains `tagents.cli.json`, which the contr
 
 ## Decisions taken
 
-The five questions that stood here (the duplicated knowledge tools, `install` and `uninstall` as tools, selecting the new window, the number of tools, and `session prompt` as a tool) are settled by the decisions below, and the later ones (D5) answer questions raised in review. Each has the choice, the reason and the alternative that was rejected.
+The five questions that stood here (the duplicated knowledge tools, `install` and `uninstall` as tools, selecting the new window, the number of tools, and `session prompt` as a tool) are settled by D1 to D4, and D5 fixes what a detached launch tells a caller that cannot see the screen. Each has the choice, the reason and the alternative that was rejected.
 
 ### D1. Nineteen tools, not thirty-one: a verb opts out with `tool: false`
 

@@ -209,10 +209,6 @@ The hand-written part of `skills/tagents/SKILL.md` SHALL have a section "Using t
 - **WHEN** `~/.local/bin/tagents-notify` exists and was not written by the installer
 - **THEN** it is left as it was, a warning names it, and the exit code is 1
 
-#### Scenario: A dropped hook's wrapper is removed
-- **WHEN** an update brings a copy that no longer ships `hooks/old.sh`, and `~/.claude/hooks/old.sh` is a wrapper of the installer
-- **THEN** that wrapper is removed
-
 ### Requirement: The bash scripts do not need the workspace
 The bash scripts SHALL neither import nor need the TypeScript workspace.
 
@@ -245,7 +241,7 @@ The skill SHALL state four things: a verb the `tagents` script has no flag for i
 - **THEN** it learns that `tagents session list` and `tagents-core session list` are the same call, as the `cli-dispatch` capability specifies
 
 ### Requirement: The parts of the ecosystem
-The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeScript packages: `@tagents/core` (headless sessions and plugins, behind `tagents-core`), `@tagents/knowledge` (the owner's notes, a CLI and an MCP server), `@tagents/telegram` (a Bot API client), `@tagents/notify` (desktop notifications), `@tagents/mcp` (the MCP server of the contract's tools) and `@tagents/contract` (the contract generator). Plugins are further packages the config names.
+The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeScript packages: `@tagents/core` (headless sessions and plugins, behind `tagents-core`), `@tagents/knowledge` (the owner's notes as markdown, a CLI and an MCP server), `@tagents/telegram` (a typed Bot API client), `@tagents/notify` (desktop notifications), `@tagents/mcp` (the MCP server of the contract's tools) and `@tagents/contract` (the contract generator). Plugins are further packages the config names.
 
 #### Scenario: One name reaches all of it
 - **WHEN** a user types `tagents plugin list`, `tagents session list` or `tagents doctor`
