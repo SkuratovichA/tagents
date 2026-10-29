@@ -510,6 +510,22 @@ ok "a directory that is not there is refused" 1 "$rc"
 has "...by name" "$ROOT/no-such-dir" "$err"
 ok "none of the refusals opened a window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
 
+# A directory that exists but cannot be entered (no search permission) is refused like one that is not there, whether it is named by an absolute path or by a relative one: handed on as typed, a relative name would reach tmux relative. Root can enter it, so there is nothing to refuse.
+if [ "$(id -u)" -eq 0 ]; then
+  printf '  skip: a directory without search permission can be entered as root\n'
+else
+  mkdir "$ROOT/locked-dir" && chmod 600 "$ROOT/locked-dir"
+  for kind in absolute relative; do
+    case $kind in absolute) name=$ROOT/locked-dir ;; *) name=locked-dir ;; esac
+    before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
+    err=$( cd "$ROOT" && run --window "$name" "sleep 600" 2>&1 >/dev/null ); rc=$?
+    ok "a directory that cannot be entered is refused ($kind name)" 1 "$rc"
+    has "...saying it is not a directory" "is not a directory" "$err"
+    ok "...opening no window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+  done
+  chmod 700 "$ROOT/locked-dir"
+fi
+
 # A command that starts with a dash is the command, not a flag of tmux: without `--` before it tmux refuses with "unknown flag" and no window opens. What the window's shell then makes of it is the shell's own business, so only the opening is checked.
 dashline=$(run --window "$WD" "-zzz-not-a-command" 2>/dev/null); rc=$?
 ok "a command that starts with a dash is not read as a tmux flag" 0 "$rc"
