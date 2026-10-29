@@ -482,7 +482,7 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
         next
       }
 
-      # A skipped table's lines are not read, but a multi-line string opened in one still swallows its body.
+      # The lines of a skipped table are not read, but a multi-line string opened in one still swallows its body.
       if (skip) { if (scankey(ln) && substr(KR, 1, 1) == "=") { vs = trim(substr(KR, 2)); if (substr(vs, 1, 1) == DQ || substr(vs, 1, 1) == SQ) readscalar(vs, 1) } next }
       if (!scankey(ln)) { warn(NR, "not a valid key"); next }
       if (substr(KR, 1, 1) != "=") { warn(NR, "not a key = value line"); next }
