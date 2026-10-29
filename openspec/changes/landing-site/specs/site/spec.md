@@ -15,6 +15,10 @@ Every font, script, style and image the page needs SHALL be served by the site i
 - **WHEN** the page is opened and scrolled to the end with scripts on
 - **THEN** every request goes to the origin the page was served from
 
+#### Scenario: A page or stylesheet that loads from another site
+- **WHEN** a built page or stylesheet loads a font, script, style or image from another site
+- **THEN** `pnpm check:links` fails and names the file and the address (`build/links.test.ts`)
+
 ### Requirement: The recordings play once and respect a request for less motion
 A recording SHALL play from its first frame to its last once, when at least half of it has come into view, and SHALL stay on its last frame afterwards, with a Replay button to play it again. For a visitor whose system asks for reduced motion, a recording SHALL stay on its last frame until the visitor presses Play, and the page SHALL run no CSS animation or transition.
 
@@ -51,8 +55,17 @@ The page SHALL cause no horizontal scrolling of the document at a width of 360 p
 - **THEN** the document is not wider than the screen
 - **AND** each recording can be scrolled sideways inside its terminal
 
+#### Scenario: Focus on a terminal
+- **WHEN** a scrollable terminal receives keyboard focus
+- **THEN** a focus ring is visible around it (`src/components/chrome.test.tsx`)
+
+#### Scenario: Buttons that say what they do
+- **WHEN** the page lists its recordings and the theme button
+- **THEN** each Play or Replay button has an accessible name of its own that names its recording
+- **AND** the theme button's `aria-pressed` says whether the dark theme is on (`src/components/chrome.test.tsx`)
+
 ### Requirement: The page makes no claim about speed or resources and compares with nothing
-The words on the page SHALL describe what tagents does as its README does. They SHALL give no figure or claim about speed, memory or processor use, no comparison with another tool. The install command and the `settings.json` SHALL be those of the README.
+The words on the page SHALL describe what tagents does as its README does. They SHALL give no figure or claim about speed, memory or processor use and no comparison with another tool. The install command and the `settings.json` SHALL be those of the README.
 
 #### Scenario: A change to the copy
 - **WHEN** a word about speed, memory or a comparison is added to the page
@@ -77,6 +90,10 @@ A build SHALL write `CNAME` and `sitemap.xml`, and SHALL name the page's own add
 - **WHEN** `pnpm build` runs with `SITE_DOMAIN` unset
 - **THEN** `dist/client` has no `CNAME` and no `sitemap.xml`
 - **AND** `index.html` has no canonical link, no `og:url` and no `og:image`
+
+#### Scenario: The 404 page with a domain
+- **WHEN** `SITE_DOMAIN` is set and the 404 page is built
+- **THEN** it carries no canonical link and no `og:url`, because it is served at every address (`src/routes/notFoundRoute.test.ts`)
 
 #### Scenario: A build with a domain
 - **WHEN** `pnpm build` runs with `SITE_DOMAIN=tagents.example.org`

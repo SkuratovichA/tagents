@@ -101,6 +101,15 @@ describe('the stylesheets', () => {
     expect(body).toMatch(/transition:\s*none/)
   })
 
+  it('draw a visible focus ring on whatever takes focus inside a terminal', () => {
+    const body = declarationsOf(
+      read('styles.css').replaceAll(/\/\*[\s\S]*?\*\//g, ''),
+      '.terminal :focus-visible',
+    )
+    expect(body).toMatch(/outline:\s*3px solid/)
+    expect(body).toMatch(/box-shadow:\s*0 0 0 6px/)
+  })
+
   it('stop the animation and the transition of the mascot for the same visitor', () => {
     const block = quiet('mascot/Mascot.css')
     expect(declarationsOf(block, '.mascot:hover .mascot__sprite')).toMatch(/animation:\s*none/)

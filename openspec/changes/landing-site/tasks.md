@@ -2,7 +2,7 @@
 
 - [x] 1.1 `site/` is its own pnpm project with its own lockfile and the root files are untouched (`git diff --stat origin/main -- contract.json .claude-plugin skills pnpm-lock.yaml pnpm-workspace.yaml` prints nothing; `pnpm install --frozen-lockfile` in `site/`)
 - [x] 1.2 The build writes `index.html`, `404.html`, `robots.txt` and `.nojekyll`, and `CNAME` and `sitemap.xml` only with `SITE_DOMAIN` (`pnpm build` in `site/`; `build/outputs.test.ts`, `build/site-config.test.ts`)
-- [x] 1.3 Every internal link and fragment of the build resolves (`pnpm check:links` in `site/`; `build/links.test.ts`)
+- [x] 1.3 Every internal link and fragment of the build resolves and nothing a page or stylesheet loads comes from another site (`pnpm check:links` in `site/`; `build/links.test.ts`)
 
 ## 2. The recordings
 
