@@ -441,5 +441,46 @@ f=$(waitout)
 ok "a new chat for the project goes to the session that is not the dashboard" tatest-cpv "$(sess_of_out "$f")"
 tm kill-session -t '=tatest-cpd:' >/dev/null 2>&1; tm kill-session -t '=tatest-cpv:' >/dev/null 2>&1
 
+
+t "12. --window opens a plain window running a command"
+# The twin of --new for anything that is not an agent: the command is the window's own, the window lands in the session that owns the directory, and the line it prints says where.
+WD="$ROOT/personal/window-project"; mkdir -p "$WD/.git"
+tm new-session -d -s tatest-winowner -c "$WD" 'sleep 600' >/dev/null 2>&1
+clear_out
+rm -f "$OUT/win.txt"
+before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
+line=$(run --window "$WD" "pwd > $OUT/win.txt; sleep 600" 2>/dev/null); rc=$?
+i=0; while [ ! -s "$OUT/win.txt" ] && [ "$i" -lt 24 ]; do i=$((i + 1)); sleep 0.25; done
+ok "it succeeds" 0 "$rc"
+ok "the command ran in the directory it was given" "$WD" "$(cat "$OUT/win.txt" 2>/dev/null)"
+ok "exactly one window was opened" "$((before + 1))" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+wpane=${line%%	*}
+ok "it prints the new pane first" "$(tm list-panes -a -F '#{pane_id}' 2>/dev/null | grep -Fx "$wpane")" "$wpane"
+ok "the window is in the session that owns the directory" tatest-winowner \
+   "$(tm display -p -t "$wpane" '#{session_name}' 2>/dev/null)"
+ok "it prints where the window is, after the pane" \
+   "$(tm display -p -t "$wpane" '#{session_name}:#{window_index}' 2>/dev/null)" "${line#*	}"
+ok "it runs no agent: the claude stub never started" 0 "$(ls "$OUT"/*.out 2>/dev/null | wc -l | tr -d ' ')"
+ok "the new window is the one selected in its session, as enter on a row would leave it" 1 \
+   "$(tm display -p -t "$wpane" '#{window_active}' 2>/dev/null)"
+
+# A relative directory is the caller's, not the tmux server's.
+rm -f "$OUT/rel.txt"
+( cd "$ROOT/personal" && run --window window-project "pwd > $OUT/rel.txt; sleep 600" >/dev/null 2>&1 )
+i=0; while [ ! -s "$OUT/rel.txt" ] && [ "$i" -lt 24 ]; do i=$((i + 1)); sleep 0.25; done
+ok "a relative directory is resolved where the command was typed" "$WD" "$(cat "$OUT/rel.txt" 2>/dev/null)"
+
+before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
+err=$(run --window "$WD" 2>&1 >/dev/null); rc=$?
+ok "a missing command is a usage error" 2 "$rc"
+has "...that says what it needs" "needs a directory and a command" "$err"
+err=$(run --window 2>&1 >/dev/null); rc=$?
+ok "a missing directory is a usage error too" 2 "$rc"
+err=$(run --window "$ROOT/no-such-dir" "sleep 600" 2>&1 >/dev/null); rc=$?
+ok "a directory that is not there is refused" 1 "$rc"
+has "...by name" "$ROOT/no-such-dir" "$err"
+ok "none of the refusals opened a window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+tm kill-session -t '=tatest-winowner:' >/dev/null 2>&1
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -36,6 +36,8 @@ export const en = {
   fresh: 'the plugin contract is up to date',
   stale: 'stale: {{path}}',
   staleHint: 'run pnpm plugin:gen to bring them up to date',
+  cliSpecUnreadable: 'cannot read the CLI spec {{file}}: {{reason}}',
+  unclassified: 'notice: no effect is declared for {{verbs}}; each is offered as a tool that is not read-only. Declare read, write, spawn, destructive or serve in its CLI spec.',
 
   // errors
   missingFile: 'cannot find {{path}}',

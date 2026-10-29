@@ -30,6 +30,8 @@ export interface Plan {
   readonly move: VersionMove;
   readonly versionFrom: string;
   readonly versionTo: string;
+  /** `program verb words` of every verb whose spec declares no effect: advisory, never a reason for a tree to be stale */
+  readonly unclassified: readonly string[];
 }
 
 const text = (content: string | Uint8Array): string =>
@@ -150,5 +152,8 @@ export function planGenerate(sources: Sources, disk: Disk, t: Translate = create
     move: decision.move,
     versionFrom: version,
     versionTo: decision.version,
+    unclassified: sources.cli.flatMap((cli) =>
+      cli.commands.filter((command) => command.effect === undefined).map((command) => [cli.program, ...command.path].join(' '))
+    ),
   };
 }

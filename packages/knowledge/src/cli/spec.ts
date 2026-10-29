@@ -9,6 +9,7 @@ export const INDEX = {
   options: { dir: { type: 'string' }, db: { type: 'string' }, full: { type: 'boolean' } },
   required: [],
   summary: 'summaryIndex',
+  effect: 'write',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const SEARCH = {
@@ -27,6 +28,7 @@ export const SEARCH = {
   },
   required: [],
   summary: 'summarySearch',
+  effect: 'read',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const SHOW = {
@@ -40,6 +42,7 @@ export const SHOW = {
   },
   required: [],
   summary: 'summaryShow',
+  effect: 'read',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const LIST = {
@@ -55,6 +58,7 @@ export const LIST = {
   },
   required: [],
   summary: 'summaryList',
+  effect: 'read',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const LINT = {
@@ -63,6 +67,7 @@ export const LINT = {
   options: { dir: { type: 'string' } },
   required: [],
   summary: 'summaryLint',
+  effect: 'read',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const TOC = {
@@ -71,6 +76,7 @@ export const TOC = {
   options: { dir: { type: 'string' }, check: { type: 'boolean' } },
   required: [],
   summary: 'summaryToc',
+  effect: 'write',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const USAGE = {
@@ -91,6 +97,7 @@ export const USAGE = {
   },
   required: [],
   summary: 'summaryUsage',
+  effect: 'read',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const MCP = {
@@ -99,6 +106,7 @@ export const MCP = {
   options: {},
   required: [],
   summary: 'summaryMcp',
+  effect: 'serve',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const SERVE = {
@@ -107,6 +115,7 @@ export const SERVE = {
   options: { idle: { type: 'string' }, foreground: { type: 'boolean' }, socket: { type: 'string' } },
   required: [],
   summary: 'summaryServe',
+  effect: 'serve',
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const KNOWLEDGE_COMMANDS = [INDEX, SEARCH, SHOW, LIST, LINT, TOC, USAGE, MCP, SERVE] as const satisfies readonly CommandSpec<KnowledgeKey>[];
@@ -123,6 +132,7 @@ export function knowledgeCliContract(): CliContract {
       options: c.options,
       required: c.required,
       summary: t(c.summary),
+      ...('effect' in c ? { effect: c.effect } : {}),
     })),
   };
 }

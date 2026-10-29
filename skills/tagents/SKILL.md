@@ -1,6 +1,6 @@
 ---
 name: tagents
-description: Use when driving tagents from a session or a script — opening, prompting, listing or aborting headless Claude Code sessions with tagents-core, finding a past session, searching the owner's knowledge documents with tagents-knowledge or its MCP tools, reading session cost with tusage, calling a flag of the tagents dashboard or of tnotes, or writing code or a tagents plugin (definePlugin) against @tagents/core, @tagents/knowledge, @tagents/notify or @tagents/telegram.
+description: Use when driving tagents from a session or a script — opening, prompting, listing or aborting headless Claude Code sessions with tagents-core, finding a past session, searching the owner's knowledge documents with tagents-knowledge or its MCP tools, sending a desktop notification, opening Claude Code sessions or a command in tmux windows, reading session cost with tusage, calling a flag of the tagents dashboard or of tnotes, or writing code or a tagents plugin (definePlugin) against @tagents/core, @tagents/knowledge, @tagents/notify or @tagents/telegram.
 ---
 
 # tagents
@@ -16,6 +16,7 @@ tagents is a tmux dashboard for Claude Code sessions plus the packages that driv
 | open, prompt, read, list or abort a headless Claude Code session; list, add, remove or scaffold a tagents plugin; run `doctor` | `tagents-core` | `references/cli.md` |
 | find a past session by its project or opening prompt | the `knowledge` MCP tools this plugin registers, or `tagents-core sessions` from a shell | `references/mcp.md`, `references/cli.md` |
 | search or read the owner's knowledge documents | the same `knowledge` MCP tools, or `tagents-knowledge` from a shell | `references/mcp.md`, `references/cli.md` |
+| send a desktop notification, open another Claude Code session in a tmux window, or run a command in one | the `tagents` MCP tools this plugin registers | [Using the tools](#using-the-tools) |
 | read cost and context accounting per session | `tusage` | `references/scripts.md` |
 | call a flag of the dashboard or of the notes workspace | `tagents`, `tnotes` | `references/scripts.md` |
 | write code against a package, or a tagents plugin with `definePlugin` | `@tagents/core`, `@tagents/knowledge`, `@tagents/notify`, `@tagents/telegram` | `references/core.api.md`, `references/knowledge.api.md`, `references/notify.api.md`, `references/telegram.api.md` |
@@ -27,7 +28,18 @@ The same contract as data, for a script that wants to check a verb or a tool sch
 - A verb the `tagents` script has no flag for is handed to `tagents-core` unchanged, so `tagents session list` and `tagents-core session list` are the same call.
 - A verb that prints JSON prints one pretty-printed document on stdout. The exception is `session prompt --events`, which prints one compact JSON line per event and then the outcome.
 - Exit codes carry the outcome, and each CLI's table is in its section of `references/cli.md`. Check the exit code before parsing the output.
-- `tagents-core` and `tagents-knowledge` must be on `PATH`; the MCP server this plugin registers is `tagents-knowledge mcp`.
+- `tagents-core`, `tagents-knowledge`, `tagents-notify` and `tagents-mcp` must be on `PATH`; the installer writes all four.
+
+## Using the tools
+
+The plugin registers an MCP server, `tagents`, with one tool for each verb of the contract: `core_session_open` is `tagents-core session open`, `notify_send` is `tagents-notify send`, `tagents_new` is `tagents --new`, and a tool takes the arguments its verb takes (its schema, or `references/cli.md`). A call answers with `exit`, `outcome`, `stdout` and `stderr`, and a non-zero exit is an error. A verb added to tagents is a new tool once the plugin is updated, so list the tools instead of assuming which exist.
+
+- To tell the owner something (a long job finished, an answer is waiting), call `notify_send` with the `message` words and, when it helps, a `title`. It posts through tagents' own notifier on macOS, and a click on it docks the tmux pane the call ran in, when there is one.
+- To open another Claude Code session, call `tagents_new` with `dir` and, to choose the account, `profile`. `tagents_config` lists the profiles and `tagents_profile_for` says which one the rules pick for a directory. The session is a window of the tmux server this one runs in, listed by the dashboard. Several calls in a row open several sessions, which is how a day starts: one call per project.
+- To run a command in a window the owner can watch, call `tagents_window` with `dir` and `command`, one string for the shell. The window closes when the command ends.
+- To run a prompt without a window, call `core_session_open`, then `core_session_prompt` with the reference it printed, and read with `core_session_last` or `core_session_list`. `core_session_prompt` waits for the whole turn.
+- `tagents_new` and `tagents_window` need this session to run inside tmux; outside it they answer exit 3 and open nothing.
+- Claude Code asks the owner before each of these tools runs. Say in plain words what the call will start before making it, and do not repeat a call the owner refused.
 
 ## Common mistakes
 

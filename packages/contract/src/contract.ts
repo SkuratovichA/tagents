@@ -22,6 +22,8 @@ export function buildContract(sources: Sources): JsonObject {
             options: toJson(command.options),
             required: command.required,
             summary: command.summary,
+            ...(command.effect === undefined ? {} : { effect: command.effect }),
+            ...(command.requires === undefined ? {} : { requires: command.requires }),
           })),
         },
       ])
@@ -35,6 +37,7 @@ export function buildContract(sources: Sources): JsonObject {
             description: tool.description,
             inputSchema: tool.inputSchema,
             ...(tool.outputSchema === undefined ? {} : { outputSchema: tool.outputSchema }),
+            ...(tool.annotations === undefined ? {} : { annotations: tool.annotations }),
           })),
         },
       ])

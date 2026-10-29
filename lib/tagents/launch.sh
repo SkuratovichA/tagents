@@ -237,6 +237,25 @@ new_shell() {  # <dir> [session]
   notice "tagents: new shell in $(basename "$(tilde_of "$dir")") ($sess:$idx)"
 }
 
+# `tagents --window DIR COMMAND`: the twin of --new for anything that is not an agent, from outside the list. COMMAND is one string the window's shell runs, so the window closes when it ends: a long-running command is what this is for, and a bare `ls` is gone before anyone sees it. The window goes where a chat for DIR would, the session that owns it, is shown like any new window (open_agent), and the line printed is the new pane and where it is, TAB-separated, for a caller that wants to find it again.
+new_window() {  # <dir> <command>
+  local dir=${1:-} cmd=${2:-} root sess pane idx
+  if [ -z "$dir" ] || [ -z "$cmd" ]; then
+    echo "tagents: --window needs a directory and a command" >&2
+    return 2
+  fi
+  # Made absolute here: tmux resolves a relative -c against its own server's directory, which is not the caller's.
+  dir=$(cd "$dir" 2>/dev/null && pwd) || { echo "tagents: $1 is not a directory" >&2; return 1; }
+  root=$(repo_root "$dir") || root=$dir
+  sess=$(launch_session "$root")
+  pane=$(new_pane_window "$sess" "$dir" "$cmd")
+  [ -n "$pane" ] || { echo "tagents: could not open a window in $sess" >&2; return 1; }
+  idx=$(tmux display -p -t "$pane" '#{window_index}' 2>/dev/null)
+  open_agent "$pane"
+  notice "tagents: new window in $(basename "$(tilde_of "$dir")") ($sess:$idx)"
+  printf '%s\t%s:%s\n' "$pane" "$sess" "$idx"
+}
+
 # The one place a fresh agent gets a window. Both entry points come through here so the command, the message and the "it is selected like any row" policy are decided once.
 start_agent() {  # <root> <session> <profile>
   local root=$1 sess=$2 prof=${3:-} newpane idx cmd

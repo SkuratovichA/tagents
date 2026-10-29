@@ -16,7 +16,7 @@ This file is generated from the code by `pnpm plugin:gen`. Do not edit it by han
 
 ### session open
 
-starts a headless Claude session and prints its SessionRef as JSON
+prepares a headless Claude session for a directory and prints its SessionRef as JSON; no process starts until a prompt is sent to it
 
 Usage: `tagents-core session open --cwd <cwd> [--label <label>] [--model <model>] [--effort <effort>] [--resume <resume>] [--system-prompt-file <system-prompt-file>] [--mcp-config <mcp-config>] [--config-dir <config-dir>] [--no-config-dir] [--skip-permissions]`
 
@@ -35,7 +35,7 @@ Usage: `tagents-core session open --cwd <cwd> [--label <label>] [--model <model>
 
 ### session prompt
 
-sends one prompt to a session and prints the TurnOutcome as JSON; with --events, NDJSON events with the outcome last
+runs one Claude turn: sends the prompt to a session, waits for the answer and prints the TurnOutcome as JSON; with --events, NDJSON events with the outcome last
 
 Usage: `tagents-core session prompt <ref-json-or-id> <text> [--timeout <timeout>] [--warn-before <warn-before>] [--events]`
 
@@ -271,3 +271,125 @@ Usage: `tagents-knowledge serve [--idle <idle>] [--foreground] [--socket <socket
 | `--idle` | string | no | no |
 | `--foreground` | boolean | no | no |
 | `--socket` | string | no | no |
+
+## tagents-notify
+
+### Exit codes
+
+| Code | Outcome |
+|---|---|
+| 0 | ok |
+| 1 | error |
+| 2 | usage |
+
+### run
+
+runs the notification service in the foreground until it is stopped
+
+Usage: `tagents-notify run`
+
+This verb takes no flags.
+
+### install
+
+installs and starts the notification service as a login item, builds its helper app and asks macOS for permission to notify
+
+Usage: `tagents-notify install`
+
+This verb takes no flags.
+
+### uninstall
+
+stops and removes the notification service; with purge it also deletes the helper app
+
+Usage: `tagents-notify uninstall [--purge]`
+
+| Flag | Type | Required | Repeatable |
+|---|---|---|---|
+| `--purge` | boolean | no | no |
+
+### status
+
+prints whether notifications will arrive: the service, the permission, the options and the click script
+
+Usage: `tagents-notify status`
+
+This verb takes no flags.
+
+### test
+
+posts one sample notice of the given kind through the configured backend, which shows it on the screen
+
+Usage: `tagents-notify test [--kind <kind>]`
+
+| Flag | Type | Required | Repeatable |
+|---|---|---|---|
+| `--kind` | string | no | no |
+
+### send
+
+posts a desktop notification with this message through the configured backend, which shows it on the screen; a click docks the pane the command runs in
+
+Usage: `tagents-notify send <message> [--title <title>]`
+
+| Flag | Type | Required | Repeatable |
+|---|---|---|---|
+| `--title` | string | no | no |
+
+## tagents
+
+### Exit codes
+
+| Code | Outcome |
+|---|---|
+| 0 | ok |
+| 1 | error |
+| 2 | usage |
+
+### --new
+
+starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists
+
+Usage: `tagents --new [DIR] [PROFILE]`
+
+This verb takes no flags.
+
+### --window
+
+opens a tmux window in DIR that runs COMMAND, one string for the shell, and prints the new pane and where it is; the window closes when the command ends, and it lands in the session that owns DIR on the tmux server this runs in
+
+Usage: `tagents --window <DIR> <COMMAND>`
+
+This verb takes no flags.
+
+### --label
+
+names an agent on the dashboard; K is its session id or pane id, and an empty NAME clears the name back to the window title
+
+Usage: `tagents --label <K> <NAME>`
+
+This verb takes no flags.
+
+### --profile-for
+
+prints which account profile the config rules pick for DIR (and the tmux SESSION, when given), or ask, without starting anything; prints nothing and exits 1 when no profiles are configured
+
+Usage: `tagents --profile-for <DIR> [SESSION]`
+
+This verb takes no flags.
+
+### --config
+
+prints the config as tagents reads it, one path and value per line, which includes the account profiles a session can be started on
+
+Usage: `tagents --config`
+
+This verb takes no flags.
+
+### --check
+
+prints what is wrong with the config, one line each, and exits 1 while anything is; prints nothing and exits 0 when it is sound
+
+Usage: `tagents --check`
+
+This verb takes no flags.

@@ -3,6 +3,12 @@ import type { ParseArgsOptionsConfig } from 'node:util';
 import { coreT, createT, type CoreKey } from '../i18n/index.ts';
 import { EXIT } from './exit.ts';
 
+/**
+ * What running a verb does, for whoever decides whether to let it run: a person reading a permission prompt, or a client sorting tools by their hints.
+ * `read` changes nothing, `write` changes files, settings or what is on the screen, `spawn` starts a program or a window that does things of its own (a Claude turn, a Claude session in a window, a command), `destructive` removes or stops something that cannot be got back, and `serve` runs until it is stopped, so it is no request/response verb and gets no tool.
+ */
+export type Effect = 'read' | 'write' | 'spawn' | 'destructive' | 'serve';
+
 /** One verb of a CLI as data: what parseArgs is handed, and what the contract generator reads. */
 export interface CommandSpec<Key extends string = string> {
   /** the words after the program name that select the verb, e.g. ['session', 'open'] */
@@ -15,6 +21,8 @@ export interface CommandSpec<Key extends string = string> {
   readonly required: readonly string[];
   /** i18n key of the one-line summary of what the verb does or prints */
   readonly summary: Key;
+  /** What the verb does to the machine; a verb without one is treated as the least safe kind by everything that reads it. */
+  readonly effect?: Effect;
 }
 
 /** A CLI's whole surface with the summaries resolved to English: the shape the contract generator consumes. */
@@ -27,6 +35,9 @@ export interface CliContract {
     readonly options: Readonly<Record<string, { readonly type: 'string' | 'boolean'; readonly multiple?: boolean }>>;
     readonly required: readonly string[];
     readonly summary: string;
+    readonly effect?: Effect;
+    /** What the verb cannot run without, so a caller that lacks it refuses at once: `tmux` is a tmux server of the caller's own (`$TMUX`). */
+    readonly requires?: 'tmux';
   }[];
 }
 
@@ -47,6 +58,7 @@ export const SESSION_OPEN = {
   },
   required: ['cwd'],
   summary: 'summarySessionOpen',
+  effect: 'read',
 } as const satisfies CommandSpec<CoreKey>;
 
 export const SESSION_PROMPT = {
@@ -59,6 +71,7 @@ export const SESSION_PROMPT = {
   },
   required: [],
   summary: 'summarySessionPrompt',
+  effect: 'spawn',
 } as const satisfies CommandSpec<CoreKey>;
 
 export const SESSION_LAST = {
@@ -67,6 +80,7 @@ export const SESSION_LAST = {
   options: {},
   required: [],
   summary: 'summarySessionLast',
+  effect: 'read',
 } as const satisfies CommandSpec<CoreKey>;
 
 export const SESSION_LIST = {
@@ -75,6 +89,7 @@ export const SESSION_LIST = {
   options: { label: { type: 'string' }, state: { type: 'string', multiple: true } },
   required: [],
   summary: 'summarySessionList',
+  effect: 'read',
 } as const satisfies CommandSpec<CoreKey>;
 
 export const SESSION_ABORT = {
@@ -83,6 +98,7 @@ export const SESSION_ABORT = {
   options: {},
   required: [],
   summary: 'summarySessionAbort',
+  effect: 'destructive',
 } as const satisfies CommandSpec<CoreKey>;
 
 export const SESSIONS_RECENT = {
@@ -91,6 +107,7 @@ export const SESSIONS_RECENT = {
   options: {},
   required: [],
   summary: 'summarySessionsRecent',
+  effect: 'read',
 } as const satisfies CommandSpec<CoreKey>;
 
 export const SESSIONS_SEARCH = {
@@ -99,6 +116,7 @@ export const SESSIONS_SEARCH = {
   options: {},
   required: [],
   summary: 'summarySessionsSearch',
+  effect: 'read',
 } as const satisfies CommandSpec<CoreKey>;
 
 export const SESSIONS_SHOW = {
@@ -107,6 +125,7 @@ export const SESSIONS_SHOW = {
   options: {},
   required: [],
   summary: 'summarySessionsShow',
+  effect: 'read',
 } as const satisfies CommandSpec<CoreKey>;
 
 export const PLUGIN_LIST = {
@@ -115,6 +134,7 @@ export const PLUGIN_LIST = {
   options: { json: { type: 'boolean' } },
   required: [],
   summary: 'summaryPluginList',
+  effect: 'read',
 } as const satisfies CommandSpec<CoreKey>;
 
 export const PLUGIN_ADD = {
@@ -123,6 +143,7 @@ export const PLUGIN_ADD = {
   options: { name: { type: 'string' } },
   required: [],
   summary: 'summaryPluginAdd',
+  effect: 'write',
 } as const satisfies CommandSpec<CoreKey>;
 
 export const PLUGIN_REMOVE = {
@@ -131,6 +152,7 @@ export const PLUGIN_REMOVE = {
   options: {},
   required: [],
   summary: 'summaryPluginRemove',
+  effect: 'destructive',
 } as const satisfies CommandSpec<CoreKey>;
 
 export const PLUGIN_NEW = {
@@ -139,6 +161,7 @@ export const PLUGIN_NEW = {
   options: { dir: { type: 'string' } },
   required: [],
   summary: 'summaryPluginNew',
+  effect: 'write',
 } as const satisfies CommandSpec<CoreKey>;
 
 export const DOCTOR = {
@@ -147,6 +170,7 @@ export const DOCTOR = {
   options: {},
   required: [],
   summary: 'summaryDoctor',
+  effect: 'read',
 } as const satisfies CommandSpec<CoreKey>;
 
 export const CORE_COMMANDS = [
@@ -177,6 +201,7 @@ export function coreCliContract(): CliContract {
       options: c.options,
       required: c.required,
       summary: t(c.summary),
+      ...('effect' in c ? { effect: c.effect } : {}),
     })),
   };
 }

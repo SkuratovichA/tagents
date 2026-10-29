@@ -151,6 +151,8 @@ export interface CliContract {
         }>>;
         readonly required: readonly string[];
         readonly summary: string;
+        readonly effect?: Effect;
+        readonly requires?: 'tmux';
     }[];
     // (undocumented)
     readonly exit: Readonly<Record<string, number>>;
@@ -166,6 +168,7 @@ export function collect(): SessionRow[];
 
 // @public
 export interface CommandSpec<Key extends string = string> {
+    readonly effect?: Effect;
     readonly options: ParseArgsOptionsConfig;
     readonly path: readonly string[];
     readonly positionals: readonly string[];
@@ -235,6 +238,9 @@ export function drained(check: () => boolean | Promise<boolean>, input?: {
     timeoutMs?: number;
     everyMs?: number;
 }): Promise<void>;
+
+// @public
+export type Effect = 'read' | 'write' | 'spawn' | 'destructive' | 'serve';
 
 // @public (undocumented)
 export interface EventFollower {
@@ -585,6 +591,9 @@ export interface PluginPackage {
     readonly packageName: string;
 }
 
+// @public
+export const POSITIONALS = "_";
+
 // @public (undocumented)
 export interface PromptOptions {
     readonly exitGraceMs?: number;
@@ -684,8 +693,8 @@ export const resources: {
             readonly doctorClaude: "claude: {{status}}";
             readonly present: "present";
             readonly missing: "missing";
-            readonly summarySessionOpen: "starts a headless Claude session and prints its SessionRef as JSON";
-            readonly summarySessionPrompt: "sends one prompt to a session and prints the TurnOutcome as JSON; with --events, NDJSON events with the outcome last";
+            readonly summarySessionOpen: "prepares a headless Claude session for a directory and prints its SessionRef as JSON; no process starts until a prompt is sent to it";
+            readonly summarySessionPrompt: "runs one Claude turn: sends the prompt to a session, waits for the answer and prints the TurnOutcome as JSON; with --events, NDJSON events with the outcome last";
             readonly summarySessionLast: "prints the last assistant text of a session and when it came, as JSON, or null";
             readonly summarySessionList: "prints the known sessions as a JSON array of SessionRef, filtered by label and state";
             readonly summarySessionAbort: "stops the turn running in a session and prints whether it did, with the id and pid, as JSON";

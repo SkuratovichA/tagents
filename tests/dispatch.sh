@@ -121,6 +121,11 @@ for flag in --help --keys --hidden-cols --config --check --header --viewport; do
   run "$SOLO/tagents" "$BIN:$BARE" "$flag" >/dev/null
   ok "$flag is answered here"   ""  "$(argv)"
 done
+# --window is the flag a tool starts a plain window with: a typo or a missing argument in it must be this script's usage error and never a verb for tagents-core.
+run "$SOLO/tagents" "$BIN:$BARE" --window >/dev/null
+ok       "--window is answered here"                       ""  "$(argv)"
+ok       "...and with no directory and command it is a usage error" 2 "$rc"
+contains "...that says what it needs, not that the option is unknown" "needs a directory and a command" "$out"
 run "$SOLO/tagents" "$BIN:$BARE" --help >/dev/null
 contains "the help lists --viewport" "tagents --viewport" "$out"
 run "$SOLO/tagents" "$BIN:$BARE" --viewport >/dev/null

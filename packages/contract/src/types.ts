@@ -10,6 +10,8 @@ export interface McpTool {
   readonly description: string;
   readonly inputSchema: JsonObject;
   readonly outputSchema?: JsonObject;
+  /** the hints a client asks permission by (read-only, destructive, open-world), when the server states any */
+  readonly annotations?: JsonObject;
 }
 
 export interface McpServerSpec {
