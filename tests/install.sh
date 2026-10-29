@@ -387,5 +387,17 @@ else
   same_bytes "without the binary it is the old unpinned wrapper" "$TMP/expected-core-unpinned" "$TAGENTS_BIN/tagents-core"
 fi
 
+# A managed copy whose path holds a space: the wrapper must name the binary and run it with its arguments whole.
+mkorigin; fresh_env
+export TAGENTS_HOME="$HOME_DIR/share/a b/tagents"
+out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
+ok "an install into a home with a space exits 0" 0 "$rc"
+RUST_BIN=$TAGENTS_HOME/target/release/tagents-core
+mkdir -p "$(dirname "$RUST_BIN")"
+printf '#!/bin/sh\necho "rust $# $*"\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
+contains "the wrapper names the binary under the spaced home" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+ok "...and runs it with every argument" "rust 2 a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

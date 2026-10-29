@@ -97,8 +97,10 @@ install_commands() {
     cli=$TAGENTS_HOME/packages/${pair#*:}/dist/cli/main.js
     native=
     # tagents-core has a Rust front door that serves the verbs ported so far and hands every other word to the node CLI. The binary is never built or fetched here: it is used when a build or a release put it next to the node CLI.
-    rust_bin=$TAGENTS_HOME/target/release/tagents-core
-    if [ "${pair%%:*}" = tagents-core ] && [ -f "$rust_bin" ] && [ -x "$rust_bin" ]; then native=$rust_bin; fi
+    if [ "${pair%%:*}" = tagents-core ]; then
+      rust_bin=$TAGENTS_HOME/target/release/tagents-core
+      if [ -f "$rust_bin" ] && [ -x "$rust_bin" ]; then native=$rust_bin; fi
+    fi
     if [ -f "$cli" ]; then
       write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin" "$native"
     else
