@@ -261,9 +261,10 @@ parity "forward: an argument that is not UTF-8" adv bogus $'\xff'
 t "the installer accepts the --version of this binary"
 # install.sh compares the first line of `tagents-core --version` with the workspace version of the copy it installs, and installs nothing that differs. The binary of this checkout is packaged by the real packager, served as a file:// release, and installed by the whole installer in a sandbox: if the Rust side and the installer ever disagree about the shape of that line, the run ends with a warning here and not on a user's machine.
 INST=$TMP/installer
-ORIGIN=$INST/origin; mkdir -p "$ORIGIN/packages/core/dist/cli" "$ORIGIN/packages/knowledge/dist/cli" "$INST/home"
+# The tree holds the four entry files install.sh wraps: a wrapper whose entry is missing after the build is left alone with a warning, and the run ends with status 1.
+ORIGIN=$INST/origin; mkdir -p "$ORIGIN/packages/core/dist/cli" "$ORIGIN/packages/knowledge/dist/cli" "$ORIGIN/packages/notify/dist" "$ORIGIN/packages/mcp/dist" "$INST/home"
 cp "$REPO/Cargo.toml" "$ORIGIN/Cargo.toml"
-printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/core/dist/cli/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/knowledge/dist/cli/main.js"
+printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/core/dist/cli/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/knowledge/dist/cli/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/notify/dist/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/mcp/dist/main.js"
 git -C "$ORIGIN" init -q -b main && git -C "$ORIGIN" config user.email t@example.com && git -C "$ORIGIN" config user.name t && git -C "$ORIGIN" add -A && git -C "$ORIGIN" commit -q -m origin
 version=$(sh "$REPO/.github/scripts/core-release.sh" version "$REPO/Cargo.toml")
 sh "$REPO/.github/scripts/core-release.sh" package "$version" aarch64-apple-darwin "$RUST" "$REPO/LICENSE" "$INST/release/v$version" > /dev/null
