@@ -8,15 +8,24 @@ The verbs, flags and exit codes of `tagents-core` SHALL be described by one JSON
 - **THEN** it is valid, and the node CLI refuses to start on a copy that is not
 
 ### Requirement: Each command says which program serves it
-Each command in the file SHALL carry its `path`, `positionals`, `options`, `required`, an i18n `summary` key and an `impl` of `"rust"` or `"node"`; it MAY carry one string property `effect` and no other property.
+Each command in the file SHALL carry its `path`, `positionals`, `options`, `required`, an i18n `summary` key and an `impl` of `"rust"` or `"node"`; it MAY carry an `effect`, one of `read`, `write`, `spawn`, `destructive` or `serve`, and a `tool` of `false`, and no other property.
 
 #### Scenario: A property nobody declared
-- **WHEN** a command in the file carries a property other than the declared ones and `effect`
+- **WHEN** a command in the file carries a property other than the declared ones, `effect` and `tool`
 - **THEN** the file does not match the schema
 
 #### Scenario: A command with an effect
-- **WHEN** a command carries `"effect": "writes"`
+- **WHEN** a command carries `"effect": "write"`
 - **THEN** the file matches the schema and the node CLI parses that command as before
+
+#### Scenario: An effect nobody declared
+- **WHEN** a command carries `"effect": "writes"`
+- **THEN** the file does not match the schema, and the node CLI and the Rust crate refuse it
+
+#### Scenario: A command kept out of the tools
+- **WHEN** a command carries `"tool": false`
+- **THEN** the file matches the schema
+- **AND** it does not match when the command carries `"tool": true`
 
 #### Scenario: An implementation that does not exist
 - **WHEN** a command says `"impl": "python"`
