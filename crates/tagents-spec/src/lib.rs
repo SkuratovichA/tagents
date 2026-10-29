@@ -3,7 +3,7 @@
 //! The data is `spec/cli/tagents-core.json` at the repository root, described by `spec/cli/cli-spec.schema.json`.
 //! The node CLI and the contract generator read the same file (`packages/core/src/cli/spec.ts`).
 //! The model refuses a key the schema does not name and the structural mistakes the schema forbids (an empty program, summary, path or word, a `null` where the schema says string or boolean), and adds the one rule a schema cannot state, that two verbs never share a path, so a newer or wrong file fails here at load, not somewhere downstream.
-//! This loader is the stricter one: whatever it loads the node loader loads too. It refuses three inputs the node loader accepts: an `exit` value written `1.0` (the number 1 to JavaScript, a non-integer here because the model holds it as a `u8`), a key written twice in one object (`JSON.parse` keeps the last), and a lone surrogate escape in a string (`JSON.parse` accepts it).
+//! This loader is the stricter one: no input is known that it loads and the node loader refuses. It refuses three inputs the node loader accepts: an `exit` value written `1.0` (the number 1 to JavaScript, a non-integer here because the model holds it as a `u8`), a key written twice in one object (`JSON.parse` keeps the last), and a lone surrogate escape in a string (`JSON.parse` accepts it).
 
 use std::collections::{BTreeMap, BTreeSet};
 
