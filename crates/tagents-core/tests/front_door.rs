@@ -18,7 +18,6 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use tagents_core::sessions::exit;
 use tagents_spec::{Implementation, Spec};
 
 const BIN: &str = env!("CARGO_BIN_EXE_tagents-core");
