@@ -165,6 +165,19 @@ test('a cut stderr marks the result but does not turn a small JSON stdout into t
   assert.match(body.stderr, MARKER);
 });
 
+test('a failing program whose stderr is cut is still an error, with its code, its stdout and the mark', async () => {
+  const { env } = rig(`printf '{"a":[1,2]}\\n'; head -c ${MAX_STREAM + 1000} /dev/zero | tr '\\0' e >&2; exit 9`);
+  const result = await callTool(tool('fake_echo'), {}, { env, timeoutMs: 20000 });
+  const body = JSON.parse(resultText(result));
+  assert.equal(result.isError, true);
+  assert.equal(body.exit, 9);
+  assert.equal(body.outcome, 'exit 9');
+  assert.equal(body.truncated, true);
+  assert.deepEqual(body.stdout, { a: [1, 2] });
+  assert.match(body.stderr, MARKER);
+  assert.ok(bytes(body.stderr.replace(MARKER, '')) <= MAX_STREAM);
+});
+
 test('output within the cap is whole and not marked', async () => {
   const { env } = rig(`head -c ${MAX_STREAM} /dev/zero | tr '\\0' a`);
   const body = JSON.parse(resultText(await callTool(tool('fake_echo'), {}, { env, timeoutMs: 20000 })));
