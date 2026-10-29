@@ -258,8 +258,7 @@ parity "forward: an argument that is not UTF-8" adv bogus $'\xff'
 
 # ------------------------------------------------------ installer ---
 t "the installer accepts the --version of this binary"
-# install.sh compares the first line of `tagents-core --version` with the workspace version of the copy it installs, and installs nothing that differs. The binary of this checkout is packaged by the real packager, served as a file:// release,
-# and installed by the whole installer in a sandbox: if the Rust side and the installer ever disagree about the shape of that line, the run ends with a warning here and not on a user's machine.
+# install.sh compares the first line of `tagents-core --version` with the workspace version of the copy it installs, and installs nothing that differs. The binary of this checkout is packaged by the real packager, served as a file:// release, and installed by the whole installer in a sandbox: if the Rust side and the installer ever disagree about the shape of that line, the run ends with a warning here and not on a user's machine.
 INST=$TMP/installer
 ORIGIN=$INST/origin; mkdir -p "$ORIGIN/packages/core/dist/cli" "$ORIGIN/packages/knowledge/dist/cli" "$INST/home"
 cp "$REPO/Cargo.toml" "$ORIGIN/Cargo.toml"
