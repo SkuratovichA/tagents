@@ -32,12 +32,13 @@ The same contract as data, for a script that wants to check a verb or a tool sch
 
 ## Using the tools
 
-The plugin registers an MCP server, `tagents`, with one tool for each verb of the contract: `core_session_open` is `tagents-core session open`, `notify_send` is `tagents-notify send`, `tagents_new` is `tagents --new`, and a tool takes the arguments its verb takes (its schema, or `references/cli.md`). A call answers with `exit`, `outcome`, `stdout` and `stderr`, and a non-zero exit is an error. A verb added to tagents is a new tool once the plugin is updated, so list the tools instead of assuming which exist.
+The plugin registers an MCP server, `tagents`, with one tool for each verb of the contract that is meant for a model: `core_session_list` is `tagents-core session list`, `notify_send` is `tagents-notify send`, `tagents_new` is `tagents --new`, and a tool takes the arguments its verb takes (its schema, or `references/cli.md`, which marks each verb as a tool or as CLI only). A call answers with `exit`, `outcome`, `stdout` and `stderr`, and a non-zero exit is an error. A verb added to tagents is a new tool once the plugin is updated, so list the tools instead of assuming which exist.
 
 - To tell the owner something (a long job finished, an answer is waiting), call `notify_send` with the `message` words and, when it helps, a `title`. It posts through tagents' own notifier on macOS, and a click on it docks the tmux pane the call ran in, when there is one.
 - To open another Claude Code session, call `tagents_new` with `dir` and, to choose the account, `profile`. `tagents_config` lists the profiles and `tagents_profile_for` says which one the rules pick for a directory. The session is a window of the tmux server this one runs in, listed by the dashboard. Several calls in a row open several sessions, which is how a day starts: one call per project.
 - To run a command in a window the owner can watch, call `tagents_window` with `dir` and `command`, one string for the shell. The window closes when the command ends.
-- To run a prompt without a window, call `core_session_open`, then `core_session_prompt` with the reference it printed, and read with `core_session_last` or `core_session_list`. `core_session_prompt` waits for the whole turn.
+- To see what the sessions are doing, call `core_session_list`, then `core_session_last` for the last answer of one and `core_sessions_show` for a whole transcript.
+- To run a prompt without a window, run `tagents-core session open` and then `tagents-core session prompt` with the reference it printed, in a window the owner can watch, through `tagents_window`. These two verbs are CLI only and have no tool, because the message of an arbitrary prompt can carry anything and an unattended turn can run for a long time.
 - `tagents_new` and `tagents_window` need this session to run inside tmux; outside it they answer exit 3 and open nothing.
 - Claude Code asks the owner before each of these tools runs. Say in plain words what the call will start before making it, and do not repeat a call the owner refused.
 

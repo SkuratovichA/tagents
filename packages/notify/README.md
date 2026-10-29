@@ -67,7 +67,7 @@ An invalid file is logged once per problem and the engine runs on the defaults; 
 | `tagents notify uninstall [--purge]` | boot the service out, delete the plist, switch the event stream off unless a `tagents notify run` in a terminal still holds the lock; `--purge` deletes the app too |
 | `tagents notify status` | platform, backend, app (up to date, stale or missing), icon, permission and alert style, the script a click runs (ok or missing; with `click: focus` it says the script is not used), LaunchAgent (installed, running, pid), stream on or off, the options file and its problems, the service's memory |
 | `tagents notify test [--kind <kind>]` | post one sample notice now through the platform notifier; a click docks `$TMUX_PANE` when it is set |
-| `tagents notify send [--title <text>] <message…>` | post a notice with this message now through the platform notifier, ignoring the per-kind switches and `skip_visible`; the title defaults to `tagents`, and a click docks `$TMUX_PANE` when it is set |
+| `tagents notify send [--title <text>] <message…>` | post a notice with this message now through the platform notifier, ignoring the per-kind switches and `skip_visible`; the title defaults to `tagents`, and a click docks `$TMUX_PANE` when it is set; a title over 256 characters or a message (its words joined by single spaces) over 2048 characters is refused with exit 2 and nothing is posted, and the limits count characters, not bytes |
 
 ## Troubleshooting
 

@@ -669,7 +669,7 @@ Names an agent on the dashboard; K is its session id or pane id, and an empty NA
 
 ### tagents_new
 
-Starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists; detach (the default for a tool call) does not show or select the window and never opens a dialog, so when the rules say to ask which account it fails and names the profiles to pass.
+Starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists; detach (the default for a tool call) does not show or select the window, prints the new pane and where it is as session:index, and never opens a dialog, so when the rules say to ask which account it fails and names the profiles to pass.
 
 #### Inputs
 

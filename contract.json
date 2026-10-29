@@ -581,7 +581,7 @@
             }
           },
           "required": [],
-          "summary": "starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists; detach (the default for a tool call) does not show or select the window and never opens a dialog, so when the rules say to ask which account it fails and names the profiles to pass",
+          "summary": "starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists; detach (the default for a tool call) does not show or select the window, prints the new pane and where it is as session:index, and never opens a dialog, so when the rules say to ask which account it fails and names the profiles to pass",
           "effect": "spawn",
           "requires": "tmux",
           "toolDefaults": {
@@ -1145,7 +1145,7 @@
         },
         {
           "name": "tagents_new",
-          "description": "Starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists; detach (the default for a tool call) does not show or select the window and never opens a dialog, so when the rules say to ask which account it fails and names the profiles to pass.",
+          "description": "Starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists; detach (the default for a tool call) does not show or select the window, prints the new pane and where it is as session:index, and never opens a dialog, so when the rules say to ask which account it fails and names the profiles to pass.",
           "inputSchema": {
             "type": "object",
             "properties": {

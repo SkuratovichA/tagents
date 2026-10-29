@@ -105,7 +105,9 @@ stays worth reacting to.
                           the account to whatever the rules below pick.
                           --detach leaves the screen alone: the window is not
                           shown or selected, and when the rules say "ask" it exits
-                          2 naming the profiles instead of opening a dialog
+                          2 naming the profiles instead of opening a dialog. It
+                          then prints the new pane and where it is, TAB-separated,
+                          as --window does; without --detach it prints nothing
   tagents --window [--detach] DIR COMMAND
                           open a plain window in DIR running COMMAND, from outside
                           the list, the way --new opens an agent. COMMAND is one
