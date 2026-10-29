@@ -482,6 +482,13 @@ rm -f "$OUT/rel.txt"
 i=0; while [ ! -s "$OUT/rel.txt" ] && [ "$i" -lt 24 ]; do i=$((i + 1)); sleep 0.25; done
 ok "a relative directory is resolved where the command was typed" "$WD" "$(cat "$OUT/rel.txt" 2>/dev/null)"
 
+# A name that is a symlink comes out as the physical path, the one tmux reports as the pane's path and the session lookup compares: the window of the line --window prints is in the real directory.
+ln -s window-project "$ROOT/personal/window-link"
+sline=$( cd "$ROOT/personal" && run --window --detach window-link "sleep 600" 2>/dev/null ); rc=$?
+spane=${sline%%	*}
+ok "a relative symlink to a directory is accepted" 0 "$rc"
+ok "...and the window it prints is in the physical directory" "$WD" "$(tm display -p -t "$spane" '#{pane_current_path}' 2>/dev/null)"
+
 before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
 err=$(run --window "$WD" 2>&1 >/dev/null); rc=$?
 ok "a missing command is a usage error" 2 "$rc"
@@ -568,6 +575,14 @@ ok "a detached start in a directory that is not there is refused" 1 "$rc"
 has "...and standard error says why" "is not a directory" "$err"
 has "...and names the directory" "$ROOT/no-such-directory" "$err"
 ok "...opening no window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+sout=$(run --new --detach "$ROOT/no-such-directory" 2>/dev/null)
+ok "...and standard output stays empty" "" "$sout"
+
+# The refusal when tmux cannot open the window (no server to ask and none that can be started: the socket's directory is not there). The refusal for a profile that cannot be built (start_agent's first one) is not reachable from the command line: new_agent has already refused any name the config does not hold, so no test drives it.
+sout=$(env TMUX="$ROOT/no-such-socket-dir/sock,0,0" bash "$TA" --new --detach "$PERS" personal 2>"$OUT/nowin.err"); rc=$?
+ok "a detached start tmux cannot open a window for is refused" 1 "$rc"
+has "...and standard error says why" "could not open a window in" "$(cat "$OUT/nowin.err")"
+ok "...and standard output stays empty" "" "$sout"
 
 # A relative directory is the caller's here too. Outside a git repository the directory is used as given, and a name that is not made absolute matches no session by its path, so the agent would land in a session that does not own it (and tmux would resolve a relative `-c` against a directory of its own on a tmux that does not take the client's).
 RELD="$ROOT/personal/plain-dir"; mkdir -p "$RELD"
@@ -578,6 +593,15 @@ rpane=${rline%%	*}
 ok "a detached start in a relative directory succeeds" 0 "$rc"
 ok "...in the directory it names" "$(cd -P "$RELD" && pwd)" "$(tm display -p -t "$rpane" '#{pane_current_path}' 2>/dev/null)"
 ok "...in the session that owns that directory" tatest-plain "$(tm display -p -t "$rpane" '#{session_name}' 2>/dev/null)"
+
+# ...and through a symlink: the agent starts in the physical directory, in the session that owns it.
+ln -s plain-dir "$ROOT/personal/plain-link"
+clear_out
+lline=$( cd "$ROOT/personal" && run --new --detach plain-link personal 2>/dev/null ); rc=$?
+lpane=${lline%%	*}
+ok "a detached start through a symlink succeeds" 0 "$rc"
+ok "...in the physical directory" "$RELD" "$(tm display -p -t "$lpane" '#{pane_current_path}' 2>/dev/null)"
+ok "...in the session that owns the physical directory" tatest-plain "$(tm display -p -t "$lpane" '#{session_name}' 2>/dev/null)"
 tm kill-session -t '=tatest-plain:' >/dev/null 2>&1
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
