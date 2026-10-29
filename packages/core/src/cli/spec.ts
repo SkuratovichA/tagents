@@ -59,7 +59,7 @@ const SpecFile = z.strictObject({
     const seen = new Set<string>();
     commands.forEach((c, index) => {
       const key = JSON.stringify(c.path);
-      if (seen.has(key)) ctx.addIssue({ code: 'custom', path: [index, 'path'], message: `the path ${c.path.join(' ')} appears twice` });
+      if (seen.has(key)) ctx.addIssue({ code: 'custom', path: [index, 'path'], message: `the path ${c.path.join(' ')} appears twice (a rule the schema cannot state: dispatch is by path, so the second verb would never run)` });
       seen.add(key);
     });
   }),

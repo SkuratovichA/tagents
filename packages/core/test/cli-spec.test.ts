@@ -162,15 +162,22 @@ function commandsOf(doc: Record<string, unknown>): Record<string, unknown>[] {
   return commands;
 }
 
-/** A copy of the data file with `change` applied to its first command, written where only this test looks. */
-function specWith(change: (command: Record<string, unknown>) => void): URL {
+/** A copy of the data file with `change` applied to the whole document, written where only this test looks. */
+function specWith(change: (doc: Record<string, unknown>) => void): URL {
   const doc = readDoc();
-  const [first] = commandsOf(doc);
-  assert.ok(first);
-  change(first);
+  change(doc);
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cli-spec-')), 'spec.json');
   fs.writeFileSync(file, JSON.stringify(doc));
   return pathToFileURL(file);
+}
+
+/** `specWith` for a change to the first command only. */
+function specWithFirstCommand(change: (command: Record<string, unknown>) => void): URL {
+  return specWith((doc) => {
+    const [first] = commandsOf(doc);
+    assert.ok(first);
+    change(first);
+  });
 }
 
 test('the exit codes the contract prints are the ones the CLI exits with', () => {
@@ -190,14 +197,14 @@ test('every verb says which program serves it, and a verb word is served by one 
 
 test('the loader keeps impl and effect out of what parseArgs and the contract see, and refuses a key it does not know', () => {
   const before = loadSpec(SPEC_FILE).commands;
-  const withEffect = loadSpec(specWith((command) => { command['effect'] = 'writes'; }));
+  const withEffect = loadSpec(specWithFirstCommand((command) => { command['effect'] = 'writes'; }));
   assert.deepEqual(withEffect.commands, before);
   assert.throws(
-    () => loadSpec(specWith((command) => { command['surprise'] = 'x'; })),
+    () => loadSpec(specWithFirstCommand((command) => { command['surprise'] = 'x'; })),
     /does not match spec\/cli\/cli-spec.schema.json/,
   );
   assert.throws(
-    () => loadSpec(specWith((command) => { command['summary'] = 'noSuchKey'; })),
+    () => loadSpec(specWithFirstCommand((command) => { command['summary'] = 'noSuchKey'; })),
     /not a key of the English catalogue/,
   );
 });
@@ -229,11 +236,11 @@ test('the schema refuses an unknown key, an empty path and an empty positional',
 });
 
 test('two verbs with one path are refused: dispatch is by path and the second would never run', () => {
-  const doc = readDoc();
-  const [first] = commandsOf(doc);
-  assert.ok(first);
-  commandsOf(doc).push({ ...first });
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cli-spec-')), 'spec.json');
-  fs.writeFileSync(file, JSON.stringify(doc));
-  assert.throws(() => loadSpec(pathToFileURL(file)), /appears twice/);
+  const file = specWith((doc) => {
+    const commands = commandsOf(doc);
+    const [first] = commands;
+    assert.ok(first);
+    commands.push({ ...first });
+  });
+  assert.throws(() => loadSpec(file), /the path \S.* appears twice \(a rule the schema cannot state/);
 });
