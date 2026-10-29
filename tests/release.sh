@@ -496,16 +496,16 @@ t "6. release.yml and the code it relies on agree"
 WORKFLOW=$ROOT/.github/workflows/release.yml
 # is_input as core-release.sh defines it: its own text, not a copy.
 eval "$(sed -n '/^is_input() {/,/^}/p' "$RELEASE")"
-pull_request_paths() {  # <workflow file>: the entries of on.pull_request.paths, one per line
-  awk '
-    /^  pull_request:/ { in_pr = 1; next }
-    in_pr && /^  [a-z_]+:/ { in_pr = 0 }
-    in_pr && /^    paths:/ { in_paths = 1; next }
-    in_pr && in_paths && /^      - / { sub(/^      - /, ""); gsub(/\047/, ""); print; next }
-    in_pr && in_paths { in_paths = 0 }
+event_paths() {  # <workflow file> <event>: the entries of on.<event>.paths, one per line
+  awk -v event="$2" '
+    index($0, "  " event ":") == 1 { in_event = 1; next }
+    in_event && /^  [a-z_]+:/ { in_event = 0 }
+    in_event && /^    paths:/ { in_paths = 1; next }
+    in_event && in_paths && /^      - / { sub(/^      - /, ""); gsub(/\047/, ""); print; next }
+    in_event && in_paths { in_paths = 0 }
   ' "$1"
 }
-pr_paths=$(pull_request_paths "$WORKFLOW")
+pr_paths=$(event_paths "$WORKFLOW" pull_request)
 ok "release.yml lists paths for its pull_request trigger" yes "$([ -n "$pr_paths" ] && echo yes || echo no)"
 # A pattern of the workflow is a glob where ** is read as *, as in a case pattern.
 on_a_path() {  # <file> <paths, one glob per line>
@@ -539,13 +539,15 @@ ok "...and refuses a target nobody builds" "" "$(TAGENTS_CORE_TARGET=riscv64-unk
 core_triple")"
 
 # ---------------------------------------------------------------------------
-t "7. rust.yml runs this suite for every file the suite reads"
+t "7. rust.yml starts the release-path job for every file that job runs or reads"
 # ---------------------------------------------------------------------------
-# tests/release.sh is run by the release-path job of rust.yml only, so a pull request that edits only a file it pins has to start that workflow, or the pin never runs.
-rust_paths=$(pull_request_paths "$ROOT/.github/workflows/rust.yml")
-ok "rust.yml lists paths for its pull_request trigger" yes "$([ -n "$rust_paths" ] && echo yes || echo no)"
-for f in .github/scripts/core-release.sh .github/workflows/release.yml .github/workflows/rust.yml install.sh tests/install.sh tests/release.sh; do
-  ok "a pull_request path of rust.yml matches $f" yes "$(on_a_path "$f" "$rust_paths" && echo yes || echo no)"
+# tests/release.sh is run by the release-path job of rust.yml only, so a pull request or a push that edits only a file it pins has to start that workflow, or the pin never runs.
+for event in pull_request push; do
+  rust_paths=$(event_paths "$ROOT/.github/workflows/rust.yml" "$event")
+  ok "rust.yml lists paths for its $event trigger" yes "$([ -n "$rust_paths" ] && echo yes || echo no)"
+  for f in Cargo.toml .github/scripts/core-release.sh .github/workflows/release.yml .github/workflows/rust.yml install.sh tests/install.sh tests/release.sh; do
+    ok "a $event path of rust.yml matches $f" yes "$(on_a_path "$f" "$rust_paths" && echo yes || echo no)"
+  done
 done
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

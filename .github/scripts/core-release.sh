@@ -14,7 +14,7 @@
 
 set -eu
 
-# What the binary is built from. A pull request that changes one of these must also change the workspace version (the gate). Tests under crates/*/tests/, docs and workflows are not inputs. The CLI spec data file is compiled in by include_str! (crates/tagents-spec/src/lib.rs), so spec/cli/* counts, the schema file beside it included. `*` in a case pattern also matches `/`, so crates/*/src/* covers nested modules.
+# What the binary is built from. A pull request that changes one of these must also raise the workspace version (the gate). Tests under crates/*/tests/, docs and workflows are not inputs. The CLI spec data file is compiled in by include_str! (crates/tagents-spec/src/lib.rs), so spec/cli/* counts, the schema file beside it included. `*` in a case pattern also matches `/`, so crates/*/src/* covers nested modules.
 is_input() {
   case $1 in
     Cargo.toml | Cargo.lock | rust-toolchain.toml | crates/*/Cargo.toml | crates/*/build.rs | crates/*/src/* | spec/cli/*) return 0 ;;

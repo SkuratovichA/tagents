@@ -69,14 +69,14 @@ jobs:
       - name: Parity with the node CLI, byte for byte
         run: bash tests/rust-parity.sh
 
-  # A change to what the tagents-core binary is built from must change the workspace version (docs/architecture/rust-core.md, "How a release is made"). Every such input is in the paths above, so a pull request that breaks the rule always runs this job. The history is deep because the gate compares with the merge base.
+  # A change to what the tagents-core binary is built from must raise the workspace version (docs/architecture/rust-core.md, "How a release is made"). Every such input is in the paths above, so a pull request that breaks the rule always runs this job. The history is deep because the gate compares with the merge base.
   release-path:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: The workspace version moves with every change to the binary
+      - name: The workspace version goes up with every change to the binary
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}

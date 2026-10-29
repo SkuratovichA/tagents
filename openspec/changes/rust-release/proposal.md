@@ -23,7 +23,7 @@ A managed install follows `origin/main` and updates itself every day, and the Ru
 
 ## Impact
 
-- Code: `Cargo.toml`, `Cargo.lock` (the version only), `crates/tagents-core/src/front_door.rs` (`--version`), `install.sh`, `.github/workflows/release.yml` (new), `.github/workflows/rust.yml`, `.github/scripts/core-release.sh` (new), `tests/release.sh` (new), `tests/install.sh`.
+- Code: `Cargo.toml`, `Cargo.lock` (the version only), `crates/tagents-core/src/front_door.rs` (`--version`), `install.sh`, `.github/workflows/release.yml` (new), `.github/workflows/rust.yml`, `.github/scripts/core-release.sh` (new), `tests/release.sh` (new), `tests/install.sh`, `tests/rust-parity.sh`.
 - Documents: `docs/architecture/rust-core.md`, `docs/development.md`, `docs/guide/getting-started.md`, and the sentences of `openspec/changes/rust-core/` that said nothing downloads a binary.
 - The generated plugin contract does not change: `--version` is not in `spec/cli/tagents-core.json`, and `pnpm plugin:gen` leaves no diff.
 - A machine with no release for its version, or with a binary of its own, behaves as before this change.

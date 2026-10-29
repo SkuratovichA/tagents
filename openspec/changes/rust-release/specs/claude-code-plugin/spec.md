@@ -39,10 +39,10 @@ A download SHALL be installed only when the first field of its `.sha256` file is
 - **THEN** nothing is installed and the run exits 1 (`tests/install.sh` section 14)
 
 ### Requirement: A release is fetched only over https or from a file
-When a prebuilt tagents-core has to be fetched, `TAGENTS_CORE_BASE_URL`, if set, SHALL start with `https://` or `file://`. Any other value SHALL make no request, install nothing, warn naming the variable and end the run with status 1.
+When a prebuilt tagents-core has to be fetched and `curl` is present, a `TAGENTS_CORE_BASE_URL` that is not empty SHALL start with `https://` or `file://`. Any other value SHALL make no request, install nothing, warn naming the variable and end the run with status 1.
 
 #### Scenario: A base that is not https or file is refused
-- **WHEN** a fetch is due and `TAGENTS_CORE_BASE_URL` does not start with `https://` or `file://` (`http://`, `ftp://`, a path, `/`)
+- **WHEN** a fetch is due, `curl` is present and `TAGENTS_CORE_BASE_URL` is not empty and does not start with `https://` or `file://` (`http://`, `ftp://`, a path, `/`)
 - **THEN** no request is made, nothing is installed, the warning names the variable and the run exits 1 (`tests/install.sh` section 14)
 
 ### Requirement: A tagents-core that cannot be had never blocks the install
