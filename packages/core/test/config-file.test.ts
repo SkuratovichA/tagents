@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { configFile, loadPlugins, readPluginList } from '../src/host.ts';
-import { configFormat, parseConfigText, readConfigFile, resolveConfigFile } from '../src/config-file.ts';
+import { configFormat, parseConfigText, readConfigFile, resolveConfigFile, tomlKey } from '../src/config-file.ts';
 import { tmpDir } from '../src/testkit.ts';
 import { FIXTURES, PKG } from './helpers.ts';
 
@@ -144,4 +144,11 @@ test('a config.toml beside a config.yaml is read and the YAML one is named as ig
 
 test('readConfigFile on a missing file throws, so a caller decides what a missing file means', () => {
   assert.throws(() => readConfigFile(path.join(tmp, 'nowhere', 'config.toml')), { code: 'ENOENT' });
+});
+
+test('tomlKey leaves a bare key as it is, quotes any other through the string writer, and has none for a control character', () => {
+  assert.equal(tomlKey('plain-key_1'), 'plain-key_1');
+  assert.equal(tomlKey('a b'), '"a b"');
+  assert.equal(tomlKey('a"b'), '"a\\"b"');
+  assert.equal(tomlKey('a\tb'), null);
 });

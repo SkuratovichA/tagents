@@ -89,7 +89,8 @@ function build(doc: ReturnType<typeof parseDocument>, lines: LineCounter): Table
   const keyText = (key: unknown): string => {
     if (!isScalar(key)) return fail(key, 'a key that is not plain text has no TOML twin');
     const text = typeof key.value === 'string' ? key.value : (key.source ?? '');
-    return text === '' ? fail(key, 'an empty key has no TOML twin') : text;
+    if (text === '') return fail(key, 'an empty key has no TOML twin');
+    return tomlKey(text) === null ? fail(key, 'a control character in a key cannot be written in the TOML tagents reads') : text;
   };
 
   const isEmptyValue = (node: unknown): boolean => node == null || (isScalar(node) && node.value === null && (node.source ?? '') === '');
@@ -151,17 +152,24 @@ function build(doc: ReturnType<typeof parseDocument>, lines: LineCounter): Table
 
 // ------------------------------------------------------------- the writer ---
 
+/** A key that keyText has already checked can be written. */
+function keyOf(key: string): string {
+  const written = tomlKey(key);
+  if (written === null) throw new Error(`${JSON.stringify(key)} cannot be written as a TOML key`);
+  return written;
+}
+
 function blocks(t: Table, at: string[], out: string[]): void {
-  const lines = t.plain.map((p) => `${tomlKey(p.key)} = ${p.value}`);
+  const lines = t.plain.map((p) => `${keyOf(p.key)} = ${p.value}`);
   // A table that only holds other tables needs no header of its own; one with nothing in it at all is a name, and is written as one.
-  if (at.length > 0 && (lines.length > 0 || t.sub.length === 0)) out.push([`[${at.map(tomlKey).join('.')}]`, ...lines].join('\n'));
+  if (at.length > 0 && (lines.length > 0 || t.sub.length === 0)) out.push([`[${at.map(keyOf).join('.')}]`, ...lines].join('\n'));
   else if (at.length === 0 && lines.length > 0) out.push(lines.join('\n'));
   for (const s of t.sub) {
     const into = [...at, s.key];
     if ('table' in s) blocks(s.table, into, out);
     else {
       for (const item of s.items) {
-        out.push([`[[${into.map(tomlKey).join('.')}]]`, ...item.plain.map((p) => `${tomlKey(p.key)} = ${p.value}`)].join('\n'));
+        out.push([`[[${into.map(keyOf).join('.')}]]`, ...item.plain.map((p) => `${keyOf(p.key)} = ${p.value}`)].join('\n'));
       }
     }
   }

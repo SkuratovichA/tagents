@@ -280,6 +280,12 @@ test('a tab or another control character inside a YAML string is refused, naming
   }
 });
 
+test('a control character inside a YAML key is refused, naming the line', () => {
+  const result = convert('usage:\n  "a\\u0001b": x\n');
+  assert.equal(result.ok, false);
+  assert.match(result.ok ? '' : result.problem, /config\.yaml:2: .*control character/);
+});
+
 test('YAML that does not parse is refused with the parser’s own message', () => {
   const result = convert('claude:\n  args: [unclosed\n');
   assert.equal(result.ok, false);

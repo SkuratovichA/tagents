@@ -37,11 +37,6 @@ export function isFile(file: string): boolean {
   }
 }
 
-const BARE_KEY = /^[A-Za-z0-9_-]+$/;
-
-/** A TOML key as written: bare when it can be, a quoted string (JSON's escapes are all valid in one) when not. */
-export const tomlKey = (name: string): string => (BARE_KEY.test(name) ? name : JSON.stringify(name));
-
 // A character the dashboard's awk reader cannot take back out of a string: it knows only the escapes \" and \\, and prints a tab as the column break of its own output.
 const UNWRITABLE = /[\u0000-\u001f\u007f]|[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
 
@@ -50,6 +45,11 @@ export function tomlString(value: string): string | null {
   if (UNWRITABLE.test(value)) return null;
   return `"${value.replace(/[\\"]/g, '\\$&')}"`;
 }
+
+const BARE_KEY = /^[A-Za-z0-9_-]+$/;
+
+/** A TOML key as written: bare when it can be, the one string writer's quoted form when not, or null when it cannot be written (a control character, a lone surrogate). */
+export const tomlKey = (name: string): string | null => (BARE_KEY.test(name) ? name : tomlString(name));
 
 /** The text parsed by its format's parser. An empty document is an empty object. Throws the parser's error. */
 export function parseConfigText(text: string, format: ConfigFormat): unknown {

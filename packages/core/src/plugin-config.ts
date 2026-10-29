@@ -150,7 +150,9 @@ export function removePluginEntry(file: string, name: string): RemoveOutcome {
 function tomlEntry(file: string, name: string, from: string): string {
   const written = tomlString(from);
   if (written === null) throw new Error(`${file}: ${JSON.stringify(from)} has a control character in it, which cannot be written in a config tagents reads`);
-  return `[plugins.${tomlKey(name)}]\nfrom = ${written}\n`;
+  const key = tomlKey(name);
+  if (key === null) throw new Error(`${file}: ${JSON.stringify(name)} has a control character in it, which cannot be written in a config tagents reads`);
+  return `[plugins.${key}]\nfrom = ${written}\n`;
 }
 
 const TomlDoc = z.object({ plugins: z.record(z.string(), z.unknown()).optional() });
@@ -248,7 +250,7 @@ function removeTomlEntry(file: string, name: string): RemoveOutcome {
 
   const after = parseTomlFile(file, next, 'the edit would not parse: ');
   if (Object.hasOwn(after.plugins, name))
-    throw new Error(`${file}: ${name} is not written as a [plugins.${tomlKey(name)}] section, so it cannot be removed here — remove it by hand`);
+    throw new Error(`${file}: ${name} is not written as a [plugins.${tomlKey(name) ?? JSON.stringify(name)}] section, so it cannot be removed here — remove it by hand`);
   const rest = Object.fromEntries(Object.entries(before.plugins).filter(([key]) => key !== name));
   if (!isDeepStrictEqual({ ...before.doc, plugins: rest }, { ...after.doc, plugins: after.plugins }))
     throw new Error(`${file}: removing ${name} would change something else, so nothing was written`);
