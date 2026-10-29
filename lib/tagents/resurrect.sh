@@ -156,9 +156,9 @@ resurrect_rows_cmd() {  # [file|latest]
 # A capture in a moment: after a launch the record needs SessionStart first, after a restore every resumed chat does. It must outlive what started it — a launch or a kill from the list runs in a popup, and the popup closing hangs up everything it started, and a call of an MCP tool ends by killing the whole process group it started — so the wait is a job of the tmux server (`run-shell -b`, as the hooks do), which no hang-up and no group kill of the caller reaches. macOS has no setsid(1) to leave the group any other way. The job runs in the server's environment and not in the caller's, so the delay is read here, where TA_RESURRECT_SOON is set, and the server already has the state dir and the config as it was started with. Without a server there is nothing to capture, and the failure is dropped.
 resurrect_soon() {  # [seconds]
   local n=${1:-$RESURRECT_SOON} self
-  # tmux expands the string as a format (#) and hands it to `sh -c`: the path is quoted for the shell and then has each # doubled, and a delay that is not a number would make `sleep` fail so that the capture ran at once.
-  case $n in ''|*[!0-9.]*) n=$RESURRECT_SOON_DEFAULT ;; esac
-  self=$(printf '%q' "$SELF"); self=${self//#/##}
+  # tmux expands the string as a format (#) and hands it to `sh -c`: the path is single-quoted for the shell (cfg_quote: `printf %q` writes $'...' for a newline, which a dash-style sh does not parse) and then has each # doubled, and a delay that is not a number would make `sleep` fail so that the capture ran at once.
+  case $n in ''|*[!0-9.]*|*.*.*|.) n=$RESURRECT_SOON_DEFAULT ;; esac
+  self=$(cfg_quote "$SELF"); self=${self//#/##}
   tmux run-shell -b "sleep $n; $self --resurrect-save >/dev/null 2>&1" </dev/null >/dev/null 2>&1 || :
 }
 
