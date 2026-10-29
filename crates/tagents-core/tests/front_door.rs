@@ -1,6 +1,6 @@
 //! The built `tagents-core` binary, run as a user runs it.
 //!
-//! Three things are pinned here that the unit tests cannot see: that `sessions` prints the bytes the node CLI's recorded fixtures hold, that `--spec` and the data file agree in both directions, and that every other word reaches the node CLI untouched.
+//! Three things are pinned here that the unit tests cannot see: that `sessions` prints the bytes the node CLI's recorded fixtures hold, that `--spec` and the data file agree in both directions, that `--version` is answered by the binary itself, and that every other word reaches the node CLI untouched.
 //! The node CLI is never run: a stub stands in for it, in a layout copied from the one a checkout has (`target/debug/tagents-core` three levels below the directory that holds `packages/core/dist/cli/main.js`).
 //! `tests/rust-parity.sh` is the suite that runs the real node CLI against this binary.
 
@@ -213,6 +213,24 @@ fn spec_flag_prints_the_data_file_entries_of_the_verbs_it_serves() {
     assert_eq!((served.program, served.exit), (file.program, file.exit));
 }
 
+// ---------------------------------------------------------------------- --version ---
+
+#[test]
+fn version_flag_prints_the_crate_version_and_nothing_else() {
+    // No node and no node CLI in reach: a forwarded `--version` would fail here (exit 2 or 127), so a pass means the front door answered itself.
+    let out = Command::new(BIN)
+        .env_clear()
+        .arg("--version")
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(out.stderr, b"");
+    assert_eq!(
+        stdout_text(&out),
+        format!("tagents-core {}\n", env!("CARGO_PKG_VERSION"))
+    );
+}
+
 #[test]
 fn a_group_is_served_by_one_program_wholly() {
     // Dispatch is by the first word, so `sessions bogus` is Rust's to answer. That is only true to the data file while every `sessions …` verb is marked rust.
@@ -320,6 +338,26 @@ fn spec_with_more_words_is_not_the_flag() {
         [
             format!("arg={}", checkout.cli()),
             "arg=--spec".into(),
+            "arg=x".into()
+        ]
+    );
+}
+
+#[test]
+fn version_with_more_words_is_not_the_flag() {
+    // Same rule as `--spec`: only an argv of exactly `--version` is the front door's own.
+    let checkout = Checkout::new("forward-version-with-words");
+    let out = checkout
+        .command()
+        .args(["--version", "x"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(
+        checkout.recorded()[3..],
+        [
+            format!("arg={}", checkout.cli()),
+            "arg=--version".into(),
             "arg=x".into()
         ]
     );

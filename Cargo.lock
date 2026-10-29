@@ -88,7 +88,7 @@ dependencies = [
 
 [[package]]
 name = "tagents-core"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "serde_json",
  "tagents-spec",
@@ -96,7 +96,7 @@ dependencies = [
 
 [[package]]
 name = "tagents-spec"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",

@@ -24,8 +24,11 @@ use crate::{
 const NODE_CLI: &str = "packages/core/dist/cli/main.js";
 /// The node binary the wrapper `install.sh` writes pinned, or `node` on `PATH`.
 const NODE_ENV: &str = "TAGENTS_NODE";
-/// The one argument the front door answers itself.
+/// The arguments the front door answers itself, each only when it is the only argument.
 const SPEC_FLAG: &str = "--spec";
+const VERSION_FLAG: &str = "--version";
+/// What `--version` prints: the version of the workspace, which is the version of the release this binary comes from (`.github/scripts/core-release.sh version`).
+const VERSION_LINE: &str = concat!("tagents-core ", env!("CARGO_PKG_VERSION"), "\n");
 
 /// One first word the front door serves.
 struct Group {
@@ -127,6 +130,13 @@ fn forward(args: &[OsString]) -> ExitCode {
 
 /// The program: `args` are the words after its name.
 pub fn run(args: Vec<OsString>) -> ExitCode {
+    if args.len() == 1 && args[0] == OsStr::new(VERSION_FLAG) {
+        return emit(&Output {
+            stdout: VERSION_LINE.to_owned(),
+            stderr: String::new(),
+            code: sessions::exit::OK,
+        });
+    }
     if args.len() == 1 && args[0] == OsStr::new(SPEC_FLAG) {
         return match served_spec() {
             Ok(text) => emit(&Output {
