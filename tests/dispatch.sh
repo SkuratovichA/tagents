@@ -125,7 +125,7 @@ done
 run "$SOLO/tagents" "$BIN:$BARE" --window >/dev/null
 ok       "--window is answered here"                       ""  "$(argv)"
 ok       "...and with no directory and command it is a usage error" 2 "$rc"
-contains "...that says what it needs, not that the option is unknown" "needs a directory and a command" "$out"
+contains "...that says what it needs, not that the option is unknown" "takes a directory and one command, quoted" "$out"
 run "$SOLO/tagents" "$BIN:$BARE" --help >/dev/null
 contains "the help lists --viewport" "tagents --viewport" "$out"
 run "$SOLO/tagents" "$BIN:$BARE" --viewport >/dev/null
