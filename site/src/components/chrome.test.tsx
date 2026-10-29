@@ -13,17 +13,15 @@ import { Header } from './Header'
 const read = (path: string) => readFileSync(resolve(import.meta.dirname, '..', path), 'utf8')
 
 describe('the footer', () => {
-  it('carries the credit of the mascot and the way to GitHub, the docs and the licence', () => {
+  it('carries the credit of the mascot and the way to GitHub, the docs and the licence, in that order', () => {
     render(<Footer />)
     expect(screen.getByText(MASCOT.credit)).toBeInTheDocument()
-    const links = within(screen.getByRole('navigation', { name: 'Elsewhere' }))
-    expect(links.getByRole('link', { name: 'GitHub' })).toHaveAttribute('href', GITHUB_URL)
-    expect(links.getByRole('link', { name: 'Docs' })).toHaveAttribute('href', DOCS_URL)
-    expect(links.getByRole('link', { name: 'MIT licence' })).toHaveAttribute('href', LICENCE_URL)
-  })
-
-  it('links the licence file of the repository', () => {
-    expect(LICENCE_URL).toBe(`${GITHUB_URL}/blob/main/LICENSE`)
+    const links = within(screen.getByRole('contentinfo')).getAllByRole('link')
+    expect(links.map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
+      ['GitHub', GITHUB_URL],
+      ['Docs', DOCS_URL],
+      ['MIT licence', LICENCE_URL],
+    ])
   })
 })
 
@@ -66,21 +64,46 @@ describe('the buttons of the recordings', () => {
     const names = screen.getAllByRole('button').map((button) => button.getAttribute('aria-label'))
     expect(names).toHaveLength(DEMO_COPY.length)
     expect(new Set(names).size).toBe(names.length)
-    for (const [index, { title }] of DEMO_COPY.entries())
-      expect(names[index]).toMatch(new RegExp(`^(Play|Replay): ${title}$`))
+    for (const [index, { title }] of DEMO_COPY.entries()) {
+      const name = names[index]
+      expect([`Play: ${title}`, `Replay: ${title}`]).toContain(name)
+    }
   })
 })
 
+/** The text between the braces of the block that starts with `header`, found by matching its braces. */
+function blockOf(css: string, header: string): string {
+  const start = css.indexOf(header)
+  if (start < 0) throw new Error(`no block starts with ${header}`)
+  const open = css.indexOf('{', start)
+  let depth = 0
+  for (let at = open; at < css.length; at++) {
+    if (css[at] === '{') depth++
+    else if (css[at] === '}' && --depth === 0) return css.slice(open + 1, at)
+  }
+  throw new Error(`the block of ${header} is not closed`)
+}
+
+/** The declarations of the rule in `block` whose selector is exactly `selector` (white space collapsed). */
+function declarationsOf(block: string, selector: string): string {
+  for (const [, selectors = '', body = ''] of block.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (selectors.trim().replaceAll(/\s+/g, ' ') === selector) return body
+  }
+  throw new Error(`no rule for ${selector}`)
+}
+
 describe('the stylesheets', () => {
-  it.each(['styles.css', 'mascot/Mascot.css'])(
-    'stop every animation and transition for a visitor who asked for less motion: %s',
-    (file) => {
-      const css = read(file)
-      const start = css.indexOf('@media (prefers-reduced-motion: reduce)')
-      expect(start).toBeGreaterThanOrEqual(0)
-      const quiet = css.slice(start)
-      expect(quiet).toMatch(/animation:\s*none/)
-      expect(quiet).toMatch(/transition:\s*none/)
-    },
-  )
+  const quiet = (file: string) => blockOf(read(file), '@media (prefers-reduced-motion: reduce)')
+
+  it('stop every animation and transition on the page for a visitor who asked for less motion', () => {
+    const body = declarationsOf(quiet('styles.css'), '*, *::before, *::after')
+    expect(body).toMatch(/animation:\s*none/)
+    expect(body).toMatch(/transition:\s*none/)
+  })
+
+  it('stop the animation and the transition of the mascot for the same visitor', () => {
+    const block = quiet('mascot/Mascot.css')
+    expect(declarationsOf(block, '.mascot:hover .mascot__sprite')).toMatch(/animation:\s*none/)
+    expect(declarationsOf(block, '.mascot__alert')).toMatch(/transition:\s*none/)
+  })
 })

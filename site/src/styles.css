@@ -194,12 +194,6 @@ a {
   text-decoration: none;
 }
 
-.site-nav a:hover {
-  text-decoration: underline;
-  text-decoration-thickness: 2px;
-  text-underline-offset: 5px;
-}
-
 @media (max-width: 34rem) {
   .site-nav__section {
     display: none;
@@ -300,6 +294,12 @@ a {
 }
 
 @media (hover: hover) and (pointer: fine) {
+  .site-nav a:hover {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 5px;
+  }
+
   .button:hover {
     transform: translate(2px, 2px);
     box-shadow: 2px 2px 0 var(--shadow);
