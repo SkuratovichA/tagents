@@ -768,6 +768,15 @@ LN=$(ls "$OUT" 2>/dev/null | sed -n 's/\.out$//p')
 ok "the launch started one chat" 1 "$(printf '%s\n' "$LN" | grep -c .)"
 waitsnap "sid-$LN" present; ok "...and it is in the snapshot though its group was killed" 0 "$?"
 
+# The job is a string tmux expands as a format and hands to `sh -c`: a quote in the path of the script used to be a syntax error there (the capture never happened), and `#{...}` was rewritten by tmux. The script is copied to a directory with both in its name, and a launch from the copy must still be captured.
+ODD="$ROOT/od d'q#{x}"; mkdir -p "$ODD"
+cp -R "$HERE/../tagents" "$HERE/../lib" "$ODD/"
+clear_out
+env TMUX="$SOCK,0,0" TA_RESURRECT_SOON=1 bash "$ODD/tagents" --new "$PERS" personal >/dev/null 2>&1
+i=0; while [ "$(nouts)" -lt 1 ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+LN=$(ls "$OUT" 2>/dev/null | sed -n 's/\.out$//p')
+waitsnap "sid-$LN" present; ok "a script whose path holds a quote, a space and #{...} still leaves its capture" 0 "$?"
+
 # ---------------------------------------------------------------------------
 t "16. the shell a reboot leaves where the list was is closed, and the cockpit comes back with its list"
 # ---------------------------------------------------------------------------
