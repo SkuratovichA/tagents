@@ -15,7 +15,7 @@ tagents is a bash dashboard plus a small family of TypeScript packages. This pag
 | `hooks/notes-context.sh` | the Claude Code hook that carries the notes folder's diff into the prompt |
 | `hooks/notes-autocommit.sh` | the Claude Code hook that commits what Claude writes into the notes folder |
 | `hooks/notes-freshness.sh`, `hooks/ticket-ledger.sh` | two more optional notes hooks |
-| `config.example.yaml` | a commented example of the optional config |
+| `config.example.toml`, `schemas/config.schema.json` | a commented example of the optional config, and the JSON Schema that editors use to check and explain it |
 | `packages/core/` | `@tagents/core`, the TypeScript package for **headless** sessions |
 | `packages/knowledge/` | [`@tagents/knowledge`](https://github.com/SkuratovichA/tagents/blob/main/packages/knowledge/README.md), your notes as markdown documents with an FTS5 index, a `tagents-knowledge` CLI and an MCP server |
 | `packages/telegram/` | [`@tagents/telegram`](https://github.com/SkuratovichA/tagents/blob/main/packages/telegram/README.md), the Telegram Bot API typed and small: one client for every plugin that has a bot token |
@@ -32,7 +32,7 @@ The parts are one system:
 2. `tagents` joins those records with the live tmux pane list and renders them.
 3. `tusage` supplies the two cost columns, joined on the session id.
 
-Two of these are optional. `tusage` is only run once `usage.watch` names a profile (see `config.example.yaml`); without it no cost is shown anywhere. `tagents` degrades gracefully when `tusage` or the status line is missing. Without the state hook there is nothing to show.
+Two of these are optional. `tusage` is only run once `usage.watch` names a profile (see `config.example.toml`); without it no cost is shown anywhere. `tagents` degrades gracefully when `tusage` or the status line is missing. Without the state hook there is nothing to show.
 
 How the list stays current is [its own page](./refresh).
 
@@ -67,7 +67,7 @@ A plugin is an ordinary package that default-exports one `definePlugin({ name, a
 }
 ```
 
-- `tagents plugin add <package-or-path>` checks that manifest, without importing anything, and writes the package under `plugins:` in `~/.config/tagents/config.yaml`.
+- `tagents plugin add <package-or-path>` checks that manifest, without importing anything, and writes the package as a `[plugins.<name>]` table in `~/.config/tagents/config.toml` (a `config.yaml` that is there instead is edited as before).
 - The host loads exactly what that map names and never scans `node_modules`, because scanning is how a machine ends up running code nobody chose.
 - `tagents plugin new <name>` scaffolds a package that is already a plugin and typechecks as written.
 

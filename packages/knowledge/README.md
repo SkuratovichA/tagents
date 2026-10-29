@@ -62,15 +62,17 @@ Two kinds of link to another document are understood, and `lint` reports the dea
 
 | what | default | override |
 | --- | --- | --- |
-| the documents | *no default, on purpose* | `--dir`, `TAGENTS_KNOWLEDGE_DIR`, or `knowledge.dir` in `~/.config/tagents/config.yaml` |
+| the documents | *no default, on purpose* | `--dir`, `TAGENTS_KNOWLEDGE_DIR`, or `knowledge.dir` in `~/.config/tagents/config.toml` |
 | the index | `~/.config/tagents/knowledge.sqlite` | `--db`, `TAGENTS_KNOWLEDGE_DB` |
 | the usage store | `knowledge-usage.sqlite` beside the index in use, however that was chosen | `--usage-db`, `TAGENTS_KNOWLEDGE_USAGE_DB` |
 
-```yaml
-# ~/.config/tagents/config.yaml — the same file core's plugin host reads
-knowledge:
-  dir: ~/git/personal/knowledge
+```toml
+# ~/.config/tagents/config.toml — the same file core's plugin host reads
+[knowledge]
+dir = "~/git/personal/knowledge"
 ```
+
+A `config.yaml` with `knowledge:` and `dir:` is read when there is no `config.toml`.
 
 There is no default documents folder because guessing one would index whatever
 happened to be under it. Without one, every command exits 1 with the sentence

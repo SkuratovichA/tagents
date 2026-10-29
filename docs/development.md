@@ -44,7 +44,8 @@ The tests read `tagents`, `tnotes` and `tusage` from the checkout as they run. A
 
 | suite | covers |
 |-------|--------|
-| `tests/config.sh` | the config parser, the rules and the command builder, with no tmux involved |
+| `tests/config.sh` | the YAML config parser, the rules and the command builder, with no tmux involved |
+| `tests/config-toml.sh` | the TOML config reader, which file is read, the YAML fallback and what `--check` and the status bar say about it, with no tmux involved |
 | `tests/launch.sh` | starting and resuming real agents |
 | `tests/window-rows.sh` | selecting, joining and killing rows across windows and sessions, and the list's cursor following the viewport |
 | `tests/ui.sh` | what the row looks like: the badge column, the hidden ones, the `?` window running a real key, the one-line header, the `ctrl-v` modal, and the order, which is checked by making a state change and asserting that nothing moved |

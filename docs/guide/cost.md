@@ -8,7 +8,7 @@ With cost on, each row shows what its session has spent and which model it is on
 
 ## Switching it on
 
-`tusage` is only run once `usage.watch` names a profile in your [config](./accounts) (see `config.example.yaml`). Without it no cost is shown anywhere: no figure in the status bar, no footer under the list, no `$` window, no cost column or `/5h` burn. Hiding the column is a separate, per-run choice; see [Hiding columns](./dashboard#hiding-columns).
+`tusage` is only run once `usage.watch` names a profile in your [config](./accounts) (see `config.example.toml`). Without it no cost is shown anywhere: no figure in the status bar, no footer under the list, no `$` window, no cost column or `/5h` burn. Hiding the column is a separate, per-run choice; see [Hiding columns](./dashboard#hiding-columns).
 
 ## Where the number comes from
 

@@ -1,6 +1,6 @@
 # Accounts and configuration
 
-If you use more than one Claude login, tagents starts every agent on the right one: the one your directory or tmux session calls for. This page covers the optional config file that does it, `~/.config/tagents/config.yaml`.
+If you use more than one Claude login, tagents starts every agent on the right one: the one your directory or tmux session calls for. This page covers the optional config file that does it, `~/.config/tagents/config.toml`.
 
 It is optional and, at its core, about one thing: **which Claude account an agent is started on**. Without the file (or `$TA_CONFIG`) nothing below happens, and every agent is started exactly as it always was: a plain `claude --dangerously-skip-permissions`, environment inherited, no dialog ever.
 
@@ -18,42 +18,48 @@ That is why every launch goes out as `env -u CLAUDE_CONFIG_DIR [CLAUDE_CONFIG_DI
 
 ### The file
 
-```yaml
-claude:
-  # What every agent is started with, unless a profile overrides it.
-  # A string (your own shell words, verbatim) or a list (each item quoted).
-  args: --dangerously-skip-permissions
+```toml
+#:schema https://raw.githubusercontent.com/SkuratovichA/tagents/main/schemas/config.schema.json
 
-  profiles:
-    personal:
-      config_dir: ~/.claude-personal
-      # badge: p    # the row column before the agent name. Defaults to the
-      #             # first character of the profile name, so personal and work
-      #             # are p and w already; set it when two accounts collide.
-    work:
-      # config_dir omitted: CLAUDE_CONFIG_DIR is UNSET for this one. Omit it,
-      # do not write ~/.claude — set and unset are different keychain items.
-      # command: claude                                     # binary or wrapper
-      # args: --dangerously-skip-permissions --model opus   # replaces claude.args
-      # env:
-      #   ANTHROPIC_BASE_URL: https://proxy.example.com
+[claude]
+# What every agent is started with, unless a profile overrides it.
+# A string (your own shell words, verbatim) or a list (each item quoted).
+args = "--dangerously-skip-permissions"
 
-  # First match wins. `dir` matches that directory and everything under it, by
-  # path component (~/git/personalx is not under ~/git/personal). `session`
-  # matches when the tmux session name CONTAINS the text. Both present means
-  # both must match; neither present is a catch-all.
-  rules:
-    - dir: ~/git/personal
-      profile: personal
-    - session: work
-      profile: work
+# When nothing matches. `ask` (the default) opens a picker; a profile name
+# settles it silently.
+default = "ask"
 
-  # When nothing matches. `ask` (the default) opens a picker; a profile name
-  # settles it silently.
-  default: ask
+[claude.profiles.personal]
+config_dir = "~/.claude-personal"
+# badge = "p"    # the row column before the agent name. Defaults to the
+#                # first character of the profile name, so personal and work
+#                # are p and w already; set it when two accounts collide.
+
+[claude.profiles.work]
+# config_dir omitted: CLAUDE_CONFIG_DIR is UNSET for this one. Omit it,
+# do not write ~/.claude — set and unset are different keychain items.
+# command = "claude"                                    # binary or wrapper
+# args = "--dangerously-skip-permissions --model opus"  # replaces claude.args
+# [claude.profiles.work.env]
+# ANTHROPIC_BASE_URL = "https://proxy.example.com"
+
+# First match wins. `dir` matches that directory and everything under it, by
+# path component (~/git/personalx is not under ~/git/personal). `session`
+# matches when the tmux session name CONTAINS the text. Both present means
+# both must match; neither present is a catch-all.
+[[claude.rules]]
+dir = "~/git/personal"
+profile = "personal"
+
+[[claude.rules]]
+session = "work"
+profile = "work"
 ```
 
-The file has more sections than the one above. Each one is covered on the page that is about it, and [`config.example.yaml`](https://github.com/SkuratovichA/tagents/blob/main/config.example.yaml) shows them all with comments:
+A table owns the plain `key = value` lines under it up to the next header, so `default` goes above the first `[claude.profiles.…]` table, next to `args`. The first line is what points an editor with a TOML language server (taplo, Even Better TOML) at [the schema](https://github.com/SkuratovichA/tagents/blob/main/schemas/config.schema.json): it completes the keys and shows what each one means on hover.
+
+The file has more sections than the one above. Each one is covered on the page that is about it, and [`config.example.toml`](https://github.com/SkuratovichA/tagents/blob/main/config.example.toml) shows them all with comments:
 
 | section | what it holds | page |
 |---------|---------------|------|
@@ -65,7 +71,18 @@ The file has more sections than the one above. Each one is covered on the page t
 
 ### The parser
 
-The parser is a deliberate YAML subset: mappings, sequences, `#` comments, and single- and double-quoted scalars. Tabs for indentation, flow style (`{}`, `[]`), block scalars (`|`, `>`) and anchors are refused with a one-line warning naming the line, and the rest of the file is still read.
+The dashboard reads a deliberate subset of TOML: tables and arrays of tables, `key = value` lines with bare, quoted or dotted keys, comments, basic and literal strings, decimal numbers, booleans, and one-line arrays and inline tables of those. Multi-line strings, dates, hexadecimal numbers, an escape other than `\"` and `\\`, a table or key defined twice, and nested arrays are refused with a one-line warning naming the line, and the rest of the file is still read.
+
+### An old config.yaml
+
+A `config.yaml` is still read when there is no `config.toml`, with the same keys and the YAML subset it always had: mappings, sequences, `#` comments, and single- and double-quoted scalars, with tabs, flow style (`{}`, `[]`), block scalars (`|`, `>`) and anchors refused. It is deprecated: `tagents --check`, the dashboard header and the status bar count it as a problem until it is converted.
+
+```sh
+tagents config convert            # prints the TOML and changes nothing
+tagents config convert --write    # creates config.toml beside config.yaml
+```
+
+The conversion reads both files the way the dashboard does and offers nothing unless they read the same. `--write` never overwrites a `config.toml` and never touches the YAML; comments are not carried over, so copy the ones worth keeping by hand. While both files exist `config.toml` is read, `config.yaml` is ignored, and `tagents --check` says so until you delete it. `--all` converts the per-machine overlays below too.
 
 ## Choosing by hand
 
@@ -77,7 +94,7 @@ The parser is a deliberate YAML subset: mappings, sequences, `#` comments, and s
 
 The file is shared through dotfiles, and the one thing in it that cannot be shared is the account table. On one laptop the default login is the employer's and `~/.claude-personal` is the second; on another the default is the personal account and the second is a client's. A profile pointing at a directory that does not exist on this machine starts a **logged-out** Claude, from a picker that looked perfectly fine.
 
-So `config.<hostname>.yaml` beside `config.yaml` is laid over it.
+So `config.<hostname>.toml` beside `config.toml` is laid over it (a `config.<hostname>.yaml` is read too while there is no TOML twin, whichever format the base file is in).
 
 - Every `a.b` subtree the overlay names (`claude.profiles`, `claude.rules`, `claude.default`, `notes.send`, …) replaces the base one wholesale. The rest is inherited.
 - It is wholesale rather than merged because profiles and rules are tables: a union would keep the other laptop's rows in this machine's picker, which is the exact thing being fixed.
