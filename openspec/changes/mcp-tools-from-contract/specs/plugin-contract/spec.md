@@ -77,10 +77,24 @@ Every flag that `tagents.cli.json` describes SHALL appear in the script's `--hel
 - **WHEN** every verb declares an effect
 - **THEN** no notice is printed
 
+### Requirement: The contract file holds what generation read
+`contract.json` SHALL hold the CLI contracts, the MCP tools of both servers, with their input (and output) schemas, and a hash of each API report.
+
+#### Scenario: Both servers are in the file
+- **WHEN** the contract is generated
+- **THEN** `contract.json` lists the tools of the knowledge server and of the `tagents` server, and one API report hash per public package
+
+### Requirement: The sources of the contract
+The sources of the contract SHALL be files under `packages/<package>/src/`, a package's `package.json` or `tsconfig*.json`, `pnpm-lock.yaml`, `tagents`, `tagents.cli.json`, `tusage`, `tnotes`, anything under `skills/` or `.claude-plugin/`, and `contract.json`.
+
+#### Scenario: A skill file changed
+- **WHEN** a commit stages a change under `skills/`
+- **THEN** the hook regenerates the contract files
+
 ## MODIFIED Requirements
 
 ### Requirement: What generation covers
-The generator SHALL read four things from the code: the verbs, flags, exit codes, effects and requirements of the structured CLI specs (`tagents-core`, `tagents-knowledge`, `tagents-notify` and `tagents.cli.json`); the tools of the knowledge MCP server with their input (and output) schemas, as a client lists them, and the tools of the `tagents` server derived from the CLI specs; the public TypeScript API of every public package (not private, with `exports`); and the `--help` text of the `tagents`, `tusage` and `tnotes` scripts. `contract.json` SHALL hold the CLI contracts, the MCP tools of both servers and a hash of each API report.
+The generator SHALL read four things from the code: the verbs, flags, exit codes, effects and requirements of the structured CLI specs (`tagents-core`, `tagents-knowledge`, `tagents-notify` and `tagents.cli.json`); the tools of the knowledge MCP server, as a client lists them, and the tools of the `tagents` server derived from the CLI specs; the public TypeScript API of every public package; and the `--help` text of the `tagents`, `tusage` and `tnotes` scripts.
 
 #### Scenario: Where the CLI and MCP parts come from
 - **WHEN** the CLI contracts and MCP tools are collected
@@ -99,7 +113,7 @@ The generator SHALL read four things from the code: the verbs, flags, exit codes
 - **THEN** there is one per public package, named `<package>.api.md` after the package name without its scope, in the order of the package names
 
 ### Requirement: The pre-commit hook regenerates the contract
-`.githooks/pre-commit` SHALL, when a commit stages a change (including a deletion) to a source of the contract, run the generator and add `contract.json`, `.claude-plugin/plugin.json` and `skills/tagents/references/*.md` to that same commit. The sources are files under `packages/<package>/src/`, a package's `package.json` or `tsconfig*.json`, `pnpm-lock.yaml`, `tagents`, `tagents.cli.json`, `tusage`, `tnotes`, anything under `skills/` or `.claude-plugin/`, and `contract.json`. Any other commit passes untouched.
+`.githooks/pre-commit` SHALL, when a commit stages a change (including a deletion) to a source of the contract, run the generator and add `contract.json`, `.claude-plugin/plugin.json` and `skills/tagents/references/*.md` to that same commit. Any other commit passes untouched.
 
 #### Scenario: A source changed
 - **WHEN** a commit stages a change under `packages/core/src/`

@@ -202,6 +202,24 @@ The hand-written part of `skills/tagents/SKILL.md` SHALL have a section "Using t
 - **WHEN** the user asks a session to open several projects on their accounts
 - **THEN** the skill leads it to one `tagents_new` call per project, each with its directory and profile
 
+### Requirement: The installer writes only over its own files
+`install.sh` SHALL write a wrapper only over a symlink or a file with the installer's marker line; any other file is left alone with a warning and exit 1 at the end. A wrapper whose hook the project dropped is removed.
+
+#### Scenario: A file of somebody else's
+- **WHEN** `~/.local/bin/tusage` exists and was not written by the installer
+- **THEN** it is left as it was, a warning names it, and the exit code is 1
+
+#### Scenario: A hook the project dropped
+- **WHEN** an update brings a copy that no longer ships `hooks/old.sh`, and `~/.claude/hooks/old.sh` is a wrapper of the installer
+- **THEN** that wrapper is removed
+
+### Requirement: The bash scripts do not need the workspace
+The bash scripts SHALL neither import nor need the TypeScript workspace.
+
+#### Scenario: A script runs without a build
+- **WHEN** `tagents` runs from a copy that has no `node_modules`
+- **THEN** the dashboard works, and only the verbs forwarded to the node commands need the build
+
 ## MODIFIED Requirements
 
 ### Requirement: The plugin registers the knowledge MCP server
@@ -227,7 +245,7 @@ The skill SHALL state four things: a verb the `tagents` script has no flag for i
 - **THEN** it learns that `tagents session list` and `tagents-core session list` are the same call, as the `cli-dispatch` capability specifies
 
 ### Requirement: The parts of the ecosystem
-The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeScript packages: `@tagents/core` (headless sessions and plugins, behind `tagents-core`), `@tagents/knowledge` (the owner's notes as markdown, a CLI and an MCP server), `@tagents/telegram` (a typed Bot API client), `@tagents/notify` (desktop notifications), `@tagents/mcp` (the MCP server that turns the verbs of the contract into tools) and `@tagents/contract` (the contract generator). Plugins are further packages the config names. The bash scripts neither import nor need the workspace.
+The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeScript packages: `@tagents/core` (headless sessions and plugins, behind `tagents-core`), `@tagents/knowledge` (the owner's notes, a CLI and an MCP server), `@tagents/telegram` (a Bot API client), `@tagents/notify` (desktop notifications), `@tagents/mcp` (the MCP server that turns the verbs of the contract into tools) and `@tagents/contract` (the contract generator). Plugins are further packages the config names.
 
 #### Scenario: One name reaches all of it
 - **WHEN** a user types `tagents plugin list`, `tagents session list` or `tagents doctor`
@@ -257,19 +275,11 @@ The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeS
 - **THEN** `tagents-notify` and `tagents-mcp` each pin that node
 
 ### Requirement: The installer writes wrappers, not symlinks
-`install.sh` SHALL write a real-file wrapper into `~/.local/bin` for each of `tagents`, `tusage`, `tnotes`, `tagents-core`, `tagents-knowledge`, `tagents-notify` and `tagents-mcp`, and one per `hooks/*.sh` into `~/.claude/hooks` or each repeatable `--hooks-dir DIR`; a wrapper runs the same file of the managed copy. It writes only over a symlink or a file with the installer's marker line; any other file is left alone with a warning and exit 1 at the end. A wrapper whose hook the project dropped is removed.
+`install.sh` SHALL write a real-file wrapper into `~/.local/bin` for each of `tagents`, `tusage`, `tnotes`, `tagents-core`, `tagents-knowledge`, `tagents-notify` and `tagents-mcp`, and one per `hooks/*.sh` into `~/.claude/hooks` or each repeatable `--hooks-dir DIR`; a wrapper runs the same file of the managed copy.
 
 #### Scenario: Two Claude config directories
 - **WHEN** `install.sh --hooks-dir ~/.claude/hooks --hooks-dir ~/.claude-work/hooks` runs
 - **THEN** both directories hold a wrapper for every hook script
-
-#### Scenario: A file of somebody else's
-- **WHEN** `~/.local/bin/tusage` exists and was not written by the installer
-- **THEN** it is left as it was, a warning names it, and the exit code is 1
-
-#### Scenario: A hook the project dropped
-- **WHEN** an update brings a copy that no longer ships `hooks/old.sh`, and `~/.claude/hooks/old.sh` is a wrapper of the installer
-- **THEN** that wrapper is removed
 
 #### Scenario: The commands the tools run
 - **WHEN** `install.sh` finishes a build

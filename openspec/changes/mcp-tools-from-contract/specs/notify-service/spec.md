@@ -72,10 +72,17 @@ The `enabled` flags of the options SHALL be ignored and `skip_visible` SHALL NOT
 - **WHEN** the backend is `none`
 - **THEN** the verb prints `error: backend is none, nothing posts` and exits 1
 
+### Requirement: The verbs have a structured CLI spec
+The package SHALL describe its verbs as a structured CLI spec, which the plugin contract reads, and a test SHALL fail when that spec and the verbs the plugin offers differ in a name, an option, a required option, a positional or an exit code.
+
+#### Scenario: the spec follows the verbs
+- **WHEN** a verb gains an option and the CLI spec is not changed
+- **THEN** the package's tests fail naming the verb
+
 ## MODIFIED Requirements
 
 ### Requirement: Verbs and the standalone binary
-The plugin SHALL provide the verbs `run`, `install`, `uninstall`, `status`, `test` and `send`, as `tagents notify <verb>` once the plugin is registered and as `tagents-notify <verb>` from the package's own binary, which needs no registration, so a LaunchAgent works on a machine where the host never ran. The binary with no verb, or with an unknown verb, exits 2 and lists the verbs. The package SHALL also describe its verbs as a structured CLI spec, which the plugin contract reads, and a test SHALL fail when that spec and the verbs the plugin offers differ in a name, an option, a required option, a positional or an exit code.
+The plugin SHALL provide the verbs `run`, `install`, `uninstall`, `status`, `test` and `send`, as `tagents notify <verb>` once the plugin is registered and as `tagents-notify <verb>` from the package's own binary, which needs no registration, so a LaunchAgent works on a machine where the host never ran. The binary with no verb, or with an unknown verb, exits 2 and lists the verbs.
 
 #### Scenario: no verb
 - **WHEN** `tagents-notify` runs with no arguments
@@ -84,7 +91,3 @@ The plugin SHALL provide the verbs `run`, `install`, `uninstall`, `status`, `tes
 #### Scenario: unknown verb
 - **WHEN** `tagents-notify bogus` runs
 - **THEN** it exits 2 and the output names `bogus`
-
-#### Scenario: the spec follows the verbs
-- **WHEN** a verb gains an option and the CLI spec is not changed
-- **THEN** the package's tests fail naming the verb
