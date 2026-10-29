@@ -11,7 +11,7 @@ export interface ToolAnnotations {
 
 export type PropertySchema =
   | { readonly type: 'string' }
-  | { readonly type: 'boolean' }
+  | { readonly type: 'boolean'; readonly default?: boolean }
   | { readonly type: 'array'; readonly items: { readonly type: 'string' }; readonly minItems?: 1 };
 
 export interface InputSchema {
@@ -82,20 +82,32 @@ function inputSchemaOf(name: string, command: Command, positionals: readonly Pos
   }
   for (const [option, spec] of Object.entries(command.options)) {
     if (option in properties) throw new Error(`${name}: the option --${option} and a positional share the name ${option}`);
-    properties[option] = spec.type === 'boolean' ? { type: 'boolean' } : spec.multiple === true ? { type: 'array', items: { type: 'string' } } : { type: 'string' };
+    const fallback = command.toolDefaults?.[option];
+    properties[option] =
+      spec.type === 'boolean' ? { type: 'boolean', ...(fallback === undefined ? {} : { default: fallback }) } : spec.multiple === true ? { type: 'array', items: { type: 'string' } } : { type: 'string' };
   }
   const required = [...positionals.filter((p) => p.required).map((p) => p.name), ...command.required];
   return { type: 'object', properties, required, additionalProperties: false };
 }
 
-/** One tool per verb that answers and ends; a verb that serves until it is stopped is left out. Sorted by name, so the order of the specs cannot move the contract. */
+/** A default can only be given to a boolean option the verb has: a spec that says anything else says something the argv cannot carry. */
+function checkDefaults(name: string, command: Command): void {
+  for (const option of Object.keys(command.toolDefaults ?? {})) {
+    const spec = command.options[option];
+    if (spec === undefined) throw new Error(`${name}: toolDefaults names --${option}, which the verb does not have`);
+    if (spec.type !== 'boolean') throw new Error(`${name}: toolDefaults gives --${option} a boolean, and the option takes a string`);
+  }
+}
+
+/** One tool per verb that answers and ends; a verb that serves until it is stopped, and a verb the spec marks `tool: false`, are left out. Sorted by name, so the order of the specs cannot move the contract. */
 export function toolSpecs(clis: readonly CliContract[]): readonly ToolSpec[] {
   const tools = new Map<string, ToolSpec>();
   for (const cli of clis) {
     for (const command of cli.commands) {
-      if (command.effect === 'serve') continue;
+      if (command.effect === 'serve' || command.tool === false) continue;
       const name = toolName(cli.program, command.path);
       if (tools.has(name)) throw new Error(`two verbs would both be the tool ${name}`);
+      checkDefaults(name, command);
       const positionals = command.positionals.map(parsePositional);
       tools.set(name, {
         name,
@@ -119,16 +131,20 @@ const isStrings = (v: unknown): v is readonly string[] => Array.isArray(v) && v.
 
 /**
  * The command line a call stands for: the verb's words, each option as `--name=value` (so a value that starts with a dash stays a value), then the positionals. The arguments are checked against the schema first, because nothing else does: the CLI would drop or misread what it does not know.
+ * A boolean option the spec defaults (`toolDefaults`) is given as its default when the call leaves it out.
  * A positional that starts with a dash is refused: the verb would read it as a flag, and not every verb takes `--` to end the flags.
  */
 export function argvFor(tool: ToolSpec, args: Readonly<Record<string, unknown>>): Argv {
   const { properties, required } = tool.inputSchema;
   for (const key of Object.keys(args)) if (!(key in properties)) return refuse(`unknown argument "${key}"`);
   for (const key of required) if (args[key] === undefined) return refuse(`missing required argument "${key}"`);
+  // A NUL ends a C string: the operating system refuses to start a program with one in its arguments, and no verb can mean it.
+  for (const [key, value] of Object.entries(args)) if ([value].flat().some((v) => typeof v === 'string' && v.includes('\0'))) return refuse(`argument "${key}" contains a NUL byte`);
 
   const flags: string[] = [];
   for (const [option, spec] of Object.entries(tool.command.options)) {
-    const value = args[option];
+    const given = args[option];
+    const value = given === undefined ? tool.command.toolDefaults?.[option] : given;
     if (value === undefined) continue;
     if (spec.type === 'boolean') {
       if (typeof value !== 'boolean') return refuse(`argument "${option}" must be a boolean`);

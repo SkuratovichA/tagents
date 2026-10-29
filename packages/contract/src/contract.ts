@@ -24,6 +24,8 @@ export function buildContract(sources: Sources): JsonObject {
             summary: command.summary,
             ...(command.effect === undefined ? {} : { effect: command.effect }),
             ...(command.requires === undefined ? {} : { requires: command.requires }),
+            ...(command.tool === undefined ? {} : { tool: command.tool }),
+            ...(command.toolDefaults === undefined ? {} : { toolDefaults: command.toolDefaults }),
           })),
         },
       ])

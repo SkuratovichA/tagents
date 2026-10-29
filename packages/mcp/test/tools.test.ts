@@ -32,6 +32,15 @@ const bare: CliContract = {
   commands: [{ path: ['--new'], positionals: ['[dir]', '[profile]'], options: {}, required: [], summary: 'opens a window', effect: 'spawn' }],
 };
 
+const windowed: CliContract = {
+  program: 'tagents',
+  exit: { ok: 0, error: 1, usage: 2 },
+  commands: [
+    { path: ['--window'], positionals: ['<DIR>', '<COMMAND>'], options: { detach: { type: 'boolean' } }, toolDefaults: { detach: true }, required: [], summary: 'opens a window', effect: 'spawn' },
+    { path: ['--prompt'], positionals: ['<text>'], options: {}, required: [], summary: 'runs an unattended turn', effect: 'spawn', tool: false },
+  ],
+};
+
 const byName = (clis: readonly CliContract[]) => new Map(toolSpecs(clis).map((t) => [t.name, t]));
 
 test('a tool per verb, named program short name and verb words, sorted, with serving verbs left out', () => {
@@ -139,4 +148,41 @@ test('a value that would be read as a flag is refused, because the verb cannot t
   assert.equal(r.ok, false);
   assert.match(r.ok ? '' : r.message, /-rf/);
   assert.deepEqual(argvFor(search, { query: ['ok'], limit: '-1' }), { ok: true, argv: ['search', '--limit=-1', 'ok'] });
+});
+
+test('a verb the spec marks tool: false is no tool', () => {
+  assert.deepEqual(toolSpecs([windowed]).map((t) => t.name), ['tagents_window']);
+});
+
+test('a boolean option the spec defaults is in the schema with its default, and the argv carries it unless the call says false', () => {
+  const tool = byName([windowed]).get('tagents_window');
+  assert.ok(tool);
+  assert.deepEqual(tool.inputSchema.properties['detach'], { type: 'boolean', default: true });
+  assert.deepEqual(argvFor(tool, { dir: '/w', command: 'make' }), { ok: true, argv: ['--window', '--detach', '/w', 'make'] });
+  assert.deepEqual(argvFor(tool, { dir: '/w', command: 'make', detach: true }), { ok: true, argv: ['--window', '--detach', '/w', 'make'] });
+  assert.deepEqual(argvFor(tool, { dir: '/w', command: 'make', detach: false }), { ok: true, argv: ['--window', '/w', 'make'] });
+});
+
+test('a default for an option the verb does not have, or for one that is not a boolean, stops the tool list from being made', () => {
+  const [window] = windowed.commands;
+  assert.ok(window);
+  const withDefaults = (command: CliContract['commands'][number]): CliContract => ({ ...windowed, commands: [command] });
+  assert.throws(() => toolSpecs([withDefaults({ ...window, toolDefaults: { attach: true } })]), /tagents_window.*--attach.*does not have/);
+  assert.throws(() => toolSpecs([withDefaults({ ...window, options: { detach: { type: 'string' } } })]), /tagents_window.*--detach.*string/);
+});
+
+test('an argument with a NUL byte is refused by name, whether it is an option, a positional or an item of an array', () => {
+  const nul = '\0';
+  const open = byName([demo]).get('demo_session_open');
+  const search = byName([demo]).get('demo_search');
+  assert.ok(open && search);
+  const message = (tool: NonNullable<typeof open>, args: Record<string, unknown>): string => {
+    const r = argvFor(tool, args);
+    assert.equal(r.ok, false);
+    return r.ok ? '' : r.message;
+  };
+  assert.match(message(open, { cwd: `/w${nul}x` }), /"cwd".*NUL/);
+  assert.match(message(open, { cwd: '/w', tag: ['fine', `a${nul}`] }), /"tag".*NUL/);
+  assert.match(message(search, { query: ['one', `t${nul}wo`] }), /"query".*NUL/);
+  assert.deepEqual(argvFor(search, { query: ['no nul'] }), { ok: true, argv: ['search', 'no nul'] });
 });

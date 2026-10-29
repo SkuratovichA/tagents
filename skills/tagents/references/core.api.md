@@ -152,6 +152,8 @@ export interface CliContract {
         readonly required: readonly string[];
         readonly summary: string;
         readonly effect?: Effect;
+        readonly tool?: false;
+        readonly toolDefaults?: Readonly<Record<string, boolean>>;
         readonly requires?: 'tmux';
     }[];
     // (undocumented)
@@ -174,6 +176,8 @@ export interface CommandSpec<Key extends string = string> {
     readonly positionals: readonly string[];
     readonly required: readonly string[];
     readonly summary: Key;
+    readonly tool?: false;
+    readonly toolDefaults?: Readonly<Record<string, boolean>>;
 }
 
 // @public (undocumented)

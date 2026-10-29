@@ -17,6 +17,8 @@ export const NOTIFY_COMMANDS = [
     required: [],
     summary: 'installs and starts the notification service as a login item, builds its helper app and asks macOS for permission to notify',
     effect: 'spawn',
+    // a LaunchAgent and a macOS permission dialog: a one-time action for a person, not for a model
+    tool: false,
   },
   {
     path: ['uninstall'],
@@ -25,6 +27,8 @@ export const NOTIFY_COMMANDS = [
     required: [],
     summary: 'stops and removes the notification service; with purge it also deletes the helper app',
     effect: 'destructive',
+    // removes the LaunchAgent: a one-time action for a person, as `install` is
+    tool: false,
   },
   {
     path: ['status'],

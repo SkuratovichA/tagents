@@ -29,6 +29,8 @@ export const SEARCH = {
   required: [],
   summary: 'summarySearch',
   effect: 'read',
+  // the `tagents-knowledge` MCP server already offers `knowledge_search`
+  tool: false,
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const SHOW = {
@@ -43,6 +45,8 @@ export const SHOW = {
   required: [],
   summary: 'summaryShow',
   effect: 'read',
+  // the `tagents-knowledge` MCP server already offers `knowledge_get`
+  tool: false,
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const LIST = {
@@ -59,6 +63,8 @@ export const LIST = {
   required: [],
   summary: 'summaryList',
   effect: 'read',
+  // the `tagents-knowledge` MCP server already offers `knowledge_list`
+  tool: false,
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const LINT = {
@@ -98,6 +104,8 @@ export const USAGE = {
   required: [],
   summary: 'summaryUsage',
   effect: 'read',
+  // the `tagents-knowledge` MCP server already offers `knowledge_usage`
+  tool: false,
 } as const satisfies CommandSpec<KnowledgeKey>;
 
 export const MCP = {
@@ -126,13 +134,19 @@ export function knowledgeCliContract(): CliContract {
   return {
     program: 'tagents-knowledge',
     exit: EXIT,
-    commands: KNOWLEDGE_COMMANDS.map((c) => ({
-      path: c.path,
-      positionals: c.positionals,
-      options: c.options,
-      required: c.required,
-      summary: t(c.summary),
-      ...('effect' in c ? { effect: c.effect } : {}),
-    })),
+    commands: KNOWLEDGE_COMMANDS.map((c) => {
+      // The optional keys are read through the spec's own type: no verb of this CLI has `toolDefaults`, so its literal type does not list the key.
+      const { effect, tool, toolDefaults }: Pick<CommandSpec, 'effect' | 'tool' | 'toolDefaults'> = c;
+      return {
+        path: c.path,
+        positionals: c.positionals,
+        options: c.options,
+        required: c.required,
+        summary: t(c.summary),
+        ...(effect === undefined ? {} : { effect }),
+        ...(tool === undefined ? {} : { tool }),
+        ...(toolDefaults === undefined ? {} : { toolDefaults }),
+      };
+    }),
   };
 }

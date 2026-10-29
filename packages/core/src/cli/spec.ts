@@ -23,6 +23,10 @@ export interface CommandSpec<Key extends string = string> {
   readonly summary: Key;
   /** What the verb does to the machine; a verb without one is treated as the least safe kind by everything that reads it. */
   readonly effect?: Effect;
+  /** `false` keeps the verb out of the plugin's tools: it stays a CLI verb, in the contract and the references. */
+  readonly tool?: false;
+  /** Booleans a tool call carries when it leaves the option out: `{ detach: true }` runs the verb with `--detach` unless the call passes `detach: false`. */
+  readonly toolDefaults?: Readonly<Record<string, boolean>>;
 }
 
 /** A CLI's whole surface with the summaries resolved to English: the shape the contract generator consumes. */
@@ -36,6 +40,10 @@ export interface CliContract {
     readonly required: readonly string[];
     readonly summary: string;
     readonly effect?: Effect;
+    /** `false` keeps the verb out of the plugin's tools: it stays a CLI verb, in the contract and the references. */
+    readonly tool?: false;
+    /** Booleans a tool call carries when it leaves the option out: `{ detach: true }` runs the verb with `--detach` unless the call passes `detach: false`. */
+    readonly toolDefaults?: Readonly<Record<string, boolean>>;
     /** What the verb cannot run without, so a caller that lacks it refuses at once: `tmux` is a tmux server of the caller's own (`$TMUX`). */
     readonly requires?: 'tmux';
   }[];
@@ -59,6 +67,8 @@ export const SESSION_OPEN = {
   required: ['cwd'],
   summary: 'summarySessionOpen',
   effect: 'read',
+  // a reference is only useful to `session prompt`, which is no tool either
+  tool: false,
 } as const satisfies CommandSpec<CoreKey>;
 
 export const SESSION_PROMPT = {
@@ -72,6 +82,8 @@ export const SESSION_PROMPT = {
   required: [],
   summary: 'summarySessionPrompt',
   effect: 'spawn',
+  // an unattended `claude -p` turn that blocks for up to 50 minutes and may skip permissions: a model that wants one runs it in a visible window with `tagents_window`
+  tool: false,
 } as const satisfies CommandSpec<CoreKey>;
 
 export const SESSION_LAST = {
@@ -99,6 +111,8 @@ export const SESSION_ABORT = {
   required: [],
   summary: 'summarySessionAbort',
   effect: 'destructive',
+  // it kills the process a reference names, and the reference is the caller's word
+  tool: false,
 } as const satisfies CommandSpec<CoreKey>;
 
 export const SESSIONS_RECENT = {
@@ -108,6 +122,8 @@ export const SESSIONS_RECENT = {
   required: [],
   summary: 'summarySessionsRecent',
   effect: 'read',
+  // the `tagents-knowledge` MCP server already offers `sessions_recent`
+  tool: false,
 } as const satisfies CommandSpec<CoreKey>;
 
 export const SESSIONS_SEARCH = {
@@ -117,6 +133,8 @@ export const SESSIONS_SEARCH = {
   required: [],
   summary: 'summarySessionsSearch',
   effect: 'read',
+  // the `tagents-knowledge` MCP server already offers `sessions_search`
+  tool: false,
 } as const satisfies CommandSpec<CoreKey>;
 
 export const SESSIONS_SHOW = {
@@ -144,6 +162,8 @@ export const PLUGIN_ADD = {
   required: [],
   summary: 'summaryPluginAdd',
   effect: 'write',
+  // it registers code the host later imports, outside any permission prompt
+  tool: false,
 } as const satisfies CommandSpec<CoreKey>;
 
 export const PLUGIN_REMOVE = {
@@ -195,13 +215,19 @@ export function coreCliContract(): CliContract {
   return {
     program: 'tagents-core',
     exit: EXIT,
-    commands: CORE_COMMANDS.map((c) => ({
-      path: c.path,
-      positionals: c.positionals,
-      options: c.options,
-      required: c.required,
-      summary: t(c.summary),
-      ...('effect' in c ? { effect: c.effect } : {}),
-    })),
+    commands: CORE_COMMANDS.map((c) => {
+      // The optional keys are read through the spec's own type: no verb of this CLI has `toolDefaults`, so its literal type does not list the key.
+      const { effect, tool, toolDefaults }: Pick<CommandSpec, 'effect' | 'tool' | 'toolDefaults'> = c;
+      return {
+        path: c.path,
+        positionals: c.positionals,
+        options: c.options,
+        required: c.required,
+        summary: t(c.summary),
+        ...(effect === undefined ? {} : { effect }),
+        ...(tool === undefined ? {} : { tool }),
+        ...(toolDefaults === undefined ? {} : { toolDefaults }),
+      };
+    }),
   };
 }

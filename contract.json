@@ -52,7 +52,8 @@
             "cwd"
           ],
           "summary": "prepares a headless Claude session for a directory and prints its SessionRef as JSON; no process starts until a prompt is sent to it",
-          "effect": "read"
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -76,7 +77,8 @@
           },
           "required": [],
           "summary": "runs one Claude turn: sends the prompt to a session, waits for the answer and prints the TurnOutcome as JSON; with --events, NDJSON events with the outcome last",
-          "effect": "spawn"
+          "effect": "spawn",
+          "tool": false
         },
         {
           "path": [
@@ -121,7 +123,8 @@
           "options": {},
           "required": [],
           "summary": "stops the turn running in a session and prints whether it did, with the id and pid, as JSON",
-          "effect": "destructive"
+          "effect": "destructive",
+          "tool": false
         },
         {
           "path": [
@@ -134,7 +137,8 @@
           "options": {},
           "required": [],
           "summary": "prints the most recent transcripts as text",
-          "effect": "read"
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -147,7 +151,8 @@
           "options": {},
           "required": [],
           "summary": "prints the transcripts that match the words, as text",
-          "effect": "read"
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -192,7 +197,8 @@
           },
           "required": [],
           "summary": "validates a package manifest and writes the plugin into config.yaml",
-          "effect": "write"
+          "effect": "write",
+          "tool": false
         },
         {
           "path": [
@@ -302,7 +308,8 @@
           },
           "required": [],
           "summary": "prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last; each document it returns is recorded as a hit in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)",
-          "effect": "read"
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -327,7 +334,8 @@
           },
           "required": [],
           "summary": "prints the markdown of a document, or of one section of it; the read is recorded as a get in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)",
-          "effect": "read"
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -356,7 +364,8 @@
           },
           "required": [],
           "summary": "prints one line per document: id, type, updated, title and tags; --type filters by type (--kind is its deprecated alias); deprecated documents come last",
-          "effect": "read"
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -431,7 +440,8 @@
           },
           "required": [],
           "summary": "reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store",
-          "effect": "read"
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -490,7 +500,8 @@
           "options": {},
           "required": [],
           "summary": "installs and starts the notification service as a login item, builds its helper app and asks macOS for permission to notify",
-          "effect": "spawn"
+          "effect": "spawn",
+          "tool": false
         },
         {
           "path": [
@@ -504,7 +515,8 @@
           },
           "required": [],
           "summary": "stops and removes the notification service; with purge it also deletes the helper app",
-          "effect": "destructive"
+          "effect": "destructive",
+          "tool": false
         },
         {
           "path": [
@@ -812,30 +824,6 @@
           }
         },
         {
-          "name": "core_plugin_add",
-          "description": "Validates a package manifest and writes the plugin into config.yaml.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "package_or_path": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "package_or_path"
-            ],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": false,
-            "destructiveHint": false,
-            "openWorldHint": false
-          }
-        },
-        {
           "name": "core_plugin_list",
           "description": "Lists the configured plugins and what each offers, as lines or with --json one JSON document.",
           "inputSchema": {
@@ -899,27 +887,6 @@
           }
         },
         {
-          "name": "core_session_abort",
-          "description": "Stops the turn running in a session and prints whether it did, with the id and pid, as JSON.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "ref_json_or_id": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "ref_json_or_id"
-            ],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": false,
-            "destructiveHint": true,
-            "openWorldHint": false
-          }
-        },
-        {
           "name": "core_session_last",
           "description": "Prints the last assistant text of a session and when it came, as JSON, or null.",
           "inputSchema": {
@@ -956,129 +923,6 @@
               }
             },
             "required": [],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": true,
-            "openWorldHint": false
-          }
-        },
-        {
-          "name": "core_session_open",
-          "description": "Prepares a headless Claude session for a directory and prints its SessionRef as JSON; no process starts until a prompt is sent to it.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "cwd": {
-                "type": "string"
-              },
-              "label": {
-                "type": "string"
-              },
-              "model": {
-                "type": "string"
-              },
-              "effort": {
-                "type": "string"
-              },
-              "resume": {
-                "type": "string"
-              },
-              "system-prompt-file": {
-                "type": "string"
-              },
-              "mcp-config": {
-                "type": "string"
-              },
-              "config-dir": {
-                "type": "string"
-              },
-              "no-config-dir": {
-                "type": "boolean"
-              },
-              "skip-permissions": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "cwd"
-            ],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": true,
-            "openWorldHint": false
-          }
-        },
-        {
-          "name": "core_session_prompt",
-          "description": "Runs one Claude turn: sends the prompt to a session, waits for the answer and prints the TurnOutcome as JSON; with --events, NDJSON events with the outcome last.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "ref_json_or_id": {
-                "type": "string"
-              },
-              "text": {
-                "type": "string"
-              },
-              "timeout": {
-                "type": "string"
-              },
-              "warn-before": {
-                "type": "string"
-              },
-              "events": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "ref_json_or_id",
-              "text"
-            ],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": false,
-            "destructiveHint": false,
-            "openWorldHint": true
-          }
-        },
-        {
-          "name": "core_sessions_recent",
-          "description": "Prints the most recent transcripts as text.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "n": {
-                "type": "string"
-              }
-            },
-            "required": [],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": true,
-            "openWorldHint": false
-          }
-        },
-        {
-          "name": "core_sessions_search",
-          "description": "Prints the transcripts that match the words, as text.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "words": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "minItems": 1
-              }
-            },
-            "required": [
-              "words"
-            ],
             "additionalProperties": false
           },
           "annotations": {
@@ -1150,122 +994,6 @@
           }
         },
         {
-          "name": "knowledge_list",
-          "description": "Prints one line per document: id, type, updated, title and tags; --type filters by type (--kind is its deprecated alias); deprecated documents come last.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "dir": {
-                "type": "string"
-              },
-              "db": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string"
-              },
-              "tag": {
-                "type": "string"
-              },
-              "json": {
-                "type": "boolean"
-              }
-            },
-            "required": [],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": true,
-            "openWorldHint": false
-          }
-        },
-        {
-          "name": "knowledge_search",
-          "description": "Prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last; each document it returns is recorded as a hit in the usage store (--usage-db F names the file, --verbose says why a read was not recorded).",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "query": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "minItems": 1
-              },
-              "dir": {
-                "type": "string"
-              },
-              "db": {
-                "type": "string"
-              },
-              "tag": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string"
-              },
-              "limit": {
-                "type": "string"
-              },
-              "json": {
-                "type": "boolean"
-              },
-              "usage-db": {
-                "type": "string"
-              },
-              "verbose": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "query"
-            ],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": true,
-            "openWorldHint": false
-          }
-        },
-        {
-          "name": "knowledge_show",
-          "description": "Prints the markdown of a document, or of one section of it; the read is recorded as a get in the usage store (--usage-db F names the file, --verbose says why a read was not recorded).",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "id_heading": {
-                "type": "string"
-              },
-              "dir": {
-                "type": "string"
-              },
-              "db": {
-                "type": "string"
-              },
-              "usage-db": {
-                "type": "string"
-              },
-              "verbose": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "id_heading"
-            ],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": true,
-            "openWorldHint": false
-          }
-        },
-        {
           "name": "knowledge_toc",
           "description": "Writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date.",
           "inputSchema": {
@@ -1285,69 +1013,6 @@
             "readOnlyHint": false,
             "destructiveHint": false,
             "openWorldHint": false
-          }
-        },
-        {
-          "name": "knowledge_usage",
-          "description": "Reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "dir": {
-                "type": "string"
-              },
-              "db": {
-                "type": "string"
-              },
-              "usage-db": {
-                "type": "string"
-              },
-              "since": {
-                "type": "string"
-              },
-              "top": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string"
-              },
-              "all": {
-                "type": "boolean"
-              },
-              "candidates": {
-                "type": "boolean"
-              },
-              "min-gets": {
-                "type": "string"
-              },
-              "min-days": {
-                "type": "string"
-              },
-              "json": {
-                "type": "boolean"
-              }
-            },
-            "required": [],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": true,
-            "openWorldHint": false
-          }
-        },
-        {
-          "name": "notify_install",
-          "description": "Installs and starts the notification service as a login item, builds its helper app and asks macOS for permission to notify.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": false,
-            "destructiveHint": false,
-            "openWorldHint": true
           }
         },
         {
@@ -1404,25 +1069,6 @@
           "annotations": {
             "readOnlyHint": false,
             "destructiveHint": false,
-            "openWorldHint": false
-          }
-        },
-        {
-          "name": "notify_uninstall",
-          "description": "Stops and removes the notification service; with purge it also deletes the helper app.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "purge": {
-                "type": "boolean"
-              }
-            },
-            "required": [],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": false,
-            "destructiveHint": true,
             "openWorldHint": false
           }
         },
@@ -1553,7 +1199,7 @@
     }
   },
   "api": {
-    "@tagents/core": "sha256:c4857ebf43b0a80a79b61e7e6892b11c04b3ed5b31f4ec24eac14f7afd707596",
+    "@tagents/core": "sha256:5d3b264c1a557fc00efb5f9f22cda0ad69716f8fc1a752bbf28231a0ebbff353",
     "@tagents/knowledge": "sha256:63465226fcb49e8f6a20867948332ff35da600f4a020fa9701ef88730f5c2d8a",
     "@tagents/notify": "sha256:9fd35c43c5dd7262667bfdd48944a46e39551f1e7441438455c7859a39f8fb7e",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"

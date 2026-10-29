@@ -62,8 +62,11 @@ test('a verb that starts something says so in the first words of its description
 
 test('the plugin\'s own tools include the ones the plugin exists to offer, each with its hints', async () => {
   const tools = new Map(tagentsServer(await cliContracts(REPO_ROOT)).tools.map((tool) => [tool.name, tool]));
-  for (const name of ['notify_send', 'tagents_new', 'tagents_window', 'core_session_open', 'core_session_prompt', 'core_session_last', 'core_session_list', 'core_session_abort']) {
+  for (const name of ['notify_send', 'tagents_new', 'tagents_window', 'core_session_last', 'core_session_list']) {
     assert.ok(tools.has(name), name);
+  }
+  for (const name of ['core_session_open', 'core_session_prompt', 'core_session_abort', 'core_plugin_add', 'notify_install', 'notify_uninstall', 'knowledge_search']) {
+    assert.ok(!tools.has(name), `${name} is a CLI verb marked tool: false`);
   }
   assert.deepEqual(tools.get('core_session_list')?.annotations, { readOnlyHint: true, openWorldHint: false });
   assert.equal(tools.get('tagents_new')?.annotations?.['readOnlyHint'], false);

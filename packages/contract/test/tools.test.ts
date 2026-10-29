@@ -6,8 +6,8 @@ import { test } from 'node:test';
 import { createT } from '../src/i18n/index.ts';
 import { isJsonArray, isJsonObject, parseJson, type JsonValue } from '../src/json.ts';
 import { planGenerate } from '../src/plan.ts';
-import { tagentsServer } from '../src/sources.ts';
-import { noticeLines } from '../src/tree.ts';
+import { cliContracts, tagentsServer } from '../src/sources.ts';
+import { noticeLines, REPO_ROOT } from '../src/tree.ts';
 import type { CliContract, Sources } from '../src/types.ts';
 import { applied, sampleDisk, sampleServer, sampleSources } from './sample.ts';
 
@@ -93,4 +93,59 @@ test('a verb without an effect is listed in a notice, and the plan is not made s
   assert.ok(!plan.stale.includes('tagents-demo config convert'));
   assert.deepEqual(planGenerate(sourcesOf(fixture), sampleDisk(), t).unclassified, []);
   assert.deepEqual(noticeLines(planGenerate(sourcesOf(fixture), sampleDisk(), t), t), []);
+});
+
+test('a verb marked tool: false is no tool, and stays in the cli section of contract.json with the mark', () => {
+  const cli: CliContract = { ...fixture, commands: [...fixture.commands, { ...archive, path: ['hidden'], tool: false }] };
+  const written = planGenerate(sourcesOf(cli), sampleDisk(), t).writes.get('contract.json');
+  assert.deepEqual(toolNames(written), ['demo_search', 'demo_session_open']);
+  const parsed: JsonValue = parseJson(written ?? '');
+  assert.ok(isJsonObject(parsed) && isJsonObject(parsed['cli']));
+  const demo = parsed['cli']['tagents-demo'];
+  assert.ok(isJsonObject(demo) && isJsonArray(demo['commands']));
+  const hidden = demo['commands'].find((command) => isJsonObject(command) && isJsonArray(command['path']) && command['path'][0] === 'hidden');
+  assert.ok(isJsonObject(hidden));
+  assert.equal(hidden['tool'], false);
+});
+
+test('a default for a tool call is recorded in the cli section and as the default of the property', () => {
+  const cli: CliContract = { ...fixture, commands: [{ ...archive, path: ['open'], options: { detach: { type: 'boolean' } }, toolDefaults: { detach: true } }] };
+  const written = planGenerate(sourcesOf(cli), sampleDisk(), t).writes.get('contract.json') ?? '';
+  const parsed: JsonValue = parseJson(written);
+  assert.ok(isJsonObject(parsed) && isJsonObject(parsed['cli']) && isJsonObject(parsed['mcp']));
+  const demo = parsed['cli']['tagents-demo'];
+  assert.ok(isJsonObject(demo) && isJsonArray(demo['commands']));
+  const [command] = demo['commands'];
+  assert.ok(isJsonObject(command));
+  assert.deepEqual(command['toolDefaults'], { detach: true });
+  const server = parsed['mcp']['tagents'];
+  assert.ok(isJsonObject(server) && isJsonArray(server['tools']));
+  const [tool] = server['tools'];
+  assert.ok(isJsonObject(tool) && isJsonObject(tool['inputSchema']) && isJsonObject(tool['inputSchema']['properties']));
+  assert.deepEqual(tool['inputSchema']['properties']['detach'], { type: 'boolean', default: true });
+});
+
+test('the plugin offers exactly these tools: the verbs of the CLI specs that are neither served nor marked tool: false', async () => {
+  const names = tagentsServer(await cliContracts(REPO_ROOT)).tools.map((tool) => tool.name);
+  assert.deepEqual(names, [
+    'core_doctor',
+    'core_plugin_list',
+    'core_plugin_new',
+    'core_plugin_remove',
+    'core_session_last',
+    'core_session_list',
+    'core_sessions_show',
+    'knowledge_index',
+    'knowledge_lint',
+    'knowledge_toc',
+    'notify_send',
+    'notify_status',
+    'notify_test',
+    'tagents_check',
+    'tagents_config',
+    'tagents_label',
+    'tagents_new',
+    'tagents_profile_for',
+    'tagents_window',
+  ]);
 });
