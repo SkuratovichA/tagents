@@ -19,6 +19,14 @@ The script SHALL use the `tagents-core` found on `PATH` first, because that is t
 - **WHEN** `target/release/tagents-core` exists without the executable bit and a built core sits beside the script
 - **THEN** the verb is handed to the built core
 
+#### Scenario: A Rust binary that cannot run
+- **WHEN** an executable file `target/release/tagents-core` whose interpreter is missing sits beside the script and no `tagents-core` is on `PATH`
+- **THEN** the command fails with a non-zero exit code and a message on stderr, and the node CLI is not run
+
+#### Scenario: A directory where the Rust binary would be
+- **WHEN** `target/release/tagents-core` is a directory and a built core sits beside the script
+- **THEN** the verb is handed to the built core
+
 #### Scenario: No Rust binary
 - **WHEN** there is no `target/release/tagents-core` beside the script
 - **THEN** the verb is handled exactly as it was before the Rust binary existed

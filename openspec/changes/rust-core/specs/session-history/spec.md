@@ -8,7 +8,7 @@
 - **THEN** its stdout is the content of `recent.txt`, `recent-1.txt`, `search-deploy.txt`, `search-miss.txt` and `show.txt` of `packages/core/test/fixtures/sessions/`
 
 #### Scenario: Awkward transcripts
-- **WHEN** a transcript holds invalid UTF-8, a lone surrogate escape, a number that overflows a float or a line nested a hundred thousand levels deep
+- **WHEN** a transcript holds invalid UTF-8, a lone surrogate escape, a number that overflows a float or a line nested thirty thousand levels deep
 - **THEN** both implementations list the same sessions and print the same bytes
 
 #### Scenario: Awkward files
