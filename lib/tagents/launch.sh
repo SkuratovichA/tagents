@@ -195,9 +195,10 @@ launch_refusal() {  # <message>
 
 # ctrl-n: start a fresh Claude for the project under the cursor, as a new window of <session> (the group the cursor is in). With no session given (`tagents --new`, or the cursor on the group `no window`) the session that owns the project, else the client's, else the current. The directory is normalised to the repo root, so a session started from ~/repo/packages/client makes the new agent a sibling in ~/repo rather than burying it in a subdirectory the tree would file separately.
 new_agent() {  # <dir> [profile] [session]
-  local dir=${1:-} prof=${2:-} sess=${3:-} root
+  local dir=${1:-} prof=${2:-} sess=${3:-} root abs
   [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
-  [ -d "$dir" ] || { launch_refusal "tagents: $dir is not a directory"; return 1; }
+  abs=$(abs_dir "$dir") || { launch_refusal "tagents: $dir is not a directory"; return 1; }
+  dir=$abs
   # A NAME THAT CAME FROM A HUMAN IS CHECKED FIRST, before a window is created for it. profile_for only ever returns names the config already has; `tagents --new <dir> personl` used to sail straight through to a launch on the default account, which is the exact silent wrong login all of this exists to end. Not profile_named: nothing is being skipped here, the launch is refused. `ask` passes — it is not a profile, it is the instruction to ask for one.
   if [ -n "$prof" ] && [ "$prof" != ask ] && ! profile_exists "$prof"; then
     echo "tagents: no claude profile \"$prof\" in $CONFIG_FILE" >&2
@@ -251,6 +252,11 @@ new_shell() {  # <dir> [session]
   notice "tagents: new shell in $(basename "$(tilde_of "$dir")") ($sess:$idx)"
 }
 
+# A directory made absolute, printed; its status is that of `cd`. A relative name is the caller's, and everything downstream of a launch (the repository root, the session that owns it, tmux's `-c`) reads it as a path, so it is resolved here, once. CDPATH is emptied, or a relative name could be looked up elsewhere and `cd` would print where it went into the substitution.
+abs_dir() {  # <dir>
+  CDPATH= cd -- "$1" 2>/dev/null && pwd
+}
+
 # The line a caller finds its new window by: the pane, a tab, and where it is as session:window index. `--window` always prints it, `--new` only with `--detach`, whose caller is a program that cannot look at the screen.
 window_line() {  # <pane> <session> <index>
   printf '%s\t%s:%s\n' "$1" "$2" "$3"
@@ -264,8 +270,7 @@ new_window() {  # <dir> <command>
     return 2
   fi
   cmd=$2
-  # Made absolute here: tmux resolves a relative -c against its own server's directory, which is not the caller's. CDPATH is emptied, or a relative name could be looked up elsewhere and `cd` would print where it went into the substitution.
-  dir=$(CDPATH= cd -- "$1" 2>/dev/null && pwd) || { echo "tagents: $1 is not a directory" >&2; return 1; }
+  dir=$(abs_dir "$1") || { echo "tagents: $1 is not a directory" >&2; return 1; }
   root=$(repo_root "$dir") || root=$dir
   sess=$(launch_session "$root")
   pane=$(new_pane_window "$sess" "$dir" "$cmd")

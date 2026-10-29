@@ -569,5 +569,16 @@ has "...and standard error says why" "is not a directory" "$err"
 has "...and names the directory" "$ROOT/no-such-directory" "$err"
 ok "...opening no window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
 
+# A relative directory is the caller's here too. Outside a git repository the directory is used as given, and a name that is not made absolute matches no session by its path, so the agent would land in a session that does not own it (and tmux would resolve a relative `-c` against a directory of its own on a tmux that does not take the client's).
+RELD="$ROOT/personal/plain-dir"; mkdir -p "$RELD"
+tm new-session -d -s tatest-plain -c "$RELD" 'sleep 600' >/dev/null 2>&1
+clear_out
+rline=$( cd "$ROOT/personal" && run --new --detach plain-dir personal 2>/dev/null ); rc=$?
+rpane=${rline%%	*}
+ok "a detached start in a relative directory succeeds" 0 "$rc"
+ok "...in the directory it names" "$(cd -P "$RELD" && pwd)" "$(tm display -p -t "$rpane" '#{pane_current_path}' 2>/dev/null)"
+ok "...in the session that owns that directory" tatest-plain "$(tm display -p -t "$rpane" '#{session_name}' 2>/dev/null)"
+tm kill-session -t '=tatest-plain:' >/dev/null 2>&1
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
