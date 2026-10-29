@@ -79,8 +79,10 @@ pnpm spec:check                        # every spec and change validates (CI run
 The site is [VitePress](https://vitepress.dev) in `docs/`, run through `pnpm dlx`, so the docs toolchain is not a dependency of the repository (and never rides along with the managed copy's `pnpm install`).
 
 ```sh
-pnpm docs:dev       # a live preview
+pnpm docs:dev       # a live preview, served under /docs/ like the published site
 pnpm docs:build     # the build CI publishes; it fails on a dead link
 ```
 
-Pushes to `main` that touch `docs/` publish the site to GitHub Pages.
+The documentation is published under `/docs/` of [tagents.arstoien.com](https://tagents.arstoien.com/), next to the one-page site of `site/` at `/`. The workflow `.github/workflows/site.yml` builds and checks both on every pull request that touches `docs/` or `site/`, and a push to `main` deploys them as one GitHub Pages site, because a repository has one Pages artifact. The `base` of VitePress is `/docs/` for that reason (`docs/.vitepress/config.mjs`), and the site's link check requires `docs/index.html` in the assembled output without reading the pages of the documentation.
+
+The address is a CNAME record `tagents` for `arstoien.com` pointing at `skuratovicha.github.io`, and `tagents.arstoien.com` as the custom domain in the repository's Pages settings, with HTTPS enforced once GitHub has issued the certificate. The order matters: the settings come after a deployment built for the domain has succeeded, because from then on `skuratovicha.github.io/tagents/` redirects to the domain, and a site that is not there yet would break.
