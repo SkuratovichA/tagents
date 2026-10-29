@@ -387,10 +387,13 @@ mkrepo
 git_in checkout -q main; version_from_to 0.1.0 0.1.1; commit_all; git_in checkout -q change
 touch_src; bump; commit_all
 ok "the same branch with a bump above the merge base's version: passes" 0 "$(code_of "$(rel "$REPO" gate main)")"
-mkrepo
-sed -i.bak 's/^version = "0.1.0"/version = "0.9.9"/' "$REPO/Cargo.toml" && rm "$REPO/Cargo.toml.bak"; commit_all; git_in checkout -q -B main; git_in checkout -q -b change2
-sed -i.bak 's/^version = "0.9.9"/version = "0.10.0"/' "$REPO/Cargo.toml" && rm "$REPO/Cargo.toml.bak"; touch_src; commit_all
-ok "0.9.9 to 0.10.0 is a bump (the numbers are compared as numbers, not as text)" 0 "$(code_of "$(rel "$REPO" gate main)")"
+for pair in "0.1.9 0.1.10" "0.9.9 0.10.0" "9.9.9 10.0.0"; do
+  set -- $pair
+  mkrepo
+  git_in checkout -q main; version_from_to 0.1.0 "$1"; commit_all; git_in checkout -q -B change main
+  version_from_to "$1" "$2"; touch_src; commit_all
+  ok "$1 to $2 is a bump (the numbers are compared as numbers, not as text)" 0 "$(code_of "$(rel "$REPO" gate main)")"
+done
 mkrepo
 out=$(rel "$REPO" gate no-such-ref)
 ok "a base that does not exist is an error" 1 "$(code_of "$out")"
