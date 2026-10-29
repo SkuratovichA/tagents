@@ -22,6 +22,8 @@
 - [x] 4.2 Mutations of the installer each make `tests/install.sh` fail: no checksum comparison, no deletion of a stale marked binary, no `--version` self-test
 - [x] 4.3 A real build packaged by the script and installed by the real installer into a scratch home with a `file://` base runs `tagents-core --version` and `tagents-core sessions recent` (in the pull request)
 
+- [x] 4.4 Pins and refusals (`tests/install.sh` section 14: refused schemes, https override, download under `target/`, 0-byte, garbage and newline-less checksum files, a file that is not an archive; `tests/release.sh`: merge-base case, lowered version, `pull_request.paths` against `is_input`, matrix against publish loop against `core_triple`, the two `sha256_of`; `tests/rust-parity.sh`: the whole installer accepts the real `--version`)
+
 ## 5. Documents
 
 - [x] 5.1 `docs/architecture/rust-core.md`, one row in `docs/development.md`, one clause in `docs/guide/getting-started.md`, and the sentences of `rust-core` that said nothing downloads a binary (`pnpm docs:build`)

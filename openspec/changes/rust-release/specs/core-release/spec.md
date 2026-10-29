@@ -27,11 +27,15 @@ For each of `aarch64-apple-darwin`, `x86_64-apple-darwin` and `x86_64-unknown-li
 - **THEN** `shasum -a 256 -c` and `sha256sum -c` reject it (`tests/release.sh`, the release archive)
 
 ### Requirement: A change to the binary needs a new version
-A pull request that changes an input of the `tagents-core` binary (`Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `crates/*/Cargo.toml`, `crates/*/build.rs`, `crates/*/src/*`, `spec/cli/*`) SHALL also change the workspace version, so that a binary of version V is always built from the source of version V.
+A pull request that changes an input of the `tagents-core` binary (`Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `crates/*/Cargo.toml`, `crates/*/build.rs`, `crates/*/src/*`, `spec/cli/*`) SHALL also raise the workspace version above the one at the merge base, so that a binary of version V is always built from the source of version V.
 
 #### Scenario: An input changed and the version did not
 - **WHEN** `core-release.sh gate origin/main` runs on a branch that changes `crates/tagents-core/src/lib.rs` and leaves the workspace version of `origin/main`
 - **THEN** it exits 1 and names the changed files (`tests/release.sh`, the gate)
+
+#### Scenario: A version that goes down
+- **WHEN** a branch changes `crates/tagents-core/src/lib.rs` and its workspace version is lower than the one at the merge base, or the base moved on to a version above the branch's and the branch did not follow
+- **THEN** the gate exits 1 and says the version stayed or went down (`tests/release.sh`, the gate)
 
 #### Scenario: The CLI spec data file alone
 - **WHEN** only `spec/cli/tagents-core.json` changes

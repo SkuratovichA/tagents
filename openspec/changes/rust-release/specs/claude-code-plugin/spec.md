@@ -22,6 +22,10 @@ After the build, and never under `--check`, `install.sh` SHALL install the prebu
 ### Requirement: A downloaded tagents-core is checked before it is installed
 A download SHALL be installed only when the first field of its `.sha256` file is 64 lowercase hex digits equal to the archive's SHA-256, the archive lists exactly `tagents-core` and `LICENSE`, and the extracted `tagents-core` is a regular file whose `--version` prints exactly `tagents-core <version>`. Any other outcome SHALL install nothing, warn, write the wrappers and end the run with status 1.
 
+#### Scenario: A base that is not https or file is refused
+- **WHEN** `TAGENTS_CORE_BASE_URL` does not start with `https://` or `file://` (`http://`, `ftp://`, a path, `/`)
+- **THEN** no request is made, nothing is installed, the warning names the variable and the run exits 1 (`tests/install.sh` section 14)
+
 #### Scenario: A checksum that is not the archive's
 - **WHEN** the archive was changed after its checksum was written, or the checksum file names another hash
 - **THEN** nothing is installed, any older binary is gone, the warning names the hashes, the wrappers are written and the run exits 1 (`tests/install.sh` section 14)
