@@ -482,12 +482,16 @@ rm -f "$OUT/rel.txt"
 i=0; while [ ! -s "$OUT/rel.txt" ] && [ "$i" -lt 24 ]; do i=$((i + 1)); sleep 0.25; done
 ok "a relative directory is resolved where the command was typed" "$WD" "$(cat "$OUT/rel.txt" 2>/dev/null)"
 
-# A name that is a symlink comes out as the physical path, the one tmux reports as the pane's path and the session lookup compares: the window of the line --window prints is in the real directory.
-ln -s window-project "$ROOT/personal/window-link"
+# A name that is a symlink comes out as the physical path, the one tmux reports as the pane's path and the session lookup compares: the window of the line --window prints is in the real directory, in the session that owns it. That session is not the one the client is in (the calls above followed it into tatest-winowner), because a window opened with the logical path finds no owner and falls back to the client's session: with one and the same session the assertion could not tell the two apart.
+LD="$ROOT/personal/link-target"; mkdir -p "$LD/.git"
+tm new-session -d -s tatest-linkowner -c "$LD" 'sleep 600' >/dev/null 2>&1
+ln -s link-target "$ROOT/personal/window-link"
 sline=$( cd "$ROOT/personal" && run --window --detach window-link "sleep 600" 2>/dev/null ); rc=$?
 spane=${sline%%	*}
 ok "a relative symlink to a directory is accepted" 0 "$rc"
-ok "...and the window it prints is in the physical directory" "$WD" "$(tm display -p -t "$spane" '#{pane_current_path}' 2>/dev/null)"
+ok "...and the window it prints is in the physical directory" "$LD" "$(tm display -p -t "$spane" '#{pane_current_path}' 2>/dev/null)"
+ok "...in the session that owns the physical directory" tatest-linkowner "$(tm display -p -t "$spane" '#{session_name}' 2>/dev/null)"
+tm kill-session -t '=tatest-linkowner:' >/dev/null 2>&1
 
 before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
 err=$(run --window "$WD" 2>&1 >/dev/null); rc=$?
