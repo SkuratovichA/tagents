@@ -91,14 +91,14 @@ The checksum is published beside the archive, so it proves the transfer and that
 
 ## The parity suite
 
-`tests/rust-parity.sh` builds a seeded home (`tests/rust-parity-seed.mts`: the two sessions of `packages/core/test/fixtures/sessions/` and several hundred more made so that JavaScript and a naive port disagree), runs `node packages/core/dist/cli/main.js` and the Rust binary on it under the same environment, and passes a case only when stdout, stderr and the exit code are identical.
+`tests/rust-parity.sh` builds a seeded home (`tests/rust-parity-seed.mts`: the two sessions of `packages/core/test/fixtures/sessions/` and several hundred more made so that JavaScript and a naive port disagree), runs `node packages/core/dist/cli/main.js` and the Rust binary on it under the same environment, and passes a case only when stdout, stderr and the exit code are identical. Besides these node-against-Rust cases the suite packages the debug binary with `core-release.sh package`, serves it as a `file://` release in a sandbox and checks that the installer accepts its `--version` line.
 
 ```sh
 pnpm install && pnpm build
 env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/rust-parity.sh
 ```
 
-It needs `python3` (the seed sets exact modification times, including ones before 1970) and builds the debug binary when it is missing and `TAGENTS_CORE_BIN` does not name one; after a Rust edit run `cargo build` first, because the suite does not rebuild a binary that exists. `cargo test` holds a second, node-free check: the five fixture files, `packages/core/test/fixtures/sessions/*.txt`, which the Rust output must reproduce byte for byte.
+It needs `python3` (the seed sets exact modification times, including ones before 1970) and builds the debug binary when it is missing and `TAGENTS_CORE_BIN` does not name one; after a Rust edit or a version bump run `cargo build` first, because the suite does not rebuild a binary that exists, and a binary older than `Cargo.toml` fails the installer case with a warning that says `for --version`. `cargo test` holds a second, node-free check: the five fixture files, `packages/core/test/fixtures/sessions/*.txt`, which the Rust output must reproduce byte for byte.
 
 Where node's behaviour is an accident of its runtime, the port repeats it, because agents read this text out of a shell: lengths are counted in UTF-16 units, white space is ECMAScript's, a modification time rounds with `Math.round`, names come in the order libuv lists them, and a transcript line is parsed by `json.rs`, a parser that follows `JSON.parse`. What the repository pins is the awkward lines of the seed (`tests/rust-parity-seed.mts`) and the unit tests of `json.rs`; a differential fuzz against `JSON.parse` was run during development and is not kept.
 

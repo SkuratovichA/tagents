@@ -5,8 +5,8 @@ A managed install follows `origin/main` and updates itself every day, and the Ru
 ## What Changes
 
 - The version in `[workspace.package]` of `Cargo.toml` becomes the identity of the binary (0.0.0 to 0.1.0). A release is the tag `v<version>`, and `tagents-core --version` prints `tagents-core <version>`.
-- A gate in CI (`core-release.sh gate`) fails a pull request that changes an input of the binary and leaves the version alone.
-- `.github/workflows/release.yml` verifies a tag, builds three targets (`aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-musl`) and publishes one archive and one `.sha256` file for each. A pull request that changes the workflow or the scripts runs the builds as a dry run.
+- A gate in CI (`core-release.sh gate`) fails a pull request that changes an input of the binary unless the workspace version is strictly above the one at the merge base, with a message for a version that stayed and one for a version that went down.
+- `.github/workflows/release.yml` verifies a tag, builds three targets (`aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-musl`) and publishes one archive and one `.sha256` file for each. A pull request that changes the workflow, the scripts or an input of the binary runs the builds as a dry run.
 - `.github/scripts/core-release.sh` holds the logic (`version`, `package`, `gate`, `verify`); the workflows only call it.
 - `install.sh` fetches the archive of the checkout's version after the build, checks it (SHA-256, members, `--version`), and installs it with a marker file. Every failure that is the network's or the machine's leaves the node CLI in use and the run successful; a download that fails its checks installs nothing and ends the run with status 1.
 - `tests/release.sh` (new) and an extended `tests/install.sh` prove the script and the installer without GitHub; `docs/architecture/rust-core.md` describes the path.

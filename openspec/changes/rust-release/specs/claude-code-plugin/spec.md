@@ -22,10 +22,6 @@ After the build, and never under `--check`, `install.sh` SHALL install the prebu
 ### Requirement: A downloaded tagents-core is checked before it is installed
 A download SHALL be installed only when the first field of its `.sha256` file is 64 lowercase hex digits equal to the archive's SHA-256, the archive lists exactly `tagents-core` and `LICENSE`, and the extracted `tagents-core` is a regular file whose `--version` prints exactly `tagents-core <version>`. Any other outcome SHALL install nothing, warn, write the wrappers and end the run with status 1.
 
-#### Scenario: A base that is not https or file is refused
-- **WHEN** `TAGENTS_CORE_BASE_URL` does not start with `https://` or `file://` (`http://`, `ftp://`, a path, `/`)
-- **THEN** no request is made, nothing is installed, the warning names the variable and the run exits 1 (`tests/install.sh` section 14)
-
 #### Scenario: A checksum that is not the archive's
 - **WHEN** the archive was changed after its checksum was written, or the checksum file names another hash
 - **THEN** nothing is installed, any older binary is gone, the warning names the hashes, the wrappers are written and the run exits 1 (`tests/install.sh` section 14)
@@ -41,6 +37,13 @@ A download SHALL be installed only when the first field of its `.sha256` file is
 #### Scenario: A binary of another version
 - **WHEN** the extracted binary's `--version` is not `tagents-core <version>`
 - **THEN** nothing is installed and the run exits 1 (`tests/install.sh` section 14)
+
+### Requirement: A release is fetched only over https or from a file
+When a prebuilt tagents-core has to be fetched, `TAGENTS_CORE_BASE_URL`, if set, SHALL start with `https://` or `file://`. Any other value SHALL make no request, install nothing, warn naming the variable and end the run with status 1.
+
+#### Scenario: A base that is not https or file is refused
+- **WHEN** a fetch is due and `TAGENTS_CORE_BASE_URL` does not start with `https://` or `file://` (`http://`, `ftp://`, a path, `/`)
+- **THEN** no request is made, nothing is installed, the warning names the variable and the run exits 1 (`tests/install.sh` section 14)
 
 ### Requirement: A tagents-core that cannot be had never blocks the install
 When the release of the version does not exist, the network or `curl` is missing, no SHA-256 tool exists or the machine has no prebuilt target, `install.sh` SHALL say so in one line, leave the node CLI in use and exit as it would without the binary. A marked binary of another version, target or hash SHALL be deleted before any request, so a failed request leaves none of another version.

@@ -22,7 +22,7 @@
 - [x] 4.2 Mutations of the installer each make `tests/install.sh` fail: no checksum comparison, no deletion of a stale marked binary, no `--version` self-test
 - [x] 4.3 A real build packaged by the script and installed by the real installer into a scratch home with a `file://` base runs `tagents-core --version` and `tagents-core sessions recent` (in the pull request)
 
-- [x] 4.4 Pins and refusals (`tests/install.sh` section 14: refused schemes, https override, download under `target/`, 0-byte, garbage and newline-less checksum files, a file that is not an archive; `tests/release.sh`: merge-base case, lowered version, `pull_request.paths` against `is_input`, matrix against publish loop against `core_triple`, the two `sha256_of`; `tests/rust-parity.sh`: the whole installer accepts the real `--version`)
+- [x] 4.4 Pins and refusals (`tests/install.sh` section 14: the requirement "A release is fetched only over https or from a file" with its refused schemes and the old binary dropped before the refusal, https override, download under `target/`, 0-byte, garbage and newline-less checksum files, a file that is not an archive; `tests/release.sh`: merge-base case, lowered patch, minor and major, the test-merge commit CI checks out, `pull_request.paths` of `release.yml` against `is_input` and of `rust.yml` against the files the suite reads, matrix against publish loop against `core_triple`, the two `sha256_of`; `tests/rust-parity.sh`: the whole installer accepts the real `--version`)
 
 ## 5. Documents
 

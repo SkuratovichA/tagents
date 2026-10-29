@@ -32,9 +32,9 @@ Rejected: a release per push to `main` with a commit-count version, because the 
 version = "0.1.0"   # tag v0.1.0, tagents-core --version, tagents-core-0.1.0-<target>.tar.gz
 ```
 
-### A pull request that changes the binary must change the version
+### A pull request that changes the binary must raise the version
 
-Decision: `core-release.sh gate <base-ref>` lists the files changed since the merge base, and when one is an input of the binary and the workspace version equals the base's, it fails and names the files. The inputs are `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `crates/*/Cargo.toml`, `crates/*/build.rs`, `crates/*/src/*` and `spec/cli/*`. It runs in the `release-path` job of `rust.yml`, on pull requests only.
+Decision: `core-release.sh gate <base-ref>` lists the files changed since the merge base, and when one is an input of the binary and the workspace version is not strictly above the one at the merge base (the three numbers are compared one by one, as numbers), it fails, names the files and says whether the version stayed or went down. The inputs are `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `crates/*/Cargo.toml`, `crates/*/build.rs`, `crates/*/src/*` and `spec/cli/*`. It runs in the `release-path` job of `rust.yml`, on pull requests only.
 
 Reason: without the gate a merge could change the binary and keep its version, and the installer would keep a binary that no longer matches its source.
 
@@ -47,6 +47,10 @@ is_input() {
     *) return 1 ;;
   esac
 }
+
+fork=$(git merge-base "$base" HEAD)
+before=$(git show "$fork:Cargo.toml" | version -)
+newer "$(version Cargo.toml)" "$before" || fail "the version has to go up from $before"
 ```
 
 ### `tagents-core --version` is answered before anything else, and is not in the spec file
@@ -67,7 +71,7 @@ if args.len() == 1 && args[0] == OsStr::new(VERSION_FLAG) {
 
 ### One workflow, a verify job, three builds and a publish job that runs no repository code
 
-Decision: `release.yml` runs on a pushed tag `v[0-9]*`, by hand with the tag as input, and on a pull request that changes it or the scripts (a dry run). `verify` checks the tag against the version, that the commit is on `main`, and that no release of the tag exists. `build` runs on `aarch64-apple-darwin` and `x86_64-apple-darwin` (on the arm64 runner) and `x86_64-unknown-linux-musl`. `publish` is the only job with `contents: write`, checks out nothing and runs `gh release create` on exactly six files. Actions are pinned by commit, `persist-credentials` is off, a pull request run has its own concurrency group so that it cannot displace a release waiting for its turn.
+Decision: `release.yml` runs on a pushed tag `v[0-9]*`, by hand with the tag as input, and on a pull request that changes it, the scripts or any input of the binary (a dry run; the `pull_request.paths` list, which `tests/release.sh` pins to the inputs the gate knows). `verify` checks the tag against the version, that the commit is on `main`, and that no release of the tag exists. `build` runs on `aarch64-apple-darwin` and `x86_64-apple-darwin` (on the arm64 runner) and `x86_64-unknown-linux-musl`. `publish` is the only job with `contents: write`, checks out nothing and runs `gh release create` on exactly six files. Actions are pinned by commit, `persist-credentials` is off, a pull request run has its own concurrency group so that it cannot displace a release waiting for its turn.
 
 Reason: a token that can write releases must never be in the same job as code from the repository or from a build.
 
