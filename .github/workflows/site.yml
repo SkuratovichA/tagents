@@ -1,15 +1,17 @@
 name: site
 
-# The one-page site in site/. It runs only when the site or this file changes, and it publishes nothing: building the page and checking it is all it does.
+# The one-page site in site/. It runs only when the site, this file or the pinned Node version changes, and it publishes nothing: building the page and checking it is all it does.
 on:
   push:
     paths:
       - 'site/**'
       - '.github/workflows/site.yml'
+      - '.node-version'
   pull_request:
     paths:
       - 'site/**'
       - '.github/workflows/site.yml'
+      - '.node-version'
 
 permissions:
   contents: read
@@ -32,10 +34,10 @@ jobs:
         with:
           package_json_file: site/package.json
 
-      # The build and capture scripts are TypeScript that Node runs directly, which needs Node 22.18 or newer.
+      # The build and capture scripts are TypeScript that Node runs directly, which needs Node 22.18 or newer; the version is the one the repository pins in .node-version.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version-file: .node-version
           cache: pnpm
           cache-dependency-path: site/pnpm-lock.yaml
 

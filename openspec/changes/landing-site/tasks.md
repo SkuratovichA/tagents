@@ -17,7 +17,7 @@
 - [x] 3.2 A recording plays once, can be replayed, and waits for Play under reduced motion (`src/components/Home.test.tsx`)
 - [x] 3.3 The themes follow the system, a stored choice is applied before the first paint, the dark tokens are the same twice and the terminal colours are the recorded ones (`src/lib/theme.test.ts`, `src/styles.test.ts`)
 - [x] 3.4 No horizontal scrolling of the document at 360 and 390 pixels and none at 1440, and no console message (a headless browser run of `pnpm preview` at 1440, 390 and 360 pixels, light and dark, in the pull request)
-- [x] 3.5 The words give no claim about speed, memory or a comparison and no licence, and the commands are the README's (`src/content.test.ts`)
+- [x] 3.5 The words give no claim about speed, memory or a comparison, and the commands are the README's (`src/content.test.ts`)
 - [x] 3.6 The head names no address without `SITE_DOMAIN` and names it with one (`src/lib/head.test.ts`; `pnpm build` with and without `SITE_DOMAIN=tagents.example.org`)
 
 ## 4. The mascot
@@ -26,7 +26,7 @@
 
 ## 5. Publishing
 
-- [x] 5.1 The workflow only reads the repository, runs only for `site/` and itself, and has no deploy step (`actionlint .github/workflows/site.yml`; `grep -n "SITE_DOMAIN\|CNAME\|deploy-pages\|upload-pages" .github/workflows/site.yml` finds nothing)
+- [x] 5.1 The workflow only reads the repository, runs only for `site/`, itself and `.node-version`, and has no deploy step (`actionlint .github/workflows/site.yml`; `grep -n "SITE_DOMAIN\|CNAME\|deploy-pages\|upload-pages" .github/workflows/site.yml` finds nothing)
 - [x] 5.2 No file outside `site/`, `openspec/changes/landing-site/` and the workflow names the site (`git diff --stat origin/main` lists nothing else)
 
 ## 6. The spec
