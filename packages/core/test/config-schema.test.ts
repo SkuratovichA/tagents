@@ -1,9 +1,7 @@
 // schemas/config.schema.json is what an editor reads to check config.toml and to show what a key means. Nothing in tagents reads it, so nothing would notice if it drifted from the readers: this file is the thing that notices. It pins the schema from four sides.
 //   * the schema is itself valid, and says what every key is (description, examples);
-//   * the shipped examples (config.example.toml, the YAML twin the converter
-//     takes) and the converter's output validate, and wrong documents do not;
-//   * every key the bash dashboard reads is in the schema, and every key in the
-//     schema is read by it or by the TypeScript half (zod, below);
+//   * the shipped examples (config.example.toml, the YAML twin the converter takes) and the converter's output validate, and wrong documents do not;
+//   * every key the bash dashboard reads is in the schema, and every key in the schema is read by it or by the TypeScript half (zod, below);
 //   * the zod schemas of the TypeScript readers describe the same keys.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';

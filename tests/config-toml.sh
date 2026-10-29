@@ -2,9 +2,7 @@
 #
 # tests/config-toml.sh — config.toml: the awk reader, which file is read, the YAML fallback and what --check and the status bar say about it.
 #
-# No tmux, no fzf, no Claude. Everything goes through --config, --check,
-# --counts and --profile-for, with fixtures written into a mktemp dir and found
-# through $TA_CONFIG or $XDG_CONFIG_HOME, so nothing touches a real config.
+# No tmux, no fzf, no Claude. Everything goes through --config, --check, --counts and --profile-for, with fixtures written into a mktemp dir and found through $TA_CONFIG or $XDG_CONFIG_HOME, so nothing touches a real config.
 #
 # bash 3.2, runnable from any cwd, non-zero exit when any check fails.
 
