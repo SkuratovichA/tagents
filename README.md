@@ -118,25 +118,27 @@ Without tmux-resurrect it still works: `tagents --resurrect` rebuilds what is mi
 
 <img src="docs/images/dashboard.png" alt="The list: projects as groups, chats as rows with state, age, account, context, cost and model" width="900">
 
-Every tmux session is a group and every chat a row. A small optional config at `~/.config/tagents/config.yaml` decides which Claude login a new chat starts on:
+Every tmux session is a group and every chat a row. A small optional config at `~/.config/tagents/config.toml` decides which Claude login a new chat starts on:
 
-```yaml
-claude:
-  profiles:
-    personal:
-      config_dir: ~/.claude-personal
-    work:                       # the default ~/.claude
-  rules:
-    - dir: ~/git/personal
-      profile: personal
-    - dir: ~/git/work
-      profile: work
+```toml
+[claude.profiles.personal]
+config_dir = "~/.claude-personal"
 
-usage:
-  watch: work                   # show context and cost for this login
+[claude.profiles.work]          # the default ~/.claude
+
+[[claude.rules]]
+dir = "~/git/personal"
+profile = "personal"
+
+[[claude.rules]]
+dir = "~/git/work"
+profile = "work"
+
+[usage]
+watch = "work"                  # show context and cost for this login
 ```
 
-Nothing is required: without a config every chat starts exactly as plain `claude` would. [The whole config](config.example.yaml) · [Accounts](https://tagents.arstoien.com/docs/guide/accounts) · [Cost](https://tagents.arstoien.com/docs/guide/cost)
+Nothing is required: without a config every chat starts exactly as plain `claude` would. [The whole config](config.example.toml) · [Accounts](https://tagents.arstoien.com/docs/guide/accounts) · [Cost](https://tagents.arstoien.com/docs/guide/cost)
 
 For the tmux status bar, a one-line tally of your chats by state:
 

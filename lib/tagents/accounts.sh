@@ -298,13 +298,11 @@ accounts_check() {
         fi
         cfg_expand_dir_v "$v"; d=$CFG_EXPANDED
         if [ ! -e "$d" ]; then
-          cfg_note "$k" "$v does not exist on this machine — an agent on it starts logged out; fix the path, or keep this machine's profiles in config.<hostname>.yaml beside the config"
+          cfg_note "$k" "$v does not exist on this machine — an agent on it starts logged out; fix the path, or keep this machine's profiles in config.<hostname>.toml beside the config"
         elif [ ! -d "$d" ]; then
           cfg_note "$k" "$v is not a directory — an agent on it starts logged out; fix the path"
         elif [ "$d" = "$HOME/.claude" ]; then
-          # config.example.yaml says why: Claude keys its keychain item on the
-          # literal path, and a set CLAUDE_CONFIG_DIR is not the same item as
-          # an unset one, even at the default location.
+          # config.example.toml says why: Claude keys its keychain item on the literal path, and a set CLAUDE_CONFIG_DIR is not the same item as an unset one, even at the default location.
           cfg_note "$k" '~/.claude set explicitly is a different login from the default account — drop the key to mean the default account'
         elif [ ! -e "$d/.claude.json" ] && [ ! -e "$d/settings.json" ]; then
           cfg_note "$k" "$v has never been used by Claude (no .claude.json in it) — the first agent on it will ask you to log in"

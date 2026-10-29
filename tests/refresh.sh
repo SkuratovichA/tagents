@@ -69,7 +69,7 @@ t()    { printf '\n%s\n' "$1"; }
 BIN="$ROOT/bin";     mkdir -p "$BIN"
 STATE="$ROOT/state"
 TREE="$ROOT/tree";   mkdir -p "$TREE"
-RFCFG="$ROOT/config.yaml"
+RFCFG="$ROOT/config.toml"
 PORT=4242
 
 # The refresher is started as $TREE/tagents so that ${SELF%/*}/tnotes is a stub of
@@ -341,12 +341,12 @@ ok "...and one waiter per wait: the loop started as many as it was woken, plus t
 t "2. what the picker draws changes on disk: a reload on the wake that follows"
 # ---------------------------------------------------------------------------
 newrun disk
-printf 'x: 1\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf 'x = 1\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
 act 2  'printf "%s\t%s\t%s\n" 100 working sid-n >"$RF_STATE/7.tsv"'
 act 4  'echo x >"$RF_STATE/sub/7.b"'
 act 6  'printf "sid-a\tm\t\tSonnet\n" >"$RF_STATE/model/sid-a.tsv"'
 act 8  'rm -f "$RF_STATE/prompt/9"'
-act 10 'echo "x: 2" >"$RF_CFG"'
+act 10 'echo "x = 2" >"$RF_CFG"'
 go 11
 ok "a new state file (2), a new sub file (4), a rewritten model file (6), a removed prompt file (8) and the config (10) each reload once, and the wakes between stay quiet" \
    "1 2 4 6 8 10" "$(reloads)"
@@ -398,21 +398,21 @@ t "6. a config changed under a running refresher is read again on the slow pass"
 # ---------------------------------------------------------------------------
 newrun cfgon
 SLOW=0
-printf 'x: 1\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
-act 2 'printf "usage:\n  watch: me\n" >"$RF_CFG"'
+printf 'x = 1\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+act 2 'printf "[usage]\nwatch = \"me\"\n" >"$RF_CFG"'
 go 4
 ok "usage turned on while it ran: tusage --update on each slow wake from the next" "2 3 4" "$(updates)"
 ok "the first pass is not a slow one" "" "$(awk '$1 == 1 && $2 == "--update"' "$D/tusage.log")"
 
 newrun cfgoff
 SLOW=0
-printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
-act 2 'printf "x: 1\n" >"$RF_CFG"'
+printf '[usage]\nwatch = "me"\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+act 2 'printf "x = 1\n" >"$RF_CFG"'
 go 4
 ok "usage turned off while it ran: no tusage --update after it" "" "$(updates)"
 
 newrun slowoff
-printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf '[usage]\nwatch = "me"\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
 go 4
 ok "with the slow pass out of reach, rings never run tusage --update" "" "$(updates)"
 
@@ -447,7 +447,7 @@ t "8. the idle timeout is a slow pass of its own, and a dead list ends the loop"
 # ---------------------------------------------------------------------------
 newrun idle
 IDLE=2
-printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf '[usage]\nwatch = "me"\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
 TAIL=9 go 1
 ok "no ring, and the loop still reloads and updates: at least twice after the first pass" 1 \
    "$([ "$(awk '$1 == 1 && /reload-sync/' "$D/curl.log" | wc -l | tr -d ' ')" -ge 3 ] && echo 1 || echo 0)"
@@ -471,7 +471,7 @@ EXP1="#[fg=magenta]cfg!1 $TALLY1"
 EXP2="#[fg=magenta]cfg!1 $TALLY2"
 newrun counts
 SLOW=0
-printf 'usage:\n  monthly_limit_usd: abc\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf '[usage]\nmonthly_limit_usd = "abc"\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
 # A tally the list "wrote during the first reload" is written here before the refresher
 # starts, and one older than the refresher is never served (refresher_counts), so a
 # second boundary between the two would fail the check: it is dated well ahead.
@@ -501,7 +501,7 @@ ok "no markers are left" 0 "$(markers)"
 
 t "10. a tally from before this refresher started is not served"
 newrun oldtally
-printf 'usage:\n  monthly_limit_usd: abc\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf '[usage]\nmonthly_limit_usd = "abc"\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
 printf '%s' "$TALLY1" >"$STATE/.counts.tally"; touch -t 200001010000 "$STATE/.counts.tally"
 go 3
 ok "no cache is written from it" no "$([ -e "$STATE/.counts.out" ] && echo yes || echo no)"
@@ -524,7 +524,7 @@ ok "...which is not now" 1 "$(( END_S - ts_end >= 3 ? 1 : 0 ))"
 t "12. the stamp is renewed at the start of the slow pass, before the work"
 newrun stamp
 SLOW=0
-printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf '[usage]\nwatch = "me"\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
 act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\"; $TALLYNEW"
 act 3 'cat "$RF_STATE/.counts.ts" >"$RF_DIR/ts.3"; /bin/sleep 1.1'
 go 3
@@ -535,7 +535,7 @@ ok "the stamp it found is newer than the one the wake began with (a slow update 
 t "13. the burn and the month are taken again on the slow pass only"
 newrun burn
 SLOW=0
-printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf '[usage]\nwatch = "me"\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
 printf '5h $1.00 ' >"$D/burn"
 act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\"; $TALLYNEW"
 act 3 'cat "$RF_STATE/.counts.out" >"$RF_DIR/out.3"; printf "5h \$2.00 " >"$RF_DIR/burn"'
@@ -544,7 +544,7 @@ has "the burn is in the text from the first pass" '5h $1.00 ' "$(cat "$D/out.3" 
 has "...and the tally follows it" "$TALLY1" "$(cat "$D/out.3" 2>/dev/null)"
 has "...a burn that moved is read again on the next slow wake" '5h $2.00 ' "$(cat "$STATE/.counts.out" 2>/dev/null)"
 newrun burn2
-printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf '[usage]\nwatch = "me"\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
 printf '5h $1.00 ' >"$D/burn"
 act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\"; $TALLYNEW"
 act 3 'printf "5h \$2.00 " >"$RF_DIR/burn"; printf "%s\t%s\t%s\n" 100 working sid-n >"$RF_STATE/7.tsv"'
@@ -554,7 +554,7 @@ has "a burn that moves is not read by a wake that is not the slow pass" '5h $1.0
 t "14. the slow pass fetches the month once, for the bar and the footer together"
 newrun month
 SLOW=0
-printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf '[usage]\nwatch = "me"\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
 act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\"; $TALLYNEW"
 go 2
 ok "tusage --daily ran once on the slow wake" 1 "$(awk '$1 == 2 && /--daily/' "$D/tusage.log" | wc -l | tr -d ' ')"
@@ -563,7 +563,7 @@ has "...and the footer was posted on it" "change-footer(" "$(awk '$1 == 2' "$D/c
 t "14b. a slow pass still lands on its tick"
 newrun slowmonth
 SLOW=0
-printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf '[usage]\nwatch = "me"\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
 act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\"; $TALLYNEW"
 RF_SLOW_DAILY=3 go 2
 unset RF_SLOW_DAILY
@@ -572,7 +572,7 @@ has "...and the footer was posted on tick 2" "change-footer(" "$(awk '$1 == 2' "
 
 t "15. the bar's config marker follows the config for as long as the refresher lives"
 export TA_CFG_CHECK_EVERY=3
-BADCONFIG='usage:\n  monthly_limit_usd: abc\n'
+BADCONFIG='[usage]\nmonthly_limit_usd = "abc"\n'
 tallyact() { act 1 "printf '%s' '$TALLY1' >\"\$RF_STATE/.counts.tally\"; $TALLYNEW"; }
 seeout() { act 2 'cat "$RF_STATE/.counts.out" >"$RF_DIR/out.2"'; }
 
@@ -589,15 +589,15 @@ ok "...and the verdict kept for the next bar is 1 problem" 1 "$(awk '{ print $2 
 newrun cfgfix
 SLOW=0
 printf "$BADCONFIG" >"$RFCFG"; touch -t 200001010000 "$RFCFG"
-tallyact; seeout; act 3 'printf "x: 1\n" >"$RF_CFG"'
+tallyact; seeout; act 3 'printf "x = 1\n" >"$RF_CFG"'
 go 5
 ok "a config with a problem has the marker" "$EXP1" "$(cat "$D/out.2" 2>/dev/null)"
 ok "fixed under the refresher: the marker is gone by the next slow pass" "$TALLY1" "$(cat "$STATE/.counts.out" 2>/dev/null)"
 
 newrun cfgbreak
 SLOW=0
-printf 'x: 1\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
-tallyact; seeout; act 3 'printf "usage:\n  monthly_limit_usd: abc\n" >"$RF_CFG"'
+printf 'x = 1\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+tallyact; seeout; act 3 'printf "[usage]\nmonthly_limit_usd = \"abc\"\n" >"$RF_CFG"'
 go 5
 ok "a good config has no marker" "$TALLY1" "$(cat "$D/out.2" 2>/dev/null)"
 ok "broken under the refresher: the marker is there by the next slow pass" "$EXP1" "$(cat "$STATE/.counts.out" 2>/dev/null)"
@@ -606,27 +606,26 @@ unset TA_CFG_CHECK_EVERY
 newrun cfgenv
 SLOW=0
 mkdir -p "$ROOT/claude-personal"
-cat >"$RFCFG" <<YAML
-usage:
-  watch: personal
-claude:
-  profiles:
-    personal:
-      config_dir: $ROOT/claude-personal
-  rules:
-    - dir: $ROOT/proj
-      profile: personal
-YAML
+cat >"$RFCFG" <<TOML
+[usage]
+watch = "personal"
+
+[claude.profiles.personal]
+config_dir = "$ROOT/claude-personal"
+
+[[claude.rules]]
+dir = "$ROOT/proj"
+profile = "personal"
+TOML
 touch -t 200001010000 "$RFCFG"
-cat >"$D/cfg.norules" <<YAML
-usage:
-  watch: personal
-claude:
-  profiles:
-    personal:
-      config_dir: $ROOT/claude-personal
-YAML
-printf 'usage:\n  watch: personal\n' >"$D/cfg.noprofiles"
+cat >"$D/cfg.norules" <<TOML
+[usage]
+watch = "personal"
+
+[claude.profiles.personal]
+config_dir = "$ROOT/claude-personal"
+TOML
+printf '[usage]\nwatch = "personal"\n' >"$D/cfg.noprofiles"
 act 3 'cp "$RF_DIR/cfg.norules" "$RF_CFG"'
 act 5 'cp "$RF_DIR/cfg.noprofiles" "$RF_CFG"'
 go 5
@@ -638,21 +637,21 @@ ok "the profiles removed from the config are gone from the next update" "" "$(ca
 t "16. a config or an overlay that is deleted, or made again, is read again on the next slow pass"
 newrun cfggone
 SLOW=0
-printf 'usage:\n  watch: me\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf '[usage]\nwatch = "me"\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
 act 3 'rm -f "$RF_CFG"'
-act 5 'printf "usage:\n  watch: me\n" >"$RF_CFG"'
+act 5 'printf "[usage]\nwatch = \"me\"\n" >"$RF_CFG"'
 go 5
 ok "the config deleted at wake 3: no tusage --update on 3 and 4; made again at 5: one on 5" "2 5" "$(updates)"
 
 export TA_HOST=ovlhost
-OVLF="${RFCFG%.yaml}.ovlhost.yaml"
+OVLF="${RFCFG%.toml}.ovlhost.toml"
 newrun ovlgone
 SLOW=0
 rm -f "$OVLF"
-printf 'x: 1\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
-printf 'usage:\n  watch: me\n' >"$OVLF"; touch -t 200001010000 "$OVLF"
+printf 'x = 1\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf '[usage]\nwatch = "me"\n' >"$OVLF"; touch -t 200001010000 "$OVLF"
 act 3 "rm -f '$OVLF'"
-act 5 "printf 'usage:\\n  watch: me\\n' >'$OVLF'"
+act 5 "printf '[usage]\\nwatch = \"me\"\\n' >'$OVLF'"
 go 5
 ok "the overlay with the usage block deleted at 3: no update on 3 and 4; made again at 5: one on 5" "2 5" "$(updates)"
 rm -f "$OVLF"
@@ -686,8 +685,8 @@ t "18. every kind of path collect() and list() read reloads the list when writte
 # explain: the existing ones are rewritten, so a reload on that wake is the gate's.
 export TA_HOST=ovlhost
 newrun paths
-printf 'x: 1\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
-printf 'y: 1\n' >"$OVLF"; touch -t 200001010000 "$OVLF"
+printf 'x = 1\n' >"$RFCFG"; touch -t 200001010000 "$RFCFG"
+printf 'y = 1\n' >"$OVLF"; touch -t 200001010000 "$OVLF"
 printf '%s\t%s\t%s\n' 100 working sid-s >"$STATE/s-1.tsv"; touch -t 200001010000 "$STATE/s-1.tsv"
 act 2  'printf "%s\t%s\t%s\n" 101 working sid-a >"$RF_STATE/9.tsv"'
 act 3  'printf "%s\t%s\t%s\n" 101 working sid-s >"$RF_STATE/s-1.tsv"'
@@ -698,8 +697,8 @@ act 7  ': >"$RF_STATE/.flat"'
 act 8  'echo y >"$RF_STATE/sub/9.b"'
 act 9  'printf "sid-b\tm\t\tSonnet\n" >"$RF_STATE/model/sid-b.tsv"'
 act 10 'echo 200 >"$RF_STATE/prompt/9"'
-act 11 'echo "x: 2" >"$RF_CFG"'
-act 12 'echo "y: 2" >"${RF_CFG%.yaml}.ovlhost.yaml"'
+act 11 'echo "x = 2" >"$RF_CFG"'
+act 12 'echo "y = 2" >"${RF_CFG%.toml}.ovlhost.toml"'
 go 13
 ok "state file, s- file, origins, labels, cols, .flat, sub, model, prompt, config and overlay each reload on their own wake, and the wake after is quiet" \
    "1 2 3 4 5 6 7 8 9 10 11 12" "$(reloads)"

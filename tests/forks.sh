@@ -333,8 +333,8 @@ ok "...and the marks-on list leaves it in .counts.tally" "#[default]" "$(cat "$S
 t "--counts: the pieces the refresher keeps compose to exactly what counts_now prints"
 # The two functions are called in a bash that has loaded the modules the way the
 # entry point loads them, because that is the only way to reach a function.
-printf 'usage:\n  monthly_limit_usd: abc\n' >"$ROOT/cfgbad.yaml"
-for cf in "$ROOT/absent.yaml" "$ROOT/cfgbad.yaml"; do
+printf '[usage]\nmonthly_limit_usd = "abc"\n' >"$ROOT/cfgbad.toml"
+for cf in "$ROOT/absent.toml" "$ROOT/cfgbad.toml"; do
   export TA_CONFIG=$cf
   fresh; add_live blocked:1 done:1 working:2
   fn 'counts_now' >"$ROOT/now.out" 2>/dev/null

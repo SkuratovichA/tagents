@@ -281,7 +281,7 @@ test('status prints every key and exits 0 when the service runs, the permission 
   assert.match(out, /^permission: authorized$/m);
   assert.match(out, /^service: loaded, running, pid 4242, rss 20 MB$/m);
   assert.match(out, /^stream: on$/m);
-  assert.match(out, /^options: .*notify\.yaml not found \(defaults\)$/m);
+  assert.match(out, /^options: .*notify\.toml not found \(defaults\)$/m);
 });
 
 test('status exits 1 for a stopped service, a missing permission, a stream that is off, or bad options', async () => {

@@ -22,8 +22,7 @@ export const ru: Partial<Record<keyof typeof en, string>> = {
   noDir: [
     'каталог знаний не задан: TAGENTS_KNOWLEDGE_DIR, --dir или запись в {{config}}',
     '',
-    '  knowledge:',
-    '    dir: ~/git/personal/knowledge',
+    '{{snippet}}',
   ].join('\n'),
   missingDir: 'каталог знаний {{dir}} не существует',
   indexed:

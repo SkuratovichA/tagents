@@ -320,7 +320,7 @@ Scaffolds a package that is already a plugin.
 
 ### core_plugin_remove
 
-Takes one plugin entry back out of config.yaml.
+Takes one plugin entry back out of the config.
 
 #### Inputs
 

@@ -147,9 +147,10 @@ on stdout and nothing else; text verbs print what `sessions.mjs` printed.
 | `session abort <ref-json-or-id>` | `{ aborted, id, pid }` |
 | `sessions recent [N] \| search <words…> \| show <id-prefix>` | text, byte-identical to `sessions.mjs` |
 | `plugin list [--json]` | the configured plugins and what each offers — lines, or one JSON document |
-| `plugin add <package-or-path> [--name N]` | validate a package's manifest and write it into `config.yaml` |
+| `plugin add <package-or-path> [--name N]` | validate a package's manifest and write it into the config (`config.toml`) |
 | `plugin remove <name>` | take one entry back out |
 | `plugin new <name> [--dir D]` | scaffold a package that is already a plugin |
+| `config convert [FILE] [--write] [--all]` | the YAML config as TOML on stdout, checked against what the dashboard reads from the YAML; `--write` creates the `.toml` beside it and never overwrites or deletes anything, `--all` adds the `config.<host>.yaml` overlays |
 | `doctor` | node, state dir, config file, `claude` on PATH |
 | `<plugin> <command> [args]` | whatever that plugin's own verb prints — `plugin list` names them |
 
@@ -165,18 +166,16 @@ and the day the wording changes, both sides change together.
 
 ## Plugins
 
-A plugin is a package that default-exports one `definePlugin({ … })` object and
-is **named explicitly** in `~/.config/tagents/config.yaml`:
+A plugin is a package that default-exports one `definePlugin({ … })` object and is **named explicitly** in `~/.config/tagents/config.toml`:
 
-```yaml
-plugins:
-  tg-orchestrator:
-    from: ../telegram-bots/orchestrator   # a path, or a package name
+```toml
+[plugins.tg-orchestrator]
+from = "../telegram-bots/orchestrator"   # a path, or a package name
 ```
 
-The host never scans `node_modules` — scanning is how a machine ends up running
-code nobody chose. `from` points at a package; the package says where its code
-is in its own `package.json`:
+A `config.yaml` with the same `plugins:` map is read when there is no `config.toml`, and says so once per process; `tagents config convert` turns it into TOML.
+
+The host never scans `node_modules` — scanning is how a machine ends up running code nobody chose. `from` points at a package; the package says where its code is in its own `package.json`:
 
 ```json
 { "tagents": { "entry": "./dist/plugin.js" } }
@@ -190,22 +189,14 @@ is reported, not thrown: the host stays usable with the ones that work.
 
 ```sh
 tagents-core plugin new notes          # a package that is already a plugin
-tagents-core plugin add ./notes        # …checked, and written into config.yaml
+tagents-core plugin add ./notes        # …checked, and written into config.toml
 tagents-core plugin list               # …and this is what the host sees in it
 tagents-core plugin remove notes
 ```
 
-`add` resolves a directory (stored as an absolute path — the host resolves a
-relative `from:` against the CONFIG, not your shell) or an installed package
-name (stored as the name). It reads package.json and stats the entry, and that
-is the whole check: **importing a stranger's code to decide whether to install
-it is the wrong way round.** The edit goes in through yaml's Document API and
-is applied as a splice of the range it names, so every other key, comment and
-hand-aligned value in the file comes back byte for byte.
+`add` resolves a directory (stored as an absolute path — the host resolves a relative `from:` against the CONFIG, not your shell) or an installed package name (stored as the name). It reads package.json and stats the entry, and that is the whole check: **importing a stranger's code to decide whether to install it is the wrong way round.** In a `config.toml` the edit appends or cuts one `[plugins.NAME]` table as text, and the result is parsed again before it is written; in a `config.yaml` it goes in through yaml's Document API and is applied as a splice of the range it names. Either way every other key, comment and hand-aligned value in the file comes back byte for byte.
 
-Exit codes do the talking: **1** nothing resolved, **3** refused — something is
-there and it is not a plugin, or that name is already listed, and in both cases
-nothing was written.
+Exit codes do the talking: **1** nothing resolved, **3** refused — something is there and it is not a plugin, or that name is already listed, and in both cases nothing was written.
 
 ### Running what one offers
 
@@ -216,12 +207,7 @@ tagents-core telegram status       # the `status` CliCommand of the plugin `tele
 tagents-core telegram              # …or, with no command, what it offers (exit 2)
 ```
 
-The plugin is named by its key in `config.yaml` or by the name its definition
-gives itself, whichever the caller has in front of them. **The core verbs are
-matched first and always win**: `session`, `sessions`, `plugin`, `doctor` and
-`help` mean the same thing on every machine, so a plugin that takes one of those
-names is simply not reachable as a verb (it still loads, and its services and
-tools are unaffected).
+The plugin is named by its key in the config or by the name its definition gives itself, whichever the caller has in front of them. **The core verbs are matched first and always win**: `session`, `sessions`, `plugin`, `doctor` and `help` mean the same thing on every machine, so a plugin that takes one of those names is simply not reachable as a verb (it still loads, and its services and tools are unaffected).
 
 Arguments are parsed without any knowledge of the command — `--key value`,
 `--key=value`, `--flag` → `true`, `--` ends the options — and the command's own
@@ -264,13 +250,13 @@ The agent hook appends one line per event to `events.tsv` in the state dir, but 
 
 `PluginContext.agents` is the feed: `agents.states()` reads the current state rows, and `agents.follow(onEvent)` streams the events and flips the switch on for as long as someone follows.
 
-A plugin's options live in a file of its own, `<configDir>/plugins/<name>.yaml`, the way neovim keeps the enable list apart from each plugin's settings: `loadPluginOptions(configDir, name, schema)` returns the schema's defaults when the file is missing, and one problem line per issue (the same `path: message` wording the verbs use for their arguments) when it does not parse or does not fit, so a caller can print them and stop instead of guessing.
+A plugin's options live in a file of its own, `<configDir>/plugins/<name>.toml` (or the `<name>.yaml` that is there instead), the way neovim keeps the enable list apart from each plugin's settings: `loadPluginOptions(configDir, name, schema)` returns the schema's defaults when the file is missing, and one problem line per issue (the same `path: message` wording the verbs use for their arguments) when it does not parse or does not fit, so a caller can print them and stop instead of guessing.
 
-A relative `from:` in config.yaml is resolved against the config dir first, and, when that finds no `package.json`, against the config dir's real location.
+A relative `from` in the config is resolved against the config dir first, and, when that finds no `package.json`, against the config dir's real location.
 
 `~/.config/tagents` is a symlink into a dotfiles repository, so a committed config can say `from: ../../tagents/packages/notify` and mean the plugin's own repository on every machine.
 
-A plugin that ships its own bin, so that a LaunchAgent can start it with no config.yaml registration, ends its `main.ts` with one call, and its verbs run exactly as they do under `tagents-core <plugin> <verb>`:
+A plugin that ships its own bin, so that a LaunchAgent can start it with no registration in the config, ends its `main.ts` with one call, and its verbs run exactly as they do under `tagents-core <plugin> <verb>`:
 
 ```ts
 import { runPluginBin } from '@tagents/core';
@@ -326,20 +312,7 @@ the source runs unbuilt under Node's type stripping.
 
 ## Changes
 
-**0.3.0** — additive, and it comes from the one thing the plugin contract could
-describe but not do: RUN a service. `createContext({ plugin, log, configDir,
-locale? })` builds the PluginContext a plugin is entitled to, and
-`runService(plugin, name, ctx, { signals? })` starts one named service under it
-and hands back `drain()` / `stop(reason?)` / `done`. Neither reads
-`config.yaml`: `loadPlugins` still answers "which plugins did this machine
-choose", and these two answer "this process already knows, start it". The
-service handle gained two optional pieces to say what a real daemon does —
-`done`, for a service that decides its own exit (the orchestrator's runner ends
-on its own drain handshake, not because a supervisor asked), and a `reason` on
-`stop`, because "SIGTERM" and "SIGINT" are different lines in the log the
-daemon writes about its own shutdown. Both are optional: a service written
-against 0.2.0 keeps compiling, keeps loading and behaves identically, and no
-export was renamed or removed.
+**0.3.0** — additive, and it comes from the one thing the plugin contract could describe but not do: RUN a service. `createContext({ plugin, log, configDir, locale? })` builds the PluginContext a plugin is entitled to, and `runService(plugin, name, ctx, { signals? })` starts one named service under it and hands back `drain()` / `stop(reason?)` / `done`. Neither reads the config: `loadPlugins` still answers "which plugins did this machine choose", and these two answer "this process already knows, start it". The service handle gained two optional pieces to say what a real daemon does — `done`, for a service that decides its own exit (the orchestrator's runner ends on its own drain handshake, not because a supervisor asked), and a `reason` on `stop`, because "SIGTERM" and "SIGINT" are different lines in the log the daemon writes about its own shutdown. Both are optional: a service written against 0.2.0 keeps compiling, keeps loading and behaves identically, and no export was renamed or removed.
 
 **0.2.0** — additive, and both additions come from the same place: a caller has
 to be able to tell what a *failed* turn already did, and it has to be able to

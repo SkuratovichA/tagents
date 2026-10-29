@@ -32,19 +32,22 @@ Elsewhere `install` refuses with "no notification backend for <os> yet" and exit
 
 ## Configuration
 
-`<configDir>/plugins/notify.yaml`. Every key is optional; these are the defaults:
+`<configDir>/plugins/notify.toml`. Every key is optional; these are the defaults:
 
-```yaml
-backend: auto      # auto | macos | log | none — auto: macos on darwin, none elsewhere
-click: dock        # dock: like Enter in the list · goto: the agent's own window · focus: terminal only
-# icon: ~/pics/tagents.png   # a PNG for the notices' icon, unset by default; see below
-events:
-  question:       { enabled: true,  skip_visible: true }   # AskUserQuestion, plan approval, MCP elicitation
-  permission:     { enabled: true,  skip_visible: true }   # a permission prompt
-  turn_done:      { enabled: true,  skip_visible: true }   # the answer is ready, your move
-  cache_expiring: { enabled: true,  skip_visible: false, after: 50m, ttl: 60m }
-  session_end:    { enabled: false, skip_visible: true }
+```toml
+backend = "auto"      # auto | macos | log | none — auto: macos on darwin, none elsewhere
+click = "dock"        # dock: like Enter in the list · goto: the agent's own window · focus: terminal only
+# icon = "~/pics/tagents.png"   # a PNG for the notices' icon, unset by default; see below
+
+[events]
+question       = { enabled = true,  skip_visible = true }   # AskUserQuestion, plan approval, MCP elicitation
+permission     = { enabled = true,  skip_visible = true }   # a permission prompt
+turn_done      = { enabled = true,  skip_visible = true }   # the answer is ready, your move
+cache_expiring = { enabled = true,  skip_visible = false, after = "50m", ttl = "60m" }
+session_end    = { enabled = false, skip_visible = true }
 ```
+
+A `notify.yaml` that is there instead is still read, with the same keys.
 
 Durations are `<n>s|m|h`, combined like `1h30m`, or a bare number of seconds, and `after` must be below `ttl`.
 
@@ -52,7 +55,7 @@ Durations are `<n>s|m|h`, combined like `1h30m`, or a bare number of seconds, an
 
 `icon` is an absolute path, a `~/` path, or a path relative to the directory of the options file. Unset, the icon is `notify-icon.png` next to the helper app (`~/Library/Application Support/tagents/`, or next to `TA_NOTIFY_APP`) when that file exists, and the app has no icon of its own otherwise. The icon is part of the helper app, so run `tagents notify install` after changing it: `install` rebuilds an app that is stale and prints `icon: <path>` or `icon: none`, as `status` does. An `icon` that names no file is a problem line in both, and the app is built without it. An icon gives the helper its own bundle id, `io.github.skuratovicha.tagents-notify.i<first 8 hex of the icon's sha256>`, because macOS keeps an app's icon from its first permission request. After an icon change, macOS asks once more to allow notifications, and the new registration starts with the Persistent style from Info.plist. The old entry stays in System Settings → Notifications with the old icon, and can be switched off.
 
-An invalid file is logged once per problem and the engine runs on the defaults; `tagents notify status` prints the problems. The file is reloaded when it changes, so there is nothing to restart. What is watched is the real path of the `plugins` directory, filtered on the name `notify.yaml`: a config directory that is a symlink, such as `~/.config/tagents` pointing into a dotfiles repository, works in full. A `notify.yaml` that is itself a symlink is seen only when the link is replaced, not when its target is edited.
+An invalid file is logged once per problem and the engine runs on the defaults; `tagents notify status` prints the problems. The file is reloaded when it changes, so there is nothing to restart. What is watched is the real path of the `plugins` directory, filtered on the names `notify.toml` and `notify.yaml`: a config directory that is a symlink, such as `~/.config/tagents` pointing into a dotfiles repository, works in full. A `notify.toml` that is itself a symlink is seen only when the link is replaced, not when its target is edited.
 
 ## Clicking a notice
 

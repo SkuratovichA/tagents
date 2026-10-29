@@ -13,7 +13,7 @@ export DEMO_SRC REPO DEMO_ROOT
 export HOME="$DEMO_ROOT/home"
 export TMUX_TMPDIR="$DEMO_ROOT/tmux"
 export TA_STATE_DIR="$DEMO_ROOT/state"
-export TA_CONFIG="$HOME/.config/tagents/config.yaml"
+export TA_CONFIG="$HOME/.config/tagents/config.toml"
 export TA_HOST=demo SHELL=/bin/bash
 export TA_COUNTS_EVERY=0
 export TA_RESURRECT_YOUNG=0 TA_RESURRECT_SOON=2 TA_RESURRECT_RETAKE=2

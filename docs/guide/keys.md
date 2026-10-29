@@ -15,15 +15,15 @@ The header above the list is one line: `enter · ? keys · ctrl-q quit`. Everyth
 
 ## Moving a key
 
-A `keys:` block in `~/.config/tagents/config.yaml` maps a verb to a key. Anything you do not name keeps its default.
+A `[keys]` table in `~/.config/tagents/config.toml` maps a verb to a key. Anything you do not name keeps its default.
 
-```yaml
-keys:
-  closed: ctrl-y
-  send: alt-s
+```toml
+[keys]
+closed = "ctrl-y"
+send = "alt-s"
 ```
 
-[`config.example.yaml`](https://github.com/SkuratovichA/tagents/blob/main/config.example.yaml) lists every verb with its default beside it. The names are the verbs of the list: open, beside, new, pick, shell, goto, send, rename, undock, kill, tree, preview, refresh, columns, usage, closed, keys and quit. An entry for any other verb is ignored.
+[`config.example.toml`](https://github.com/SkuratovichA/tagents/blob/main/config.example.toml) lists every verb with its default beside it. The names are the verbs of the list: open, beside, new, pick, shell, goto, send, rename, undock, kill, tree, preview, refresh, columns, usage, closed, keys and quit. An entry for any other verb is ignored.
 
 ### Which names work
 
