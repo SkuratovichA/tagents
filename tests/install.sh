@@ -749,6 +749,16 @@ for bad in http://mirror.example/tagents ftp://mirror.example/tagents /some/dir/
   nothing_installed "...and nothing is installed"
   node_cli_answers "...and the node CLI still runs"
 done
+# The refusal comes after the old binary was dropped: a binary of 0.1.0 does not stay beside a copy that moved on to 0.1.1, whatever the base is.
+fresh_native 0.1.0; run_native >/dev/null
+ok "0.1.0 is installed natively, to start from" "native-core 0.1.0 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+set_version 0.1.1
+export TAGENTS_CORE_BASE_URL=http://example.invalid/x
+out=$(run_native); rc=$?
+ok "an update to 0.1.1 with a base that is not https or file exits 1" 1 "$rc"
+contains "...with the warning that names the variable" "TAGENTS_CORE_BASE_URL has to start with https:// or file://, so the prebuilt tagents-core was not fetched" "$out"
+ok "...and no request was made" 0 "$(calls)"
+nothing_installed "...and the 0.1.0 binary and its marker are gone"
 fresh_native 0.1.0
 export TAGENTS_CORE_BASE_URL=https://mirror.example/tagents/v0.1.0/
 out=$(PATH="$TMP/curlfail:$TMP/node-c:$PATH" run); rc=$?
