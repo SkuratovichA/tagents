@@ -76,13 +76,14 @@ function completeEnd(bytes: Buffer): number {
   return lead + length > bytes.length ? lead : bytes.length;
 }
 
-function finish(code: number, outcome: string, stdout: string, stderr: string, cut = false): CallResult {
+/** `stdoutCut` keeps the text as text; `truncated` is set when either stream was cut. */
+function finish(code: number, outcome: string, stdout: string, stderr: string, stdoutCut = false, stderrCut = false): CallResult {
   const body = {
     exit: code,
     outcome,
-    stdout: cut ? stdout : parsedOrText(stdout),
+    stdout: stdoutCut ? stdout : parsedOrText(stdout),
     stderr,
-    ...(cut ? { truncated: true } : {}),
+    ...(stdoutCut || stderrCut ? { truncated: true } : {}),
   };
   return { isError: code !== 0, content: [{ type: 'text', text: JSON.stringify(body, null, 2) }] };
 }
@@ -177,7 +178,7 @@ function run(tool: ToolSpec, argv: readonly string[], deps: RunDeps, options: Ca
     };
 
     const outcome = (code: number | null): CallResult => {
-      const done = (exit: number, name: string, note = ''): CallResult => finish(exit, name, stdout.text(), `${stderr.text()}${note}`, stdout.cut || stderr.cut);
+      const done = (exit: number, name: string, note = ''): CallResult => finish(exit, name, stdout.text(), `${stderr.text()}${note}`, stdout.cut, stderr.cut);
       if (reason === 'timeout') return done(tool.exit['timeout'] ?? 4, 'timeout', `${tool.program} did not finish within ${deps.timeoutMs} ms and was stopped\n`);
       if (reason === 'cancelled') return done(tool.exit['error'] ?? 1, 'cancelled', `${tool.program} was stopped: the request was cancelled or the server closed\n`);
       const exit = code ?? tool.exit['error'] ?? 1;

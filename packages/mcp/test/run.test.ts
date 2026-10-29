@@ -157,6 +157,14 @@ test('a surrogate pair is never split by the cut, and stderr is capped on its ow
   }
 });
 
+test('a cut stderr marks the result but does not turn a small JSON stdout into text', async () => {
+  const { env } = rig(`printf '{"a":[1,2]}\\n'; head -c ${MAX_STREAM + 1000} /dev/zero | tr '\\0' e >&2`);
+  const body = JSON.parse(resultText(await callTool(tool('fake_echo'), {}, { env, timeoutMs: 20000 })));
+  assert.equal(body.truncated, true);
+  assert.deepEqual(body.stdout, { a: [1, 2] });
+  assert.match(body.stderr, MARKER);
+});
+
 test('output within the cap is whole and not marked', async () => {
   const { env } = rig(`head -c ${MAX_STREAM} /dev/zero | tr '\\0' a`);
   const body = JSON.parse(resultText(await callTool(tool('fake_echo'), {}, { env, timeoutMs: 20000 })));
