@@ -218,6 +218,28 @@ for opener in '"""' "'''"; do
     contains "...the table after its end reads" "usage.d${TAB}3" "$out"
   done
 done
+# ...and inside a skipped table: the second [t] is refused once, its lines are not read, and the body of the string belongs to neither.
+for opener in '"""' "'''"; do
+  for key in '$x' 'a b'; do
+    printf '[t]\n[t]\n%s = %s\n[fake]\nc = 2\n%s\n[usage]\nd = 3\n' "$key" "$opener" "$opener" >"$TMP/multi5.toml"
+    out=$(dump "$TMP/multi5.toml")
+    ok       "a refused line \"$key = $opener\" in a skipped table: one warning, for the table, none for its lines" 1 "$(printf '%s\n' "$out" | grep -c 'multi5.toml:')"
+    lacks    "...no table from its body" "fake" "$out"
+    lacks    "...no key from its body" "c${TAB}2" "$out"
+    contains "...the table after its end reads" "usage.d${TAB}3" "$out"
+  done
+done
+# ...and a refused line whose quoted key holds an = of its own: the opener is the = after the key, in an ordinary table and in a skipped one.
+for opener in '"""' "'''"; do
+  printf '[t]\n"a=b" c = %s\n[fake]\nx = 1\n%s\n[usage]\nd = 3\n' "$opener" "$opener" >"$TMP/multi6.toml"
+  out=$(dump "$TMP/multi6.toml")
+  lacks    "a quoted key with an = in a refused line, $opener: no table from its body" "fake" "$out"
+  contains "...the table after its end reads" "usage.d${TAB}3" "$out"
+  printf '[t]\n[t]\n"a=b" c = %s\n[fake]\nx = 1\n%s\n[usage]\nd = 3\n' "$opener" "$opener" >"$TMP/multi7.toml"
+  out=$(dump "$TMP/multi7.toml")
+  lacks    "...and in a skipped table: no table from its body" "fake" "$out"
+  contains "...the table after its end reads" "usage.d${TAB}3" "$out"
+done
 
 # ---------------------------------------------------------------------------
 t "3. which file is read"

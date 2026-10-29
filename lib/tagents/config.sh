@@ -367,11 +367,12 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
       if (rt ~ /^[+-]?(0|[1-9][0-9]*)\.[0-9]+$/) { sub(/^\+/, "", rt); SV = rt; return }
       SERR = "not a string, a decimal number or a boolean: " rt
     }
-    # A multi-line string opened on a line that is refused still has a body, which must not be read as tables and keys.
-    function swallow(sl,   sp, sv) {
-      sp = index(sl, "=")
+    # A multi-line string opened on a line that is refused, or on a line of a skipped table, still has a body, which must not be read as tables and keys: this is the one place that steps over it.
+    function swallow(sl,   sr, sp, sv) {
+      sr = scankey(sl) ? KR : sl
+      sp = index(sr, "=")
       if (sp == 0) return
-      sv = trim(substr(sl, sp + 1))
+      sv = trim(substr(sr, sp + 1))
       if (substr(sv, 1, 3) == DQ DQ DQ || substr(sv, 1, 3) == SQ SQ SQ) readscalar(sv, 1)
     }
     # A key is defined once.
@@ -487,7 +488,7 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
       }
 
       # The lines of a skipped table are not read, but a multi-line string opened in one still swallows its body.
-      if (skip) { if (scankey(ln) && substr(KR, 1, 1) == "=") { vs = trim(substr(KR, 2)); if (substr(vs, 1, 1) == DQ || substr(vs, 1, 1) == SQ) readscalar(vs, 1) } next }
+      if (skip) { swallow(ln); next }
       if (!scankey(ln)) { warn(NR, "not a valid key"); swallow(ln); next }
       if (substr(KR, 1, 1) != "=") { warn(NR, "not a key = value line"); swallow(ln); next }
       vs = trim(substr(KR, 2))
