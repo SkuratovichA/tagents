@@ -2,8 +2,8 @@
 //!
 //! The data is `spec/cli/tagents-core.json` at the repository root, described by `spec/cli/cli-spec.schema.json`.
 //! The node CLI and the contract generator read the same file (`packages/core/src/cli/spec.ts`).
-//! The model refuses a key the schema does not name, and the structural mistakes the schema and the node loader refuse (an empty program, summary, path or word, two verbs with one path), so a newer or wrong file fails here at load, not somewhere downstream.
-//! One input is still read differently: an `exit` value written `1.0` is the number 1 to the node loader and a refusal here, because the model holds it as a `u8`.
+//! The model refuses a key the schema does not name and the structural mistakes the schema forbids (an empty program, summary, path or word, a `null` where the schema says string or boolean), and adds the one rule a schema cannot state, that two verbs never share a path, so a newer or wrong file fails here at load, not somewhere downstream.
+//! This loader is the stricter one: whatever it loads the node loader loads too. It refuses three inputs the node loader accepts: an `exit` value written `1.0` (the number 1 to JavaScript, a non-integer here because the model holds it as a `u8`), a key written twice in one object (`JSON.parse` keeps the last), and a lone surrogate escape in a string (`JSON.parse` accepts it).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -12,11 +12,25 @@ use serde::{Deserialize, Serialize, de::Error as _};
 /// The spec this crate was built with: the data file, embedded.
 pub const BUNDLED: &str = include_str!("../../../spec/cli/tagents-core.json");
 
+/// Reads an optional field that may be absent but not `null`: the schema says `string` or `boolean`, and serde would otherwise read `null` as absent. A missing key still gives `None` through `default`.
+fn not_null<'de, D, T>(d: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(d).map(Some)
+}
+
 /// A CLI's whole surface.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Spec {
-    #[serde(rename = "$schema", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "$schema",
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub schema: Option<String>,
     pub program: String,
     /// Exit code names to numbers.
@@ -42,7 +56,11 @@ pub struct Command {
     #[serde(rename = "impl")]
     pub implementation: Implementation,
     /// Optional extra string kept for tooling that classifies verbs. Nothing here reads it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub effect: Option<String>,
 }
 
@@ -52,7 +70,11 @@ pub struct Command {
 pub struct OptionSpec {
     #[serde(rename = "type")]
     pub kind: OptionKind,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub multiple: Option<bool>,
 }
 
@@ -268,6 +290,44 @@ mod tests {
         let parsed: Command = serde_json::from_str(without).expect("effect optional");
         assert_eq!(parsed.effect, None);
         assert!(serde_json::from_str::<Command>(number).is_err());
+    }
+
+    #[test]
+    fn a_null_effect_is_refused_like_the_schema_does() {
+        let text = r#"{"path":["a"],"positionals":[],"options":{},"required":[],"summary":"k","impl":"node","effect":null}"#;
+        assert!(serde_json::from_str::<Command>(text).is_err());
+    }
+
+    #[test]
+    fn a_null_multiple_is_refused_like_the_schema_does() {
+        assert!(
+            serde_json::from_str::<OptionSpec>(r#"{"type":"string","multiple":null}"#).is_err()
+        );
+        let ok: OptionSpec =
+            serde_json::from_str(r#"{"type":"string"}"#).expect("multiple optional");
+        assert_eq!(ok.multiple, None);
+    }
+
+    #[test]
+    fn a_null_schema_line_is_refused_like_the_schema_does() {
+        let text = spec_with(&[]).replacen('{', r#"{"$schema":null,"#, 1);
+        assert!(Spec::parse(&text).is_err());
+    }
+
+    #[test]
+    fn a_key_written_twice_is_refused_though_json_parse_keeps_the_last() {
+        let text = spec_with(&[]).replacen('{', r#"{"program":"first","#, 1);
+        let err = Spec::parse(&text).expect_err("a duplicate key").to_string();
+        assert!(err.contains("duplicate"), "{err}");
+    }
+
+    #[test]
+    fn a_lone_surrogate_escape_is_refused_though_json_parse_accepts_it() {
+        let text = spec_with(&[]).replace(r#""program":"p""#, r#""program":"\ud800""#);
+        let err = Spec::parse(&text)
+            .expect_err("a lone surrogate")
+            .to_string();
+        assert!(err.contains("hex escape"), "{err}");
     }
 
     #[test]

@@ -7,7 +7,7 @@
 
 ## 2. The Rust front door
 
-- [x] 2.1 Cargo workspace at the repository root with `tagents-spec` and `tagents-core`, `rust-toolchain.toml`, `target/` ignored, `unsafe_code` forbidden and `unwrap_used` and `expect_used` denied outside tests (`cargo clippy --workspace --all-targets -- -D warnings`)
+- [x] 2.1 Cargo workspace at the repository root with `tagents-spec` and `tagents-core`, `rust-toolchain.toml`, `target/` ignored, `unsafe_code` forbidden and `unwrap_used` and `expect_used` denied outside tests (`cargo clippy --workspace --all-targets --locked -- -D warnings`)
 - [x] 2.2 Serve the verbs the file marks `rust`, answer `--spec` with them, and exec the node CLI for every other word with the exit code untouched (`cargo test -p tagents-core --test front_door`: `spec_flag_prints_the_data_file_entries_of_the_verbs_it_serves`, `every_other_word_reaches_the_node_cli_with_argv_environment_and_stdin`, `the_exit_is_the_node_clis_even_when_it_is_a_signal`)
 - [x] 2.3 Refuse the cases the node CLI cannot be run in, with the codes a shell uses (`front_door`: `a_missing_node_cli_is_exit_2_and_names_where_it_looked`, `a_node_that_cannot_run_is_exit_127_or_126`, `node_is_looked_up_on_path_when_no_node_is_pinned`, `the_binary_finds_its_node_cli_through_a_symlink`)
 - [x] 2.4 Leave SIGPIPE at its default for the node CLI and ignore a closed stdout like the node CLI does (`front_door`: `the_node_cli_starts_with_sigpipe_at_its_default`, `a_closed_stdout_is_not_an_error`)
