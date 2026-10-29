@@ -38,15 +38,17 @@ test('no config file at all is no plugins, not an error', async () => {
   assert.deepEqual(loaded.errors, []);
 });
 
-test('a config that cannot be read for any reason is no plugins', () => {
+test('a config that cannot be read for any reason is no plugins', async () => {
   const dir = path.join(tmp, 'a-directory.toml');
   fs.mkdirSync(dir, { recursive: true });
   assert.deepEqual(readPluginList(dir), []);
+  assert.deepEqual((await loadPlugins(dir)).errors, [], 'loading reports no error');
   if (process.getuid?.() === 0) return;
   const locked = writeConfig('[plugins.x]\nfrom = "/one"\n');
   fs.chmodSync(locked, 0o000);
   try {
     assert.deepEqual(readPluginList(locked), []);
+    assert.deepEqual((await loadPlugins(locked)).errors, [], 'loading reports no error');
   } finally {
     fs.chmodSync(locked, 0o600);
   }

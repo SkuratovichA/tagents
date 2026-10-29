@@ -12,6 +12,7 @@ import { config } from '../src/cli/config.ts';
 import { coreT, createT } from '../src/i18n/index.ts';
 import { convertYamlConfig, sameConfig, typeMismatch } from '../src/config-convert.ts';
 import { tomlString } from '../src/config-file.ts';
+import { readPluginList } from '../src/host.ts';
 import { tmpDir } from '../src/testkit.ts';
 import { HERE, runCli } from './helpers.ts';
 
@@ -80,6 +81,17 @@ test('the converted file means the same to a TOML library as the YAML does to a 
   // a YAML key with nothing after it is null there and an empty table here: the same "a name and nothing else"
   const emptyAsTable = (value: unknown): unknown => JSON.parse(JSON.stringify(value), (_key, v: unknown) => (v === null ? {} : v));
   assert.deepEqual(plain(parseToml(result.toml)), emptyAsTable(parseYaml(fs.readFileSync(EXAMPLE, 'utf8'))));
+});
+
+test('the same plugins in either format: the host lists them in the same order', () => {
+  const yaml = 'plugins:\n  zeta:\n    from: /one\n  alpha:\n    from: /two\n  mid:\n    from: /three\n  beta:\n    from: /four\nusage:\n  workdays: true\n';
+  const dir = dirWith({ 'config.yaml': yaml });
+  const result = convertYamlConfig(path.join(dir, 'config.yaml'), { tagents: TAGENTS });
+  assert.ok(result.ok);
+  fs.writeFileSync(path.join(dir, 'config.toml'), result.toml);
+  const fromYaml = readPluginList(path.join(dir, 'config.yaml'));
+  assert.deepEqual(fromYaml.map((p) => p.name), ['zeta', 'alpha', 'mid', 'beta']);
+  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), fromYaml);
 });
 
 test('the output opens with the schema line, and says what it left behind', () => {
