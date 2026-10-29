@@ -435,7 +435,8 @@ fn a_missing_node_cli_is_exit_2_and_names_where_it_looked() {
     let checkout = Checkout::new("forward-no-cli");
     fs::remove_file(checkout.root.join("packages/core/dist/cli/main.js")).unwrap();
     let out = checkout.command().arg("doctor").output().unwrap();
-    assert_eq!(out.status.code(), Some(exit::USAGE.into()));
+    // 2 is the usage exit of the CLI spec, written out so that changing the constant in the code does not move the test with it.
+    assert_eq!(out.status.code(), Some(2));
     assert_eq!(out.stdout, b"");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains(&checkout.cli()), "{stderr}");
