@@ -205,11 +205,11 @@ The hand-written part of `skills/tagents/SKILL.md` SHALL have a section "Using t
 ### Requirement: The installer writes only over its own files
 `install.sh` SHALL write a wrapper only over a symlink or a file with the installer's marker line; any other file is left alone with a warning and exit 1 at the end. A wrapper whose hook the project dropped is removed.
 
-#### Scenario: A file of somebody else's
-- **WHEN** `~/.local/bin/tusage` exists and was not written by the installer
+#### Scenario: An unmarked file is not overwritten
+- **WHEN** `~/.local/bin/tagents-notify` exists and was not written by the installer
 - **THEN** it is left as it was, a warning names it, and the exit code is 1
 
-#### Scenario: A hook the project dropped
+#### Scenario: A dropped hook's wrapper is removed
 - **WHEN** an update brings a copy that no longer ships `hooks/old.sh`, and `~/.claude/hooks/old.sh` is a wrapper of the installer
 - **THEN** that wrapper is removed
 
@@ -280,6 +280,14 @@ The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeS
 #### Scenario: Two Claude config directories
 - **WHEN** `install.sh --hooks-dir ~/.claude/hooks --hooks-dir ~/.claude-work/hooks` runs
 - **THEN** both directories hold a wrapper for every hook script
+
+#### Scenario: A file of somebody else's
+- **WHEN** `~/.local/bin/tusage` exists and was not written by the installer
+- **THEN** it is left as it was, a warning names it, and the exit code is 1
+
+#### Scenario: A hook the project dropped
+- **WHEN** an update brings a copy that no longer ships `hooks/old.sh`, and `~/.claude/hooks/old.sh` is a wrapper of the installer
+- **THEN** that wrapper is removed
 
 #### Scenario: The commands the tools run
 - **WHEN** `install.sh` finishes a build

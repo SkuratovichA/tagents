@@ -75,8 +75,8 @@ The `enabled` flags of the options SHALL be ignored and `skip_visible` SHALL NOT
 ### Requirement: The verbs have a structured CLI spec
 The package SHALL describe its verbs as a structured CLI spec, which the plugin contract reads, and a test SHALL fail when that spec and the verbs the plugin offers differ in a name, an option, a required option, a positional or an exit code.
 
-#### Scenario: the spec follows the verbs
-- **WHEN** a verb gains an option and the CLI spec is not changed
+#### Scenario: A verb the spec leaves out
+- **WHEN** the plugin offers a verb that the CLI spec does not list
 - **THEN** the package's tests fail naming the verb
 
 ## MODIFIED Requirements
@@ -91,3 +91,7 @@ The plugin SHALL provide the verbs `run`, `install`, `uninstall`, `status`, `tes
 #### Scenario: unknown verb
 - **WHEN** `tagents-notify bogus` runs
 - **THEN** it exits 2 and the output names `bogus`
+
+#### Scenario: the spec follows the verbs
+- **WHEN** a verb gains an option and the CLI spec is not changed
+- **THEN** the package's tests fail naming the verb
