@@ -1,6 +1,4 @@
-// Which file is the config, how it is read, and what the TypeScript readers say
-// about it. The bash dashboard applies the same lookup; tests/config-toml.sh is
-// its side of these cases.
+// Which file is the config, how it is read, and what the TypeScript readers say about it. The bash dashboard applies the same lookup; tests/config-toml.sh is its side of these cases.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -42,8 +40,7 @@ function stderrOf<T>(fn: () => T): { result: T; err: string } {
 
 const GOOD = path.join(FIXTURES, 'plugin', 'good');
 
-// smol-toml hands back objects with no prototype, which is the safe shape for a
-// table called __proto__; a deep comparison against a literal wants plain ones.
+// smol-toml hands back objects with no prototype, which is the safe shape for a table called __proto__; a deep comparison against a literal wants plain ones.
 const plain = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 
 // The same table tests/config-toml.sh walks through the bash reader, so the two cannot disagree about what a TOML file is.

@@ -1,7 +1,4 @@
-// schemas/config.schema.json is what an editor reads to check config.toml and to
-// show what a key means. Nothing in tagents reads it, so nothing would notice if
-// it drifted from the readers: this file is the thing that notices. It pins the
-// schema from four sides.
+// schemas/config.schema.json is what an editor reads to check config.toml and to show what a key means. Nothing in tagents reads it, so nothing would notice if it drifted from the readers: this file is the thing that notices. It pins the schema from four sides.
 //   * the schema is itself valid, and says what every key is (description, examples);
 //   * the shipped examples (config.example.toml, the YAML twin the converter
 //     takes) and the converter's output validate, and wrong documents do not;

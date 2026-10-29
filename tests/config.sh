@@ -442,9 +442,7 @@ mkdir -p "$TMP/logins/personal" "$TMP/logins/work"
 : >"$TMP/logins/personal/.claude.json"
 : >"$TMP/logins/work/settings.json"
 
-# The checker is format-blind, so its fixtures are in the format a config is
-# written in now. The YAML reader's own refusals, and what a YAML config is told,
-# are the last cases of this section and tests/config-toml.sh.
+# The checker is format-blind, so its fixtures are in the format a config is written in now. The YAML reader's own refusals, and what a YAML config is told, are the last cases of this section and tests/config-toml.sh.
 cat >"$TMP/good.toml" <<EOF
 [claude]
 default = "ask"

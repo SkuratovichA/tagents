@@ -1,6 +1,4 @@
-// schemas/config.schema.json describes the `knowledge` table for editors; this
-// package reads it with the zod schema below. Nothing else keeps the two the
-// same, so this does.
+// schemas/config.schema.json describes the `knowledge` table for editors; this package reads it with the zod schema below. Nothing else keeps the two the same, so this does.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';

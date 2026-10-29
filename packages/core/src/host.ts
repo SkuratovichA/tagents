@@ -1,7 +1,6 @@
 // Loading plugins.
 //
-// EXPLICIT LISTING ONLY. The host reads ~/.config/tagents/config.toml and
-// imports exactly what the `plugins` table names — it never scans node_modules,
+// EXPLICIT LISTING ONLY. The host reads ~/.config/tagents/config.toml and imports exactly what the `plugins` table names — it never scans node_modules,
 // never walks a directory looking for something that looks like a plugin.
 // Scanning is how a machine ends up running code nobody chose; a list is a
 // decision somebody can read.
@@ -9,8 +8,7 @@
 //   [plugins.tg-orchestrator]
 //   from = "../telegram-bots/orchestrator"   # a path, or a package name
 //
-// A config.yaml with the same `plugins:` map is read when there is no
-// config.toml (see config-file.ts).
+// A config.yaml with the same `plugins:` map is read when there is no config.toml (see config-file.ts).
 
 // `from` points at a PACKAGE, and the package says where its code is in its own
 // package.json: { "tagents": { "entry": "./dist/plugin.js" } }. That indirection

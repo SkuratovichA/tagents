@@ -3,18 +3,10 @@
 //
 // The file is the OWNER'S. It carries comments explaining why a rule exists,
 // the key order they chose, the spacing they aligned by hand, and (see
-// config.example.toml) a sibling config.<hostname>.toml whose subtrees replace
-// the ones here. A round trip through a stringifier keeps the meaning of all of
-// that and still rewrites bytes it had no business touching: `args = x # why`
-// loses the alignment somebody put there, and a TOML library has no comments to
-// write back at all.
+// config.example.toml) a sibling config.<hostname>.toml whose subtrees replace the ones here. A round trip through a stringifier keeps the meaning of all of that and still rewrites bytes it had no business touching: `args = x # why` loses the alignment somebody put there, and a TOML library has no comments to write back at all.
 //
 // So the parse is the format's own — it knows whether an entry already exists
-// — and the EDIT is a splice of text. In a TOML config (the default) an entry
-// is a `[plugins.NAME]` section appended at the end and cut out by its header
-// lines; in a YAML config (the fallback) it is the byte range a yaml Document
-// reports for the entry. Everything outside the splice comes back byte for
-// byte, and the result is parsed again before it is written.
+// — and the EDIT is a splice of text. In a TOML config (the default) an entry is a `[plugins.NAME]` section appended at the end and cut out by its header lines; in a YAML config (the fallback) it is the byte range a yaml Document reports for the entry. Everything outside the splice comes back byte for byte, and the result is parsed again before it is written.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -181,10 +173,7 @@ const fromOf = (entry: unknown): unknown =>
 
 /**
  * Append `[plugins.NAME]` after everything that is there, behind one blank line.
- * A section header at the end of the file is valid whatever precedes it, so
- * nothing in the file has to be understood to place it — and a `plugins` that is
- * written inline (`plugins = { … }`), where it is not valid, fails the parse
- * that follows and is refused with the file untouched.
+ * A section header at the end of the file is valid whatever precedes it, so nothing in the file has to be understood to place it — and a `plugins` that is written inline (`plugins = { … }`), where it is not valid, fails the parse that follows and is refused with the file untouched.
  */
 function addTomlEntry(file: string, name: string, from: string): AddOutcome {
   const text = readText(file);
@@ -225,11 +214,7 @@ const blank = (line: string): boolean => line.trim() === '';
 const commentOnly = (line: string): boolean => line.trimStart().startsWith('#');
 
 /**
- * Cut every section of `plugins.NAME` — its own `[plugins.NAME]` and any
- * `[plugins.NAME.…]` under it — out of the lines. A section runs from its
- * header to the next header, less the comment lines just above that header,
- * which belong to it. Comments above the removed header stay: they are
- * somebody's note, and a note about an entry is not part of the entry.
+ * Cut every section of `plugins.NAME` — its own `[plugins.NAME]` and any `[plugins.NAME.…]` under it — out of the lines. A section runs from its header to the next header, less the comment lines just above that header, which belong to it. Comments above the removed header stay: they are somebody's note, and a note about an entry is not part of the entry.
  */
 function cutSections(lines: string[], name: string): string[] {
   const cut = new Set<number>();

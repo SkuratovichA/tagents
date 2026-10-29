@@ -11,18 +11,9 @@
 # no profiles, which means agent_cmd falls back to exactly the strings this
 # script has always used and nothing ever asks you anything.
 #
-# Each parser is one awk program over a deliberate subset of its format —
-# tables, sequences, quoted scalars, comments — flattened to `path<TAB>value`,
-# one line per leaf, in file order. yq is not installed anywhere this has to
-# run, and a config that decides which LOGIN an agent gets is not worth a
-# python start-up on every keypress. Sequence items (a YAML list, a TOML array,
-# a TOML [[table]]) are `path.N`, so a rule is claude.rules.0.dir and the whole
-# thing stays greppable by hand: that is what --config prints.
+# Each parser is one awk program over a deliberate subset of its format — tables, sequences, quoted scalars, comments — flattened to `path<TAB>value`, one line per leaf, in file order. yq is not installed anywhere this has to run, and a config that decides which LOGIN an agent gets is not worth a python start-up on every keypress. Sequence items (a YAML list, a TOML array, a TOML [[table]]) are `path.N`, so a rule is claude.rules.0.dir and the whole thing stays greppable by hand: that is what --config prints.
 #
-# WHICH FILE. cfg_resolve below. $TA_CONFIG names the file and its extension
-# picks the reader. Without it the directory is searched: config.toml, else
-# config.yaml (read as it always was, and reported as deprecated by --check and
-# the status bar), else config.toml as the place a new one would go.
+# WHICH FILE. cfg_resolve below. $TA_CONFIG names the file and its extension picks the reader. Without it the directory is searched: config.toml, else config.yaml (read as it always was, and reported as deprecated by --check and the status bar), else config.toml as the place a new one would go.
 # ---------------------------------------------------------------------------
 CFG_TWIN=''     # the config.yaml that a config.toml beside it hides, if any
 cfg_readable() { [ -f "$1" ] && [ -r "$1" ]; }
@@ -236,24 +227,10 @@ cfg_parse() {  # [file name for warnings] stdin: yaml -> stdout: path<TAB>value,
     }'
 }
 
-# THE TOML READER: a deliberate subset of TOML 1.0, flattened to the same
-# `path<TAB>value` stream cfg_parse makes, so nothing downstream knows which
-# format a file was in. What it reads: comments, bare / "quoted" / 'literal' /
-# dotted keys, [tables], [[arrays of tables]], strings (basic with the escapes
-# \" and \\ only, and literal), decimal integers and simple decimal floats,
-# true / false, and arrays and inline tables of those. Everything else is
-# refused on its own line with file:line — multi-line strings, any other
-# escape (a decoded newline or tab cannot live in a line-oriented stream),
-# dates and times, hex / octal / binary / exponent / inf / nan, arrays of
-# tables or of arrays, nested inline tables — exactly as cfg_parse refuses flow
-# style: a value half-understood is a login that silently is not the one asked
-# for. A refused table header skips the keys under it, because keys given to the
-# wrong table are worse than keys dropped.
+# THE TOML READER: a deliberate subset of TOML 1.0, flattened to the same `path<TAB>value` stream cfg_parse makes, so nothing downstream knows which format a file was in. What it reads: comments, bare / "quoted" / 'literal' / dotted keys, [tables], [[arrays of tables]], strings (basic with the escapes
+# \" and \\ only, and literal), decimal integers and simple decimal floats, true / false, and arrays and inline tables of those. Everything else is refused on its own line with file:line — multi-line strings, any other escape (a decoded newline or tab cannot live in a line-oriented stream), dates and times, hex / octal / binary / exponent / inf / nan, arrays of tables or of arrays, nested inline tables — exactly as cfg_parse refuses flow style: a value half-understood is a login that silently is not the one asked for. A refused table header skips the keys under it, because keys given to the wrong table are worse than keys dropped.
 #
-# A table with no key and no sub-table is emitted as `path<TAB>` (a profile that
-# is only a name: `[claude.profiles.work]`), the way YAML's `work:` is. The
-# program is one single-quoted shell string: no apostrophe anywhere in it, SQ
-# and DQ are built with sprintf.
+# A table with no key and no sub-table is emitted as `path<TAB>` (a profile that is only a name: `[claude.profiles.work]`), the way YAML's `work:` is. The program is one single-quoted shell string: no apostrophe anywhere in it, SQ and DQ are built with sprintf.
 cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>value, refusals as !<TAB>file:line: why
   LC_ALL=C awk -v FNAME="${1:-$CONFIG_FILE}" '
     function warn(wn, wy) {
@@ -281,8 +258,7 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
       }
       return so
     }
-    # How many [ are still open at the end of the text: an array that has not
-    # closed carries on onto the next line.
+    # How many [ are still open at the end of the text: an array that has not closed carries on onto the next line.
     function depth(ds,   di, dh, dq, dd) {
       dq = ""; dd = 0
       for (di = 1; di <= length(ds); di++) {
@@ -298,8 +274,7 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
       }
       return dd
     }
-    # A dotted key from the start of ks: the parts in KC[1..KN], the text after
-    # it in KR. 0 when there is no key to read.
+    # A dotted key from the start of ks: the parts in KC[1..KN], the text after it in KR. 0 when there is no key to read.
     function scankey(ks,   kp, kc1, kj, kq, kout, kch) {
       KN = 0; kp = 1
       while (1) {
@@ -342,8 +317,7 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
       for (ki = 1; ki <= KN; ki++) kb = (kb == "") ? KC[ki] : (kb "." KC[ki])
       return kb
     }
-    # The path of a [table] header. A part that names an array of tables stands
-    # for the element being filled: [[a]] then [a.b] is a.0.b.
+    # The path of a [table] header. A part that names an array of tables stands for the element being filled: [[a]] then [a.b] is a.0.b.
     function hdrpath(   hi, hp) {
       hp = ""
       for (hi = 1; hi <= KN; hi++) {
@@ -352,8 +326,7 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
       }
       return hp
     }
-    # Does md, the closing delimiter of a multi-line string, occur in ms? In a
-    # basic string a backslash escapes the character after it, so \""" is no end.
+    # Does md, the closing delimiter of a multi-line string, occur in ms? In a basic string a backslash escapes the character after it, so \""" is no end.
     function mlclosed(ms, md,   mi) {
       for (mi = 1; mi <= length(ms); mi++) {
         if (md == DQ DQ DQ && substr(ms, mi, 1) == "\\") { mi++; continue }
@@ -361,8 +334,7 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
       }
       return 0
     }
-    # One scalar from position ri of rs: its value in SV, the position after it
-    # in SPOS, or the reason it is refused in SERR.
+    # One scalar from position ri of rs: its value in SV, the position after it in SPOS, or the reason it is refused in SERR.
     function readscalar(rs, ri,   rc, rj, ro, rn, rt) {
       SERR = ""; SV = ""
       rc = substr(rs, ri, 1)
@@ -404,8 +376,7 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
       seenk[cp] = 1
       return 1
     }
-    # An array: [ ... ] of scalars, already joined into one line. Nothing of it
-    # is printed unless all of it is understood.
+    # An array: [ ... ] of scalars, already joined into one line. Nothing of it is printed unless all of it is understood.
     function putarray(pa, va, vn, rk,   ai, an, ac, ao) {
       ai = 2; an = 0; ao = ""
       while (1) {
@@ -526,8 +497,7 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
     }'
 }
 
-# A file through the reader its extension names: .toml is TOML, anything else is
-# YAML, which is what every file was before there was a TOML reader.
+# A file through the reader its extension names: .toml is TOML, anything else is YAML, which is what every file was before there was a TOML reader.
 cfg_read() {  # <file> -> the leaves, refusals as !<TAB>file:line: why
   case $1 in
     *.toml) cfg_parse_toml "$1" <"$1" ;;
@@ -563,8 +533,7 @@ cfg_load() {
 cfg_reset() {
   CFG=''; CFG_LOADED=0
   CFG_PARSE_NOTES=''; CFG_OVER_FILE=''; CFG_OVER_TOPS=' '; CFG_OVER_TWIN=''
-  # A config.toml written beside the config.yaml that was being read is a
-  # different file now, and so is one that was deleted.
+  # A config.toml written beside the config.yaml that was being read is a different file now, and so is one that was deleted.
   cfg_resolve
   CFG_NOTES=''; CFG_NPROBLEMS=0; CFG_SUMMARY=''; CFG_CHECKED=0
   # resolve_keys is run by cfg_check and remembers its own verdict (keys.sh).
@@ -611,8 +580,7 @@ cfg_top_of() {  # <path> -> CFG_TOP
 # The same profile name pointing at a directory that does not exist on this
 # machine starts a logged-out Claude — silently, from a picker that looked fine.
 #
-# So config.<hostname>.toml (or .yaml) beside the config is laid over it, per
-# machine and still in the repo, each file read by its own format. Granularity is the `a.b` subtree: every one the overlay
+# So config.<hostname>.toml (or .yaml) beside the config is laid over it, per machine and still in the repo, each file read by its own format. Granularity is the `a.b` subtree: every one the overlay
 # mentions (claude.profiles, claude.rules, claude.default, notes.send, …)
 # REPLACES the base subtree wholesale, the rest is inherited. Wholesale, not
 # merged, because profiles and rules are tables: a union would keep the base
@@ -634,11 +602,7 @@ host_once() {
   HOST_F=$(hostname 2>/dev/null)
   HOST_S=${HOST_F%%.*}
 }
-# The overlay for one host name: config.<host>.toml, else config.<host>.yaml,
-# beside the config in use. CFG_OVL is the file found, or where the TOML one
-# would go (the refresher watches that path for a file to appear); a
-# config.<host>.yaml hidden by a config.<host>.toml is CFG_OVER_TWIN. Returns 1
-# when there is none.
+# The overlay for one host name: config.<host>.toml, else config.<host>.yaml, beside the config in use. CFG_OVL is the file found, or where the TOML one would go (the refresher watches that path for a file to appear); a config.<host>.yaml hidden by a config.<host>.toml is CFG_OVER_TWIN. Returns 1 when there is none.
 cfg_overlay_for() {  # <host> -> CFG_OVL, CFG_OVER_TWIN
   local stem=${CONFIG_FILE%.toml}
   stem=${stem%.yaml}; stem=${stem%.yml}
@@ -839,8 +803,7 @@ cfg_note() {  # <key, or empty> <what is wrong — and what to do> [<the file it
 # cfg_check parses the file and stats every profile directory: measured at ~50 ms
 # on every tick of every attached client, spent almost always to conclude that
 # nothing changed. So the count is remembered against the config's own identity
-# — is any config*.toml or config*.yaml in that directory newer than the stamp —
-# which is a glob and a file test. The config's mtime is the main key: a config you have
+# — is any config*.toml or config*.yaml in that directory newer than the stamp — which is a glob and a file test. The config's mtime is the main key: a config you have
 # just fixed clears the marker the next time the bar is recomputed (COUNTS_EVERY
 # seconds at most) rather than when a timer gets round to it. An age ceiling sits
 # behind it because a problem can be fixed WITHOUT touching the config — creating
@@ -855,8 +818,7 @@ cfg_count_cached() {  # sets CFG_NPROBLEMS, cheaply, for the status bar
     rm -f "$CFG_STAMP" 2>/dev/null
     return 0
   fi
-  # A config.yaml hidden by a config.toml is part of the verdict, and deleting it
-  # touches nothing newer than the stamp: it is named in the stamp instead.
+  # A config.yaml hidden by a config.toml is part of the verdict, and deleting it touches nothing newer than the stamp: it is named in the stamp instead.
   ident=$CONFIG_FILE${CFG_TWIN:+ $CFG_TWIN}
   if [ -r "$CFG_STAMP" ]; then
     for f in "${CONFIG_FILE%/*}"/config*.toml "${CONFIG_FILE%/*}"/config*.yaml; do
@@ -886,11 +848,7 @@ cfg_count_cached() {  # sets CFG_NPROBLEMS, cheaply, for the status bar
   return 0
 }
 
-# WHICH FORMAT THE FILES ARE IN. A YAML config still works and is read exactly as
-# before; it is one problem per file so that it shows in --check, the header and
-# the status bar until it is converted. A config.toml beside a config.yaml wins
-# outright — the YAML file is not read, so it is not called deprecated, it is
-# called ignored — and the same goes for an overlay pair.
+# WHICH FORMAT THE FILES ARE IN. A YAML config still works and is read exactly as before; it is one problem per file so that it shows in --check, the header and the status bar until it is converted. A config.toml beside a config.yaml wins outright — the YAML file is not read, so it is not called deprecated, it is called ignored — and the same goes for an overlay pair.
 cfg_format_notes() {
   local f=${CONFIG_FILE##*/}
   case $CONFIG_FILE in

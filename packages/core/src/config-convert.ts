@@ -1,20 +1,12 @@
 // A YAML config turned into the TOML twin that tagents reads the same way.
 //
-// What makes this safe is not the translation but the check after it: the
-// converted text is handed to the real `tagents --config` (the bash dashboard's
-// own reader) next to the YAML it came from, and the two dumps must agree. A
-// conversion tagents would read differently is refused, never offered, so the
-// only way to get a wrong login out of this is for tagents to read the YAML
-// wrongly in the first place, and then it was already wrong.
+// What makes this safe is not the translation but the check after it: the converted text is handed to the real `tagents --config` (the bash dashboard's own reader) next to the YAML it came from, and the two dumps must agree. A conversion tagents would read differently is refused, never offered, so the only way to get a wrong login out of this is for tagents to read the YAML wrongly in the first place, and then it was already wrong.
 //
 // The types come from the YAML as it is WRITTEN, not as a YAML library resolves it: `true` and `850` stay a boolean and a number. A scalar the YAML library reads as a number or a boolean that TOML writes differently (`0x10`, `.5`, `True`) or as null (`~`) is refused with what to write instead, never turned into a string; typeMismatch below is the check that nothing was retyped, because the `--config` dumps print every value as text and cannot show it.
 //
 // Comments cannot be carried across (a YAML parser does not keep them in a form that maps onto TOML's), and the output says so on its second line.
 //
-// TOML puts a table's plain keys above its sub-tables, so a plain key written
-// after a table in the YAML moves up. That changes the order of the dump's
-// lines and nothing tagents reads from it; sameConfig below is the definition
-// of "nothing it reads".
+// TOML puts a table's plain keys above its sub-tables, so a plain key written after a table in the YAML moves up. That changes the order of the dump's lines and nothing tagents reads from it; sameConfig below is the definition of "nothing it reads".
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -216,12 +208,8 @@ function dumpOf(tagents: string, file: string, scratch: string, timeoutMs: numbe
 }
 
 /**
- * Do two `--config` dumps mean the same to tagents? Every line is there in
- * both, and every parent's children come in the same order within their kind:
- * the plain keys among themselves, the tables among themselves. A plain key
- * and a table of one parent may swap places (TOML cannot write a plain key
- * after a table), but two profiles may not, because the order of the profiles is
- * the order of the account picker.
+ * Do two `--config` dumps mean the same to tagents? Every line is there in both, and every parent's children come in the same order within their kind:
+ * the plain keys among themselves, the tables among themselves. A plain key and a table of one parent may swap places (TOML cannot write a plain key after a table), but two profiles may not, because the order of the profiles is the order of the account picker.
  */
 export function sameConfig(a: string, b: string): boolean {
   if (a === b) return true;

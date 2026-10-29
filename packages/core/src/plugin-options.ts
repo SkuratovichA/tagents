@@ -1,15 +1,11 @@
 // A plugin's options, read from a file of their own.
 //
-// The neovim way: config.toml holds the list of what is enabled, and each
-// plugin's options live in `<configDir>/plugins/<name>.toml`. One file per
+// The neovim way: config.toml holds the list of what is enabled, and each plugin's options live in `<configDir>/plugins/<name>.toml`. One file per
 // plugin keeps the enable list short enough to read at a glance, lets a plugin
 // grow options without anyone editing a shared file, and lets a dotfiles repo
 // commit each plugin's settings on their own.
 //
-// A `<name>.yaml` written before there was a TOML reader is still read, as YAML,
-// when no `<name>.toml` is there (the main config's rule, config-file.ts), and
-// without the main config's conversion notice: `tagents config convert` is for
-// the config, and an options file is short enough to translate by hand.
+// A `<name>.yaml` written before there was a TOML reader is still read, as YAML, when no `<name>.toml` is there (the main config's rule, config-file.ts), and without the main config's conversion notice: `tagents config convert` is for the config, and an options file is short enough to translate by hand.
 //
 // Nothing here throws: a missing file is the schema's defaults, and a file that
 // does not parse or does not fit the schema comes back as a list of problems,
@@ -27,8 +23,7 @@ export function pluginOptionsBasenames(name: string): string[] {
 }
 
 /**
- * `<configDir>/plugins/<name>.toml`, or the `.yaml` that is there instead; with
- * neither, the `.toml` path, which is where a new one goes.
+ * `<configDir>/plugins/<name>.toml`, or the `.yaml` that is there instead; with neither, the `.toml` path, which is where a new one goes.
  */
 export function pluginOptionsFile(configDir: string, name: string): string {
   const candidates = pluginOptionsBasenames(name).map((base) => path.join(configDir, PLUGIN_OPTIONS_DIR, base));

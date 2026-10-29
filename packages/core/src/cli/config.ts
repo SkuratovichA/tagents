@@ -2,13 +2,8 @@
 //
 //   config convert [FILE] [--write] [--all]
 //
-// `convert` turns the YAML config into TOML. By default it only prints, and
-// changes nothing anywhere; --write creates the .toml beside the YAML and
-// refuses to touch a file that is already there; neither ever deletes or edits
-// the YAML. --all adds the per-host overlays (config.<host>.yaml), and a write
-// is all or nothing: one refusal, one failed conversion, and no file appears.
-// What tagents reads out of the result is checked against the YAML before a
-// byte is offered (config-convert.ts).
+// `convert` turns the YAML config into TOML. By default it only prints, and changes nothing anywhere; --write creates the .toml beside the YAML and refuses to touch a file that is already there; neither ever deletes or edits the YAML. --all adds the per-host overlays (config.<host>.yaml), and a write is all or nothing: one refusal, one failed conversion, and no file appears.
+// What tagents reads out of the result is checked against the YAML before a byte is offered (config-convert.ts).
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';

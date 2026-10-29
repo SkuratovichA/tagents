@@ -1,11 +1,6 @@
-// `tagents config convert`: a YAML config turned into the TOML twin that tagents
-// reads the same way.
+// `tagents config convert`: a YAML config turned into the TOML twin that tagents reads the same way.
 //
-// "The same way" is checked by the thing that matters, not by eye: both files
-// are handed to the real `tagents --config` under /bin/bash (macOS's 3.2 when
-// that is what the machine has) and the dumps are compared. The converter does
-// the same itself before it prints a byte, so a conversion that would change
-// what tagents reads is refused instead of offered.
+// "The same way" is checked by the thing that matters, not by eye: both files are handed to the real `tagents --config` under /bin/bash (macOS's 3.2 when that is what the machine has) and the dumps are compared. The converter does the same itself before it prints a byte, so a conversion that would change what tagents reads is refused instead of offered.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -297,8 +292,7 @@ test('a tagents that never finishes is a refusal that names the timeout, not a h
 });
 
 test('a YAML file tagents itself cannot read is refused before anything is converted', () => {
-  // The bash reader takes a block-style subset. A flow mapping with a nested
-  // flow list is outside it, so the dump of this file is not what the YAML says.
+  // The bash reader takes a block-style subset. A flow mapping with a nested flow list is outside it, so the dump of this file is not what the YAML says.
   const result = convert('keys: { closed: [a, b] }\n');
   assert.equal(result.ok, false);
 });

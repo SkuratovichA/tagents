@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 #
-# tests/config-toml.sh — config.toml: the awk reader, which file is read, the
-# YAML fallback and what --check and the status bar say about it.
+# tests/config-toml.sh — config.toml: the awk reader, which file is read, the YAML fallback and what --check and the status bar say about it.
 #
 # No tmux, no fzf, no Claude. Everything goes through --config, --check,
 # --counts and --profile-for, with fixtures written into a mktemp dir and found

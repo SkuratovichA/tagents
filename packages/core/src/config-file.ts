@@ -1,14 +1,8 @@
 // Which file is the config, and how to read it.
 //
-// TOML is the format; YAML is the fallback for a config.yaml written before
-// there was a TOML reader. The extension says which parser a file gets, so a
-// TOML base can carry a YAML overlay (or the other way round) and each is read
-// by its own parser. What comes back is UNCHECKED: callers hold the zod schema
-// of the part they read, and this module knows none of them.
+// TOML is the format; YAML is the fallback for a config.yaml written before there was a TOML reader. The extension says which parser a file gets, so a TOML base can carry a YAML overlay (or the other way round) and each is read by its own parser. What comes back is UNCHECKED: callers hold the zod schema of the part they read, and this module knows none of them.
 //
-// The bash dashboard resolves the same files by the same rules in
-// lib/tagents/config.sh (cfg_resolve); tests/config-toml.sh pins the bash side,
-// and test/config-convert.test.ts reads one config through both readers.
+// The bash dashboard resolves the same files by the same rules in lib/tagents/config.sh (cfg_resolve); tests/config-toml.sh pins the bash side, and test/config-convert.test.ts reads one config through both readers.
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseToml } from 'smol-toml';
@@ -25,8 +19,7 @@ export function configFormat(file: string): ConfigFormat {
 }
 
 /**
- * The config in `dir`: config.toml when there is one, else config.yaml, else
- * config.toml, the place a new one goes. A directory is not a config.
+ * The config in `dir`: config.toml when there is one, else config.yaml, else config.toml, the place a new one goes. A directory is not a config.
  */
 export function resolveConfigFile(dir: string): string {
   const toml = path.join(dir, TOML_BASENAME);
@@ -63,9 +56,7 @@ export function parseConfigText(text: string, format: ConfigFormat): unknown {
   return format === 'toml' ? parseToml(text) : (parseYaml(text) ?? {});
 }
 
-// What a person is told about the files, once per file per process: the TS
-// readers run in every CLI call and in long-lived services, and a line per read
-// is noise nobody reads twice.
+// What a person is told about the files, once per file per process: the TS readers run in every CLI call and in long-lived services, and a line per read is noise nobody reads twice.
 const told = new Set<string>();
 
 function tellOnce(file: string, message: string): void {
@@ -99,8 +90,7 @@ export function parseConfigFile(file: string): unknown {
 }
 
 /**
- * Read and parse the config itself (not a plugin's options file, which has no
- * `tagents config convert` to point at), noticing its format once it read.
+ * Read and parse the config itself (not a plugin's options file, which has no `tagents config convert` to point at), noticing its format once it read.
  */
 export function readConfigFile(file: string): unknown {
   const doc = parseConfigFile(file);
