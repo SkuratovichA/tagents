@@ -228,7 +228,7 @@ PKG=$TMP/pkg
 mkdir -p "$PKG/out"
 printf '#!/bin/sh\necho "tagents-core 1.2.3"\n' > "$PKG/tagents-core"; chmod 700 "$PKG/tagents-core"
 printf 'MIT License\n\nthe license text\n' > "$PKG/LICENSE"; chmod 600 "$PKG/LICENSE"
-# A file with an extended attribute is what the build of a macOS runner leaves; without COPYFILE_DISABLE its bsdtar adds a ._tagents-core member for it.
+# macOS bsdtar adds a ._tagents-core member for a file with an extended attribute unless COPYFILE_DISABLE is set. Whether the staged copy of this file keeps the attribute depends on the cp of the machine, so the tar shim below pins the variable itself.
 if command -v xattr >/dev/null 2>&1; then xattr -w com.example.test value "$PKG/tagents-core" 2>/dev/null || true; fi
 TRIPLE=aarch64-apple-darwin
 NAME=tagents-core-1.2.3-$TRIPLE.tar.gz
@@ -263,6 +263,12 @@ if command -v sha256sum >/dev/null 2>&1; then
 fi
 out=$(rel "$PKG" package 1.2.3 $TRIPLE "$PKG/tagents-core" "$PKG/LICENSE" "$PKG/out2/nested")
 ok "an outdir that does not exist is made" 0 "$(code_of "$out")"
+# A tar that refuses to run without COPYFILE_DISABLE=1 in its environment: the variable is what keeps ._ members out of the archive on macOS.
+REAL_TAR=$(command -v tar)
+mkdir -p "$PKG/shim"
+printf '#!/bin/sh\n[ "${COPYFILE_DISABLE:-}" = 1 ] || { echo "tar was run without COPYFILE_DISABLE=1" >&2; exit 97; }\nexec "%s" "$@"\n' "$REAL_TAR" > "$PKG/shim/tar"; chmod 755 "$PKG/shim/tar"
+out=$(cd "$PKG" && PATH="$PKG/shim:$PATH" sh "$RELEASE" package 1.2.3 $TRIPLE "$PKG/tagents-core" "$PKG/LICENSE" "$PKG/out3" 2>&1; printf '\nexit=%s' "$?")
+ok "tar runs with COPYFILE_DISABLE=1, so macOS adds no ._ members" 0 "$(code_of "$out")"
 for bad in "1.2|$TRIPLE|$PKG/tagents-core|$PKG/LICENSE|a version that is not three numbers" \
            "1.2.3|not a triple|$PKG/tagents-core|$PKG/LICENSE|a target that is not a triple" \
            "1.2.3|$TRIPLE|$PKG/missing|$PKG/LICENSE|a binary that is not there" \
