@@ -12,8 +12,7 @@ export function getRouter({ history }: SiteRouterOptions = {}) {
   return createRouter({
     routeTree,
     history,
-    // GitHub Pages serves a directory's index.html at the address with a slash and redirects the one
-    // without, so every link the router writes ends in a slash.
+    // GitHub Pages serves a directory's index.html at the address with a slash and redirects the one without, so every link the router writes ends in a slash.
     trailingSlash: 'always',
     defaultPreload: 'intent',
     scrollRestoration: true,

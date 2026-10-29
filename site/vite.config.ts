@@ -7,8 +7,7 @@ import { readSiteConfig } from './build/site-config.ts'
 const site = readSiteConfig(process.env)
 
 export default defineConfig({
-  // SITE_BASE is the one source of the base path: Vite prefixes asset URLs with it and
-  // TanStack Start derives the router's basepath from it.
+  // SITE_BASE is the one source of the base path: Vite prefixes asset URLs with it and TanStack Start derives the router's basepath from it.
   base: site.base,
   // The address the site is served at, or null while it has none: only then can a page name itself.
   define: { __SITE_ORIGIN__: JSON.stringify(site.origin) },
