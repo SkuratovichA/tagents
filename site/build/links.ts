@@ -1,6 +1,13 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
+/** What a check found, and how many stylesheets it read to find it. */
+export interface LinkReport {
+  problems: LinkProblem[]
+  /** The `.css` files and the `<style>` elements that were scanned. */
+  cssSources: number
+}
+
 export interface LinkProblem {
   page: string
   reference: string
@@ -18,7 +25,7 @@ const TAG = /<([a-zA-Z][\w:-]*)((?:"[^"]*"|'[^']*'|[^'">])*)>/g
 const ATTRIBUTE = /\s([^\s=>/]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g
 const STYLE_ELEMENT = /<style[^>]*>([\s\S]*?)<\/style>/gi
 const CSS_URL = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/gi
-const CSS_IMPORT = /@import\s+(?:"([^"]*)"|'([^']*)')/gi
+const CSS_IMPORT = /@import\s*(?:"([^"]*)"|'([^']*)')/gi
 const REMOTE = /^\s*(?:https?:)?\/\//i
 const REMOTE_IN_LIST = /(?:^|,)\s*(?:https?:)?\/\//i
 const PLACEHOLDER_ORIGIN = 'https://site.invalid'
@@ -65,19 +72,23 @@ function attributesOf(source: string): Map<string, string> {
 }
 
 /**
- * Everything in an HTML document that would make a browser fetch from another site: a tag other than an anchor with an address in an attribute, and every `url(...)` and `@import` of a `<style>` element or a `style` attribute. Outbound anchors, the canonical link and the `og:url` and `og:image` of the site itself (`origin`) are what a page may name; namespace declarations (`xmlns`) name nothing to load.
+ * Everything in an HTML document that would make a browser fetch from another site: a tag with an address in an attribute (the `href` of an anchor excepted), and every `url(...)` and `@import` of a `<style>` element or a `style` attribute. Outbound anchors, the canonical link and the `og:url` and `og:image` of the site itself (`origin`) are what a page may name; namespace declarations (`xmlns`) name nothing to load.
  */
 export function findRemoteLoads(html: string, origin: string | null): string[] {
   const found: string[] = []
   for (const [, name = '', source = ''] of html.matchAll(TAG)) {
     const tag = name.toLowerCase()
-    if (tag === 'a') continue
     const attributes = attributesOf(` ${source}`)
-    if (tag === 'link' && attributes.get('rel') === 'canonical') continue
+    if (tag === 'link' && attributes.get('rel')?.toLowerCase() === 'canonical') continue
     for (const [attribute, value] of attributes) {
       if (attribute === 'xmlns' || attribute.startsWith('xmlns:')) continue
+      if (tag === 'a' && attribute === 'href') continue
       if (attribute === 'style') found.push(...findRemoteCss(value))
-      else if (attribute === 'srcset' ? REMOTE_IN_LIST.test(value) : REMOTE.test(value)) {
+      else if (
+        attribute === 'srcset' || attribute === 'imagesrcset'
+          ? REMOTE_IN_LIST.test(value)
+          : REMOTE.test(value)
+      ) {
         const key = attributes.get('property') ?? attributes.get('name')
         const own = origin !== null && value.startsWith(`${origin}/`)
         if (tag === 'meta' && own && (key === 'og:url' || key === 'og:image')) continue
@@ -141,13 +152,13 @@ export function hasAnchor(html: string, fragment: string): boolean {
   return new RegExp(`\\s(?:id|name)=(?:"${escaped}"|'${escaped}')`).test(html)
 }
 
-/** Checks every internal href and src of every HTML file in `outDir`, the sitemap addresses, and that no page or stylesheet loads anything from another site. */
+/** Checks every internal href and src of every HTML file in `outDir`, the sitemap addresses, and that no page or stylesheet loads anything from another site, and counts the stylesheets it read. */
 export async function checkLinks(
   outDir: string,
   files: readonly string[],
   base: string,
   origin: string | null = null,
-): Promise<LinkProblem[]> {
+): Promise<LinkReport> {
   const known = new Set(files)
   const sources = new Map<string, string>()
   const source = async (file: string): Promise<string> => {
@@ -159,7 +170,9 @@ export async function checkLinks(
   }
 
   const problems: LinkProblem[] = []
+  let cssSources = 0
   for (const page of files.filter((file) => file.endsWith('.html'))) {
+    cssSources += Array.from((await source(page)).matchAll(STYLE_ELEMENT)).length
     for (const reference of new Set(findRemoteLoads(await source(page), origin))) {
       problems.push({ page, reference, reason: 'loads from another site' })
     }
@@ -183,6 +196,7 @@ export async function checkLinks(
   }
 
   for (const file of files.filter((name) => name.endsWith('.css'))) {
+    cssSources++
     for (const reference of new Set(findRemoteCss(await source(file)))) {
       problems.push({ page: file, reference, reason: 'loads from another site' })
     }
@@ -196,5 +210,5 @@ export async function checkLinks(
       }
     }
   }
-  return problems
+  return { problems, cssSources }
 }

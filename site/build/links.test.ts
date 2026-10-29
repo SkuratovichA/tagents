@@ -107,7 +107,7 @@ describe('checkLinks', () => {
       'index.html': `<main id="main"><a href="${BASE}docs/a/#intro">a</a><a href="#main">skip</a></main>`,
       'docs/a/index.html': '<h2 id="intro">Intro</h2><a href="https://example.invalid/">out</a>',
     })
-    expect(await checkLinks(root, await listFiles(root), BASE)).toEqual([])
+    expect((await checkLinks(root, await listFiles(root), BASE)).problems).toEqual([])
   })
 
   it('names the page, the reference and the reason of every broken link', async () => {
@@ -115,7 +115,7 @@ describe('checkLinks', () => {
       'index.html': `<a href="${BASE}nowhere/">gone</a><a href="${BASE}docs/a/#nope">anchor</a>`,
       'docs/a/index.html': '<h2 id="intro">Intro</h2>',
     })
-    const problems = await checkLinks(root, await listFiles(root), BASE)
+    const { problems } = await checkLinks(root, await listFiles(root), BASE)
     expect(problems).toHaveLength(2)
     expect(problems[0]).toMatchObject({ page: 'index.html', reference: `${BASE}nowhere/` })
     expect(problems[1]?.reason).toContain('"nope"')
@@ -126,7 +126,7 @@ describe('checkLinks', () => {
       'index.html': `<a href="${BASE}docs/a">a</a>`,
       'docs/a/index.html': '<h2 id="intro">Intro</h2>',
     })
-    const problems = await checkLinks(root, await listFiles(root), BASE)
+    const { problems } = await checkLinks(root, await listFiles(root), BASE)
     expect(problems).toEqual([
       {
         page: 'index.html',
@@ -141,10 +141,10 @@ describe('checkLinks', () => {
       `<urlset>${paths.map((path) => `<url><loc>https://example.invalid${path}</loc></url>`).join('')}</urlset>`
     const pages = { 'index.html': '', 'docs/a/index.html': '' }
     const good = await site({ ...pages, 'sitemap.xml': sitemap(BASE, `${BASE}docs/a/`) })
-    expect(await checkLinks(good, await listFiles(good), BASE)).toEqual([])
+    expect((await checkLinks(good, await listFiles(good), BASE)).problems).toEqual([])
 
     const bare = await site({ ...pages, 'sitemap.xml': sitemap(BASE, `${BASE}docs/a`) })
-    const problems = await checkLinks(bare, await listFiles(bare), BASE)
+    const { problems } = await checkLinks(bare, await listFiles(bare), BASE)
     expect(problems.map((problem) => problem.page)).toEqual(['sitemap.xml'])
     expect(problems[0]?.reason).toContain('redirects')
   })
@@ -184,6 +184,37 @@ describe('what a page may load from another site', () => {
     expect(findRemoteLoads(html, ORIGIN)).toEqual(['https://elsewhere.example.invalid/a.png'])
   })
 
+  it('reads an @import written without a space before its string, which minifiers emit', () => {
+    expect(findRemoteCss('@import"https://fonts.example.invalid/a.css";')).toEqual([
+      'https://fonts.example.invalid/a.css',
+    ])
+    expect(findRemoteCss("@import'https://fonts.example.invalid/b.css';")).toEqual([
+      'https://fonts.example.invalid/b.css',
+    ])
+  })
+
+  it('scans the attributes of an anchor other than its href', () => {
+    const style = '<a href="/" style="background:url(https://cdn.example.invalid/x.png)">a</a>'
+    expect(findRemoteLoads(style, null)).toEqual(['https://cdn.example.invalid/x.png'])
+    const ping = '<a href="/" ping="https://t.example.invalid">a</a>'
+    expect(findRemoteLoads(ping, null)).toEqual(['https://t.example.invalid'])
+    const plain = '<a href="https://github.com/SkuratovichA/tagents">GitHub</a>'
+    expect(findRemoteLoads(plain, null)).toEqual([])
+  })
+
+  it('reads imagesrcset of a preload like srcset', () => {
+    const html =
+      '<link rel="preload" as="image" imagesrcset="/a.png 1x, https://cdn.example.invalid/b.png 2x">'
+    expect(findRemoteLoads(html, null)).toEqual(['/a.png 1x, https://cdn.example.invalid/b.png 2x'])
+  })
+
+  it('compares rel without regard to case and reads upper-case tags and attributes', () => {
+    const own = `<link rel="Canonical" href="${ORIGIN}/"><LINK REL='canonical' HREF='${ORIGIN}/'>`
+    expect(findRemoteLoads(own, ORIGIN)).toEqual([])
+    const upper = "<SCRIPT SRC='https://cdn.example.invalid/x.js'></SCRIPT>"
+    expect(findRemoteLoads(upper, ORIGIN)).toEqual(['https://cdn.example.invalid/x.js'])
+  })
+
   it('reads the urls of a stylesheet and leaves relative ones and data uris', () => {
     const css =
       '@import "https://fonts.example.invalid/x.css"; a{background:url(./a.woff2) url(data:image/png;base64,AAA) url("//cdn.example.invalid/b.png")}'
@@ -204,7 +235,7 @@ describe('what a page may load from another site', () => {
         join(root, 'site.css'),
         '@import url("https://fonts.example.invalid/more.css");',
       )
-      const problems = await checkLinks(root, await listFiles(root), BASE)
+      const { problems } = await checkLinks(root, await listFiles(root), BASE)
       expect(problems).toEqual([
         {
           page: 'index.html',
@@ -217,6 +248,31 @@ describe('what a page may load from another site', () => {
           reason: 'loads from another site',
         },
       ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('counts the stylesheets it scanned: css files and style elements', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'tagents-count-'))
+    try {
+      await writeFile(
+        join(root, 'index.html'),
+        '<style>a{color:red}</style><style>b{color:blue}</style>',
+      )
+      await writeFile(join(root, 'site.css'), 'a{color:red}')
+      const report = await checkLinks(root, await listFiles(root), BASE)
+      expect(report.cssSources).toBe(3)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('counts none for a site with no css at all', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'tagents-count-'))
+    try {
+      await writeFile(join(root, 'index.html'), '<p>plain</p>')
+      expect((await checkLinks(root, await listFiles(root), BASE)).cssSources).toBe(0)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
