@@ -1,23 +1,7 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
-### Requirement: The installer writes wrappers, not symlinks
-`install.sh` SHALL write a real-file wrapper into `~/.local/bin` for each of `tagents`, `tusage`, `tnotes`, `tagents-core` and `tagents-knowledge`, and one per `hooks/*.sh` into `~/.claude/hooks` or each repeatable `--hooks-dir DIR`; a wrapper runs the same file of the managed copy. It writes only over a symlink or a file with the installer's marker line; any other file is left alone with a warning and exit 1 at the end. A wrapper whose hook the project dropped is removed. When `$TAGENTS_HOME/target/release/tagents-core` is an executable file at the time of the install, the `tagents-core` wrapper SHALL run it, with the node it pinned passed on as `TAGENTS_NODE`, for as long as it is an executable file, and the node CLI otherwise; when it is not, the wrapper SHALL be byte for byte the one written when no Rust binary existed. The installer never builds or downloads that binary.
-
-#### Scenario: Two Claude config directories
-- **WHEN** `install.sh --hooks-dir ~/.claude/hooks --hooks-dir ~/.claude-work/hooks` runs
-- **THEN** both directories hold a wrapper for every hook script
-
-#### Scenario: A file of somebody else's
-- **WHEN** `~/.local/bin/tusage` exists and was not written by the installer
-- **THEN** it is left as it was, a warning names it, and the exit code is 1
-
-#### Scenario: A hook the project dropped
-- **WHEN** an update brings a copy that no longer ships `hooks/old.sh`, and `~/.claude/hooks/old.sh` is a wrapper of the installer
-- **THEN** that wrapper is removed
-
-#### Scenario: No Rust binary
-- **WHEN** the installer runs and `$TAGENTS_HOME/target/release/tagents-core` does not exist
-- **THEN** every wrapper it writes is byte for byte what the installer wrote before the Rust binary existed
+### Requirement: The tagents-core wrapper runs a Rust binary built before the install
+When `$TAGENTS_HOME/target/release/tagents-core` is an executable file at the time of the install, the `tagents-core` wrapper SHALL run it, with the node it pinned passed on as `TAGENTS_NODE`, for as long as it is an executable file, and the node CLI otherwise. The installer never builds or downloads that binary.
 
 #### Scenario: A Rust binary built before the install
 - **WHEN** `$TAGENTS_HOME/target/release/tagents-core` is executable when the installer runs, and `tagents-core sessions recent` is run
@@ -26,3 +10,18 @@
 #### Scenario: The Rust binary is gone
 - **WHEN** the binary the wrapper names has been removed or is no longer executable
 - **THEN** the wrapper runs the node CLI exactly as the wrapper of an install with no Rust binary does
+
+#### Scenario: A Rust binary that cannot run
+- **WHEN** a file that is executable but cannot run, because its interpreter is missing, sits at `target/release/tagents-core` when the installer runs
+- **THEN** the installed wrapper names it and runs it, and the failure to run it is an error and never a fallback to the node CLI
+
+### Requirement: Without a usable Rust binary the wrapper is the old one
+When `$TAGENTS_HOME/target/release/tagents-core` is not an executable file at the time of the install, whether it does not exist, lacks the executable bit or is a directory, the `tagents-core` wrapper SHALL be byte for byte the one written when no Rust binary existed.
+
+#### Scenario: No Rust binary
+- **WHEN** the installer runs and `$TAGENTS_HOME/target/release/tagents-core` does not exist
+- **THEN** every wrapper it writes is byte for byte what the installer wrote before the Rust binary existed
+
+#### Scenario: A directory where the Rust binary would be
+- **WHEN** a directory sits at `$TAGENTS_HOME/target/release/tagents-core` when the installer runs
+- **THEN** the plain wrapper is written, which runs the node CLI and names no Rust binary

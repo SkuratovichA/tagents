@@ -9,7 +9,7 @@
 
 - [x] 2.1 Cargo workspace at the repository root with `tagents-spec` and `tagents-core`, `rust-toolchain.toml`, `target/` ignored, `unsafe_code` forbidden and `unwrap_used` and `expect_used` denied outside tests (`cargo clippy --workspace --all-targets -- -D warnings`)
 - [x] 2.2 Serve the verbs the file marks `rust`, answer `--spec` with them, and exec the node CLI for every other word with the exit code untouched (`cargo test -p tagents-core --test front_door`: `spec_flag_prints_the_data_file_entries_of_the_verbs_it_serves`, `every_other_word_reaches_the_node_cli_with_argv_environment_and_stdin`, `the_exit_is_the_node_clis_even_when_it_is_a_signal`)
-- [x] 2.3 Refuse the cases the node CLI cannot be run in, with the codes a shell uses (`front_door`: `a_missing_node_cli_is_exit_2_and_says_how_to_build_it`, `a_node_that_cannot_run_is_exit_127_or_126`, `node_is_looked_up_on_path_when_no_node_is_pinned`, `the_binary_finds_its_node_cli_through_a_symlink`)
+- [x] 2.3 Refuse the cases the node CLI cannot be run in, with the codes a shell uses (`front_door`: `a_missing_node_cli_is_exit_2_and_names_where_it_looked`, `a_node_that_cannot_run_is_exit_127_or_126`, `node_is_looked_up_on_path_when_no_node_is_pinned`, `the_binary_finds_its_node_cli_through_a_symlink`)
 - [x] 2.4 Leave SIGPIPE at its default for the node CLI and ignore a closed stdout like the node CLI does (`front_door`: `the_node_cli_starts_with_sigpipe_at_its_default`, `a_closed_stdout_is_not_an_error`)
 - [x] 2.5 Pin the group invariant and the exit codes to the data file (`front_door`: `a_group_is_served_by_one_program_wholly`, `exit_codes_in_the_code_are_the_ones_the_data_file_names`)
 
@@ -31,3 +31,4 @@
 - [x] 5.1 `.github/workflows/rust.yml`: `cargo fmt --check`, `clippy -D warnings`, `cargo test`, `pnpm build` and the parity suite, on changes to the Rust workspace, `spec/` and `packages/core/` (the workflow run of the pull request)
 - [x] 5.2 One page under `docs/architecture/` describing the front door, the lookup order, the spec file and how to run the parity suite (`pnpm docs:build`)
 - [x] 5.3 `pnpm spec:check` accepts this change
+- [ ] 5.4 When the change is archived, replace the placeholder Purpose that `openspec archive` writes into the new `core-front-door` spec by hand (the delta format has no place for a Purpose), then run `pnpm spec:check`
