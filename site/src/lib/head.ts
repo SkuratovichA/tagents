@@ -1,3 +1,4 @@
+import { DESCRIPTION } from '../content'
 import { asset } from './base'
 
 type Meta =
@@ -33,5 +34,17 @@ export function pageHead(
       { name: 'twitter:card', content: 'summary' },
     ],
     links: [{ rel: 'canonical', href: url }],
+  }
+}
+
+/** The head of the page for an address nothing answers: it names no address of its own, since it is served at every one of them, and asks search engines to leave it out. */
+export function notFoundHead(origin: string | null = __SITE_ORIGIN__): Head {
+  const { meta, links } = pageHead('Page not found: tagents', DESCRIPTION, origin)
+  return {
+    meta: [
+      ...meta.filter((entry) => !('property' in entry && entry.property === 'og:url')),
+      { name: 'robots', content: 'noindex' },
+    ],
+    links: links.filter(({ rel }) => rel !== 'canonical'),
   }
 }
