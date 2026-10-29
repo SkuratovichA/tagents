@@ -9,6 +9,7 @@ import {
   findRemoteCss,
   findRemoteLoads,
   isMountedPath,
+  mountsNeedRootBase,
   requiredFiles,
   resolveReference,
   servedPath,
@@ -160,6 +161,22 @@ describe('checkLinks', () => {
     const found = await listFiles(root)
     expect((await checkLinks(root, found, BASE, null, ['docs/'])).problems).toEqual([])
     expect((await checkLinks(root, found, BASE)).problems.length).toBeGreaterThan(0)
+  })
+
+  it('resolves a link with a fragment into a mounted directory to its file and does not look for the fragment', async () => {
+    const root = await site({
+      'index.html': `<a href="${BASE}docs/#nope">docs</a>`,
+      'docs/index.html': '<h1>no such id</h1>',
+    })
+    const found = await listFiles(root)
+    expect((await checkLinks(root, found, BASE, null, ['docs/'])).problems).toEqual([])
+    expect((await checkLinks(root, found, BASE)).problems).toEqual([
+      {
+        page: 'index.html',
+        reference: `${BASE}docs/#nope`,
+        reason: 'no element with id "nope" in docs/index.html',
+      },
+    ])
   })
 
   it('reports a link into a mounted directory that is not in the output', async () => {
@@ -345,5 +362,24 @@ describe('requiredFiles', () => {
 
   it('asks for the documentation by default', () => {
     expect(requiredFiles(null)).toContain('docs/index.html')
+  })
+})
+
+describe('the mounts and the base of the site', () => {
+  it('knows a path of the documentation, with or without its slash, under the default mounts', () => {
+    expect(isMountedPath('/docs/', '/')).toBe(true)
+    expect(isMountedPath('/docs', '/')).toBe(true)
+    expect(isMountedPath('/docs/guide/', '/')).toBe(true)
+    expect(isMountedPath('/docsx', '/')).toBe(false)
+    expect(isMountedPath('/documents/', '/')).toBe(false)
+    expect(isMountedPath('/x/docs', '/x/')).toBe(true)
+    expect(isMountedPath('/docs/', '/x/')).toBe(false)
+  })
+
+  it('serves the documentation only from the root of the site', () => {
+    expect(mountsNeedRootBase('/')).toBeNull()
+    expect(mountsNeedRootBase('/x/')).toContain('/x/')
+    expect(mountsNeedRootBase('/x/')).toContain('docs/')
+    expect(mountsNeedRootBase('/x/', [])).toBeNull()
   })
 })

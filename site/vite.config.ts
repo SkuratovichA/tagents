@@ -2,7 +2,7 @@ import tailwindcss from '@tailwindcss/vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
-import { isMountedPath } from './build/links.ts'
+import { prerenderOptions } from './build/prerender.ts'
 import { readSiteConfig } from './build/site-config.ts'
 
 const site = readSiteConfig(process.env)
@@ -18,13 +18,7 @@ export default defineConfig({
     tanstackStart({
       // sitemap.xml is written by build/postbuild.ts, from the pages that were prerendered.
       sitemap: { enabled: false },
-      prerender: {
-        enabled: true,
-        crawlLinks: true,
-        failOnError: true,
-        // The router has no routes in a mounted directory, so a crawled link into one would prerender its not-found page where the other tool's pages belong.
-        filter: (page) => !isMountedPath(page.path, site.base),
-      },
+      prerender: prerenderOptions(site.base),
       // GitHub Pages serves 404.html for every unknown address.
       pages: [{ path: '/404', prerender: { outputPath: '/404.html' } }],
     }),
