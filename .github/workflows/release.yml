@@ -2,7 +2,7 @@ name: release
 
 # Publishes the prebuilt `tagents-core` of one version as a GitHub release: three archives with a checksum each, which install.sh fetches for the managed copy that holds that version in its Cargo.toml (docs/architecture/rust-core.md, "How a release is made"). The logic lives in .github/scripts/core-release.sh; this file only calls it.
 #
-# A release is made by pushing the tag v<version> on a commit of main whose workspace version is <version>. The release of a tag that failed halfway is made by running this workflow by hand with that tag. A pull request that changes this file or the scripts runs the three builds as a dry run: the tag rules do not apply to it and nothing is published.
+# A release is made by pushing the tag v<version> on a commit of main whose workspace version is <version>. The release of a tag that failed halfway is made by running this workflow by hand with that tag. A pull request that changes this file, the scripts or an input of the binary (the `pull_request.paths` below) runs the three builds as a dry run: the tag rules do not apply to it and nothing is published.
 on:
   push:
     tags:

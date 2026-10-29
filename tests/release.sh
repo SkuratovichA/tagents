@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# tests/release.sh — the release path of the Rust tagents-core, as far as it can be proved without GitHub: the workspace version reader, the release archive and its checksum, the gate that makes a change to the binary change the version, the rules a tag must meet, and the second copy of the version reader that install.sh keeps.
+# tests/release.sh — the release path of the Rust tagents-core, as far as it can be proved without GitHub: the workspace version reader, the release archive and its checksum, the gate that fails a change to an input of the binary unless the workspace version is strictly above the merge base's, the rules a tag must meet, the second copy of the version reader that install.sh keeps, and the pins that keep release.yml, rust.yml, core-release.sh and install.sh agreeing.
 #
 # Everything runs in a mktemp dir: throwaway git repositories for the gate and the tag rules, a stub in place of the binary, and a minimal origin for install.sh, which is run only far enough to read the version out of a Cargo.toml (see section 5). No network (a curl shim refuses anything that is not a file:// URL), no tmux, no node.
 #

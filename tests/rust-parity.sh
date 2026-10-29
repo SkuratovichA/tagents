@@ -7,6 +7,7 @@
 # The homes come from tests/rust-parity-seed.mts: the two sessions of the checked-in fixtures, and about 600 more built so that
 # JavaScript and a naive port disagree (UTF-16 lengths, white space, JSON.parse, rounding, sort order, case folding, windows, file kinds).
 # A few "tripwire" cases assert on the node output alone, so a seed that silently stopped provoking a divergence fails here instead of passing for nothing.
+# One case at the end is not a comparison: it packages the debug binary, serves it as a file:// release in a sandbox and runs the whole installer, which has to accept its `--version` line; it fails with a warning that says `for --version` when the binary is older than Cargo.toml, because the suite builds a binary only when none exists.
 #
 # Needs a built node CLI (pnpm build) and python3 (the seed sets exact mtimes). Uses no real home, no tmux, no network. bash 3.2.
 
