@@ -8,6 +8,8 @@
 # the build step is TAGENTS_BUILD_CMD, a shell command each case sets to what it
 # wants to prove. Nothing outside the mktemp dir is written.
 #
+# The stub tagents of the origin answers the setup verb by writing down how it was called (section 15), which is all install.sh's hook-up to `tagents setup` needs proving here; the verb itself is tests/setup.sh.
+#
 # The prebuilt Rust tagents-core (section 14) is fetched from a directory of release files built by the real .github/scripts/core-release.sh around a stub binary, through a file:// TAGENTS_CORE_BASE_URL; no case reaches the network.
 #
 # bash 3.2, runnable from any cwd, non-zero exit when any check fails.
@@ -58,6 +60,20 @@ mkorigin() {
     git init -q -b main . && git config user.email t@example.com && git config user.name t
     mkdir -p hooks packages/core/dist/cli packages/knowledge/dist/cli packages/notify/dist packages/mcp/dist
     for f in tagents tusage tnotes; do printf '#!/bin/sh\necho "%s v1 $*"\n' "$f" > "$f"; chmod +x "$f"; done
+    # install.sh calls `tagents setup` when a fresh install or an update needs it. The stub says nothing, writes down its arguments and what the first hooks directory held at that moment, and exits with the status a case leaves in $HOME/setup.status.
+    cat > tagents <<'STUB'
+#!/bin/sh
+if [ "${1:-}" = setup ]; then
+  shift
+  printf '%s\n' "$*" >> "$HOME/setup.calls"
+  ls "$HOOKS_A" 2>/dev/null | tr '\n' ' ' | sed 's/ $//' >> "$HOME/setup.hooks"; echo >> "$HOME/setup.hooks"
+  exit "$(cat "$HOME/setup.status" 2>/dev/null || echo 0)"
+fi
+echo "tagents v1 $*"
+STUB
+    chmod +x tagents
+    # The registration `tagents setup` reads. install_hooks wraps hooks/*.sh and nothing else, so the file has to be inert to it.
+    cp "$ROOT/hooks/claude-settings.json" hooks/claude-settings.json
     # The hook echoes its stdin: a wrapper that dropped it would break every hook.
     printf '#!/bin/sh\necho "state v1 $* <$(cat)>"\n' > hooks/tmux-agent-state.sh
     printf '#!/bin/sh\necho "notes v1"\n' > hooks/notes-context.sh
@@ -807,6 +823,83 @@ out=$(run_native --check); rc=$?
 ok "--check exits 0" 0 "$rc"
 ok "...makes no request" 0 "$(calls)"
 ok "...and leaves the binary and its marker as they are" "$before" "$(inodes)"
+
+# ---------------------------------------------------------------------------
+t "15. the Claude Code settings: \`tagents setup\` runs after an install that needs it, and not otherwise"
+# ---------------------------------------------------------------------------
+setup_argv()  { cat "$HOME_DIR/setup.calls" 2>/dev/null || true; }
+setup_count() { if [ -f "$HOME_DIR/setup.calls" ]; then wc -l < "$HOME_DIR/setup.calls" | tr -d ' '; else echo 0; fi; }
+
+mkorigin; fresh_env
+out=$(run); rc=$?
+ok "a fresh install: exit status" 0 "$rc"
+ok "...runs setup once" 1 "$(setup_count)"
+ok "...with the hooks directories it installed into, in the order given" "--hooks-dir $HOOKS_A --hooks-dir $HOOKS_B" "$(setup_argv)"
+ok "...after the hook wrappers were written" "notes-context.sh tmux-agent-state.sh" "$(cat "$HOME_DIR/setup.hooks")"
+ok "...and the registration is not wrapped as a hook, there or in the second directory" "no no" "$([ -e "$HOOKS_A/claude-settings.json" ] && echo yes || echo no) $([ -e "$HOOKS_B/claude-settings.json" ] && echo yes || echo no)"
+out=$(run); rc=$?
+ok "a run that moves nothing: exit status" 0 "$rc"
+ok "...does not run it again" 1 "$(setup_count)"
+advance sh -c 'echo v2 > VERSION'
+out=$(run); rc=$?
+ok "an update that changes some other file: exit status" 0 "$rc"
+ok "...does not run it" 1 "$(setup_count)"
+advance sh -c 'printf "\n" >> hooks/claude-settings.json'
+out=$(run --check); rc=$?
+contains "--check after the registration changed says the copy is behind" "behind: " "$out"
+ok "...and runs nothing" 1 "$(setup_count)"
+out=$(run); rc=$?
+ok "an update that changes the registration: exit status" 0 "$rc"
+ok "...runs it" 2 "$(setup_count)"
+ok "...with the arguments of the first time" 1 "$(setup_argv | sort -u | wc -l | tr -d ' ')"
+ok "...and the hand-over to the new installer did not lose the hooks directories" "--hooks-dir $HOOKS_A --hooks-dir $HOOKS_B" "$(setup_argv | tail -n 1)"
+
+mkorigin; fresh_env
+out=$(run --quiet); rc=$?
+ok "--quiet: exit status" 0 "$rc"
+ok "...is passed on" "--quiet --hooks-dir $HOOKS_A --hooks-dir $HOOKS_B" "$(setup_argv)"
+ok "...and the installer itself says nothing" "" "$out"
+
+mkorigin; fresh_env
+out=$(run --check); rc=$?
+ok "--check on a machine with no copy runs nothing" 0 "$(setup_count)"
+
+mkorigin; fresh_env
+advance git rm -q hooks/claude-settings.json
+out=$(run); rc=$?
+ok "a fresh install of a copy that has no registration: exit status" 0 "$rc"
+ok "...has nothing to register, so runs nothing" 0 "$(setup_count)"
+advance git checkout -q HEAD~1 -- hooks/claude-settings.json
+out=$(run); rc=$?
+ok "the update that brings the registration: exit status" 0 "$rc"
+ok "...runs it" 1 "$(setup_count)"
+advance git rm -q hooks/claude-settings.json
+out=$(run); rc=$?
+ok "the update that takes it away: exit status" 0 "$rc"
+ok "...runs nothing" 1 "$(setup_count)"
+
+mkorigin; fresh_env
+printf 1 > "$HOME_DIR/setup.status"
+out=$(run); rc=$?
+ok "a setup that fails: the install ends with status 1" 1 "$rc"
+contains "...with the warning" "tagents install: the Claude Code settings were not all set up, see above" "$out"
+ok "...said once" 1 "$(printf '%s\n' "$out" | grep -c 'not all set up')"
+lacks "...and it does not claim to have installed everything" "install: installed " "$out"
+ok "...after the commands were installed" "tagents v1 " "$("$TAGENTS_BIN/tagents")"
+ok "...and the hook wrappers in both directories" "yes" "$([ -x "$HOOKS_A/tmux-agent-state.sh" ] && [ -x "$HOOKS_B/tmux-agent-state.sh" ] && echo yes || echo no)"
+rm -f "$HOME_DIR/setup.status"
+out=$(run); rc=$?
+ok "the next run, with nothing moved, does not try again and ends well" "0 1" "$rc $(setup_count)"
+
+# The arguments install.sh builds are the ones the real verb takes: what a quiet install passed to the stub is handed to the verb itself, with --check and a config directory of the sandbox, so that nothing is written whatever the machine holds. A refusal of the options is exit status 2.
+mkorigin; fresh_env
+run --quiet >/dev/null
+# shellcheck disable=SC2046
+out=$(env -u CLAUDE_CONFIG_DIR HOME="$HOME_DIR" XDG_CONFIG_HOME="$HOME_DIR/.config" TA_CONFIG="$HOME_DIR/.config/tagents/config.toml" TMPDIR="$TMP" \
+        bash "$ROOT/tagents" setup $(setup_argv) --check --config-dir "$HOME_DIR/claude-a" 2>&1); rc=$?
+case $rc in 0|1) verdict=accepted ;; *) verdict="refused with status $rc" ;; esac
+ok "the real verb takes the arguments install.sh passes" accepted "$verdict"
+lacks "...without a word about an option" "option" "$out"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

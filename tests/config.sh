@@ -440,7 +440,7 @@ nlines() { printf '%s' "$1" | awk 'END { print NR }'; }
 # Logins that exist and have been used, for the profiles that are meant to pass.
 mkdir -p "$TMP/logins/personal" "$TMP/logins/work"
 : >"$TMP/logins/personal/.claude.json"
-: >"$TMP/logins/work/settings.json"
+: >"$TMP/logins/work/.claude.json"
 
 # The checker is format-blind, so its fixtures are in the format a config is written in now. The YAML reader's own refusals, and what a YAML config is told, are the last cases of this section and tests/config-toml.sh.
 cat >"$TMP/good.toml" <<EOF
@@ -531,6 +531,16 @@ contains "a profile called ask can never be launched" \
 ok "five problems, five lines" 5 "$(nlines "$out")"
 contains "...and the header counts the same five" "config: 5 problems (tagents --check)" \
    "$(HOME="$TMP/home" TA_CONFIG="$TMP/kinds.toml" bash "$TA" --header 120 'open here' 'ctrl-q quit' 2>/dev/null)"
+
+# A settings.json alone is not a sign of use: `tagents setup` writes one into a config directory nobody has logged into yet, and the note has to stay for it.
+mkdir -p "$TMP/logins/setup-only"; : >"$TMP/logins/setup-only/settings.json"
+cat >"$TMP/setup-only.toml" <<EOF
+[claude.profiles.setuponly]
+config_dir = "$TMP/logins/setup-only"
+EOF
+contains "a directory that holds only a settings.json has never been used either" \
+   "claude.profiles.setuponly.config_dir: $TMP/logins/setup-only has never been used by Claude" \
+   "$(HOME="$TMP/home" TA_CONFIG="$TMP/setup-only.toml" bash "$TA" --check 2>/dev/null)"
 
 # The names that have to be profiles: in a rule, as the default, as the watch.
 cat >"$TMP/names.toml" <<EOF
