@@ -105,6 +105,7 @@ tagents --config                    # the file as tagents reads it, path<TAB>val
 tagents --profile-for ~/git/work    # which profile the rules pick for a directory
 tagents --agent-cmd personal new    # the exact command string a launch would run
 tagents --new ~/git/thing personal  # start one from outside the dashboard
+tagents --window ~/git/thing 'pnpm dev'  # the same for a plain window running a command
 ```
 
 `--config` is the thing to look at when a rule will not fire: it prints one leaf per line (`claude.rules.0.dir`), which is also how a rule is referred to in the warnings.

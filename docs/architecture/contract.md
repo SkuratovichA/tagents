@@ -8,8 +8,8 @@ The Claude Code plugin tells a session exactly what every tagents command and pa
 
 | what | read from | lands in |
 |------|-----------|----------|
-| every verb, flag and exit code of `tagents-core` and `tagents-knowledge` | the command specs `parseArgs` itself is handed, `packages/*/src/cli/spec.ts` | `contract.json`, `references/cli.md` |
-| every MCP tool and its input schema | the server `createServer()` builds, asked for its tool list the way a client asks | `contract.json`, `references/mcp.md` |
+| every verb, flag, exit code and effect of `tagents-core`, `tagents-knowledge` and `tagents-notify`, and of the flags of `tagents` that are not interactive | the command specs `parseArgs` itself is handed, `packages/*/src/cli/spec.ts`, and `tagents.cli.json` for the bash script | `contract.json`, `references/cli.md` |
+| every MCP tool and its input schema | the knowledge server `createServer()` builds, asked for its tool list the way a client asks, and the tools of the `tagents` server, which `toolSpecs()` derives from the verbs above | `contract.json`, `references/mcp.md` |
 | the public TypeScript API of each package | declarations emitted from the sources, through [API Extractor](https://api-extractor.com/) | `references/*.api.md`, and a hash of each in `contract.json` |
 | the flags of `tagents`, `tusage` and `tnotes` | each script's own `--help` | `references/scripts.md` |
 
@@ -24,10 +24,20 @@ The Claude Code plugin tells a session exactly what every tagents command and pa
 
 Two details:
 
-- The bash scripts have no spec to read, so a change in their help counts as text.
+- The bash scripts have no spec to read, so a change in their help counts as text. The exception is `tagents.cli.json`, the hand-written description of the non-interactive flags of `tagents`: it is structural like any spec, and a test pins it against `tagents --help`, so a flag renamed in the help and not in the file fails the tests.
 - Text that is part of an exported type is a signature. `@tagents/core` and `@tagents/knowledge` export their English string table with literal types, so an edited English message there is a minor bump too.
 
 An installed plugin stays on its version until the version changes, which is why the bump is not left to memory.
+
+## The tools follow the verbs
+
+The `tagents` MCP server (`packages/mcp`) has one tool for each verb that is in a spec above, except the verbs that run until they are stopped, and it knows no verb by name: `toolSpecs()` derives the tools from the specs, the generator records them in `contract.json` under `mcp.tagents.tools`, and the server derives them again from that file when it starts. A verb added to a spec is therefore a new tool, a new digest and a minor bump after `pnpm plugin:gen`, with no tool code written.
+
+A verb may declare an `effect` (`read`, `write`, `spawn`, `destructive` or `serve`) and `requires: 'tmux'`. The effect becomes the tool's annotations, which is what Claude Code's permission prompt shows. A verb that declares none is offered as a tool that is not read-only, and `pnpm plugin:gen` and `pnpm plugin:check` print a `notice:` line naming it, without failing.
+
+```ts
+{ path: ['session', 'abort'], summary: 'summarySessionAbort', effect: 'destructive', /* … */ }
+```
 
 ## Three things keep it honest
 
