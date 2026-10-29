@@ -42,7 +42,7 @@
 #   TAGENTS_BUILD_CMD  run in the copy after a move     pnpm install --frozen-lockfile && pnpm build
 #   TAGENTS_LAUNCHD_DIR, TAGENTS_NO_LAUNCHCTL=1         where the plist goes, and not loading it
 #   TAGENTS_NO_NATIVE=1   do not fetch the Rust tagents-core, and remove a prebuilt one (a hand-built one stays)
-#   TAGENTS_CORE_BASE_URL where the release files are (a directory URL, https:// or file://)   https://github.com/SkuratovichA/tagents/releases/download/v<version>
+#   TAGENTS_CORE_BASE_URL where the release files are (a directory URL that starts with https:// or file://; any other scheme is refused with a warning)   https://github.com/SkuratovichA/tagents/releases/download/v<version>
 #   TAGENTS_CORE_TARGET   the target to fetch for: x86_64-unknown-linux-musl, x86_64-apple-darwin or aarch64-apple-darwin   from uname
 #   TAGENTS_MOVED_FROM  internal: the commit the copy left, set by the run that moved it for the run it hands over to
 #
@@ -138,6 +138,7 @@ core_triple() {
   esac
 }
 
+# The SHA-256 of the file $1. This is a second copy of `sha256_of` in .github/scripts/core-release.sh, because the installer has to stay one standalone file (`curl | sh`); the third is the inline `sha256sum -c` / `shasum -c` step of .github/workflows/release.yml. tests/release.sh runs both functions over one file and compares what they print.
 sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | cut -d ' ' -f 1
@@ -146,13 +147,12 @@ sha256_of() {
   fi
 }
 
-# One file of the release into $2. A mirror or a directory given as TAGENTS_CORE_BASE_URL is fetched as it is; GitHub is fetched over HTTPS only, TLS 1.2 or newer, with a retry of a transient failure. Every wait is bounded, because a daily run must not hang on a night without a network.
+# One file of the release into $2, over the one protocol its URL names: https:// is held to HTTPS, TLS 1.2 or newer, with a retry of a transient failure, and file:// to files. fetch_native lets no other scheme through. Every wait is bounded, because a daily run must not hang on a night without a network.
 download() {
-  if [ -n "${TAGENTS_CORE_BASE_URL:-}" ]; then
-    curl -fsSL --connect-timeout 15 --max-time 120 -o "$2" "$1"
-  else
-    curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 --retry 2 -o "$2" "$1"
-  fi
+  case $1 in
+    file://*) curl -fsSL --proto '=file' --connect-timeout 15 --max-time 120 -o "$2" "$1" ;;
+    *) curl -fsSL --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 --retry 2 -o "$2" "$1" ;;
+  esac
 }
 
 # The binary and the marker that vouches for it. Only called where the marker exists or nothing does, so what it removes is ours.
@@ -163,6 +163,7 @@ drop_native() {
 # Checks the download in $1 and puts it in place; 1 after a warning, with nothing installed, when any check fails. The order is the order of trust: the hash of the archive, then the archive's members, then what the binary says it is, and only then the marker (first) and the binary (second, renamed into place), so an interruption between the two leaves a marker that does not match, which the next run removes, and never a binary that looks hand-built.
 check_and_place() {  # <dir> <archive> <version> <triple>
   dir=$1; archive=$2; version=$3; triple=$4
+  expected=''
   read -r expected _ < "$dir/$archive.sha256" || true
   case $expected in
     '' | *[!0-9a-f]*) warn "$archive.sha256 does not start with a SHA-256, so the prebuilt tagents-core was not installed"; return 1 ;;
@@ -245,8 +246,16 @@ fetch_native() {
   fi
   base=${TAGENTS_CORE_BASE_URL:-https://github.com/SkuratovichA/tagents/releases/download/v$version}
   base=${base%/}
+  case $base in
+    https://* | file://*) ;;
+    *) warn "TAGENTS_CORE_BASE_URL has to start with https:// or file://, so the prebuilt tagents-core was not fetched"; NATIVE_FAILED=1; return 0 ;;
+  esac
+  if [ -n "${TAGENTS_CORE_BASE_URL:-}" ]; then say "fetching the prebuilt tagents-core from $base"; fi
   archive=tagents-core-$version-$triple.tar.gz
-  FETCH_DIR=$(mktemp -d "${TMPDIR:-/tmp}/tagents-core.XXXXXX") || { warn "cannot make a temporary directory, so the prebuilt tagents-core was not fetched"; NATIVE_FAILED=1; return 0; }
+  # In the tree and not in /tmp: the binary is run once to read its version before it is placed, and a /tmp mounted noexec would fail that on every daily run.
+  if ! mkdir -p "$TAGENTS_HOME/target" || ! FETCH_DIR=$(mktemp -d "$TAGENTS_HOME/target/tagents-core.XXXXXX"); then
+    FETCH_DIR=''; warn "cannot make a temporary directory in $TAGENTS_HOME/target, so the prebuilt tagents-core was not fetched"; NATIVE_FAILED=1; return 0
+  fi
   for file in "$archive.sha256" "$archive"; do
     if ! download "$base/$file" "$FETCH_DIR/$file"; then
       say "no prebuilt tagents-core $version for $triple ($base/$file), using the node CLI"

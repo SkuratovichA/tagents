@@ -464,8 +464,14 @@ ok "the binary answers through the wrapper, with every argument" "native-core 0.
 ok "two files were requested: the checksum, then the archive" "2" "$(calls)"
 contains "the checksum was asked for first" "$ARCHIVE.sha256" "$(head -n 1 "$CURL_LOG")"
 contains "every wait is bounded, whatever the URL" "--connect-timeout 15 --max-time 120" "$(cat "$CURL_LOG")"
-lacks "a directory given as the base is not held to HTTPS only" "--proto" "$(cat "$CURL_LOG")"
-ok "the temporary directory is removed" "" "$(ls -A "$TMP/fetch-tmp")"
+contains "a file:// base is held to files" "--proto =file" "$(cat "$CURL_LOG")"
+lacks "...and not allowed anything else" "--proto =https" "$(cat "$CURL_LOG")"
+contains "the override is announced, once" "fetching the prebuilt tagents-core from file://$RELEASES/v0.1.0" "$out"
+ok "...exactly once" 1 "$(printf '%s\n' "$out" | grep -c 'fetching the prebuilt tagents-core')"
+# The binary is run once to read its version before it is placed, so the download lives where the binary will, and not in a TMPDIR that may be mounted noexec.
+contains "the download goes to a directory under target/ of the copy" "-o $TAGENTS_HOME/target/tagents-core." "$(cat "$CURL_LOG")"
+lacks "...and not to TMPDIR" "$TMP/fetch-tmp" "$(cat "$CURL_LOG")"
+ok "the temporary directory is removed: target/ holds only release" "release" "$(ls -A "$TAGENTS_HOME/target")"
 
 # --- the same version again: nothing happens, and the network is not touched --
 before=$(inodes); marker_before=$(cat "$RUST_BIN.release")
@@ -507,7 +513,8 @@ contains "and says what the run came to" "the prebuilt tagents-core was not inst
 nothing_installed "the 0.1.0 binary does not stay beside a failed 0.1.1"
 ok "the wrappers were written all the same" "tagents v1 " "$("$TAGENTS_BIN/tagents")"
 node_cli_answers "after a failed check"
-ok "the temporary directory is removed" "" "$(ls -A "$TMP/fetch-tmp")"
+ok "the temporary directory is removed after a failed check as well" 0 "$(ls -A "$TAGENTS_HOME/target" | grep -c '^tagents-core\.' || true)"
+ok "...and nothing was made in TMPDIR for it" "" "$(ls -A "$TMP/fetch-tmp")"
 make_release 0.1.1 "$TRIPLE"
 printf '%s  %s\n' "$(printf 0%.0s $(seq 1 64))" "tagents-core-0.1.1-$TRIPLE.tar.gz" > "$RELEASES/v0.1.1/tagents-core-0.1.1-$TRIPLE.tar.gz.sha256"
 out=$(run_native); rc=$?
@@ -529,6 +536,31 @@ for bad in "not-a-hash  $ARCHIVE" "${good%????}  $ARCHIVE" "${good}00  $ARCHIVE"
   contains "...with the reason" "$ARCHIVE.sha256 does not start with a SHA-256" "$out"
   nothing_installed "...and nothing is installed"
 done
+
+# The first line of the checksum file and its first field are all that count.
+fresh_native 0.1.0
+good=$(cut -d ' ' -f 1 "$RELEASES/v0.1.0/$ARCHIVE.sha256")
+: > "$RELEASES/v0.1.0/$ARCHIVE.sha256"
+out=$(run_native); rc=$?
+ok "a checksum file of 0 bytes exits 1" 1 "$rc"
+contains "...with the reason" "$ARCHIVE.sha256 does not start with a SHA-256" "$out"
+nothing_installed "...and nothing is installed"
+printf 'garbage here\n%s  %s\n' "$good" "$ARCHIVE" > "$RELEASES/v0.1.0/$ARCHIVE.sha256"
+out=$(run_native); rc=$?
+ok "a checksum file whose first line is garbage and whose second line is the right hash exits 1" 1 "$rc"
+contains "...with the reason" "$ARCHIVE.sha256 does not start with a SHA-256" "$out"
+nothing_installed "...and nothing is installed"
+printf '%s  %s' "$good" "$ARCHIVE" > "$RELEASES/v0.1.0/$ARCHIVE.sha256"
+out=$(run_native); rc=$?
+ok "a checksum file with the right hash and no newline at the end exits 0" 0 "$rc"
+ok "...and installs the binary" "native-core 0.1.0 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+fresh_native 0.1.0
+printf 'this is not a tarball\n' > "$RELEASES/v0.1.0/$ARCHIVE"
+printf '%s  %s\n' "$(sha_of "$RELEASES/v0.1.0/$ARCHIVE")" "$ARCHIVE" > "$RELEASES/v0.1.0/$ARCHIVE.sha256"
+out=$(run_native); rc=$?
+ok "a file that is not an archive, whose checksum matches it, exits 1" 1 "$rc"
+contains "...with the reason" "does not hold exactly tagents-core and LICENSE" "$out"
+nothing_installed "...and nothing is installed"
 
 # --- an archive that is not exactly tagents-core and LICENSE ---------------------
 STAGE=$TMP/stage
@@ -706,6 +738,35 @@ ok "a Cargo.toml with no usable version exits 0" 0 "$rc"
 contains "...says so" "no workspace version in $TAGENTS_HOME/Cargo.toml, using the node CLI" "$out"
 nothing_installed "...and keeps no binary"
 
+# --- a base URL that is not https:// or file:// is not fetched from --------------------
+fresh_native 0.1.0
+for bad in http://mirror.example/tagents ftp://mirror.example/tagents /some/dir/tagents /some/dir/ / mirror.example/tagents; do
+  export TAGENTS_CORE_BASE_URL=$bad
+  out=$(run_native); rc=$?
+  ok "a base URL of '$bad' ends the run with status 1" 1 "$rc"
+  contains "...with a warning that names the variable" "TAGENTS_CORE_BASE_URL has to start with https:// or file://, so the prebuilt tagents-core was not fetched" "$out"
+  ok "...and no request was made" 0 "$(calls)"
+  nothing_installed "...and nothing is installed"
+  node_cli_answers "...and the node CLI still runs"
+done
+fresh_native 0.1.0
+export TAGENTS_CORE_BASE_URL=https://mirror.example/tagents/v0.1.0/
+out=$(PATH="$TMP/curlfail:$TMP/node-c:$PATH" run); rc=$?
+ok "an https:// override that cannot be reached exits 0" 0 "$rc"
+contains "...it is announced" "fetching the prebuilt tagents-core from https://mirror.example/tagents/v0.1.0" "$out"
+contains "...the request goes to the mirror" "https://mirror.example/tagents/v0.1.0/$ARCHIVE.sha256" "$(cat "$CURL_LOG")"
+contains "...held to HTTPS, TLS 1.2 or newer" "--proto =https --tlsv1.2" "$(cat "$CURL_LOG")"
+contains "...and retried" "--retry 2" "$(cat "$CURL_LOG")"
+fresh_native 0.1.0
+mkdir -p "$TAGENTS_HOME"; TAGENTS_NO_NATIVE=1 run_native >/dev/null
+use_release 0.1.0
+touch "$TAGENTS_HOME/target"
+out=$(run_native); rc=$?
+ok "a target/ that cannot be made a directory exits 1" 1 "$rc"
+contains "...with the reason" "cannot make a temporary directory in $TAGENTS_HOME/target" "$out"
+ok "...and no request was made" 0 "$(calls)"
+rm -f "$TAGENTS_HOME/target"
+
 # --- a base URL with a trailing slash; the real URL and its flags ---------------
 fresh_native 0.1.0
 export TAGENTS_CORE_BASE_URL=file://$RELEASES/v0.1.0/
@@ -716,6 +777,7 @@ rm -f "$CURL_LOG"
 out=$(PATH="$TMP/curlfail:$TMP/node-c:$PATH" run); rc=$?
 ok "GitHub being unreachable exits 0" 0 "$rc"
 contains "the URL is the release of the version, on GitHub" "(https://github.com/SkuratovichA/tagents/releases/download/v0.1.0/$ARCHIVE.sha256)" "$out"
+lacks "the default URL is not announced" "fetching the prebuilt" "$out"
 contains "the request is HTTPS only, TLS 1.2 or newer" "--proto =https --tlsv1.2" "$(cat "$CURL_LOG")"
 contains "...bounded in time" "--connect-timeout 15 --max-time 120" "$(cat "$CURL_LOG")"
 contains "...and retried" "--retry 2" "$(cat "$CURL_LOG")"
