@@ -274,6 +274,26 @@ test('--write never overwrites a config.toml that is already there', () => {
   assert.equal(fs.readFileSync(path.join(dir, 'config.toml'), 'utf8'), '# mine\n');
 });
 
+test('--write that loses a race for the second target removes the first and leaves the other file alone', () => {
+  const dir = dirWith({ 'config.yaml': 'usage:\n  workdays: true\n', 'config.studio.yaml': 'notes:\n  send: paste\n' });
+  // A dangling symlink is not "there" to the up-front check, but `wx` refuses it with EEXIST.
+  const theirs = path.join(dir, 'config.studio.toml');
+  fs.symlinkSync(path.join(dir, 'nowhere'), theirs);
+  const r = runCli(['config', 'convert', '--all', '--write'], inDir(dir));
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /could not write .*config\.studio\.toml/);
+  assert.ok(!fs.existsSync(path.join(dir, 'config.toml')), 'the first target is rolled back');
+  assert.ok(fs.lstatSync(theirs).isSymbolicLink(), 'the file that was already there stays');
+});
+
+test('--write gives the TOML the permission bits of the YAML it came from', () => {
+  const dir = dirWith({ 'config.yaml': 'usage:\n  workdays: true\n' });
+  fs.chmodSync(path.join(dir, 'config.yaml'), 0o600);
+  const r = runCli(['config', 'convert', '--write'], inDir(dir));
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(fs.statSync(path.join(dir, 'config.toml')).mode & 0o777, 0o600);
+});
+
 test('--all converts the per-host overlays too, and --write is all or nothing', () => {
   const dir = dirWith({
     'config.yaml': 'usage:\n  workdays: true\n',

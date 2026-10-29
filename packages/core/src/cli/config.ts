@@ -25,6 +25,16 @@ function defaultSource(env: NodeJS.ProcessEnv): string {
   return named && named.trim() ? named : path.join(configDir(env), 'config.yaml');
 }
 
+/** Remove `file`, saying whether it is gone. A failing removal must not replace the error that made it necessary. */
+function removed(file: string): boolean {
+  try {
+    fs.rmSync(file, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function convert(argv: string[], io: Io, t: CoreT, env: NodeJS.ProcessEnv, cwd: string): number {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -59,14 +69,14 @@ function convert(argv: string[], io: Io, t: CoreT, env: NodeJS.ProcessEnv, cwd: 
       return EXIT.refused;
     }
   }
-  const converted: Array<{ source: string; target: string; toml: string }> = [];
+  const converted: Array<{ source: string; target: string; toml: string; mode: number }> = [];
   for (const source of sources) {
     const result = convertYamlConfig(source);
     if (!result.ok) {
       io.err(`${result.problem}\n`);
       return EXIT.refused;
     }
-    converted.push({ source, target: tomlTwin(source), toml: result.toml });
+    converted.push({ source, target: tomlTwin(source), toml: result.toml, mode: fs.statSync(source).mode & 0o777 });
   }
 
   if (!write) {
@@ -81,11 +91,14 @@ function convert(argv: string[], io: Io, t: CoreT, env: NodeJS.ProcessEnv, cwd: 
   const written: string[] = [];
   for (const c of converted) {
     try {
-      fs.writeFileSync(c.target, c.toml, { flag: 'wx' });
+      fs.writeFileSync(c.target, c.toml, { flag: 'wx', mode: c.mode });
       written.push(c.target);
     } catch (err) {
-      for (const file of written) fs.rmSync(file, { force: true });
+      // `wx` has created the target by the time most failures happen, so it goes too; on EEXIST the file is somebody else's and stays.
+      if (!(err instanceof Error && (err as NodeJS.ErrnoException).code === 'EEXIST')) written.push(c.target);
+      const stuck = written.filter((file) => !removed(file));
       io.err(`${t('configWriteFailed', { file: c.target, error: err instanceof Error ? err.message : String(err) })}\n`);
+      if (stuck.length > 0) io.err(`${t('configNotRemoved', { files: stuck.join(', ') })}\n`);
       return EXIT.error;
     }
   }
