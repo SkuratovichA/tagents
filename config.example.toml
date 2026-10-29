@@ -1,0 +1,169 @@
+#:schema https://raw.githubusercontent.com/SkuratovichA/tagents/main/schemas/config.schema.json
+# tagents — which Claude account an agent is started on.
+#
+# Copy to ~/.config/tagents/config.toml (or point $TA_CONFIG at it). With no
+# such file tagents behaves exactly as it did before this existed: a plain
+# `claude --dangerously-skip-permissions`, the environment inherited, and no
+# dialog ever.
+#
+# The #:schema line above makes an editor with a TOML language server (taplo,
+# Even Better TOML) check this file and show what every key means on hover.
+#
+# `tagents --config` prints this file the way tagents reads it, one
+# path<TAB>value line per leaf — the thing to look at when a rule will not fire.
+# `tagents --check` says what is wrong with it.
+#
+# A table (`[claude]`) owns every plain `key = value` line under it up to the next
+# header, so a plain key goes ABOVE the first sub-table of its table: `default`
+# belongs next to `args`, before `[claude.profiles.personal]`, and a line written
+# after a `[[claude.rules]]` header is that rule's.
+#
+# An old config.yaml still works while no config.toml exists, with a warning in
+# `tagents --check`. `tagents config convert` writes the TOML twin of it.
+
+# ONE FILE, SEVERAL MACHINES. Put the accounts that differ per machine in
+# config.<hostname>.toml next to this file (`hostname -s`): every `a.b` subtree
+# it names — claude.profiles, claude.rules, claude.default, notes.send … —
+# replaces the one here wholesale, everything else is inherited. Profiles and
+# rules are tables, so they are replaced and never merged: a profile whose
+# config_dir does not exist on this machine starts a logged-out Claude.
+#
+# NAME IT AFTER THE NAME THAT STAYS. The overlay is looked for under `hostname -s` and then, on a Mac, under the LocalHostName (`scutil --get LocalHostName`). Use the second there: with HostName never set, `hostname -s` is whatever macOS derived last and can be something else after a reboot, and an overlay that is not found means the profiles below apply without a word.
+
+[claude]
+# Arguments every agent is started with, unless a profile overrides them.
+# A string (passed verbatim, your own shell words) or a list (each item is
+# quoted, which is how an argument containing a space gets through):
+#   args = ["--dangerously-skip-permissions", "--model", "opus 4"]
+args = "--dangerously-skip-permissions"
+
+# When no rule matches. The default is `ask` — a small picker over the
+# profiles below. Any profile name works here instead.
+# default = "ask"
+
+# An account is a Claude Code config dir, and it is a whole login rather than
+# a preference: Claude derives its keychain item from the literal path. Omit
+# config_dir for the default account — omit it, do not write ~/.claude, since
+# an explicitly set CLAUDE_CONFIG_DIR is a different keychain item from an
+# unset one.
+[claude.profiles.personal]
+config_dir = "~/.claude-personal"
+# badge = "p"    # the one or two characters the column before the agent name
+#                # shows for this account. Defaults to the first character of
+#                # the profile name, so personal and work are already p and
+#                # w — set it only when two accounts start with the same one.
+
+[claude.profiles.work]
+# config_dir omitted: CLAUDE_CONFIG_DIR is unset for this one
+# command = "claude"                                    # the binary to run
+# args = "--dangerously-skip-permissions --model opus"  # replaces claude.args
+# [claude.profiles.work.env]                            # extra environment
+# ANTHROPIC_BASE_URL = "https://proxy.example.com"
+
+# First matching rule wins. `dir` matches the agent's directory and everything
+# under it (by path component: ~/git/personalx is not under ~/git/personal).
+# `session` matches when the tmux session name CONTAINS the text. Both present
+# means both must match, neither present is a catch-all. `profile = "ask"` forces
+# the dialog for anything the rule catches.
+[[claude.rules]]
+dir = "~/git/personal"
+profile = "personal"
+
+[[claude.rules]]
+dir = "~/git/work"
+profile = "work"
+
+[[claude.rules]]
+session = "personal"
+profile = "personal"
+
+[[claude.rules]]
+session = "work"
+profile = "work"
+
+# What the month is allowed to cost, and who is spending it. The cap is in no
+# transcript — it comes off the plan — so it is written here by hand and changed
+# by hand when the plan does. `tagents --keys` lists $ for the day-by-day table.
+[usage]
+# The profile whose spend is tracked. With this omitted every usage surface is
+# off: no figure in the status bar, no footer under the list, no $ window,
+# no cost column or /5h burn, and tusage is never run at all.
+# watch = "work"
+
+# The monthly cap, from the account's own billing page. It is the FALLBACK:
+# tusage fetches the account's own meter every 15 minutes (TU_METER_TTL to
+# change that, TU_NO_METER=1 to stop it) and while a reading is fresh the
+# limit on screen is the one the meter reports, not this. This is what shows
+# when the meter cannot be reached — or when the seat has no meter at all.
+monthly_limit_usd = 850
+
+# The estimate is priced from transcripts and reads a few percent under the
+# bill, so the daily allowance is budgeted against limit×(1−margin) — 5% here.
+safety_margin_pct = 5
+
+# Spread the allowance over Monday–Friday only, and measure the pace the same
+# way: a weekend does not spend. `false` counts every calendar day.
+workdays = true
+
+# AN OVERRIDE, NOT THE ROUTINE WAY IN: the meter is fetched automatically and
+# a reading here wins over the fetched one, which is what makes it useful when
+# the account cannot be read (a second login, credentials elsewhere).
+# WHAT THE ACCOUNT ITSELF SAYS IT HAS SPENT, and when it said so. The figure
+# here is priced from transcripts and runs steadily ~10%% over the meter, for
+# no reason the transcripts can see; the ratio between the two at one instant
+# corrects everything on screen and the corrected figures wear a ~. Open
+# /usage, copy the credits spent and the local time you read them, and re-read
+# it now and then. A reading from another month, or one that implies a
+# correction outside 0.5–1.5, is ignored and the footer says so.
+meter = "2026-09-10 15:30 = 684.66"
+
+# The notes workspace (`tnotes`, prefix + C-t).
+[notes]
+# What `:q` does with the draft in prompt.md. The draft is always committed
+# first, whichever this is.
+#
+#   reference  type `@.claude/notes/prompt.md ` into the chat and stop. The
+#              CLI reads the file when you press Enter, so the draft can be
+#              reopened and rewritten until then, and it is cleared for you
+#              the next time the editor opens after it was actually sent.
+#   paste      put the text itself in the input, without pressing Enter.
+#   submit     paste the text and press Enter; the draft is cleared at once.
+send = "reference"
+
+# Bringing every chat back after a reboot (`tagents --resurrect`, and tmux-resurrect's save and restore hooks).
+[resurrect]
+# What tmux-resurrect's restore hook runs: once per tmux server and only in its first 5 minutes, silent when resurrect.auto is false.
+auto = true
+# How often the status bar writes down which chat lives in which pane, in seconds (300; 0 is never).
+every = 300
+# Each resumed chat gets the notes editor it had on screen back, unless resurrect.notes is off: reopen | off.
+notes = "reopen"
+
+# Every key of the dashboard, and what it is bound to. Only the ones you write
+# here move; the rest keep the defaults commented beside them. `tagents --keys`
+# prints where each one actually ended up.
+#
+# fzf's own names: ctrl-a…ctrl-z, alt-a…alt-z, alt-0…alt-9, f1…f12, enter, tab,
+# btab, space, bspace, del, up, down, left, right, home, end, pgup, pgdn, esc —
+# or any single printable character. Anything else, and any key another verb
+# already has, is refused with a message and the default is kept.
+[keys]
+# closed = "ctrl-y"   # closed sessions — pick one to resume
+closed = "ctrl-y"
+# open = "enter"      # select its row: the viewport shows its window
+# beside = "ctrl-s"   # join it into the window on screen, beside its chat
+# new = "ctrl-n"      # start a new agent in this project
+# pick = "ctrl-p"     # the same, picking the account
+# shell = "ctrl-a"    # open a plain shell in a new window of this group
+# goto = "ctrl-g"     # go to the agent where it lives
+# send = "ctrl-e"     # send a line straight into it
+# rename = "ctrl-r"   # name this agent (f2 stays an alias either way)
+# undock = "ctrl-u"   # break a joined chat out into a window of its own
+# kill = "ctrl-x"     # kill this agent, asking first
+# tree = "ctrl-t"     # tree or flat
+# preview = "ctrl-v"  # the preview in a window of its own
+# refresh = "ctrl-l"  # refresh now
+# columns = "ctrl-w"  # show or hide columns
+# usage = "$"         # usage this month, per day
+# keys = "?"          # the key list itself
+# quit = "ctrl-q"     # quit the dashboard

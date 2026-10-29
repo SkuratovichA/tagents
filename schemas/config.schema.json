@@ -1,0 +1,535 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/SkuratovichA/tagents/main/schemas/config.schema.json",
+  "title": "tagents config.toml",
+  "description": "The tagents config: which Claude account an agent is started on, the monthly cost cap, the notes workspace, the resurrect-after-reboot behaviour, the dashboard keys, and the plugins and knowledge directory the TypeScript half reads. Lives at ~/.config/tagents/config.toml (or wherever $TA_CONFIG points); config.<hostname>.toml beside it replaces whole a.b subtrees on that machine. Unknown keys are flagged, because tagents itself ignores them silently and a misspelt key is a setting that never took effect.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "claude": {
+      "title": "Accounts",
+      "description": "Which Claude account an agent is started on. With no such table tagents starts a plain `claude --dangerously-skip-permissions`, the environment inherited, and asks nothing.",
+      "examples": [
+        {
+          "args": "--dangerously-skip-permissions",
+          "profiles": {
+            "personal": {
+              "config_dir": "~/.claude-personal"
+            }
+          },
+          "rules": [
+            {
+              "dir": "~/git/personal",
+              "profile": "personal"
+            }
+          ]
+        }
+      ],
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "title": "Arguments for every agent",
+          "description": "Arguments every agent is started with, unless a profile overrides them. A string is passed verbatim (your own shell words); a list has each item quoted, which is how an argument containing a space gets through.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "examples": [
+            "--dangerously-skip-permissions",
+            [
+              "--dangerously-skip-permissions",
+              "--model",
+              "opus 4"
+            ]
+          ]
+        },
+        "default": {
+          "title": "Profile when no rule matches",
+          "description": "The profile an agent starts on when no rule matches. The default is `ask`, a small picker over the profiles. Any profile name works here instead.",
+          "type": "string",
+          "examples": [
+            "ask",
+            "personal"
+          ]
+        },
+        "profiles": {
+          "title": "Profiles",
+          "description": "The accounts, by name. An account is a Claude Code config dir and it is a whole login rather than a preference: Claude derives its keychain item from the literal path.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/profile"
+          },
+          "examples": [
+            {
+              "personal": {
+                "config_dir": "~/.claude-personal"
+              },
+              "work": {}
+            }
+          ]
+        },
+        "rules": {
+          "title": "Rules",
+          "description": "Which profile a new agent gets. The first matching rule wins. Written as `[[claude.rules]]` tables, in the order they are tried.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rule"
+          },
+          "examples": [
+            [
+              {
+                "dir": "~/git/personal",
+                "profile": "personal"
+              },
+              {
+                "session": "work",
+                "profile": "work"
+              }
+            ]
+          ]
+        }
+      }
+    },
+    "usage": {
+      "title": "Monthly cost",
+      "description": "What the month is allowed to cost, and who is spending it. The cap is in no transcript (it comes off the plan), so it is written here by hand and changed by hand when the plan does. With `watch` omitted every usage surface is off.",
+      "examples": [
+        {
+          "watch": "work",
+          "monthly_limit_usd": 850,
+          "workdays": true
+        }
+      ],
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "watch": {
+          "title": "Profile to watch",
+          "description": "The profile whose spend is tracked. With this omitted every usage surface is off: no figure in the status bar, no footer under the list, no $ window, no cost column or /5h burn, and tusage is never run at all.",
+          "type": "string",
+          "examples": [
+            "work"
+          ]
+        },
+        "monthly_limit_usd": {
+          "title": "Monthly cap, in dollars",
+          "description": "The monthly cap, from the account's own billing page. It is the fallback: tusage fetches the account's own meter every 15 minutes and while a reading is fresh the limit on screen is the one the meter reports, not this.",
+          "type": "number",
+          "minimum": 0,
+          "examples": [
+            850
+          ]
+        },
+        "safety_margin_pct": {
+          "title": "Safety margin, in percent",
+          "description": "The estimate is priced from transcripts and reads a few percent under the bill, so the daily allowance is budgeted against limit x (1 - margin). 0 to 100.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "examples": [
+            5
+          ]
+        },
+        "workdays": {
+          "title": "Count Monday to Friday only",
+          "description": "Spread the allowance over Monday to Friday only, and measure the pace the same way: a weekend does not spend. `false` counts every calendar day.",
+          "type": "boolean",
+          "examples": [
+            true
+          ]
+        },
+        "meter": {
+          "title": "Meter reading by hand",
+          "description": "An override, not the routine way in: what the account itself says it has spent, and when it said so, as `YYYY-MM-DD HH:MM = dollars`. A reading from another month, or one that implies a correction outside 0.5 to 1.5, is ignored and the footer says so.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} = [0-9]+(\\.[0-9]+)?$",
+          "examples": [
+            "2026-09-10 15:30 = 684.66"
+          ]
+        }
+      }
+    },
+    "notes": {
+      "title": "Notes workspace",
+      "description": "The notes workspace (`tnotes`, prefix + C-t).",
+      "examples": [
+        {
+          "send": "reference"
+        }
+      ],
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "send": {
+          "title": "What :q does with the draft",
+          "description": "What `:q` does with the draft in prompt.md. The draft is always committed first, whichever this is. `reference` types `@.claude/notes/prompt.md ` into the chat and stops; `paste` puts the text itself in the input without pressing Enter; `submit` pastes the text and presses Enter.",
+          "enum": [
+            "reference",
+            "paste",
+            "submit"
+          ],
+          "examples": [
+            "reference"
+          ]
+        }
+      }
+    },
+    "resurrect": {
+      "title": "Resurrect after a reboot",
+      "description": "Bringing every chat back after a reboot (`tagents --resurrect`, and tmux-resurrect's save and restore hooks).",
+      "examples": [
+        {
+          "auto": true,
+          "every": 300,
+          "notes": "reopen"
+        }
+      ],
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "auto": {
+          "title": "Restore on its own",
+          "description": "What tmux-resurrect's restore hook runs: once per tmux server and only in its first 5 minutes. Silent when false.",
+          "type": "boolean",
+          "examples": [
+            true
+          ]
+        },
+        "every": {
+          "title": "Seconds between captures",
+          "description": "How often the status bar writes down which chat lives in which pane, in seconds (300 by default; 0 is never).",
+          "type": "integer",
+          "minimum": 0,
+          "examples": [
+            300
+          ]
+        },
+        "notes": {
+          "title": "Notes editors on restore",
+          "description": "Each resumed chat gets the notes editor it had on screen back, unless this is off.",
+          "enum": [
+            "reopen",
+            "off"
+          ],
+          "examples": [
+            "reopen"
+          ]
+        }
+      }
+    },
+    "keys": {
+      "title": "Dashboard keys",
+      "description": "Every key of the dashboard, and what it is bound to. Only the ones written here move; the rest keep their defaults, and `tagents --keys` prints where each one ended up. fzf's own names: ctrl-a to ctrl-z, alt-a to alt-z, alt-0 to alt-9, f1 to f12, enter, tab, btab, space, bspace, del, up, down, left, right, home, end, pgup, pgdn, esc, or any single printable character. Anything else, and any key another verb already has, is refused with a message and the default is kept.",
+      "examples": [
+        {
+          "closed": "ctrl-y",
+          "quit": "ctrl-q"
+        }
+      ],
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "open": {
+          "$ref": "#/$defs/key",
+          "description": "Select its row: the viewport shows its window. Default enter.",
+          "examples": [
+            "enter"
+          ]
+        },
+        "beside": {
+          "$ref": "#/$defs/key",
+          "description": "Join it into the window on screen, beside its chat. Default ctrl-s.",
+          "examples": [
+            "ctrl-s"
+          ]
+        },
+        "new": {
+          "$ref": "#/$defs/key",
+          "description": "Start a new agent in this project. Default ctrl-n.",
+          "examples": [
+            "ctrl-n"
+          ]
+        },
+        "pick": {
+          "$ref": "#/$defs/key",
+          "description": "Start a new agent in this project, picking the account. Default ctrl-p.",
+          "examples": [
+            "ctrl-p"
+          ]
+        },
+        "shell": {
+          "$ref": "#/$defs/key",
+          "description": "Open a plain shell in a new window of this group. Default ctrl-a.",
+          "examples": [
+            "ctrl-a"
+          ]
+        },
+        "goto": {
+          "$ref": "#/$defs/key",
+          "description": "Go to the agent where it lives. Default ctrl-g.",
+          "examples": [
+            "ctrl-g"
+          ]
+        },
+        "send": {
+          "$ref": "#/$defs/key",
+          "description": "Send a line straight into the agent. Default ctrl-e.",
+          "examples": [
+            "ctrl-e"
+          ]
+        },
+        "rename": {
+          "$ref": "#/$defs/key",
+          "description": "Name this agent (f2 stays an alias either way). Default ctrl-r.",
+          "examples": [
+            "ctrl-r"
+          ]
+        },
+        "undock": {
+          "$ref": "#/$defs/key",
+          "description": "Break a joined chat out into a window of its own. Default ctrl-u.",
+          "examples": [
+            "ctrl-u"
+          ]
+        },
+        "kill": {
+          "$ref": "#/$defs/key",
+          "description": "Kill this agent, asking first. Default ctrl-x.",
+          "examples": [
+            "ctrl-x"
+          ]
+        },
+        "tree": {
+          "$ref": "#/$defs/key",
+          "description": "Switch between the tree and the flat list. Default ctrl-t.",
+          "examples": [
+            "ctrl-t"
+          ]
+        },
+        "preview": {
+          "$ref": "#/$defs/key",
+          "description": "The preview in a window of its own. Default ctrl-v.",
+          "examples": [
+            "ctrl-v"
+          ]
+        },
+        "refresh": {
+          "$ref": "#/$defs/key",
+          "description": "Refresh now. Default ctrl-l.",
+          "examples": [
+            "ctrl-l"
+          ]
+        },
+        "columns": {
+          "$ref": "#/$defs/key",
+          "description": "Show or hide columns. Default ctrl-w.",
+          "examples": [
+            "ctrl-w"
+          ]
+        },
+        "usage": {
+          "$ref": "#/$defs/key",
+          "description": "Usage this month, per day. Default $.",
+          "examples": [
+            "$"
+          ]
+        },
+        "closed": {
+          "$ref": "#/$defs/key",
+          "description": "Closed sessions: pick one to resume. Default ctrl-y.",
+          "examples": [
+            "ctrl-y"
+          ]
+        },
+        "keys": {
+          "$ref": "#/$defs/key",
+          "description": "The key list itself. Default ?.",
+          "examples": [
+            "?"
+          ]
+        },
+        "quit": {
+          "$ref": "#/$defs/key",
+          "description": "Quit the dashboard. Default ctrl-q.",
+          "examples": [
+            "ctrl-q"
+          ]
+        }
+      }
+    },
+    "plugins": {
+      "title": "Plugins",
+      "description": "The plugins tagents-core loads, by the name they are known under (`tagents plugin add` writes these tables). A plugin's own options live in <name>.toml beside this file.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "title": "Where the plugin comes from",
+            "description": "A package name, or a path to a directory holding one.",
+            "type": "string",
+            "minLength": 1,
+            "examples": [
+              "@tagents/notify",
+              "~/git/personal/my-plugin"
+            ]
+          }
+        },
+        "required": [
+          "from"
+        ]
+      },
+      "examples": [
+        {
+          "notify": {
+            "from": "@tagents/notify"
+          }
+        }
+      ]
+    },
+    "knowledge": {
+      "title": "Knowledge base",
+      "description": "The knowledge MCP server and its CLI. There is no default directory on purpose: guessing one would index the wrong thing.",
+      "examples": [
+        {
+          "dir": "~/git/personal/knowledge"
+        }
+      ],
+      "type": "object",
+      "properties": {
+        "dir": {
+          "title": "Directory of markdown notes",
+          "description": "The directory the knowledge base indexes. Relative paths are resolved against the config directory.",
+          "type": "string",
+          "minLength": 1,
+          "examples": [
+            "~/git/personal/knowledge"
+          ]
+        }
+      },
+      "required": [
+        "dir"
+      ]
+    }
+  },
+  "$defs": {
+    "key": {
+      "title": "A dashboard key",
+      "type": "string",
+      "minLength": 1
+    },
+    "profile": {
+      "title": "A profile",
+      "description": "One account. Omit `config_dir` for the default account: omit it, do not write ~/.claude, since an explicitly set CLAUDE_CONFIG_DIR is a different keychain item from an unset one. A profile with nothing in it is a name only.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "config_dir": {
+          "title": "Claude config directory",
+          "description": "The Claude Code config dir of this account. It is a whole login: Claude derives its keychain item from the literal path. Omit it to start on the default account.",
+          "type": "string",
+          "minLength": 1,
+          "examples": [
+            "~/.claude-personal"
+          ]
+        },
+        "command": {
+          "title": "Binary to run",
+          "description": "The binary to run instead of `claude`.",
+          "type": "string",
+          "examples": [
+            "claude"
+          ]
+        },
+        "args": {
+          "title": "Arguments for this profile",
+          "description": "Arguments agents of this profile are started with; replaces claude.args. A string is passed verbatim, a list has each item quoted.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "examples": [
+            "--dangerously-skip-permissions --model opus"
+          ]
+        },
+        "badge": {
+          "title": "Badge",
+          "description": "The one or two characters the column before the agent name shows for this account. Defaults to the first character of the profile name; set it only when two accounts start with the same one.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2,
+          "examples": [
+            "p"
+          ]
+        },
+        "env": {
+          "title": "Extra environment",
+          "description": "Environment variables set for agents of this profile, by name.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "examples": [
+            {
+              "ANTHROPIC_BASE_URL": "https://proxy.example.com"
+            }
+          ]
+        }
+      }
+    },
+    "rule": {
+      "title": "A rule",
+      "description": "`dir` matches the agent's directory and everything under it (by path component: ~/git/personalx is not under ~/git/personal). `session` matches when the tmux session name contains the text. Both present means both must match; neither present is a catch-all. `profile = \"ask\"` forces the dialog for anything the rule catches.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": {
+          "title": "Directory",
+          "description": "Matches the agent's directory and everything under it, by path component.",
+          "type": "string",
+          "minLength": 1,
+          "examples": [
+            "~/git/personal"
+          ]
+        },
+        "session": {
+          "title": "tmux session",
+          "description": "Matches when the tmux session name contains this text.",
+          "type": "string",
+          "minLength": 1,
+          "examples": [
+            "work"
+          ]
+        },
+        "profile": {
+          "title": "Profile",
+          "description": "The profile a matching agent starts on: a name in claude.profiles, or `ask` to force the dialog. A rule that names none is skipped.",
+          "type": "string",
+          "minLength": 1,
+          "examples": [
+            "personal",
+            "ask"
+          ]
+        }
+      },
+      "required": [
+        "profile"
+      ]
+    }
+  }
+}
