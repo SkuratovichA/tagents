@@ -488,3 +488,7 @@ The hero tape made the api chat ask for permission with `Ctrl+G`, a root binding
 
 ## A catch-up after weeks without an update looked hung, and the kill left the lock (27.10.2026)
 With `usage.watch` unset nothing updates the usage index, and `tusage --by day` updates before it reports: after seventeen days it read 2045 transcripts for 165 s without a word, was killed, and left `.update.lock`, so every report for the next five minutes came from the old index without saying so, and `tusage` itself died on a division by zero over the empty week. The time went on programs started per transcript (about 25, one of them an awk over the whole offsets table); batching the stat, the keying and the offsets join brought it to 37 s with byte-identical facts. A lock's age stops meaning "dead" once an update can outlast it, so the lock now holds its pid, and a signal trap removes it: the RETURN trap never runs on a signal.
+
+## A symlink test that asserted only what tmux reports could not fail (29.10.2026)
+
+tmux reports the physical cwd of a pane whatever path the window was opened with, so a test of a symlinked directory that checked `pane_current_path` passed with a logical path. The assertion that can fail is the session the window landed in, and it needs an owner other than the session the client sits in, because a window opened with a path that finds no owner falls back to the client's session: the first version of it passed under the mutation too. The proof of a test like this is the mutation that makes the code wrong.
