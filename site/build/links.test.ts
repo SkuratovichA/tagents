@@ -3,7 +3,14 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { listFiles } from './files.ts'
-import { checkLinks, extractReferences, resolveReference, servedPath } from './links.ts'
+import {
+  checkLinks,
+  extractReferences,
+  findRemoteCss,
+  findRemoteLoads,
+  resolveReference,
+  servedPath,
+} from './links.ts'
 
 const BASE = '/tagents-site/'
 const files = new Set([
@@ -140,5 +147,78 @@ describe('checkLinks', () => {
     const problems = await checkLinks(bare, await listFiles(bare), BASE)
     expect(problems.map((problem) => problem.page)).toEqual(['sitemap.xml'])
     expect(problems[0]?.reason).toContain('redirects')
+  })
+})
+
+describe('what a page may load from another site', () => {
+  const ORIGIN = 'https://tagents.example.test'
+
+  it('finds a stylesheet link, a script, an image, a srcset and a url() or @import in a style', () => {
+    const html = `<link rel="stylesheet" href="https://fonts.example.invalid/css">
+      <script src="//cdn.example.invalid/a.js"></script>
+      <img src="https://img.example.invalid/a.png" srcset="/a.png 1x, https://img.example.invalid/b.png 2x">
+      <div style="background:url('https://img.example.invalid/c.png')"></div>
+      <style>@import url(https://fonts.example.invalid/more.css); .a{background:url(https://img.example.invalid/d.png)}</style>`
+    expect(findRemoteLoads(html, null)).toEqual([
+      'https://fonts.example.invalid/css',
+      '//cdn.example.invalid/a.js',
+      'https://img.example.invalid/a.png',
+      '/a.png 1x, https://img.example.invalid/b.png 2x',
+      'https://img.example.invalid/c.png',
+      'https://fonts.example.invalid/more.css',
+      'https://img.example.invalid/d.png',
+    ])
+  })
+
+  it('lets an anchor, the canonical link, the site’s own og:url and og:image, and a namespace through', () => {
+    const html = `<a href="https://github.com/example/repo">out</a>
+      <link rel="canonical" href="${ORIGIN}/">
+      <meta property="og:url" content="${ORIGIN}/"><meta property="og:image" content="${ORIGIN}/mascot/social.png">
+      <meta name="description" content="Install with https://example.invalid/install.sh">
+      <svg xmlns="http://www.w3.org/2000/svg"></svg><link rel="icon" href="/favicon.png">`
+    expect(findRemoteLoads(html, ORIGIN)).toEqual([])
+  })
+
+  it('does not let an og:image of another site through', () => {
+    const html = '<meta property="og:image" content="https://elsewhere.example.invalid/a.png">'
+    expect(findRemoteLoads(html, ORIGIN)).toEqual(['https://elsewhere.example.invalid/a.png'])
+  })
+
+  it('reads the urls of a stylesheet and leaves relative ones and data uris', () => {
+    const css =
+      '@import "https://fonts.example.invalid/x.css"; a{background:url(./a.woff2) url(data:image/png;base64,AAA) url("//cdn.example.invalid/b.png")}'
+    expect(findRemoteCss(css)).toEqual([
+      '//cdn.example.invalid/b.png',
+      'https://fonts.example.invalid/x.css',
+    ])
+  })
+
+  it('makes checkLinks report a font link and an @import and accept an anchor', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'tagents-remote-'))
+    try {
+      await writeFile(
+        join(root, 'index.html'),
+        `<link rel="stylesheet" href="https://fonts.example.invalid/css"><a href="https://github.com/example/repo">out</a>`,
+      )
+      await writeFile(
+        join(root, 'site.css'),
+        '@import url("https://fonts.example.invalid/more.css");',
+      )
+      const problems = await checkLinks(root, await listFiles(root), BASE)
+      expect(problems).toEqual([
+        {
+          page: 'index.html',
+          reference: 'https://fonts.example.invalid/css',
+          reason: 'loads from another site',
+        },
+        {
+          page: 'site.css',
+          reference: 'https://fonts.example.invalid/more.css',
+          reason: 'loads from another site',
+        },
+      ])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })

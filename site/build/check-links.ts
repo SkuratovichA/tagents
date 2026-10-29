@@ -1,5 +1,4 @@
-// Run after `pnpm build`: every internal link and every sitemap address must lead to a file in the
-// output that GitHub Pages serves without a redirect, and the files a static host needs must be there.
+// Run after `pnpm build`: every internal link and every sitemap address must lead to a file in the output that GitHub Pages serves without a redirect, the files a static host needs must be there, and no page or stylesheet may load anything from another site.
 import { resolve } from 'node:path'
 import { listFiles } from './files.ts'
 import { checkLinks } from './links.ts'
@@ -14,7 +13,7 @@ const files = await listFiles(outDir)
 const required = ['index.html', '404.html', 'robots.txt', '.nojekyll']
 if (site.domain !== null) required.push('CNAME', 'sitemap.xml')
 const missing = required.filter((file) => !files.includes(file))
-const problems = await checkLinks(outDir, files, site.base)
+const problems = await checkLinks(outDir, files, site.base, site.origin)
 
 for (const file of missing) console.error(`missing output file: ${file}`)
 for (const problem of problems.slice(0, MAX_REPORTED)) {
@@ -27,6 +26,6 @@ if (missing.length + problems.length > 0) {
 } else {
   const pages = files.filter((file) => file.endsWith('.html')).length
   console.log(
-    `check-links: ${pages} pages, every internal link and sitemap address is served without a redirect`,
+    `check-links: ${pages} pages, every internal link and sitemap address is served without a redirect, nothing is loaded from another site`,
   )
 }
