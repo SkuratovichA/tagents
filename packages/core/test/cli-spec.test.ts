@@ -1,14 +1,16 @@
 // node --test cli-spec.test.ts
 //
-// The command specs in src/cli/spec.ts are what parseArgs reads and what the contract generator reads; the usage text in i18n/en.ts is still hand-written. This file keeps the three from drifting: no inline option tables, the spec and the usage agree on every verb and flag, and every verb has a summary.
+// The command specs are spec/cli/tagents-core.json, read by src/cli/spec.ts: what parseArgs reads and what the contract generator reads; the usage text in i18n/en.ts is still hand-written. This file keeps the three from drifting: no inline option tables, the spec and the usage agree on every verb and flag, and every verb has a summary. The data file is also read by the Rust front door, so what it may contain is pinned here and in crates/tagents-spec.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import { en } from '../src/i18n/en.ts';
 import { ru } from '../src/i18n/ru.ts';
-import { CORE_COMMANDS, coreCliContract } from '../src/cli/spec.ts';
+import { EXIT } from '../src/cli/exit.ts';
+import { CORE_COMMANDS, SPEC_FILE, coreCliContract, loadSpec } from '../src/cli/spec.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI_DIR = path.resolve(HERE, '..', 'src', 'cli');
@@ -140,4 +142,60 @@ test('coreCliContract is English whatever the machine speaks', () => {
     if (before === undefined) delete process.env['TAGENTS_LOCALE'];
     else process.env['TAGENTS_LOCALE'] = before;
   }
+});
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function readDoc(): Record<string, unknown> {
+  const doc: unknown = JSON.parse(fs.readFileSync(SPEC_FILE, 'utf8'));
+  assert.ok(isRecord(doc));
+  return doc;
+}
+
+function commandsOf(doc: Record<string, unknown>): Record<string, unknown>[] {
+  const commands = doc['commands'];
+  assert.ok(Array.isArray(commands) && commands.every(isRecord));
+  return commands;
+}
+
+/** A copy of the data file with `change` applied to its first command, written where only this test looks. */
+function specWith(change: (command: Record<string, unknown>) => void): URL {
+  const doc = readDoc();
+  const [first] = commandsOf(doc);
+  assert.ok(first);
+  change(first);
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cli-spec-')), 'spec.json');
+  fs.writeFileSync(file, JSON.stringify(doc));
+  return pathToFileURL(file);
+}
+
+test('the exit codes the contract prints are the ones the CLI exits with', () => {
+  assert.deepEqual(coreCliContract().exit, EXIT);
+});
+
+test('every verb says which program serves it, and a verb word is served by one program', () => {
+  const byWord = new Map<string, Set<unknown>>();
+  for (const command of commandsOf(readDoc())) {
+    const { path: words, impl } = command;
+    assert.ok(Array.isArray(words) && (impl === 'rust' || impl === 'node'), JSON.stringify(command));
+    const word = String(words[0]);
+    byWord.set(word, (byWord.get(word) ?? new Set()).add(impl));
+  }
+  for (const [word, impls] of byWord) assert.equal(impls.size, 1, `${word}: the group is split between ${[...impls].join(' and ')}`);
+});
+
+test('the loader keeps impl and effect out of what parseArgs and the contract see, and refuses a key it does not know', () => {
+  const before = loadSpec(SPEC_FILE).commands;
+  const withEffect = loadSpec(specWith((command) => { command['effect'] = 'writes'; }));
+  assert.deepEqual(withEffect.commands, before);
+  assert.throws(
+    () => loadSpec(specWith((command) => { command['surprise'] = 'x'; })),
+    /does not match spec\/cli\/cli-spec.schema.json/,
+  );
+  assert.throws(
+    () => loadSpec(specWith((command) => { command['summary'] = 'noSuchKey'; })),
+    /not a key of the English catalogue/,
+  );
 });
