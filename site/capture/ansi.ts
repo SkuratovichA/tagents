@@ -1,3 +1,4 @@
+import { hexToRgb, toHex } from '../src/lib/color.ts'
 import type { Style } from '../src/lib/screen.ts'
 import { TERMINAL } from '../src/lib/screen.ts'
 import { paletteColor } from './theme.ts'
@@ -22,11 +23,9 @@ const FRESH: Pen = { bold: false, dim: false, italic: false, underline: false, r
 
 /** `from` moved `share` of the way to `to`; both `#rrggbb`. */
 function mix(from: string, to: string, share: number): string {
-  const channels = (color: string) =>
-    [1, 3, 5].map((at) => Number.parseInt(color.slice(at, at + 2), 16))
-  const [a, b] = [channels(from), channels(to)]
-  const mixed = a.map((channel, at) => Math.round(channel + ((b[at] ?? 0) - channel) * share))
-  return `#${mixed.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
+  const [a, b] = [hexToRgb(from), hexToRgb(to)]
+  const [r, g, bl] = a.map((channel, at) => Math.round(channel + ((b[at] ?? 0) - channel) * share))
+  return toHex(r ?? 0, g ?? 0, bl ?? 0)
 }
 
 /** The style a pen draws with: reverse video swaps the colours and faint text is moved towards the background, because a style has neither flag. */
@@ -68,12 +67,15 @@ function applySgr(pen: Pen, codes: readonly number[]): void {
       const target = code === 38 ? 'fg' : 'bg'
       const mode = codes[at + 1]
       if (mode === 5) {
-        pen[target] = paletteColor(codes[at + 2] ?? 0)
+        const index = codes[at + 2]
+        if (index === undefined) throw new Error(`missing palette index in SGR ${codes.join(';')}`)
+        pen[target] = paletteColor(index)
         at += 2
       } else if (mode === 2) {
-        const [r = 0, g = 0, b = 0] = codes.slice(at + 2, at + 5)
-        pen[target] =
-          `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
+        const [r, g, b] = codes.slice(at + 2, at + 5)
+        if (r === undefined || g === undefined || b === undefined)
+          throw new Error(`missing channel in true colour SGR ${codes.join(';')}`)
+        pen[target] = toHex(r, g, b)
         at += 4
       } else throw new Error(`unknown colour mode in SGR ${codes.join(';')}`)
     } else throw new Error(`unknown SGR code ${code}`)

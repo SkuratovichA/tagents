@@ -6,6 +6,7 @@
 import { execFileSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { hexToRgb } from '../lib/color.ts'
 
 const here = import.meta.dirname
 const source = resolve(here, 'source')
@@ -86,13 +87,6 @@ function backgroundOf(picture: Picture): Uint8Array {
     pending.push([x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1])
   }
   return background
-}
-
-function hexToRgb(hex: string): readonly [number, number, number] {
-  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
-  if (match === null) throw new Error(`${hex} is not a #rrggbb colour`)
-  const [, r = '', g = '', b = ''] = match
-  return [Number.parseInt(r, 16), Number.parseInt(g, 16), Number.parseInt(b, 16)]
 }
 
 function nearestLetter(r: number, g: number, b: number): Letter {
