@@ -19,15 +19,15 @@ const scene: Scene = {
 class FakeObserver {
   static instances: FakeObserver[] = []
   disconnected = 0
-  constructor(private readonly callback: (entries: Array<{ isIntersecting: boolean }>) => void) {
+  private readonly callback: (entries: { isIntersecting: boolean }[]) => void
+  constructor(callback: (entries: { isIntersecting: boolean }[]) => void) {
+    this.callback = callback
     FakeObserver.instances.push(this)
   }
-  observe() {}
-  unobserve() {}
-  takeRecords() {
-    return []
-  }
-  disconnect() {
+  observe = () => undefined
+  unobserve = () => undefined
+  takeRecords = () => []
+  disconnect = () => {
     this.disconnected += 1
   }
   see(isIntersecting: boolean) {
