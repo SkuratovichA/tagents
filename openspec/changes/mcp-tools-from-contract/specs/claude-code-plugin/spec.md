@@ -205,9 +205,9 @@ The hand-written part of `skills/tagents/SKILL.md` SHALL have a section "Using t
 ### Requirement: The installer writes only over its own files
 `install.sh` SHALL write a wrapper only over a symlink or a file with the installer's marker line; any other file is left alone with a warning and exit 1 at the end. A wrapper whose hook the project dropped is removed.
 
-#### Scenario: An unmarked file is not overwritten
-- **WHEN** `~/.local/bin/tagents-notify` exists and was not written by the installer
-- **THEN** it is left as it was, a warning names it, and the exit code is 1
+#### Scenario: A symlink in the way
+- **WHEN** `~/.local/bin/tusage` is a symlink to a file of an earlier checkout
+- **THEN** it is replaced by a wrapper, and the file it pointed at is untouched
 
 ### Requirement: The bash scripts do not need the workspace
 The bash scripts SHALL neither import nor need the TypeScript workspace.
