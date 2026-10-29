@@ -40,7 +40,7 @@ Each notification event SHALL have these settings when the file leaves them out:
 - **THEN** `events.cache_expiring` is `enabled: true, skip_visible: false, after: 50m, ttl: 60m` and `events.session_end` is `enabled: false, skip_visible: true`
 
 ### Requirement: Which options files are watched
-`notify.toml` and `notify.yaml` SHALL both be watched, so options that move from one to the other while the service runs are seen. An options file that is itself a symlink is noticed only when the link is replaced, not when its target is edited.
+`notify.toml` and `notify.yaml` SHALL both be watched, so options that move from one to the other while the service runs are seen. Editing the target of an options file that is a symlink does not reload the options by itself, and replacing the link does.
 
 #### Scenario: the options move to TOML
 - **WHEN** `notify.toml` is written next to a `notify.yaml` while the service runs
@@ -48,4 +48,4 @@ Each notification event SHALL have these settings when the file leaves them out:
 
 #### Scenario: a symlinked options file
 - **WHEN** `notify.toml` is a symlink and its target is edited
-- **THEN** the change is not seen until the link is replaced
+- **THEN** the edit does not reload the options, and replacing the link does

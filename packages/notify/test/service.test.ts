@@ -435,11 +435,17 @@ test('the options watch follows a symlinked config dir to the real one', async (
   );
 });
 
-test('the options may move to notify.toml while the service runs: that file is reloaded too', async () => {
-  const r = rig({ plugins: true });
+test('the options may move to notify.toml while the service runs: that file is reloaded too, and wins over notify.yaml', async () => {
+  const r = rig({ options: 'click: goto\n' });
   await r.start();
   await until('the reload', () => r.has('options reloaded'), () =>
-    writeAtomic(path.join(path.dirname(r.optionsFile), 'notify.toml'), 'click = "goto"\n')
+    writeAtomic(path.join(path.dirname(r.optionsFile), 'notify.toml'), '[events.turn_done]\nenabled = false\n')
+  );
+  await stopThenSentinel(r);
+  assert.deepEqual(
+    r.notifier.posts.map((n) => n.kind),
+    ['question'],
+    'the toml turned turn_done off, the yaml beside it left it on: the Stop posted nothing'
   );
 });
 
