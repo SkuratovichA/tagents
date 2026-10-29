@@ -494,3 +494,6 @@ The footer links to `/docs/`, which VitePress fills after the site is built, so 
 
 ## A guard of two conditions needs a case per condition (29.10.2026)
 The wrapper the installer writes stops at a binary that is not a file or not executable, but the only run-time case removed the binary, which either condition alone satisfies, so deleting one of the two checks left the suite green. A guard of two conditions gets a case that only each one catches (a directory passes `-x`, a file without the bit passes `-f`) and a mutation that deletes each, because a test one condition satisfies pins neither.
+
+## Exec of a file another thread just wrote can fail with ETXTBSY (29.10.2026)
+A test thread that copies or writes an executable and then runs it can get "Text file busy" (or exit 126 from the front door's own exec of the stub node), because a child forked by another test thread holds the first thread's write descriptor until that child execs. `crates/tagents-core/tests/front_door.rs` now has one process-wide `FORK_GATE`: writers of executables take the write side and every spawn the read side. It reproduced on Linux 55 times in 60 runs under CPU load before the gate and 0 in 60 after; a retry on `ExecutableFileBusy` would not cover the stub.
