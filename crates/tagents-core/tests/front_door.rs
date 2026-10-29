@@ -9,14 +9,16 @@
 
 use std::{
     collections::BTreeSet,
+    ffi::OsStr,
     fs,
     io::Write,
-    os::unix::{fs::PermissionsExt, process::ExitStatusExt},
+    os::unix::{ffi::OsStrExt, fs::PermissionsExt, process::ExitStatusExt},
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use tagents_core::sessions::exit;
 use tagents_spec::{Implementation, Spec};
 
 const BIN: &str = env!("CARGO_BIN_EXE_tagents-core");
@@ -240,6 +242,7 @@ fn exit_codes_in_the_code_are_the_ones_the_data_file_names() {
     let exit = data_file().exit;
     assert_eq!(exit["ok"], tagents_core::sessions::exit::OK);
     assert_eq!(exit["error"], tagents_core::sessions::exit::ERROR);
+    assert_eq!(exit["usage"], tagents_core::sessions::exit::USAGE);
 }
 
 // ------------------------------------------------------------------- the fall back ---
@@ -357,6 +360,25 @@ fn every_other_word_reaches_the_node_cli_with_argv_environment_and_stdin() {
 }
 
 #[test]
+fn an_argument_that_is_not_utf8_is_forwarded_byte_for_byte() {
+    // A lossy conversion would turn these two bytes into U+FFFD, and node would decode both to the same text; only the raw bytes the node stub writes down tell them apart.
+    let checkout = Checkout::new("forward-bytes");
+    let out = checkout
+        .command()
+        .arg("doctor")
+        .arg(OsStr::from_bytes(b"\xff\xfe"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let recorded = fs::read(&checkout.argv).unwrap();
+    assert!(
+        recorded.ends_with(b"arg=doctor\narg=\xff\xfe\n"),
+        "{:?}",
+        String::from_utf8_lossy(&recorded)
+    );
+}
+
+#[test]
 fn a_verb_the_front_door_serves_is_not_forwarded() {
     let checkout = Checkout::new("served-not-forwarded");
     let home = checkout.root.join("home");
@@ -394,17 +416,15 @@ fn the_exit_is_the_node_clis_even_when_it_is_a_signal() {
 }
 
 #[test]
-fn a_missing_node_cli_is_exit_2_and_says_how_to_build_it() {
+fn a_missing_node_cli_is_exit_2_and_names_where_it_looked() {
     let checkout = Checkout::new("forward-no-cli");
     fs::remove_file(checkout.root.join("packages/core/dist/cli/main.js")).unwrap();
     let out = checkout.command().arg("doctor").output().unwrap();
-    assert_eq!(out.status.code(), Some(2));
+    assert_eq!(out.status.code(), Some(exit::USAGE.into()));
     assert_eq!(out.stdout, b"");
-    assert!(
-        String::from_utf8_lossy(&out.stderr).contains("pnpm install && pnpm build"),
-        "{:?}",
-        out.stderr
-    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains(&checkout.cli()), "{stderr}");
+    assert!(stderr.contains("<root>/target/<profile>/"), "{stderr}");
     assert!(!checkout.argv.exists());
 }
 
@@ -417,7 +437,7 @@ fn a_node_that_cannot_run_is_exit_127_or_126() {
         .arg("doctor")
         .output()
         .unwrap();
-    assert_eq!(missing.status.code(), Some(127));
+    assert_eq!(missing.status.code(), Some(exit::NOT_FOUND.into()));
     assert!(
         String::from_utf8_lossy(&missing.stderr).contains("no-such-node"),
         "{:?}",
@@ -431,7 +451,7 @@ fn a_node_that_cannot_run_is_exit_127_or_126() {
         .arg("doctor")
         .output()
         .unwrap();
-    assert_eq!(denied.status.code(), Some(126));
+    assert_eq!(denied.status.code(), Some(exit::CANNOT_EXECUTE.into()));
 }
 
 #[test]
@@ -470,13 +490,23 @@ fn the_binary_finds_its_node_cli_through_a_symlink() {
 #[test]
 fn a_closed_stdout_is_not_an_error() {
     // The node CLI ignores a write that fails because the reader went away; so does this.
+    // The listing is far larger than a pipe holds, so the write cannot finish while the read end is open: it either blocks until the reader is gone or fails at once, and in both cases it meets a closed pipe.
     let home = scratch("closed-stdout");
-    seed_sessions(&home.join(".claude"));
+    let projects = home.join(".claude/projects/-Users-demo-git-demo");
+    fs::create_dir_all(&projects).unwrap();
+    for n in 0..1000 {
+        let prompt = format!("session {n} {}", "p".repeat(120));
+        fs::write(
+            projects.join(format!("{n:08x}-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl")),
+            transcript(&prompt, "done"),
+        )
+        .unwrap();
+    }
     let mut child = Command::new(BIN)
         .env_clear()
         .env("HOME", &home)
         .env("CLAUDE_HOMES", home.join(".claude"))
-        .args(["sessions", "recent"])
+        .args(["sessions", "recent", "1000"])
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
