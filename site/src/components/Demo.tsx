@@ -27,6 +27,7 @@ const ScreenRow = memo(function ScreenRow({ row }: { row: Row }) {
 export function Demo({ scene, title, caption }: DemoProps) {
   const { frame, stills, play, watch } = useDemo(scene)
   const rows = useMemo(() => screenAt(scene, frame), [scene, frame])
+  const action = stills ? 'Play' : 'Replay'
   const scope = `.demo-${scene.id}`
   const sheet = useMemo(
     () => `${scope}{--cols:${scene.cols}}${styleSheet(scope, scene.styles)}`,
@@ -42,8 +43,13 @@ export function Demo({ scene, title, caption }: DemoProps) {
             <span className="terminal__dot" aria-hidden="true" />
             <span className="terminal__dot" aria-hidden="true" />
             <span className="terminal__title">{title}</span>
-            <button type="button" className="terminal__play" onClick={play}>
-              {stills ? 'Play' : 'Replay'}
+            <button
+              type="button"
+              className="terminal__play"
+              aria-label={`${action}: ${title}`}
+              onClick={play}
+            >
+              {action}
             </button>
           </div>
           <div

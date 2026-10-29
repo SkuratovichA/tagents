@@ -3,13 +3,7 @@
 @import '@fontsource-variable/pixelify-sans/index.css';
 @import 'tailwindcss';
 
-/*
- * The site is a glass instrument: chunky 2px borders, hard offset shadows and a dot lattice, the
- * look of its sibling gsttt-site, with the yellow of the mascot where that site has its accent.
- * The tokens below are the only place colours live. The dark tokens appear twice, once for the
- * system preference and once for an explicit choice; src/styles.test.ts keeps the two blocks
- * identical, and keeps the terminal's colours the ones the recordings were made with.
- */
+/* The site is a glass instrument: chunky 2px borders, hard offset shadows and a dot lattice, the look of its sibling gsttt-site, with the yellow of the mascot where that site has its accent. The tokens below are the only place colours live. The dark tokens appear twice, once for the system preference and once for an explicit choice; src/styles.test.ts keeps the two blocks identical, and keeps the terminal's colours the ones the recordings were made with. */
 
 /* The demo terminals: one font for every cell, because the box drawing, the bars and the state marks must each be exactly one cell wide. public/fonts/ holds DejaVu Sans Mono cut down to the characters the demos use. */
 @font-face {
@@ -595,6 +589,13 @@ a {
 
 .js .terminal__play {
   display: block;
+}
+
+/* The page's ring has 2.1:1 against the terminal. Here it is the mascot's yellow (9.2:1 on the terminal, 10.1:1 on the dark page) inside a halo in the terminal's own colour (14.8:1 on the light page), so one of the two always stands out from whatever is beside it. */
+.terminal :focus-visible {
+  outline: 3px solid var(--pika);
+  outline-offset: 0;
+  box-shadow: 0 0 0 6px var(--term-bg);
 }
 
 @media (hover: hover) and (pointer: fine) {

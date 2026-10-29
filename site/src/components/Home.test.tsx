@@ -98,7 +98,7 @@ describe('a recording in the browser', () => {
       vi.advanceTimersByTime(lastTime + 50)
     })
     expect(onScreen()).toEqual(lastFrame)
-    expect(screen.getByRole('button', { name: 'Replay' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: `Replay: ${firstCopy.title}` })).toBeInTheDocument()
   })
 
   it('stays on its last frame for a visitor who asked for less motion, until asked to play', () => {
@@ -108,7 +108,7 @@ describe('a recording in the browser', () => {
       vi.advanceTimersByTime(lastTime + 50)
     })
     expect(onScreen()).toEqual(lastFrame)
-    fireEvent.click(screen.getByRole('button', { name: 'Play' }))
+    fireEvent.click(screen.getByRole('button', { name: `Play: ${firstCopy.title}` }))
     expect(onScreen()).toEqual(firstFrame)
     act(() => {
       vi.advanceTimersByTime(lastTime + 50)
