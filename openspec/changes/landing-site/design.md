@@ -10,7 +10,7 @@ Each decision is one line, the reason in a clause, what was rejected, and the co
      - '.'
    ```
 
-2. **The stack is gsttt-site's (read at commit a0583d7)**: TanStack Start prerendering one route, Vite, Tailwind 4, Vitest, strict ESLint, Prettier, self-hosted Fontsource fonts, and its design language of 2px borders, hard offset shadows and a dot lattice, with the same token and dark-theme structure. The reason is that the build already solves trailing slashes, `404.html`, a base path and a domain-less build, and the two sites should look like siblings. Rejected: a hand-written HTML page, which has no tests for the page's promises, and Astro, which is a second stack to keep up. Left out of the copy: the documentation pages, i18next and the benchmark data.
+2. **The stack is gsttt-site's (read at commit a0583d7)**: TanStack Start prerendering one route, Vite, Tailwind 4, Vitest, strict ESLint, Prettier, self-hosted Fontsource fonts, and its design language of 2px borders, hard offset shadows and a dot lattice, with the same token and dark-theme structure. The reason is that the build already solves trailing slashes, `404.html`, a base path and a domain-less build, and the two sites should look like siblings. Rejected: a hand-written HTML page, which has no tests for the page's promises, and Astro, which is a second stack to keep up. Left out of the copy: the documentation pages, i18next, the benchmark data and Effect, which this repository does not use and which a page with no failure to model does not need (the types already carry the shape and the tests check ranges plainly).
 
    ```ts
    // site/vite.config.ts
