@@ -345,6 +345,23 @@ rm -f "$RUST_BIN"
 out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
 same_bytes "after the binary is removed, the next update writes the old bytes back" "$TMP/expected-core" "$TAGENTS_BIN/tagents-core"
 
+# A binary that is present and executable but cannot run (its interpreter is missing) is an error: the wrapper must not fall back to the node CLI, which would print the marker.
+mkdir -p "$(dirname "$RUST_BIN")"
+printf '#!/nonexistent/interpreter\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
+out=$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b 2>"$TMP/cannot-run.err"); rc=$?
+if [ "$rc" -ne 0 ]; then rc_state=nonzero; else rc_state=zero; fi
+ok "a binary that cannot run fails with a non-zero exit" nonzero "$rc_state"
+ok "...with a message on stderr" yes "$([ -s "$TMP/cannot-run.err" ] && echo yes || echo no)"
+lacks "...and the node CLI was not run" "node-c" "$out"
+# A directory at the binary's path is not a binary: the wrapper that names it goes on to the node CLI.
+rm -f "$RUST_BIN"; mkdir "$RUST_BIN"
+out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
+contains "an install with a directory at the binary's path still names it" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+ok "...and the wrapper runs the node CLI" "node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+rmdir "$RUST_BIN"
+out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
+
 # No node on the installing shell's PATH: the wrapper looks node up at run time and has none to pass on.
 if [ -n "$(env PATH=/usr/bin:/bin sh -c 'command -v node' 2>/dev/null)" ]; then
   printf '  skip /usr/bin or /bin holds a node\n'

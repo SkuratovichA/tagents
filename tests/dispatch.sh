@@ -174,6 +174,18 @@ ok "an installed tagents-core is still preferred to it" "doctor" "$(argv)"
 chmod -x "$REPO/target/release/tagents-core"
 STUB_EXIT=0 run "$REPO/tagents" "$BARE" session list >/dev/null
 ok "a Rust binary that is not executable is passed over for the node CLI" "session list" "$(argv)"
+# A binary that is there and executable but cannot run (its interpreter is missing) is an error, never a quiet fall back to the node CLI: the node CLI stub would leave its argv behind.
+printf '#!/nonexistent/interpreter\n' > "$REPO/target/release/tagents-core"
+chmod +x "$REPO/target/release/tagents-core"
+STUB_EXIT=0 run "$REPO/tagents" "$BARE" session list >/dev/null
+if [ "$rc" -ne 0 ]; then rc_state=nonzero; else rc_state=zero; fi
+ok       "a Rust binary that cannot run fails with a non-zero exit" nonzero "$rc_state"
+ok       "...with a message on stderr" yes "$([ -n "$out" ] && echo yes || echo no)"
+ok       "...and the node CLI was not run" "" "$(argv)"
+# A directory at the binary's path is not a binary: the script goes on to the node CLI.
+rm -rf "$REPO/target/release/tagents-core"; mkdir "$REPO/target/release/tagents-core"
+STUB_EXIT=0 run "$REPO/tagents" "$BARE" session list >/dev/null
+ok       "a directory where the Rust binary would be is passed over for the node CLI" "session list" "$(argv)"
 rm -rf "$REPO/target"
 STUB_EXIT=0 run "$REPO/tagents" "$BARE" session list >/dev/null
 ok "with no Rust binary at all it is the node CLI, as before" "session list" "$(argv)"

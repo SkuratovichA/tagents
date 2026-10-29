@@ -59,6 +59,7 @@ short() { printf '%s' "$1" | cut -c1-7; }
 
 xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
+# A native binary is looked up in the tree and nothing rebuilds it: after `tagents update` or a `git pull` an old `cargo build --release` keeps answering the verbs it serves until the next `cargo build --release`, and the wrapper cannot tell. A release that ships versioned, checksummed binaries is what removes that risk.
 # A wrapper names the one file to run and passes everything through, stdin included, which is what a hook is fed on; an interpreter given by its absolute path is pinned, so the wrapper runs that file while it is executable and otherwise the interpreter of the same name on the caller's PATH. A native binary, when one is given, is run in place of the file, with the interpreter handed to it as TAGENTS_NODE.
 write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary]
   dest=$1; target=$2; interp=${3:-}; native=${4:-}
@@ -78,7 +79,7 @@ write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary]
       *) runner=${interp:+$interp }; pin= ;;
     esac
     # Only a binary that exists now is named, so with none the file is the one this function always wrote. A binary that is gone by run time falls through to the node CLI below.
-    if [ -n "$native" ]; then printf 'r="%s"\n[ ! -x "$r" ] || { %sexec "$r" "$@"; }\n' "$native" "$pin"; fi
+    if [ -n "$native" ]; then printf 'r="%s"\n[ ! -f "$r" ] || [ ! -x "$r" ] || { %sexec "$r" "$@"; }\n' "$native" "$pin"; fi
     printf 'exec %s"%s" "$@"\n' "$runner" "$target"
   } > "$tmp"
   chmod 755 "$tmp"
