@@ -33,7 +33,7 @@ sh ~/.local/share/tagents/install.sh --hooks-dir ~/.claude/hooks
 
 | where | what |
 |-------|------|
-| `~/.local/bin` | `tagents`, `tusage`, `tnotes`, `tagents-core` and `tagents-knowledge` |
+| `~/.local/bin` | `tagents`, `tusage`, `tnotes`, `tagents-core` and `tagents-knowledge`; `tagents-core` runs the prebuilt Rust binary when a release exists for the version you installed, and the node CLI otherwise |
 | each `--hooks-dir` | one wrapper per `hooks/*.sh` |
 
 Give `--hooks-dir` once per Claude config directory you use; without it the installer uses `~/.claude/hooks`. A wrapper is only written over a symlink or over another wrapper. Any other file with that name is left alone, with a warning and exit status 1.
