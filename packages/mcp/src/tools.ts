@@ -99,12 +99,15 @@ function checkDefaults(name: string, command: Command): void {
   }
 }
 
-/** One tool per verb that answers and ends; a verb that serves until it is stopped, and a verb the spec marks `tool: false`, are left out. Sorted by name, so the order of the specs cannot move the contract. */
+/** Whether a verb is offered as a tool: not one that serves until it is stopped, and not one the spec marks `tool: false`. The references say the same of each verb, from this function. */
+export const isTool = (command: Command): boolean => command.effect !== 'serve' && command.tool !== false;
+
+/** One tool per verb that `isTool` says yes to. Sorted by name, so the order of the specs cannot move the contract. */
 export function toolSpecs(clis: readonly CliContract[]): readonly ToolSpec[] {
   const tools = new Map<string, ToolSpec>();
   for (const cli of clis) {
     for (const command of cli.commands) {
-      if (command.effect === 'serve' || command.tool === false) continue;
+      if (!isTool(command)) continue;
       const name = toolName(cli.program, command.path);
       if (tools.has(name)) throw new Error(`two verbs would both be the tool ${name}`);
       checkDefaults(name, command);

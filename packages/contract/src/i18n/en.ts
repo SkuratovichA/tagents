@@ -6,6 +6,8 @@ export const en = {
   exitCodes: 'Exit codes',
   colCode: 'Code',
   colOutcome: 'Outcome',
+  toolLabel: 'Tool',
+  cliOnly: 'CLI only: no tool runs this verb.',
   usageLabel: 'Usage',
   noFlags: 'This verb takes no flags.',
   colFlag: 'Flag',
