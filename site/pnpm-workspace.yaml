@@ -1,0 +1,3 @@
+# site/ is a project of its own. This file makes pnpm treat it as the root of its workspace, so an install here never reads or writes the repository's lockfile.
+packages:
+  - '.'
