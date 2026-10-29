@@ -4,7 +4,7 @@
 
 **Know which Claude Code session needs you, without leaving tmux.**
 
-[Docs](https://skuratovicha.github.io/tagents/) · [Install](#install) · [Getting started](https://skuratovicha.github.io/tagents/guide/getting-started) · [Resurrect](#never-lose-a-session)
+[Docs](https://tagents.arstoien.com/docs/) · [Install](#install) · [Getting started](https://tagents.arstoien.com/docs/guide/getting-started) · [Resurrect](#never-lose-a-session)
 
 <img src="docs/images/hero.gif" alt="The tagents dashboard: chats grouped by project, one turns BLOCKED, enter opens it beside the list" width="900">
 
@@ -64,7 +64,7 @@ Then tell Claude Code about the hooks. Add this to `~/.claude/settings.json`:
 
 </details>
 
-The hook is how a chat tells tagents what it is doing; the status line is where the model column comes from. [Getting started](https://skuratovicha.github.io/tagents/guide/getting-started) walks through both, and the Claude Code plugin.
+The hook is how a chat tells tagents what it is doing; the status line is where the model column comes from. [Getting started](https://tagents.arstoien.com/docs/guide/getting-started) walks through both, and the Claude Code plugin.
 
 ---
 
@@ -93,7 +93,7 @@ tagents plugin add ~/.local/share/tagents/packages/notify
 tagents notify install
 ```
 
-macOS asks once whether tagents may notify you. After that, a question, a permission prompt or a finished turn raises a banner, and a click opens that chat beside the list. A chat you are already looking at stays quiet, a notice that no longer applies is taken back, and an idle chat warns you before its prompt cache expires. [More on notifications](https://skuratovicha.github.io/tagents/guide/notifications)
+macOS asks once whether tagents may notify you. After that, a question, a permission prompt or a finished turn raises a banner, and a click opens that chat beside the list. A chat you are already looking at stays quiet, a notice that no longer applies is taken back, and an idle chat warns you before its prompt cache expires. [More on notifications](https://tagents.arstoien.com/docs/guide/notifications)
 
 ---
 
@@ -110,7 +110,7 @@ set -g @resurrect-hook-post-save-layout '~/.local/bin/tagents --resurrect-save'
 set -g @resurrect-hook-post-restore-all '~/.local/bin/tagents --resurrect --auto'
 ```
 
-Without tmux-resurrect it still works: `tagents --resurrect` rebuilds what is missing. [How resurrect works](https://skuratovicha.github.io/tagents/guide/resurrect)
+Without tmux-resurrect it still works: `tagents --resurrect` rebuilds what is missing. [How resurrect works](https://tagents.arstoien.com/docs/guide/resurrect)
 
 ---
 
@@ -138,7 +138,7 @@ profile = "work"
 watch = "work"                  # show context and cost for this login
 ```
 
-Nothing is required: without a config every chat starts exactly as plain `claude` would. [The whole config](config.example.toml) · [Accounts](https://skuratovicha.github.io/tagents/guide/accounts) · [Cost](https://skuratovicha.github.io/tagents/guide/cost)
+Nothing is required: without a config every chat starts exactly as plain `claude` would. [The whole config](config.example.toml) · [Accounts](https://tagents.arstoien.com/docs/guide/accounts) · [Cost](https://tagents.arstoien.com/docs/guide/cost)
 
 For the tmux status bar, a one-line tally of your chats by state:
 
@@ -156,13 +156,13 @@ set -g status-right '#{?@tagents_counts,#{@tagents_counts},#(~/.local/bin/tagent
 /plugin install tagents --marketplace SkuratovichA/tagents
 ```
 
-Gives every chat the `tagents` skill, so it knows the exact commands and flags of tagents instead of guessing, and a `knowledge` MCP server that searches your markdown notes. [About the plugin](https://skuratovicha.github.io/tagents/guide/claude-code-plugin)
+Gives every chat the `tagents` skill, so it knows the exact commands and flags of tagents instead of guessing, and a `knowledge` MCP server that searches your markdown notes. [About the plugin](https://tagents.arstoien.com/docs/guide/claude-code-plugin)
 
 ---
 
 ## Learn more
 
-The [docs](https://skuratovicha.github.io/tagents/) cover the rest: [the dashboard](https://skuratovicha.github.io/tagents/guide/dashboard) · [notifications](https://skuratovicha.github.io/tagents/guide/notifications) · [resurrect](https://skuratovicha.github.io/tagents/guide/resurrect) · [closed sessions](https://skuratovicha.github.io/tagents/guide/closed-sessions) · [accounts](https://skuratovicha.github.io/tagents/guide/accounts) · [cost](https://skuratovicha.github.io/tagents/guide/cost) · [notes](https://skuratovicha.github.io/tagents/guide/notes) · [keys](https://skuratovicha.github.io/tagents/guide/keys) · [architecture](https://skuratovicha.github.io/tagents/architecture/overview) · [development](https://skuratovicha.github.io/tagents/development)
+The [docs](https://tagents.arstoien.com/docs/) cover the rest: [the dashboard](https://tagents.arstoien.com/docs/guide/dashboard) · [notifications](https://tagents.arstoien.com/docs/guide/notifications) · [resurrect](https://tagents.arstoien.com/docs/guide/resurrect) · [closed sessions](https://tagents.arstoien.com/docs/guide/closed-sessions) · [accounts](https://tagents.arstoien.com/docs/guide/accounts) · [cost](https://tagents.arstoien.com/docs/guide/cost) · [notes](https://tagents.arstoien.com/docs/guide/notes) · [keys](https://tagents.arstoien.com/docs/guide/keys) · [architecture](https://tagents.arstoien.com/docs/architecture/overview) · [development](https://tagents.arstoien.com/docs/development)
 
 ## License
 

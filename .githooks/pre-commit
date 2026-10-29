@@ -6,7 +6,7 @@
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
 git diff --cached --name-only --diff-filter=ACMRD |
-  grep -q -E '^(packages/[^/]+/(src/|package\.json$|tsconfig[^/]*\.json$)|pnpm-lock\.yaml$|tagents$|tusage$|tnotes$|skills/|\.claude-plugin/|contract\.json$)' || exit 0
+  grep -q -E '^(packages/[^/]+/(src/|package\.json$|tsconfig[^/]*\.json$)|pnpm-lock\.yaml$|tagents$|tusage$|tnotes$|skills/|spec/cli/|\.claude-plugin/|contract\.json$)' || exit 0
 
 if [ ! -d packages/contract/node_modules ]; then
   echo 'pre-commit: packages/contract has no node_modules, so the plugin contract was not regenerated. Run pnpm install, then node packages/contract/src/main.ts.' >&2

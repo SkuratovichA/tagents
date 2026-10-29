@@ -1,0 +1,24 @@
+[package]
+name = "tagents-core"
+description = "The tagents-core front door: serves the ported verbs, hands every other word to the node CLI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+name = "tagents_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tagents-core"
+path = "src/main.rs"
+
+[dependencies]
+tagents-spec.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
