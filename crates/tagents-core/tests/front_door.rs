@@ -38,7 +38,7 @@ fn repo(path: &str) -> PathBuf {
     Path::new(REPO).join(path)
 }
 
-/// A child forked by one test thread holds every descriptor its parent had open until it execs, so while another thread has an executable open for writing, exec of that file can fail with ETXTBSY ("Text file busy"). Writers of executables take the write side and every spawn the read side, so no fork overlaps a write.
+/// A child forked by one test thread holds a copy of every descriptor its parent had open until it execs, so a file stays busy for writing after its writer has closed it, and exec of that file can fail with ETXTBSY ("Text file busy"). Writers of executables take the write side and every spawn the read side, so no fork overlaps a write; spawn through `run` or `start`, and write or copy an executable only under `writing()`.
 static FORK_GATE: RwLock<()> = RwLock::new(());
 
 fn forking() -> RwLockReadGuard<'static, ()> {
@@ -49,13 +49,15 @@ fn writing() -> RwLockWriteGuard<'static, ()> {
     FORK_GATE.write().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// `Command::output` with the spawn done under the gate.
+/// `Command::output` under the gate: the guard is held until the child has exited.
+#[track_caller]
 fn run(command: &mut Command) -> Output {
     let _forking = forking();
     command.output().unwrap()
 }
 
 /// `Command::spawn` under the gate; the caller feeds or reaps the child after the guard is gone.
+#[track_caller]
 fn start(command: &mut Command) -> Child {
     let _forking = forking();
     command.spawn().unwrap()
