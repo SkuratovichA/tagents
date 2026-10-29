@@ -42,7 +42,7 @@ A DIR that is not a directory SHALL print `tagents: <dir> is not a directory` on
 - **THEN** it exits 2, prints the same line and opens no window, instead of running `npm` and dropping `run dev`
 
 ### Requirement: `--detach` opens the window without taking the screen
-`tagents --new [--detach] [DIR] [PROFILE]` and `tagents --window [--detach] DIR COMMAND` SHALL, given `--detach` straight after the flag, make and register the window where it belongs without selecting it, without switching any client and without the tmux message. Without `--detach` both behave as before.
+`tagents --new [--detach] [DIR] [PROFILE]` and `tagents --window [--detach] DIR COMMAND` SHALL, given `--detach` straight after the flag, make and register the window where it belongs without selecting it, without switching any client. The one-line tmux message is shown as without the flag, and a refusal is also written to standard error, because the caller is a program that reads standard error and the exit status. Without `--detach` both behave as before.
 
 #### Scenario: A window that is not selected
 - **WHEN** `tagents --window --detach ~/projects/app "npm run dev"` runs while another window of that session is selected
@@ -55,6 +55,10 @@ A DIR that is not a directory SHALL print `tagents: <dir> is not a directory` on
 #### Scenario: Without the flag
 - **WHEN** `tagents --new ~/projects/app work` runs
 - **THEN** the new window is selected, as `enter` on a row leaves it
+
+#### Scenario: A refusal under --detach
+- **WHEN** `tagents --new --detach /nowhere` runs and `/nowhere` is not a directory
+- **THEN** it exits 1, prints `tagents: /nowhere is not a directory` on standard error and opens no window
 
 ### Requirement: A detached `--new` says which window it opened
 `tagents --new --detach` SHALL print on standard output the one line `tagents --window` prints, the new pane, a tab and `<session>:<window index>`, so a caller that cannot see the screen can say which window it opened. `tagents --new` without `--detach` SHALL print nothing on standard output, as it always did.

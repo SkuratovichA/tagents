@@ -50,3 +50,4 @@
 - [x] 8.11 Say in the skill which tools exist and that `session open` and `session prompt` are CLI only; document the limits of `send` in the README of `packages/notify`.
 - [x] 8.12 Mark each verb in `references/cli.md` as a tool or CLI only, from the function the tools are made by (`packages/contract` `test/render.test.ts`).
 - [x] 8.13 Print the pane and where the window is for `--new --detach`, the line `--window` prints (`tests/launch.sh` section 13).
+- [x] 8.14 Write the reason for a refused detached launch to standard error as well as to the tmux message (`tests/launch.sh` section 13).

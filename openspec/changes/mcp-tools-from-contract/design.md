@@ -96,7 +96,7 @@ The pre-commit hook's source list also gains `tagents.cli.json`, which the contr
 
 ## Decisions taken
 
-The five questions that stood here (the duplicated knowledge tools, `install` and `uninstall` as tools, selecting the new window, the number of tools, and `session prompt` as a tool) are settled by the four decisions below. Each has the choice, the reason and the alternative that was rejected.
+The five questions that stood here (the duplicated knowledge tools, `install` and `uninstall` as tools, selecting the new window, the number of tools, and `session prompt` as a tool) are settled by the decisions below, and the later ones (D5) answer questions raised in review. Each has the choice, the reason and the alternative that was rejected.
 
 ### D1. Nineteen tools, not thirty-one: a verb opts out with `tool: false`
 
@@ -138,6 +138,17 @@ child.once('exit', () => signalGroup('SIGKILL')); // what the program left behin
 
 ```ts
 const CALL_TIMEOUT_MS = 5 * 60 * 1000;
+```
+
+### D5. A detached launch keeps the one-line tmux message and also writes a refusal to standard error
+
+`--detach` keeps the tmux message a launch ends with (`tagents: new agent in …`, `tagents: new window in …`): it is the only sign the person at the keyboard gets that a window appeared in the background, and it does not take the screen. What `--detach` adds is that a refusal (a directory that is not one, no claude profile, no window could be opened) is also written to standard error through `launch_refusal` in `lib/tagents/launch.sh`, because the caller is a program that reads standard error and the exit status and not the screen, so a failed `tagents_new` call carries its reason. Rejected: silence under `--detach` (a background window nobody is told about is invisible); standard error for every caller (a `run-shell` key binding would show a pane for an ordinary refusal).
+
+```bash
+launch_refusal() {  # <message>
+  [ -z "$LAUNCH_DETACH" ] || echo "$1" >&2
+  notice "$1"
+}
 ```
 
 ### Dropped

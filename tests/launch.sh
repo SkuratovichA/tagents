@@ -560,5 +560,14 @@ ok "...and starts nothing" 0 "$(ls "$OUT"/*.out 2>/dev/null | wc -l | tr -d ' ')
 run_bounded --new --detach "$PERS" ask; rc=$?
 ok "asking for the question by name is refused the same way" 2 "$rc"
 
+# A refusal is read by a program: its reason is on standard error, and no window is opened for it.
+clear_out
+before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
+run_bounded --new --detach "$ROOT/no-such-directory"; rc=$?; err=$(cat "$BOUNDED_ERR")
+ok "a detached start in a directory that is not there is refused" 1 "$rc"
+has "...and standard error says why" "is not a directory" "$err"
+has "...and names the directory" "$ROOT/no-such-directory" "$err"
+ok "...opening no window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

@@ -187,11 +187,17 @@ new_pane_window() {  # <session> <dir> [cmd]
   fi
 }
 
+# Says why a launch was refused. The tmux message is for a person at the keyboard; a caller that passed --detach is a program, and what it can read is standard error and the exit status, so there the reason goes to standard error as well and a failed tool call carries its reason.
+launch_refusal() {  # <message>
+  [ -z "$LAUNCH_DETACH" ] || echo "$1" >&2
+  notice "$1"
+}
+
 # ctrl-n: start a fresh Claude for the project under the cursor, as a new window of <session> (the group the cursor is in). With no session given (`tagents --new`, or the cursor on the group `no window`) the session that owns the project, else the client's, else the current. The directory is normalised to the repo root, so a session started from ~/repo/packages/client makes the new agent a sibling in ~/repo rather than burying it in a subdirectory the tree would file separately.
 new_agent() {  # <dir> [profile] [session]
   local dir=${1:-} prof=${2:-} sess=${3:-} root
   [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
-  [ -d "$dir" ] || { notice "tagents: $dir is not a directory"; return 1; }
+  [ -d "$dir" ] || { launch_refusal "tagents: $dir is not a directory"; return 1; }
   # A NAME THAT CAME FROM A HUMAN IS CHECKED FIRST, before a window is created for it. profile_for only ever returns names the config already has; `tagents --new <dir> personl` used to sail straight through to a launch on the default account, which is the exact silent wrong login all of this exists to end. Not profile_named: nothing is being skipped here, the launch is refused. `ask` passes — it is not a profile, it is the instruction to ask for one.
   if [ -n "$prof" ] && [ "$prof" != ask ] && ! profile_exists "$prof"; then
     echo "tagents: no claude profile \"$prof\" in $CONFIG_FILE" >&2
@@ -275,13 +281,13 @@ start_agent() {  # <root> <session> <profile>
   local root=$1 sess=$2 prof=${3:-} newpane idx cmd
   # Built before the window exists: agent_cmd refuses a profile it cannot account for, and a window on an empty command string would be a bare shell where an agent was asked for.
   cmd=$(agent_cmd "$prof" new) || {
-    notice "tagents: no claude profile \"$prof\" in $CONFIG_FILE"
+    launch_refusal "tagents: no claude profile \"$prof\" in $CONFIG_FILE"
     return 1; }
   # -d so the window is not selected as a side effect of being created, half built and before its pane id is even known; it is selected once, deliberately, below.
   # The last resort session does not exist yet (no tmux server running, or none with a session): it is created with the chat as its first window. Any other name that is gone is a session killed under the caller, and it stays gone.
   newpane=$(new_pane_window "$sess" "$root" "$cmd")
   [ -n "$newpane" ] || {
-    notice "tagents: could not open a window in $sess"; return 1; }
+    launch_refusal "tagents: could not open a window in $sess"; return 1; }
   idx=$(tmux display -p -t "$newpane" '#{window_index}' 2>/dev/null)
   # OPENED LIKE ANY OTHER AGENT: the viewport shows it and the cursor is on its row. Asking for an agent from the list and being left looking at the previous one was never what the key meant. With no dashboard up the client is simply taken to the new window. A detached start leaves everything where it was.
   [ -n "$LAUNCH_DETACH" ] || open_agent "$newpane"
