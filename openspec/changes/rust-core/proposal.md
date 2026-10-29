@@ -4,7 +4,7 @@
 
 ## What Changes
 
-- The verbs and flags of `tagents-core` become data: `spec/cli/tagents-core.json`, described by `spec/cli/cli-spec.schema.json`, read by the node CLI, by the contract generator and by Rust. Each command says `"impl": "rust"` or `"impl": "node"`; a command may carry one optional string `effect`.
+- The verbs and flags of `tagents-core` become data: `spec/cli/tagents-core.json`, described by `spec/cli/cli-spec.schema.json`, read by the node CLI, by the contract generator and by Rust. Each command says `"impl": "rust"` or `"impl": "node"`; a command may carry an optional `effect` (one of `read`, `write`, `spawn`, `destructive` and `serve`) and an optional `"tool": false`, which keeps it out of the plugin's MCP tools.
 - A Cargo workspace at the repository root with `tagents-spec` (the data file's model) and `tagents-core` (a library and the `tagents-core` binary): the front door serves `sessions recent|search|show`, answers `--spec` with the table of verbs it serves, and replaces itself with the node CLI for every other word, so the exit code is the node CLI's own.
 - `tagents` (`forward_core`) and the wrappers `install.sh` writes run `target/release/tagents-core` when it is an executable file, and the node CLI otherwise. Nothing in the repository downloads or builds a binary on a user's machine.
 - A parity suite, `tests/rust-parity.sh` with the Cargo tests beside it, runs the node CLI and the Rust binary on the same seeded home and compares stdout, stderr and exit code byte for byte.
