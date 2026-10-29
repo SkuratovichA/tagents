@@ -144,6 +144,18 @@ run() { env TMUX="$SOCK,0,0" bash "$TA" "$@"; }
 
 clear_out() { rm -f "$OUT"/*.out 2>/dev/null; return 0; }
 
+# A call that would wait for a person (a dialog) is cut off after ~10s with 124 instead of holding the suite: its stderr lands in $BOUNDED_ERR.
+BOUNDED_ERR=""
+run_bounded() {
+  local i=0 pid
+  BOUNDED_ERR=$OUT/bounded.err
+  run "$@" >/dev/null 2>"$BOUNDED_ERR" &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 40 ]; do i=$((i + 1)); sleep 0.25; done
+  if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; return 124; fi
+  wait "$pid"
+}
+
 waitout() {  # -> path of the first stub file to appear, or 1 after ~6s
   local i f
   i=0
@@ -440,6 +452,182 @@ run --new "$CPD" >/dev/null 2>&1
 f=$(waitout)
 ok "a new chat for the project goes to the session that is not the dashboard" tatest-cpv "$(sess_of_out "$f")"
 tm kill-session -t '=tatest-cpd:' >/dev/null 2>&1; tm kill-session -t '=tatest-cpv:' >/dev/null 2>&1
+
+
+t "12. --window opens a plain window running a command"
+# The twin of --new for anything that is not an agent: the command is the window's own, the window lands in the session that owns the directory, and the line it prints says where.
+WD="$ROOT/personal/window-project"; mkdir -p "$WD/.git"
+tm new-session -d -s tatest-winowner -c "$WD" 'sleep 600' >/dev/null 2>&1
+clear_out
+rm -f "$OUT/win.txt"
+before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
+line=$(run --window "$WD" "pwd > $OUT/win.txt; sleep 600" 2>/dev/null); rc=$?
+i=0; while [ ! -s "$OUT/win.txt" ] && [ "$i" -lt 24 ]; do i=$((i + 1)); sleep 0.25; done
+ok "it succeeds" 0 "$rc"
+ok "the command ran in the directory it was given" "$WD" "$(cat "$OUT/win.txt" 2>/dev/null)"
+ok "exactly one window was opened" "$((before + 1))" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+wpane=${line%%	*}
+ok "it prints the new pane first" "$(tm list-panes -a -F '#{pane_id}' 2>/dev/null | grep -Fx "$wpane")" "$wpane"
+ok "the window is in the session that owns the directory" tatest-winowner \
+   "$(tm display -p -t "$wpane" '#{session_name}' 2>/dev/null)"
+ok "it prints where the window is, after the pane" \
+   "$(tm display -p -t "$wpane" '#{session_name}:#{window_index}' 2>/dev/null)" "${line#*	}"
+ok "it runs no agent: the claude stub never started" 0 "$(ls "$OUT"/*.out 2>/dev/null | wc -l | tr -d ' ')"
+ok "the new window is the one selected in its session, as enter on a row would leave it" 1 \
+   "$(tm display -p -t "$wpane" '#{window_active}' 2>/dev/null)"
+
+# A relative directory is the caller's, not the tmux server's.
+rm -f "$OUT/rel.txt"
+( cd "$ROOT/personal" && run --window window-project "pwd > $OUT/rel.txt; sleep 600" >/dev/null 2>&1 )
+i=0; while [ ! -s "$OUT/rel.txt" ] && [ "$i" -lt 24 ]; do i=$((i + 1)); sleep 0.25; done
+ok "a relative directory is resolved where the command was typed" "$WD" "$(cat "$OUT/rel.txt" 2>/dev/null)"
+
+# A name that is a symlink comes out as the physical path, the one tmux reports as the pane's path and the session lookup compares: the window of the line --window prints is in the real directory, in the session that owns it. That session is not the one the client is in (the calls above followed it into tatest-winowner), because a window opened with the logical path finds no owner and falls back to the client's session: with one and the same session the assertion could not tell the two apart.
+LD="$ROOT/personal/link-target"; mkdir -p "$LD/.git"
+tm new-session -d -s tatest-linkowner -c "$LD" 'sleep 600' >/dev/null 2>&1
+ln -s link-target "$ROOT/personal/window-link"
+sline=$( cd "$ROOT/personal" && run --window --detach window-link "sleep 600" 2>/dev/null ); rc=$?
+spane=${sline%%	*}
+ok "a relative symlink to a directory is accepted" 0 "$rc"
+ok "...and the window it prints is in the physical directory" "$LD" "$(tm display -p -t "$spane" '#{pane_current_path}' 2>/dev/null)"
+ok "...in the session that owns the physical directory" tatest-linkowner "$(tm display -p -t "$spane" '#{session_name}' 2>/dev/null)"
+tm kill-session -t '=tatest-linkowner:' >/dev/null 2>&1
+
+before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
+err=$(run --window "$WD" 2>&1 >/dev/null); rc=$?
+ok "a missing command is a usage error" 2 "$rc"
+has "...that says what it needs" "--window takes a directory and one command, quoted" "$err"
+err=$(run --window 2>&1 >/dev/null); rc=$?
+ok "a missing directory is a usage error too" 2 "$rc"
+# A command typed without quotes arrives as several words; the extra ones used to be dropped and a different command run.
+err=$(run --window "$WD" echo hello 2>&1 >/dev/null); rc=$?
+ok "a command in more than one word is a usage error" 2 "$rc"
+has "...that says to quote it" "--window takes a directory and one command, quoted" "$err"
+err=$(run --window "$WD" "sleep 600" extra 2>&1 >/dev/null); rc=$?
+ok "so is one word too many after a quoted command" 2 "$rc"
+err=$(run --window "$ROOT/no-such-dir" "sleep 600" 2>&1 >/dev/null); rc=$?
+ok "a directory that is not there is refused" 1 "$rc"
+has "...by name" "$ROOT/no-such-dir" "$err"
+ok "none of the refusals opened a window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+
+# A directory that exists but cannot be entered (no search permission) is refused like one that is not there, by --window and by --new, whether it is named by an absolute path or by a relative one: handed on as typed, a relative name would reach tmux relative. Root can enter it, so there is nothing to refuse.
+if [ "$(id -u)" -eq 0 ]; then
+  printf '  SKIP a directory without search permission can be entered as root\n'
+else
+  mkdir "$ROOT/locked-dir" && chmod 600 "$ROOT/locked-dir"
+  for kind in absolute relative; do
+    case $kind in absolute) name=$ROOT/locked-dir ;; *) name=locked-dir ;; esac
+    before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
+    err=$( cd "$ROOT" && run --window "$name" "sleep 600" 2>&1 >/dev/null ); rc=$?
+    ok "a directory that cannot be entered is refused ($kind name)" 1 "$rc"
+    has "...saying it is not a directory" "is not a directory" "$err"
+    ok "...opening no window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+    pushd "$ROOT" >/dev/null && { run_bounded --new --detach "$name"; rc=$?; popd >/dev/null; }
+    err=$(cat "$BOUNDED_ERR")
+    ok "--new --detach refuses it too ($kind name)" 1 "$rc"
+    has "...saying it is not a directory" "is not a directory" "$err"
+    ok "...opening no window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+  done
+  chmod 700 "$ROOT/locked-dir"
+fi
+
+# A command that starts with a dash is the command, not a flag of tmux: without `--` before it tmux refuses with "unknown flag" and no window opens. What the window's shell then makes of it is the shell's own business, so only the opening is checked.
+dashline=$(run --window "$WD" "-zzz-not-a-command" 2>/dev/null); rc=$?
+ok "a command that starts with a dash is not read as a tmux flag" 0 "$rc"
+has "...and the window it opened is printed" "%" "$dashline"
+
+# CDPATH is the caller's, and a relative name is looked up where the caller stands: with CDPATH set `cd` would take the same name from there and print where it went, into the very value the directory is read from.
+mkdir -p "$ROOT/cdp/window-project"
+rm -f "$OUT/cdp.txt"
+cdline=$(cd "$ROOT/personal" && CDPATH="$ROOT/cdp" run --window window-project "pwd > $OUT/cdp.txt; sleep 600" 2>/dev/null)
+i=0; while [ ! -s "$OUT/cdp.txt" ] && [ "$i" -lt 24 ]; do i=$((i + 1)); sleep 0.25; done
+ok "a CDPATH does not move a relative directory" "$WD" "$(cat "$OUT/cdp.txt" 2>/dev/null)"
+cdpane=${cdline%%	*}
+ok "...and what is printed is one line: the pane and where it is" "$(tm display -p -t "$cdpane" '#{session_name}:#{window_index}' 2>/dev/null)" "${cdline#*	}"
+ok "...a single line" 1 "$(printf '%s\n' "$cdline" | wc -l | tr -d ' ')"
+tm kill-session -t '=tatest-winowner:' >/dev/null 2>&1
+
+t "13. --detach makes the window and leaves the screen alone"
+# The default selects what it starts (open_agent), as enter on a row would; detached, the window is made where it belongs and nothing is selected or switched to, and no dialog is ever opened.
+tm new-session -d -s tatest-winowner -c "$WD" 'sleep 600' >/dev/null 2>&1
+active_before=$(tm display -p -t '=tatest-winowner:' '#{window_id}' 2>/dev/null)
+rm -f "$OUT/det.txt"
+line=$(run --window --detach "$WD" "pwd > $OUT/det.txt; sleep 600" 2>/dev/null); rc=$?
+i=0; while [ ! -s "$OUT/det.txt" ] && [ "$i" -lt 24 ]; do i=$((i + 1)); sleep 0.25; done
+dpane=${line%%	*}
+ok "--window --detach succeeds" 0 "$rc"
+ok "...runs the command in the directory" "$WD" "$(cat "$OUT/det.txt" 2>/dev/null)"
+ok "...prints the pane and where it is, as without the flag" "$(tm display -p -t "$dpane" '#{session_name}:#{window_index}' 2>/dev/null)" "${line#*	}"
+ok "...and the new window is not the selected one" 0 "$(tm display -p -t "$dpane" '#{window_active}' 2>/dev/null)"
+ok "...the window that was selected still is" "$active_before" "$(tm display -p -t '=tatest-winowner:' '#{window_id}' 2>/dev/null)"
+tm kill-session -t '=tatest-winowner:' >/dev/null 2>&1
+
+clear_out
+plain=$(run --new "$PERS" personal 2>/dev/null)
+f=$(waitout) || { echo "  FAIL nothing started"; fail=$((fail+1)); f=/dev/null; }
+pane="%${f##*/}"; pane=${pane%.out}
+ok "without the flag the agent's window is selected, as enter on a row leaves it" 1 "$(tm display -p -t "$pane" '#{window_active}' 2>/dev/null)"
+ok "...and nothing is printed, as it always was" "" "$plain"
+
+clear_out
+nline=$(run --new --detach "$PERS" personal 2>/dev/null); rc=$?
+f=$(waitout) || { echo "  FAIL nothing started"; fail=$((fail+1)); f=/dev/null; }
+pane="%${f##*/}"; pane=${pane%.out}
+ok "--new --detach succeeds" 0 "$rc"
+ok "...prints one line: the pane, a tab and where the window is, as --window does" "$pane	$(tm display -p -t "$pane" '#{session_name}:#{window_index}' 2>/dev/null)" "$nline"
+ok "...starts the agent on the account asked for" "$HOME/.claude-personal" "$(field CFG "$f")"
+ok "...in the session that owns the project" tatest-proj "$(sess_of_out "$f")"
+ok "...and its window is not selected" 0 "$(tm display -p -t "$pane" '#{window_active}' 2>/dev/null)"
+
+# No rule matches $NOR, so the config says to ask which account: a dialog needs a person, a detached start has none.
+ok "the rules ask for this directory" ask "$(run --profile-for "$NOR" 2>/dev/null)"
+clear_out
+before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
+run_bounded --new --detach "$NOR"; rc=$?; err=$(cat "$BOUNDED_ERR")
+sleep 1
+ok "a detached start the rules cannot decide is a usage error" 2 "$rc"
+has "...that names the profiles to pass" "personal work" "$err"
+ok "...opens no window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+ok "...and starts nothing" 0 "$(ls "$OUT"/*.out 2>/dev/null | wc -l | tr -d ' ')"
+run_bounded --new --detach "$PERS" ask; rc=$?
+ok "asking for the question by name is refused the same way" 2 "$rc"
+
+# A refusal is read by a program: its reason is on standard error, and no window is opened for it.
+clear_out
+before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
+run_bounded --new --detach "$ROOT/no-such-directory"; rc=$?; err=$(cat "$BOUNDED_ERR")
+ok "a detached start in a directory that is not there is refused" 1 "$rc"
+has "...and standard error says why" "is not a directory" "$err"
+has "...and names the directory" "$ROOT/no-such-directory" "$err"
+ok "...opening no window" "$before" "$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')"
+sout=$(run --new --detach "$ROOT/no-such-directory" 2>/dev/null)
+ok "...and standard output stays empty" "" "$sout"
+
+# The refusal when tmux cannot open the window (no server to ask and none that can be started: the socket's directory is not there). The refusal for a profile that cannot be built (start_agent's first one) is not reachable from the command line: new_agent has already refused any name the config does not hold, so no test drives it.
+sout=$(env TMUX="$ROOT/no-such-socket-dir/sock,0,0" bash "$TA" --new --detach "$PERS" personal 2>"$OUT/nowin.err"); rc=$?
+ok "a detached start tmux cannot open a window for is refused" 1 "$rc"
+has "...and standard error says why" "could not open a window in" "$(cat "$OUT/nowin.err")"
+ok "...and standard output stays empty" "" "$sout"
+
+# A relative directory is the caller's here too. Outside a git repository the directory is used as given, and a name that is not made absolute matches no session by its path, so the agent would land in a session that does not own it (and tmux would resolve a relative `-c` against a directory of its own on a tmux that does not take the client's).
+RELD="$ROOT/personal/plain-dir"; mkdir -p "$RELD"
+tm new-session -d -s tatest-plain -c "$RELD" 'sleep 600' >/dev/null 2>&1
+clear_out
+rline=$( cd "$ROOT/personal" && run --new --detach plain-dir personal 2>/dev/null ); rc=$?
+rpane=${rline%%	*}
+ok "a detached start in a relative directory succeeds" 0 "$rc"
+ok "...in the directory it names" "$(cd -P "$RELD" && pwd)" "$(tm display -p -t "$rpane" '#{pane_current_path}' 2>/dev/null)"
+ok "...in the session that owns that directory" tatest-plain "$(tm display -p -t "$rpane" '#{session_name}' 2>/dev/null)"
+
+# ...and through a symlink: the agent starts in the physical directory, in the session that owns it.
+ln -s plain-dir "$ROOT/personal/plain-link"
+clear_out
+lline=$( cd "$ROOT/personal" && run --new --detach plain-link personal 2>/dev/null ); rc=$?
+lpane=${lline%%	*}
+ok "a detached start through a symlink succeeds" 0 "$rc"
+ok "...in the physical directory" "$RELD" "$(tm display -p -t "$lpane" '#{pane_current_path}' 2>/dev/null)"
+ok "...in the session that owns the physical directory" tatest-plain "$(tm display -p -t "$lpane" '#{session_name}' 2>/dev/null)"
+tm kill-session -t '=tatest-plain:' >/dev/null 2>&1
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

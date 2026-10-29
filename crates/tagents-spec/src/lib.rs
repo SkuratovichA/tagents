@@ -7,7 +7,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde::{Deserialize, Serialize, de::Error as _};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 
 /// The spec this crate was built with: the data file, embedded.
 pub const BUNDLED: &str = include_str!("../../../spec/cli/tagents-core.json");
@@ -55,13 +55,20 @@ pub struct Command {
     /// Which program serves the verb.
     #[serde(rename = "impl")]
     pub implementation: Implementation,
-    /// Optional extra string kept for tooling that classifies verbs. Nothing here reads it.
+    /// What running the verb does, for whoever decides whether to let it run. The contract generator reads it; nothing here acts on it.
     #[serde(
         default,
         deserialize_with = "not_null",
         skip_serializing_if = "Option::is_none"
     )]
-    pub effect: Option<String>,
+    pub effect: Option<Effect>,
+    /// `false` keeps the verb out of the plugin's tools. Absent means the verb is a tool. The contract generator reads it; nothing here acts on it.
+    #[serde(
+        default,
+        deserialize_with = "not_null",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub tool: Option<NotATool>,
 }
 
 /// One option of a verb.
@@ -91,6 +98,38 @@ pub enum OptionKind {
 pub enum Implementation {
     Rust,
     Node,
+}
+
+/// What running a verb does: `read` changes nothing, `write` changes files, settings or what is on the screen, `spawn` starts a program or a window that does things of its own, `destructive` removes or stops something that cannot be got back, and `serve` runs until it is stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Effect {
+    Read,
+    Write,
+    Spawn,
+    Destructive,
+    Serve,
+}
+
+/// The one value `tool` may have in the data file, written `false`: the verb is not a tool. A verb that is a tool leaves the key out, so `true` has no meaning and is refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NotATool;
+
+impl Serialize for NotATool {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bool(false)
+    }
+}
+
+impl<'de> Deserialize<'de> for NotATool {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if bool::deserialize(deserializer)? {
+            return Err(D::Error::custom(
+                "`tool` can only be false: a verb that is a tool leaves the key out",
+            ));
+        }
+        Ok(Self)
+    }
 }
 
 impl Spec {
@@ -169,7 +208,7 @@ mod tests {
             .collect()
     }
 
-    fn command(effect: Option<&str>) -> Command {
+    fn command(effect: Option<Effect>, tool: Option<NotATool>) -> Command {
         Command {
             path: vec!["x".into()],
             positionals: vec![],
@@ -183,7 +222,8 @@ mod tests {
             required: vec![],
             summary: "summaryX".into(),
             implementation: Implementation::Rust,
-            effect: effect.map(str::to_owned),
+            effect,
+            tool,
         }
     }
 
@@ -280,22 +320,80 @@ mod tests {
         assert!(dir.join(schema).is_file());
     }
 
-    #[test]
-    fn effect_is_optional_and_a_string() {
-        let with = r#"{"path":["a"],"positionals":[],"options":{},"required":[],"summary":"k","impl":"node","effect":"writes"}"#;
-        let without = r#"{"path":["a"],"positionals":[],"options":{},"required":[],"summary":"k","impl":"node"}"#;
-        let number = r#"{"path":["a"],"positionals":[],"options":{},"required":[],"summary":"k","impl":"node","effect":1}"#;
-        let parsed: Command = serde_json::from_str(with).expect("effect accepted");
-        assert_eq!(parsed.effect.as_deref(), Some("writes"));
-        let parsed: Command = serde_json::from_str(without).expect("effect optional");
-        assert_eq!(parsed.effect, None);
-        assert!(serde_json::from_str::<Command>(number).is_err());
+    /// A verb of the data file with `extra` after `"impl":"node"`, e.g. `,"effect":"read"`.
+    fn verb_with(extra: &str) -> String {
+        format!(
+            r#"{{"path":["a"],"positionals":[],"options":{{}},"required":[],"summary":"k","impl":"node"{extra}}}"#
+        )
     }
 
     #[test]
-    fn a_null_effect_is_refused_like_the_schema_does() {
-        let text = r#"{"path":["a"],"positionals":[],"options":{},"required":[],"summary":"k","impl":"node","effect":null}"#;
-        assert!(serde_json::from_str::<Command>(text).is_err());
+    fn effect_is_optional_and_one_of_five_words() {
+        for (word, effect) in [
+            ("read", Effect::Read),
+            ("write", Effect::Write),
+            ("spawn", Effect::Spawn),
+            ("destructive", Effect::Destructive),
+            ("serve", Effect::Serve),
+        ] {
+            let parsed: Command =
+                serde_json::from_str(&verb_with(&format!(r#","effect":"{word}""#)))
+                    .expect("effect accepted");
+            assert_eq!(parsed.effect, Some(effect), "{word}");
+        }
+        let parsed: Command = serde_json::from_str(&verb_with("")).expect("effect optional");
+        assert_eq!(parsed.effect, None);
+    }
+
+    #[test]
+    fn an_effect_nobody_declared_is_refused_like_the_schema_does() {
+        for bad in [
+            r#""writes""#,
+            r#""Read""#,
+            r#""""#,
+            "1",
+            "true",
+            "[]",
+            "null",
+        ] {
+            let text = verb_with(&format!(r#","effect":{bad}"#));
+            assert!(
+                serde_json::from_str::<Command>(&text).is_err(),
+                "effect {bad} accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn tool_is_optional_and_only_false() {
+        let parsed: Command =
+            serde_json::from_str(&verb_with(r#","tool":false"#)).expect("tool false accepted");
+        assert_eq!(parsed.tool, Some(NotATool));
+        let parsed: Command = serde_json::from_str(&verb_with("")).expect("tool optional");
+        assert_eq!(parsed.tool, None);
+    }
+
+    #[test]
+    fn a_tool_that_is_not_false_is_refused_like_the_schema_does() {
+        for bad in ["true", r#""false""#, "0", "[]", "null"] {
+            let text = verb_with(&format!(r#","tool":{bad}"#));
+            assert!(
+                serde_json::from_str::<Command>(&text).is_err(),
+                "tool {bad} accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn effect_and_tool_are_printed_as_the_data_file_writes_them() {
+        let text = serde_json::to_string(&command(Some(Effect::Destructive), Some(NotATool)))
+            .expect("serializes");
+        assert!(
+            text.contains(r#""effect":"destructive","tool":false"#),
+            "{text}"
+        );
+        let text = serde_json::to_string(&command(None, None)).expect("serializes");
+        assert!(!text.contains("effect") && !text.contains("tool"), "{text}");
     }
 
     #[test]
@@ -357,8 +455,9 @@ mod tests {
             BTreeSet::from(["program".into(), "exit".into(), "commands".into()])
         );
 
-        let full = serde_json::to_value(command(Some("e"))).expect("serializes");
-        let bare = serde_json::to_value(command(None)).expect("serializes");
+        let full =
+            serde_json::to_value(command(Some(Effect::Read), Some(NotATool))).expect("serializes");
+        let bare = serde_json::to_value(command(None, None)).expect("serializes");
         let cmd = &defs["command"];
         assert_eq!(names(object(&cmd["properties"])), names(object(&full)));
         assert_eq!(required(cmd), names(object(&bare)));
@@ -398,6 +497,41 @@ mod tests {
         assert_eq!(
             spelled(&|| list(&schema["$defs"]["option"]["properties"]["type"]["enum"])),
             spelled(&|| list(&kinds))
+        );
+        // `word` has no wildcard arm, so a new variant does not compile until it is spelled here and then listed below.
+        fn word(effect: Effect) -> &'static str {
+            match effect {
+                Effect::Read => "read",
+                Effect::Write => "write",
+                Effect::Spawn => "spawn",
+                Effect::Destructive => "destructive",
+                Effect::Serve => "serve",
+            }
+        }
+        let effects = [
+            Effect::Read,
+            Effect::Write,
+            Effect::Spawn,
+            Effect::Destructive,
+            Effect::Serve,
+        ];
+        let spelled_by_serde = serde_json::to_value(effects).expect("serializes");
+        assert_eq!(
+            spelled(&|| list(&schema["$defs"]["command"]["properties"]["effect"]["enum"])),
+            spelled(&|| list(&spelled_by_serde))
+        );
+        assert_eq!(
+            spelled(&|| list(&spelled_by_serde)),
+            effects.iter().map(|e| word(*e).to_owned()).collect()
+        );
+    }
+
+    #[test]
+    fn the_schema_allows_tool_false_and_nothing_else() {
+        let schema: Value = serde_json::from_str(SCHEMA).expect("the schema is JSON");
+        assert_eq!(
+            schema["$defs"]["command"]["properties"]["tool"]["const"],
+            Value::Bool(false)
         );
     }
 }

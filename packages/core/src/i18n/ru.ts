@@ -31,6 +31,7 @@ export const ru: Partial<Record<keyof typeof en, string>> = {
   badRef: 'сессия не найдена: {{ref}}',
   noPrompt: 'нечего сказать: пустой текст запроса',
   nothingToAbort: 'для {{ref}} ничего не выполняется',
+  abortPaneAgent: '{{ref}} работает в панели tmux, и отсюда её не остановить: прервите или закройте её в самой панели',
   pluginNone: 'в {{file}} не перечислено ни одного плагина',
   pluginFailed: '{{name}}: {{error}}',
   pluginEntry: '{{name}} → {{from}}',

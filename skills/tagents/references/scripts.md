@@ -99,10 +99,23 @@ stays worth reacting to.
                           viewport shows; tmux's own hooks run this on every window
                           switch. It takes no argument; one given by a hook an
                           earlier version installed is ignored
-  tagents --new [DIR] [PROFILE]
+  tagents --new [--detach] [DIR] [PROFILE]
                           start an agent in DIR from outside the list — a tmux
                           binding, a shell, anything. DIR defaults to $PWD and
-                          the account to whatever the rules below pick
+                          the account to whatever the rules below pick.
+                          --detach leaves the screen alone: the window is not
+                          shown or selected, and when the rules say "ask" it exits
+                          2 naming the profiles instead of opening a dialog. It
+                          then prints the new pane and where it is, TAB-separated,
+                          as --window does; without --detach it prints nothing
+  tagents --window [--detach] DIR COMMAND
+                          open a plain window in DIR running COMMAND, from outside
+                          the list, the way --new opens an agent. COMMAND is one
+                          string for the shell and the window closes when it ends;
+                          it lands in the tmux session that owns DIR and is shown
+                          like any new window, unless --detach. Exactly two words
+                          after the flag, exit 2 otherwise. Prints the new pane and
+                          where it is, TAB-separated
   tagents --profile-for DIR [SESSION]
                           which account those rules pick, without launching
                           anything. Prints a profile name or "ask"; exits 1

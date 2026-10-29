@@ -755,6 +755,60 @@ ok "the kill ended it" 0 "$(panes_named "%$LN")"
 waitsnap "sid-$LN" absent; ok "...and it is out of the snapshot within seconds" 0 "$?"
 
 # ---------------------------------------------------------------------------
+t "15e. the capture a launch left for later survives the process group the launch ran in"
+# ---------------------------------------------------------------------------
+# A call of an MCP tool ends by killing the process group it started (packages/mcp/src/run.ts), and the capture a launch leaves for later was a background subshell of that group. The group here is made by perl, which macOS has and setsid(1) it has not.
+clear_out
+perl -MPOSIX -e 'POSIX::setpgid(0, 0); exec @ARGV' env TMUX="$SOCK,0,0" TA_RESURRECT_SOON=4 bash "$TA" --new "$PERS" personal >/dev/null 2>&1 &
+GP=$!
+wait "$GP"
+kill -KILL -- "-$GP" 2>/dev/null
+i=0; while [ "$(nouts)" -lt 1 ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+LN=$(ls "$OUT" 2>/dev/null | sed -n 's/\.out$//p')
+ok "the launch started one chat" 1 "$(printf '%s\n' "$LN" | grep -c .)"
+waitsnap "sid-$LN" present; ok "...and it is in the snapshot though its group was killed" 0 "$?"
+
+# The job is a string tmux expands as a format and hands to `sh -c`: a quote in the path of the script used to be a syntax error there (the capture never happened), and `#{...}` was rewritten by tmux. The script is copied to a directory with both in its name, and a launch from the copy must still be captured. Another capture (the status bar's) could write the snapshot without the job, so the copy writes a line of its own when the job runs it with --resurrect-save, and the test needs that line as well as the snapshot.
+jobcopy() {  # <dir> <log> — a copy of the script that logs the time of each --resurrect-save
+  mkdir -p "$1"
+  cp -R "$HERE/../tagents" "$HERE/../lib" "$1/"
+  sed "s|--resurrect-save) resurrect_save ;;|--resurrect-save) date +%s >>\"$2\"; resurrect_save ;;|" "$1/tagents" >"$1/tagents.new" && mv "$1/tagents.new" "$1/tagents" && chmod +x "$1/tagents"
+}
+waitlog() {  # <log> -> 0 once the log has a line (~10 s)
+  local i=0
+  while [ ! -s "$1" ] && [ "$i" -lt 100 ]; do i=$((i + 1)); sleep 0.1; done
+  [ -s "$1" ]
+}
+ODD="$ROOT/od d'q#{x}"; ODDLOG="$ROOT/odd.job"
+jobcopy "$ODD" "$ODDLOG"
+clear_out
+env TMUX="$SOCK,0,0" TA_RESURRECT_SOON=1 bash "$ODD/tagents" --new "$PERS" personal >/dev/null 2>&1
+i=0; while [ "$(nouts)" -lt 1 ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+LN=$(ls "$OUT" 2>/dev/null | sed -n 's/\.out$//p')
+waitlog "$ODDLOG"; ok "a script whose path holds a quote, a space and #{...} is run by the job" 0 "$?"
+waitsnap "sid-$LN" present; ok "...and its capture is in the snapshot" 0 "$?"
+
+# A newline in the path: `printf %q` writes $'...' for it, which a dash-style sh does not parse. tmux's job runs under its own shell, so the string resurrect_soon hands to `run-shell` is taken here by a stand-in for tmux that runs it under dash after collapsing ## to # as tmux's format expansion does.
+if [ -x /bin/dash ]; then
+  NLD="$ROOT/line"$'\n'"break"; NLLOG="$ROOT/nl.job"
+  jobcopy "$NLD" "$NLLOG"
+  bash -c 'cd "$1" && SELF=$2 STATE_DIR=$3 && . lib/tagents/config.sh && . lib/tagents/resurrect.sh && tmux() { /bin/dash -c "${3//##/#}"; } && resurrect_soon 0' _ "$HERE/.." "$NLD/tagents" "$STATE" >/dev/null 2>&1
+  waitlog "$NLLOG"; ok "a script whose path holds a newline is run by the job under dash" 0 "$?"
+fi
+
+# The delay is read from the environment of the launch and put in a command string: a value that is not a plain number must neither run as a command nor make `sleep` fail (the capture would then run at once), and falls back to the default of five seconds.
+SOONDIR="$ROOT/soon"; SOONLOG="$ROOT/soon.job"
+jobcopy "$SOONDIR" "$SOONLOG"
+for hostile in "1; touch $ROOT/pwned" "." "1.2.3"; do
+  clear_out; rm -f "$SOONLOG" "$ROOT/pwned"
+  t0=$(date +%s)
+  env TMUX="$SOCK,0,0" TA_RESURRECT_SOON="$hostile" bash "$SOONDIR/tagents" --new "$PERS" personal >/dev/null 2>&1
+  waitlog "$SOONLOG"; ok "delay '$hostile': the capture still happens" 0 "$?"
+  ok "...not before the default delay" 1 "$(( $(date +%s) - t0 >= 4 ? 1 : 0 ))"
+  ok "...and nothing in the delay was run" 1 "$([ -e "$ROOT/pwned" ]; echo $?)"
+done
+
+# ---------------------------------------------------------------------------
 t "16. the shell a reboot leaves where the list was is closed, and the cockpit comes back with its list"
 # ---------------------------------------------------------------------------
 # Server C is the list of an earlier version as tmux-resurrect restores it: its pane comes back an idle shell that still carries the title tagents-sidebar, in the window it was in.
