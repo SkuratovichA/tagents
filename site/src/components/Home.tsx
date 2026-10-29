@@ -1,14 +1,4 @@
-import {
-  DEMO_COPY,
-  EXTRAS,
-  FEATURES,
-  INSTALL,
-  LEAD,
-  PITCH,
-  RESURRECT,
-  SETTINGS_JSON,
-  SITE_NAME,
-} from '../content'
+import { DEMO_COPY, EXTRAS, FEATURES, INSTALL, LEAD, PITCH, RESURRECT, SITE_NAME } from '../content'
 import { DEMOS } from '../demos'
 import { GITHUB_URL } from '../lib/site'
 import type { Scene } from '../lib/screen'
@@ -90,12 +80,6 @@ export function Home() {
           </li>
           <li>
             <p>{INSTALL.hooksIntro}</p>
-            <details className="fold">
-              <summary>{INSTALL.hooksSummary}</summary>
-              <CodeBlock label="The hooks and the status line for settings.json">
-                {SETTINGS_JSON}
-              </CodeBlock>
-            </details>
             <p>{INSTALL.hooksNote}</p>
           </li>
           <li>

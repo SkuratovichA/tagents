@@ -104,7 +104,7 @@ The first is not an identity on a Mac. With HostName never set it is whatever ma
 
 ### Every config dir needs the hooks
 
-Every `config_dir` you name needs its own copy of the [Claude Code settings](./getting-started#tell-claude-code-about-it) (the `hooks/` wrappers and the `settings.json` entries) inside it. A config dir with no `settings.json` runs no state hook and no status line, so agents started on it never appear in the dashboard at all and have no model column.
+`tagents setup` registers the state hook and the status line in the `settings.json` of every `config_dir` you name. The installer runs it, so a profile that exists when you install needs nothing by hand; after you add a profile, run `tagents setup` yourself. The entries name the profile's own `hooks/` when `install.sh --hooks-dir <config_dir>/hooks` put the wrappers there, and `~/.claude/hooks` otherwise. That works because the hook reads the session's `CLAUDE_CONFIG_DIR` from its environment, not from where the script lives. A config dir without the entries runs no state hook and no status line, so agents started on it never appear in the dashboard at all and have no model column; [Getting started](./getting-started#tell-claude-code-about-it) has the details.
 
 ## Checking it
 

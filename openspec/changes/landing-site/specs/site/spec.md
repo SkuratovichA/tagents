@@ -65,7 +65,7 @@ The page SHALL cause no horizontal scrolling of the document at a width of 360 p
 - **AND** the theme button's `aria-pressed` says whether the dark theme is on (`src/components/chrome.test.tsx`)
 
 ### Requirement: The page makes no claim about speed or resources and compares with nothing
-The words on the page SHALL describe what tagents does as its README does. They SHALL give no figure or claim about speed, memory or processor use and no comparison with another tool. The install command and the `settings.json` SHALL be those of the README.
+The words on the page SHALL describe what tagents does as its README does. They SHALL give no figure or claim about speed, memory or processor use and no comparison with another tool. The install command SHALL be the README's, and the page SHALL say, as the README does, that the install ends by running `tagents setup`, which only appends to the `settings.json` files.
 
 #### Scenario: A change to the copy
 - **WHEN** a word about speed, memory or a comparison is added to the page
@@ -73,6 +73,10 @@ The words on the page SHALL describe what tagents does as its README does. They 
 
 #### Scenario: The README changes its install command
 - **WHEN** the install command in `README.md` differs from the one on the page
+- **THEN** `pnpm test` in `site/` fails
+
+#### Scenario: The README or the page stops saying what the install does to the settings
+- **WHEN** the README or the page no longer says that the install runs `tagents setup` and that it only appends
 - **THEN** `pnpm test` in `site/` fails
 
 ### Requirement: The site builds with named commands

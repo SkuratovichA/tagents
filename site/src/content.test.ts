@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import * as content from './content'
-import { EXTRAS, FEATURES, INSTALL, RESURRECT, SETTINGS_JSON } from './content'
+import { EXTRAS, FEATURES, INSTALL, RESURRECT } from './content'
 import { MASCOT } from './mascot'
 
 const readme = resolve(import.meta.dirname, '../../README.md')
@@ -19,7 +19,6 @@ describe.skipIf(!existsSync(readme))('the commands on the page', () => {
 
   it.each([
     ['the install command', INSTALL.command],
-    ['the settings.json', SETTINGS_JSON],
     ['the tmux-resurrect lines', RESURRECT.tmuxConf],
     ['the notification commands', EXTRAS.notifications.commands],
     ['the status bar line', EXTRAS.statusBar.command],
@@ -27,6 +26,13 @@ describe.skipIf(!existsSync(readme))('the commands on the page', () => {
     ['the start command', INSTALL.start],
   ])('are the README’s, as lines of one fenced block: %s', (_what, commands) => {
     expect(blocks.some((block) => block.includes(`\n${commands}\n`))).toBe(true)
+  })
+
+  it('says in the README and on the page that the install ends by running tagents setup, which only appends', () => {
+    for (const words of [text, INSTALL.hooksIntro]) {
+      expect(words).toMatch(/install ends by running `?tagents setup`?/)
+      expect(words).toContain('only appends')
+    }
   })
 
   it('has as many features as the README lists under "What it does"', () => {
@@ -46,7 +52,6 @@ describe('the words on the page', () => {
   const commands = new Set<unknown>([
     INSTALL.command,
     INSTALL.start,
-    SETTINGS_JSON,
     RESURRECT.tmuxConf,
     EXTRAS.notifications.commands,
     EXTRAS.statusBar.command,
