@@ -145,9 +145,9 @@ export function removePluginEntry(file: string, name: string): RemoveOutcome {
 
 function tomlEntry(file: string, name: string, from: string): string {
   const written = tomlString(from);
-  if (written === null) throw new Error(`${file}: ${JSON.stringify(from)} has a control character in it, which cannot be written in a config tagents reads`);
+  if (written === null) throw new Error(`${file}: ${JSON.stringify(from)} has a control character or a lone surrogate in it, which cannot be written in a config tagents reads`);
   const key = tomlKey(name);
-  if (key === null) throw new Error(`${file}: ${JSON.stringify(name)} has a control character in it, which cannot be written in a config tagents reads`);
+  if (key === null) throw new Error(`${file}: ${JSON.stringify(name)} has a control character or a lone surrogate in it, which cannot be written in a config tagents reads`);
   return `[plugins.${key}]\nfrom = ${written}\n`;
 }
 

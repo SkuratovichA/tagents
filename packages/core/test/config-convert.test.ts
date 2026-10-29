@@ -288,6 +288,14 @@ test('a control character inside a YAML key is refused, naming the line', () => 
   assert.match(result.ok ? '' : result.problem, /config\.yaml:2: .*control character/);
 });
 
+test('a lone surrogate inside a YAML string or key is refused, naming the line and the lone surrogate', () => {
+  for (const yaml of ['usage:\n  note: "a\\ud800b"\n', 'usage:\n  "a\\ud800b": x\n']) {
+    const result = convert(yaml);
+    assert.equal(result.ok, false, yaml);
+    assert.match(result.ok ? '' : result.problem, /config\.yaml:2: .*lone surrogate/, yaml);
+  }
+});
+
 test('YAML that does not parse is refused with the parser’s own message', () => {
   const result = convert('claude:\n  args: [unclosed\n');
   assert.equal(result.ok, false);

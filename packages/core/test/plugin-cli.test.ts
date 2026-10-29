@@ -378,6 +378,14 @@ test('a plugin name with a control character in it is refused for a TOML config,
   assert.equal(fs.readFileSync(file, 'utf8'), '[usage]\nworkdays = true\n');
 });
 
+test('a plugin path or name with a lone surrogate in it is refused for a TOML config, saying so, and nothing is written', () => {
+  const file = path.join(tomlDir('[usage]\nworkdays = true\n'), 'config.toml');
+  for (const [name, from] of [['x', '/pkg/a\ud800b'], ['a\ud800b', '/pkg/a']] as const) {
+    assert.throws(() => addPluginEntry(file, name, from), (e: unknown) => e instanceof Error && e.message.includes(file) && e.message.includes('lone surrogate'));
+    assert.equal(fs.readFileSync(file, 'utf8'), '[usage]\nworkdays = true\n');
+  }
+});
+
 test('with a config.yaml and no config.toml, plugin add keeps editing the YAML file', () => {
   const dir = configDir('usage:\n  x: 1\n');
   const r = runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir));

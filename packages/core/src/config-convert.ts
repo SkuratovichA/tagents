@@ -30,7 +30,7 @@ export interface ConvertOptions {
 
 // ------------------------------------------------------------- the model ----
 
-/** A table as it will be written: its plain keys (already rendered as TOML values), then its sub-tables, each in file order. */
+/** A table as it will be written: its plain keys (already rendered as TOML keys and values), then its sub-tables, each in file order. */
 interface Table {
   plain: Array<{ key: string; value: string }>;
   sub: Array<{ key: string; table: Table } | { key: string; items: Table[] }>;
@@ -70,7 +70,7 @@ function build(doc: ReturnType<typeof parseDocument>, lines: LineCounter): Table
     if (typeof value === 'string') {
       if (value.includes('\n')) fail(node, 'a value with a line break in it cannot be one line of a config');
       const written = tomlString(value);
-      if (written === null) return fail(node, 'a control character (a tab included) in a value cannot be written in the TOML tagents reads');
+      if (written === null) return fail(node, 'a control character (a tab included) or a lone surrogate in a value cannot be written in the TOML tagents reads');
       return written;
     }
     const written = node.source ?? '';
@@ -86,11 +86,12 @@ function build(doc: ReturnType<typeof parseDocument>, lines: LineCounter): Table
     return fail(node, `${written} is null in YAML, which has no TOML twin — quote it (${quoted}) to keep the text, or leave the value out`);
   };
 
+  /** A key as TOML writes it: bare when it can be, quoted when not. */
   const keyText = (key: unknown): string => {
     if (!isScalar(key)) return fail(key, 'a key that is not plain text has no TOML twin');
     const text = typeof key.value === 'string' ? key.value : (key.source ?? '');
     if (text === '') return fail(key, 'an empty key has no TOML twin');
-    return tomlKey(text) === null ? fail(key, 'a control character in a key cannot be written in the TOML tagents reads') : text;
+    return tomlKey(text) ?? fail(key, 'a control character or a lone surrogate in a key cannot be written in the TOML tagents reads');
   };
 
   const isEmptyValue = (node: unknown): boolean => node == null || (isScalar(node) && node.value === null && (node.source ?? '') === '');
@@ -152,24 +153,17 @@ function build(doc: ReturnType<typeof parseDocument>, lines: LineCounter): Table
 
 // ------------------------------------------------------------- the writer ---
 
-/** A key that keyText has already checked can be written. */
-function keyOf(key: string): string {
-  const written = tomlKey(key);
-  if (written === null) throw new Error(`${JSON.stringify(key)} cannot be written as a TOML key`);
-  return written;
-}
-
 function blocks(t: Table, at: string[], out: string[]): void {
-  const lines = t.plain.map((p) => `${keyOf(p.key)} = ${p.value}`);
+  const lines = t.plain.map((p) => `${p.key} = ${p.value}`);
   // A table that only holds other tables needs no header of its own; one with nothing in it at all is a name, and is written as one.
-  if (at.length > 0 && (lines.length > 0 || t.sub.length === 0)) out.push([`[${at.map(keyOf).join('.')}]`, ...lines].join('\n'));
+  if (at.length > 0 && (lines.length > 0 || t.sub.length === 0)) out.push([`[${at.join('.')}]`, ...lines].join('\n'));
   else if (at.length === 0 && lines.length > 0) out.push(lines.join('\n'));
   for (const s of t.sub) {
     const into = [...at, s.key];
     if ('table' in s) blocks(s.table, into, out);
     else {
       for (const item of s.items) {
-        out.push([`[[${into.map(keyOf).join('.')}]]`, ...item.plain.map((p) => `${keyOf(p.key)} = ${p.value}`)].join('\n'));
+        out.push([`[[${into.join('.')}]]`, ...item.plain.map((p) => `${p.key} = ${p.value}`)].join('\n'));
       }
     }
   }
