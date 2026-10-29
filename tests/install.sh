@@ -336,6 +336,13 @@ env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a >/dev/null; rc=$?
 ok "its exit code comes through untouched" 7 "$rc"
 same_bytes "tagents-knowledge does not change" "$TMP/expected-knowledge" "$TAGENTS_BIN/tagents-knowledge"
 same_bytes "nor does a hook wrapper" "$TMP/expected-hook" "$HOOKS_A/tmux-agent-state.sh"
+# The wrapper's two guards are each pinned by a case only that guard catches, on the wrapper written for the real binary and without a reinstall.
+node_answer="node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b"
+rm -f "$RUST_BIN"; mkdir "$RUST_BIN"
+ok "a directory where the binary was (it passes -x, so only the -f guard stops it) falls through to the node CLI" "$node_answer" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+rmdir "$RUST_BIN"
+printf '#!/bin/sh\necho "rust"\n' > "$RUST_BIN"; chmod 644 "$RUST_BIN"
+ok "a file without the executable bit (only the -x guard stops it) falls through to the node CLI" "$node_answer" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
 rm -f "$RUST_BIN"
 ok "once the binary is gone the same wrapper runs the node CLI" "node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
 printf '#!/bin/sh\necho "rust"\n' > "$RUST_BIN"; chmod 644 "$RUST_BIN"
