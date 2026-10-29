@@ -272,5 +272,5 @@ test('two verbs with one path are refused: dispatch is by path and the second wo
     assert.ok(first);
     commands.push({ ...first });
   });
-  assert.throws(() => loadSpec(file), /the path \S.* appears twice \(a rule the schema cannot state/);
+  assert.throws(() => loadSpec(file), /^Error: tagents-core: \S+ has two verbs with the path "\S.*" \(dispatch is by path, so the second would never run\)$/);
 });

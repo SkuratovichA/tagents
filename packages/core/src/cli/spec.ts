@@ -54,15 +54,7 @@ const SpecFile = z.strictObject({
   $schema: z.string().optional(),
   program: z.string().min(1),
   exit: z.record(z.string(), z.number().int().min(0).max(255)),
-  // Dispatch is by path, so a second verb with a path already given would be shadowed and never run. The schema cannot say this; crates/tagents-spec refuses it too.
-  commands: z.array(CommandFile).superRefine((commands, ctx) => {
-    const seen = new Set<string>();
-    commands.forEach((c, index) => {
-      const key = JSON.stringify(c.path);
-      if (seen.has(key)) ctx.addIssue({ code: 'custom', path: [index, 'path'], message: `the path ${c.path.join(' ')} appears twice (a rule the schema cannot state: dispatch is by path, so the second verb would never run)` });
-      seen.add(key);
-    });
-  }),
+  commands: z.array(CommandFile),
 });
 
 type ContractCommand = CliContract['commands'][number];
@@ -73,6 +65,16 @@ function optionsOf(options: z.output<typeof CommandFile>['options']): ContractCo
   return Object.fromEntries(
     Object.entries(options).map(([name, o]) => [name, o.multiple === undefined ? { type: o.type } : { type: o.type, multiple: o.multiple }]),
   );
+}
+
+/** Dispatch is by path, so a second verb with a path already given would be shadowed and never run. The schema cannot state uniqueness, so this is checked after it matched; crates/tagents-spec refuses it too. */
+function refuseSharedPath(commands: readonly { readonly path: readonly string[] }[], file: URL): void {
+  const seen = new Set<string>();
+  for (const { path } of commands) {
+    const key = JSON.stringify(path);
+    if (seen.has(key)) throw new Error(`tagents-core: ${file.pathname} has two verbs with the path "${path.join(' ')}" (dispatch is by path, so the second would never run)`);
+    seen.add(key);
+  }
 }
 
 export function loadSpec(file: URL = SPEC_FILE): { program: string; exit: Readonly<Record<string, number>>; commands: readonly LoadedCommand[] } {
@@ -86,6 +88,7 @@ export function loadSpec(file: URL = SPEC_FILE): { program: string; exit: Readon
   const parsed = SpecFile.safeParse(JSON.parse(text));
   if (!parsed.success) throw new Error(`tagents-core: ${file.pathname} does not match spec/cli/cli-spec.schema.json: ${z.prettifyError(parsed.error)}`);
   const { program, exit, commands } = parsed.data;
+  refuseSharedPath(commands, file);
   return {
     program,
     exit,
