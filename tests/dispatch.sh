@@ -157,6 +157,27 @@ ok "...and passes that exit code through too"                      5 "$rc"
 STUB_EXIT=0 run "$REPO/tagents" "$BIN:$BARE" doctor >/dev/null
 ok "an installed tagents-core is preferred to the checkout" "doctor" "$(argv)"
 
+# The Rust front door, built in the tree: it is a stub too, and says it was the one that ran.
+mkdir -p "$REPO/target/release"
+cat > "$REPO/target/release/tagents-core" <<'EOF'
+#!/bin/sh
+{ echo rust; printf '%s\n' "$@"; } > "$ARGV_FILE"
+exit "${STUB_EXIT:-0}"
+EOF
+chmod +x "$REPO/target/release/tagents-core"
+
+STUB_EXIT=4 run "$REPO/tagents" "$BARE" session list --label x >/dev/null
+ok "a Rust binary built beside the script runs, with the whole argv" "rust session list --label x" "$(argv)"
+ok "...and its exit code is the script's" 4 "$rc"
+STUB_EXIT=0 run "$REPO/tagents" "$BIN:$BARE" doctor >/dev/null
+ok "an installed tagents-core is still preferred to it" "doctor" "$(argv)"
+chmod -x "$REPO/target/release/tagents-core"
+STUB_EXIT=0 run "$REPO/tagents" "$BARE" session list >/dev/null
+ok "a Rust binary that is not executable is passed over for the node CLI" "session list" "$(argv)"
+rm -rf "$REPO/target"
+STUB_EXIT=0 run "$REPO/tagents" "$BARE" session list >/dev/null
+ok "with no Rust binary at all it is the node CLI, as before" "session list" "$(argv)"
+
 # ---------------------------------------------------------------------------
 t "4. with no tagents-core at all"
 # ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@
 #
 #   ~/.local/bin/tagents tusage tnotes      exec $TAGENTS_HOME/<name>
 #   ~/.local/bin/tagents-core               exec <node> $TAGENTS_HOME/packages/core/dist/cli/main.js
+#                                           or $TAGENTS_HOME/target/release/tagents-core when that binary exists at install time (the node CLI stays the fallback)
 #   ~/.local/bin/tagents-knowledge          exec <node> $TAGENTS_HOME/packages/knowledge/dist/cli/main.js
 #   <hooks dir>/<name>.sh                   exec sh $TAGENTS_HOME/hooks/<name>.sh, one per hooks/*.sh
 #   <node> is the node the install found on PATH, or node on the caller's PATH once that file is gone.
@@ -58,9 +59,9 @@ short() { printf '%s' "$1" | cut -c1-7; }
 
 xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
-# A wrapper names the one file to run and passes everything through, stdin included, which is what a hook is fed on; an interpreter given by its absolute path is pinned, so the wrapper runs that file while it is executable and otherwise the interpreter of the same name on the caller's PATH.
-write_wrapper() {  # <dest> <path to exec> [interpreter]
-  dest=$1; target=$2; interp=${3:-}
+# A wrapper names the one file to run and passes everything through, stdin included, which is what a hook is fed on; an interpreter given by its absolute path is pinned, so the wrapper runs that file while it is executable and otherwise the interpreter of the same name on the caller's PATH. A native binary, when one is given, is run in place of the file, with the interpreter handed to it as TAGENTS_NODE.
+write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary]
+  dest=$1; target=$2; interp=${3:-}; native=${4:-}
   if [ -L "$dest" ]; then
     rm -f "$dest"
   elif [ -e "$dest" ] && ! grep -q "$MARK" "$dest" 2>/dev/null; then
@@ -70,10 +71,16 @@ write_wrapper() {  # <dest> <path to exec> [interpreter]
   fi
   mkdir -p "$(dirname "$dest")"
   tmp=$dest.tmp.$$
-  case $interp in
-    /*) printf '#!/bin/sh\n# %s, rewritten on every update: do not edit\nn="%s"\n[ -x "$n" ] || n=%s\nexec "$n" "%s" "$@"\n' "$MARK" "$interp" "${interp##*/}" "$target" ;;
-    *) printf '#!/bin/sh\n# %s, rewritten on every update: do not edit\nexec %s"%s" "$@"\n' "$MARK" "${interp:+$interp }" "$target" ;;
-  esac > "$tmp"
+  {
+    printf '#!/bin/sh\n# %s, rewritten on every update: do not edit\n' "$MARK"
+    case $interp in
+      /*) printf 'n="%s"\n[ -x "$n" ] || n=%s\n' "$interp" "${interp##*/}"; runner='"$n" '; pin='TAGENTS_NODE="$n"; export TAGENTS_NODE; ' ;;
+      *) runner=${interp:+$interp }; pin= ;;
+    esac
+    # Only a binary that exists now is named, so with none the file is the one this function always wrote. A binary that is gone by run time falls through to the node CLI below.
+    if [ -n "$native" ]; then printf 'r="%s"\n[ ! -x "$r" ] || { %sexec "$r" "$@"; }\n' "$native" "$pin"; fi
+    printf 'exec %s"%s" "$@"\n' "$runner" "$target"
+  } > "$tmp"
   chmod 755 "$tmp"
   mv -f "$tmp" "$dest"
 }
@@ -87,8 +94,11 @@ install_commands() {
   case $node_bin in /*) ;; *) node_bin=node ;; esac
   for pair in tagents-core:core tagents-knowledge:knowledge; do
     cli=$TAGENTS_HOME/packages/${pair#*:}/dist/cli/main.js
+    native=
+    # tagents-core has a Rust front door that serves the verbs ported so far and hands every other word to the node CLI. The binary is never built or fetched here: it is used when a build or a release put it next to the node CLI.
+    if [ "${pair%%:*}" = tagents-core ] && [ -x "$TAGENTS_HOME/target/release/tagents-core" ]; then native=$TAGENTS_HOME/target/release/tagents-core; fi
     if [ -f "$cli" ]; then
-      write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin"
+      write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin" "$native"
     else
       warn "no $cli after the build, so ${pair%%:*} was not installed"
       SKIPPED=$((SKIPPED + 1))
