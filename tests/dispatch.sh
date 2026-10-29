@@ -79,12 +79,12 @@ exit "${STUB_EXIT:-0}"
 EOF
 chmod +x "$REPO/packages/core/dist/cli/main.js"
 
-run() {  # <script> <PATH> [args…] — prints stdout+stderr, sets $rc
+run() {  # <script> <PATH> [args…] — prints stdout+stderr, sets $rc; with $ERR_FILE set, stderr goes there and $out is stdout only
   local script path_
   script=$1; path_=$2; shift 2
   rm -f "$ARGV"
   out=$(PATH="$path_" TA_STATE_DIR="$TMP/state" TA_CONFIG="$TMP/no-config.yaml" \
-        /bin/bash "$script" "$@" 2>&1)
+        /bin/bash "$script" "$@" 2>"${ERR_FILE:-/dev/stdout}")
   rc=$?
   printf '%s' "$out"
 }
@@ -177,10 +177,11 @@ ok "a Rust binary that is not executable is passed over for the node CLI" "sessi
 # A binary that is there and executable but cannot run (its interpreter is missing) is an error, never a quiet fall back to the node CLI: the node CLI stub would leave its argv behind.
 printf '#!/nonexistent/interpreter\n' > "$REPO/target/release/tagents-core"
 chmod +x "$REPO/target/release/tagents-core"
-STUB_EXIT=0 run "$REPO/tagents" "$BARE" session list >/dev/null
+ERR_FILE="$TMP/cannot-run.err" STUB_EXIT=0 run "$REPO/tagents" "$BARE" session list >/dev/null
 if [ "$rc" -ne 0 ]; then rc_state=nonzero; else rc_state=zero; fi
 ok       "a Rust binary that cannot run fails with a non-zero exit" nonzero "$rc_state"
-ok       "...with a message on stderr" yes "$([ -n "$out" ] && echo yes || echo no)"
+ok       "...with a message on stderr" yes "$([ -s "$TMP/cannot-run.err" ] && echo yes || echo no)"
+ok       "...and nothing on stdout" "" "$out"
 ok       "...and the node CLI was not run" "" "$(argv)"
 # A directory at the binary's path is not a binary: the script goes on to the node CLI.
 rm -rf "$REPO/target/release/tagents-core"; mkdir "$REPO/target/release/tagents-core"
