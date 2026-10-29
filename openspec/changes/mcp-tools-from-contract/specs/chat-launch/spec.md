@@ -1,11 +1,18 @@
 ## ADDED Requirements
 
 ### Requirement: `tagents --window` opens a plain window from outside the list
-`tagents --window DIR COMMAND` SHALL open a window in the tmux session that owns DIR, found as for a new agent, and run COMMAND in it, one string for the window's shell: the window closes when COMMAND ends. DIR is made absolute against the caller's directory, whatever `CDPATH` holds, as `tagents --new` does for its DIR, and a COMMAND that starts with a dash is the command and not an option of tmux.
+`tagents --window DIR COMMAND` SHALL open a window in the tmux session that owns DIR, found as for a new agent, and run COMMAND in it, one string for the window's shell: the window closes when COMMAND ends. A COMMAND that starts with a dash is the command and not an option of tmux.
 
 #### Scenario: A command in a project
 - **WHEN** `tagents --window ~/projects/app "npm run dev"` runs inside tmux
 - **THEN** a window opens in the session that owns `~/projects/app` with its working directory there, running `npm run dev`
+
+#### Scenario: A command that starts with a dash
+- **WHEN** `tagents --window ~/projects/app "-zzz"` runs
+- **THEN** a window opens whose shell is given `-zzz` as its command, and tmux does not read it as one of its own options
+
+### Requirement: A directory given to `--new` or `--window` is made absolute
+`tagents --new` and `tagents --window` SHALL make their DIR absolute against the caller's directory, whatever `CDPATH` holds, and resolve symlinks, so the directory they start in, the one tmux reports and the one the session lookup compares are the same physical path. A DIR that cannot be entered SHALL be refused as `tagents: <dir> is not a directory`, exit 1, with no window opened.
 
 #### Scenario: A relative directory
 - **WHEN** `tagents --window . "make watch"` runs from a shell whose directory differs from the tmux server's
@@ -19,9 +26,17 @@
 - **WHEN** `CDPATH` holds a directory that also contains a directory called `app`, and `tagents --window app "make watch"` runs
 - **THEN** the window is opened in the `app` of the current directory, and standard output is exactly one line
 
-#### Scenario: A command that starts with a dash
-- **WHEN** `tagents --window ~/projects/app "-zzz"` runs
-- **THEN** a window opens whose shell is given `-zzz` as its command, and tmux does not read it as one of its own options
+#### Scenario: A symlink to a directory
+- **WHEN** `tagents --window --detach app-link "make watch"` runs from the directory that holds `app-link`, a symlink to `~/projects/app`
+- **THEN** the window opens in the session that owns `~/projects/app`, with that physical directory as its working directory
+
+#### Scenario: A relative symlink for a new agent
+- **WHEN** `tagents --new --detach plain-link personal` runs from the directory that holds `plain-link`, a symlink to `plain-dir`
+- **THEN** the agent starts in the physical path of `plain-dir`, in the session that owns it
+
+#### Scenario: A directory that cannot be entered
+- **WHEN** `tagents --window` runs with a DIR that exists but has no search permission, named by an absolute or by a relative path
+- **THEN** it exits 1, prints `tagents: <dir> is not a directory` and opens no window
 
 ### Requirement: `tagents --window` shows and reports the window
 The new window SHALL be selected as `enter` on a row would do, a tmux message `tagents: new window in <project> (<session>:<window>)` SHALL be shown, and standard output SHALL be the new pane id, a tab and `<session>:<window index>`.
