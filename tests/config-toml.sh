@@ -202,6 +202,12 @@ printf '[usage]\na = """x \\""" y\nb = 1\n"""\nd = 3\n' >"$TMP/multi2.toml"
 out=$(dump "$TMP/multi2.toml")
 lacks    "an escaped quote does not close a basic multi-line string" "usage.b" "$out"
 contains "...the closing one does" "usage.d${TAB}3" "$out"
+# ...also when the opening sits in a table that is skipped: a duplicate table's body is not read, but a multi-line string opened in it must still swallow its body.
+printf '[t]\n[t]\na = \"\"\"\n[fake]\nb = 1\n\"\"\"\n[usage]\nd = 3\n' >"$TMP/multi3.toml"
+out=$(dump "$TMP/multi3.toml")
+lacks    "a multi-line string opened in a skipped table: no table from its body" "fake" "$out"
+lacks    "...and no key from its body" "b${TAB}1" "$out"
+contains "...the table after its end reads" "usage.d${TAB}3" "$out"
 
 # ---------------------------------------------------------------------------
 t "3. which file is read"
