@@ -138,8 +138,8 @@ export type { AddOutcome, PackageProblem, PluginPackage, RemoveOutcome, ResolveR
 
 export { DEFAULT_LOCALE, createI18n, createT, isLocale, resources } from './i18n/index.ts';
 export type { CoreResource, Locale } from './i18n/index.ts';
-export type { CliContract, CommandSpec } from './cli/spec.ts';
-export { runPluginBin } from './cli/plugin-run.ts';
+export type { CliContract, CommandSpec, Effect } from './cli/spec.ts';
+export { POSITIONALS, runPluginBin } from './cli/plugin-run.ts';
 export type { Io } from './cli/exit.ts';
 
 export { FakeClock, drained, fakeClaude, sleep, tmpDir } from './testkit.ts';

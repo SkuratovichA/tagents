@@ -24,7 +24,7 @@ The road to a Rust core is long and each stone has to be walkable on its own. Th
 
 ### The CLI spec is a language-neutral JSON file with a JSON Schema
 
-Decision: `spec/cli/tagents-core.json` holds the verbs, flags, positionals, required flags, summary keys, exit codes and, per command, `"impl": "rust" | "node"`; `spec/cli/cli-spec.schema.json` (draft 2020-12, `additionalProperties: false`) describes it and accepts one optional string `effect` per command. The node CLI, the contract generator and Rust read the same file.
+Decision: `spec/cli/tagents-core.json` holds the verbs, flags, positionals, required flags, summary keys, exit codes and, per command, `"impl": "rust" | "node"`; `spec/cli/cli-spec.schema.json` (draft 2020-12, `additionalProperties: false`) describes it and accepts, per command, an optional `effect` (one of `read`, `write`, `spawn`, `destructive`, `serve`) and `"tool": false`. The node CLI, the contract generator and Rust read the same file.
 
 Reason: three programs need one list, and JSON with a schema is the only form all of them read without a build step between.
 

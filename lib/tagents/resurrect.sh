@@ -35,7 +35,8 @@ RESURRECT_LOCK_STALE=120   # a restore holding the lock longer than this died ho
 RESURRECT_DONE="$STATE_DIR/.resurrect.done"   # the #{start_time} of the server the hook last restored
 # The TA_* overrides exist for the tests, like TA_RESURRECT_EVERY and TA_RESURRECT_KEEP.
 RESURRECT_YOUNG=${TA_RESURRECT_YOUNG:-300}    # seconds a server counts as just booted
-RESURRECT_SOON=${TA_RESURRECT_SOON:-5}        # the capture after a launch or a kill
+RESURRECT_SOON_DEFAULT=5
+RESURRECT_SOON=${TA_RESURRECT_SOON:-$RESURRECT_SOON_DEFAULT}   # the capture after a launch or a kill
 RESURRECT_RETAKE=${TA_RESURRECT_RETAKE:-15}   # the capture after a restore
 
 # One pane of the list-panes map resurrect_rows builds, US-joined: session, window index, the pane's place, command, joined (the home session of a chat joined by ctrl-s), notes (1 when the chat's editor is a pane of its own window), tagents' own name for the window, directory, window name. The window name is last and may hold the separator. THE PANE'S PLACE counts the panes of its window that are not a list and come before it (0 for the first): a user may have a list in any window, and a tmux pane index that counts it names a different pane once it has gone; a list is the pane titled tagents-sidebar or <list pane>.
@@ -152,8 +153,14 @@ resurrect_rows_cmd() {  # [file|latest]
   cat "$f"
 }
 
-# A capture in a moment: after a launch the record needs SessionStart first, after a restore every resumed chat does. It must outlive what started it — a launch or a kill from the list runs in a popup, and the popup closing hangs up everything it started — so it ignores SIGHUP (no nohup, no nohup.out) and holds no terminal.
-resurrect_soon() { ( trap '' HUP; sleep "${1:-$RESURRECT_SOON}"; resurrect_save ) </dev/null >/dev/null 2>&1 & }   # [seconds]
+# A capture in a moment: after a launch the record needs SessionStart first, after a restore every resumed chat does. It must outlive what started it — a launch or a kill from the list runs in a popup, and the popup closing hangs up everything it started, and a call of an MCP tool ends by killing the whole process group it started — so the wait is a job of the tmux server (`run-shell -b`, as the hooks do), which no hang-up and no group kill of the caller reaches. macOS has no setsid(1) to leave the group any other way. The job runs in the server's environment and not in the caller's, so the delay is read here, where TA_RESURRECT_SOON is set, and the server already has the state dir and the config as it was started with. Without a server there is nothing to capture, and the failure is dropped.
+resurrect_soon() {  # [seconds]
+  local n=${1:-$RESURRECT_SOON} self
+  # tmux expands the string as a format (#) and hands it to `sh -c`: the path is single-quoted for the shell (cfg_quote: `printf %q` writes $'...' for a newline, which a dash-style sh does not parse) and then has each # doubled, and a delay that is not a number would make `sleep` fail so that the capture ran at once.
+  case $n in ''|*[!0-9.]*|*.*.*|.) n=$RESURRECT_SOON_DEFAULT ;; esac
+  self=$(cfg_quote "$SELF"); self=${self//#/##}
+  tmux run-shell -b "sleep $n; $self --resurrect-save >/dev/null 2>&1" </dev/null >/dev/null 2>&1 || :
+}
 
 # How often the status bar captures: resurrect.every in the config, 300 s when
 # it is not there, TA_RESURRECT_EVERY over both. 0 is off (see due_every).

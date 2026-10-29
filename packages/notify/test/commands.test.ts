@@ -10,6 +10,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createAgentFeed, createContext, eventsOn, runPluginBin, setEventsOn, tmpDir } from '@tagents/core';
+import { SEND_MESSAGE_MAX, SEND_TITLE_MAX } from '../src/cli/spec.ts';
 import type { Exec, ExecResult } from '../src/exec.ts';
 import type { Platform, RunSpec, ServiceStatus } from '../src/notifier.ts';
 import { tagentsScript } from '../src/paths.ts';
@@ -163,6 +164,103 @@ test('test with an unsupported platform prints the error and exits 1', async () 
   const r = rig({ os: 'linux', platform: 'real' });
   assert.equal(await r.run('test'), 1);
   assert.match(r.out(), /^error: no notification backend for linux yet/);
+});
+
+test('send posts the message as the body of one notice through the backend and says shown', async () => {
+  const notifier = recordingNotifier();
+  const r = rig({ os: 'linux', platform: { notifier } });
+  assert.equal(await r.run('send', 'The', 'build', 'is', 'green'), 0, r.err());
+  assert.equal(r.out(), 'shown\n');
+  assert.equal(notifier.posts.length, 1);
+  const notice = notifier.posts[0];
+  assert.equal(notice?.kind, 'message');
+  assert.equal(notice?.title, 'tagents');
+  assert.equal(notice?.subtitle, '');
+  assert.equal(notice?.body, 'The build is green');
+});
+
+test('send --title puts the title on the notice, and a message that is one argument stays whole', async () => {
+  const notifier = recordingNotifier();
+  const r = rig({ os: 'linux', platform: { notifier } });
+  assert.equal(await r.run('send', '--title=Deploy', 'staging is up, 3 checks passed'), 0, r.err());
+  assert.equal(notifier.posts[0]?.title, 'Deploy');
+  assert.equal(notifier.posts[0]?.body, 'staging is up, 3 checks passed');
+});
+
+test('two sends are two notices: neither replaces the other', async () => {
+  const notifier = recordingNotifier();
+  const r = rig({ os: 'linux', platform: { notifier } });
+  assert.equal(await r.run('send', 'first'), 0);
+  assert.equal(await r.run('send', 'second'), 0);
+  assert.equal(notifier.posts.length, 2);
+  assert.notEqual(notifier.posts[0]?.id, notifier.posts[1]?.id);
+});
+
+test('send docks $TMUX_PANE on a click, as test does, and only raises the terminal outside tmux', async () => {
+  const notifier = recordingNotifier();
+  const inPane = rig({ os: 'linux', platform: { notifier }, exec: async () => result({ code: 1 }), env: { TMUX_PANE: '%7' } });
+  assert.equal(await inPane.run('send', 'hello'), 0, inPane.err());
+  assert.deepEqual(notifier.posts[0]?.click.argv.slice(1), ['--act', 'open', '%7', 'live', '', process.cwd()]);
+  const outside = rig({ os: 'linux', platform: { notifier } });
+  assert.equal(await outside.run('send', 'hello'), 0, outside.err());
+  assert.deepEqual(notifier.posts[1]?.click.argv, []);
+});
+
+test('send hands a title with quotes, an equals sign and a newline to the backend as it was given', async () => {
+  const notifier = recordingNotifier();
+  const r = rig({ os: 'linux', platform: { notifier } });
+  const title = 'He said "stop" it\'s a=b\nsecond line';
+  assert.equal(await r.run('send', `--title=${title}`, 'a "quoted" body', 'with\na newline'), 0, r.err());
+  assert.equal(notifier.posts[0]?.title, title);
+  assert.equal(notifier.posts[0]?.body, 'a "quoted" body with\na newline');
+});
+
+test('send takes a title of 256 characters and refuses one of 257, naming the limit, and posts nothing', async () => {
+  const notifier = recordingNotifier();
+  const r = rig({ os: 'linux', platform: { notifier } });
+  assert.equal(await r.run('send', `--title=${'t'.repeat(SEND_TITLE_MAX)}`, 'hello'), 0, r.err());
+  assert.equal(notifier.posts.length, 1);
+  assert.equal(await r.run('send', `--title=${'t'.repeat(SEND_TITLE_MAX + 1)}`, 'hello'), 2);
+  assert.match(r.err(), new RegExp(`title is over ${SEND_TITLE_MAX} characters`));
+  assert.equal(notifier.posts.length, 1, 'the refused call posted nothing');
+});
+
+test('send takes a message of 2048 characters, the words counted with the spaces between them, and refuses one of 2049, naming the limit', async () => {
+  const notifier = recordingNotifier();
+  const r = rig({ os: 'linux', platform: { notifier } });
+  const half = 'm'.repeat((SEND_MESSAGE_MAX - 1) / 2);
+  assert.equal(await r.run('send', half, `${half}m`), 0, r.err());
+  assert.equal(notifier.posts[0]?.body.length, SEND_MESSAGE_MAX);
+  assert.equal(await r.run('send', half, `${half}mm`), 2);
+  assert.match(r.err(), new RegExp(`message is over ${SEND_MESSAGE_MAX} characters`));
+  assert.equal(notifier.posts.length, 1, 'the refused call posted nothing');
+});
+
+test('the limits count characters, not bytes or UTF-16 units: 256 emoji are a title that fits', async () => {
+  const notifier = recordingNotifier();
+  const r = rig({ os: 'linux', platform: { notifier } });
+  assert.equal(await r.run('send', `--title=${'😀'.repeat(SEND_TITLE_MAX)}`, 'hello'), 0, r.err());
+  assert.equal(await r.run('send', `--title=${'😀'.repeat(SEND_TITLE_MAX + 1)}`, 'hello'), 2);
+  assert.equal(notifier.posts.length, 1);
+});
+
+test('send without a message is a usage error and posts nothing', async () => {
+  const notifier = recordingNotifier();
+  const r = rig({ os: 'linux', platform: { notifier } });
+  assert.equal(await r.run('send'), 2);
+  assert.doesNotMatch(r.err(), /unknown command/, 'send is a verb, and it is the missing message that is refused');
+  assert.equal(notifier.posts.length, 0);
+});
+
+test('send says dropped with the reason and exits 1, and with the none backend says nothing posts', async () => {
+  const notifier = recordingNotifier();
+  notifier.result = { shown: false, why: 'notifications are off' };
+  const dropped = rig({ os: 'linux', platform: { notifier } });
+  assert.equal(await dropped.run('send', 'hello'), 1);
+  assert.equal(dropped.out(), 'dropped: notifications are off\n');
+  const none = rig({ os: 'linux', options: 'backend: none\n', platform: 'real' });
+  assert.equal(await none.run('send', 'hello'), 1);
+  assert.match(none.out(), /^error: backend is none/);
 });
 
 test('status prints every key and exits 0 when the service runs, the permission is granted and the options are valid', async () => {
