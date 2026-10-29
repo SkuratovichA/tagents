@@ -94,7 +94,7 @@ The sources of the contract SHALL be files under `packages/<package>/src/`, a pa
 ## MODIFIED Requirements
 
 ### Requirement: What generation covers
-The generator SHALL read four things from the code: the verbs, flags, exit codes, effects and requirements of the structured CLI specs (`tagents-core`, `tagents-knowledge`, `tagents-notify` and `tagents.cli.json`); the tools of the knowledge MCP server, as a client lists them, and the tools of the `tagents` server derived from the CLI specs; the public TypeScript API of every public package (not private, with `exports`); and the `--help` text of the `tagents`, `tusage` and `tnotes` scripts.
+The generator SHALL read four things from the code: the verbs, flags, exit codes, effects and requirements of the CLI specs (`tagents-core`, `tagents-knowledge`, `tagents-notify`, `tagents.cli.json`); the tools of the knowledge MCP server as a client lists them and the tools of the `tagents` server derived from the CLI specs; the public TypeScript API of every public package (not private, with `exports`); and the `--help` text of the `tagents`, `tusage` and `tnotes` scripts.
 
 #### Scenario: Where the CLI and MCP parts come from
 - **WHEN** the CLI contracts and MCP tools are collected
