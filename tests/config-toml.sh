@@ -187,6 +187,25 @@ contains "...while the next table reads" "claude.profiles.b.config_dir${TAB}y" "
 out=$(TA_CONFIG="$TMP/refuse.toml" tg --check 2>/dev/null)
 contains "--check lists a refusal as file:line: why" "refuse.toml:2: " "$out"
 
+# A multi-line string is refused at its opening line and its body is skipped, not read as config.
+for q in '"""' "'''"; do
+  printf '[usage]\na = %s\nb = 1\n[fake]\nc = 2\n%s\nd = 3\n' "$q" "$q" >"$TMP/multi.toml"
+  out=$(dump "$TMP/multi.toml")
+  contains "a $q string: refused at its opening line" "multi.toml:2: multi-line strings are not supported" "$out"
+  contains "...the key after its end reads" "usage.d${TAB}3" "$out"
+  lacks    "...a key in its body is not read" "usage.b" "$out"
+  lacks    "...a table in its body is not read" "fake.c" "$out"
+  ok       "...and --check lists it once" 1 "$(TA_CONFIG="$TMP/multi.toml" tg --check 2>/dev/null | grep -c 'multi-line strings')"
+done
+printf '[usage]\na = """x"""\nd = 3\n' >"$TMP/multi1.toml"
+out=$(dump "$TMP/multi1.toml")
+contains "a multi-line string closed on its own line: refused" "multi1.toml:2: multi-line strings are not supported" "$out"
+contains "...and the next line reads" "usage.d${TAB}3" "$out"
+printf '[usage]\na = """x \\""" y\nb = 1\n"""\nd = 3\n' >"$TMP/multi2.toml"
+out=$(dump "$TMP/multi2.toml")
+lacks    "an escaped quote does not close a basic multi-line string" "usage.b" "$out"
+contains "...the closing one does" "usage.d${TAB}3" "$out"
+
 # ---------------------------------------------------------------------------
 t "3. which file is read"
 # ---------------------------------------------------------------------------

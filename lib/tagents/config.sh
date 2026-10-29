@@ -352,13 +352,22 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
       }
       return hp
     }
+    # Does md, the closing delimiter of a multi-line string, occur in ms? In a
+    # basic string a backslash escapes the character after it, so \""" is no end.
+    function mlclosed(ms, md,   mi) {
+      for (mi = 1; mi <= length(ms); mi++) {
+        if (md == DQ DQ DQ && substr(ms, mi, 1) == "\\") { mi++; continue }
+        if (substr(ms, mi, 3) == md) return 1
+      }
+      return 0
+    }
     # One scalar from position ri of rs: its value in SV, the position after it
     # in SPOS, or the reason it is refused in SERR.
     function readscalar(rs, ri,   rc, rj, ro, rn, rt) {
       SERR = ""; SV = ""
       rc = substr(rs, ri, 1)
       if (rc == DQ) {
-        if (substr(rs, ri, 3) == DQ DQ DQ) { SERR = "multi-line strings are not supported"; return }
+        if (substr(rs, ri, 3) == DQ DQ DQ) { SERR = "multi-line strings are not supported"; if (!mlclosed(substr(rs, ri + 3), DQ DQ DQ)) MLD = DQ DQ DQ; return }
         ro = ""; rj = ri + 1
         while (1) {
           rn = substr(rs, rj, 1)
@@ -375,7 +384,7 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
         return
       }
       if (rc == SQ) {
-        if (substr(rs, ri, 3) == SQ SQ SQ) { SERR = "multi-line strings are not supported"; return }
+        if (substr(rs, ri, 3) == SQ SQ SQ) { SERR = "multi-line strings are not supported"; if (!mlclosed(substr(rs, ri + 3), SQ SQ SQ)) MLD = SQ SQ SQ; return }
         rj = index(substr(rs, ri + 1), SQ)
         if (rj == 0) { SERR = "unterminated string"; return }
         SV = substr(rs, ri + 1, rj - 1); SPOS = ri + rj + 1
@@ -468,11 +477,13 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
     function bad() { flushpend(""); skip = 1; tpath = "" }
     BEGIN {
       SQ = sprintf("%c", 39); DQ = sprintf("%c", 34)
-      tpath = ""; pend = ""; skip = 0; acc = ""
+      tpath = ""; pend = ""; skip = 0; acc = ""; MLD = ""
     }
     {
       ln = $0
       sub(/\r$/, "", ln)
+      # The body of a refused multi-line string is not config: drop it up to its closing delimiter.
+      if (MLD != "") { if (mlclosed(ln, MLD)) MLD = ""; next }
       if (acc != "") {
         acc = acc " " trim(stripc(ln))
         if (depth(acc) <= 0) { putvalue(accpath, acc, accln, acckey); acc = "" }
