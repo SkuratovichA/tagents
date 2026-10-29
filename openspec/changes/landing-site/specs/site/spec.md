@@ -115,16 +115,45 @@ Every file that names the mascot SHALL be in `site/src/mascot/` or `site/public/
 - **THEN** `pnpm test` in `site/` fails
 
 ### Requirement: The footer carries the credit and the way to the repository
-The footer SHALL print the credit of the mascot and link to GitHub, to the documentation and to the repository's licence, the `LICENSE` file, in that order.
+The footer SHALL print the credit of the mascot and link to GitHub, to the documentation under `/docs/` of the same site and to the repository's licence, the `LICENSE` file, in that order.
 
 #### Scenario: Reading the footer
 - **WHEN** the footer is rendered
 - **THEN** it carries the credit of the mascot module
-- **AND** it links to GitHub, to the documentation and to the `LICENSE` file of the repository
+- **AND** it links to GitHub, to the documentation at `/docs/` of the site and to the `LICENSE` file of the repository
 
-### Requirement: Nothing in this repository publishes the site
-This repository SHALL hold no workflow, setting, domain file or link that deploys the site or names its address. Its workflow SHALL only lint, type-check, test, build and link-check, with read access to the repository, and SHALL run only when `site/`, the workflow itself or `.node-version` changes, and it SHALL take its Node version from `.node-version`.
+### Requirement: One workflow checks the site and the documentation and publishes both
+The workflow SHALL lint, type-check, test, build and link-check the site and build the documentation whenever `site/`, `docs/`, the workflow itself or `.node-version` changes, with `SITE_DOMAIN` set to `tagents.arstoien.com` and Node from `.node-version`. Only on `main` SHALL it deploy, as one GitHub Pages deployment: the page at `/` and the documentation under `/docs/`.
 
-#### Scenario: A pull request that only edits the documentation
-- **WHEN** a pull request changes files under `docs/` only
-- **THEN** the site workflow does not run
+#### Scenario: A pull request that edits the documentation
+- **WHEN** a pull request changes files under `docs/`
+- **THEN** the workflow builds and checks the site and the documentation
+- **AND** it deploys nothing
+
+#### Scenario: A push to the main branch
+- **WHEN** a push to `main` changes files under `site/` or `docs/`
+- **THEN** one deployment holds the page at `/` and the documentation at `/docs/`
+
+#### Scenario: A manual run on another branch
+- **WHEN** the workflow is started by hand on a branch other than `main`
+- **THEN** it deploys nothing
+
+#### Scenario: The build for the domain
+- **WHEN** the workflow builds the site
+- **THEN** `dist/client/CNAME` holds `tagents.arstoien.com`
+
+### Requirement: The link check resolves links into the documentation and does not read its pages
+The link check SHALL require `docs/index.html` in the build output, resolve the links that lead into `docs/` against its files, and read none of the pages under `docs/`. The prerender SHALL write no page under `docs/`, so that no page of the site can stand in for the documentation.
+
+#### Scenario: The documentation is missing
+- **WHEN** `pnpm check:links` runs on a build without `docs/index.html`
+- **THEN** it fails and names `docs/index.html`
+- **AND** it reports the links to `/docs/` as pointing at no file
+
+#### Scenario: The documentation is present
+- **WHEN** `pnpm check:links` runs on a build with the documentation copied to `dist/client/docs/`
+- **THEN** it resolves the links to `/docs/` and reads none of the pages under `docs/`
+
+#### Scenario: Building the site
+- **WHEN** `pnpm build` runs in `site/`
+- **THEN** it writes no file under `dist/client/docs/`

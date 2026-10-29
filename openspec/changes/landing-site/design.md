@@ -79,23 +79,30 @@ Each decision is one line, the reason in a clause, what was rejected, and the co
 
 12. **The words are the README's**, one paragraph per feature, with no claim about speed, memory or resources and no comparison. A test pins the install command, the `settings.json` and the other commands to `README.md` (skipped when the README is not beside the site), and a test fails on words of speed, memory or comparison.
 
-13. **A workflow of its own, `site.yml`**, filtered to `site/**`, itself and `.node-version`, whose Node version it uses, with `contents: read` and the SHA-pinned actions of gsttt-site, because the root `ci.yml` runs the plugin and OpenSpec checks that a web change does not touch and the reverse. It has no deploy step. Rejected: a job in `ci.yml`, which would install the site's stack for every plugin change.
+13. **One workflow, `site.yml`, checks and publishes the site and the documentation**, filtered to `site/**`, `docs/**`, itself and `.node-version`, whose Node version it uses, with the SHA-pinned actions of gsttt-site. Its checks hold `contents: read`; a deploy job that runs on `main` only holds `pages: write` and `id-token: write`. A repository has one Pages artifact, so a second workflow that deploys would replace the first, and the documentation workflow it supersedes is deleted. `SITE_DOMAIN=tagents.arstoien.com` is set for every build, so the build that is checked is the build that is published. Rejected: a job in `ci.yml`, which would install the site's stack for every plugin change, and a repository of its own for the site, which splits the project in two for the sake of a second Pages site.
 
-14. **English only, one route.** No documentation pages, no language switcher; the documentation site stays where it is.
+    ```yaml
+    # .github/workflows/site.yml
+    deploy:
+      needs: verify
+      if: github.ref == 'refs/heads/main'
+      permissions: { contents: read, pages: write, id-token: write }
+    ```
 
-## Publishing (needs Sasha's word)
+14. **English only, one route, and the documentation under `/docs/`.** No language switcher; the documentation is the VitePress site of `docs/`, built with its base set to `/docs/` and served beside the page, and the footer of the page links to it.
 
-Nothing here publishes the site, and nothing in the repository links to it. The recommendation is a repository of its own, `SkuratovichA/tagents-site`, that deploys the way gsttt-site does: a `deploy.yml` that only runs when started by hand, building with `SITE_BASE=/` and `SITE_DOMAIN=tagents.arstoien.com`. A second GitHub Pages site in this repository is not possible, because the project's Pages site is the VitePress documentation and publishing the site there would replace it. `site/` is self-contained, so a repository can be made from it with its history:
+15. **The documentation directory is a mount that the build and the link check of the site know by name**: `MOUNTS` in `site/build/links.ts` lists `docs/`. The prerender skips every path under a mount, because the router has no routes there and a crawled link to `/docs/` would write the router's not-found page to `docs/index.html`, which the link check would then accept as the documentation. The link check requires `docs/index.html`, resolves links into the mount and reads none of its pages, because VitePress checks its own. Rejected: a check that does not know the documentation, which turns the footer link into a broken link, and scanning the documentation's pages with the site's checker, which would report output that is not the site's to fix.
 
-```sh
-git subtree split --prefix=site -b site-only
-git push git@github.com:SkuratovichA/tagents-site.git site-only:main
-```
+    ```ts
+    // site/build/links.ts
+    export const MOUNTS: readonly string[] = ['docs/']
+    ```
 
-The domain is a CNAME record `tagents` for `arstoien.com` pointing at `skuratovicha.github.io`, at whoever hosts the DNS of `arstoien.com`, and the repository's Pages settings need `tagents.arstoien.com` as the custom domain with HTTPS enforced. None of it has been done.
+## Publishing
+
+The workflow publishes on every push to `main` that touches `site/`, `docs/`, the workflow or `.node-version`, as one deployment: the page at `/` and the documentation at `/docs/`. The first publication has an order, because once the custom domain is set GitHub Pages redirects the project address `skuratovicha.github.io/tagents/` to it, and a page built for another base would load no assets there. First a deployment built with `SITE_BASE=/` and `SITE_DOMAIN=tagents.arstoien.com` succeeds; then a CNAME record `tagents` for `arstoien.com` pointing at `skuratovicha.github.io` is created at whoever hosts the DNS of `arstoien.com`; then `tagents.arstoien.com` is set as the custom domain in the Pages settings of the repository; and HTTPS is enforced after GitHub has issued the certificate. The documentation pages that were served at `skuratovicha.github.io/tagents/<page>` stop resolving when the domain is set: they are at `tagents.arstoien.com/docs/<page>`.
 
 ## Open questions for Sasha
 
 1. Keep the Pikachu artwork or replace it? The picture comes from https://mystickermania.com/sticker-packs/memes/surprised-pikachu and the character belongs to Nintendo, Creatures Inc., GAME FREAK inc. and The Pokémon Company; the footer says the mascot is a fan tribute, that the site is not affiliated with or endorsed by those four companies and that Pokémon and Pokémon character names are trademarks of Nintendo. That last sentence is the usual notice and is unverified against the official one, whose page could not be read while writing it. Replacing the artwork is a change to `site/src/mascot/` and `site/public/mascot/` only.
-2. Where and when to publish: a separate `SkuratovichA/tagents-site` repository on `tagents.arstoien.com` as recommended, or something else?
-3. The repository is MIT-licensed (`LICENSE` at its root), and the footer links to that file next to GitHub and Docs, the link built from the repository address in `site/src/lib/site.ts`. The words of the page still say nothing about a licence.
+2. The repository is MIT-licensed (`LICENSE` at its root), and the footer links to that file next to GitHub and Docs, the link built from the repository address in `site/src/lib/site.ts`. The words of the page still say nothing about a licence.
