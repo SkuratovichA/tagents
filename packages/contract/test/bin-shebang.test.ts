@@ -14,8 +14,11 @@ function binSources(): { pkg: string; bin: string; source: string }[] {
     if (!fs.existsSync(manifest)) continue;
     const parsed: unknown = JSON.parse(fs.readFileSync(manifest, 'utf8'));
     const bin = typeof parsed === 'object' && parsed !== null && 'bin' in parsed ? parsed.bin : undefined;
-    if (typeof bin !== 'object' || bin === null) continue;
-    for (const [name, target] of Object.entries(bin)) {
+    if (bin === undefined) continue;
+    // A string `bin` is one bin named after the package directory.
+    const entries = typeof bin === 'string' ? { [dir]: bin } : bin;
+    assert.ok(typeof entries === 'object' && entries !== null, `${dir}: bin is a string or an object`);
+    for (const [name, target] of Object.entries(entries)) {
       assert.equal(typeof target, 'string', `${dir}: bin ${name}`);
       const source = String(target).replace(/^\.\/dist\//, 'src/').replace(/\.js$/, '.ts');
       found.push({ pkg: dir, bin: name, source: path.join(REPO_ROOT, 'packages', dir, source) });
