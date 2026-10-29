@@ -19,6 +19,33 @@
 - **WHEN** `send` runs with no words
 - **THEN** it exits 2, the output says a message is missing and not that the verb is unknown, and nothing is posted
 
+### Requirement: The send verb refuses what a notification cannot show
+A title of more than 256 characters or a message of more than 2048 characters (its words joined by single spaces) SHALL be refused with exit 2, a line on standard error naming the limit, and nothing posted. The limits count characters, not bytes. Within them the title and message reach the backend as given, quotes, equals signs and newlines included.
+
+#### Scenario: A title at the limit
+- **WHEN** `send` runs with a title of 256 characters
+- **THEN** the notice is posted with that title
+
+#### Scenario: A title one over
+- **WHEN** `send` runs with a title of 257 characters
+- **THEN** it exits 2, the output says the title is over 256 characters, and nothing is posted
+
+#### Scenario: A message at the limit
+- **WHEN** `send` runs with words that, joined by single spaces, are 2048 characters
+- **THEN** the notice is posted with that body
+
+#### Scenario: A message one over
+- **WHEN** `send` runs with words that, joined by single spaces, are 2049 characters
+- **THEN** it exits 2, the output says the message is over 2048 characters, and nothing is posted
+
+#### Scenario: Characters, not bytes
+- **WHEN** `send` runs with a title of 256 emoji
+- **THEN** the notice is posted
+
+#### Scenario: Quotes and a newline
+- **WHEN** `send` runs with a title that holds quotes, an equals sign and a newline
+- **THEN** the backend receives that title unchanged
+
 ### Requirement: The send verb posts what it is told to
 The `enabled` flags of the options SHALL be ignored and `skip_visible` SHALL NOT be applied to `send`: someone asked for this notice.
 

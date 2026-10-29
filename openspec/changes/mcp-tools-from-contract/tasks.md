@@ -34,3 +34,15 @@
 
 - [x] 7.1 Add "Using the tools" to the hand-written part of `skills/tagents/SKILL.md` and update the plugin, contract, notifications and accounts pages of `docs/` and the READMEs of `packages/mcp` and `packages/notify` (`claude plugin validate . --strict`, `claude plugin validate skills --strict`).
 - [x] 7.2 Validate the change against the specs (`pnpm spec:check`).
+
+## 8. Fixes from review
+
+- [x] 8.1 Let a verb opt out of being a tool with `tool: false` and default a boolean option for its tool with `toolDefaults`; twelve verbs opt out, nineteen tools remain (`packages/contract` `test/tools.test.ts`, `packages/mcp` `test/tools.test.ts`, `test/contract-file.test.ts`).
+- [x] 8.2 Start every program as a process group leader and stop the group on timeout, cancellation, stdin end and SIGTERM, SIGINT or SIGHUP; kill what is left when the program exits; bound the wait for the pipes; the timeout is five minutes (`packages/mcp` `test/process.test.ts`).
+- [x] 8.3 Cap each stream at 256 KiB counted in bytes, cut on a character boundary, with a marker and `truncated` (`packages/mcp` `test/run.test.ts`).
+- [x] 8.4 Pass a boolean option as `--name`, one word per positional, and refuse a NUL byte (`packages/mcp` `test/tools.test.ts`, `test/run.test.ts`).
+- [x] 8.5 Add `--detach` to `--new` and `--window`, default it for the tools, refuse `--new --detach` when the account would be asked (`tests/launch.sh` sections 12 and 13; `packages/contract` `test/bash-spec.test.ts`).
+- [x] 8.6 Make `--window` take exactly a directory and one command, put `--` before the command for tmux, and read DIR with `CDPATH` unset (`tests/launch.sh` section 12).
+- [x] 8.7 Refuse a title over 256 and a message over 2048 characters in `send` (`packages/notify` `test/commands.test.ts`).
+- [x] 8.8 Refuse `session abort` on a row that belongs to a tmux pane (`packages/core` `test/cli.test.ts`).
+- [x] 8.9 Update the plugin and contract pages, the README of `packages/mcp` and the specs of this change to the decisions above.

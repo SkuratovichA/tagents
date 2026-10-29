@@ -31,13 +31,21 @@ An installed plugin stays on its version until the version changes, which is why
 
 ## The tools follow the verbs
 
-The `tagents` MCP server (`packages/mcp`) has one tool for each verb that is in a spec above, except the verbs that run until they are stopped, and it knows no verb by name: `toolSpecs()` derives the tools from the specs, the generator records them in `contract.json` under `mcp.tagents.tools`, and the server derives them again from that file when it starts. A verb added to a spec is therefore a new tool, a new digest and a minor bump after `pnpm plugin:gen`, with no tool code written.
+The `tagents` MCP server (`packages/mcp`) has one tool for each verb that is in a spec above, except the verbs that run until they are stopped and the verbs that say `tool: false`, and it knows no verb by name: `toolSpecs()` derives the tools from the specs, the generator records them in `contract.json` under `mcp.tagents.tools`, and the server derives them again from that file when it starts. A verb added to a spec is therefore a new tool, a new digest and a minor bump after `pnpm plugin:gen`, with no tool code written.
 
 A verb may declare an `effect` (`read`, `write`, `spawn`, `destructive` or `serve`) and `requires: 'tmux'`. The effect becomes the tool's annotations, which is what Claude Code's permission prompt shows. A verb that declares none is offered as a tool that is not read-only, and `pnpm plugin:gen` and `pnpm plugin:check` print a `notice:` line naming it, without failing.
 
 ```ts
 { path: ['session', 'abort'], summary: 'summarySessionAbort', effect: 'destructive', /* … */ }
 ```
+
+A verb that is not for a model, such as one that opens a session or sends a prompt into a window the caller cannot see, says `tool: false`: it stays in the `cli` section of `contract.json` and in the references, and has no tool. A verb may also name boolean options in `toolDefaults`, the value a tool call uses when the caller leaves them out; the generator stops when the map names an option the verb does not have or one that takes a string. `tagents.cli.json` uses it for `--detach` on `--new` and `--window`, so a window opened by a tool does not take the screen.
+
+```json
+{ "path": ["--window"], "options": { "detach": { "type": "boolean" } }, "toolDefaults": { "detach": true }, /* … */ }
+```
+
+Nineteen tools result today: `core_doctor`, `core_plugin_list`, `core_plugin_new`, `core_plugin_remove`, `core_session_last`, `core_session_list`, `core_sessions_show`, `knowledge_index`, `knowledge_lint`, `knowledge_toc`, `notify_send`, `notify_status`, `notify_test`, `tagents_check`, `tagents_config`, `tagents_label`, `tagents_new`, `tagents_profile_for` and `tagents_window`.
 
 ## Three things keep it honest
 

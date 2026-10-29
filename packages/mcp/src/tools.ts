@@ -66,7 +66,7 @@ export function parsePositional(text: string): Positional {
 
 const word = (w: string): string => w.replace(/^-+/, '').replace(/[^A-Za-z0-9]+/g, '_');
 
-/** `tagents-core` is `core`, so a tool is `core_session_open`; the script `tagents` keeps its name, so its `--new` is `tagents_new`. */
+/** `tagents-core` is `core`, so a tool is `core_session_list`; the script `tagents` keeps its name, so its `--new` is `tagents_new`. */
 export const toolName = (program: string, path: readonly string[]): string =>
   [program.replace(/^tagents-/, ''), ...path.map(word)].join('_');
 

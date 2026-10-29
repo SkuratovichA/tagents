@@ -11,8 +11,30 @@ A command in a structured CLI spec MAY declare an `effect`: `read` (changes noth
 - **WHEN** a verb declares `effect: serve`
 - **THEN** it is in `contract.json` and in the references, and has no tool
 
+### Requirement: A verb may be left out of the tools
+A command in a structured CLI spec MAY declare `tool: false`, meaning that it is not offered as a tool. The generator SHALL record it on the verb in the `cli` section of `contract.json`, list no tool for the verb, and keep the verb in the contract and in the references, so the CLI is still documented.
+
+#### Scenario: A verb opts out
+- **WHEN** a verb declares `tool: false`
+- **THEN** `contract.json` holds `"tool": false` on the verb in its `cli` section, `mcp.tagents.tools` has no tool for it, and `references/cli.md` still describes it
+
+### Requirement: A verb may default an option for its tool
+A command MAY declare `toolDefaults`, a map from the name of one of its boolean options to the value a tool call uses when the caller leaves the option out. The generator SHALL record it on the verb and give the tool's property that default, and SHALL stop, naming the tool and the option, when the map names an option the verb does not have or one that is not boolean.
+
+#### Scenario: A default for a tool
+- **WHEN** `tagents --window` declares `toolDefaults: { detach: true }`
+- **THEN** `contract.json` holds the default on the verb and the tool `tagents_window` has a `detach` property whose default is true
+
+#### Scenario: A default for an option that is not there
+- **WHEN** a verb declares `toolDefaults: { attach: true }` and has no `--attach` option
+- **THEN** generation stops with an error naming the tool and `--attach`
+
+#### Scenario: A default for an option that is not a flag
+- **WHEN** a verb declares a default for an option that takes a string
+- **THEN** generation stops with an error saying the option takes a string
+
 ### Requirement: The tools of the tagents server come from the CLI specs
-`contract.json` SHALL list under `mcp.tagents.tools` one tool for each verb of each structured CLI spec that is not `serve`, ordered by tool name. A tool SHALL be derived from its verb alone, so the generator holds no list of tools.
+`contract.json` SHALL list under `mcp.tagents.tools` one tool for each verb of each structured CLI spec that is not `serve` and not `tool: false`, ordered by tool name. A tool SHALL be derived from its verb alone, so the generator holds no list of tools.
 
 #### Scenario: A verb is added to a spec
 - **WHEN** a command is added to a spec and `pnpm plugin:gen` runs

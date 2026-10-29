@@ -16,7 +16,7 @@ The plugin manifest SHALL register the MCP server `tagents`, started as the comm
 - **THEN** it prints the problem on stderr and exits 2 for a missing option and 1 for an unreadable file, and writes nothing to stdout
 
 ### Requirement: The server knows no verb
-The server SHALL list one tool for each verb of each structured CLI spec recorded in the contract, except the verbs whose effect is `serve`, and SHALL contain no knowledge of any verb. A verb added to a spec is therefore a tool once the contract is regenerated and the plugin updated.
+The server SHALL list one tool for each verb of each structured CLI spec recorded in the contract, except the verbs whose effect is `serve` and the verbs recorded with `"tool": false`, and SHALL contain no knowledge of any verb. A verb added to a spec is therefore a tool once the contract is regenerated and the plugin updated.
 
 #### Scenario: A verb in the contract
 - **WHEN** `contract.json` records a verb that is not `serve`
@@ -26,40 +26,52 @@ The server SHALL list one tool for each verb of each structured CLI spec recorde
 - **WHEN** `contract.json` records a verb with the effect `serve`
 - **THEN** the server lists no tool for it
 
+#### Scenario: A verb that is not for a model
+- **WHEN** `contract.json` records a verb with `"tool": false`, such as `tagents-core session prompt`
+- **THEN** the server lists no tool for it, and the verb stays in the `cli` section of the contract and in the references
+
 ### Requirement: A tool is named after its verb
 The tool of a verb SHALL be named `<program>_<words of the verb>`: the program name without its `tagents-` prefix, then each word without leading dashes, every run of other characters becoming one underscore. Two verbs that would give the same name SHALL stop the generator.
 
 #### Scenario: Names
-- **WHEN** the verbs `session open` of `tagents-core`, `send` of `tagents-notify` and `--window` of the script are listed
-- **THEN** the tools are `core_session_open`, `notify_send` and `tagents_window`
+- **WHEN** the verbs `session list` of `tagents-core`, `send` of `tagents-notify` and `--window` of the script are listed
+- **THEN** the tools are `core_session_list`, `notify_send` and `tagents_window`
 
 ### Requirement: A tool says what it starts in its first words
 The description of a tool SHALL be the verb's summary as one sentence. A verb that starts a Claude session, a window, a service or a Claude turn SHALL open its summary with `starts`, `opens`, `runs` or `installs`, because the description is what Claude Code shows when it asks the user to allow the call.
 
 #### Scenario: What the permission prompt shows
-- **WHEN** a client asks the user to allow `tagents_new`, `tagents_window` or `core_session_prompt`
+- **WHEN** a client asks the user to allow `tagents_new` or `tagents_window`
 - **THEN** the description it shows begins with what the call starts
 
 ### Requirement: A tool's arguments are the verb's own
-The input schema of a tool SHALL have one property for each positional of the verb, named after its placeholder in lower case (an array of strings for `<words…>`, a string otherwise), one for each option typed as the option is, and `required` listing the required ones, and no other property. A call SHALL pass each option as `--name=value` and then the positionals.
+The input schema of a tool SHALL have one property for each positional of the verb, named after its placeholder in lower case (an array of strings for `<words…>`, a string otherwise), one for each option typed as the option is, and `required` listing the required ones, and no other property. A call SHALL pass each string option as `--name=value`, a boolean option as `--name` when it is true and not at all when it is false, and then the positionals, each as one word of its own.
 
 #### Scenario: A value that starts with a dash
 - **WHEN** `notify_send` is called with the `title` `--x`
 - **THEN** the verb receives `--title=--x`, so the value stays a value
 
+#### Scenario: A value with a newline or an equals sign
+- **WHEN** `notify_send` is called with a `title` of `a=b` and a newline, and message words that hold a newline
+- **THEN** the verb receives the title as the one word `--title=a=b` and a newline, and each message word as one word of its own, so nothing is split or joined on the way
+
 ### Requirement: Arguments are checked before anything runs
-A call with an argument the schema does not list, a missing required argument, an argument of the wrong type or a positional that starts with a dash SHALL be refused with the exit `usage` (2) of the verb's program, and nothing SHALL run.
+A call with an argument the schema does not list, a missing required argument, an argument of the wrong type, a positional that starts with a dash or an argument holding a NUL byte SHALL be refused with the exit `usage` (2) of the verb's program, and nothing SHALL run. A NUL byte is refused because the operating system cannot start a program with one in its arguments, and the refusal is an answer, not a failure of the call.
 
 #### Scenario: A message that looks like a flag
 - **WHEN** `notify_send` is called with the message words `--title`
 - **THEN** the call is refused with an error saying the argument starts with a dash and nothing is run
+
+#### Scenario: A NUL byte
+- **WHEN** `notify_send` is called with a message word that holds a NUL byte
+- **THEN** the call is refused with exit 2 and an error saying the argument contains a NUL byte, and nothing is run
 
 #### Scenario: A required argument is missing
 - **WHEN** `tagents_window` is called with a `dir` and no `command`
 - **THEN** the call fails with exit 2 and an error naming `command`, and nothing is run
 
 ### Requirement: A call answers with how the verb ended
-A call SHALL run the verb's program from `PATH` with the server's own environment and no standard input, and answer with one JSON document holding `exit`, `outcome`, `stdout` and `stderr`. `outcome` is the name of the code in the program's exit table, or `exit <n>` when it has none; `stdout` is parsed when it is a JSON document and is text otherwise. An exit code other than 0 SHALL make the answer an error.
+A call SHALL run the verb's program from `PATH` with the server's own environment and no standard input, and answer with one JSON document holding `exit`, `outcome`, `stdout` and `stderr`. `outcome` is the name of the code in the program's exit table, or `exit <n>` when it has none, or `cancelled` for a call that was stopped; `stdout` is parsed when it is a JSON document and is text otherwise. An exit code other than 0 SHALL make the answer an error.
 
 #### Scenario: A verb that fails
 - **WHEN** `core_session_last` is called with a reference that does not exist and the verb exits 1
@@ -69,12 +81,60 @@ A call SHALL run the verb's program from `PATH` with the server's own environmen
 - **WHEN** `core_plugin_list` is called with `json` true
 - **THEN** the answer's `stdout` is the parsed document, not a string
 
-### Requirement: A call is bounded
-Each of `stdout` and `stderr` SHALL be cut at 256 KiB and the document then says `"truncated": true`. A verb that has not ended after one hour SHALL be stopped with SIGTERM and answered as exit 4, outcome `timeout`. A program that is not on `PATH` SHALL be answered as exit 1 with its name in `stderr`.
+### Requirement: A call's output is capped in bytes
+Each of `stdout` and `stderr` SHALL be kept to its first 262144 bytes (256 KiB), counted in bytes and cut before the character the cap falls in, so the text stays valid UTF-8. A cut stream SHALL end with a line `[output cut at 262144 bytes]`, the document SHALL say `"truncated": true`, and a cut `stdout` is text and is not parsed as JSON.
+
+#### Scenario: Output over the cap
+- **WHEN** a verb prints 300 KiB of text on stdout
+- **THEN** `stdout` holds the first 262144 bytes, ends with the line `[output cut at 262144 bytes]`, and the document says `"truncated": true`
+
+#### Scenario: The cap falls inside a character
+- **WHEN** a verb prints three-byte characters and the 262144th byte is the second byte of one
+- **THEN** that character is not in `stdout`, no replacement character stands in for it, and what precedes it is whole
+
+### Requirement: A call is bounded in time
+A verb that has not ended after five minutes SHALL be stopped as the requirement that nothing outlives a call says, and answered as exit 4, outcome `timeout`. A program that is not on `PATH` SHALL be answered as exit 1 with its name in `stderr`.
 
 #### Scenario: A program that is not installed
 - **WHEN** `notify_send` is called and `tagents-notify` is not on `PATH`
 - **THEN** the answer is an error with exit 1 whose `stderr` says `tagents-notify is not on PATH`
+
+#### Scenario: A verb that does not end
+- **WHEN** a verb has not ended after five minutes
+- **THEN** the answer is an error with exit 4 and outcome `timeout`, and nothing the verb started is left running
+
+### Requirement: A call stops everything it started
+The server SHALL start each program as the leader of a process group of its own. When a call is stopped, by the timeout or by the cancellation of its request, the whole group SHALL be sent SIGTERM and, after a grace of two seconds, SIGKILL. A stopped call is answered as an error with outcome `cancelled`, and a request cancelled before its program started SHALL not start it.
+
+#### Scenario: The client cancels a call
+- **WHEN** a client cancels a request whose program has started another process
+- **THEN** both processes are gone within the grace
+
+#### Scenario: A program that ignores SIGTERM
+- **WHEN** a call is stopped and its program ignores SIGTERM
+- **THEN** the program is still running when the grace begins and is killed with SIGKILL when it ends
+
+#### Scenario: Cancelled before it started
+- **WHEN** a request that was already cancelled reaches the server
+- **THEN** the program is not started
+
+### Requirement: What a program leaves behind dies with it
+When a program has exited, whatever is left in its process group SHALL be killed at once. The call SHALL wait for the program's output pipes for a moment only after the exit, so that a process which left the group and holds them cannot keep the call open.
+
+#### Scenario: A grandchild holds the pipes
+- **WHEN** a program exits at once and leaves a process running that holds its stdout
+- **THEN** the call is answered with the program's own exit within a moment of that exit, and the process it left is gone
+
+### Requirement: The server's end is the end of its calls
+When the server's standard input closes, or the server receives SIGTERM, SIGINT or SIGHUP, it SHALL stop every call in flight as above and exit once they have ended.
+
+#### Scenario: The session closes
+- **WHEN** Claude Code closes the server's standard input while a call is running
+- **THEN** the program of the call and everything it started are gone, and the server exits
+
+#### Scenario: The server is signalled
+- **WHEN** the server receives SIGTERM, SIGINT or SIGHUP while a call is running
+- **THEN** the program of the call and everything it started are gone, and the server exits
 
 ### Requirement: A verb that needs tmux is refused without it
 A verb recorded with `requires: tmux` SHALL be refused by the server, without running it, when the server's environment has no `TMUX`: the answer is an error with exit `refused` (3) and a message saying that the tool opens windows in the tmux server it runs in and none is there. The tmux server a call opens a window in SHALL be the one that environment names, never another one.
@@ -93,6 +153,32 @@ The plugin SHALL register no allow rule and SHALL write nothing to any Claude Co
 #### Scenario: A listing is not a permission
 - **WHEN** the plugin is installed
 - **THEN** no settings file under any Claude config directory has changed
+
+### Requirement: A tool may default an option its verb leaves off
+A boolean option that a verb's spec lists in `toolDefaults` SHALL appear in the tool's input schema with that `default`, and a call that leaves the option out SHALL run the verb as if the caller had given that value. A caller who gives the other value SHALL get it. `tagents_new` and `tagents_window` SHALL default `detach` to true, so a window opened by a tool is not selected and takes the screen from nobody.
+
+#### Scenario: The default applies
+- **WHEN** `tagents_window` is called with a `dir` and a `command` and no `detach`
+- **THEN** the verb receives `--detach`, and the new window is not selected
+
+#### Scenario: The caller chooses
+- **WHEN** `tagents_window` is called with `detach` false
+- **THEN** the verb receives no `--detach`, and the new window is selected as for a human at the CLI
+
+#### Scenario: The schema says so
+- **WHEN** a client lists `tagents_new`
+- **THEN** its `detach` property is a boolean whose default is true
+
+### Requirement: A contract from a newer generator still serves
+The server SHALL read `contract.json` so that a verb with an effect it does not know is served as a verb with no effect, and a key it does not know is ignored, and neither SHALL take any tool away. A file that is not JSON or has no `cli` section SHALL still stop the server with the reason on stderr.
+
+#### Scenario: An effect nobody has heard of
+- **WHEN** the contract records a verb with the effect `quarantine`
+- **THEN** the server lists its tool with the annotations of a verb that declares no effect
+
+#### Scenario: A key nobody has heard of
+- **WHEN** the contract holds a key on a verb that this server does not read
+- **THEN** the tool is listed as it would be without the key
 
 ### Requirement: A tool carries the annotations of its verb's effect
 `read` SHALL give `readOnlyHint` true and `openWorldHint` false. `write` SHALL give `readOnlyHint` false, `destructiveHint` false and `openWorldHint` false; `spawn` the same with `openWorldHint` true; `destructive` `readOnlyHint` false, `destructiveHint` true and `openWorldHint` false. A verb with no effect SHALL give `readOnlyHint` false and nothing else.
