@@ -42,7 +42,7 @@
 #   TAGENTS_BUILD_CMD  run in the copy after a move     pnpm install --frozen-lockfile && pnpm build
 #   TAGENTS_LAUNCHD_DIR, TAGENTS_NO_LAUNCHCTL=1         where the plist goes, and not loading it
 #   TAGENTS_NO_NATIVE=1   do not fetch the Rust tagents-core, and remove a prebuilt one (a hand-built one stays)
-#   TAGENTS_CORE_BASE_URL where the release files are (a directory URL that starts with https:// or file://; any other scheme is refused with a warning)   https://github.com/SkuratovichA/tagents/releases/download/v<version>
+#   TAGENTS_CORE_BASE_URL where the release files are (a directory URL that starts with https:// or file://; when a fetch is due and curl is there, any other scheme is refused with a warning)   https://github.com/SkuratovichA/tagents/releases/download/v<version>
 #   TAGENTS_CORE_TARGET   the target to fetch for: x86_64-unknown-linux-musl, x86_64-apple-darwin or aarch64-apple-darwin   from uname
 #   TAGENTS_MOVED_FROM  internal: the commit the copy left, set by the run that moved it for the run it hands over to
 #
