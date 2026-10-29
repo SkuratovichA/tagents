@@ -360,6 +360,12 @@ test('the library edits a TOML file the same way', () => {
   assert.equal(fs.readFileSync(file, 'utf8'), '[usage]\nworkdays = true\n');
 });
 
+test('removing the only TOML entry, with another table after it, leaves the rest and no empty [plugins]', () => {
+  const dir = tomlDir('[plugins.x]\nfrom = "/one"\n\n[usage]\nworkdays = true\n');
+  assert.equal(runCli(['plugin', 'remove', 'x'], inDir(dir)).code, 0);
+  assert.equal(tomlText(dir), '[usage]\nworkdays = true\n');
+});
+
 test('with a config.yaml and no config.toml, plugin add keeps editing the YAML file', () => {
   const dir = configDir('usage:\n  x: 1\n');
   const r = runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir));

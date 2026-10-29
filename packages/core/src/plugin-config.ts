@@ -19,6 +19,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { createRequire } from 'node:module';
 import { parse as parseToml } from 'smol-toml';
 import { isMap, isNode, isScalar, parseDocument, type Document, type Pair, type YAMLMap } from 'yaml';
@@ -261,7 +262,7 @@ function removeTomlEntry(file: string, name: string): RemoveOutcome {
   if (Object.hasOwn(after.plugins, name))
     throw new Error(`${file}: ${name} is not written as a [plugins.${tomlKey(name)}] section, so it cannot be removed here — remove it by hand`);
   const rest = Object.fromEntries(Object.entries(before.plugins).filter(([key]) => key !== name));
-  if (JSON.stringify({ ...before.doc, plugins: rest }) !== JSON.stringify({ ...after.doc, plugins: after.plugins }))
+  if (!isDeepStrictEqual({ ...before.doc, plugins: rest }, { ...after.doc, plugins: after.plugins }))
     throw new Error(`${file}: removing ${name} would change something else, so nothing was written`);
   save(file, next);
   return 'removed';
