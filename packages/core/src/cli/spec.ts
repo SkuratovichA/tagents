@@ -54,7 +54,15 @@ const SpecFile = z.strictObject({
   $schema: z.string().optional(),
   program: z.string().min(1),
   exit: z.record(z.string(), z.number().int().min(0).max(255)),
-  commands: z.array(CommandFile),
+  // Dispatch is by path, so a second verb with a path already given would be shadowed and never run. The schema cannot say this; crates/tagents-spec refuses it too.
+  commands: z.array(CommandFile).superRefine((commands, ctx) => {
+    const seen = new Set<string>();
+    commands.forEach((c, index) => {
+      const key = JSON.stringify(c.path);
+      if (seen.has(key)) ctx.addIssue({ code: 'custom', path: [index, 'path'], message: `the path ${c.path.join(' ')} appears twice` });
+      seen.add(key);
+    });
+  }),
 });
 
 type ContractCommand = CliContract['commands'][number];

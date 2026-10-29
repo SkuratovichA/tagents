@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test } from 'node:test';
+import { Ajv2020 } from 'ajv/dist/2020.js';
 import { en } from '../src/i18n/en.ts';
 import { ru } from '../src/i18n/ru.ts';
 import { EXIT } from '../src/cli/exit.ts';
@@ -14,6 +15,7 @@ import { CORE_COMMANDS, SPEC_FILE, coreCliContract, loadSpec } from '../src/cli/
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI_DIR = path.resolve(HERE, '..', 'src', 'cli');
+const SCHEMA_FILE = path.resolve(HERE, '..', '..', '..', 'spec', 'cli', 'cli-spec.schema.json');
 
 /** The text of every `parseArgs(…)` call in a source, balanced on its parentheses. */
 function parseArgsCalls(src: string): string[] {
@@ -198,4 +200,40 @@ test('the loader keeps impl and effect out of what parseArgs and the contract se
     () => loadSpec(specWith((command) => { command['summary'] = 'noSuchKey'; })),
     /not a key of the English catalogue/,
   );
+});
+
+function schemaValidator() {
+  const schema: unknown = JSON.parse(fs.readFileSync(SCHEMA_FILE, 'utf8'));
+  assert.ok(isRecord(schema));
+  return new Ajv2020({ strict: true, allErrors: true }).compile(schema);
+}
+
+test('the data file matches its schema', () => {
+  const validate = schemaValidator();
+  assert.ok(validate(readDoc()), JSON.stringify(validate.errors));
+});
+
+test('the schema refuses an unknown key, an empty path and an empty positional', () => {
+  const validate = schemaValidator();
+  const doc = readDoc();
+  const [first] = commandsOf(doc);
+  assert.ok(first);
+  first['surprise'] = 'x';
+  first['path'] = [];
+  first['positionals'] = [''];
+  assert.equal(validate(doc), false);
+  const keywords = new Set((validate.errors ?? []).map((e) => `${e.instancePath}:${e.keyword}`));
+  assert.ok(keywords.has('/commands/0:additionalProperties'), [...keywords].join(' '));
+  assert.ok(keywords.has('/commands/0/path:minItems'), [...keywords].join(' '));
+  assert.ok(keywords.has('/commands/0/positionals/0:minLength'), [...keywords].join(' '));
+});
+
+test('two verbs with one path are refused: dispatch is by path and the second would never run', () => {
+  const doc = readDoc();
+  const [first] = commandsOf(doc);
+  assert.ok(first);
+  commandsOf(doc).push({ ...first });
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cli-spec-')), 'spec.json');
+  fs.writeFileSync(file, JSON.stringify(doc));
+  assert.throws(() => loadSpec(pathToFileURL(file)), /appears twice/);
 });

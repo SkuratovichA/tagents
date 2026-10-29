@@ -2,11 +2,11 @@
 //!
 //! The data is `spec/cli/tagents-core.json` at the repository root, described by `spec/cli/cli-spec.schema.json`.
 //! The node CLI and the contract generator read the same file (`packages/core/src/cli/spec.ts`).
-//! The model refuses a key the schema does not name, so a newer file fails here at load, not somewhere downstream.
+//! The model refuses a key the schema does not name, and what the schema and the node loader refuse (an empty path, an empty word, two verbs with one path), so a newer or wrong file fails here at load, not somewhere downstream.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::Error as _};
 
 /// The spec this crate was built with: the data file, embedded.
 pub const BUNDLED: &str = include_str!("../../../spec/cli/tagents-core.json");
@@ -71,9 +71,33 @@ pub enum Implementation {
 }
 
 impl Spec {
-    /// Parse a spec document.
+    /// Parse a spec document, refusing what `spec/cli/cli-spec.schema.json` refuses and a path two verbs share (dispatch is by path, so the second would never run).
     pub fn parse(text: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(text)
+        let spec: Self = serde_json::from_str(text)?;
+        spec.check().map_err(serde_json::Error::custom)?;
+        Ok(spec)
+    }
+
+    fn check(&self) -> Result<(), String> {
+        let mut seen = BTreeSet::new();
+        for command in &self.commands {
+            let at = command.path.join(" ");
+            if command.path.is_empty() || command.path.iter().any(String::is_empty) {
+                return Err(format!(
+                    "a verb has an empty path or an empty word in it ({at:?})"
+                ));
+            }
+            if command.positionals.iter().any(String::is_empty) {
+                return Err(format!("{at}: an empty entry in positionals"));
+            }
+            if command.required.iter().any(String::is_empty) {
+                return Err(format!("{at}: an empty entry in required"));
+            }
+            if !seen.insert(&command.path) {
+                return Err(format!("the path {at:?} appears twice"));
+            }
+        }
+        Ok(())
     }
 
     /// The spec this crate was built with.
@@ -132,6 +156,58 @@ mod tests {
             implementation: Implementation::Rust,
             effect: effect.map(str::to_owned),
         }
+    }
+
+    /// A spec document with the given verbs, each a JSON object body after `"options":{},"summary":"k","impl":"node"`.
+    fn spec_with(commands: &[&str]) -> String {
+        format!(
+            r#"{{"program":"p","exit":{{}},"commands":[{}]}}"#,
+            commands.join(",")
+        )
+    }
+
+    fn verb(path: &str, positionals: &str, required: &str) -> String {
+        format!(
+            r#"{{"path":{path},"positionals":{positionals},"options":{{}},"required":{required},"summary":"k","impl":"node"}}"#
+        )
+    }
+
+    fn refused(path: &str, positionals: &str, required: &str) -> String {
+        Spec::parse(&spec_with(&[&verb(path, positionals, required)]))
+            .expect_err("the spec is refused")
+            .to_string()
+    }
+
+    #[test]
+    fn a_verb_without_words_is_refused() {
+        assert!(refused("[]", "[]", "[]").contains("path"));
+    }
+
+    #[test]
+    fn an_empty_word_in_a_path_is_refused() {
+        assert!(refused(r#"["a",""]"#, "[]", "[]").contains("path"));
+    }
+
+    #[test]
+    fn an_empty_positional_is_refused() {
+        assert!(refused(r#"["a"]"#, r#"[""]"#, "[]").contains("positionals"));
+    }
+
+    #[test]
+    fn an_empty_required_option_is_refused() {
+        assert!(refused(r#"["a"]"#, "[]", r#"[""]"#).contains("required"));
+    }
+
+    #[test]
+    fn two_verbs_with_one_path_are_refused() {
+        let one = verb(r#"["a","b"]"#, "[]", "[]");
+        let err = Spec::parse(&spec_with(&[&one, &one])).expect_err("a duplicate path");
+        assert!(err.to_string().contains("twice"), "{err}");
+    }
+
+    #[test]
+    fn a_valid_verb_passes_the_same_checks() {
+        Spec::parse(&spec_with(&[&verb(r#"["a"]"#, r#"["<x>"]"#, r#"["o"]"#)])).expect("accepted");
     }
 
     #[test]
