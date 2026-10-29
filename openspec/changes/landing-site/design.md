@@ -15,7 +15,7 @@ Each decision is one line, the reason in a clause, what was rejected, and the co
    ```ts
    // site/vite.config.ts
    tanstackStart({
-     prerender: { enabled: true, crawlLinks: true, failOnError: true },
+     prerender: prerenderOptions(site.base), // crawls links, and its filter skips the paths under a mount
      pages: [{ path: '/404', prerender: { outputPath: '/404.html' } }],
    })
    ```
@@ -79,7 +79,7 @@ Each decision is one line, the reason in a clause, what was rejected, and the co
 
 12. **The words are the README's**, one paragraph per feature, with no claim about speed, memory or resources and no comparison. A test pins the install command, the `settings.json` and the other commands to `README.md` (skipped when the README is not beside the site), and a test fails on words of speed, memory or comparison.
 
-13. **One workflow, `site.yml`, checks and publishes the site and the documentation**, filtered to `site/**`, `docs/**`, itself and `.node-version`, whose Node version it uses, with the SHA-pinned actions of gsttt-site. Its checks hold `contents: read`; a deploy job that runs on `main` only holds `pages: write` and `id-token: write`. A repository has one Pages artifact, so a second workflow that deploys would replace the first, and the documentation workflow it supersedes is deleted. `SITE_DOMAIN=tagents.arstoien.com` is set for every build, so the build that is checked is the build that is published. Rejected: a job in `ci.yml`, which would install the site's stack for every plugin change, and a repository of its own for the site, which splits the project in two for the sake of a second Pages site.
+13. **One workflow, `site.yml`, checks and publishes the site and the documentation**, filtered to `site/**`, `docs/**`, itself, `.node-version` and the root `package.json` and `README.md` (the first pins the VitePress version, the second holds the install command the page repeats), whose Node version it uses, with the SHA-pinned actions of gsttt-site. Its checks hold `contents: read`; a deploy job that runs on `main` only holds `pages: write` and `id-token: write`. A repository has one Pages artifact, so a second workflow that deploys would replace the first, and the documentation workflow it supersedes is deleted. `SITE_DOMAIN=tagents.arstoien.com` is set for every build, so the build that is checked is the build that is published. Rejected: a job in `ci.yml`, which would install the site's stack for every plugin change, and a repository of its own for the site, which splits the project in two for the sake of a second Pages site.
 
     ```yaml
     # .github/workflows/site.yml
@@ -95,12 +95,15 @@ Each decision is one line, the reason in a clause, what was rejected, and the co
 
     ```ts
     // site/build/links.ts
-    export const MOUNTS: readonly string[] = ['docs/']
+    export type Mount = `${string}/`
+    export const MOUNTS: readonly Mount[] = ['docs/']
     ```
+
+    VitePress is fixed at `/docs/` and the footer link follows the base of the site, so a base other than `/` cannot be served together with a mount: `pnpm check:links` fails on it (`mountsNeedRootBase`).
 
 ## Publishing
 
-The workflow publishes on every push to `main` that touches `site/`, `docs/`, the workflow or `.node-version`, as one deployment: the page at `/` and the documentation at `/docs/`. The first publication has an order, because once the custom domain is set GitHub Pages redirects the project address `skuratovicha.github.io/tagents/` to it, and a page built for another base would load no assets there. First a deployment built with `SITE_BASE=/` and `SITE_DOMAIN=tagents.arstoien.com` succeeds; then a CNAME record `tagents` for `arstoien.com` pointing at `skuratovicha.github.io` is created at whoever hosts the DNS of `arstoien.com`; then `tagents.arstoien.com` is set as the custom domain in the Pages settings of the repository; and HTTPS is enforced after GitHub has issued the certificate. The documentation pages that were served at `skuratovicha.github.io/tagents/<page>` stop resolving when the domain is set: they are at `tagents.arstoien.com/docs/<page>`.
+The workflow publishes on every push to `main` that touches `site/`, `docs/`, the workflow, `.node-version`, the root `package.json` or the root `README.md`, as one deployment: the page at `/` and the documentation at `/docs/`. The first publication has an order, because once the custom domain is set GitHub Pages redirects the project address `skuratovicha.github.io/tagents/` to it, and a page built for another base would load no assets there. First a deployment built with `SITE_BASE=/` and `SITE_DOMAIN=tagents.arstoien.com` succeeds; then a CNAME record `tagents` for `arstoien.com` pointing at `skuratovicha.github.io` is created at whoever hosts the DNS of `arstoien.com`; then `tagents.arstoien.com` is set as the custom domain in the Pages settings of the repository; and HTTPS is enforced after GitHub has issued the certificate. The documentation pages that were served at `skuratovicha.github.io/tagents/<page>` stop resolving when the domain is set: they are at `tagents.arstoien.com/docs/<page>`.
 
 ## Open questions for Sasha
 

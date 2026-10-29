@@ -76,12 +76,11 @@ The words on the page SHALL describe what tagents does as its README does. They 
 - **THEN** `pnpm test` in `site/` fails
 
 ### Requirement: The site builds with named commands
-In `site/`, `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build` and `pnpm check:links` SHALL each succeed on a fresh clone. `pnpm build` SHALL write `dist/client` with `index.html`, `404.html`, `robots.txt` and `.nojekyll`.
+In `site/`, `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck`, `pnpm test` and `pnpm build` SHALL each succeed on a fresh clone. `pnpm build` SHALL write `dist/client` with `index.html`, `404.html`, `robots.txt` and `.nojekyll`. `pnpm check:links` SHALL succeed on a build to which the documentation has been copied (`dist/client/docs/`).
 
 #### Scenario: A build without a domain
 - **WHEN** `pnpm build` runs with `SITE_DOMAIN` unset
 - **THEN** `dist/client` has `index.html`, `404.html`, `robots.txt` and `.nojekyll`
-- **AND** `pnpm check:links` finds every internal link and fragment
 
 ### Requirement: The page names its own address only when it has one
 A build SHALL write `CNAME` and `sitemap.xml`, and SHALL name the page's own address in its head, only when `SITE_DOMAIN` is set.
@@ -123,7 +122,7 @@ The footer SHALL print the credit of the mascot and link to GitHub, to the docum
 - **AND** it links to GitHub, to the documentation at `/docs/` of the site and to the `LICENSE` file of the repository
 
 ### Requirement: One workflow checks the site and the documentation and publishes both
-The workflow SHALL lint, type-check, test, build and link-check the site and build the documentation whenever `site/`, `docs/`, the workflow itself or `.node-version` changes, with `SITE_DOMAIN` set to `tagents.arstoien.com` and Node from `.node-version`. Only on `main` SHALL it deploy, as one GitHub Pages deployment: the page at `/` and the documentation under `/docs/`.
+The workflow SHALL lint, type-check, test, build and link-check the site and build the documentation whenever `site/`, `docs/`, the workflow itself, `.node-version`, the root `package.json` or the root `README.md` changes, with `SITE_DOMAIN` set to `tagents.arstoien.com` and Node from `.node-version`. Only on `main` SHALL it deploy, as one GitHub Pages deployment: the page at `/` and the documentation under `/docs/`.
 
 #### Scenario: A pull request that edits the documentation
 - **WHEN** a pull request changes files under `docs/`
@@ -153,7 +152,8 @@ The link check SHALL require `docs/index.html` in the build output, resolve the 
 #### Scenario: The documentation is present
 - **WHEN** `pnpm check:links` runs on a build with the documentation copied to `dist/client/docs/`
 - **THEN** it resolves the links to `/docs/` and reads none of the pages under `docs/`
+- **AND** a link to a fragment in `/docs/` is resolved to the file, and the fragment is not looked for
 
 #### Scenario: Building the site
 - **WHEN** `pnpm build` runs in `site/`
-- **THEN** it writes no file under `dist/client/docs/`
+- **THEN** it writes no file under `dist/client/docs/`: `build/prerender.test.ts` pins the prerender filter, and the workflow step that copies the documentation fails when that directory already exists
