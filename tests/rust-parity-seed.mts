@@ -5,6 +5,7 @@
 // <dir>/fixture    the two sessions the checked-in fixtures were recorded from (packages/core/test/helpers.ts seedSessions)
 // <dir>/adversarial every session below, in several accounts, built so JavaScript and a naive Rust port disagree on it
 // <dir>/locked     a session no one may read and a directory no one may list, for the error paths
+// <dir>/relative   a Claude config directory named by a relative path of one character, U+0085, which JavaScript's trim keeps and Rust's would drop
 //
 // Each block says which divergence it provokes. The comparison itself is the shell script's: this file only writes files.
 import { spawnSync } from 'node:child_process';
@@ -323,3 +324,9 @@ for (const [id, mtime, dir] of [
 }
 fs.chmodSync(path.join(locked, '-locked-a', 'locked-file.jsonl'), 0o000);
 fs.chmodSync(path.join(locked, '-locked-dir'), 0o000);
+
+// ----------------------------------------------------------------- relative ---
+
+const relative = path.join(root, 'relative', '\u0085', 'projects', '-rel');
+fs.mkdirSync(relative, { recursive: true });
+fs.writeFileSync(path.join(relative, 'relative-session.jsonl'), doc(user('prompt of a session below a directory named U+0085')));

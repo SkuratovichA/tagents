@@ -44,7 +44,9 @@ bad() {  # <label> <detail...>
 
 # The environment of one run. Nothing of the caller's shell is inherited.
 ENVV=()
+CWD=
 use() {  # <home-name>
+  CWD=
   local base="PATH=$(dirname "$NODE"):/usr/bin:/bin" lang="LANG=en_US.UTF-8" tz="TZ=UTC"
   ENVV=("$base" "$lang" "$tz" "TA_STATE_DIR=$TMP/state" "TAGENTS_CONFIG_DIR=$TMP/config")
   case $1 in
@@ -59,6 +61,7 @@ use() {  # <home-name>
     empty) ENVV+=("HOME=$TMP/empty-home") ;;
     missing) ENVV+=("HOME=$TMP/does-not-exist") ;;
     locked) ENVV+=("HOME=$SEED/locked" "CLAUDE_HOMES=$SEED/locked/.claude") ;;
+    rel) ENVV+=("HOME=$ADV" "CLAUDE_HOMES=$(printf '\xc2\x85')"); CWD=$SEED/relative ;;
     tz) ENVV+=("HOME=$ADV" "CLAUDE_HOMES=$ADV/.claude" "TZ=Asia/Kolkata" "LANG=C" "LC_ALL=C") ;;
     *) echo "rust-parity: no home called $1" >&2; exit 2 ;;
   esac
@@ -66,7 +69,7 @@ use() {  # <home-name>
 
 run() {  # <tag> <program words...> -- the arguments are in ARGS
   local tag=$1; shift
-  env -i "${ENVV[@]}" "$@" "${ARGS[@]}" > "$TMP/out.$tag" 2> "$TMP/err.$tag"
+  ( [ -z "$CWD" ] || cd "$CWD" || exit 2; exec env -i "${ENVV[@]}" "$@" "${ARGS[@]}" ) > "$TMP/out.$tag" 2> "$TMP/err.$tag"
   echo $? > "$TMP/code.$tag"
 }
 
@@ -209,6 +212,10 @@ for h in commas blank spaces dots nohome empty missing tz disc; do
   parity "show work-1" "$h" sessions show work-1
 done
 parity "recent 1000 under TZ and LANG" tz sessions recent 1000
+# A config dir named by a relative path of one character, U+0085: JavaScript's trim keeps it, Rust's would drop it as white space, and it exists only below the working directory.
+parity "relative claude dir U+0085" rel sessions recent
+parity "show below the relative claude dir" rel sessions show relative-session
+node_says "the relative claude dir is read" rel 'prompt of a session below a directory named U+0085' sessions recent
 
 # -------------------------------------------------------------- unreadable ---
 t "files and directories nobody may read"
