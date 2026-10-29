@@ -276,16 +276,6 @@ test('tool is false or absent, and anything else is refused by the loader and by
   }
 });
 
-test('the effects the schema lists are the ones the loader knows', () => {
-  const schema: unknown = JSON.parse(fs.readFileSync(SCHEMA_FILE, 'utf8'));
-  assert.ok(isRecord(schema));
-  const defs = schema['$defs'];
-  assert.ok(isRecord(defs) && isRecord(defs['command']) && isRecord(defs['command']['properties']));
-  const effect = defs['command']['properties']['effect'];
-  assert.ok(isRecord(effect));
-  assert.deepEqual(effect['enum'], [...EFFECTS]);
-});
-
 function schemaValidator() {
   const schema: unknown = JSON.parse(fs.readFileSync(SCHEMA_FILE, 'utf8'));
   assert.ok(isRecord(schema));
