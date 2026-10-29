@@ -755,6 +755,20 @@ ok "the kill ended it" 0 "$(panes_named "%$LN")"
 waitsnap "sid-$LN" absent; ok "...and it is out of the snapshot within seconds" 0 "$?"
 
 # ---------------------------------------------------------------------------
+t "15e. the capture a launch left for later survives the process group the launch ran in"
+# ---------------------------------------------------------------------------
+# A call of an MCP tool ends by killing the process group it started (packages/mcp/src/run.ts), and the capture a launch leaves for later was a background subshell of that group. The group here is made by perl, which macOS has and setsid(1) it has not.
+clear_out
+perl -MPOSIX -e 'POSIX::setpgid(0, 0); exec @ARGV' env TMUX="$SOCK,0,0" TA_RESURRECT_SOON=4 bash "$TA" --new "$PERS" personal >/dev/null 2>&1 &
+GP=$!
+wait "$GP"
+kill -KILL -- "-$GP" 2>/dev/null
+i=0; while [ "$(nouts)" -lt 1 ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
+LN=$(ls "$OUT" 2>/dev/null | sed -n 's/\.out$//p')
+ok "the launch started one chat" 1 "$(printf '%s\n' "$LN" | grep -c .)"
+waitsnap "sid-$LN" present; ok "...and it is in the snapshot though its group was killed" 0 "$?"
+
+# ---------------------------------------------------------------------------
 t "16. the shell a reboot leaves where the list was is closed, and the cockpit comes back with its list"
 # ---------------------------------------------------------------------------
 # Server C is the list of an earlier version as tmux-resurrect restores it: its pane comes back an idle shell that still carries the title tagents-sidebar, in the window it was in.

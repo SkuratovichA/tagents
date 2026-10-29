@@ -152,8 +152,8 @@ resurrect_rows_cmd() {  # [file|latest]
   cat "$f"
 }
 
-# A capture in a moment: after a launch the record needs SessionStart first, after a restore every resumed chat does. It must outlive what started it — a launch or a kill from the list runs in a popup, and the popup closing hangs up everything it started — so it ignores SIGHUP (no nohup, no nohup.out) and holds no terminal.
-resurrect_soon() { ( trap '' HUP; sleep "${1:-$RESURRECT_SOON}"; resurrect_save ) </dev/null >/dev/null 2>&1 & }   # [seconds]
+# A capture in a moment: after a launch the record needs SessionStart first, after a restore every resumed chat does. It must outlive what started it — a launch or a kill from the list runs in a popup, and the popup closing hangs up everything it started, and a call of an MCP tool ends by killing the whole process group it started — so the wait is a job of the tmux server (`run-shell -b`, as the hooks do), which no hang-up and no group kill of the caller reaches. macOS has no setsid(1) to leave the group any other way. The job runs in the server's environment and not in the caller's, so the delay is read here, where TA_RESURRECT_SOON is set, and the server already has the state dir and the config as it was started with. Without a server there is nothing to capture, and the failure is dropped.
+resurrect_soon() { tmux run-shell -b "sleep '${1:-$RESURRECT_SOON}'; '$SELF' --resurrect-save >/dev/null 2>&1" </dev/null >/dev/null 2>&1 || :; }   # [seconds]
 
 # How often the status bar captures: resurrect.every in the config, 300 s when
 # it is not there, TA_RESURRECT_EVERY over both. 0 is off (see due_every).
