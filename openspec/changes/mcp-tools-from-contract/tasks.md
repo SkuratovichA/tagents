@@ -53,4 +53,4 @@
 - [x] 8.14 Write the reason for a refused detached launch to standard error as well as to the tmux message (`tests/launch.sh` section 13).
 - [x] 8.15 Make a relative or symlinked directory of `--new` and `--window` the physical absolute path, refuse a name that is not a directory (`tests/launch.sh` sections 12 and 13).
 - [x] 8.16 Quote the script path of the delayed capture with `cfg_quote`, and fall back to the default delay for a value that is not a plain number (`tests/resurrect.sh` section 15e).
-- [x] 8.17 Pin that the bash scripts run from a copy with no workspace beside it: `tests/dispatch.sh` runs `tagents` from a directory holding only the script and `lib/tagents`, with no `packages/` and no `node_modules`.
+- [x] 8.17 Pin that `tagents` runs from a copy with no workspace beside it: `tests/dispatch.sh` runs it from a directory holding only the script and `lib/tagents`, with no `packages/` and no `node_modules`, and checks the dispatch of the verbs, the forwarded flags, `--help`, `--viewport`, an unknown flag and the run with no `tagents-core` on `PATH`. `tusage` and `tnotes` are not run from such a copy.

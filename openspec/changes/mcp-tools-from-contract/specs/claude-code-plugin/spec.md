@@ -213,8 +213,8 @@ The hand-written part of `skills/tagents/SKILL.md` SHALL have a section "Using t
 The bash scripts SHALL neither import nor need the TypeScript workspace.
 
 #### Scenario: A script runs without a build
-- **WHEN** `tagents` runs from a copy that has no `node_modules`
-- **THEN** the dashboard works, and only the verbs forwarded to the node commands need the build
+- **WHEN** `tagents` runs from a copy that holds only the script and `lib/tagents`, with no `packages/` and no `node_modules`
+- **THEN** it dispatches the verbs and forwards their flags to the `tagents-core` on the `PATH`, answers its own flags and refuses an unknown one, and with no `tagents-core` on the `PATH` it exits 2 and says so
 
 ## MODIFIED Requirements
 
