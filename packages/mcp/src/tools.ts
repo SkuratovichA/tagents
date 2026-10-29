@@ -100,7 +100,8 @@ function checkDefaults(name: string, command: Command): void {
 }
 
 /** Whether a verb is offered as a tool: not one that serves until it is stopped, and not one the spec marks `tool: false`. The references say the same of each verb, from this function. */
-export const isTool = (command: Command): boolean => command.effect !== 'serve' && command.tool !== false;
+export const isTool = (command: Command): command is Command & { readonly effect?: Exclude<Effect, 'serve'> } =>
+  command.effect !== 'serve' && command.tool !== false;
 
 /** One tool per verb that `isTool` says yes to. Sorted by name, so the order of the specs cannot move the contract. */
 export function toolSpecs(clis: readonly CliContract[]): readonly ToolSpec[] {
