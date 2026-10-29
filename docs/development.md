@@ -53,7 +53,7 @@ The tests read `tagents`, `tnotes` and `tusage` from the checkout as they run. A
 | `tests/modules.sh` | the layout itself: every module is sourced and none is orphaned, nothing is defined twice, a module only defines things, and the entry point still finds its modules through a symlink and refuses to run without them |
 | `tests/forks.sh` | what one repaint costs in processes: the number of programs `--list` starts does not grow with the records in the state directory, `--counts` reads its config once and reuses its output for five seconds (`TA_COUNTS_EVERY=0` turns that off), and a record that cannot be read does not take the ones after it down. The status bar and the refresher run these hundreds of times a minute, and the endpoint security agent inspects every process they start |
 | `tests/refresh.sh` | the real refresher loop with shims for its network: what a wake posts and which programs it starts |
-| `tests/rust-parity.sh` | the Rust `tagents-core` against the node CLI on one seeded home: the same stdout, stderr and exit code for every `sessions` case, including the awkward transcripts; needs `python3` and a built `packages/core`, and builds the debug binary itself |
+| `tests/rust-parity.sh` | the Rust `tagents-core` against the node CLI on one seeded home: the same stdout, stderr and exit code for every `sessions` case, including the awkward transcripts; needs `python3` and a built `packages/core`, and builds the debug binary when it is missing (after a Rust edit run `cargo build` first, the suite does not rebuild a binary that exists) |
 | `tests/events.sh` | the hook's event stream and what the hook starts |
 
 The other suites in `tests/` are named after the part they cover.

@@ -68,18 +68,18 @@ The dispatch is by the first word, so `sessions` is served wholly by one program
 
 ### Where the Rust binary is looked for, and what an unrunnable one does
 
-Decision: `forward_core` in `tagents` looks, in order, at `tagents-core` on `PATH`, `${SELF%/*}/target/release/tagents-core` when it is an executable file, then the built node CLI as before. `install.sh` names the Rust binary in the `tagents-core` wrapper only when `$TAGENTS_HOME/target/release/tagents-core` is executable at install time, and the wrapper falls through to the node CLI if the binary is gone later; the pinned node travels with the call as `TAGENTS_NODE`. A binary that exists and cannot be run is an error that the shell reports (`exec` fails and the script exits), not a silent fallback.
+Decision: `forward_core` in `tagents` looks, in order, at `tagents-core` on `PATH`, `${SELF%/*}/target/release/tagents-core` when it is an executable file, then the built node CLI as before. `install.sh` names the Rust binary in the `tagents-core` wrapper only when `$TAGENTS_HOME/target/release/tagents-core` is an executable file at install time, and the wrapper falls through to the node CLI if the binary stops being one later; the pinned node travels with the call as `TAGENTS_NODE`. A binary that exists and cannot be run is an error that the shell reports (`exec` fails and the script exits), not a silent fallback.
 
 Reason: a user with no binary must get the very same wrapper bytes as before, and a user with a broken binary must hear about it instead of getting the slow path forever.
 
 Rejected: always naming the binary in the wrapper, because it changes every wrapper file on every machine; falling back to node when `exec` of the binary fails, because that hides a corrupt download behind a working program.
 
 ```sh
-# the tagents-core wrapper, written only when the binary exists at install time
+# the tagents-core wrapper, written only when an executable file is there at install time
 n="/opt/node/bin/node"
 [ -x "$n" ] || n=node
 r="/home/u/.local/share/tagents/target/release/tagents-core"
-[ ! -x "$r" ] || { TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" "$@"; }
+[ ! -f "$r" ] || [ ! -x "$r" ] || { TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" "$@"; }
 exec "$n" "/home/u/.local/share/tagents/packages/core/dist/cli/main.js" "$@"
 ```
 

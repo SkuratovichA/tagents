@@ -50,7 +50,7 @@ pnpm install && pnpm build
 env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/rust-parity.sh
 ```
 
-It needs `python3` (the seed sets exact modification times, including ones before 1970) and builds the debug binary when `TAGENTS_CORE_BIN` does not name one. `cargo test` holds a second, node-free check: the five fixture files, `packages/core/test/fixtures/sessions/*.txt`, which the Rust output must reproduce byte for byte.
+It needs `python3` (the seed sets exact modification times, including ones before 1970) and builds the debug binary when it is missing and `TAGENTS_CORE_BIN` does not name one; after a Rust edit run `cargo build` first, because the suite does not rebuild a binary that exists. `cargo test` holds a second, node-free check: the five fixture files, `packages/core/test/fixtures/sessions/*.txt`, which the Rust output must reproduce byte for byte.
 
 Where node's behaviour is an accident of its runtime, the port repeats it, because agents read this text out of a shell: lengths are counted in UTF-16 units, white space is ECMAScript's, a modification time rounds with `Math.round`, names come in the order libuv lists them, and a transcript line is parsed by `json.rs`, a parser that follows `JSON.parse`. What the repository pins is the awkward lines of the seed (`tests/rust-parity-seed.mts`) and the unit tests of `json.rs`; a differential fuzz against `JSON.parse` was run during development and is not kept.
 
