@@ -1,6 +1,6 @@
 name: rust
 
-# The Rust workspace and everything its tests compare it with: the shared CLI spec, the node CLI that stays the reference, and the parity suite. The `release-path` job holds the version gate and the two shell suites of the release path (the packaging script and the installer's fetch); the other shell suites for `tagents` are not run here, so those files are not listed.
+# The Rust workspace and everything its tests compare it with: the shared CLI spec, the node CLI that stays the reference, and the parity suite. The `release-path` job holds the version gate and the two shell suites of the release path (the packaging script and the installer's fetch), and `tests/release.sh` reads `release.yml` and `rust.yml`, so both are listed; the other shell suites for `tagents` are not run here, so those files are not listed.
 on:
   push:
     paths:
@@ -16,6 +16,7 @@ on:
       - pnpm-lock.yaml
       - tests/rust-parity-seed.mts
       - .github/workflows/rust.yml
+      - .github/workflows/release.yml
       - .github/scripts/core-release.sh
       - tests/release.sh
       - tests/install.sh
@@ -34,6 +35,7 @@ on:
       - pnpm-lock.yaml
       - tests/rust-parity-seed.mts
       - .github/workflows/rust.yml
+      - .github/workflows/release.yml
       - .github/scripts/core-release.sh
       - tests/release.sh
       - tests/install.sh
