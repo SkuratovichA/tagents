@@ -152,12 +152,47 @@ export function hasAnchor(html: string, fragment: string): boolean {
   return new RegExp(`\\s(?:id|name)=(?:"${escaped}"|'${escaped}')`).test(html)
 }
 
-/** Checks every internal href and src of every HTML file in `outDir`, the sitemap addresses, and that no page or stylesheet loads anything from another site, and counts the stylesheets it read. */
+/** The directories of the output that another tool builds and checks. The page links into them; `checkLinks` resolves those links and reads none of their files. */
+export type Mount = `${string}/`
+
+export const MOUNTS: readonly Mount[] = ['docs/']
+
+/** Why the site cannot be built under a base other than `/` while it has `mounts`, or null when it can: the other tool builds the mounted pages for one fixed address. */
+export function mountsNeedRootBase(base: string, mounts: readonly Mount[] = MOUNTS): string | null {
+  if (mounts.length === 0 || base === '/') return null
+  return `the base ${base} cannot be served together with ${mounts.join(', ')}, which another tool builds for the root of the site: build without SITE_BASE`
+}
+
+/** Whether `file` lies in one of the `mounts`. */
+export function isMounted(file: string, mounts: readonly Mount[]): boolean {
+  return mounts.some((mount) => file.startsWith(mount))
+}
+
+/** The files a static host needs, and the entry page of every mount, which another tool has to have built before the check runs. */
+export function requiredFiles(domain: string | null, mounts: readonly Mount[] = MOUNTS): string[] {
+  const required = ['index.html', '404.html', 'robots.txt', '.nojekyll']
+  if (domain !== null) required.push('CNAME', 'sitemap.xml')
+  return [...required, ...mounts.map((mount) => `${mount}index.html`)]
+}
+
+/** Whether the router path `path`, which starts with the `base` of the site, lies in one of the `mounts`; `/docs` counts, as it is the directory without its slash. */
+export function isMountedPath(
+  path: string,
+  base: string,
+  mounts: readonly Mount[] = MOUNTS,
+): boolean {
+  if (!path.startsWith(base)) return false
+  const relative = path.slice(base.length)
+  return isMounted(relative.endsWith('/') ? relative : `${relative}/`, mounts)
+}
+
+/** Checks every internal href and src of every HTML file in `outDir` outside the `mounts`, the sitemap addresses, and that no page or stylesheet loads anything from another site, and counts the stylesheets it read. */
 export async function checkLinks(
   outDir: string,
   files: readonly string[],
   base: string,
   origin: string | null = null,
+  mounts: readonly Mount[] = [],
 ): Promise<LinkReport> {
   const known = new Set(files)
   const sources = new Map<string, string>()
@@ -171,7 +206,8 @@ export async function checkLinks(
 
   const problems: LinkProblem[] = []
   let cssSources = 0
-  for (const page of files.filter((file) => file.endsWith('.html'))) {
+  const own = files.filter((file) => !isMounted(file, mounts))
+  for (const page of own.filter((file) => file.endsWith('.html'))) {
     cssSources += Array.from((await source(page)).matchAll(STYLE_ELEMENT)).length
     for (const reference of new Set(findRemoteLoads(await source(page), origin))) {
       problems.push({ page, reference, reason: 'loads from another site' })
@@ -184,7 +220,8 @@ export async function checkLinks(
       }
       const { fragment } = target.kind === 'internal' ? target : { fragment: '' }
       if (target.kind === 'internal' && fragment !== '' && fragment !== 'top') {
-        if (target.file.endsWith('.html') && !hasAnchor(await source(target.file), fragment)) {
+        const readable = target.file.endsWith('.html') && !isMounted(target.file, mounts)
+        if (readable && !hasAnchor(await source(target.file), fragment)) {
           problems.push({
             page,
             reference,
@@ -195,7 +232,7 @@ export async function checkLinks(
     }
   }
 
-  for (const file of files.filter((name) => name.endsWith('.css'))) {
+  for (const file of own.filter((name) => name.endsWith('.css'))) {
     cssSources++
     for (const reference of new Set(findRemoteCss(await source(file)))) {
       problems.push({ page: file, reference, reason: 'loads from another site' })

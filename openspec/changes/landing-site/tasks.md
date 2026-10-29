@@ -26,9 +26,12 @@
 
 ## 5. Publishing
 
-- [x] 5.1 The workflow only reads the repository, runs only for `site/`, itself and `.node-version`, and has no deploy step (`actionlint .github/workflows/site.yml`; `grep -n "SITE_DOMAIN\|CNAME\|deploy-pages\|upload-pages" .github/workflows/site.yml` finds nothing)
-- [x] 5.2 No file outside `site/`, `openspec/changes/landing-site/` and the workflow names the site (`git diff --stat origin/main` lists nothing else)
+- [x] 5.1 One workflow builds and checks the site and the documentation and deploys only on `main` (`grep -n "refs/heads/main\|deploy-pages\|upload-pages\|pages: write" .github/workflows/site.yml` finds the conditions on the upload and on the deploy job; the checks of a pull request show the deploy job skipped)
+- [x] 5.2 The documentation workflow is gone and the documentation is built with the base `/docs/` (`git ls-files .github/workflows`; `pnpm docs:build` writes assets under `/docs/assets/`)
+- [x] 5.3 The README links to the documentation at `tagents.arstoien.com/docs/`, and `docs/development.md` to the site at `tagents.arstoien.com` (`git grep -n "https://skuratovicha.github.io" -- . ':!openspec/changes'` finds nothing)
+- [x] 5.4 The link check requires `docs/index.html`, resolves the links into it and reads none of its pages, and the prerender writes nothing under `docs/` (`build/links.test.ts`, `build/prerender.test.ts`, `src/lib/site.test.ts`, and the step of `site.yml` that copies the documentation and fails when the site build already wrote `dist/client/docs`; with `SITE_DOMAIN=tagents.arstoien.com`, `pnpm check:links` fails on a build without the copy of the documentation and passes with it)
 
 ## 6. The spec
 
 - [x] 6.1 The change is valid OpenSpec (`pnpm spec:check` at the repository root)
+- [ ] 6.2 Archiving the change replaces the placeholder Purpose that `openspec archive` writes for the new capability `site` in `openspec/specs/site/spec.md` with its own sentence, by hand, before `pnpm spec:check` is run on the archived specs

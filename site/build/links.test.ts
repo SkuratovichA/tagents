@@ -8,6 +8,9 @@ import {
   extractReferences,
   findRemoteCss,
   findRemoteLoads,
+  isMountedPath,
+  mountsNeedRootBase,
+  requiredFiles,
   resolveReference,
   servedPath,
 } from './links.ts'
@@ -148,6 +151,51 @@ describe('checkLinks', () => {
     expect(problems.map((problem) => problem.page)).toEqual(['sitemap.xml'])
     expect(problems[0]?.reason).toContain('redirects')
   })
+
+  it('resolves a link into a mounted directory but reads none of its pages', async () => {
+    const root = await site({
+      'index.html': `<a href="${BASE}docs/">docs</a>`,
+      'docs/index.html':
+        '<a href="/elsewhere">x</a><link rel="stylesheet" href="https://cdn.invalid/a.css">',
+    })
+    const found = await listFiles(root)
+    expect((await checkLinks(root, found, BASE, null, ['docs/'])).problems).toEqual([])
+    expect((await checkLinks(root, found, BASE)).problems.length).toBeGreaterThan(0)
+  })
+
+  it('resolves a link with a fragment into a mounted directory to its file and does not look for the fragment', async () => {
+    const root = await site({
+      'index.html': `<a href="${BASE}docs/#nope">docs</a>`,
+      'docs/index.html': '<h1>no such id</h1>',
+    })
+    const found = await listFiles(root)
+    expect((await checkLinks(root, found, BASE, null, ['docs/'])).problems).toEqual([])
+    expect((await checkLinks(root, found, BASE)).problems).toEqual([
+      {
+        page: 'index.html',
+        reference: `${BASE}docs/#nope`,
+        reason: 'no element with id "nope" in docs/index.html',
+      },
+    ])
+  })
+
+  it('reports a link into a mounted directory that is not in the output', async () => {
+    const root = await site({ 'index.html': `<a href="${BASE}docs/">docs</a>` })
+    const { problems } = await checkLinks(root, await listFiles(root), BASE, null, ['docs/'])
+    expect(problems).toEqual([
+      { page: 'index.html', reference: `${BASE}docs/`, reason: `no file for ${BASE}docs/` },
+    ])
+  })
+
+  it('counts only the stylesheets outside the mounted directories', async () => {
+    const root = await site({
+      'index.html': '<a href="#top">top</a>',
+      'docs/assets/style.css': 'body { color: red }',
+    })
+    const found = await listFiles(root)
+    expect((await checkLinks(root, found, BASE, null, ['docs/'])).cssSources).toBe(0)
+    expect((await checkLinks(root, found, BASE)).cssSources).toBe(1)
+  })
 })
 
 describe('what a page may load from another site', () => {
@@ -276,5 +324,62 @@ describe('what a page may load from another site', () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('isMountedPath', () => {
+  it('tells a router path in a mounted directory from one of the site', () => {
+    expect(isMountedPath('/docs/', '/', ['docs/'])).toBe(true)
+    expect(isMountedPath('/docs/guide/', '/', ['docs/'])).toBe(true)
+    expect(isMountedPath('/', '/', ['docs/'])).toBe(false)
+    expect(isMountedPath('/documents/', '/', ['docs/'])).toBe(false)
+  })
+
+  it('looks for the mounted directory behind the base of the site', () => {
+    expect(isMountedPath(`${BASE}docs/`, BASE, ['docs/'])).toBe(true)
+    expect(isMountedPath('/docs/', BASE, ['docs/'])).toBe(false)
+  })
+})
+
+describe('requiredFiles', () => {
+  it('asks for the files a static host needs and for the entry page of every mount', () => {
+    expect(requiredFiles(null, ['docs/', 'api/'])).toEqual([
+      'index.html',
+      '404.html',
+      'robots.txt',
+      '.nojekyll',
+      'docs/index.html',
+      'api/index.html',
+    ])
+  })
+
+  it('asks for CNAME and sitemap.xml only once the site has a domain', () => {
+    expect(requiredFiles(null, [])).not.toContain('CNAME')
+    expect(requiredFiles('tagents.example.org', [])).toEqual(
+      expect.arrayContaining(['CNAME', 'sitemap.xml']),
+    )
+  })
+
+  it('asks for the documentation by default', () => {
+    expect(requiredFiles(null)).toContain('docs/index.html')
+  })
+})
+
+describe('the mounts and the base of the site', () => {
+  it('knows a path of the documentation, with or without its slash, under the default mounts', () => {
+    expect(isMountedPath('/docs/', '/')).toBe(true)
+    expect(isMountedPath('/docs', '/')).toBe(true)
+    expect(isMountedPath('/docs/guide/', '/')).toBe(true)
+    expect(isMountedPath('/docsx', '/')).toBe(false)
+    expect(isMountedPath('/documents/', '/')).toBe(false)
+    expect(isMountedPath('/x/docs', '/x/')).toBe(true)
+    expect(isMountedPath('/docs/', '/x/')).toBe(false)
+  })
+
+  it('serves the documentation only from the root of the site', () => {
+    expect(mountsNeedRootBase('/')).toBeNull()
+    expect(mountsNeedRootBase('/x/')).toContain('/x/')
+    expect(mountsNeedRootBase('/x/')).toContain('docs/')
+    expect(mountsNeedRootBase('/x/', [])).toBeNull()
   })
 })
