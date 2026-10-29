@@ -30,8 +30,9 @@ class FakeObserver {
   disconnect = () => {
     this.disconnected += 1
   }
-  see(isIntersecting: boolean) {
-    if (this.disconnected === 0) this.callback([{ isIntersecting }])
+  /** Delivers one batch with an entry per flag, oldest first, as a real observer does when several changes came in together. */
+  see(...flags: boolean[]) {
+    if (this.disconnected === 0) this.callback(flags.map((isIntersecting) => ({ isIntersecting })))
   }
 }
 
@@ -75,6 +76,30 @@ describe('a recording that waits to be seen', () => {
     expect(vi.getTimerCount()).toBe(0)
     act(() => {
       observer().see(false)
+    })
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(shown()).toBe('0')
+    expect(observer().disconnected).toBe(0)
+  })
+
+  it('reads the newest entry of a batch: out of view and back again is seen', () => {
+    render(<Probe />)
+    act(() => {
+      observer().see(false, true)
+    })
+    expect(observer().disconnected).toBe(1)
+    act(() => {
+      vi.advanceTimersByTime(250)
+    })
+    expect(shown()).toBe('2')
+  })
+
+  it('reads the newest entry of a batch: in view and gone again is not seen', () => {
+    render(<Probe />)
+    act(() => {
+      observer().see(true, false)
     })
     act(() => {
       vi.advanceTimersByTime(1000)

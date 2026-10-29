@@ -57,8 +57,9 @@ export function useDemo(scene: Scene): DemoPlayer {
         play()
       } else {
         observer.current = new IntersectionObserver(
-          ([entry]) => {
-            if (entry?.isIntersecting === true) play()
+          (entries) => {
+            // A batch holds the changes since the last call, oldest first: the figure is in view if the newest says so.
+            if (entries.at(-1)?.isIntersecting === true) play()
           },
           { threshold: VISIBLE_SHARE },
         )
