@@ -23,8 +23,12 @@ export function useDemo(scene: Scene): DemoPlayer {
   const [stills, setStills] = useState(false)
   const timer = useRef<number>(undefined)
   const element = useRef<HTMLElement | null>(null)
+  const observer = useRef<IntersectionObserver | null>(null)
 
   const play = useCallback(() => {
+    // Whoever plays first, the visitor or the observer, the other must not start it again.
+    observer.current?.disconnect()
+    observer.current = null
     window.clearTimeout(timer.current)
     setFrame(0)
     const started = performance.now()
@@ -45,25 +49,25 @@ export function useDemo(scene: Scene): DemoPlayer {
   useEffect(() => {
     const quiet = window.matchMedia(REDUCED_MOTION).matches
     setStills(quiet)
-    if (quiet) return
-    // Scripts are running: take the recording back to its first frame and wait for it to be seen.
-    setFrame(0)
-    const target = element.current
-    if (target === null || typeof IntersectionObserver === 'undefined') {
-      play()
-      return
-    }
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry?.isIntersecting !== true) return
-        observer.disconnect()
+    if (!quiet) {
+      // Scripts are running: take the recording back to its first frame and wait for it to be seen.
+      setFrame(0)
+      const target = element.current
+      if (target === null || typeof IntersectionObserver === 'undefined') {
         play()
-      },
-      { threshold: VISIBLE_SHARE },
-    )
-    observer.observe(target)
+      } else {
+        observer.current = new IntersectionObserver(
+          ([entry]) => {
+            if (entry?.isIntersecting === true) play()
+          },
+          { threshold: VISIBLE_SHARE },
+        )
+        observer.current.observe(target)
+      }
+    }
     return () => {
-      observer.disconnect()
+      observer.current?.disconnect()
+      observer.current = null
       window.clearTimeout(timer.current)
     }
   }, [play])
