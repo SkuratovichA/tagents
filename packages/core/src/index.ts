@@ -111,11 +111,21 @@ export type {
   ServiceHandle,
 } from './plugin.ts';
 
-export { PLUGIN_OPTIONS_DIR, loadPluginOptions, pluginOptionsFile } from './plugin-options.ts';
+export { PLUGIN_OPTIONS_DIR, loadPluginOptions, pluginOptionsBasenames, pluginOptionsFile } from './plugin-options.ts';
 export type { OptionsResult } from './plugin-options.ts';
 
 export { createContext, mergeLocales, runService } from './service.ts';
 export type { ContextOptions, RunServiceOptions, RunningService } from './service.ts';
+
+export {
+  TOML_BASENAME,
+  YAML_BASENAME,
+  configFormat,
+  parseConfigFile,
+  readConfigFile,
+  resolveConfigFile,
+} from './config-file.ts';
+export type { ConfigFormat } from './config-file.ts';
 
 export {
   CONFIG_BASENAME,
@@ -138,8 +148,8 @@ export type { AddOutcome, PackageProblem, PluginPackage, RemoveOutcome, ResolveR
 
 export { DEFAULT_LOCALE, createI18n, createT, isLocale, resources } from './i18n/index.ts';
 export type { CoreResource, Locale } from './i18n/index.ts';
-export type { CliContract, CommandSpec } from './cli/spec.ts';
-export { runPluginBin } from './cli/plugin-run.ts';
+export type { CliContract, CommandSpec, Effect } from './cli/spec.ts';
+export { POSITIONALS, runPluginBin } from './cli/plugin-run.ts';
 export type { Io } from './cli/exit.ts';
 
 export { FakeClock, drained, fakeClaude, sleep, tmpDir } from './testkit.ts';

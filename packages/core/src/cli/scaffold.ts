@@ -141,7 +141,7 @@ pnpm test
 ## Installing it
 
 \`\`\`sh
-tagents plugin add ${dir}       # writes it into ~/.config/tagents/config.yaml
+tagents plugin add ${dir}       # writes it into ~/.config/tagents/config.toml
 tagents plugin list             # what it offers, as the host sees it
 \`\`\`
 

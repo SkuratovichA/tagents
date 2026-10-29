@@ -11,7 +11,7 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import { en } from '../src/i18n/en.ts';
 import { ru } from '../src/i18n/ru.ts';
 import { EXIT } from '../src/cli/exit.ts';
-import { CORE_COMMANDS, SPEC_FILE, coreCliContract, loadSpec } from '../src/cli/spec.ts';
+import { CORE_COMMANDS, EFFECTS, SPEC_FILE, coreCliContract, loadSpec } from '../src/cli/spec.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI_DIR = path.resolve(HERE, '..', 'src', 'cli');
@@ -117,7 +117,7 @@ test('coreCliContract lists every verb with a non-empty English summary', () => 
     [
       'session open', 'session prompt', 'session last', 'session list', 'session abort',
       'sessions recent', 'sessions search', 'sessions show',
-      'plugin list', 'plugin add', 'plugin remove', 'plugin new', 'doctor',
+      'plugin list', 'plugin add', 'plugin remove', 'plugin new', 'config convert', 'doctor',
     ],
   );
   for (const c of contract.commands) {
@@ -195,10 +195,14 @@ test('every verb says which program serves it, and a verb word is served by one 
   for (const [word, impls] of byWord) assert.equal(impls.size, 1, `${word}: the group is split between ${[...impls].join(' and ')}`);
 });
 
-test('the loader keeps impl and effect out of what parseArgs and the contract see, and refuses a key it does not know', () => {
+test('the loader keeps impl out of what parseArgs and the contract see, and refuses a key it does not know', () => {
   const before = loadSpec(SPEC_FILE).commands;
-  const withEffect = loadSpec(specWithFirstCommand((command) => { command['effect'] = 'writes'; }));
-  assert.deepEqual(withEffect.commands, before);
+  const [first] = commandsOf(readDoc());
+  assert.ok(first);
+  const otherProgram = first['impl'] === 'rust' ? 'node' : 'rust';
+  const withOtherImpl = loadSpec(specWithFirstCommand((command) => { command['impl'] = otherProgram; }));
+  assert.deepEqual(withOtherImpl.commands, before);
+  assert.ok(before.every((command) => !('impl' in command)));
   assert.throws(
     () => loadSpec(specWithFirstCommand((command) => { command['surprise'] = 'x'; })),
     /does not match spec\/cli\/cli-spec.schema.json/,
@@ -207,6 +211,69 @@ test('the loader keeps impl and effect out of what parseArgs and the contract se
     () => loadSpec(specWithFirstCommand((command) => { command['summary'] = 'noSuchKey'; })),
     /not a key of the English catalogue/,
   );
+});
+
+test('effect and tool reach the contract: every verb of the data file says what it does, and the ones kept out of the tools say so', () => {
+  const contract = coreCliContract().commands;
+  const verbs = commandsOf(readDoc());
+  assert.equal(contract.length, verbs.length);
+  for (const verb of verbs) {
+    const words = Array.isArray(verb['path']) ? verb['path'].join(' ') : '';
+    const entry = contract.find((c) => c.path.join(' ') === words);
+    assert.ok(entry, words);
+    assert.equal(typeof verb['effect'], 'string', `${words}: the data file gives no effect`);
+    assert.equal(entry.effect, verb['effect'], words);
+    assert.equal(entry.tool, verb['tool'], words);
+    assert.equal(Object.hasOwn(entry, 'tool'), Object.hasOwn(verb, 'tool'), `${words}: tool is written exactly when the data file writes it`);
+  }
+  assert.ok(contract.some((c) => c.tool === false), 'no verb is kept out of the tools');
+});
+
+test('an effect and a tool written in a copy of the data file are what the loader returns', () => {
+  const first = loadSpec(specWithFirstCommand((command) => { command['effect'] = 'serve'; command['tool'] = false; })).commands[0];
+  assert.ok(first);
+  assert.equal(first.effect, 'serve');
+  assert.equal(first.tool, false);
+  const bare = loadSpec(specWithFirstCommand((command) => { delete command['effect']; delete command['tool']; })).commands[0];
+  assert.ok(bare);
+  assert.equal(Object.hasOwn(bare, 'effect'), false);
+  assert.equal(Object.hasOwn(bare, 'tool'), false);
+});
+
+// The values crates/tagents-spec refuses for these two keys (an_effect_nobody_declared_is_refused_like_the_schema_does, a_tool_that_is_not_false_is_refused_like_the_schema_does): the loader and the schema each refuse every one.
+const BAD_EFFECTS: readonly unknown[] = ['writes', 'Read', '', 1, true, [], null];
+const BAD_TOOLS: readonly unknown[] = [true, 'false', 0, [], null];
+
+test('an effect is one of the five words, and anything else is refused by the loader and by the schema', () => {
+  for (const effect of EFFECTS) {
+    const change = (doc: Record<string, unknown>) => { for (const c of commandsOf(doc)) c['effect'] = effect; };
+    assert.equal(loadSpec(specWith(change)).commands[0]?.effect, effect);
+    const doc = readDoc();
+    change(doc);
+    assert.ok(schemaValidator()(doc), effect);
+  }
+  for (const bad of BAD_EFFECTS) {
+    const change = (doc: Record<string, unknown>) => { for (const c of commandsOf(doc)) c['effect'] = bad; };
+    assert.throws(() => loadSpec(specWith(change)), /does not match spec\/cli\/cli-spec.schema.json/, JSON.stringify(bad));
+    const doc = readDoc();
+    change(doc);
+    assert.equal(schemaValidator()(doc), false, JSON.stringify(bad));
+  }
+});
+
+test('tool is false or absent, and anything else is refused by the loader and by the schema', () => {
+  const change = (doc: Record<string, unknown>) => { for (const c of commandsOf(doc)) c['tool'] = false; };
+  assert.equal(loadSpec(specWith(change)).commands[0]?.tool, false);
+  const accepted = readDoc();
+  change(accepted);
+  assert.ok(schemaValidator()(accepted));
+  for (const bad of BAD_TOOLS) {
+    const set = (doc: Record<string, unknown>) => { for (const c of commandsOf(doc)) c['tool'] = bad; };
+    assert.throws(() => loadSpec(specWith(set)), /does not match spec\/cli\/cli-spec.schema.json/, JSON.stringify(bad));
+    const doc = readDoc();
+    set(doc);
+    assert.equal(schemaValidator()(doc), false, JSON.stringify(bad));
+  }
 });
 
 function schemaValidator() {

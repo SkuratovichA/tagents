@@ -219,7 +219,7 @@ tm set-hook -gu 'after-kill-pane[42]'; tm set -gu @kpn
 TA="$HERE/../tagents"
 BIN="$CPROOT/bin";       mkdir -p "$BIN"
 CPSTATE="$CPROOT/state"; mkdir -p "$CPSTATE"
-CPCONF="$CPROOT/config.yaml"
+CPCONF="$CPROOT/config.toml"
 printf '#!/bin/sh\nexit 0\n' >"$BIN/tusage"
 printf '#!/bin/sh\nexec sleep 600\n' >"$BIN/vim"
 cp /bin/sleep "$BIN/claude" || exit 1
@@ -332,7 +332,7 @@ ok "No dashboard section: no sidebar went into work:2" 0 "$(left_of '=work:2')"
 
 t "A dashboard.layout left in the file"
 cpstart
-printf 'dashboard:\n  layout: follow\n' >"$CPCONF"
+printf '[dashboard]\nlayout = "follow"\n' >"$CPCONF"
 kclient 20 work
 ta --ensure-dash >/dev/null 2>&1
 ok "A dashboard.layout left in the file: the session tagents is the cockpit" 1 "$(wait_eq_long 1 tm show -qv -t '=tagents:' @tagents_cockpit)"

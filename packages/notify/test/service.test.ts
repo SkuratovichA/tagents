@@ -435,6 +435,54 @@ test('the options watch follows a symlinked config dir to the real one', async (
   );
 });
 
+test('the options may move to notify.toml while the service runs: that file is reloaded too, and wins over notify.yaml', async () => {
+  const r = rig({ options: 'click: goto\n' });
+  await r.start();
+  await until('the reload', () => r.has('options reloaded'), () =>
+    writeAtomic(path.join(path.dirname(r.optionsFile), 'notify.toml'), '[events.turn_done]\nenabled = false\n')
+  );
+  await stopThenSentinel(r);
+  assert.deepEqual(
+    r.notifier.posts.map((n) => n.kind),
+    ['question'],
+    'the toml turned turn_done off, the yaml beside it left it on: the Stop posted nothing'
+  );
+});
+
+test('a symlinked notify.toml is noticed when the link is replaced, not when its target is edited', async () => {
+  const r = rig({ plugins: true });
+  const optionsDir = path.dirname(r.optionsFile);
+  const away = tmpDir('notify-svc-target');
+  const target = path.join(away, 'options.toml');
+  const link = path.join(optionsDir, 'notify.toml');
+  fs.writeFileSync(target, 'click = "goto"\n');
+  fs.symlinkSync(target, link);
+  await r.start();
+  const reloads = (): number => r.logs.filter((l) => l.endsWith('options reloaded')).length;
+  const kinds = (): string[] => r.notifier.posts.map((n) => n.kind);
+  const turnDoneOff = '[events.turn_done]\nenabled = false\n';
+
+  // The directory that is watched holds the link, not the target: this edit raises no event there.
+  fs.writeFileSync(target, turnDoneOff);
+  fs.writeFileSync(path.join(optionsDir, 'unrelated.toml'), '');
+  await stopThenSentinel(r);
+  assert.equal(reloads(), 0, 'the edit of the target is not a reload');
+  assert.deepEqual(kinds(), ['turn_done', 'question'], 'the old values are in force: the Stop still posts');
+
+  // Replacing the link is a rename in the watched directory.
+  const next = path.join(away, 'next.toml');
+  fs.writeFileSync(next, turnDoneOff);
+  let n = 0;
+  await until('the reload', () => reloads() === 1, () => {
+    n += 1;
+    const fresh = path.join(optionsDir, `notify.toml.${n}`);
+    fs.symlinkSync(next, fresh);
+    fs.renameSync(fresh, link);
+  });
+  await stopThenSentinel(r);
+  assert.deepEqual(kinds(), ['turn_done', 'question', 'question'], 'the new values apply: the second Stop posted nothing');
+});
+
 test('linux with the auto backend: the service says there is no backend, follows nothing and releases the lock', async () => {
   const r = rig({ real: true, deps: { os: 'linux' } });
   const h = await r.start();

@@ -17,7 +17,7 @@
 // A verb this file does not know is offered to the configured plugins before it
 // is refused: `tagents-core telegram status` runs the `status` CliCommand of the
 // plugin named `telegram` (cli/plugin-run.ts). The core verbs are matched FIRST
-// and always win — what `session`, `sessions`, `plugin`, `doctor` and `help`
+// and always win — what `session`, `sessions`, `plugin`, `config`, `doctor` and `help`
 // mean must not depend on what somebody has installed.
 //
 // Exit codes: 0 ok · 1 error · 2 usage · 3 refused · 4 timeout.
@@ -36,6 +36,7 @@ import { parseSessionRef } from '../session-ref.ts';
 import { renderRecent, renderSearch, renderShow, SESSIONS_PROGRAM } from '../transcripts.ts';
 import { formatAttemptError, type TurnOutcome } from '../turn-outcome.ts';
 import { EXIT, json, stdio, type Io } from './exit.ts';
+import { config } from './config.ts';
 import { plugin } from './plugin.ts';
 import { runPluginCommand } from './plugin-run.ts';
 import { SESSION_LIST, SESSION_OPEN, SESSION_PROMPT } from './spec.ts';
@@ -172,6 +173,11 @@ async function session(argv: string[], io: Io, t: CoreT): Promise<number> {
     // Across processes the only handle on a running turn is the pid the hook
     // records for a headless row; without one there is nothing here to stop.
     const row = readAgentState(stateDir()).find((r) => r.key === ref.id || r.sessionId === ref.claudeSessionId);
+    // A pane's key is its number and a session without a pane is keyed 's-<sid>' (hooks/tmux-agent-state.sh): the pid belongs to the second kind, and a row in a pane is somebody's open terminal.
+    if (row !== undefined && !row.key.startsWith('s-')) {
+      io.err(`${t('abortPaneAgent', { ref: raw })}\n`);
+      return EXIT.refused;
+    }
     const pid = row?.pid ?? null;
     if (pid === null || !isAlive(pid)) {
       io.err(`${t('nothingToAbort', { ref: raw })}\n`);
@@ -272,6 +278,7 @@ export async function main(argv: string[], io: Io = stdio()): Promise<number> {
     if (verb === 'session') return await session(rest, io, t);
     if (verb === 'sessions') return sessions(rest, io);
     if (verb === 'plugin') return await plugin(rest, io, t);
+    if (verb === 'config') return config(rest, io, t);
     if (verb === 'doctor') return doctor(io, t);
     if (verb === undefined || verb === 'help' || verb === '--help' || verb === '-h') {
       io.out(`${t('usage')}\n`);

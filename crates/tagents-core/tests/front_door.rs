@@ -14,7 +14,8 @@ use std::{
     io::Write,
     os::unix::{ffi::OsStrExt, fs::PermissionsExt, process::ExitStatusExt},
     path::{Path, PathBuf},
-    process::{Command, Output, Stdio},
+    process::{Child, Command, Output, Stdio},
+    sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -37,8 +38,34 @@ fn repo(path: &str) -> PathBuf {
     Path::new(REPO).join(path)
 }
 
+/// A child forked by one test thread holds a copy of every descriptor its parent had open until it execs, so a file stays busy for writing after its writer has closed it, and exec of that file can fail with ETXTBSY ("Text file busy"). Writers of executables take the write side and every spawn the read side, so no fork overlaps a write; spawn through `run` or `start`, and write or copy an executable only under `writing()`.
+static FORK_GATE: RwLock<()> = RwLock::new(());
+
+fn forking() -> RwLockReadGuard<'static, ()> {
+    FORK_GATE.read().unwrap_or_else(PoisonError::into_inner)
+}
+
+fn writing() -> RwLockWriteGuard<'static, ()> {
+    FORK_GATE.write().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// `Command::output` under the gate: the guard is held until the child has exited.
+#[track_caller]
+fn run(command: &mut Command) -> Output {
+    let _forking = forking();
+    command.output().unwrap()
+}
+
+/// `Command::spawn` under the gate; the caller feeds or reaps the child after the guard is gone.
+#[track_caller]
+fn start(command: &mut Command) -> Child {
+    let _forking = forking();
+    command.spawn().unwrap()
+}
+
 fn write_executable(path: &Path, text: &str) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let _writing = writing();
     fs::write(path, text).unwrap();
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
@@ -95,14 +122,12 @@ fn seed_sessions(claude_home: &Path) {
 
 /// The binary with an environment of exactly the variables the node CLI's tests pin, and nothing of the caller's.
 fn sessions(home: &Path, args: &[&str]) -> Output {
-    Command::new(BIN)
+    run(Command::new(BIN)
         .env_clear()
         .env("HOME", home)
         .env("CLAUDE_HOMES", home.join(".claude"))
         .env("TZ", "UTC")
-        .args(args)
-        .output()
-        .unwrap()
+        .args(args))
 }
 
 #[test]
@@ -185,11 +210,7 @@ fn paths<'a>(commands: impl Iterator<Item = &'a tagents_spec::Command>) -> BTree
 
 #[test]
 fn spec_flag_prints_the_data_file_entries_of_the_verbs_it_serves() {
-    let out = Command::new(BIN)
-        .env_clear()
-        .arg("--spec")
-        .output()
-        .unwrap();
+    let out = run(Command::new(BIN).env_clear().arg("--spec"));
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(out.stderr, b"");
     let served = Spec::parse(&stdout_text(&out)).unwrap();
@@ -218,11 +239,7 @@ fn spec_flag_prints_the_data_file_entries_of_the_verbs_it_serves() {
 #[test]
 fn version_flag_prints_the_crate_version_and_nothing_else() {
     // No node and no node CLI in reach: a forwarded `--version` would fail here (exit 2 or 127), so a pass means the front door answered itself.
-    let out = Command::new(BIN)
-        .env_clear()
-        .arg("--version")
-        .output()
-        .unwrap();
+    let out = run(Command::new(BIN).env_clear().arg("--version"));
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(out.stderr, b"");
     assert_eq!(
@@ -234,11 +251,7 @@ fn version_flag_prints_the_crate_version_and_nothing_else() {
 #[test]
 fn a_group_is_served_by_one_program_wholly() {
     // Dispatch is by the first word, so `sessions bogus` is Rust's to answer. That is only true to the data file while every `sessions …` verb is marked rust.
-    let out = Command::new(BIN)
-        .env_clear()
-        .arg("--spec")
-        .output()
-        .unwrap();
+    let out = run(Command::new(BIN).env_clear().arg("--spec"));
     let served = Spec::parse(&stdout_text(&out)).unwrap();
     let words: BTreeSet<&str> = served.commands.iter().map(|c| c.path[0].as_str()).collect();
     assert!(!words.is_empty());
@@ -275,7 +288,10 @@ impl Checkout {
         let root = scratch(name).canonicalize().unwrap();
         let bin = root.join("target/debug/tagents-core");
         fs::create_dir_all(bin.parent().unwrap()).unwrap();
-        fs::copy(BIN, &bin).unwrap();
+        {
+            let _writing = writing();
+            fs::copy(BIN, &bin).unwrap();
+        }
         fs::create_dir_all(root.join("packages/core/dist/cli")).unwrap();
         fs::write(root.join("packages/core/dist/cli/main.js"), "// stub\n").unwrap();
         let argv = root.join("argv");
@@ -312,12 +328,12 @@ impl Checkout {
 }
 
 fn run_with_stdin(mut command: Command, stdin: &str) -> Output {
-    let mut child = command
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut child = start(
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+    );
     child
         .stdin
         .take()
@@ -331,7 +347,7 @@ fn run_with_stdin(mut command: Command, stdin: &str) -> Output {
 fn spec_with_more_words_is_not_the_flag() {
     // Only an argv of exactly `--spec` is the front door's own; anything else is some verb's, and the node CLI refuses it in its own words.
     let checkout = Checkout::new("forward-spec-with-words");
-    let out = checkout.command().args(["--spec", "x"]).output().unwrap();
+    let out = run(checkout.command().args(["--spec", "x"]));
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(
         checkout.recorded()[3..],
@@ -347,11 +363,7 @@ fn spec_with_more_words_is_not_the_flag() {
 fn version_with_more_words_is_not_the_flag() {
     // Same rule as `--spec`: only an argv of exactly `--version` is the front door's own.
     let checkout = Checkout::new("forward-version-with-words");
-    let out = checkout
-        .command()
-        .args(["--version", "x"])
-        .output()
-        .unwrap();
+    let out = run(checkout.command().args(["--version", "x"]));
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(
         checkout.recorded()[3..],
@@ -400,12 +412,10 @@ fn every_other_word_reaches_the_node_cli_with_argv_environment_and_stdin() {
 fn an_argument_that_is_not_utf8_is_forwarded_byte_for_byte() {
     // A lossy conversion would turn these two bytes into U+FFFD, and node would decode both to the same text; only the raw bytes the node stub writes down tell them apart.
     let checkout = Checkout::new("forward-bytes");
-    let out = checkout
+    let out = run(checkout
         .command()
         .arg("doctor")
-        .arg(OsStr::from_bytes(b"\xff\xfe"))
-        .output()
-        .unwrap();
+        .arg(OsStr::from_bytes(b"\xff\xfe")));
     assert_eq!(out.status.code(), Some(0));
     let recorded = fs::read(&checkout.argv).unwrap();
     assert!(
@@ -415,12 +425,10 @@ fn an_argument_that_is_not_utf8_is_forwarded_byte_for_byte() {
     );
 
     // The verb position too: a first word that is not UTF-8 is not one the front door serves, so it is forwarded, and it must arrive as the same bytes. Its bytes differ from the second word's so a mixed-up pair would show.
-    let out = checkout
+    let out = run(checkout
         .command()
         .arg(OsStr::from_bytes(b"\xfe\xff"))
-        .arg(OsStr::from_bytes(b"\xff\xfe"))
-        .output()
-        .unwrap();
+        .arg(OsStr::from_bytes(b"\xff\xfe")));
     assert_eq!(out.status.code(), Some(0));
     let recorded = fs::read(&checkout.argv).unwrap();
     assert!(
@@ -437,13 +445,11 @@ fn a_verb_the_front_door_serves_is_not_forwarded() {
     fs::create_dir_all(&home).unwrap();
     // Every verb the data file gives to Rust, run without its arguments: each answers on its own, and the stub node never runs.
     for command in data_file().served_by(Implementation::Rust) {
-        let out = checkout
+        let out = run(checkout
             .command()
             .env("HOME", &home)
             .env("CLAUDE_HOMES", home.join(".claude"))
-            .args(&command.path)
-            .output()
-            .unwrap();
+            .args(&command.path));
         assert!(out.status.code().is_some(), "{:?}", command.path);
         assert!(
             !checkout.argv.exists(),
@@ -456,12 +462,7 @@ fn a_verb_the_front_door_serves_is_not_forwarded() {
 #[test]
 fn the_exit_is_the_node_clis_even_when_it_is_a_signal() {
     let checkout = Checkout::new("forward-signal");
-    let out = checkout
-        .command()
-        .env("KILL_SELF", "1")
-        .arg("doctor")
-        .output()
-        .unwrap();
+    let out = run(checkout.command().env("KILL_SELF", "1").arg("doctor"));
     // exec replaces the process, so nothing of the front door is left to turn a signal into a number.
     assert_eq!(out.status.signal(), Some(15));
     assert_eq!(out.status.code(), None);
@@ -471,7 +472,7 @@ fn the_exit_is_the_node_clis_even_when_it_is_a_signal() {
 fn a_missing_node_cli_is_exit_2_and_names_where_it_looked() {
     let checkout = Checkout::new("forward-no-cli");
     fs::remove_file(checkout.root.join("packages/core/dist/cli/main.js")).unwrap();
-    let out = checkout.command().arg("doctor").output().unwrap();
+    let out = run(checkout.command().arg("doctor"));
     // 2 is the usage exit of the CLI spec, written out so that changing the constant in the code does not move the test with it.
     assert_eq!(out.status.code(), Some(2));
     assert_eq!(out.stdout, b"");
@@ -484,12 +485,10 @@ fn a_missing_node_cli_is_exit_2_and_names_where_it_looked() {
 #[test]
 fn a_node_that_cannot_run_is_exit_127_or_126() {
     let checkout = Checkout::new("forward-no-node");
-    let missing = checkout
+    let missing = run(checkout
         .command()
         .env("TAGENTS_NODE", checkout.root.join("no-such-node"))
-        .arg("doctor")
-        .output()
-        .unwrap();
+        .arg("doctor"));
     // The shell's codes for "not found" and "found but cannot run", written out so that changing a constant in the code does not move the test with it.
     assert_eq!(missing.status.code(), Some(127));
     assert!(
@@ -499,12 +498,10 @@ fn a_node_that_cannot_run_is_exit_127_or_126() {
     );
 
     fs::write(checkout.root.join("not-executable"), "#!/bin/sh\n").unwrap();
-    let denied = checkout
+    let denied = run(checkout
         .command()
         .env("TAGENTS_NODE", checkout.root.join("not-executable"))
-        .arg("doctor")
-        .output()
-        .unwrap();
+        .arg("doctor"));
     assert_eq!(denied.status.code(), Some(126));
 }
 
@@ -516,7 +513,7 @@ fn node_is_looked_up_on_path_when_no_node_is_pinned() {
         .env_remove("TAGENTS_NODE")
         .env("PATH", &checkout.root)
         .arg("doctor");
-    let out = command.output().unwrap();
+    let out = run(&mut command);
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(checkout.recorded().last().unwrap(), "arg=doctor");
 }
@@ -526,13 +523,11 @@ fn the_binary_finds_its_node_cli_through_a_symlink() {
     let checkout = Checkout::new("forward-symlink");
     let link = checkout.root.join("link");
     std::os::unix::fs::symlink(checkout.root.join("target/debug/tagents-core"), &link).unwrap();
-    let out = Command::new(&link)
+    let out = run(Command::new(&link)
         .env_clear()
         .env("TAGENTS_NODE", checkout.root.join("node"))
         .env("ARGV_FILE", &checkout.argv)
-        .arg("doctor")
-        .output()
-        .unwrap();
+        .arg("doctor"));
     assert_eq!(out.status.code(), Some(0));
     assert!(
         checkout
@@ -556,14 +551,14 @@ fn a_closed_stdout_is_not_an_error() {
         )
         .unwrap();
     }
-    let mut child = Command::new(BIN)
-        .env_clear()
-        .env("HOME", &home)
-        .env("CLAUDE_HOMES", home.join(".claude"))
-        .args(["sessions", "recent", "1000"])
-        .stdout(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let mut child = start(
+        Command::new(BIN)
+            .env_clear()
+            .env("HOME", &home)
+            .env("CLAUDE_HOMES", home.join(".claude"))
+            .args(["sessions", "recent", "1000"])
+            .stdout(Stdio::piped()),
+    );
     drop(child.stdout.take());
     let status = child.wait().unwrap();
     assert_eq!(status.code(), Some(0), "{status:?}");
@@ -596,7 +591,7 @@ fn the_node_cli_starts_with_sigpipe_at_its_default() {
         &checkout.root.join("node"),
         "#!/bin/sh\nyes 2> \"$ARGV_FILE\" | head -c 1 > /dev/null\n",
     );
-    let out = checkout.command().arg("doctor").output().unwrap();
+    let out = run(checkout.command().arg("doctor"));
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(fs::read(&checkout.argv).unwrap(), b"");
 }

@@ -1,0 +1,32 @@
+{
+  "name": "@tagents/mcp",
+  "version": "0.1.0",
+  "description": "The MCP server of the tagents plugin: every verb of every structured CLI spec in contract.json becomes one tool, with no tool code written by hand",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "tagents-mcp": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "postbuild": "chmod +x dist/main.js",
+    "prepare": "pnpm build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@tagents/core": "workspace:*",
+    "zod": "^4.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "5.9.3"
+  }
+}

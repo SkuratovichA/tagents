@@ -44,8 +44,8 @@ stays worth reacting to.
                           key<TAB>verb<TAB>what it does line each. This table
                           is what the ? window is built from, so it is also
                           the one place a new key has to be named. Every key
-                          in it can be moved with a `keys:` block in the
-                          config (see config.example.yaml), and this is what
+                          in it can be moved with a `[keys]` table in the
+                          config (see config.example.toml), and this is what
                           prints where yours ended up — including a `# ` note
                           for any that could not be honoured
   tagents --closed-rows   every closed session, one TAB-separated line each:
@@ -99,10 +99,23 @@ stays worth reacting to.
                           viewport shows; tmux's own hooks run this on every window
                           switch. It takes no argument; one given by a hook an
                           earlier version installed is ignored
-  tagents --new [DIR] [PROFILE]
+  tagents --new [--detach] [DIR] [PROFILE]
                           start an agent in DIR from outside the list — a tmux
                           binding, a shell, anything. DIR defaults to $PWD and
-                          the account to whatever the rules below pick
+                          the account to whatever the rules below pick.
+                          --detach leaves the screen alone: the window is not
+                          shown or selected, and when the rules say "ask" it exits
+                          2 naming the profiles instead of opening a dialog. It
+                          then prints the new pane and where it is, TAB-separated,
+                          as --window does; without --detach it prints nothing
+  tagents --window [--detach] DIR COMMAND
+                          open a plain window in DIR running COMMAND, from outside
+                          the list, the way --new opens an agent. COMMAND is one
+                          string for the shell and the window closes when it ends;
+                          it lands in the tmux session that owns DIR and is shown
+                          like any new window, unless --detach. Exactly two words
+                          after the flag, exit 2 otherwise. Prints the new pane and
+                          where it is, TAB-separated
   tagents --profile-for DIR [SESSION]
                           which account those rules pick, without launching
                           anything. Prints a profile name or "ask"; exits 1
@@ -272,9 +285,11 @@ timeline marks it with a ↳. A child of an agent that is no longer on the list
 falls back to a row of its own, at the top level.
 
 CONFIG — WHICH ACCOUNT AN AGENT IS STARTED ON.
-~/.config/tagents/config.yaml (or $TA_CONFIG). With no such file nothing below
-happens and every agent is started exactly as it always was: a plain
-`claude --dangerously-skip-permissions` with the environment inherited.
+~/.config/tagents/config.toml (or $TA_CONFIG; a config.yaml still works while
+there is no config.toml, and `tagents config convert` turns it into one). With
+no such file nothing below happens and every agent is started exactly as it
+always was: a plain `claude --dangerously-skip-permissions` with the
+environment inherited.
 
 An account is a Claude Code config dir, and it is a whole login rather than a
 preference: Claude derives its keychain item from the literal path, so
@@ -293,25 +308,29 @@ than passed with `tmux -e` so the very same string also works when it is typed
 into a shell (the resume-in-its-own-pane path), and so it bypasses any
 `claude()` shell function that would re-resolve the account itself.
 
-  claude:
-    args: --dangerously-skip-permissions   # a string, or a list of arguments
-    profiles:
-      personal:
-        config_dir: ~/.claude-personal
-      work:         # no config_dir: CLAUDE_CONFIG_DIR is unset for this one
-    rules:          # first match wins
-      - dir: ~/git/personal                # the directory and everything under it
-        profile: personal
-      - session: work                      # tmux session name CONTAINS this
-        profile: work
-    default: ask    # when nothing matches; `ask` opens the dialog
+  [claude]
+  args = "--dangerously-skip-permissions"   # a string, or a list of arguments
+  default = "ask"                           # when nothing matches; `ask` opens the dialog
 
-A profile may also carry `command:` (the binary or wrapper to run), its own
-`args:`, an `env:` map of extra variables, and `badge:` — the one or two
-characters the row column above shows for it, which defaults to the first
-character of the profile name. See config.example.yaml.
+  [claude.profiles.personal]
+  config_dir = "~/.claude-personal"
 
-`profile: ask` — and the default `ask` — open a small fzf over the profiles
+  [claude.profiles.work]    # no config_dir: CLAUDE_CONFIG_DIR is unset for this one
+
+  [[claude.rules]]          # first match wins
+  dir = "~/git/personal"    # the directory and everything under it
+  profile = "personal"
+
+  [[claude.rules]]
+  session = "work"          # tmux session name CONTAINS this
+  profile = "work"
+
+A profile may also carry `command` (the binary or wrapper to run), its own
+`args`, an `[claude.profiles.<name>.env]` table of extra variables, and
+`badge` — the one or two characters the row column above shows for it, which
+defaults to the first character of the profile name. See config.example.toml.
+
+`profile = "ask"` — and the default `ask` — open a small fzf over the profiles
 instead of guessing. ctrl-p opens it unconditionally, so an account can always
 be chosen by hand whatever the rules say. RESUMING NEVER CONSULTS THE RULES:
 the account a closed session comes back on is the one it actually ran on,

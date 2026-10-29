@@ -12,7 +12,8 @@ export interface ClickAction {
 export interface Notice {
   readonly id: string;
   readonly thread: string;
-  readonly kind: NoticeKind;
+  /** `message` is a notice somebody sent with `send`; every other kind is what an agent's event asked for. */
+  readonly kind: NoticeKind | 'message';
   readonly title: string;
   readonly subtitle: string;
   readonly body: string;

@@ -204,14 +204,13 @@ refresher() {
   { : >"$startmark"; } 2>/dev/null
   # The per-host overlay is read by cfg_overlay from this same path.
   host_once
-  ovl="${CONFIG_FILE%.yaml}.${TA_HOST:-$HOST_S}.yaml"
+  cfg_overlay_for "${TA_HOST:-$HOST_S}"; ovl=$CFG_OVL
   # Touched before the first read of the config, so a write that lands while it
   # is being read is not older than the marker.
   { : >"$cfgmark"; } 2>/dev/null
-  # Whether each of the two files was there at this read, for the re-read on the
-  # slow pass: see the test there.
-  [ -e "$CONFIG_FILE" ] && cfgseen=1
-  [ -e "$ovl" ] && ovlseen=1
+  # Which file each of the two was at this read, empty when it was not there, for the re-read on the slow pass: see the test there.
+  [ -e "$CONFIG_FILE" ] && cfgseen=$CONFIG_FILE
+  [ -e "$ovl" ] && ovlseen=$ovl
   # THE CONFIG IS LOADED IN THIS SHELL, not left to the first lookup. --refresher
   # is dispatched without a cfg_load, and cfg_get is almost always called inside
   # a $(...): the load it triggers there dies with the subshell, so every lookup
@@ -327,9 +326,11 @@ refresher() {
       # The memos are cleared with it: the usage switch is asked once per
       # process, and a config that has gone away must read as empty, not as the
       # last one that was there.
+      # A config.toml that appeared beside the config.yaml being read, or an overlay that changed format, is another file: which one is remembered, not only whether there was one.
       cfgnow=""; ovlnow=""
-      [ -e "$CONFIG_FILE" ] && cfgnow=1
-      [ -e "$ovl" ] && ovlnow=1
+      cfg_resolve; cfg_overlay_for "${TA_HOST:-$HOST_S}"; ovl=$CFG_OVL
+      [ -e "$CONFIG_FILE" ] && cfgnow=$CONFIG_FILE
+      [ -e "$ovl" ] && ovlnow=$ovl
       if ! [ "$cfgmark" -nt "$CONFIG_FILE" ] || ! [ "$cfgmark" -nt "$ovl" ] ||
          [ "$cfgnow" != "$cfgseen" ] || [ "$ovlnow" != "$ovlseen" ]; then
         { : >"$cfgmark"; } 2>/dev/null

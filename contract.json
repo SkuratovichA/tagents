@@ -51,7 +51,9 @@
           "required": [
             "cwd"
           ],
-          "summary": "starts a headless Claude session and prints its SessionRef as JSON"
+          "summary": "prepares a headless Claude session for a directory and prints its SessionRef as JSON; no process starts until a prompt is sent to it",
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -74,7 +76,9 @@
             }
           },
           "required": [],
-          "summary": "sends one prompt to a session and prints the TurnOutcome as JSON; with --events, NDJSON events with the outcome last"
+          "summary": "runs one Claude turn: sends the prompt to a session, waits for the answer and prints the TurnOutcome as JSON; with --events, NDJSON events with the outcome last",
+          "effect": "spawn",
+          "tool": false
         },
         {
           "path": [
@@ -86,7 +90,8 @@
           ],
           "options": {},
           "required": [],
-          "summary": "prints the last assistant text of a session and when it came, as JSON, or null"
+          "summary": "prints the last assistant text of a session and when it came, as JSON, or null",
+          "effect": "read"
         },
         {
           "path": [
@@ -104,7 +109,8 @@
             }
           },
           "required": [],
-          "summary": "prints the known sessions as a JSON array of SessionRef, filtered by label and state"
+          "summary": "prints the known sessions as a JSON array of SessionRef, filtered by label and state",
+          "effect": "read"
         },
         {
           "path": [
@@ -116,7 +122,9 @@
           ],
           "options": {},
           "required": [],
-          "summary": "stops the turn running in a session and prints whether it did, with the id and pid, as JSON"
+          "summary": "stops the process of a session that has no pane and prints whether it did, with the id and pid, as JSON; a session in a tmux pane is refused with exit 3",
+          "effect": "destructive",
+          "tool": false
         },
         {
           "path": [
@@ -128,7 +136,9 @@
           ],
           "options": {},
           "required": [],
-          "summary": "prints the most recent transcripts as text"
+          "summary": "prints the most recent transcripts as text",
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -140,7 +150,9 @@
           ],
           "options": {},
           "required": [],
-          "summary": "prints the transcripts that match the words, as text"
+          "summary": "prints the transcripts that match the words, as text",
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -152,7 +164,8 @@
           ],
           "options": {},
           "required": [],
-          "summary": "prints the full text of one transcript, picked by id prefix"
+          "summary": "prints the full text of one transcript, picked by id prefix",
+          "effect": "read"
         },
         {
           "path": [
@@ -166,7 +179,8 @@
             }
           },
           "required": [],
-          "summary": "lists the configured plugins and what each offers, as lines or with --json one JSON document"
+          "summary": "lists the configured plugins and what each offers, as lines or with --json one JSON document",
+          "effect": "read"
         },
         {
           "path": [
@@ -182,7 +196,9 @@
             }
           },
           "required": [],
-          "summary": "validates a package manifest and writes the plugin into config.yaml"
+          "summary": "validates a package manifest and writes the plugin into the config",
+          "effect": "write",
+          "tool": false
         },
         {
           "path": [
@@ -194,7 +210,8 @@
           ],
           "options": {},
           "required": [],
-          "summary": "takes one plugin entry back out of config.yaml"
+          "summary": "takes one plugin entry back out of the config",
+          "effect": "destructive"
         },
         {
           "path": [
@@ -210,7 +227,29 @@
             }
           },
           "required": [],
-          "summary": "scaffolds a package that is already a plugin"
+          "summary": "scaffolds a package that is already a plugin",
+          "effect": "write"
+        },
+        {
+          "path": [
+            "config",
+            "convert"
+          ],
+          "positionals": [
+            "[FILE]"
+          ],
+          "options": {
+            "write": {
+              "type": "boolean"
+            },
+            "all": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "summary": "turns config.yaml into config.toml: prints it by default, writes it beside the YAML with --write, and also converts the per-host overlays with --all",
+          "effect": "write",
+          "tool": false
         },
         {
           "path": [
@@ -219,7 +258,8 @@
           "positionals": [],
           "options": {},
           "required": [],
-          "summary": "prints the node version, the state directory, the config file and whether claude is on PATH"
+          "summary": "prints the node version, the state directory, the config file and whether claude is on PATH",
+          "effect": "read"
         }
       ]
     },
@@ -248,7 +288,8 @@
             }
           },
           "required": [],
-          "summary": "brings the index in line with the folder; --full rebuilds it from nothing"
+          "summary": "brings the index in line with the folder; --full rebuilds it from nothing",
+          "effect": "write"
         },
         {
           "path": [
@@ -287,7 +328,9 @@
             }
           },
           "required": [],
-          "summary": "prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last; each document it returns is recorded as a hit in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)"
+          "summary": "prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last; each document it returns is recorded as a hit in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)",
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -311,7 +354,9 @@
             }
           },
           "required": [],
-          "summary": "prints the markdown of a document, or of one section of it; the read is recorded as a get in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)"
+          "summary": "prints the markdown of a document, or of one section of it; the read is recorded as a get in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)",
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -339,7 +384,9 @@
             }
           },
           "required": [],
-          "summary": "prints one line per document: id, type, updated, title and tags; --type filters by type (--kind is its deprecated alias); deprecated documents come last"
+          "summary": "prints one line per document: id, type, updated, title and tags; --type filters by type (--kind is its deprecated alias); deprecated documents come last",
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -352,7 +399,8 @@
             }
           },
           "required": [],
-          "summary": "checks the claims each document makes about itself"
+          "summary": "checks the claims each document makes about itself",
+          "effect": "read"
         },
         {
           "path": [
@@ -368,7 +416,8 @@
             }
           },
           "required": [],
-          "summary": "writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date"
+          "summary": "writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date",
+          "effect": "write"
         },
         {
           "path": [
@@ -411,7 +460,9 @@
             }
           },
           "required": [],
-          "summary": "reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store"
+          "summary": "reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store",
+          "effect": "read",
+          "tool": false
         },
         {
           "path": [
@@ -420,7 +471,8 @@
           "positionals": [],
           "options": {},
           "required": [],
-          "summary": "serves the knowledge tools over stdio as an MCP server"
+          "summary": "serves the knowledge tools over stdio as an MCP server",
+          "effect": "serve"
         },
         {
           "path": [
@@ -439,7 +491,190 @@
             }
           },
           "required": [],
-          "summary": "starts the shared MCP server for this environment if it is not running and prints its unix socket; --idle S is how many seconds without a client before it exits (default 600); --foreground runs the server in this process, on --socket P"
+          "summary": "starts the shared MCP server for this environment if it is not running and prints its unix socket; --idle S is how many seconds without a client before it exits (default 600); --foreground runs the server in this process, on --socket P",
+          "effect": "serve"
+        }
+      ]
+    },
+    "tagents-notify": {
+      "exit": {
+        "ok": 0,
+        "error": 1,
+        "usage": 2
+      },
+      "commands": [
+        {
+          "path": [
+            "run"
+          ],
+          "positionals": [],
+          "options": {},
+          "required": [],
+          "summary": "runs the notification service in the foreground until it is stopped",
+          "effect": "serve"
+        },
+        {
+          "path": [
+            "install"
+          ],
+          "positionals": [],
+          "options": {},
+          "required": [],
+          "summary": "installs and starts the notification service as a login item, builds its helper app and asks macOS for permission to notify",
+          "effect": "spawn",
+          "tool": false
+        },
+        {
+          "path": [
+            "uninstall"
+          ],
+          "positionals": [],
+          "options": {
+            "purge": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "summary": "stops and removes the notification service; with purge it also deletes the helper app",
+          "effect": "destructive",
+          "tool": false
+        },
+        {
+          "path": [
+            "status"
+          ],
+          "positionals": [],
+          "options": {},
+          "required": [],
+          "summary": "prints whether notifications will arrive: the service, the permission, the options and the click script",
+          "effect": "read"
+        },
+        {
+          "path": [
+            "test"
+          ],
+          "positionals": [],
+          "options": {
+            "kind": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "summary": "posts one sample notice of the given kind through the configured backend, which shows it on the screen",
+          "effect": "write"
+        },
+        {
+          "path": [
+            "send"
+          ],
+          "positionals": [
+            "<message…>"
+          ],
+          "options": {
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "summary": "posts a desktop notification with this message (the words are joined with a space) through the configured backend, which shows it on the screen; a click docks the pane the command runs in; a title over 256 characters or a message over 2048 is refused",
+          "effect": "write"
+        }
+      ]
+    },
+    "tagents": {
+      "exit": {
+        "ok": 0,
+        "error": 1,
+        "usage": 2
+      },
+      "commands": [
+        {
+          "path": [
+            "--new"
+          ],
+          "positionals": [
+            "[DIR]",
+            "[PROFILE]"
+          ],
+          "options": {
+            "detach": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "summary": "starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists; detach (the default for a tool call) does not show or select the window, prints the new pane and where it is as session:index, and never opens a dialog, so when the rules say to ask which account it fails and names the profiles to pass",
+          "effect": "spawn",
+          "requires": "tmux",
+          "toolDefaults": {
+            "detach": true
+          }
+        },
+        {
+          "path": [
+            "--window"
+          ],
+          "positionals": [
+            "<DIR>",
+            "<COMMAND>"
+          ],
+          "options": {
+            "detach": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "summary": "opens a tmux window in DIR that runs COMMAND, one string for the shell, and prints the new pane and where it is; the window closes when the command ends, and it lands in the session that owns DIR on the tmux server this runs in; detach (the default for a tool call) does not show or select the window",
+          "effect": "spawn",
+          "requires": "tmux",
+          "toolDefaults": {
+            "detach": true
+          }
+        },
+        {
+          "path": [
+            "--label"
+          ],
+          "positionals": [
+            "<K>",
+            "<NAME>"
+          ],
+          "options": {},
+          "required": [],
+          "summary": "names an agent on the dashboard; K is its session id or pane id, and an empty NAME clears the name back to the window title",
+          "effect": "write"
+        },
+        {
+          "path": [
+            "--profile-for"
+          ],
+          "positionals": [
+            "<DIR>",
+            "[SESSION]"
+          ],
+          "options": {},
+          "required": [],
+          "summary": "prints which account profile the config rules pick for DIR (and the tmux SESSION, when given), or ask, without starting anything; prints nothing and exits 1 when no profiles are configured",
+          "effect": "read"
+        },
+        {
+          "path": [
+            "--config"
+          ],
+          "positionals": [],
+          "options": {},
+          "required": [],
+          "summary": "prints the config as tagents reads it, one path and value per line, which includes the account profiles a session can be started on",
+          "effect": "read"
+        },
+        {
+          "path": [
+            "--check"
+          ],
+          "positionals": [],
+          "options": {},
+          "required": [],
+          "summary": "prints what is wrong with the config, one line each, and exits 1 while anything is; prints nothing and exits 0 when it is sound",
+          "effect": "read"
         }
       ]
     }
@@ -606,12 +841,414 @@
           }
         }
       ]
+    },
+    "tagents": {
+      "tools": [
+        {
+          "name": "core_doctor",
+          "description": "Prints the node version, the state directory, the config file and whether claude is on PATH.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "core_plugin_list",
+          "description": "Lists the configured plugins and what each offers, as lines or with --json one JSON document.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "json": {
+                "type": "boolean"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "core_plugin_new",
+          "description": "Scaffolds a package that is already a plugin.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "dir": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "core_plugin_remove",
+          "description": "Takes one plugin entry back out of the config.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "core_session_last",
+          "description": "Prints the last assistant text of a session and when it came, as JSON, or null.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "ref_json_or_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "ref_json_or_id"
+            ],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "core_session_list",
+          "description": "Prints the known sessions as a JSON array of SessionRef, filtered by label and state.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "state": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "core_sessions_show",
+          "description": "Prints the full text of one transcript, picked by id prefix.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "id_prefix": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id_prefix"
+            ],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "knowledge_index",
+          "description": "Brings the index in line with the folder; --full rebuilds it from nothing.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dir": {
+                "type": "string"
+              },
+              "db": {
+                "type": "string"
+              },
+              "full": {
+                "type": "boolean"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "knowledge_lint",
+          "description": "Checks the claims each document makes about itself.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dir": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "knowledge_toc",
+          "description": "Writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dir": {
+                "type": "string"
+              },
+              "check": {
+                "type": "boolean"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "notify_send",
+          "description": "Posts a desktop notification with this message (the words are joined with a space) through the configured backend, which shows it on the screen; a click docks the pane the command runs in; a title over 256 characters or a message over 2048 is refused.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "notify_status",
+          "description": "Prints whether notifications will arrive: the service, the permission, the options and the click script.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "notify_test",
+          "description": "Posts one sample notice of the given kind through the configured backend, which shows it on the screen.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "tagents_check",
+          "description": "Prints what is wrong with the config, one line each, and exits 1 while anything is; prints nothing and exits 0 when it is sound.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "tagents_config",
+          "description": "Prints the config as tagents reads it, one path and value per line, which includes the account profiles a session can be started on.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "tagents_label",
+          "description": "Names an agent on the dashboard; K is its session id or pane id, and an empty NAME clears the name back to the window title.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "k": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "k",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "tagents_new",
+          "description": "Starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists; detach (the default for a tool call) does not show or select the window, prints the new pane and where it is as session:index, and never opens a dialog, so when the rules say to ask which account it fails and names the profiles to pass.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dir": {
+                "type": "string"
+              },
+              "profile": {
+                "type": "string"
+              },
+              "detach": {
+                "type": "boolean",
+                "default": true
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "openWorldHint": true
+          }
+        },
+        {
+          "name": "tagents_profile_for",
+          "description": "Prints which account profile the config rules pick for DIR (and the tmux SESSION, when given), or ask, without starting anything; prints nothing and exits 1 when no profiles are configured.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dir": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "dir"
+            ],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "tagents_window",
+          "description": "Opens a tmux window in DIR that runs COMMAND, one string for the shell, and prints the new pane and where it is; the window closes when the command ends, and it lands in the session that owns DIR on the tmux server this runs in; detach (the default for a tool call) does not show or select the window.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dir": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              },
+              "detach": {
+                "type": "boolean",
+                "default": true
+              }
+            },
+            "required": [
+              "dir",
+              "command"
+            ],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "openWorldHint": true
+          }
+        }
+      ]
     }
   },
   "api": {
-    "@tagents/core": "sha256:c127f03b660a5ff59bfc2a3a99ad3b0ecbc25ebba324442ae187beb7dca0fcbd",
+    "@tagents/core": "sha256:fcde7d242c32f2670bf7ca89c55513907ac0199ed06e19f0cb178c18f9580819",
     "@tagents/knowledge": "sha256:63465226fcb49e8f6a20867948332ff35da600f4a020fa9701ef88730f5c2d8a",
-    "@tagents/notify": "sha256:82378079b87af196363505cb138618ae0e84223fea9f92d4eaa01ec4981564bf",
+    "@tagents/notify": "sha256:9fd35c43c5dd7262667bfdd48944a46e39551f1e7441438455c7859a39f8fb7e",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"
   }
 }

@@ -1,0 +1,58 @@
+{
+  "program": "tagents",
+  "exit": { "ok": 0, "error": 1, "usage": 2 },
+  "commands": [
+    {
+      "path": ["--new"],
+      "positionals": ["[DIR]", "[PROFILE]"],
+      "options": { "detach": { "type": "boolean" } },
+      "required": [],
+      "summary": "starts a new interactive Claude Code session in DIR (default: the current directory) on the account PROFILE (default: the one the config rules pick), as a window of the tmux server this runs in, which the dashboard lists; detach (the default for a tool call) does not show or select the window, prints the new pane and where it is as session:index, and never opens a dialog, so when the rules say to ask which account it fails and names the profiles to pass",
+      "effect": "spawn",
+      "requires": "tmux",
+      "toolDefaults": { "detach": true }
+    },
+    {
+      "path": ["--window"],
+      "positionals": ["<DIR>", "<COMMAND>"],
+      "options": { "detach": { "type": "boolean" } },
+      "required": [],
+      "summary": "opens a tmux window in DIR that runs COMMAND, one string for the shell, and prints the new pane and where it is; the window closes when the command ends, and it lands in the session that owns DIR on the tmux server this runs in; detach (the default for a tool call) does not show or select the window",
+      "effect": "spawn",
+      "requires": "tmux",
+      "toolDefaults": { "detach": true }
+    },
+    {
+      "path": ["--label"],
+      "positionals": ["<K>", "<NAME>"],
+      "options": {},
+      "required": [],
+      "summary": "names an agent on the dashboard; K is its session id or pane id, and an empty NAME clears the name back to the window title",
+      "effect": "write"
+    },
+    {
+      "path": ["--profile-for"],
+      "positionals": ["<DIR>", "[SESSION]"],
+      "options": {},
+      "required": [],
+      "summary": "prints which account profile the config rules pick for DIR (and the tmux SESSION, when given), or ask, without starting anything; prints nothing and exits 1 when no profiles are configured",
+      "effect": "read"
+    },
+    {
+      "path": ["--config"],
+      "positionals": [],
+      "options": {},
+      "required": [],
+      "summary": "prints the config as tagents reads it, one path and value per line, which includes the account profiles a session can be started on",
+      "effect": "read"
+    },
+    {
+      "path": ["--check"],
+      "positionals": [],
+      "options": {},
+      "required": [],
+      "summary": "prints what is wrong with the config, one line each, and exits 1 while anything is; prints nothing and exits 0 when it is sound",
+      "effect": "read"
+    }
+  ]
+}

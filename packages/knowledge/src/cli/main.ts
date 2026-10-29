@@ -24,7 +24,7 @@ import { lint } from '../lint.ts';
 import { indexState, writeIndex } from '../toc.ts';
 import { DEFAULT_IDLE_SECONDS, defaultSocket, ensureDaemon, runDaemon } from '../mcp/daemon.ts';
 import { runMcp } from '../mcp/server.ts';
-import { resolveDb, resolveDir, resolveUsageDb } from '../paths.ts';
+import { dirSnippet, resolveDb, resolveDir, resolveUsageDb } from '../paths.ts';
 import { realClock } from '@tagents/core';
 import { getDoc, getSection, listDocs, parseAddress, search, type Clock, type Filters, type Hit } from '../search.ts';
 import {
@@ -63,7 +63,7 @@ function needDir(explicit: string | null, io: Io, t: Translate): string | null {
   const dir = resolveDir(explicit);
   if (dir.ok) return dir.dir;
   io.err(
-    `${dir.reason === 'unset' ? t('noDir', { config: dir.config }) : t('missingDir', { dir: dir.dir ?? '' })}\n`
+    `${dir.reason === 'unset' ? t('noDir', { config: dir.config, snippet: dirSnippet(dir.config) }) : t('missingDir', { dir: dir.dir ?? '' })}\n`
   );
   return null;
 }

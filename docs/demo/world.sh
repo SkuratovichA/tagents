@@ -41,24 +41,32 @@ make_home() {
   printf '{}\n' >"$HOME/.claude-personal/.claude.json"; printf '{}\n' >"$HOME/.claude.json"
   printf 'PS1="\\$ "\n' >"$HOME/.bashrc"; cp "$HOME/.bashrc" "$HOME/.bash_profile"
   cat >"$TA_CONFIG" <<CFG
-claude:
-  args: --dangerously-skip-permissions
-  profiles:
-    work:
-    personal:
-      config_dir: $HOME/.claude-personal
-  rules:
-    - dir: $HOME/code/docs-site
-      profile: personal
-    - dir: $HOME/code/mobile-app
-      profile: personal
-    - dir: $HOME/code
-      profile: work
-usage:
-  watch: work
-  monthly_limit_usd: 850
-resurrect:
-  every: 0
+[claude]
+args = "--dangerously-skip-permissions"
+
+[claude.profiles.work]
+
+[claude.profiles.personal]
+config_dir = "$HOME/.claude-personal"
+
+[[claude.rules]]
+dir = "$HOME/code/docs-site"
+profile = "personal"
+
+[[claude.rules]]
+dir = "$HOME/code/mobile-app"
+profile = "personal"
+
+[[claude.rules]]
+dir = "$HOME/code"
+profile = "work"
+
+[usage]
+watch = "work"
+monthly_limit_usd = 850
+
+[resurrect]
+every = 0
 CFG
   : >"$TA_STATE_DIR/events.on"
 }

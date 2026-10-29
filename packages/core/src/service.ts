@@ -1,4 +1,4 @@
-// Running ONE plugin's service, in this process, with no config.yaml.
+// Running ONE plugin's service, in this process, with no entry in the config.
 //
 // host.ts answers "which plugins did the machine choose?" — it reads the config
 // and imports what it names. This file answers the other half: a plugin package

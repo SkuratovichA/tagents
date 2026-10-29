@@ -69,8 +69,8 @@ resurrect.notes	reopen
 keys.closed	ctrl-y
 EOF
 )
-got=$(TA_CONFIG="$HERE/../config.example.yaml" bash "$TA" --config 2>&1)
-ok "config.example.yaml flattens as documented" "$want" "$got"
+got=$(TA_CONFIG="$HERE/fixtures/config.example.yaml" bash "$TA" --config 2>&1)
+ok "the YAML example flattens as documented" "$want" "$got"
 
 # Everything the subset promises, in one file, indented four spaces: end-of-line
 # comments, a # that is inside quotes and therefore not one, blank lines, a
@@ -174,7 +174,7 @@ esac
 # A per-host overlay: config.<host>.yaml replaces the a.b subtrees it names and
 # inherits the rest. TA_HOST stands in for `hostname -s`.
 mkdir -p "$TMP/ov"
-cp "$HERE/../config.example.yaml" "$TMP/ov/config.yaml"
+cp "$HERE/fixtures/config.example.yaml" "$TMP/ov/config.yaml"
 cat >"$TMP/ov/config.mbp.yaml" <<'EOF'
 claude:
   profiles:
@@ -200,8 +200,8 @@ ok "overlay: a base profile is unknown here" 1 \
    "$(TA_HOST=mbp TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --agent-cmd personal new >/dev/null 2>&1; echo $?)"
 ok "overlay: another host sees only the base" "" \
    "$(TA_HOST=other TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --config 2>/dev/null | grep -c nuzhin | sed 's/^0$//')"
-ok "overlay: a missing overlay changes nothing" "$(TA_CONFIG="$HERE/../config.example.yaml" bash "$TA" --config 2>&1)" \
-   "$(TA_HOST=nowhere TA_CONFIG="$HERE/../config.example.yaml" bash "$TA" --config 2>&1)"
+ok "overlay: a missing overlay changes nothing" "$(TA_CONFIG="$HERE/fixtures/config.example.yaml" bash "$TA" --config 2>&1)" \
+   "$(TA_HOST=nowhere TA_CONFIG="$HERE/fixtures/config.example.yaml" bash "$TA" --config 2>&1)"
 
 # A machine answers to more than one name. On a Mac whose HostName was never set, `hostname -s` is whatever macOS derived last, and the overlay has to be found under the name that stays put (the LocalHostName) once the reported one has moved. Both commands are stubbed: what they say on the box running the suite is not the subject.
 HB="$TMP/hostbin"; mkdir -p "$HB"
@@ -236,7 +236,7 @@ ok "overlay: a machine with no LocalHostName is its hostname, and says nothing a
 t "2. rules"
 # ---------------------------------------------------------------------------
 
-EX="$HERE/../config.example.yaml"
+EX="$HERE/fixtures/config.example.yaml"
 pf() { TA_CONFIG="${CFG:-$EX}" bash "$TA" --profile-for "$@" 2>/dev/null; }
 
 mkdir -p "$TMP/home/git/personal/x" "$TMP/home/git/work/y/z" "$TMP/home/git/personalx"
@@ -442,84 +442,81 @@ mkdir -p "$TMP/logins/personal" "$TMP/logins/work"
 : >"$TMP/logins/personal/.claude.json"
 : >"$TMP/logins/work/settings.json"
 
-cat >"$TMP/good.yaml" <<EOF
-claude:
-  profiles:
-    personal:
-      config_dir: $TMP/logins/personal
-    work:
-      config_dir: $TMP/logins/work
-    main:
-  rules:
-    - dir: $TMP/home/git/personal
-      profile: personal
-    - session: work
-      profile: ask
-  default: ask
-usage:
-  watch: work
-  monthly_limit_usd: 850
-  safety_margin_pct: 5.5
-  workdays: false
-notes:
-  send: submit
-keys:
-  closed: ctrl-y
-something_newer:
-  this_version_does_not_read: it
+# The checker is format-blind, so its fixtures are in the format a config is written in now. The YAML reader's own refusals, and what a YAML config is told, are the last cases of this section and tests/config-toml.sh.
+cat >"$TMP/good.toml" <<EOF
+[claude]
+default = "ask"
+[claude.profiles.personal]
+config_dir = "$TMP/logins/personal"
+[claude.profiles.work]
+config_dir = "$TMP/logins/work"
+[claude.profiles.main]
+[[claude.rules]]
+dir = "$TMP/home/git/personal"
+profile = "personal"
+[[claude.rules]]
+session = "work"
+profile = "ask"
+[usage]
+watch = "work"
+monthly_limit_usd = 850
+safety_margin_pct = 5.5
+workdays = false
+[notes]
+send = "submit"
+[keys]
+closed = "ctrl-y"
+[something_newer]
+this_version_does_not_read = "it"
 EOF
-out=$(ck "$TMP/good.yaml"); rc=$?
+out=$(ck "$TMP/good.toml"); rc=$?
 ok "a good config: nothing to say" "" "$out"
 ok "...and exit 0"                 0  "$rc"
-ok "...and a header of keys alone" "enter open here · ? keys · ctrl-q quit" "$(hd "$TMP/good.yaml")"
+ok "...and a header of keys alone" "enter open here · ? keys · ctrl-q quit" "$(hd "$TMP/good.toml")"
 out=$(TA_CONFIG=/nonexistent/config.yaml bash "$TA" --check 2>/dev/null); rc=$?
 ok "no config at all is not a problem: nothing, exit 0" "0" "$rc$out"
 
 # THE REPORTED BUG: a profile pointing at a directory this machine does not have.
-cat >"$TMP/nodir.yaml" <<EOF
-claude:
-  profiles:
-    personal:
-      config_dir: $TMP/logins/does-not-exist
-    work:
+cat >"$TMP/nodir.toml" <<EOF
+[claude.profiles.personal]
+config_dir = "$TMP/logins/does-not-exist"
+[claude.profiles.work]
 EOF
-out=$(ck "$TMP/nodir.yaml"); rc=$?
+out=$(ck "$TMP/nodir.toml"); rc=$?
 ok       "a config_dir that does not exist: exit 1" 1 "$rc"
-contains "...naming the file"    "nodir.yaml: "                          "$out"
+contains "...naming the file"    "nodir.toml: "                          "$out"
 contains "...and the key"        "claude.profiles.personal.config_dir: " "$out"
 contains "...and what it means"  "does not exist on this machine — an agent on it starts logged out" "$out"
 ok       "...one line for one problem" 1 "$(nlines "$out")"
 contains "the dashboard header carries the count, and where to look" \
-         "config: 1 problem (tagents --check)" "$(hd "$TMP/nodir.yaml")"
+         "config: 1 problem (tagents --check)" "$(hd "$TMP/nodir.toml")"
 ok "--config keeps its contract: the leaves, exit 0" 0 \
-   "$(TA_CONFIG="$TMP/nodir.yaml" bash "$TA" --config >/dev/null 2>&1; echo $?)"
+   "$(TA_CONFIG="$TMP/nodir.toml" bash "$TA" --config >/dev/null 2>&1; echo $?)"
 contains "...with the leaves on stdout" \
    "claude.profiles.personal.config_dir${TAB}$TMP/logins/does-not-exist" \
-   "$(TA_CONFIG="$TMP/nodir.yaml" bash "$TA" --config 2>/dev/null)"
+   "$(TA_CONFIG="$TMP/nodir.toml" bash "$TA" --config 2>/dev/null)"
 # Logging in once on a fresh directory is how a new login is set up, so the
 # launch is warned about, not refused.
 contains "--agent-cmd still builds the launch" "CLAUDE_CONFIG_DIR='$TMP/logins/does-not-exist'" \
-   "$(TA_CONFIG="$TMP/nodir.yaml" bash "$TA" --agent-cmd personal new 2>/dev/null)"
+   "$(TA_CONFIG="$TMP/nodir.toml" bash "$TA" --agent-cmd personal new 2>/dev/null)"
 
 # Every other shape a config_dir can be wrong in. ~/.claude is what the example
 # says not to write; HOME is moved so the test owns the directory it names.
 : >"$TMP/logins/afile"
 mkdir -p "$TMP/logins/empty" "$TMP/home/.claude"
-cat >"$TMP/kinds.yaml" <<EOF
-claude:
-  profiles:
-    filed:
-      config_dir: $TMP/logins/afile
-    fresh:
-      config_dir: $TMP/logins/empty
-    blank:
-      config_dir:
-    home:
-      config_dir: ~/.claude
-    ask:
-      config_dir: $TMP/logins/personal
+cat >"$TMP/kinds.toml" <<EOF
+[claude.profiles.filed]
+config_dir = "$TMP/logins/afile"
+[claude.profiles.fresh]
+config_dir = "$TMP/logins/empty"
+[claude.profiles.blank]
+config_dir = ""
+[claude.profiles.home]
+config_dir = "~/.claude"
+[claude.profiles.ask]
+config_dir = "$TMP/logins/personal"
 EOF
-out=$(HOME="$TMP/home" TA_CONFIG="$TMP/kinds.yaml" bash "$TA" --check 2>/dev/null)
+out=$(HOME="$TMP/home" TA_CONFIG="$TMP/kinds.toml" bash "$TA" --check 2>/dev/null)
 contains "a file where a directory should be" \
    "claude.profiles.filed.config_dir: $TMP/logins/afile is not a directory" "$out"
 contains "a directory nothing has written into gets the softer note" \
@@ -533,29 +530,32 @@ contains "a profile called ask can never be launched" \
    "claude.profiles.ask: ask is the word that opens the dialog" "$out"
 ok "five problems, five lines" 5 "$(nlines "$out")"
 contains "...and the header counts the same five" "config: 5 problems (tagents --check)" \
-   "$(HOME="$TMP/home" TA_CONFIG="$TMP/kinds.yaml" bash "$TA" --header 120 'open here' 'ctrl-q quit' 2>/dev/null)"
+   "$(HOME="$TMP/home" TA_CONFIG="$TMP/kinds.toml" bash "$TA" --header 120 'open here' 'ctrl-q quit' 2>/dev/null)"
 
 # The names that have to be profiles: in a rule, as the default, as the watch.
-cat >"$TMP/names.yaml" <<EOF
-claude:
-  profiles:
-    work:
-      config_dir: $TMP/logins/work
-  rules:
-    - dir: $TMP/home/git/personal
-      profile: nosuch
-    - dir: $TMP/home/git/personal
-    - dir: $TMP/home/git/work
-      profile:
-    - session: w
-      profile: ask
-    - dir: $TMP/home/git/work
-      profile: work
-  default: gone
-usage:
-  watch: nobody
+cat >"$TMP/names.toml" <<EOF
+[claude]
+default = "gone"
+[claude.profiles.work]
+config_dir = "$TMP/logins/work"
+[[claude.rules]]
+dir = "$TMP/home/git/personal"
+profile = "nosuch"
+[[claude.rules]]
+dir = "$TMP/home/git/personal"
+[[claude.rules]]
+dir = "$TMP/home/git/work"
+profile = ""
+[[claude.rules]]
+session = "w"
+profile = "ask"
+[[claude.rules]]
+dir = "$TMP/home/git/work"
+profile = "work"
+[usage]
+watch = "nobody"
 EOF
-out=$(ck "$TMP/names.yaml")
+out=$(ck "$TMP/names.toml")
 contains "a rule naming an unknown profile" \
    "claude.rules.0.profile: \"nosuch\" is not in claude.profiles — the rule is skipped" "$out"
 contains "a rule with no profile line"   "claude.rules.1: names no profile — the rule is skipped" "$out"
@@ -565,38 +565,37 @@ contains "a watch that is not a profile"   "usage.watch: \"nobody\" is not in cl
 ok "...and ask, and a real profile, pass: five in all" 5 "$(nlines "$out")"
 
 # Rules with no profiles at all are dead text — one note, not one per rule.
-cat >"$TMP/deadrules.yaml" <<EOF
-claude:
-  rules:
-    - dir: /tmp
-      profile: work
-    - dir: /var
-      profile: work
-  default: work
+cat >"$TMP/deadrules.toml" <<EOF
+[claude]
+default = "work"
+[[claude.rules]]
+dir = "/tmp"
+profile = "work"
+[[claude.rules]]
+dir = "/var"
+profile = "work"
 EOF
-out=$(ck "$TMP/deadrules.yaml")
+out=$(ck "$TMP/deadrules.toml")
 contains "rules without profiles: one note" \
    "claude.profiles: none — claude.rules, claude.default and usage.watch do nothing without one" "$out"
 ok "...and only one" 1 "$(nlines "$out")"
 
 # Values that cannot be what they claim — and a key fzf would refuse, folded
 # into the same list so the count is the whole truth.
-cat >"$TMP/values.yaml" <<EOF
-claude:
-  profiles:
-    work:
-      config_dir: $TMP/logins/work
-usage:
-  watch: work
-  monthly_limit_usd: 850 dollars
-  safety_margin_pct: 150
-  workdays: False
-notes:
-  send: mail
-keys:
-  new: ctrl-1
+cat >"$TMP/values.toml" <<EOF
+[claude.profiles.work]
+config_dir = "$TMP/logins/work"
+[usage]
+watch = "work"
+monthly_limit_usd = "850 dollars"
+safety_margin_pct = 150
+workdays = "False"
+[notes]
+send = "mail"
+[keys]
+new = "ctrl-1"
 EOF
-out=$(ck "$TMP/values.yaml")
+out=$(ck "$TMP/values.toml")
 contains "a limit that is not a number" "usage.monthly_limit_usd: \"850 dollars\" is not a number" "$out"
 contains "a margin over 100"            "usage.safety_margin_pct: 150 is not a percentage" "$out"
 contains "workdays: False reads as true, and says so" \
@@ -604,22 +603,22 @@ contains "workdays: False reads as true, and says so" \
 contains "notes.send outside its three words" \
    "notes.send: \"mail\" is not one of reference, paste, submit" "$out"
 contains "a key fzf does not know, in the same list" \
-   "values.yaml: keys.new: 'ctrl-1' is not a key fzf knows" "$out"
+   "values.toml: keys.new: 'ctrl-1' is not a key fzf knows" "$out"
 ok "five problems, five lines" 5 "$(nlines "$out")"
 
 # dashboard.layout: a key an earlier version read, which this one takes like any key it does not read.
-printf 'dashboard:\n  layout: follow\n' >"$TMP/oldlayout.yaml"
-ok       "A dashboard.layout an earlier version read: --check has nothing to say" "" "$(ck "$TMP/oldlayout.yaml")"
-contains "...and --config prints the leaf" "dashboard.layout${TAB}follow" "$(TA_CONFIG="$TMP/oldlayout.yaml" bash "$TA" --config 2>/dev/null)"
-printf 'dashboard:\n  layout: ide\n' >"$TMP/badlayout.yaml"
-ok       "...and so is a value no version read, with no line about it" "" "$(ck "$TMP/badlayout.yaml")"
-printf 'usage:\n  workdays: true\n' >"$TMP/nodash.yaml"
-ok       "No dashboard section: --check has nothing to say" "" "$(ck "$TMP/nodash.yaml")"
+printf '[dashboard]\nlayout = "follow"\n' >"$TMP/oldlayout.toml"
+ok       "A dashboard.layout an earlier version read: --check has nothing to say" "" "$(ck "$TMP/oldlayout.toml")"
+contains "...and --config prints the leaf" "dashboard.layout${TAB}follow" "$(TA_CONFIG="$TMP/oldlayout.toml" bash "$TA" --config 2>/dev/null)"
+printf '[dashboard]\nlayout = "ide"\n' >"$TMP/badlayout.toml"
+ok       "...and so is a value no version read, with no line about it" "" "$(ck "$TMP/badlayout.toml")"
+printf '[usage]\nworkdays = true\n' >"$TMP/nodash.toml"
+ok       "No dashboard section: --check has nothing to say" "" "$(ck "$TMP/nodash.toml")"
 ok       "...and no dashboard.layout leaf exists" "" \
-   "$(TA_CONFIG="$TMP/nodash.yaml" bash "$TA" --config 2>/dev/null | grep '^dashboard\.')"
+   "$(TA_CONFIG="$TMP/nodash.toml" bash "$TA" --config 2>/dev/null | grep '^dashboard\.')"
 
 # The docs page on accounts, "The file" section: every top-level key it lists is a section the file carries.
-readme_keys=$(awk '/^### The file/ {on=1; next} /^### / {on=0} on && /^[a-z_]+:/ {sub(/:.*/, ""); print}' "$HERE/../docs/guide/accounts.md")
+readme_keys=$(awk '/^### The file/ {on=1; next} /^### / {on=0} on && /^\[\[?[a-z_]+[].]/ {sub(/^\[\[?/, ""); sub(/[].].*/, ""); print}' "$HERE/../docs/guide/accounts.md" | awk '!seen[$0]++')
 for k in $readme_keys; do
   case $k in
     claude|usage|notes|resurrect|keys|plugins) ok "docs list $k, a section the file carries" 1 1 ;;
@@ -639,34 +638,31 @@ err=$(TA_CONFIG="$TMP/refused.yaml" bash "$TA" --config 2>&1 >/dev/null)
 contains "...while stderr still says it, once, for a script" \
    "tagents: config: $TMP/refused.yaml:4: not a key: value line" "$err"
 ok "...once" 1 "$(printf '%s' "$err" | grep -c 'refused.yaml:4')"
-ok "...and the header counts both" "config: 2 problems (tagents --check)" \
+contains "...and the file is told it is YAML, as any YAML config is" "refused.yaml: YAML config is deprecated" "$out"
+ok "...and the header counts all three" "config: 3 problems (tagents --check)" \
    "$(hd "$TMP/refused.yaml" | sed 's/.* · //')"
 
 # A note names the file its key is in: the overlay for what the overlay
 # replaced, the base for what was inherited.
 mkdir -p "$TMP/ov2"
-cat >"$TMP/ov2/config.yaml" <<EOF
-claude:
-  profiles:
-    personal:
-      config_dir: $TMP/logins/personal
-notes:
-  send: mail
+cat >"$TMP/ov2/config.toml" <<EOF
+[claude.profiles.personal]
+config_dir = "$TMP/logins/personal"
+[notes]
+send = "mail"
 EOF
-cat >"$TMP/ov2/config.mbp.yaml" <<EOF
-claude:
-  profiles:
-    nuzhin:
-      config_dir: $TMP/logins/nowhere
+cat >"$TMP/ov2/config.mbp.toml" <<EOF
+[claude.profiles.nuzhin]
+config_dir = "$TMP/logins/nowhere"
 EOF
-out=$(TA_HOST=mbp TA_CONFIG="$TMP/ov2/config.yaml" bash "$TA" --check 2>/dev/null)
+out=$(TA_HOST=mbp TA_CONFIG="$TMP/ov2/config.toml" bash "$TA" --check 2>/dev/null)
 contains "a problem in the overlay names the overlay" \
-   "config.mbp.yaml: claude.profiles.nuzhin.config_dir: " "$out"
-contains "...and one inherited from the base names the base" "ov2/config.yaml: notes.send: " "$out"
+   "config.mbp.toml: claude.profiles.nuzhin.config_dir: " "$out"
+contains "...and one inherited from the base names the base" "ov2/config.toml: notes.send: " "$out"
 ok "two files, two problems" 2 "$(nlines "$out")"
-out=$(TA_HOST=other TA_CONFIG="$TMP/ov2/config.yaml" bash "$TA" --check 2>/dev/null)
+out=$(TA_HOST=other TA_CONFIG="$TMP/ov2/config.toml" bash "$TA" --check 2>/dev/null)
 ok "another host sees the base alone: its one problem" 1 "$(nlines "$out")"
-contains "...which is the base's" "ov2/config.yaml: notes.send: " "$out"
+contains "...which is the base's" "ov2/config.toml: notes.send: " "$out"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

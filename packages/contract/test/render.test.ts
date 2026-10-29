@@ -17,6 +17,15 @@ test('every verb path and every flag of the contract is in cli.md', () => {
     for (const flag of Object.keys(command.options)) assert.ok(md.includes(`\`--${flag}\``), flag);
   }
   for (const [outcome, code] of Object.entries(sampleCli.exit)) assert.ok(md.includes(`| ${code} | ${outcome} |`), outcome);
+
+  // Each verb says whether a tool runs it: the tool's name for a verb that is one, CLI only for `tool: false` and for a verb that serves.
+  const none = { positionals: [], options: {}, required: [] };
+  const mixed = renderCli([{ ...sampleCli, commands: [...sampleCli.commands, { ...none, path: ['private'], summary: 'is not for a model', tool: false }, { ...none, path: ['watch'], summary: 'runs until stopped', effect: 'serve' }] }], t);
+  const sectionOf = (heading: string): string => mixed.split(/^### /m).find((section) => section.startsWith(`${heading}\n`)) ?? '';
+  assert.ok(sectionOf('session open').includes(`${t('toolLabel')}: \`demo-cli_session_open\``), 'a verb with no opt-out is a tool');
+  assert.ok(sectionOf('search').includes(`${t('toolLabel')}: \`demo-cli_search\``), 'so is a verb with positionals');
+  assert.ok(sectionOf('private').includes(t('cliOnly')) && !sectionOf('private').includes(`${t('toolLabel')}:`), '`tool: false` is CLI only');
+  assert.ok(sectionOf('watch').includes(t('cliOnly')) && !sectionOf('watch').includes(`${t('toolLabel')}:`), 'a verb that serves is CLI only');
 });
 
 test('the usage line follows the spec: positionals first, flags in spec order, required ones without brackets', () => {

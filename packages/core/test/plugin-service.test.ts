@@ -1,11 +1,6 @@
 // Running a plugin's service in-process: the half of the host a daemon uses.
 //
-// The consumer this was written for is the tg-orchestrator: its permanent entry
-// point (`node src/runner.mjs`, what launchd runs) imports its own plugin and
-// asks core to run one service of it. There is no config.yaml in that path —
-// the process already knows which plugin it is — so everything here is driven
-// the way that entry point drives it: a definition object, a context built from
-// it, one named service, and the three handles a supervisor holds.
+// The consumer this was written for is the tg-orchestrator: its permanent entry point (`node src/runner.mjs`, what launchd runs) imports its own plugin and asks core to run one service of it. There is no config.toml in that path — the process already knows which plugin it is — so everything here is driven the way that entry point drives it: a definition object, a context built from it, one named service, and the three handles a supervisor holds.
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
@@ -303,8 +298,8 @@ test('without signals:true the process keeps its own SIGTERM handling', async ()
 test('a plugin loaded from disk runs through the same two calls', async () => {
   const tmp = tmpDir('plugin-service-test');
   try {
-    const file = path.join(tmp, 'config.yaml');
-    fs.writeFileSync(file, `plugins:\n  fixture:\n    from: ${path.join(FIXTURES, 'plugin', 'good')}\n`);
+    const file = path.join(tmp, 'config.toml');
+    fs.writeFileSync(file, `[plugins.fixture]\nfrom = ${JSON.stringify(path.join(FIXTURES, 'plugin', 'good'))}\n`);
     const loaded = await loadPlugins(file);
     const plugin = loaded.plugins[0]?.def;
     assert.ok(plugin, 'the fixture plugin loads');

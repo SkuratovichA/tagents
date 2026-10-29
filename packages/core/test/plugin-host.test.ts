@@ -1,8 +1,6 @@
 // The plugin host: what it loads, and — more importantly — what it does not.
 //
-// EXPLICIT LISTING ONLY. There is a plugin package sitting in this repo's
-// fixtures; unless config.yaml names it, the host must not find it. Scanning is
-// how a machine ends up running code nobody chose.
+// EXPLICIT LISTING ONLY. There is a plugin package sitting in this repo's fixtures; unless config.toml names it, the host must not find it. Scanning is how a machine ends up running code nobody chose.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,7 +14,7 @@ const PLUGINS = path.join(FIXTURES, 'plugin');
 let tmp: string;
 
 const writeConfig = (body: string): string => {
-  const file = path.join(tmp, 'config.yaml');
+  const file = path.join(tmp, 'config.toml');
   fs.writeFileSync(file, body);
   return file;
 };
@@ -29,25 +27,54 @@ after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 test('the config dir follows TAGENTS_CONFIG_DIR, then XDG, then ~/.config', () => {
   assert.equal(configDir({ TAGENTS_CONFIG_DIR: '/x/tagents' }), '/x/tagents');
   assert.equal(configDir({ XDG_CONFIG_HOME: '/x/cfg' }), path.join('/x/cfg', 'tagents'));
-  assert.equal(configFile({ TAGENTS_CONFIG_DIR: '/x/tagents' }), '/x/tagents/config.yaml');
+  assert.equal(configFile({ TAGENTS_CONFIG_DIR: '/x/tagents' }), '/x/tagents/config.toml');
 });
 
 test('no config file at all is no plugins, not an error', async () => {
-  const missing = path.join(tmp, 'nowhere', 'config.yaml');
+  const missing = path.join(tmp, 'nowhere', 'config.toml');
   assert.deepEqual(readPluginList(missing), []);
   const loaded = await loadPlugins(missing);
   assert.deepEqual(loaded.plugins, []);
   assert.deepEqual(loaded.errors, []);
 });
 
-test('a config without a plugins: key loads nothing', async () => {
-  const file = writeConfig('accounts:\n  personal: ~/.claude\n');
+test('a config that cannot be read for any reason is no plugins', async () => {
+  const dir = path.join(tmp, 'a-directory.toml');
+  fs.mkdirSync(dir, { recursive: true });
+  assert.deepEqual(readPluginList(dir), []);
+  assert.deepEqual((await loadPlugins(dir)).errors, [], 'loading reports no error');
+  if (process.getuid?.() === 0) return;
+  const locked = writeConfig('[plugins.x]\nfrom = "/one"\n');
+  fs.chmodSync(locked, 0o000);
+  try {
+    assert.deepEqual(readPluginList(locked), []);
+    assert.deepEqual((await loadPlugins(locked)).errors, [], 'loading reports no error');
+  } finally {
+    fs.chmodSync(locked, 0o600);
+  }
+});
+
+test('a config that reads but does not parse throws, naming the file', () => {
+  const toml = writeConfig('[plugins.x\nfrom = 1\n');
+  assert.throws(() => readPluginList(toml), (e: unknown) => e instanceof Error && e.message.includes(toml));
+  const yaml = path.join(tmp, 'broken.yaml');
+  fs.writeFileSync(yaml, 'plugins:\n  x: [unclosed\n');
+  assert.throws(() => readPluginList(yaml), (e: unknown) => e instanceof Error && e.message.includes(yaml));
+});
+
+test('a good TOML config lists its plugins', () => {
+  const file = writeConfig('[plugins.a]\nfrom = "/one"\n\n[plugins.b]\nfrom = "/two"\n');
+  assert.deepEqual(readPluginList(file), [{ name: 'a', from: '/one' }, { name: 'b', from: '/two' }]);
+});
+
+test('a config without a plugins table loads nothing', async () => {
+  const file = writeConfig('[accounts]\npersonal = "~/.claude"\n');
   assert.deepEqual(readPluginList(file), []);
   assert.deepEqual((await loadPlugins(file)).plugins, []);
 });
 
 test('a listed plugin is imported through its package.json "tagents.entry"', async () => {
-  const file = writeConfig(`plugins:\n  fixture:\n    from: ${path.join(PLUGINS, 'good')}\n`);
+  const file = writeConfig(`[plugins.fixture]\nfrom = ${JSON.stringify(path.join(PLUGINS, 'good'))}\n`);
   assert.deepEqual(readPluginList(file), [{ name: 'fixture', from: path.join(PLUGINS, 'good') }]);
   const loaded = await loadPlugins(file);
   assert.deepEqual(loaded.errors, []);
@@ -61,13 +88,13 @@ test('a listed plugin is imported through its package.json "tagents.entry"', asy
   assert.deepEqual(p?.def.mcpTools?.map((m) => m.name), ['sessions_recent']);
 });
 
-test('a relative from: resolves against the config file, not the cwd', () => {
+test('a relative from resolves against the config file, not the cwd', () => {
   const rel = path.relative(tmp, path.join(PLUGINS, 'good'));
   assert.equal(resolvePackageDir(rel.startsWith('.') ? rel : `./${rel}`, tmp), path.join(PLUGINS, 'good'));
 });
 
 test('a plugin the config does not name is not loaded, however close it sits', async () => {
-  const file = writeConfig(`plugins:\n  fixture:\n    from: ${path.join(PLUGINS, 'good')}\n`);
+  const file = writeConfig(`[plugins.fixture]\nfrom = ${JSON.stringify(path.join(PLUGINS, 'good'))}\n`);
   const loaded = await loadPlugins(file);
   assert.equal(loaded.plugins.length, 1, 'the sibling fixtures under the same directory stay untouched');
   assert.ok(fs.existsSync(path.join(PLUGINS, 'bad-version', 'package.json')));
@@ -75,11 +102,10 @@ test('a plugin the config does not name is not loaded, however close it sits', a
 
 test('one broken plugin is reported, and the working ones still load', async () => {
   const file = writeConfig(
-    `plugins:\n` +
-      `  fixture:\n    from: ${path.join(PLUGINS, 'good')}\n` +
-      `  no-entry:\n    from: ${path.join(PLUGINS, 'no-entry')}\n` +
-      `  future:\n    from: ${path.join(PLUGINS, 'bad-version')}\n` +
-      `  absent:\n    from: ${path.join(tmp, 'not-here')}\n`
+    `[plugins.fixture]\nfrom = ${JSON.stringify(path.join(PLUGINS, 'good'))}\n` +
+      `[plugins.no-entry]\nfrom = ${JSON.stringify(path.join(PLUGINS, 'no-entry'))}\n` +
+      `[plugins.future]\nfrom = ${JSON.stringify(path.join(PLUGINS, 'bad-version'))}\n` +
+      `[plugins.absent]\nfrom = ${JSON.stringify(path.join(tmp, 'not-here'))}\n`
   );
   const loaded = await loadPlugins(file);
   assert.deepEqual(loaded.plugins.map((p) => p.name), ['fixture']);
@@ -94,7 +120,7 @@ test('definePlugin is the identity, and it types what it returns', () => {
   assert.deepEqual(def, { name: 'x', apiVersion: 1 });
 });
 
-test('a relative from: that misses lexically resolves through a symlinked config dir', () => {
+test('a relative from that misses lexically resolves through a symlinked config dir', () => {
   const real = path.join(tmp, 'sym-real', 'dotfiles', 'config');
   const link = path.join(tmp, 'sym-home', 'tagents');
   fs.mkdirSync(real, { recursive: true });

@@ -105,42 +105,39 @@ chmod +x "$BIN/claude" "$BIN/tusage"
 # problem puts an extra item in the header these checks measure the width of.
 LOGIN="$ROOT/claude-personal"
 mkdir -p "$LOGIN"; : >"$LOGIN/.claude.json"
-CFG="$ROOT/config.yaml"
+CFG="$ROOT/config.toml"
 cat >"$CFG" <<EOF
-claude:
-  profiles:
-    personal:
-      config_dir: $LOGIN
-    work:
+[claude.profiles.personal]
+config_dir = "$LOGIN"
+
+[claude.profiles.work]
 EOF
 # ...and the same two with a badge written out by hand, two characters wide.
-CFG2="$ROOT/config-badge.yaml"
+CFG2="$ROOT/config-badge.toml"
 cat >"$CFG2" <<EOF
-claude:
-  profiles:
-    personal:
-      config_dir: $LOGIN
-      badge: PP
-    work:
+[claude.profiles.personal]
+config_dir = "$LOGIN"
+badge = "PP"
+
+[claude.profiles.work]
 EOF
 
 # ...and one that ignores the one-or-two-character promise outright.
-CFG3="$ROOT/config-long.yaml"
+CFG3="$ROOT/config-long.toml"
 cat >"$CFG3" <<EOF
-claude:
-  profiles:
-    personal:
-      config_dir: $LOGIN
-      badge: personal!
-    work:
+[claude.profiles.personal]
+config_dir = "$LOGIN"
+badge = "personal!"
+
+[claude.profiles.work]
 EOF
 
 # ...and the first one with usage.watch set, for the checks about the cost
 # column only: without a watch there is no column to show or hide. The list in
 # the throwaway server keeps $CFG, since a watch also puts a footer under it and
 # that needs an fzf new enough for --footer.
-CFGW="$ROOT/config-watch.yaml"
-{ cat "$CFG"; printf 'usage:\n  watch: personal\n'; } >"$CFGW"
+CFGW="$ROOT/config-watch.toml"
+{ cat "$CFG"; printf '\n[usage]\nwatch = "personal"\n'; } >"$CFGW"
 
 # EXPORTED BEFORE THE SERVER EXISTS. A tmux server keeps the environment it was
 # started with and hands it to every command it runs, so anything the list or an
@@ -293,9 +290,9 @@ ok "...at the width where it did the damage, too" "pe " \
    "$(cell %8001 "$(rows_at 45 TA_CONFIG="$CFG3")" repo)"
 
 # With nothing configured there is no column at all — not an empty one.
-NOCFG=$(rows_at 140 TA_CONFIG=/nonexistent/config.yaml)
+NOCFG=$(rows_at 140 TA_CONFIG=/nonexistent/config.toml)
 ok "no profiles, no column"       "" "$(cell %8001 "$NOCFG" repo)"
-ok "...at every width"            "" "$(cell %8001 "$(rows_at 60 TA_CONFIG=/nonexistent/config.yaml)" repo)"
+ok "...at every width"            "" "$(cell %8001 "$(rows_at 60 TA_CONFIG=/nonexistent/config.toml)" repo)"
 
 # ...and nothing else is on the rows either. With no profiles there is no badge
 # column, and with no usage watched there is no context, cost or model column
@@ -320,7 +317,7 @@ $W0\t  └─ bash\tnone\t\tREPO
 EOF
 )")
 ok "no config: no badge, context, cost or model column, and the others as wide as their widest value" \
-   "$want" "$(rows_at 140 TA_CONFIG=/nonexistent/config.yaml | awk -F'\t' -v k="$DWIN" '$1 != k' | agenorm)"
+   "$want" "$(rows_at 140 TA_CONFIG=/nonexistent/config.toml | awk -F'\t' -v k="$DWIN" '$1 != k' | agenorm)"
 
 # THE CASE THE WIDTH TABLE GOT WRONG: a pane of about 95 columns with no usage tracked. The table dropped the location below its breakpoint and kept six columns for a context figure that never comes, so the row lost the one thing that says where the agent is and spent the room on blanks. Now nothing is reserved for a column with no values in it, and the location stays.
 NINETY=$(row_of "$A" "$(rows_at 95 TA_CONFIG="$CFG")" | agenorm)
@@ -743,11 +740,11 @@ t "7. every key comes out of the config"
 # ---------------------------------------------------------------------------
 # A key moved in the config is the key fzf is handed and the key the ? window
 # lists — one answer, arrived at once, in both places. The config also holds a key of a verb that is gone (borrow): it is ignored, neither an error nor bound.
-KCFG="$ROOT/keys-good.yaml"
+KCFG="$ROOT/keys-good.toml"
 cat >"$KCFG" <<'YEOF'
-keys:
-  closed: ctrl-o
-  borrow: ctrl-y
+[keys]
+closed = "ctrl-o"
+borrow = "ctrl-y"
 YEOF
 KDUMP=$(dumpargs "$ROOT/fzf-keys" "TA_CONFIG='$KCFG'")
 has "a configured key is the one fzf binds" \
@@ -759,8 +756,8 @@ hasnt "...and lists no borrow"        "borrow" "$KT"
 
 # A KEY FZF DOES NOT KNOW WOULD STOP IT STARTING, so it never reaches fzf: the
 # default is kept and the reason is said out loud.
-BCFG="$ROOT/keys-bogus.yaml"
-printf 'keys:\n  closed: bogus\n' >"$BCFG"
+BCFG="$ROOT/keys-bogus.toml"
+printf '[keys]\nclosed = "bogus"\n' >"$BCFG"
 BDUMP=$(dumpargs "$ROOT/fzf-bogus" "TA_CONFIG='$BCFG'")
 has "an unusable key falls back to the default" \
     "--bind=ctrl-y:execute-silent($SELF --act closed {1})" "$BDUMP"
@@ -771,8 +768,8 @@ has "...and --keys says why" \
     "$(env TMUX="$TMUXV" TA_CONFIG="$BCFG" bash "$TA" --keys)"
 
 # THE SHELL KEY MOVED: ctrl-a is its default, and a config that gives it alt-s leaves ctrl-a bound to nothing.
-SCFG="$ROOT/keys-shell.yaml"
-printf 'keys:\n  shell: alt-s\n' >"$SCFG"
+SCFG="$ROOT/keys-shell.toml"
+printf '[keys]\nshell = "alt-s"\n' >"$SCFG"
 SDUMP=$(dumpargs "$ROOT/fzf-shell" "TA_CONFIG='$SCFG'")
 has "shell: alt-s binds alt-s to a shell window" \
     "--bind=alt-s:execute-silent($SELF --act shell {1} {3} {4} {5})" "$SDUMP"
@@ -781,13 +778,13 @@ ok  "...and nothing is bound to ctrl-a" 0 \
 has "...and --keys lists alt-s for shell" "alt-s${TAB}shell" \
     "$(env TMUX="$TMUXV" TA_CONFIG="$SCFG" bash "$TA" --keys)"
 has "the default binds ctrl-a" "--bind=ctrl-a:execute-silent($SELF --act shell {1} {3} {4} {5})" \
-    "$(dumpargs "$ROOT/fzf-shell0" "TA_CONFIG='$ROOT/none.yaml'")"
+    "$(dumpargs "$ROOT/fzf-shell0" "TA_CONFIG='$ROOT/none.toml'")"
 
 # TWO VERBS ON ONE KEY IS ONE VERB GONE — fzf keeps the last --bind silently, so
 # the collision is settled here instead: the verb that owns the key by the
 # table's order keeps it, and the late one goes back to its own default.
-CCFG="$ROOT/keys-clash.yaml"
-printf 'keys:\n  send: ctrl-g\n' >"$CCFG"
+CCFG="$ROOT/keys-clash.toml"
+printf '[keys]\nsend = "ctrl-g"\n' >"$CCFG"
 CDUMP=$(dumpargs "$ROOT/fzf-clash" "TA_CONFIG='$CCFG'")
 has "the verb that had the key keeps it" \
     "--bind=ctrl-g:execute-silent($SELF --act goto {1} {3} {4} {5} {2})" "$CDUMP"
@@ -838,13 +835,12 @@ t "9. a wrong config is on the dashboard, and in the status bar"
 # keeper client attached on an 80x24 pty, window-size=latest makes every new
 # window 80 wide whatever -x asks for. Last, so the list it draws disturbs
 # nothing above.
-BROKEN="$ROOT/config-broken.yaml"
+BROKEN="$ROOT/config-broken.toml"
 cat >"$BROKEN" <<EOF
-claude:
-  profiles:
-    personal:
-      config_dir: $ROOT/claude-nowhere
-    work:
+[claude.profiles.personal]
+config_dir = "$ROOT/claude-nowhere"
+
+[claude.profiles.work]
 EOF
 tm new-session -d -s tatest-cfg -x 220 -y 50 -c "$REPO" "exec bash --noprofile --norc" 2>/dev/null
 tm set -w -t tatest-cfg: window-size manual 2>/dev/null
@@ -875,11 +871,10 @@ has "a second call agrees with the first" "cfg!1" \
 mkdir -p "$ROOT/claude-nowhere"; : >"$ROOT/claude-nowhere/.claude.json"
 sleep 1   # mtime is the key and it is kept in seconds
 cat >"$BROKEN" <<EOF
-claude:
-  profiles:
-    personal:
-      config_dir: $ROOT/claude-nowhere
-    work:
+[claude.profiles.personal]
+config_dir = "$ROOT/claude-nowhere"
+
+[claude.profiles.work]
 EOF
 hasnt "fixing the config clears it on the next call" "cfg!" \
       "$(env TMUX="$TMUXV" TA_CONFIG="$BROKEN" bash "$TA" --counts 2>/dev/null)"

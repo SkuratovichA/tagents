@@ -4,6 +4,9 @@
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
+# Set by the entry points of --new and --window when their first word is --detach: the window is made and left where it is, no dialog is opened and nothing is selected or switched to. Reset here so that nothing in the environment can switch it on.
+LAUNCH_DETACH=""
+
 # Tall enough for the profiles plus the three header lines, the prompt and a
 # little air: a picker that scrolls when it is showing three things reads as
 # broken.
@@ -173,22 +176,29 @@ launch_session() {  # <root> -> session name
   printf '%s\n' "$sess"
 }
 
-# The one place a window is created, for a chat and a shell alike; prints the new pane id, its status is tmux's. -d so the window is not selected as a side effect of being created; -c always, because a window made from a command client starts in the caller's directory without it; no command means tmux's default shell.
+# The one place a window is created, for a chat and a shell alike; prints the new pane id, its status is tmux's. -d so the window is not selected as a side effect of being created; -c always, because a window made from a command client starts in the caller's directory without it; no command means tmux's default shell; `--` ends tmux's own options, so a command that starts with a dash is the command and not a flag.
 # The last resort session does not exist yet (no tmux server running, or none with a session): it is created with the window as its first. Any other name that is gone is a session killed under the caller, and it stays gone.
 new_pane_window() {  # <session> <dir> [cmd]
   local sess=$1 dir=$2 cmd=${3:-}
   if [ "$sess" = "$LAST_RESORT_SESSION" ] && ! tmux has-session -t "=$sess" 2>/dev/null; then
-    tmux new-session -d -s "$sess" -P -F '#{pane_id}' -c "$dir" ${cmd:+"$cmd"} 2>/dev/null
+    tmux new-session -d -s "$sess" -P -F '#{pane_id}' -c "$dir" ${cmd:+-- "$cmd"} 2>/dev/null
   else
-    tmux new-window -d -t "=$sess:" -P -F '#{pane_id}' -c "$dir" ${cmd:+"$cmd"} 2>/dev/null
+    tmux new-window -d -t "=$sess:" -P -F '#{pane_id}' -c "$dir" ${cmd:+-- "$cmd"} 2>/dev/null
   fi
+}
+
+# Says why a launch was refused. The tmux message is for a person at the keyboard; a caller that passed --detach is a program, and what it can read is standard error and the exit status, so there the reason goes to standard error as well and a failed tool call carries its reason.
+launch_refusal() {  # <message>
+  [ -z "$LAUNCH_DETACH" ] || echo "$1" >&2
+  notice "$1"
 }
 
 # ctrl-n: start a fresh Claude for the project under the cursor, as a new window of <session> (the group the cursor is in). With no session given (`tagents --new`, or the cursor on the group `no window`) the session that owns the project, else the client's, else the current. The directory is normalised to the repo root, so a session started from ~/repo/packages/client makes the new agent a sibling in ~/repo rather than burying it in a subdirectory the tree would file separately.
 new_agent() {  # <dir> [profile] [session]
-  local dir=${1:-} prof=${2:-} sess=${3:-} root
+  local dir=${1:-} prof=${2:-} sess=${3:-} root abs
   [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
-  [ -d "$dir" ] || { notice "tagents: $dir is not a directory"; return 1; }
+  abs=$(abs_dir "$dir") || { launch_refusal "tagents: $dir is not a directory"; return 1; }
+  dir=$abs
   # A NAME THAT CAME FROM A HUMAN IS CHECKED FIRST, before a window is created for it. profile_for only ever returns names the config already has; `tagents --new <dir> personl` used to sail straight through to a launch on the default account, which is the exact silent wrong login all of this exists to end. Not profile_named: nothing is being skipped here, the launch is refused. `ask` passes — it is not a profile, it is the instruction to ask for one.
   if [ -n "$prof" ] && [ "$prof" != ask ] && ! profile_exists "$prof"; then
     echo "tagents: no claude profile \"$prof\" in $CONFIG_FILE" >&2
@@ -200,6 +210,11 @@ new_agent() {  # <dir> [profile] [session]
   # The session name is worked out first because a rule may match on it: an agent for a project that lives in the "work" tmux session is a work agent whatever its directory looks like.
   [ -n "$prof" ] || prof=$(profile_for "$root" "$sess") || prof=""
   if [ "$prof" = ask ]; then
+    # A caller with no screen to answer on cannot be shown the dialog: it is told which accounts there are and asked again with one.
+    if [ -n "$LAUNCH_DETACH" ]; then
+      echo "tagents: the config asks which account $root runs on, and --detach opens no dialog; name one of: $(cfg_children claude.profiles | paste -sd' ' -)" >&2
+      return 2
+    fi
     prompt "$(ask_height)" --ask-profile new "$root" "$sess" && return 0
     ask_profile new "$root" "$sess"
     return 0
@@ -237,23 +252,53 @@ new_shell() {  # <dir> [session]
   notice "tagents: new shell in $(basename "$(tilde_of "$dir")") ($sess:$idx)"
 }
 
+# A directory made absolute, printed; it fails for a name that is not a directory (an empty one is not: `[ -d "" ]` is false) and for a directory that cannot be entered (no search permission), which norm_dir alone would hand back as it was typed, possibly relative. The path is the PHYSICAL one (norm_dir), because tmux's pane_current_path and the session lookup compare physical paths. A relative name is the caller's, and everything downstream of a launch (the repository root, the session that owns it, tmux's `-c`) reads it as a path, so it is resolved here, once. CDPATH is emptied, or a relative name could be looked up elsewhere and `cd` would print where it went into the substitution.
+abs_dir() {  # <dir>
+  [ -d "$1" ] && (CDPATH= cd -- "$1") 2>/dev/null && norm_dir "$1"
+}
+
+# The line a caller finds its new window by: the pane, a tab, and where it is as session:window index. `--window` always prints it, `--new` only with `--detach`, whose caller is a program that cannot look at the screen.
+window_line() {  # <pane> <session> <index>
+  printf '%s\t%s:%s\n' "$1" "$2" "$3"
+}
+
+# `tagents --window [--detach] DIR COMMAND`: the twin of --new for anything that is not an agent, from outside the list. COMMAND is one string the window's shell runs, so the window closes when it ends: a long-running command is what this is for, and a bare `ls` is gone before anyone sees it. The window goes where a chat for DIR would, the session that owns it, is shown like any new window (open_agent) unless --detach, and the line printed is the new pane and where it is, TAB-separated, for a caller that wants to find it again. Exactly two words: a command typed without quotes arrives as several, and the extra ones would be dropped without a word.
+new_window() {  # <dir> <command>
+  local dir cmd root sess pane idx
+  if [ $# -ne 2 ] || [ -z "$1" ] || [ -z "$2" ]; then
+    echo "tagents: --window takes a directory and one command, quoted" >&2
+    return 2
+  fi
+  cmd=$2
+  dir=$(abs_dir "$1") || { echo "tagents: $1 is not a directory" >&2; return 1; }
+  root=$(repo_root "$dir") || root=$dir
+  sess=$(launch_session "$root")
+  pane=$(new_pane_window "$sess" "$dir" "$cmd")
+  [ -n "$pane" ] || { echo "tagents: could not open a window in $sess" >&2; return 1; }
+  idx=$(tmux display -p -t "$pane" '#{window_index}' 2>/dev/null)
+  [ -n "$LAUNCH_DETACH" ] || open_agent "$pane"
+  notice "tagents: new window in $(basename "$(tilde_of "$dir")") ($sess:$idx)"
+  window_line "$pane" "$sess" "$idx"
+}
+
 # The one place a fresh agent gets a window. Both entry points come through here so the command, the message and the "it is selected like any row" policy are decided once.
 start_agent() {  # <root> <session> <profile>
   local root=$1 sess=$2 prof=${3:-} newpane idx cmd
   # Built before the window exists: agent_cmd refuses a profile it cannot account for, and a window on an empty command string would be a bare shell where an agent was asked for.
   cmd=$(agent_cmd "$prof" new) || {
-    notice "tagents: no claude profile \"$prof\" in $CONFIG_FILE"
+    launch_refusal "tagents: no claude profile \"$prof\" in $CONFIG_FILE"
     return 1; }
   # -d so the window is not selected as a side effect of being created, half built and before its pane id is even known; it is selected once, deliberately, below.
   # The last resort session does not exist yet (no tmux server running, or none with a session): it is created with the chat as its first window. Any other name that is gone is a session killed under the caller, and it stays gone.
   newpane=$(new_pane_window "$sess" "$root" "$cmd")
   [ -n "$newpane" ] || {
-    notice "tagents: could not open a window in $sess"; return 1; }
+    launch_refusal "tagents: could not open a window in $sess"; return 1; }
   idx=$(tmux display -p -t "$newpane" '#{window_index}' 2>/dev/null)
-  # OPENED LIKE ANY OTHER AGENT: the viewport shows it and the cursor is on its row. Asking for an agent from the list and being left looking at the previous one was never what the key meant. With no dashboard up the client is simply taken to the new window.
-  open_agent "$newpane"
+  # OPENED LIKE ANY OTHER AGENT: the viewport shows it and the cursor is on its row. Asking for an agent from the list and being left looking at the previous one was never what the key meant. With no dashboard up the client is simply taken to the new window. A detached start leaves everything where it was.
+  [ -n "$LAUNCH_DETACH" ] || open_agent "$newpane"
   resurrect_soon
   notice \
     "tagents: new agent in $(basename "$root") ($sess:$idx)${prof:+ as $prof}"
+  [ -z "$LAUNCH_DETACH" ] || window_line "$newpane" "$sess" "$idx"
   return 0
 }

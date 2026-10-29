@@ -53,8 +53,12 @@
           "enum": ["rust", "node"]
         },
         "effect": {
-          "description": "Optional extra string kept for tooling that classifies verbs. The front door and the node CLI ignore it.",
-          "type": "string"
+          "description": "What running the verb does, for whoever decides whether to let it run: a person reading a permission prompt, or a client sorting tools by their hints. read changes nothing, write changes files, settings or what is on the screen, spawn starts a program or a window that does things of its own (a Claude turn, a Claude session in a window, a command), destructive removes or stops something that cannot be got back, and serve runs until it is stopped, so it is no request/response verb and gets no tool. A verb without one is treated as the least safe kind by everything that reads it. The contract generator reads it; the front door only checks it.",
+          "enum": ["read", "write", "spawn", "destructive", "serve"]
+        },
+        "tool": {
+          "description": "false keeps the verb out of the plugin's tools: it stays a CLI verb, in the contract and the references. Absent means the verb is a tool.",
+          "const": false
         }
       }
     },
