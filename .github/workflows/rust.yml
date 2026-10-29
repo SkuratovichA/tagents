@@ -11,6 +11,13 @@ on:
       - spec/**
       - packages/core/**
       - tests/rust-parity.sh
+      - tests/dispatch.sh
+      - tests/install.sh
+      - install.sh
+      - tagents
+      - .node-version
+      - package.json
+      - pnpm-lock.yaml
       - tests/rust-parity-seed.mts
       - .github/workflows/rust.yml
   pull_request:
@@ -22,6 +29,13 @@ on:
       - spec/**
       - packages/core/**
       - tests/rust-parity.sh
+      - tests/dispatch.sh
+      - tests/install.sh
+      - install.sh
+      - tagents
+      - .node-version
+      - package.json
+      - pnpm-lock.yaml
       - tests/rust-parity-seed.mts
       - .github/workflows/rust.yml
 
@@ -38,9 +52,9 @@ jobs:
       - name: Formatting
         run: cargo fmt --all --check
       - name: Lints, tests included
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit and integration tests
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
