@@ -14,9 +14,15 @@ on:
         required: true
         type: string
   pull_request:
+    # The workflow and its scripts, and what the binary is built from: the paths is_input in .github/scripts/core-release.sh accepts, so that a link failure of the musl build or a failed cross-build shows on the pull request and not when the tag is pushed. tests/release.sh pins this list to is_input.
     paths:
       - .github/workflows/release.yml
       - .github/scripts/**
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - crates/**
+      - spec/cli/**
 
 permissions:
   contents: read
@@ -36,6 +42,9 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # The commit the rules were checked on: build checks out this one, so a tag moved after verify is not built unverified.
+    outputs:
+      sha: ${{ steps.head.outputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -44,6 +53,9 @@ jobs:
           persist-credentials: false
       - name: The tag is the workspace version of this commit, and the commit is on main
         run: sh .github/scripts/core-release.sh verify "$TAG" origin/main
+      - name: Write down the commit that was verified
+        id: head
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: No release exists for the tag
         env:
           GH_TOKEN: ${{ github.token }}
@@ -86,7 +98,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.sha || format('refs/tags/{0}', env.TAG) }}
+          ref: ${{ github.event_name == 'pull_request' && github.sha || needs.verify.outputs.sha }}
           persist-credentials: false
       - name: Install the toolchain rust-toolchain.toml pins
         run: rustup toolchain install
