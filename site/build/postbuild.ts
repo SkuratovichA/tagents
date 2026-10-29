@@ -18,6 +18,8 @@ if (site.domain !== null) await writeFile(join(outDir, 'CNAME'), `${site.domain}
 
 console.log(
   `postbuild: robots.txt, .nojekyll` +
-    (sitemapUrl === null ? '' : `, sitemap.xml with ${urls.length} page`) +
+    (sitemapUrl === null
+      ? ''
+      : `, sitemap.xml with ${urls.length} ${urls.length === 1 ? 'page' : 'pages'}`) +
     (site.domain === null ? '' : `, CNAME ${site.domain}`),
 )

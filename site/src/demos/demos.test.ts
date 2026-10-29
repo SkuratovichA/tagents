@@ -10,6 +10,9 @@ const GLYPHS = new Set(
   readFileSync(resolve(import.meta.dirname, '../../public/fonts/glyphs.txt'), 'utf8').trimEnd(),
 )
 const COLOUR = /^#[0-9a-f]{6}$/
+// A user's directory, a scratch directory, a host on the local network, an e-mail address.
+const PRIVATE = /\/Users\/|\/tmp\/|\/home\/|\/private\/|[\w-]+\.local\b|[\w.+-]+@[\w-]+\.[\w.-]+/
+
 const textOf = (row: Row) => row.map(([text]) => text).join('')
 
 describe.each(DEMOS.map((scene) => [scene.id, scene] as const))(
@@ -63,7 +66,7 @@ describe.each(DEMOS.map((scene) => [scene.id, scene] as const))(
     it('shows the dashboard on its last frame, with nothing of the machine it was recorded on', () => {
       const screen = screenAt(scene).map(textOf).join('\n')
       expect(screen).toContain('agents>')
-      expect(JSON.stringify(scene)).not.toMatch(/\/Users\/|\/tmp\/|\/home\//)
+      expect(JSON.stringify(scene)).not.toMatch(PRIVATE)
     })
   },
 )

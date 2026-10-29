@@ -14,7 +14,11 @@ const publicDir = resolve(here, '..', '..', 'public', 'mascot')
 /** The sprite's width in pixels; the height follows from the picture's own proportions. */
 const COLUMNS = 48
 
-/** One letter per colour, sampled from source/pikachu.png. */
+const LETTERS = ['K', 'E', 'Y', 'S', 'H', 'C', 'T', 'W'] as const
+
+type Letter = (typeof LETTERS)[number]
+
+/** One letter per colour, sampled from source/pikachu.png. `satisfies` makes the list above and this table name the same letters. */
 const COLORS = {
   K: '#3a0d04', // outline
   E: '#7c1b01', // eyes, nose, ear tips
@@ -24,11 +28,7 @@ const COLORS = {
   C: '#d5430f', // cheeks
   T: '#fa6f4b', // mouth
   W: '#f0e0e2', // shine of the eyes
-} as const
-
-type Letter = keyof typeof COLORS
-
-const LETTERS = Object.keys(COLORS) as Letter[]
+} as const satisfies Record<Letter, string>
 
 /** The share of a cell that has to be outline for the cell to be outline: on the silhouette a thin line must survive the shrinking, inside it only a cell that is mostly line is. */
 const OUTLINE_SHARE_AT_EDGE = 0.14
@@ -88,12 +88,11 @@ function backgroundOf(picture: Picture): Uint8Array {
   return background
 }
 
-function hexToRgb(hex: string) {
-  return [1, 3, 5].map((start) => Number.parseInt(hex.slice(start, start + 2), 16)) as [
-    number,
-    number,
-    number,
-  ]
+function hexToRgb(hex: string): readonly [number, number, number] {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
+  if (match === null) throw new Error(`${hex} is not a #rrggbb colour`)
+  const [, r = '', g = '', b = ''] = match
+  return [Number.parseInt(r, 16), Number.parseInt(g, 16), Number.parseInt(b, 16)]
 }
 
 function nearestLetter(r: number, g: number, b: number): Letter {
