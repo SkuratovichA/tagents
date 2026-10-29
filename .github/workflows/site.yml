@@ -1,6 +1,6 @@
 name: site
 
-# The one-page site in site/ and the documentation in docs/, built and checked together and published on GitHub Pages as one deployment: the page at / and the documentation under /docs/. A pull request builds and checks both and publishes nothing; a push to main publishes. It runs when the site, the documentation, this file or the pinned Node version changes.
+# The one-page site in site/ and the documentation in docs/, built and checked together and published on GitHub Pages as one deployment: the page at / and the documentation under /docs/. A pull request builds and checks both and publishes nothing; a push to main publishes. It runs when the site, the documentation, this file, the pinned Node version or the root `package.json` (which pins VitePress) or `README.md` (whose install command the page repeats) changes.
 on:
   push:
     paths:
@@ -8,12 +8,16 @@ on:
       - 'docs/**'
       - '.github/workflows/site.yml'
       - '.node-version'
+      - 'package.json'
+      - 'README.md'
   pull_request:
     paths:
       - 'site/**'
       - 'docs/**'
       - '.github/workflows/site.yml'
       - '.node-version'
+      - 'package.json'
+      - 'README.md'
   workflow_dispatch:
 
 permissions:
@@ -57,7 +61,10 @@ jobs:
       # VitePress builds the documentation with its base set to /docs/ (docs/.vitepress/config.mjs), and the copy puts it where the link check and the deployment expect it. The check reads the pages of the site and only resolves the links into docs/.
       - run: pnpm docs:build
         working-directory: .
-      - run: mkdir -p site/dist/client/docs && cp -R docs/.vitepress/dist/. site/dist/client/docs/
+      - run: |
+          if [ -e site/dist/client/docs ]; then echo "::error::the site build wrote site/dist/client/docs, which belongs to the documentation: see prerender.filter" >&2; exit 1; fi
+          mkdir -p site/dist/client/docs
+          cp -R docs/.vitepress/dist/. site/dist/client/docs/
         working-directory: .
       - run: pnpm check:links
 
