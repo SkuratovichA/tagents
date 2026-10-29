@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Where the config file is
-The config file SHALL be `$TA_CONFIG` when that is set, else in `$XDG_CONFIG_HOME/tagents` or `~/.config/tagents` the first of `config.toml` and `config.yaml` that is a readable file, else `config.toml` as the path that messages name. A file named by `$TA_CONFIG` is read as TOML when its name ends in `.toml` and as YAML otherwise. The file is optional: without it nothing it controls happens, and every agent is started exactly as it always was (a plain `claude --dangerously-skip-permissions`, environment inherited, no dialog ever).
+The config file SHALL be `$TA_CONFIG` when that is set, else in `$XDG_CONFIG_HOME/tagents` or `~/.config/tagents` the first of `config.toml` and `config.yaml` that is a readable file, else `config.toml` as the path that messages name. A file named by `$TA_CONFIG` is read as TOML when its name ends in `.toml` and as YAML otherwise.
 
 #### Scenario: Default location
 - **WHEN** neither `TA_CONFIG` nor `XDG_CONFIG_HOME` is set and `~/.config/tagents/config.toml` exists
@@ -33,15 +33,11 @@ Programs built on `@tagents/core` SHALL look for the config in the directory `$T
 - **AND** with only `XDG_CONFIG_HOME=/x/cfg` the directory is `/x/cfg/tagents`
 
 ### Requirement: Printing the config as read
-`tagents --config` SHALL print the effective config (the file with the per-machine overlay laid over it) as one `path<TAB>value` line per leaf, in file order, on stdout, and exit 0. Table and mapping keys are joined by dots and array and sequence items are numbered from 0, so a rule's directory is `claude.rules.0.dir`. A key with nothing under it prints with an empty value. Every value prints as text: a TOML `true`, `850` and `"850"` print as `true`, `850` and `850`. Warnings about lines the parser refused go to stderr, never into the data. A YAML config and the TOML a conversion made of it print identical lines.
+`tagents --config` SHALL print the effective config (the file with the per-machine overlay laid over it) as one `path<TAB>value` line per leaf, in file order, on stdout, and exit 0. Table and mapping keys are joined by dots and array and sequence items are numbered from 0, so a rule's directory is `claude.rules.0.dir`. A key with nothing under it prints with an empty value.
 
 #### Scenario: The shipped example
 - **WHEN** `tagents --config` runs on `config.example.toml`
 - **THEN** it prints leaves such as `claude.args.0<TAB>--dangerously-skip-permissions`, `claude.profiles.work<TAB>` (empty) and `claude.rules.0.profile<TAB>personal`
-
-#### Scenario: A conversion reads the same
-- **WHEN** `tagents --config` runs on the YAML example and on the file `tagents config convert` made of it
-- **THEN** the two outputs are byte for byte the same
 
 #### Scenario: Exit code with problems
 - **WHEN** the file has a profile pointing at a directory that does not exist
@@ -84,12 +80,7 @@ In a YAML config, tab indentation, flow style (`{}` or `[]` as a value), block s
 - **THEN** it is refused with `flow style is not supported`
 
 ### Requirement: The per-machine overlay
-`config.<host>.toml` beside the config file (the file's name with its extension replaced by `.<host>.toml`) SHALL be laid over the base file, where `<host>` is the short hostname (`hostname -s`) or `TA_HOST` when that is set. When there is no `config.<host>.toml`, a `config.<host>.yaml` in the same place is used instead. Each overlay is read by the reader its own extension picks, whichever format the base file is in. Every subtree of two path segments that the overlay mentions (`claude.profiles`, `claude.rules`, `notes.send`, …) SHALL replace the base's subtree wholesale, never merged; everything else is inherited.
-
-#### Scenario: Replaced, not merged
-- **WHEN** the base defines profiles `personal` and `work`, and `config.mbp.toml` defines profiles `sasha` and `nuzhin` and one rule
-- **THEN** on host `mbp` the effective config has profiles `sasha` and `nuzhin` only, and the overlay's one rule only
-- **AND** `claude.args`, `notes.send` and `usage.*` are inherited from the base
+`config.<host>.toml` beside the config file (the file's name with its extension replaced by `.<host>.toml`) SHALL be laid over the base file, where `<host>` is the short hostname (`hostname -s`) or `TA_HOST` when that is set. When there is no `config.<host>.toml`, a `config.<host>.yaml` in the same place is used instead. Each overlay is read by the reader its own extension picks, whichever format the base file is in.
 
 #### Scenario: A YAML overlay
 - **WHEN** only `config.mbp.yaml` exists beside a `config.toml`
@@ -102,10 +93,6 @@ In a YAML config, tab indentation, flow style (`{}` or `[]` as a value), block s
 #### Scenario: Another machine
 - **WHEN** the host is `other` and there is no `config.other.toml` or `config.other.yaml`
 - **THEN** the effective config is the base alone
-
-#### Scenario: A base profile is unknown here
-- **WHEN** the overlay replaced the profiles and `tagents --agent-cmd personal new` names a base-only profile
-- **THEN** the command fails with exit 1
 
 ### Requirement: Keys the file carries
 The file SHALL carry these top-level sections, each read by the capability named: `claude` (args, profiles, rules, default; `accounts`), `usage` (watch, monthly_limit_usd, safety_margin_pct, workdays, meter; `usage-accounting`), `notes` (send; `notes-workspace`), `resurrect` (auto, every, notes; `resurrect`), `keys` (`dashboard-keys`), `plugins` (`plugin-system`) and `knowledge` (dir; `knowledge`). A key this version does not read SHALL be ignored.
@@ -138,6 +125,40 @@ The status bar SHALL NOT re-check the config on every redraw. It SHALL remember 
 - **THEN** the status bar shows no marker and the stamp is gone
 
 ## ADDED Requirements
+
+### Requirement: The config file is optional
+The config file SHALL be optional: without it nothing it controls happens, and every agent is started exactly as it always was (a plain `claude --dangerously-skip-permissions`, environment inherited, no dialog ever).
+
+#### Scenario: No config file
+- **WHEN** neither `config.toml` nor `config.yaml` exists
+- **THEN** `tagents --agent-cmd` starts a plain `claude --dangerously-skip-permissions` with the environment inherited, and no dialog opens
+
+### Requirement: The config dump prints text only
+Every value in the `tagents --config` output SHALL print as text: a TOML `true`, `850` and `"850"` print as `true`, `850` and `850`. Warnings about lines the parser refused SHALL go to stderr, never into the data. A YAML config and the TOML a conversion made of it SHALL print identical lines.
+
+#### Scenario: Types print as text
+- **WHEN** the file says `workdays = true`, `monthly_limit_usd = 850` and `note = "850"`
+- **THEN** the lines end in `true`, `850` and `850`
+
+#### Scenario: A warning stays out of the data
+- **WHEN** the file has a line the parser refuses
+- **THEN** the warning goes to stderr and stdout holds only `path<TAB>value` lines
+
+#### Scenario: A conversion reads the same
+- **WHEN** `tagents --config` runs on the YAML example and on the file `tagents config convert` made of it
+- **THEN** the two outputs are byte for byte the same
+
+### Requirement: An overlay replaces whole subtrees
+Every subtree of two path segments that the per-machine overlay mentions (`claude.profiles`, `claude.rules`, `notes.send`, …) SHALL replace the base's subtree wholesale, never merged; everything else is inherited.
+
+#### Scenario: Replaced, not merged
+- **WHEN** the base defines profiles `personal` and `work`, and `config.mbp.toml` defines profiles `sasha` and `nuzhin` and one rule
+- **THEN** on host `mbp` the effective config has profiles `sasha` and `nuzhin` only, and the overlay's one rule only
+- **AND** `claude.args`, `notes.send` and `usage.*` are inherited from the base
+
+#### Scenario: A base profile is unknown here
+- **WHEN** the overlay replaced the profiles and `tagents --agent-cmd personal new` names a base-only profile
+- **THEN** the command fails with exit 1
 
 ### Requirement: The TOML subset
 A config file that is read as TOML SHALL be read as a deliberate subset of TOML: tables `[a.b]`, arrays of tables `[[a.b]]` (the items are numbered from 0 under the table's path), `key = value` lines with bare, quoted or dotted keys, `#` comments, basic and literal strings, decimal numbers, the booleans `true` and `false`, and one-line arrays and inline tables of those. A CRLF file reads as its LF twin.
@@ -224,8 +245,8 @@ When `config.toml` and `config.yaml` are both in the config directory, tagents S
 - **THEN** `config.toml` exists beside `config.yaml`, `config.yaml` is byte for byte unchanged, and the exit code is 0
 
 #### Scenario: The permission bits of the source
-- **WHEN** `config.yaml` has mode 0600 and `tagents config convert --write` runs
-- **THEN** `config.toml` has mode 0600
+- **WHEN** `config.yaml` has mode 0640 and `tagents config convert --write` runs under a umask of 022
+- **THEN** `config.toml` has the mode of the source as the umask masks it, 0640
 
 #### Scenario: A write that fails halfway
 - **WHEN** `--all --write` has written `config.toml` and the next target cannot be written
