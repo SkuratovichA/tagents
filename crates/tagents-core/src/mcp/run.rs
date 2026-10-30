@@ -311,6 +311,16 @@ enum Stream {
     Err,
 }
 
+impl Stream {
+    /// The name of the stream's reader thread.
+    fn name(self) -> &'static str {
+        match self {
+            Stream::Out => "out",
+            Stream::Err => "err",
+        }
+    }
+}
+
 enum Event {
     /// The program exited; its code, or none when a signal ended it.
     Exited(Option<i32>),
@@ -411,37 +421,30 @@ fn launch(child: &mut Child, group: Pid, stop: &Stop) -> Result<Launched, String
         .stderr
         .take()
         .ok_or("the program was started without an error pipe")?;
-    let launched = Launched {
-        events,
-        open: vec![
-            (Stream::Out, duplicate(&stdout_pipe)?),
-            (Stream::Err, duplicate(&stderr_pipe)?),
-        ],
-        stdout: Arc::default(),
-        stderr: Arc::default(),
-        over: Arc::default(),
-    };
-
-    for (name, stream, pipe, capture) in [
+    let (stdout, stderr, over) = (
+        Arc::<Mutex<Capture>>::default(),
+        Arc::<Mutex<Capture>>::default(),
+        Arc::<AtomicBool>::default(),
+    );
+    let streams = [
         (
-            "out",
             Stream::Out,
+            duplicate(&stdout_pipe)?,
             Box::new(stdout_pipe) as Box<dyn Read + Send>,
-            &launched.stdout,
+            &stdout,
         ),
         (
-            "err",
             Stream::Err,
+            duplicate(&stderr_pipe)?,
             Box::new(stderr_pipe) as Box<dyn Read + Send>,
-            &launched.stderr,
+            &stderr,
         ),
-    ] {
-        let (capture, over, events) = (
-            Arc::clone(capture),
-            Arc::clone(&launched.over),
-            sender.clone(),
-        );
-        spawn_thread(&format!("tagents-{name}"), move || {
+    ];
+    let mut open = Vec::new();
+    for (stream, duplicate, pipe, capture) in streams {
+        open.push((stream, duplicate));
+        let (capture, over, events) = (Arc::clone(capture), Arc::clone(&over), sender.clone());
+        spawn_thread(&format!("tagents-{}", stream.name()), move || {
             read_stream(pipe, &capture, &over);
             let _ = events.send(Event::Eof(stream));
         })?;
@@ -454,7 +457,13 @@ fn launch(child: &mut Child, group: Pid, stop: &Stop) -> Result<Launched, String
     stop.watch(move || {
         let _ = sender.send(Event::Stop);
     });
-    Ok(launched)
+    Ok(Launched {
+        events,
+        open,
+        stdout,
+        stderr,
+        over,
+    })
 }
 
 /// Whether a pipe of `open` holds bytes or has lost its last writer, so that its reader has something to take that it has not taken yet. A pipe that is empty and still open is held by a process the call cannot stop, or its reader has taken everything. An error of the poll counts as not readable: the call gives up at the drain.
@@ -515,10 +524,10 @@ fn supervise(
             }
             Err(RecvTimeoutError::Timeout) => match (exited, reason) {
                 (Some((_, at)), _) => {
-                    // The drain, or a step after it, is over. A pipe with bytes or an end to read has a reader the machine has not run yet, and no holder: wait for it, up to the grace.
+                    // The drain, or a step after it, is over. A pipe with bytes or an end to read has a reader the machine has not run yet, and no holder: wait for it, up to the grace. A call that was stopped is given up on at the drain: its answer is `cancelled` or its output is partial already, and the server's ending waits only `KILL_GRACE` plus `SHUTDOWN_MARGIN` for the calls, which a second grace could overrun.
                     let bound = at + deps.drain + deps.kill_grace;
                     let now = Instant::now();
-                    if now >= bound || !readable(&open) {
+                    if reason.is_some() || now >= bound || !readable(&open) {
                         break;
                     }
                     deadline = Some((now + DRAIN_STEP).min(bound));
