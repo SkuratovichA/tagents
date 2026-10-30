@@ -11,6 +11,8 @@ use std::sync::Mutex;
 use serde::Serialize;
 use serde_json::{Map, Value};
 
+use crate::json::unicode_escape;
+
 /// `STDIO_DEFAULT_MAX_BUFFER_SIZE` of the SDK: the bytes of one unfinished line the transport keeps before it gives up on the stream.
 pub const MAX_BUFFER: usize = 10 * 1024 * 1024;
 
@@ -112,40 +114,23 @@ fn without_lone_surrogates(line: &str) -> Cow<'_, str> {
             at += 1;
             continue;
         }
-        let Some(unit) = unicode_escape(bytes, at) else {
+        let Some((unit, len)) = unicode_escape(bytes, at) else {
             // `\\`, `\"`, `\n`: two bytes, so that the second backslash of `\\` pairs with nothing.
             at += 2;
             continue;
         };
-        match unit {
-            0xD800..=0xDBFF if matches!(unicode_escape(bytes, at + 6), Some(0xDC00..=0xDFFF)) => {
-                at += 12;
-            }
-            0xD800..=0xDFFF => {
-                fixed.push_str(&line[copied..at]);
-                fixed.push_str("\\ufffd");
-                at += 6;
-                copied = at;
-            }
-            _ => at += 6,
+        if unit.is_none() {
+            fixed.push_str(&line[copied..at]);
+            fixed.push_str("\\ufffd");
+            copied = at + len;
         }
+        at += len;
     }
     if copied == 0 {
         return Cow::Borrowed(line);
     }
     fixed.push_str(&line[copied..]);
     Cow::Owned(fixed)
-}
-
-/// The code unit of the `\uXXXX` escape that starts at `at`, when one does.
-fn unicode_escape(bytes: &[u8], at: usize) -> Option<u16> {
-    let [b'\\', b'u', digits @ ..] = bytes.get(at..at + 6)? else {
-        return None;
-    };
-    if !digits.iter().all(u8::is_ascii_hexdigit) {
-        return None;
-    }
-    u16::from_str_radix(std::str::from_utf8(digits).ok()?, 16).ok()
 }
 
 /// `params._meta` as `RequestMetaSchema` has it: an object whose `progressToken`, when present, is a string or a safe integer, and whose related-task entry, when present, is an object with a string `taskId`. Other keys pass.
