@@ -21,7 +21,7 @@ Archive this change after `mcp-tools-from-contract`: the requirement "The tools 
 ## 4. Cancellation and shutdown
 
 - [x] 4.1 `notifications/cancelled` stops the call and suppresses its answer (`cargo test -p tagents-core --test mcp_server`)
-- [x] 4.2 Stdin end, SIGTERM, SIGINT and SIGHUP stop every call, answer each `cancelled` and exit 0 within the bound; a write error ends the same way (`cargo test -p tagents-core --test mcp_server`, `cargo test -p tagents-core --lib mcp::server`)
+- [x] 4.2 Stdin end, SIGTERM, SIGINT and SIGHUP stop every call, answer each `cancelled` and exit 0 within the bound; a write error ends the same way; a second signal does not cut the ending short (`a_second_signal_during_the_ending_does_not_cut_it_short` in `tests/mcp_server.rs`) (`cargo test -p tagents-core --test mcp_server`, `cargo test -p tagents-core --lib mcp::server`)
 - [x] 4.3 What a program leaves behind dies with it, and a helper holding the pipes holds the call no longer than the drain (`cargo test -p tagents-core --test mcp_run`)
 
 ## 5. The tests ported from the node server
