@@ -80,8 +80,9 @@ impl Rig {
         pids
     }
 
+    /// Whether `count` processes of the script have started. A liveness wait, not a timing check: a process start can wait on `FORK_GATE` behind every call in flight on a loaded machine, so the ceiling is wide and the wait ends as soon as they are up.
     pub fn started(&self, count: usize) -> bool {
-        until(|| self.pids().len() == count, 5000)
+        until(|| self.pids().len() == count, 30_000)
     }
 
     /// Whether every process the script recorded is gone, within a bounded wait.

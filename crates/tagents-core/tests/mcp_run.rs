@@ -104,7 +104,7 @@ fn call_held_by_an_idle_holder(rig: &Rig) -> CallResult {
     };
     let call = in_flight(tool("fake_hang"), deps, Stop::default());
     assert!(
-        until(|| !rig.pids().is_empty(), 20_000),
+        until(|| !rig.pids().is_empty(), 60_000),
         "the helper started"
     );
     let started = Instant::now();
