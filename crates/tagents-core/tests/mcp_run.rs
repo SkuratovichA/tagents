@@ -83,6 +83,9 @@ fn escapee_program(perl: &str, after: &str) -> String {
     )
 }
 
+/// Several writers on one pipe, so that the reader thread does not empty it between two polls of the call.
+const WRITERS: &str = r#"exec "sh", "-c", "yes & yes & yes & exec yes""#;
+
 fn has_perl() -> bool {
     let found = std::path::Path::new("/usr/bin/perl").exists();
     if !found {
@@ -653,7 +656,7 @@ fn a_holder_outside_the_group_that_keeps_writing_holds_the_call_no_longer_than_t
     // The escapee writes to the call's stdout for good, so its pipe is never empty for long and the call waits for it, but only up to the drain and the grace.
     let rig = Rig::new(
         "process_escapee_writing",
-        &escapee_program(r#"exec "yes""#, "echo done"),
+        &escapee_program(WRITERS, "sleep 0.5; echo done"),
     );
     let deps = RunDeps {
         timeout: Duration::from_secs(60),
@@ -683,7 +686,7 @@ fn a_call_that_was_stopped_is_given_up_on_at_the_drain_even_when_a_holder_keeps_
         "process_stopped_escapee_writing",
         &format!(
             "trap '' TERM; {}",
-            escapee_program(r#"exec "yes""#, "while :; do sleep 1; done")
+            escapee_program(WRITERS, "while :; do sleep 1; done")
         ),
     );
     let stop = Stop::default();
