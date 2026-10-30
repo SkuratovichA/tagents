@@ -186,7 +186,7 @@ Decision: three lines in the dependency table of `rust-core`'s design and of `do
 | `rustix` (features `process`, `event`) | `mcp::run` | signal a process group, wait without reaping and ask a pipe whether it is readable, in safe code (`unsafe_code = "forbid"` stays) | `bitflags`, `errno`, `libc` |
 | `signal-hook` | `mcp::server` | end on SIGTERM, SIGINT, SIGHUP from a thread, in safe code | `signal-hook-registry` |
 
-In total the three rows add 10 crates (24 in the build of `tagents-core` instead of 14) and 300,320 bytes to the release binary (518,992 to 819,312), and take a clean release build from 8.8 s to 12.5 s; the server does not build without them, so no row can be measured apart. `rustix` has `waitid` with `NOWAIT`, `kill_process_group` and `poll` on the three release targets, and the dry run of `release.yml` on the pull request builds all three; if one of them fails, `nix` is the substitute and the line says so. A fourth dependency is a new line and a reason.
+In total the three rows add 10 crates (23 in the build of `tagents-core` instead of 13) and 300,320 bytes to the release binary (518,992 to 819,312), and take a clean release build from 8.8 s to 12.5 s; the server does not build without them, so no row can be measured apart. `rustix` has `waitid` with `NOWAIT`, `kill_process_group` and `poll` on the three release targets, and the dry run of `release.yml` on the pull request builds all three; if one of them fails, `nix` is the substitute and the line says so. A fourth dependency is a new line and a reason.
 
 ### Version and release
 
