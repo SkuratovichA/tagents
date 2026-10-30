@@ -98,7 +98,7 @@ A call SHALL run its program in a process group of its own, and when the program
 - **THEN** the fast one is answered while the slow one still runs
 
 ### Requirement: The server ends when its client does
-The server SHALL end when stdin ends and on SIGTERM, SIGINT and SIGHUP: it stops every call in flight, answers each with the outcome `cancelled`, and exits 0 within the grace plus a short margin. A write error on stdout SHALL start the same ending, and ending twice SHALL be one ending.
+The server SHALL end when stdin ends and on SIGTERM, SIGINT and SIGHUP: it stops every call in flight, answers each with the outcome `cancelled`, and exits 0 within the grace plus a short margin. A write error on stdout SHALL start the same ending, and ending twice SHALL be one ending. A second signal during the ending SHALL end the server at once by that signal's default action, as node's `process.once` lets it, and no SIGKILL follows for the calls still in flight.
 
 #### Scenario: Stdin closes with a call in flight
 - **WHEN** the client closes stdin while a call runs
@@ -114,7 +114,7 @@ The server SHALL end when stdin ends and on SIGTERM, SIGINT and SIGHUP: it stops
 
 #### Scenario: A second signal
 - **WHEN** a second signal arrives while the ending is still waiting for a program that ignores SIGTERM
-- **THEN** the server ends at once by the default action of that signal
+- **THEN** the server ends at once by the default action of that signal, and the program, which got SIGTERM and no SIGKILL, outlives the call
 
 ### Requirement: The node server is the reference
 `tests/rust-mcp-parity.sh` SHALL feed one script of requests to `packages/mcp` and to `tagents-core mcp` with stub programs on `PATH` and SHALL compare the two answers byte for byte, leaving out only `serverInfo.version`, and the workflow `rust.yml` SHALL run it on every change to either server.
