@@ -1,6 +1,6 @@
 ## Why
 
-Every Claude Code session starts the plugin's `tagents` MCP server as a node process of its own, `tagents-mcp --contract contract.json`, and each of them holds about 35 MB resident (measured with `footprint` on 30.10.2026): eight sessions keep about 280 MB busy for a server that spends its life waiting on stdin. What the server does is small: it reads newline-delimited JSON-RPC, answers `initialize`, `tools/list` and `tools/call`, and a call runs the program of a contract verb with a bounded output and tells how it ended. The Rust `tagents-core` already ships as a checksummed prebuilt binary, so the runtime is there; the server is a subcommand of it.
+Every Claude Code session starts the plugin's `tagents` MCP server as a node process of its own, `tagents-mcp --contract contract.json`, and each of them holds about 38 MB resident (measured with `footprint` on 30.10.2026): eight sessions keep about 300 MB busy for a server that spends its life waiting on stdin. What the server does is small: it reads newline-delimited JSON-RPC, answers `initialize`, `tools/list` and `tools/call`, and a call runs the program of a contract verb with a bounded output and tells how it ended. The Rust `tagents-core` already ships as a checksummed prebuilt binary, so the runtime is there; the server is a subcommand of it.
 
 The change also builds the stdio layer (framing, request ids, cancellation, orderly shutdown) that the knowledge server will reuse when it moves to Rust, which is why it comes before that server.
 
