@@ -605,7 +605,7 @@ fn a_holder_of_the_pipes_that_left_the_group_does_not_hold_the_call_longer_than_
     }
     let rig = Rig::new(
         "server_escapee",
-        r#"/usr/bin/perl -MPOSIX -e 'POSIX::setsid(); exec "sleep", "30"' & echo $! > "$D/escaped.pid"; echo done"#,
+        r#"/usr/bin/perl -MPOSIX -e 'POSIX::setsid(); open(F, ">", "$ARGV[0]/escaped.pid"); print F "$$\n"; close F; exec "sleep", "30"' "$D" & n=0; until [ -s "$D/escaped.pid" ] || [ $n -ge 200 ]; do n=$((n+1)); sleep 0.05; done; echo done"#,
     );
     let mut session = Session::of(&rig);
     session.initialize();
