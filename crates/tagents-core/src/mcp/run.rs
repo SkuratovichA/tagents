@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::io::{self, ErrorKind, Read};
+use std::os::fd::{AsFd, OwnedFd};
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,6 +15,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
+use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::io::Errno;
 use rustix::process::{Pid, Signal, WaitId, WaitIdOptions, kill_process_group, waitid};
 use serde::Serialize;
@@ -31,8 +33,10 @@ pub const MAX_STREAM: usize = 256 * 1024;
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// What a stopped group is given to leave on SIGTERM before it is killed.
 pub const KILL_GRACE: Duration = Duration::from_millis(2000);
-/// How long the call waits for the output pipes after the program exited: a process that left the group can hold them open for good.
+/// How long the call waits for the output pipes after the program exited: a process that left the group can hold them open for good. A pipe that still holds bytes, or has lost its last writer, is not held by such a process but waits for its reader thread, and is waited for on past this, up to the grace.
 pub const DRAIN: Duration = Duration::from_millis(250);
+/// How often a call whose drain is over looks again at the pipes that have bytes or an end to read. The Rust server's own: the node server reads in its event loop's poll phase and has no such wait.
+const DRAIN_STEP: Duration = Duration::from_millis(10);
 
 pub struct RunDeps {
     /// The environment the program is looked up and run in: the server's own.
@@ -300,11 +304,18 @@ enum Reason {
     Cancelled,
 }
 
+/// One of the two output pipes of the program.
+#[derive(Clone, Copy, PartialEq)]
+enum Stream {
+    Out,
+    Err,
+}
+
 enum Event {
     /// The program exited; its code, or none when a signal ended it.
     Exited(Option<i32>),
     /// One output pipe is closed, by the program and by everything that held it.
-    Eof,
+    Eof(Stream),
     Stop,
 }
 
@@ -372,8 +383,17 @@ fn wait_for_exit(group: Pid) -> Option<i32> {
     }
 }
 
+/// A second descriptor of the read end of `pipe`, to ask whether it is readable without reading it. It is the same pipe, so it keeps the pipe open: it must be dropped once the call is over, or a process that outlived the call would never get EPIPE.
+fn duplicate(pipe: &impl AsFd) -> Result<OwnedFd, String> {
+    pipe.as_fd()
+        .try_clone_to_owned()
+        .map_err(|e| format!("could not duplicate an output pipe of the call: {e}"))
+}
+
 struct Launched {
     events: Receiver<Event>,
+    /// The pipes whose reader has not sent its `Eof` yet, each by its duplicate.
+    open: Vec<(Stream, OwnedFd)>,
     stdout: Arc<Mutex<Capture>>,
     stderr: Arc<Mutex<Capture>>,
     /// Set when the call is over; the readers let go of their pipes.
@@ -393,19 +413,25 @@ fn launch(child: &mut Child, group: Pid, stop: &Stop) -> Result<Launched, String
         .ok_or("the program was started without an error pipe")?;
     let launched = Launched {
         events,
+        open: vec![
+            (Stream::Out, duplicate(&stdout_pipe)?),
+            (Stream::Err, duplicate(&stderr_pipe)?),
+        ],
         stdout: Arc::default(),
         stderr: Arc::default(),
         over: Arc::default(),
     };
 
-    for (name, pipe, capture) in [
+    for (name, stream, pipe, capture) in [
         (
             "out",
+            Stream::Out,
             Box::new(stdout_pipe) as Box<dyn Read + Send>,
             &launched.stdout,
         ),
         (
             "err",
+            Stream::Err,
             Box::new(stderr_pipe) as Box<dyn Read + Send>,
             &launched.stderr,
         ),
@@ -417,7 +443,7 @@ fn launch(child: &mut Child, group: Pid, stop: &Stop) -> Result<Launched, String
         );
         spawn_thread(&format!("tagents-{name}"), move || {
             read_stream(pipe, &capture, &over);
-            let _ = events.send(Event::Eof);
+            let _ = events.send(Event::Eof(stream));
         })?;
     }
     let exits = sender.clone();
@@ -431,11 +457,29 @@ fn launch(child: &mut Child, group: Pid, stop: &Stop) -> Result<Launched, String
     Ok(launched)
 }
 
-/// Follows the program to its end and, whatever ends it, stops everything it started in its group. A timeout, or a stop of the request, sends SIGTERM to the group and SIGKILL when the grace is over; the exit of the program kills the group at once and gives the pipes the drain to run dry.
-fn supervise(events: &Receiver<Event>, group: Pid, child: &mut Child, deps: &RunDeps) -> Ended {
+/// Whether a pipe of `open` holds bytes or has lost its last writer, so that its reader has something to take that it has not taken yet. A pipe that is empty and still open is held by a process the call cannot stop, or its reader has taken everything. An error of the poll counts as not readable: the call gives up at the drain.
+fn readable(open: &[(Stream, OwnedFd)]) -> bool {
+    let mut fds: Vec<PollFd<'_>> = open
+        .iter()
+        .map(|(_, fd)| PollFd::new(fd, PollFlags::IN))
+        .collect();
+    poll(&mut fds, Some(&Timespec::default())).is_ok()
+        && fds
+            .iter()
+            .any(|fd| fd.revents().intersects(PollFlags::IN | PollFlags::HUP))
+}
+
+/// Follows the program to its end and, whatever ends it, stops everything it started in its group. A timeout, or a stop of the request, sends SIGTERM to the group and SIGKILL when the grace is over; the exit of the program kills the group at once and gives the pipes the drain to run dry. When the drain is over a pipe that is still `readable` is waited for in steps, up to the drain and the grace after the exit: its reader thread has not run yet, which a process holding an empty pipe never causes. `open` is the pipes whose reader has not finished, each by a duplicate, and it is dropped when the call is.
+fn supervise(
+    events: &Receiver<Event>,
+    group: Pid,
+    child: &mut Child,
+    deps: &RunDeps,
+    mut open: Vec<(Stream, OwnedFd)>,
+) -> Ended {
     let mut reason = None;
-    let mut exited: Option<Option<i32>> = None;
-    let mut closed = 0;
+    // The code of the program, and when the call saw it exit.
+    let mut exited: Option<(Option<i32>, Instant)> = None;
     // The next thing that happens if nothing else does: the timeout, then the end of the grace, then (after the exit) the end of the drain.
     let mut deadline = Some(Instant::now() + deps.timeout);
     loop {
@@ -451,31 +495,39 @@ fn supervise(events: &Receiver<Event>, group: Pid, child: &mut Child, deps: &Run
                     deadline = Some(Instant::now() + deps.kill_grace);
                 }
             }
-            Ok(Event::Eof) => {
-                closed += 1;
-                if closed == 2 && exited.is_some() {
+            Ok(Event::Eof(stream)) => {
+                open.retain(|(ended, _)| *ended != stream);
+                if open.is_empty() && exited.is_some() {
                     break;
                 }
             }
             Ok(Event::Exited(code)) => {
-                exited = Some(code);
+                let at = Instant::now();
+                exited = Some((code, at));
                 // What the program left running in its group dies with it. The pipes are given a moment to drain, and no longer: a process outside the group can hold them open for good.
                 signal_group(group, Signal::KILL);
                 // The zombie has done its work: it held the group's id while the group was signalled.
                 let _ = child.wait();
-                if closed == 2 {
+                if open.is_empty() {
                     break;
                 }
-                deadline = Some(Instant::now() + deps.drain);
+                deadline = Some(at + deps.drain);
             }
-            Err(RecvTimeoutError::Timeout) => match (exited.is_some(), reason) {
-                (true, _) => break,
-                (false, None) => {
+            Err(RecvTimeoutError::Timeout) => match (exited, reason) {
+                (Some((_, at)), _) => {
+                    let bound = at + deps.drain + deps.kill_grace;
+                    let now = Instant::now();
+                    if now >= bound || !readable(&open) {
+                        break;
+                    }
+                    deadline = Some((now + DRAIN_STEP).min(bound));
+                }
+                (None, None) => {
                     reason = Some(Reason::Timeout);
                     signal_group(group, Signal::TERM);
                     deadline = Some(Instant::now() + deps.kill_grace);
                 }
-                (false, Some(_)) => {
+                (None, Some(_)) => {
                     signal_group(group, Signal::KILL);
                     deadline = None;
                 }
@@ -485,7 +537,7 @@ fn supervise(events: &Receiver<Event>, group: Pid, child: &mut Child, deps: &Run
     }
     Ended {
         reason,
-        code: exited.flatten(),
+        code: exited.and_then(|(code, _)| code),
     }
 }
 
@@ -520,7 +572,7 @@ fn run(tool: &Tool, argv: &[String], deps: &RunDeps, stop: &Stop) -> CallResult 
             return error(&message);
         }
     };
-    let ended = supervise(&launched.events, group, &mut child, deps);
+    let ended = supervise(&launched.events, group, &mut child, deps, launched.open);
     launched.over.store(true, Ordering::Release);
 
     let stdout = locked(&launched.stdout);
