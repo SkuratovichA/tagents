@@ -560,10 +560,10 @@ mod tests {
 
     impl Rig {
         fn new() -> Rig {
-            Rig::writing_to(Lines::default())
+            Rig::writing_to(Lines::default(), Duration::from_millis(50))
         }
 
-        fn writing_to(lines: Lines) -> Rig {
+        fn writing_to(lines: Lines, shutdown_margin: Duration) -> Rig {
             let (started_tx, started) = mpsc::sync_channel(16);
             let fake = Arc::new(Fake {
                 started: started_tx,
@@ -572,7 +572,7 @@ mod tests {
             let (feed, rx) = mpsc::channel();
             let config = Config {
                 kill_grace: Duration::from_millis(50),
-                shutdown_margin: Duration::from_millis(50),
+                shutdown_margin,
             };
             let server = Server::new(
                 Arc::clone(&fake) as Arc<dyn Tools>,
@@ -852,7 +852,11 @@ mod tests {
     #[test]
     fn the_ending_returns_only_after_the_answers_of_the_calls_it_stopped_are_written() {
         // The process leaves when `serve` returns, so an answer still being written then is lost: the write takes longer than the call, and nothing is waited for after the join.
-        let mut rig = Rig::writing_to(Lines::slow(Duration::from_millis(40)));
+        // The margin is long so that a loaded runner cannot end the wait before the two serialised writes are done; the join returns as soon as both are, and the assertion fails at once if it returned earlier.
+        let mut rig = Rig::writing_to(
+            Lines::slow(Duration::from_millis(40)),
+            Duration::from_secs(10),
+        );
         let ended = rig.run();
         rig.send(r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"slow"}}"#);
         rig.send(r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"slow"}}"#);

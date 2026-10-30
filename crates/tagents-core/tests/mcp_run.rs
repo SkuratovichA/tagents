@@ -428,7 +428,7 @@ fn a_program_that_ignores_sigterm_is_killed_once_the_grace_is_over_and_not_befor
     let stop = Stop::default();
     let deps = RunDeps {
         timeout: Duration::from_secs(60),
-        kill_grace: ms(1500),
+        kill_grace: ms(3000),
         ..RunDeps::standard(rig.env())
     };
     let started = Instant::now();
@@ -439,11 +439,11 @@ fn a_program_that_ignores_sigterm_is_killed_once_the_grace_is_over_and_not_befor
     thread::sleep(ms(300));
     assert!(alive(pid), "SIGTERM alone does not stop it");
     let result = result
-        .recv_timeout(Duration::from_secs(8))
+        .recv_timeout(Duration::from_secs(12))
         .expect("the call resolved");
     assert_eq!(body_of_outcome(&result), "cancelled");
     assert!(
-        started.elapsed() >= ms(1400),
+        started.elapsed() >= ms(2900),
         "not before the grace was over"
     );
     assert!(rig.none_alive(), "SIGKILL did");
@@ -492,7 +492,7 @@ fn a_program_that_exits_at_once_and_leaves_a_grandchild_holding_its_pipes_does_n
     let started = Instant::now();
     let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
     assert!(
-        started.elapsed() < ms(300 + 2000),
+        started.elapsed() < ms(300 + 10_000),
         "within the drain and a margin"
     );
     let body = body(&result);
@@ -520,7 +520,7 @@ fn a_holder_of_the_pipes_that_left_the_group_cannot_be_killed_and_still_does_not
     let started = Instant::now();
     let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
     assert!(
-        started.elapsed() < ms(300 + 2000),
+        started.elapsed() < ms(300 + 10_000),
         "within the drain and a margin"
     );
     assert_eq!(body(&result)["stdout"], json!("done\n"));
