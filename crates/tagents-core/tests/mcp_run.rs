@@ -542,6 +542,37 @@ fn a_program_that_exits_with_its_output_still_in_the_pipe_loses_none_of_it() {
 }
 
 #[test]
+fn a_holder_of_the_pipes_that_left_the_group_cannot_be_killed_and_still_does_not_hold_the_call_longer_than_the_drain()
+ {
+    if !std::path::Path::new("/usr/bin/perl").exists() {
+        eprintln!("no perl to start a process in a session of its own: skipped");
+        return;
+    }
+    let rig = Rig::new(
+        "process_escapee",
+        r#"/usr/bin/perl -MPOSIX -e 'POSIX::setsid(); open(F, ">", "$ARGV[0]/escaped.pid"); print F "$$\n"; close F; exec "sleep", "30"' "$D" & n=0; until [ -s "$D/escaped.pid" ] || [ $n -ge 200 ]; do n=$((n+1)); sleep 0.05; done; echo done"#,
+    );
+    let deps = RunDeps {
+        timeout: Duration::from_secs(60),
+        drain: ms(300),
+        ..RunDeps::standard(rig.env())
+    };
+    let started = Instant::now();
+    let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
+    assert!(
+        started.elapsed() < ms(300 + 10_000),
+        "long before the holder's 30 s"
+    );
+    assert_eq!(body(&result)["stdout"], json!("done\n"));
+    // The escapee is out of the group, so the call could not stop it; the rig's drop does.
+    assert!(until(|| rig.pids().len() == 1, 1000));
+    assert!(
+        alive(rig.pids()["escaped"]),
+        "the escapee left the group, so the call could not stop it"
+    );
+}
+
+#[test]
 fn a_holder_outside_the_group_that_keeps_writing_holds_the_call_no_longer_than_the_drain_and_the_grace()
  {
     if !std::path::Path::new("/usr/bin/perl").exists() {
