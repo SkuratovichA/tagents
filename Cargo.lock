@@ -179,7 +179,7 @@ dependencies = [
 
 [[package]]
 name = "tagents-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "rustix",
  "serde",
@@ -190,7 +190,7 @@ dependencies = [
 
 [[package]]
 name = "tagents-spec"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "serde",
  "serde_json",
