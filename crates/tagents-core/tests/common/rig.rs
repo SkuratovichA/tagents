@@ -80,7 +80,7 @@ impl Rig {
         pids
     }
 
-    /// Whether `count` processes of the script have started. A liveness wait, not a timing check: a process start can wait on `FORK_GATE` behind every call in flight on a loaded machine, so the ceiling is wide and the wait ends as soon as they are up.
+    /// Whether `count` processes of the script have started. A liveness wait, not a timing check: a process start waits when a test that writes an executable is queued for the write side of `FORK_GATE` behind the calls in flight, so on a loaded machine the ceiling is wide and the wait ends as soon as they are up.
     pub fn started(&self, count: usize) -> bool {
         until(|| self.pids().len() == count, 30_000)
     }
@@ -100,6 +100,22 @@ impl Drop for Rig {
             }
         }
     }
+}
+
+/// A program that starts a helper in a session of its own, so outside the call's group, then waits for the helper's pid file and runs `after`. `perl` is what the helper runs before it replaces itself with the code of `exec`.
+pub fn escapee_program(perl: &str, after: &str) -> String {
+    format!(
+        r#"/usr/bin/perl -MPOSIX -e 'POSIX::setsid(); open(F, ">", "$ARGV[0]/escaped.pid"); print F "$$\n"; close F; {perl}' "$D" & n=0; until [ -s "$D/escaped.pid" ] || [ $n -ge 200 ]; do n=$((n+1)); sleep 0.05; done; {after}"#
+    )
+}
+
+/// Whether `/usr/bin/perl` exists, for the tests that start a process in a session of its own; says so when it does not, so the skip is visible.
+pub fn has_perl() -> bool {
+    let found = std::path::Path::new("/usr/bin/perl").exists();
+    if !found {
+        eprintln!("no perl to start a process in a session of its own: skipped");
+    }
+    found
 }
 
 /// `kill -0`: the process exists. It spawns nothing, so a test may ask while a call of its own holds the fork gate.

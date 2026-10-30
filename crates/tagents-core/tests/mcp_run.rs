@@ -27,7 +27,7 @@ use tagents_core::mcp::{
 mod common;
 use common::{
     forking,
-    rig::{FAKE_CONTRACT, Rig, WITH_GRANDCHILD, alive, until},
+    rig::{FAKE_CONTRACT, Rig, WITH_GRANDCHILD, alive, escapee_program, has_perl, until},
     scratch,
 };
 
@@ -76,23 +76,8 @@ fn in_flight(tool: Tool, deps: RunDeps, stop: Stop) -> Receiver<CallResult> {
     receiver
 }
 
-/// A program that starts a helper in a session of its own, so outside the call's group, then waits for the helper's pid file and runs `after`. `perl` is what the helper runs before it replaces itself with the code of `exec`.
-fn escapee_program(perl: &str, after: &str) -> String {
-    format!(
-        r#"/usr/bin/perl -MPOSIX -e 'POSIX::setsid(); open(F, ">", "$ARGV[0]/escaped.pid"); print F "$$\n"; close F; {perl}' "$D" & n=0; until [ -s "$D/escaped.pid" ] || [ $n -ge 200 ]; do n=$((n+1)); sleep 0.05; done; {after}"#
-    )
-}
-
 /// Several writers on one pipe, so that the reader thread does not empty it between two polls of the call.
 const WRITERS: &str = r#"exec "sh", "-c", "yes & yes & yes & exec yes""#;
-
-fn has_perl() -> bool {
-    let found = std::path::Path::new("/usr/bin/perl").exists();
-    if !found {
-        eprintln!("no perl to start a process in a session of its own: skipped");
-    }
-    found
-}
 
 /// A call of `fake_hang` whose helper outside the group holds the pipes and writes nothing, with a drain of 100 ms and a grace of 5 s. It must be answered at the drain: the time is taken from the moment the helper started, since starting it can take seconds on a loaded machine.
 fn call_held_by_an_idle_holder(rig: &Rig) -> CallResult {
@@ -584,8 +569,7 @@ fn a_program_that_exits_with_its_output_still_in_the_pipe_loses_none_of_it() {
 #[test]
 fn a_holder_of_the_pipes_that_left_the_group_cannot_be_killed_and_still_does_not_hold_the_call_longer_than_the_drain()
  {
-    if !std::path::Path::new("/usr/bin/perl").exists() {
-        eprintln!("no perl to start a process in a session of its own: skipped");
+    if !has_perl() {
         return;
     }
     let rig = Rig::new(
@@ -636,10 +620,8 @@ fn a_holder_of_the_stderr_alone_does_not_hold_the_call_longer_than_the_drain() {
 }
 
 #[test]
-fn a_holder_outside_the_group_that_keeps_writing_holds_the_call_no_longer_than_the_drain_and_the_grace()
- {
-    if !std::path::Path::new("/usr/bin/perl").exists() {
-        eprintln!("no perl to start a process in a session of its own: skipped");
+fn a_holder_outside_the_group_that_keeps_writing_does_not_hold_the_call_and_gets_epipe_after_it() {
+    if !has_perl() {
         return;
     }
     // The escapee writes to the call's stdout for good, so its pipe is never empty for long and the call waits for it, but only up to the drain and the grace.
@@ -674,7 +656,7 @@ fn a_call_that_was_stopped_is_given_up_on_at_the_drain_even_when_a_holder_keeps_
     let rig = Rig::new(
         "process_stopped_escapee_writing",
         &format!(
-            "trap '' TERM; {}",
+            "trap '' TERM; echo $$ > \"$D/main.pid\"; {}",
             escapee_program(WRITERS, "while :; do sleep 1; done")
         ),
     );
@@ -686,7 +668,7 @@ fn a_call_that_was_stopped_is_given_up_on_at_the_drain_even_when_a_holder_keeps_
         ..RunDeps::standard(rig.env())
     };
     let result = in_flight(tool("fake_hang"), deps, stop.clone());
-    assert!(rig.started(1), "the helper started");
+    assert!(rig.started(2), "the program and the helper started");
     let stopped = Instant::now();
     stop.stop();
     let result = result.recv_timeout(ms(12_000)).expect("the call resolved");

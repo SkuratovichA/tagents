@@ -25,7 +25,7 @@ use tagents_core::mcp::run::MAX_STREAM;
 mod common;
 use common::{
     REPO,
-    rig::{Rig, WITH_GRANDCHILD, alive, until},
+    rig::{Rig, WITH_GRANDCHILD, alive, escapee_program, has_perl, until},
     run, scratch, start, write_executable,
 };
 
@@ -599,13 +599,12 @@ fn a_program_missing_from_path_is_an_error_result_that_says_which_one() {
 
 #[test]
 fn a_holder_of_the_pipes_that_left_the_group_does_not_hold_the_call_longer_than_the_drain() {
-    if !Path::new("/usr/bin/perl").exists() {
-        eprintln!("no perl to start a process in a session of its own: skipped");
+    if !has_perl() {
         return;
     }
     let rig = Rig::new(
         "server_escapee",
-        r#"/usr/bin/perl -MPOSIX -e 'POSIX::setsid(); open(F, ">", "$ARGV[0]/escaped.pid"); print F "$$\n"; close F; exec "sleep", "30"' "$D" & n=0; until [ -s "$D/escaped.pid" ] || [ $n -ge 200 ]; do n=$((n+1)); sleep 0.05; done; echo done"#,
+        &escapee_program(r#"exec "sleep", "30""#, "echo done"),
     );
     let mut session = Session::of(&rig);
     session.initialize();
