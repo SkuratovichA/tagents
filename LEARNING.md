@@ -580,3 +580,7 @@ The smoke test in `crates/tagents-core/tests/mcp_server.rs` runs `packages/core/
 ## A `\uXXXX` escape pair written through an edit request carried as JSON lands in the file as the character it names (30.10.2026)
 
 The test cases for surrogate escapes in `crates/tagents-core/src/mcp/rpc.rs` were meant to hold the six-character escapes `\ud83d\ude00`, and so was one scenario of `tests/rust-mcp-parity.sh`. The edit requests that wrote them were JSON, the JSON layer decoded the pair, and four places held the literal character U+1F600 instead: the tests compared a decoded character with itself and could not fail. Write text that must hold a backslash-u escape through a script that builds the backslash with `chr(92)`, and check the bytes afterwards: `grep -c` for the escape, and `LC_ALL=C grep -c -P '[^\x00-\x7F]'` for any non-ASCII byte that should not be there.
+
+## Ending at once on a second signal can beat the ending to the SIGTERM of the calls (30.10.2026)
+
+The MCP server's signal thread ended the process by the second signal's default action while the ending ran on another thread. The ending only asks each call's own thread to send SIGTERM to its process group, so a second signal that came quickly killed the server before any group was signalled, and every call's program outlived it. An ending that is bounded by the grace and a margin finishes on its own: later signals are caught and ignored, which `a_second_signal_during_the_ending_does_not_cut_it_short` in `crates/tagents-core/tests/mcp_server.rs` pins.
