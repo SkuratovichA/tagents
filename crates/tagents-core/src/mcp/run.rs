@@ -515,6 +515,7 @@ fn supervise(
             }
             Err(RecvTimeoutError::Timeout) => match (exited, reason) {
                 (Some((_, at)), _) => {
+                    // The drain, or a step after it, is over. A pipe with bytes or an end to read has a reader the machine has not run yet, and no holder: wait for it, up to the grace.
                     let bound = at + deps.drain + deps.kill_grace;
                     let now = Instant::now();
                     if now >= bound || !readable(&open) {
