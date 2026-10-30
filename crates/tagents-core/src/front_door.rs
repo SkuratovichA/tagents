@@ -89,12 +89,12 @@ fn emit(out: &Output) -> ExitCode {
     ExitCode::from(out.code)
 }
 
-/// The node CLI that belongs to this binary: `<root>/target/{release,debug}/tagents-core` lives two directories below the root. The error is the path that was looked at, or why there was none.
-fn node_cli() -> Result<PathBuf, String> {
+/// A node program that belongs to this binary, `relative` to the root: `<root>/target/{release,debug}/tagents-core` lives two directories below the root. The error is the path that was looked at, or why there was none.
+fn node_program(relative: &str) -> Result<PathBuf, String> {
     let exe = std::env::current_exe()
         .and_then(|exe| exe.canonicalize())
         .map_err(|e| format!("cannot tell where this binary is: {e}"))?;
-    let cli = exe
+    let program = exe
         .ancestors()
         .nth(3)
         .ok_or_else(|| {
@@ -103,21 +103,21 @@ fn node_cli() -> Result<PathBuf, String> {
                 exe.display()
             )
         })?
-        .join(NODE_CLI);
-    if cli.is_file() {
-        Ok(cli)
+        .join(relative);
+    if program.is_file() {
+        Ok(program)
     } else {
-        Err(format!("{} is not a file", cli.display()))
+        Err(format!("{} is not a file", program.display()))
     }
 }
 
-/// Replace this process with the node CLI. Only returns when that could not be done.
-fn forward(args: &[OsString]) -> ExitCode {
-    let cli = match node_cli() {
-        Ok(cli) => cli,
+/// Replace this process with the node program at `relative` below the root, given `args`. Only returns when that could not be done.
+fn exec_node(relative: &str, args: &[OsString]) -> ExitCode {
+    let program = match node_program(relative) {
+        Ok(program) => program,
         Err(why) => {
             eprintln!(
-                "tagents-core: the node CLI is not there: {why}; this binary has to stay in <root>/target/<profile>/ next to a built {NODE_CLI}"
+                "tagents-core: the node CLI is not there: {why}; this binary has to stay in <root>/target/<profile>/ next to a built {relative}"
             );
             return ExitCode::from(sessions::exit::USAGE);
         }
@@ -125,7 +125,7 @@ fn forward(args: &[OsString]) -> ExitCode {
     let node = std::env::var_os(NODE_ENV)
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| OsString::from("node"));
-    let err = Command::new(&node).arg(cli).args(args).exec();
+    let err = Command::new(&node).arg(program).args(args).exec();
     eprintln!("tagents-core: cannot run {}: {err}", node.to_string_lossy());
     ExitCode::from(if err.kind() == std::io::ErrorKind::NotFound {
         sessions::exit::NOT_FOUND
@@ -170,6 +170,6 @@ pub fn run(args: Vec<OsString>) -> ExitCode {
                 .collect();
             emit(&(group.run)(&rest, &context()))
         }
-        None => forward(&args),
+        None => exec_node(NODE_CLI, &args),
     }
 }
