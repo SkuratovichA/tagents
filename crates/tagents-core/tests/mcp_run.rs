@@ -133,8 +133,8 @@ fn the_program_reads_an_empty_stdin_so_a_verb_that_waits_for_input_ends_instead_
  {
     let rig = Rig::new("run_stdin", r#"read line; printf 'got:%s' "$line""#);
     assert_eq!(
-        body(&plain(&rig, "fake_stdin", &json!({})))["stdout"],
-        json!("got:")
+        body(&plain(&rig, "fake_stdin", &json!({}))),
+        json!({"exit": 0, "outcome": "ok", "stdout": "got:", "stderr": ""})
     );
 }
 
@@ -502,6 +502,33 @@ fn a_program_that_exits_at_once_and_leaves_a_grandchild_holding_its_pipes_does_n
 }
 
 #[test]
+fn a_program_that_exits_with_its_output_still_in_the_pipe_loses_none_of_it() {
+    // A drain of nothing makes the window as wide as it can be: what the pipes hold when the exit is seen is read by threads that may not have run yet. The output is under the cap and over the pipe's buffer, so the program waited for the readers while it wrote.
+    let rig = Rig::new(
+        "process_output_in_pipe",
+        r"head -c 200000 /dev/zero | tr '\0' x",
+    );
+    let deps = RunDeps {
+        drain: ms(0),
+        ..deps(&rig, ms(5000))
+    };
+    for n in 1..=20 {
+        let body = body(&call(
+            &tool("fake_echo"),
+            &json!({}),
+            &deps,
+            &Stop::default(),
+        ));
+        assert_eq!(body["exit"], json!(0), "call {n}: {}", body["outcome"]);
+        assert_eq!(
+            body["stdout"].as_str().map(str::len),
+            Some(200_000),
+            "call {n} lost output"
+        );
+    }
+}
+
+#[test]
 fn a_holder_of_the_pipes_that_left_the_group_cannot_be_killed_and_still_does_not_hold_the_call_longer_than_the_drain()
  {
     if !std::path::Path::new("/usr/bin/perl").exists() {
@@ -529,5 +556,38 @@ fn a_holder_of_the_pipes_that_left_the_group_cannot_be_killed_and_still_does_not
     assert!(
         alive(rig.pids()["escaped"]),
         "the escapee left the group, so the call could not stop it"
+    );
+}
+
+#[test]
+fn a_holder_outside_the_group_that_keeps_writing_holds_the_call_no_longer_than_the_drain_and_the_grace()
+ {
+    if !std::path::Path::new("/usr/bin/perl").exists() {
+        eprintln!("no perl to start a process in a session of its own: skipped");
+        return;
+    }
+    // The escapee writes to the call's stdout for good, so its pipe is never empty for long and the call waits for it, but only up to the drain and the grace.
+    let rig = Rig::new(
+        "process_escapee_writing",
+        r#"/usr/bin/perl -MPOSIX -e 'POSIX::setsid(); open(F, ">", "$ARGV[0]/escaped.pid"); print F "$$\n"; close F; exec "yes"' "$D" & n=0; until [ -s "$D/escaped.pid" ] || [ $n -ge 200 ]; do n=$((n+1)); sleep 0.05; done; echo done"#,
+    );
+    let deps = RunDeps {
+        timeout: Duration::from_secs(60),
+        drain: ms(100),
+        kill_grace: ms(500),
+        ..RunDeps::standard(rig.env())
+    };
+    let started = Instant::now();
+    let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
+    assert!(
+        started.elapsed() < ms(100 + 500 + 10_000),
+        "a holder that keeps writing did not hold the call for good"
+    );
+    assert_eq!(body(&result)["exit"], json!(0));
+    // The call let go of the pipe, so the next write of the holder is a write to a pipe nobody reads.
+    let pid = rig.pids()["escaped"];
+    assert!(
+        until(|| !alive(pid), 5000),
+        "the holder died of SIGPIPE once the call was over"
     );
 }
