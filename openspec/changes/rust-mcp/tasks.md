@@ -44,8 +44,8 @@ Archive this change after `mcp-tools-from-contract`: the requirement "The tools 
 ## 8. CI
 
 - [x] 8.1 `rust.yml` installs the node dependencies before the Rust steps, lists `packages/mcp/**`, `tests/rust-mcp-parity.sh` and its driver in both `paths` and runs the suite after the existing parity step (`actionlint`)
-- [x] 8.2 The workflow run of the pull request passes the new step (`bash tests/rust-mcp-parity.sh`: 222 passed at d0ef4a1; the `rust` job of the pull request ran it, and `gh run list --branch feat/rust-mcp` shows the `rust`, `ci`, `release` and `site` workflows succeeded on d0ef4a1 for both the push and the pull request)
-- [x] 8.3 The `rust` job runs on ubuntu-latest and macos-latest (`bash tests/rust-parity.sh`: 391 passed at d0ef4a1; the `rust` job ran green on Linux and macOS at d0ef4a1, checked with `gh run list --branch feat/rust-mcp`)
+- [x] 8.2 The workflow run of the pull request passes the new step (`bash tests/rust-mcp-parity.sh`: 222 passed; the `rust` job of the pull request runs it, and `gh run list --branch feat/rust-mcp` shows the `rust`, `ci`, `release` and `site` workflows succeeded on the pull request's last head for both the push and the pull request)
+- [x] 8.3 The `rust` job runs on ubuntu-latest and macos-latest (`bash tests/rust-parity.sh`: 391 passed; the `rust` job ran green on Linux and macOS on the pull request's last head, checked with `gh run list --branch feat/rust-mcp`)
 
 ## 9. Documents
 

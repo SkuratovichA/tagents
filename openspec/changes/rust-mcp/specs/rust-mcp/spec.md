@@ -68,7 +68,7 @@ The server SHALL derive its tools, check a call and tell its result by the rules
 - **THEN** their answers are the same bytes, for every exit code of the verb, for JSON and for text output, and for an output cut at 256 KiB
 
 ### Requirement: Nothing a call starts outlives the call
-A call SHALL run its program in a process group of its own and stop the whole group when the program exits, the call times out after five minutes, the client cancels it or the server ends. A helper that left the group and holds the pipes SHALL hold the call no longer than a short drain, plus the kill grace when it keeps writing; with no such helper the call SHALL return all of the program's output. A helper that calls `setsid` is not stopped: it outlives the call, with both servers.
+A call SHALL run its program in a process group of its own and stop the whole group when the program exits, times out after five minutes, is cancelled or the server ends. A helper outside the group that holds the pipes SHALL hold the call no longer than a short drain, plus the grace when it keeps writing. Without one, a call not stopped SHALL return all the program's output and a stopped call what its readers took by the end of the drain. A `setsid` helper outlives the call, with both servers.
 
 #### Scenario: A program that starts a helper
 - **WHEN** a program starts a background process in its group and exits
@@ -79,7 +79,7 @@ A call SHALL run its program in a process group of its own and stop the whole gr
 - **THEN** the call is answered within the drain and not when the helper lets go
 
 #### Scenario: Output left in the pipe at the exit
-- **WHEN** a program writes its output and exits before the server has read it, and no helper outside the group holds the pipes
+- **WHEN** a program writes its output and exits before the server has read it, no helper outside the group holds the pipes and nothing stopped the call
 - **THEN** the call returns all of it
 
 #### Scenario: A helper that keeps writing
