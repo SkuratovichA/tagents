@@ -54,7 +54,7 @@ The folder is ignored globally (`**/.claude/notes/` in `.gitignore_global`), so 
 
 ## Registering the hooks
 
-Like the state hook, these are registered in Claude Code's `settings.json`. The installer puts their wrappers next to the state hook's.
+These are registered by hand in Claude Code's `settings.json`: `tagents setup` registers only the state hook and the status line, because the notes hooks are opt-in. The installer puts their wrappers next to the state hook's.
 
 ```json
 {

@@ -274,8 +274,9 @@ prof_pairs() {
 # agent it starts has nothing to log in as — from a picker that looked fine.
 # Launching is still allowed: logging in once on a fresh directory is how a
 # new login is set up, and refusing would block exactly that. A directory that
-# exists but has never been written into gets a softer note, because Claude
-# will at least ask for the login rather than pretend to have one.
+# exists but holds no .claude.json, so nobody has logged in there, gets a softer
+# note, because Claude will at least ask for the login rather than pretend to
+# have one.
 accounts_check() {
   local k v p d i rest profs=' ' rules=' ' rprof='' def='' watch=''
   cfg_load || return 0
@@ -304,7 +305,8 @@ accounts_check() {
         elif [ "$d" = "$HOME/.claude" ]; then
           # config.example.toml says why: Claude keys its keychain item on the literal path, and a set CLAUDE_CONFIG_DIR is not the same item as an unset one, even at the default location.
           cfg_note "$k" '~/.claude set explicitly is a different login from the default account — drop the key to mean the default account'
-        elif [ ! -e "$d/.claude.json" ] && [ ! -e "$d/settings.json" ]; then
+        elif [ ! -e "$d/.claude.json" ]; then
+          # Only a .claude.json says somebody logged in: `tagents setup` writes a settings.json into a config directory nobody has used yet.
           cfg_note "$k" "$v has never been used by Claude (no .claude.json in it) — the first agent on it will ask you to log in"
         fi ;;
       claude.rules.*)

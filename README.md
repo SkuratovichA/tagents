@@ -36,33 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/SkuratovichA/tagents/main/install.s
 
 It puts one managed copy in `~/.local/share/tagents`, the commands in `~/.local/bin` and the Claude Code hooks in `~/.claude/hooks`. Run it again, or `tagents update`, to update. Needs `tmux`, `fzf`, `jq`, `git`, Node 22.18+ and `pnpm`.
 
-Then tell Claude Code about the hooks. Add this to `~/.claude/settings.json`:
-
-<details>
-<summary><b>settings.json</b></summary>
-
-```json
-{
-  "hooks": {
-    "SessionStart":     [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }],
-    "PreToolUse":       [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"", "async": true }] }],
-    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"", "async": true }] }],
-    "Notification":     [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }],
-    "Stop":             [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }],
-    "SubagentStop":     [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"", "async": true }] }],
-    "SessionEnd":       [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }]
-  },
-  "statusLine": {
-    "type": "command",
-    "command": "sh \"$HOME/.claude/hooks/claude-statusline.sh\"",
-    "padding": 0,
-    "refreshInterval": 30
-  }
-}
-```
-
-</details>
+The install ends by running `tagents setup` (on a first install, and on an update that changes what it registers), which adds the state hook and the status line to `~/.claude/settings.json`, and to the `settings.json` of `$CLAUDE_CONFIG_DIR` and of each profile's `config_dir`. It only appends: your own hooks and settings stay as they are, a file it changes is backed up first, and a file that is not valid JSON is refused and left untouched. A status line of your own is kept, and the message says how to switch (`tagents setup --statusline`). `tagents setup --check` shows what it would add and writes nothing.
 
 The hook is how a chat tells tagents what it is doing; the status line is where the model column comes from. [Getting started](https://tagents.arstoien.com/docs/guide/getting-started) walks through both, and the Claude Code plugin.
 

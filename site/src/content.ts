@@ -96,34 +96,14 @@ export const INSTALL = {
   command: 'curl -fsSL https://raw.githubusercontent.com/SkuratovichA/tagents/main/install.sh | sh',
   where:
     'It puts one managed copy in ~/.local/share/tagents, the commands in ~/.local/bin and the Claude Code hooks in ~/.claude/hooks. Run it again, or tagents update, to update.',
-  hooksIntro: 'Then tell Claude Code about the hooks. Add this to ~/.claude/settings.json:',
-  hooksSummary: 'settings.json',
+  hooksIntro:
+    'The install ends by running tagents setup, which adds the state hook and the status line to ~/.claude/settings.json, and to the settings.json of each Claude account in your tagents config. It only appends: your own hooks and settings stay as they are.',
   hooksNote:
     'The hook is how a chat tells tagents what it is doing; the status line is where the model column comes from.',
   startIntro:
     'Then run it inside any tmux session. Every Claude chat with the hook shows up on its own, whether tagents started it or you typed claude in a pane yourself.',
   start: 'tagents',
 } as const
-
-// The README's settings.json, character for character.
-export const SETTINGS_JSON = String.raw`{
-  "hooks": {
-    "SessionStart":     [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }],
-    "PreToolUse":       [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"", "async": true }] }],
-    "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"", "async": true }] }],
-    "Notification":     [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }],
-    "Stop":             [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }],
-    "SubagentStop":     [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"", "async": true }] }],
-    "SessionEnd":       [{ "hooks": [{ "type": "command", "command": "sh \"$HOME/.claude/hooks/tmux-agent-state.sh\"" }] }]
-  },
-  "statusLine": {
-    "type": "command",
-    "command": "sh \"$HOME/.claude/hooks/claude-statusline.sh\"",
-    "padding": 0,
-    "refreshInterval": 30
-  }
-}`
 
 export const EXTRAS = {
   title: 'Notifications, status bar, plugin',

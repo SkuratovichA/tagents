@@ -1,3 +1,19 @@
+## install.sh has no `local`, and `write_wrapper` assigns the global `target`, so a test of "did the update move" made after `install_hooks` read a path (29.10.2026)
+
+`run_setup` compared `$prev` with `$target` to decide whether the update changed the registration, and it ran after `install_hooks`. By then `target` held the destination of the last wrapper written, the comparison was always true, and `tagents setup` ran on every install, the quiet no-op run of tests/install.sh section 4 included. The decision now sits in `main` right after `prev` and `target` are set, while they still name the commits, and the answer is carried in `SETUP_DUE`, a name nothing else assigns. Any value a POSIX sh function needs late in `main` has to be copied under a name of its own before the wrappers are written.
+
+## A loop whose last `cmp` fails fails the whole pipeline under `pipefail`, so a check passed or failed with the second the two writes fell in (29.10.2026)
+
+The check that the original file is among the backups was `for b in "$F".tagents-*.bak; do cmp -s "$b" before && echo yes; done | head -n 1 | grep -q yes && echo yes || echo no`. The glob sorts the backups by their timestamp: when both runs fell in one second the matching backup came last and the check passed, and when they crossed a second boundary it came first, the last iteration's `cmp` returned 1 and `pipefail` made the pipeline a failure although `yes` had been printed. It went red once in a full run and green in two replays. A helper with `if cmp -s "$b" "$2"; then echo yes; return 0; fi` and an `echo no` after the loop does not depend on the order.
+
+## macOS `sed` has no `\b`, so renaming one-letter variables to compare two copies of a loop compared nothing (29.10.2026)
+
+The pin between the by-hand symlink loop of `lib/tagents/setup.sh` and the one in the entry point of `tagents` renamed `l` and `f` with `sed 's/\bl\b/LINK/'`; BSD sed reads `\b` as a literal, nothing was renamed and the pair could never match. The rename now uses an explicit non-word class (`s/\$l\([^A-Za-z0-9_]\)/$LINK\1/`), and a second check asserts the extracted block is the seven lines expected, so an extraction that finds nothing cannot pass as two equal empty texts.
+
+## A `python3 - <<'EOF'` edit whose new text holds a `cat <<EOF` block ends at the inner terminator (29.10.2026)
+
+The outer heredoc stopped at the first `EOF` line of the text being inserted, the shell then parsed the rest of the Python as commands and reported an unmatched quote, and nothing was written. Use a terminator that cannot occur in the text (`PYEND`) or the Edit tool for text that holds heredocs.
+
 ## Running only the test files next to a change hides the tests that pin a shared module (29.10.2026)
 
 While the config reader moved from YAML to TOML I ran the test files beside each edit and the shell suites, not the whole package suites. The first full `pnpm test` then failed two knowledge tests that pin the old behaviour from a distance: `cli.test.ts` matched the "no knowledge directory" message against `config.yaml`, and `socket.test.ts` scans core's sources for environment variables and found the new `TA_CONFIG` read of `config convert`, which nobody had decided about. After the first edit to a module other packages import, run the whole `pnpm test` and `pnpm typecheck`, and when a test scans the sources for names, add the new read to its list with the reason it does not change an answer.
@@ -528,3 +544,15 @@ A test thread that copies or writes an executable and then runs it can get "Text
 
 ## A fixture tree for install.sh has to hold every entry file the installer wraps (29.10.2026)
 The installer case of `tests/rust-parity.sh` built a fake checkout with the entry files of `core` and `knowledge` only; once `main` added the `notify` and `mcp` wrappers, the installer left them alone with a warning and ended with status 1. Git showed no conflict, because the fixture and the wrapper loop are in different files, and only a run of the suite on the merged head found it. Both suites that build such a tree (`tests/install.sh` and `tests/rust-parity.sh`) now create all four entries, and a merge of `main` into a branch that touches an installer test is followed by a run of the installer suites and not only by the build.
+
+## `pnpm plugin:gen` bumps the plugin version on every run whose digest moved, so two runs on one branch bump it twice (29.10.2026)
+
+The `--help` header changed after the first regeneration, the second `plugin:gen` compared the new digest with the one the first run had stored and moved `.claude-plugin/plugin.json` from 0.9.1 to 0.9.2, two patch bumps for one change. `plugin:check` compares only the digest, so put the version back by hand to the one bump the branch makes over main.
+
+## `check:links` reads the sitemap the build wrote, so a site built without `SITE_DOMAIN` fails the link check (29.10.2026)
+
+Build the site the way `site.yml` does, `SITE_DOMAIN=tagents.arstoien.com pnpm build`, then copy `docs/.vitepress/dist/.` into `site/dist/client/docs/`, then run `SITE_DOMAIN=tagents.arstoien.com pnpm check:links`; a build without the variable fails the check for a reason that has nothing to do with the change.
+
+## In the zsh of this machine `grep` is ugrep and an unquoted glob is expanded before the command runs (29.10.2026)
+
+A `\b` pattern behaved differently under ugrep, and `grep -rn x --include=*.ts` stopped with "no matches found" before grep ran. Use `command grep`, and quote globs passed as arguments: `--include='*.ts'`.

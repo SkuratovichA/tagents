@@ -142,9 +142,25 @@ stays worth reacting to.
   tagents update [--check]
                           move the managed copy (install.sh puts it in
                           ~/.local/share/tagents) to the newest origin/main,
-                          rebuild it and rewrite the command and hook wrappers.
-                          --check only says whether main has moved. Takes the
-                          other install.sh options too; see install.sh --help
+                          rebuild it and rewrite the command and hook wrappers,
+                          then run `tagents setup` when the new version changes
+                          the registration it makes. --check only says whether
+                          main has moved. Takes the other install.sh options
+                          too; see install.sh --help
+  tagents setup [--check] [--statusline] [--config-dir DIR]... [--hooks-dir DIR]... [--quiet]
+                          register the hooks and the status line in Claude
+                          Code's settings.json, for ~/.claude, $CLAUDE_CONFIG_DIR
+                          and the config_dir of each profile. It only adds: a
+                          hook, a status line or any other setting already in
+                          the file stays, and the old file is kept beside it as
+                          settings.json.tagents-<time>.bak. A file it cannot
+                          parse is left alone and reported. --check only says
+                          what would be added and exits 1 while anything is
+                          missing. --statusline replaces a status line of your
+                          own with tagents' one. --config-dir names the
+                          directories to use instead of those; --hooks-dir adds
+                          a place the hook scripts may be (install.sh passes
+                          its own); --quiet prints only refusals and errors
   tagents <verb> …        anything that is not one of the flags above — see
                           THE ECOSYSTEM
 
@@ -159,8 +175,8 @@ one name to type for the whole thing. tagents-core is looked for on $PATH and
 then beside this script, at packages/core/dist/cli/main.js, which is where a
 repo checkout has it after a build; with neither, an unknown verb says which
 of the two is missing and exits 2. Everything the dashboard answers itself is
-a --flag (and `update`) and is matched first, so nothing can be shadowed by
-forwarding.
+a --flag (and `update` and `setup`) and is matched first, so nothing can be
+shadowed by forwarding.
 
 Agents are grouped into a tree by tmux session: a header names the session and its rows are that session's windows, whichever directory their panes are in. Every tmux session is a group, whether or not a chat has ever run in it. A window with no chat in it is a dimmed row, the cockpit's own session is never a group, and a closed session with no window sits under `no window`. Groups sort by their most urgent member, so a blocked agent still floats its whole session to the top. ctrl-t (or TA_FLAT=1) switches to one flat list ordered purely by urgency.
 

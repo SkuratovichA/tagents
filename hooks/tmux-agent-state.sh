@@ -2,8 +2,7 @@
 # Publish Claude Code session state into tmux so `tagents` can render a live
 # dashboard of every agent running under tmux.
 #
-# Registered in ~/.claude/settings.json for SessionStart, UserPromptSubmit,
-# PreToolUse, PostToolUse, Notification, Stop, SubagentStop and SessionEnd.
+# Registered in ~/.claude/settings.json for SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Notification, Stop, SubagentStop and SessionEnd. `tagents setup` does the registering, from hooks/claude-settings.json, and only adds what is missing.
 #
 # THREE KINDS OF RECORD go into ~/.claude/agent-state, and deciding which one a
 # session gets is the whole of the classification below. All of them carry the

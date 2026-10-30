@@ -22,6 +22,8 @@
 #
 # Running it again IS the update: it fetches origin/main, moves the copy there and hands the rest of the run to the install.sh the copy now holds, which rebuilds and rewrites the wrappers, so a change to this file is in force from the update that brings it. A build that fails puts the copy back on the commit it was on, so a bad main costs one failed run and not the dashboard. `tagents update` runs this file from the copy it belongs to.
 #
+# The Claude Code settings: on a fresh install, and on an update that changes hooks/claude-settings.json, the installer runs `tagents setup` once the wrappers are written, with the --hooks-dir list below passed on to it. That registers the hooks and the status line in the settings.json of each Claude Code config directory (~/.claude, $CLAUDE_CONFIG_DIR, the config_dir of each profile). It only adds what is missing, keeps a copy of every file it changes and leaves a file it cannot parse as it is; when it refuses a file the run ends with status 1, after everything else is installed. Other updates do not run it, so a hook removed on purpose is not put back by the daily one. `tagents setup` by hand runs it at any time, and `tagents setup --check` says what is missing.
+#
 #   sh install.sh                       install or update
 #   sh install.sh --check               say whether main has moved; change nothing
 #   sh install.sh --hooks-dir DIR       put the hook wrappers into DIR (repeatable;
@@ -369,6 +371,22 @@ install_launchd() {
   say "daily update: $plist"
 }
 
+# The Claude Code settings files are registered by `tagents setup`, which only adds what is missing. SETUP_DUE says whether this run is one that does it (main decides, below). A copy without the registration (an older one, or a fixture) has nothing to register. What setup refuses it has already said; the run ends with status 1 once everything else is installed.
+run_setup() {
+  [ "$SETUP_DUE" = 1 ] && [ -f "$TAGENTS_HOME/hooks/claude-settings.json" ] || return 0
+  set --
+  if [ "$QUIET" = 1 ]; then set -- --quiet; fi
+  old_ifs=$IFS
+  IFS='
+'
+  for dir in $HOOK_DIRS; do
+    IFS=$old_ifs
+    if [ -n "$dir" ]; then set -- "$@" --hooks-dir "$dir"; fi
+  done
+  IFS=$old_ifs
+  if ! "$TAGENTS_HOME/tagents" setup "$@"; then SETUP_FAILED=1; fi
+}
+
 # The default build needs node and pnpm; a test or a machine that overrides
 # TAGENTS_BUILD_CMD brings its own.
 need_toolchain() {
@@ -427,7 +445,7 @@ parse_args() {
 }
 
 main() {
-  QUIET=0; CHECK=0; LAUNCHD=0; SKIPPED=0; NATIVE_FAILED=0; FETCH_DIR=''; HOOK_DIRS=''
+  QUIET=0; CHECK=0; LAUNCHD=0; SKIPPED=0; NATIVE_FAILED=0; SETUP_FAILED=0; FETCH_DIR=''; HOOK_DIRS=''
   parse_args "$@"
 
   TAGENTS_HOME=${TAGENTS_HOME:-$HOME/.local/share/tagents}
@@ -499,6 +517,14 @@ main() {
     fi
   fi
 
+  # Whether this run registers the hooks with `tagents setup`: a fresh install, or an update that changes what it registers. Not every run: the daily update would otherwise put back a hook somebody took out on purpose. Decided here, while prev and target still name the commits, because write_wrapper reuses the name target.
+  SETUP_DUE=0
+  if [ "$fresh" = 1 ]; then
+    SETUP_DUE=1
+  elif [ "$prev" != "$target" ] && ! git -C "$TAGENTS_HOME" diff --quiet "$prev" "$target" -- hooks/claude-settings.json 2>/dev/null; then
+    SETUP_DUE=1
+  fi
+
   if [ "$fresh" = 1 ] || [ "$prev" != "$target" ] || [ ! -f "$TAGENTS_HOME/packages/core/dist/cli/main.js" ]; then
     if [ "$DEFAULT_BUILD" = 1 ]; then need_toolchain; fi
     say "building"
@@ -520,12 +546,16 @@ main() {
   install_commands
   install_hooks
   if [ "$LAUNCHD" = 1 ]; then install_launchd; fi
+  run_setup
 
   if [ "$SKIPPED" -gt 0 ]; then
     die "$SKIPPED file(s) were left alone, see above"
   fi
   if [ "$NATIVE_FAILED" = 1 ]; then
     die "the prebuilt tagents-core was not installed, see above, so the node CLI is in use"
+  fi
+  if [ "$SETUP_FAILED" = 1 ]; then
+    die "the Claude Code settings were not all set up, see above; once that is fixed, run: tagents setup"
   fi
   say "installed $(short "$(git -C "$TAGENTS_HOME" rev-parse HEAD)") from $TAGENTS_REF into $TAGENTS_HOME"
 }

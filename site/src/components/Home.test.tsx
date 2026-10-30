@@ -40,6 +40,12 @@ describe('the page as the server sends it, before any script has run', () => {
     expect(page.querySelector('a[href="#install"]')).not.toBeNull()
   })
 
+  it('says that the install registers the hooks, with no settings file to paste', () => {
+    expect(page.textContent).toContain(INSTALL.hooksIntro)
+    expect(page.textContent).toContain(INSTALL.hooksNote)
+    expect(page.textContent).not.toContain('"SessionStart"')
+  })
+
   it('has one h1 and a heading for every section', () => {
     expect(page.querySelectorAll('h1')).toHaveLength(1)
     expect(Array.from(page.querySelectorAll('h2'), (heading) => heading.textContent)).toEqual([

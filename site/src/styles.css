@@ -480,24 +480,6 @@ a {
   line-height: 1.7;
 }
 
-.fold {
-  margin: 0.75rem 0;
-  border: 2px solid var(--line);
-  background: var(--surface);
-}
-
-.fold summary {
-  padding: 0.5rem 0.9rem;
-  font-family: var(--font-code);
-  font-size: 0.8125rem;
-  cursor: pointer;
-}
-
-.fold .code {
-  margin: 0;
-  border-width: 2px 0 0;
-}
-
 /* Demos: a dark terminal on a wooden stand */
 
 .example {

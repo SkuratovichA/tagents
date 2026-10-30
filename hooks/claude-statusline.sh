@@ -2,9 +2,7 @@
 # Claude Code status line — and the only place tagents can learn which model a
 # session is actually set to.
 #
-# Registered as `statusLine` in ~/.claude/settings.json. Claude Code runs it on
-# every conversation update (debounced) and renders what it prints under the
-# prompt.
+# Registered as `statusLine` in ~/.claude/settings.json by `tagents setup`, from hooks/claude-settings.json; a status line of the user's own is kept unless setup is given --statusline. Claude Code runs it on every conversation update (debounced) and renders what it prints under the prompt.
 #
 # WHY tagents NEEDS THIS. The transcript records the model of every assistant
 # message, which is what lets tusage price each request at the model that served
