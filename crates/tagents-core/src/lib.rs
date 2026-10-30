@@ -13,3 +13,4 @@ pub mod node;
 pub mod sessions;
 mod sync;
 pub mod transcripts;
+pub mod watch;
