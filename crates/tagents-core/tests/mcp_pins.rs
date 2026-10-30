@@ -15,7 +15,8 @@ use tagents_core::mcp::{
 };
 use tagents_spec::{Effect, OptionKind, Spec};
 
-const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+mod common;
+use common::REPO;
 
 fn repo_file(path: &str) -> String {
     let file = Path::new(REPO).join(path);

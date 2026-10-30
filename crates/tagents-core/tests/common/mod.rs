@@ -7,6 +7,9 @@
 
 pub mod rig;
 
+/// The root of the checkout, where the contract, the fixtures and the node packages are.
+pub const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+
 use std::{
     fs,
     os::unix::fs::PermissionsExt,

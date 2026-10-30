@@ -21,10 +21,9 @@ use std::{
 use tagents_spec::{Implementation, Spec};
 
 mod common;
-use common::{run, scratch, start, write_executable, writing};
+use common::{REPO, run, scratch, start, write_executable, writing};
 
 const BIN: &str = env!("CARGO_BIN_EXE_tagents-core");
-const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 const SPEC_FILE: &str = "spec/cli/tagents-core.json";
 const FIXTURES: &str = "packages/core/test/fixtures/sessions";
 
