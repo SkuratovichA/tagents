@@ -11,7 +11,6 @@ use std::{
     ffi::{OsStr, OsString},
     fs,
     io::{BufRead, BufReader, Write},
-    os::unix::process::ExitStatusExt,
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, ExitStatus, Stdio},
     sync::mpsc::{self, Receiver},

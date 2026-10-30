@@ -357,7 +357,8 @@ mod tests {
 
     #[test]
     fn the_shared_reader_of_backslash_u_escapes() {
-        let cases: &[(&[u8], usize, Option<(Option<char>, usize)>)] = &[
+        type Read = Option<(Option<char>, usize)>;
+        let cases: &[(&[u8], usize, Read)] = &[
             (b"\\ud83d\\ude00", 0, Some((Some('\u{1f600}'), 12))),
             (b"\\ud800x", 0, Some((None, 6))),
             (b"\\udc00", 0, Some((None, 6))),
