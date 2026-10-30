@@ -4,7 +4,7 @@
 
 ## What is served in Rust today
 
-`tagents-core sessions` (`recent [N]`, `search <words…>`, `show <id-prefix>`, and the bare `sessions` that means `recent`) is a port of `packages/core/src/transcripts.ts`. Every other word is the node CLI's: `session`, `plugin`, `doctor`, a plugin's own verbs, help and a word nobody knows.
+`tagents-core sessions` (`recent [N]`, `search <words…>`, `show <id-prefix>`, and the bare `sessions` that means `recent`) is a port of `packages/core/src/transcripts.ts`, and `tagents-core mcp --contract <file>` is the plugin's MCP server, a port of `packages/mcp` ("The MCP server"). Every other word is the node CLI's: `session`, `plugin`, `doctor`, a plugin's own verbs, help and a word nobody knows. The node CLI itself does not know `mcp` (`unknown command: mcp`), so on a machine with no Rust binary the plugin's server is `packages/mcp/dist/main.js`, as before.
 
 The decision is made by the first word, so a group of verbs belongs wholly to one program: `sessions rescent` is answered by Rust with the node CLI's usage line and exit code.
 
@@ -16,7 +16,7 @@ The binary is `target/release/tagents-core`. A contributor builds it with `cargo
 target/release/tagents-core sessions recent 3   # answered in Rust
 target/release/tagents-core plugin list         # exec node packages/core/dist/cli/main.js plugin list
 target/release/tagents-core --spec              # the verbs this binary serves, as JSON
-target/release/tagents-core --version           # tagents-core 0.1.0: the workspace version it was built from
+target/release/tagents-core --version           # tagents-core 0.2.0: the workspace version it was built from
 ```
 
 For a word it does not serve, the binary replaces itself with `node packages/core/dist/cli/main.js` of the checkout it sits in, with the same arguments, environment, working directory and stdio. There is no wrapper process left: the exit code, and a signal the call ends with, are the node CLI's own. The node is `$TAGENTS_NODE` when that is set (the wrappers `install.sh` writes set it to the node they pinned), and `node` on `PATH` otherwise.
@@ -30,6 +30,27 @@ The verbs live in `spec/cli/tagents-core.json`, described by `spec/cli/cli-spec.
 Both loaders refuse the structural mistakes the schema forbids: a key the schema does not name, an empty `program` or `summary`, an empty `path`, an empty word in `path`, `positionals` or `required`, and a `null` where the schema says string or boolean. Both add the one rule a schema cannot state, that two commands never share a `path` (dispatch is by path, so the second would never run). The Rust loader is the stricter one: no input is known that it loads and the node loader refuses. It refuses three inputs the node loader accepts: an `exit` value written `1.0` (the number 1 to JavaScript, a non-integer to the `u8` the model holds), a key written twice in one object (`JSON.parse` keeps the last), and a lone surrogate escape in a string (`JSON.parse` accepts it); a unit test in `crates/tagents-spec/src/lib.rs` pins each. The path to the data file in `packages/core/src/cli/spec.ts` (`SPEC_FILE`) leads out of `packages/core`, so the package works from a checkout and from `$TAGENTS_HOME`, which is one, and would not work from a packed tarball (`files` is `dist`, which does not hold the data file). Nothing publishes or packs the package, and the repository installs from a clone; the package is not marked `private` because the plugin contract lists the public API of every package that is not.
 
 The one-line summary of a command stays in the language catalogue (`packages/core/src/i18n/`), keyed by the `summary` field, so there is one source of the text.
+
+## The MCP server
+
+`tagents-core mcp --contract <file>` is the plugin's MCP server: JSON-RPC, one message per line, on stdin and stdout, with one tool for every command of the `cli` section of the contract. It is a port of `packages/mcp`, which stays in the tree as the oracle of the parity suite and as the server a machine without the Rust binary runs. The contract is read once, at start (`crates/tagents-core/src/mcp/contract.rs`), so a plugin update brings a new file and the next session sees the new tools. `plugin.json` is unchanged: it registers the wrapper `tagents-mcp`, which `install.sh` writes to start `tagents-core mcp --contract <contract.json>` when the Rust binary exists at install time and `packages/mcp/dist/main.js` otherwise.
+
+```sh
+target/release/tagents-core mcp --contract contract.json                    # serves until stdin ends or SIGTERM, SIGINT or SIGHUP arrives
+target/release/tagents-core mcp --contract contract.json < requests.jsonl   # a request a line, an answer a line
+```
+
+The code is in `crates/tagents-core/src/mcp/`: `contract.rs` reads the file, `tools.rs` makes the tool of each command (name, description, annotations, input schema) and the command line a call stands for, `run.rs` runs one call, `server.rs` is the loop and `rpc.rs` is the wire. Stdout carries JSON-RPC lines and nothing else: the module denies `print_stdout`, and `rpc::Out` is the only writer.
+
+**What it answers.** `initialize` answers the protocol version the client asks for when the SDK of `packages/mcp` lists it (`2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`, `2024-10-07`; the suite reads the list from the SDK) and the newest otherwise, and tells `serverInfo.version` as the workspace version, where the node server's constant is `0.1.0`. Then `ping`, `tools/list`, `tools/call` and the notification `notifications/cancelled`. Any other method is -32601 `Method not found`, and a call of a tool nobody listed is -32602. A command is a tool unless its spec entry says `"tool": false` or its effect is `serve`, so `mcp` is not one. `contract.json` records the list the generator made from the specs, and a test (`crates/tagents-core/tests/mcp_server.rs`) pins the list `tools.rs` makes from the same file to it.
+
+**Threads.** The main thread reads stdin and answers `initialize`, `ping` and `tools/list` itself. Each `tools/call` runs on a thread of its own, so a slow call does not hold up the next request, and the answers are written in the order the calls finish, not the order they came in. One writer behind a lock writes each message with a single `write_all`, so two answers never interleave. A thread of its own takes SIGTERM, SIGINT and SIGHUP from `signal-hook`'s iterator and starts the same ending as the end of stdin, so no signal handler runs arbitrary code.
+
+**A call.** The program of the verb runs as a child with no stdin, the server's environment and a process group of its own. Each stream keeps its first 256 KiB: the rest is read and thrown away so that the program never blocks on a full pipe, and the cut falls before a character it would split, followed by `\n[output cut at 262144 bytes]`, with `"truncated": true` in the result. A call that has not ended in five minutes, a `notifications/cancelled` for its request, and the end of the server each stop the whole group: SIGTERM, then SIGKILL two seconds later. When the program exits by itself, whatever it left in its group is killed at once and the pipes get 250 ms to drain, because a process that left the group can hold them open for good. Nothing a call starts outlives the call. The constants are pinned to the TypeScript sources by `crates/tagents-core/tests/mcp_pins.rs`, which reads `packages/mcp/src/run.ts` and `main.ts`.
+
+**The result** is `{"content": [{"type": "text", "text": <body>}], "isError": <exit is not 0>}`. The body is the two-space pretty form of `exit`, `outcome` (the first name of the program's `exit` table that carries the code, else `exit <code>`), `stdout`, `stderr` and, when a stream was cut, `truncated`. A refusal has the same shape, with an empty stdout and the reason on stderr. When stdout, after leading JavaScript white space, starts with `{` or `[` and parses as JSON, the body holds the parsed value and not the escaped text; only JSON white space (space, tab, line feed, carriage return) may stand before the document, as in node, so a document behind a no-break space stays text. Node reads that document and writes it again, so the Rust server keeps the order of the keys (`preserve_order`) and tells every number as `JSON.stringify` tells the double it reads as: `1.0` is `1`, `1E2` is `100`, `-0` is `0`, `1e400` is `null` (`js::number_text`, `mcp/run.rs`).
+
+**The ending.** The end of stdin, one of the three signals, or a write error on stdout (the client is gone) ends the server: every call in flight is stopped and answers with the outcome `cancelled`, the server waits until they have answered, for the two seconds of the grace plus two more at the most, and exits 0. A call stopped by `notifications/cancelled` gets no answer, as with the SDK, even if it had finished by then. The answer is written before the call leaves the registry the ending waits on (`Registry::settle` and `finish` in `server.rs`): a registry that empties first lets the process exit with the answer unwritten, which a test pins (`the_ending_returns_only_after_the_answers_of_the_calls_it_stopped_are_written`). A request line longer than 10 MiB, the SDK's `STDIO_DEFAULT_MAX_BUFFER_SIZE`, is treated as the end of the stream.
 
 ## Where the binary is looked for
 
@@ -63,8 +84,8 @@ A pull request that changes the workflow, the scripts or an input of the binary 
 
 ```sh
 git switch main && git pull --ff-only          # the commit that holds the bump
-sh .github/scripts/core-release.sh version     # 0.1.0
-git tag v0.1.0 && git push origin v0.1.0       # starts the release workflow
+sh .github/scripts/core-release.sh version     # 0.2.0
+git tag v0.2.0 && git push origin v0.2.0       # starts the release workflow
 ```
 
 **When `main` is ahead of the last release,** a managed copy that follows `main` holds a version with no release yet. Its installer finds nothing to download, says so, and the node CLI runs until the tag of that version is pushed; it never keeps the binary of an older version in the meantime. Nothing releases on a push to `main`: the person who merges the bump pushes the tag.
@@ -102,6 +123,16 @@ It needs `python3` (the seed sets exact modification times, including ones befor
 
 Where node's behaviour is an accident of its runtime, the port repeats it, because agents read this text out of a shell: lengths are counted in UTF-16 units, white space is ECMAScript's, a modification time rounds with `Math.round`, names come in the order libuv lists them, and a transcript line is parsed by `json.rs`, a parser that follows `JSON.parse`. What the repository pins is the awkward lines of the seed (`tests/rust-parity-seed.mts`) and the unit tests of `json.rs`; a differential fuzz against `JSON.parse` was run during development and is not kept.
 
+`tests/rust-mcp-parity.sh` does the same for the server. It feeds one script of requests to `node packages/mcp/dist/main.js --contract F` and to `target/debug/tagents-core mcp --contract F` (or `$TAGENTS_CORE_BIN`) under `env -i`, with stub programs on `PATH` and a scratch home, so no real tagents program runs, and passes a scenario only when the two transcripts are the same bytes once `serverInfo.version` is dropped. A transcript is every answer keyed by request id, the order the answers came in, how the server ended and which processes of the call were still alive after it; the typed client that writes it is `tests/rust-mcp-parity-driver.mts`. The scenarios are `initialize` with every protocol version the SDK lists and one it does not, `tools/list` on a fixture that has every feature of a spec, on an empty contract and on the bundled `contract.json`, the command line of every path of `argvFor` and about twenty refusals, every exit code, JSON and text output (white space before the document, numbers, key order, deep nesting), output cut at the cap, across a character and on both streams, a missing program, `requires: tmux`, cancellation, two calls in flight, the end of stdin and each signal with a call running, and a program that leaves a child holding its pipes. Tripwires assert on the node transcript alone, so a scenario that stops provoking what it exists for fails and does not pass for nothing. Timeouts and the grace are not in the suite, because both come from constants; `crates/tagents-core/tests/mcp_run.rs` takes them as arguments.
+
+```sh
+pnpm install && pnpm build
+env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/rust-mcp-parity.sh
+PARITY_ONLY="JSON numbers" PARITY_SHOW=300 bash tests/rust-mcp-parity.sh    # the scenarios whose label holds the text, with both transcripts cut at 300 characters a line
+```
+
+It needs a built node server and node 22.18 or newer (the driver is TypeScript run as it is), builds the debug binary when it is missing, and uses no real home, no tmux server and no network. `tests/rust-parity.sh` never runs `mcp`. `cargo test` carries the node server's own tests, ported: every case of `packages/mcp/test/*.test.ts` has a Rust test in `mcp/*.rs` or `crates/tagents-core/tests/mcp_{run,server,pins}.rs`, except the one named in the last item of the list below.
+
 ## Where the two are known to differ
 
 These are the differences the port does not hide, and the suite does not cover them:
@@ -114,10 +145,33 @@ These are the differences the port does not hide, and the suite does not cover t
 - A directory entry whose name is not UTF-8 is not listed. Node lists it with U+FFFD in the name, and the next `stat` on that name fails there.
 - A modification time that `Date` cannot represent, and a `HOME` that is unset (the suite always sets it, empty at times), are not covered.
 
+The MCP server differs from `packages/mcp` in these ways. The suite leaves them out, or pins the Rust side alone:
+
+- A request whose `params` do not have the shape the method needs is -32602 `Invalid params: <reason>` on the Rust server; node answers -32603 with the text of its schema library.
+- The calls an ending stopped (stdin closed, a signal) are always answered `cancelled` by the Rust server. Node races `process.exit` against writing those answers, so which of them arrive changes from run to run; the suite drops them from the comparison and pins the Rust ones (`rust_answers`).
+- Program JSON that `serde_json` does not read stays text where node parses it: a lone surrogate escape (`"\ud800"`) and a document nested deeper than 128 levels. The keys of an object that are integers are not moved to the front, as JavaScript moves them.
+- A call argument named like a member of `Object.prototype` (`constructor`, `toString`) is refused as unknown, where node lets it through and ignores it.
+- A program that cannot be started for a reason other than a missing file reports the operating system's text as Rust words it, not as Node does, and the child leads a process group of its own, not a session.
+- A `notifications/cancelled` that arrives in the same read as its request: node never starts the program, the Rust server may start it and stop it at once.
+- A pipe that a process outside the group holds open costs one blocked reader thread until it lets go; node destroys the stream.
+- The usage line and the start-up failures say `tagents-core mcp` and not `tagents-mcp`, and a missing or invalid contract file is worded in Rust's words; the suite compares their exit codes only.
+- The node CLI does not know `mcp`, and its list of reserved words (`reserved: session · sessions · plugin · config · doctor · help`, pinned by `packages/core/test/plugin-commands.test.ts`) is unchanged, so it still lets a plugin name a verb `mcp`; behind the front door that word is always the server's.
+- `parseCliContract` has no Rust counterpart. The node server never calls it (only the generator in `packages/contract` does), so the one test of `contract-file.test.ts` that reads a spec with a program name of its own through it is not ported.
+
 ## Rules for the Rust code
 
 - `unsafe` is forbidden, and `unwrap` and `expect` are denied outside tests, for the whole workspace (`Cargo.toml`, `crates/clippy.toml`).
-- No async runtime. The only dependencies are `serde` and `serde_json`, for reading the spec file.
+- No async runtime. Every dependency is a row of the table below with its reason and its cost, and a new one is a new row.
+
+| dependency | used by | reason | cost |
+|------------|---------|--------|------|
+| `serde` (derive) | `tagents-spec` | reads the data file into a typed model that refuses unknown fields | `serde_derive`, `syn`, `quote`, `proc-macro2`, `unicode-ident`, `serde_core` at build time |
+| `serde_json` | `tagents-spec`, `tagents-core` | parses the data file, prints `--spec`, speaks JSON-RPC and reads the contract | `itoa`, `memchr`, `zmij`; its parser is not used for transcripts (`json.rs`) |
+| `serde_json` features `preserve_order`, `arbitrary_precision` | `mcp` | a program's JSON keeps the order of its keys and the digits of its numbers, and the contract's maps keep the file's order | `indexmap`, `equivalent`, `foldhash`, `hashbrown`; the features are additive, so they apply to every crate of the workspace |
+| `rustix` (feature `process`) | `mcp::run` | signal a process group and wait for a child without reaping it, in safe code (`unsafe_code = "forbid"` stays) | `bitflags`, `errno`, `libc` |
+| `signal-hook` | `mcp::server` | end on SIGTERM, SIGINT or SIGHUP from a thread, in safe code | `signal-hook-registry` |
+
+The three rows of the server add 10 crates (24 names in the build of `tagents-core` instead of 14, 22 of them external instead of 12), raise the release binary (`lto`, one codegen unit, `strip`) from 518,992 to 802,752 bytes, 283,760 of them, and a clean `cargo build --release -p tagents-core` from 8.8 s to 12.5 s on an Apple silicon laptop. The bytes include the server's own code, and the dependencies cannot be measured apart from it, because the server does not build without them. `rustix` has what `mcp::run` calls, `waitid` with `NOWAIT` and `kill_process_group`, on the three targets of the release, `aarch64-apple-darwin`, `x86_64-apple-darwin` and `x86_64-unknown-linux-musl` (`rustix` 1.1.6, the `cfg` of `src/process/wait.rs` and `src/process/kill.rs`); the dry run of `release.yml` on a pull request builds all three, and if one of them ever fails, `nix` is the substitute. Against it the server saves memory and start-up time: an idle `tagents-core mcp` has a footprint (`footprint <pid>`) of 1.6 MB and the node server 38 MB, and the time from spawn to the answer of `initialize` is 3.2 ms against 99.7 ms (median of ten runs each).
 - `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings` and `cargo test --workspace --locked` run in CI (`.github/workflows/rust.yml`), together with the parity suite, the version gate, and the shell suites `tests/release.sh` and `tests/install.sh`.
 
 ## What is not decided yet
