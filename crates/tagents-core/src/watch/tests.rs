@@ -280,7 +280,7 @@ fn arming_does_not_wait_for_an_event() {
         .unwrap();
 }
 
-/// A reader of a file as the daemon reads the events file: from where it stopped to the end.
+/// A reader of a file as a follower of a log reads it: from where it stopped to the end.
 struct Follower {
     file: File,
     text: Vec<u8>,

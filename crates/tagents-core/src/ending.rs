@@ -1,4 +1,4 @@
-//! How a process ends: the token a call carries to be told to stop, and the thread that turns a signal into one call of a function. `mcp` ends its calls and then its process with them, and the notification daemon stops its loop with the same two.
+//! How a process ends: the token a call carries to be told to stop, and the thread that turns a signal into one call of a function. `mcp` ends its calls and then its process with them; nothing here knows `mcp`, so whatever else ends on a signal uses the same two.
 
 use std::io;
 use std::sync::{Arc, Mutex};

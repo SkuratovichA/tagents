@@ -1,4 +1,4 @@
-//! A program run as a child, and what it did told back. The child leads a process group of its own and gets the bytes it is given on stdin, or none. It has a deadline, a cap on what is kept of each output stream and a drain for the pipes once it has exited. `mcp` runs a tool call with it and the notification daemon runs its helper with it; nothing here knows either.
+//! A program run as a child, and what it did told back. The child leads a process group of its own and gets the bytes it is given on stdin, or none. It has a deadline, a cap on what is kept of each output stream and a drain for the pipes once it has exited. `mcp` runs a tool call with it; nothing here knows `mcp`, so whatever else runs a program with a deadline uses it as it is.
 //!
 //! Nothing a call starts outlives the call. A call ends by exit, timeout, a stop or the exit of the program, and each time the whole group is stopped: SIGTERM and then SIGKILL once the grace is over (or SIGKILL at once, when there is no grace), and whatever is left in the group after the program itself exited is killed at once.
 //!
