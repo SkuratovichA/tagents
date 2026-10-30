@@ -125,7 +125,7 @@ Decision: a call runs the program as a child with no stdin, the server's own env
 
 Each stream keeps its first 256 KiB and the reader goes on reading and discarding, so the program never blocks on a full pipe. A cut stream ends before the UTF-8 character the cap fell in and carries `\n[output cut at 262144 bytes]`; a cut stdout stays text and `truncated: true` is added when either stream was cut. A child that cannot start answers `<program> is not on PATH` when the program is not found, and the operating system's reason otherwise. Where `rustix` offers `waitid` with `NOWAIT` on all three release targets, the waiter blocks on that and the group is signalled before the leader is reaped, so the group id cannot have been reused by another process; where it does not, the waiter reaps first, as the node server does, and a comment says so.
 
-Reason: this is the node server's `run.ts`, step for step, in the primitives Rust has. The group is what makes "nothing outlives a call" true for programs that start helpers (tmux, a daemon), and the bounded drain is what keeps a call from hanging on a helper that escaped.
+Reason: this is the node server's `run.ts`, step for step, in the primitives Rust has. The group is what makes "nothing outlives a call" true for the helpers a program starts and leaves in its group (a helper that called `setsid` is out of reach of the group, here and in node alike), and the bounded drain is what keeps a call from hanging on a helper that escaped.
 
 Rejected: a poll loop over the pipes (more code for the same effect, and the reader threads are cheap); killing only the child (helpers would outlive the call); an async runtime for timers (a runtime for three deadlines).
 
