@@ -15,7 +15,7 @@
 #   ~/.local/bin/tagents-knowledge          exec <node> $TAGENTS_HOME/packages/knowledge/dist/cli/main.js
 #   ~/.local/bin/tagents-notify             exec <node> $TAGENTS_HOME/packages/notify/dist/main.js
 #   ~/.local/bin/tagents-mcp                exec <node> $TAGENTS_HOME/packages/mcp/dist/main.js
-#                                           or `tagents-core mcp` of the same binary when it exists at install time (the node server stays the fallback)
+#                                           or `tagents-core mcp` of the same binary, named only when it exists at install time and, in a checkout with a Cargo.toml, answers `--version` with the checkout's version (the node server stays the fallback)
 #   <hooks dir>/<name>.sh                   exec sh $TAGENTS_HOME/hooks/<name>.sh, one per hooks/*.sh
 #   <node> is the node the install found on PATH, or node on the caller's PATH once that file is gone.
 #
@@ -288,10 +288,12 @@ install_commands() {
       if [ -f "$rust_bin" ] && [ -x "$rust_bin" ]; then native=$rust_bin; fi
       if [ "${pair%%:*}" = tagents-mcp ]; then
         word=mcp
-        # A binary older than the checkout hands the word `mcp` to the node CLI, which does not know it, and a session would lose every tool of the plugin. fetch_native keeps the binary it installed at the checkout's version; one built by hand is asked once per install, and one that says another version, or cannot say, is not named, which leaves the node server.
-        want=
-        if [ -f "$TAGENTS_HOME/Cargo.toml" ]; then want=$(core_version "$TAGENTS_HOME/Cargo.toml"); fi
-        if [ -n "$native" ] && [ -n "$want" ] && [ "$("$native" --version </dev/null 2>/dev/null)" != "tagents-core $want" ]; then native=; fi
+        # A binary older than the checkout hands the word `mcp` to the node CLI, which does not know it, and a session would lose every tool of the plugin. fetch_native keeps the binary it installed at the checkout's version; one built by hand is asked once per install, and one that says another version, or cannot say, is not named, which leaves the node server. A checkout with no Cargo.toml has no version to compare and names the binary; a Cargo.toml whose version cannot be read names none.
+        if [ -f "$TAGENTS_HOME/Cargo.toml" ] && [ -n "$native" ]; then
+          want=$(core_version "$TAGENTS_HOME/Cargo.toml")
+          # A version core_version cannot read (a pre-release, an unreadable file) matches no binary.
+          if [ -z "$want" ] || [ "$("$native" --version </dev/null 2>/dev/null)" != "tagents-core $want" ]; then native=; fi
+        fi
       fi ;;
     esac
     if [ -f "$cli" ]; then

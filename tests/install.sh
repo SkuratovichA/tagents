@@ -352,6 +352,7 @@ same_bytes "and a hook wrapper" "$TMP/expected-hook" "$HOOKS_A/tmux-agent-state.
 ok "the node CLI answers" "node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$("$TAGENTS_BIN/tagents-core" a b)"
 ok "the node server answers through tagents-mcp" "node-c $TAGENTS_HOME/packages/mcp/dist/main.js a b" "$("$TAGENTS_BIN/tagents-mcp" a b)"
 
+# The fixtures of this section have no Cargo.toml, so the version check of tagents-mcp never applies here; it is covered under "a binary built by hand is not ours" below.
 # A binary that is executable at install time is named by the wrapper, and gets the pinned node as TAGENTS_NODE.
 RUST_BIN=$TAGENTS_HOME/target/release/tagents-core
 mkdir -p "$(dirname "$RUST_BIN")"
@@ -701,6 +702,12 @@ contains "...while tagents-core names it" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_B
 printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.1.0"; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
 out=$(run_native); rc=$?
 contains "a hand-built binary of the checkout's version is named again" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+set_version 0.2.0-rc.1
+out=$(run_native); rc=$?
+lacks "a Cargo.toml whose version cannot be read names no binary for tagents-mcp" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+contains "...while tagents-core still names it" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+set_version 0.1.0
+out=$(run_native); rc=$?
 
 # --- TAGENTS_NO_NATIVE=1 --------------------------------------------------------
 fresh_native 0.1.0
