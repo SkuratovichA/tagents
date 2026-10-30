@@ -15,7 +15,7 @@ use std::{
 use tagents_spec::Spec;
 
 use crate::{
-    node,
+    mcp, node,
     sessions::{self, Output},
     transcripts::Context,
 };
@@ -43,6 +43,11 @@ const GROUPS: &[Group] = &[Group {
     run: sessions::run,
 }];
 
+/// The first word of the verb that serves a protocol on stdin and stdout until the client is gone: it streams, so it cannot be a `Group` (whose `run` answers with the whole of its output at once), and it has its own arm in `run`.
+const MCP: &str = "mcp";
+/// The verbs served apart from the groups.
+const STREAMING: &[&[&str]] = &[&[MCP]];
+
 /// The data-file entries of the verbs this binary implements, as JSON: what `--spec` prints.
 pub fn served_spec() -> Result<String, String> {
     let mut spec =
@@ -51,6 +56,7 @@ pub fn served_spec() -> Result<String, String> {
         GROUPS
             .iter()
             .flat_map(|g| g.verbs)
+            .chain(STREAMING)
             .any(|verb| verb.iter().copied().eq(c.path.iter().map(String::as_str)))
     });
     let mut text = serde_json::to_string_pretty(&spec).map_err(|e| e.to_string())?;
@@ -151,10 +157,11 @@ pub fn run(args: Vec<OsString>) -> ExitCode {
             }),
         };
     }
-    let group = args
-        .first()
-        .and_then(|first| first.to_str())
-        .and_then(|first| GROUPS.iter().find(|g| g.word == first));
+    let first = args.first().and_then(|first| first.to_str());
+    if first == Some(MCP) {
+        return mcp::run(&args[1..]);
+    }
+    let group = first.and_then(|first| GROUPS.iter().find(|g| g.word == first));
     match group {
         Some(group) => {
             let rest: Vec<String> = args[1..]

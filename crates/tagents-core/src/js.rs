@@ -191,6 +191,63 @@ fn is_decimal_literal(s: &str) -> bool {
     i == b.len()
 }
 
+/// `String(x)` for a finite number: `Number::toString`. The digits are the shortest that read back as `x`, the nearest to `x` among those, and the even one when two are equally near (see `shortest_scientific`); the layout (plain up to 21 digits, down to 1e-6, an exponent with a sign beyond) and `-0` as `0` are JavaScript's.
+/// `NaN` and the infinities are told as JavaScript tells them, though no JSON holds one: a caller that writes JSON checks first.
+pub fn number_text(x: f64) -> String {
+    if x.is_nan() {
+        return "NaN".to_owned();
+    }
+    if x == 0.0 {
+        return "0".to_owned();
+    }
+    if x.is_infinite() {
+        return if x < 0.0 { "-Infinity" } else { "Infinity" }.to_owned();
+    }
+    let scientific = shortest_scientific(x.abs());
+    let Some((mantissa, exponent)) = scientific.split_once('e') else {
+        return scientific;
+    };
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    // The value is 0.<digits> times 10^point, with k digits.
+    let point = exponent.parse::<i32>().unwrap_or(0) + 1;
+    let k = digits.len() as i32;
+    let (head, tail) = digits.split_at(point.clamp(0, k) as usize);
+    let sign = if x < 0.0 { "-" } else { "" };
+    let text = if k <= point && point <= 21 {
+        format!("{digits}{}", "0".repeat((point - k) as usize))
+    } else if 0 < point && point <= 21 {
+        format!("{head}.{tail}")
+    } else if -6 < point && point <= 0 {
+        format!("0.{}{digits}", "0".repeat(point.unsigned_abs() as usize))
+    } else {
+        let power = point - 1;
+        let power_sign = if power < 0 { '-' } else { '+' };
+        let (first, rest) = digits.split_at(1);
+        let fraction = if rest.is_empty() {
+            String::new()
+        } else {
+            format!(".{rest}")
+        };
+        format!("{first}{fraction}e{power_sign}{}", power.unsigned_abs())
+    };
+    format!("{sign}{text}")
+}
+
+/// `{:e}` of a positive finite number with the digits ECMAScript picks. Rust's shortest digits round a tie up where ECMAScript takes the even digit (270348394056782.125 is `...82.12` in JavaScript and `...82.13` in `{:e}`), and Rust's exact mode, asked for as many digits, rounds a tie to even; it is used whenever its text still reads back as `x`, which it can fail to only next to a power of two, where the interval of numbers that read as `x` is not symmetric.
+fn shortest_scientific(x: f64) -> String {
+    let shortest = format!("{x:e}");
+    let digits = shortest.split_once('e').map_or(0, |(mantissa, _)| {
+        mantissa.chars().filter(char::is_ascii_digit).count()
+    });
+    let places = digits.saturating_sub(1);
+    let exact = format!("{x:.places$e}");
+    if exact.parse::<f64>() == Ok(x) {
+        exact
+    } else {
+        shortest
+    }
+}
+
 /// `Math.round(x)`: halves go up, also below zero, where `f64::round` sends them away from zero.
 pub fn round(x: f64) -> f64 {
     let floor = x.floor();
@@ -300,6 +357,39 @@ mod tests {
             "--1",
         ] {
             assert!(number(text).is_nan(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn numbers_are_told_as_javascript_tells_them() {
+        for (x, text) in [
+            (0.0, "0"),
+            (-0.0, "0"),
+            (1.0, "1"),
+            (-1.5, "-1.5"),
+            (100.0, "100"),
+            (0.1, "0.1"),
+            (0.1 + 0.2, "0.30000000000000004"),
+            (123.456, "123.456"),
+            (1e20, "100000000000000000000"),
+            (1e21, "1e+21"),
+            (1.5e21, "1.5e+21"),
+            (123_456_789_012_345_680_000.0, "123456789012345680000"),
+            (1.234_567_890_123_456_8e21, "1.2345678901234568e+21"),
+            (0.000_001, "0.000001"),
+            (1.5e-7, "1.5e-7"),
+            (1e-7, "1e-7"),
+            (5e-324, "5e-324"),
+            (f64::MAX, "1.7976931348623157e+308"),
+            (9_007_199_254_740_992.0, "9007199254740992"),
+            // The double 270348394056782.125 lies halfway between two 17-digit texts: JavaScript takes the even one.
+            (270_348_394_056_782.13, "270348394056782.12"),
+            (0.125, "0.125"),
+            (f64::NAN, "NaN"),
+            (f64::INFINITY, "Infinity"),
+            (f64::NEG_INFINITY, "-Infinity"),
+        ] {
+            assert_eq!(number_text(x), text, "{x:e}");
         }
     }
 

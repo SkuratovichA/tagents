@@ -181,6 +181,18 @@ Usage: `tagents-core doctor`
 
 This verb takes no flags.
 
+### mcp
+
+serves the tools of a contract file to an MCP client over stdin and stdout until the client closes them
+
+CLI only: no tool runs this verb.
+
+Usage: `tagents-core mcp --contract <contract>`
+
+| Flag | Type | Required | Repeatable |
+|---|---|---|---|
+| `--contract` | string | yes | no |
+
 ## tagents-knowledge
 
 ### Exit codes

@@ -19,6 +19,7 @@ export const en = {
     '  plugin new <name> [--dir D]',
     '  config convert [FILE] [--write] [--all]',
     '  doctor',
+    '  mcp --contract F',
     '  <plugin> <command> [args]   a configured plugin’s own verb (plugin list names them)',
     '',
     'reserved: session · sessions · plugin · config · doctor · help — a core verb always wins',
@@ -77,4 +78,5 @@ export const en = {
   summaryPluginNew: 'scaffolds a package that is already a plugin',
   summaryConfigConvert: 'turns config.yaml into config.toml: prints it by default, writes it beside the YAML with --write, and also converts the per-host overlays with --all',
   summaryDoctor: 'prints the node version, the state directory, the config file and whether claude is on PATH',
+  summaryMcp: 'serves the tools of a contract file to an MCP client over stdin and stdout until the client closes them',
 } as const;
