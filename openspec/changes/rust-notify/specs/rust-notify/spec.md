@@ -22,6 +22,10 @@
 - **WHEN** both services run on identical state, options and stub helper and are fed the same events
 - **THEN** the helper receives the same calls with the same bytes of input, and the logs are the same lines apart from the time and the pid
 
+#### Scenario: A prompt while a post is in flight
+- **WHEN** a post is in flight, the cache notice of a session falls due, and a prompt of that session reaches the events file before the post ends
+- **THEN** the prompt is taken in and the deadlines are swept before the due notice runs, so the cache notice of that session is not posted, as the node service sweeps at every event before it runs a job
+
 ### Requirement: One service per machine, whichever program runs it
 The service SHALL take `notify.lock` in the state directory in the node service's format, `<pid> <start time as ps prints it>` or the older bare pid, and judge a holder as the node service does, so a node service and a Rust service on one state directory exclude each other in both directions. A live holder SHALL make it log `another notify service holds <file> (pid <n>); exiting` and exit 0.
 
