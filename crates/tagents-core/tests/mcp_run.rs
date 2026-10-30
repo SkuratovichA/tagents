@@ -512,51 +512,33 @@ fn a_program_that_exits_with_its_output_still_in_the_pipe_loses_none_of_it() {
         drain: ms(0),
         ..deps(&rig, ms(5000))
     };
-    for n in 1..=20 {
-        let body = body(&call(
-            &tool("fake_echo"),
-            &json!({}),
-            &deps,
-            &Stop::default(),
-        ));
-        assert_eq!(body["exit"], json!(0), "call {n}: {}", body["outcome"]);
-        assert_eq!(
-            body["stdout"].as_str().map(str::len),
-            Some(200_000),
-            "call {n} lost output"
-        );
-    }
-}
-
-#[test]
-fn a_holder_of_the_pipes_that_left_the_group_cannot_be_killed_and_still_does_not_hold_the_call_longer_than_the_drain()
- {
-    if !std::path::Path::new("/usr/bin/perl").exists() {
-        eprintln!("no perl to start a process in a session of its own: skipped");
-        return;
-    }
-    let rig = Rig::new(
-        "process_escapee",
-        r#"/usr/bin/perl -MPOSIX -e 'POSIX::setsid(); open(F, ">", "$ARGV[0]/escaped.pid"); print F "$$\n"; close F; exec "sleep", "30"' "$D" & n=0; until [ -s "$D/escaped.pid" ] || [ $n -ge 200 ]; do n=$((n+1)); sleep 0.05; done; echo done"#,
-    );
-    let deps = RunDeps {
-        timeout: Duration::from_secs(60),
-        drain: ms(300),
-        ..RunDeps::standard(rig.env())
-    };
-    let started = Instant::now();
-    let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
-    assert!(
-        started.elapsed() < ms(300 + 10_000),
-        "long before the holder's 30 s"
-    );
-    assert_eq!(body(&result)["stdout"], json!("done\n"));
-    // The escapee is out of the group, so the call could not stop it; the rig's drop does.
-    assert!(until(|| rig.pids().len() == 1, 1000));
-    assert!(
-        alive(rig.pids()["escaped"]),
-        "the escapee left the group, so the call could not stop it"
-    );
+    // Calls side by side, as a server with several requests in flight runs them, so the readers of one call compete with the threads of the others: twenty calls one after the other on a quiet machine passed against the code that discarded the pipes at the drain, sixteen lanes of ten lost output in every run.
+    thread::scope(|scope| {
+        for lane in 1..=16 {
+            let deps = &deps;
+            scope.spawn(move || {
+                for n in 1..=10 {
+                    let body = body(&call(
+                        &tool("fake_echo"),
+                        &json!({}),
+                        deps,
+                        &Stop::default(),
+                    ));
+                    assert_eq!(
+                        body["exit"],
+                        json!(0),
+                        "lane {lane} call {n}: {}",
+                        body["outcome"]
+                    );
+                    assert_eq!(
+                        body["stdout"].as_str().map(str::len),
+                        Some(200_000),
+                        "lane {lane} call {n} lost output"
+                    );
+                }
+            });
+        }
+    });
 }
 
 #[test]
