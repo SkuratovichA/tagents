@@ -556,3 +556,19 @@ Build the site the way `site.yml` does, `SITE_DOMAIN=tagents.arstoien.com pnpm b
 ## In the zsh of this machine `grep` is ugrep and an unquoted glob is expanded before the command runs (29.10.2026)
 
 A `\b` pattern behaved differently under ugrep, and `grep -rn x --include=*.ts` stopped with "no matches found" before grep ran. Use `command grep`, and quote globs passed as arguments: `--include='*.ts'`.
+
+## A registry that reports empty before the last answer is written lets the MCP server exit without it (30.10.2026)
+
+The ending of `tagents-core mcp` waits for the calls in flight to leave a registry, so a call has to leave it only after its answer is written, or the ending returns and the process exits with that answer unwritten. `Registry::settle` only decides whether the request is answered and frees its id, the call thread writes the answer, and `finish` then removes the call and wakes `wait_empty` (`crates/tagents-core/src/mcp/server.rs`); `the_ending_returns_only_after_the_answers_of_the_calls_it_stopped_are_written` pins the order.
+
+## Rust's shortest float digits round a tie up where JavaScript takes the even digit, so a number printer is fuzzed against node (30.10.2026)
+
+`270348394056782.125` lies halfway between two 17-digit texts: `String(x)` in node gives `.12`, the shortest digits of Rust's `{:e}` give `.13`. `shortest_scientific` in `crates/tagents-core/src/js.rs` takes the digits the way ECMAScript does; the first differential fuzz (40 seeds of 5000 numbers each, through both servers) found exactly this case, and a unit test and a parity scenario pin it. A formatter that has to match JavaScript byte for byte gets a fuzz against node before hand-picked cases are trusted.
+
+## bash 3.2 brace-expands a JSON object written in double quotes inside `$( )` (30.10.2026)
+
+Inside a command substitution that is itself inside double quotes, bash 3.2 brace-expands the comma list of `"{\"a\":1,\"b\":2}"` and the JSON comes out mangled. Build such JSON in a function body or write it in single quotes; `tests/rust-mcp-parity.sh` does and says so in a comment.
+
+## `ps | grep -c <name>` counts its own shell when the command line holds the name (30.10.2026)
+
+The shell that runs the check has the pattern in its own command line, so the count is one too high and a test for "nothing is left running" never reads 0. Write the pattern with a bracket, `grep -c '[s]leep 30'`, so the line of the check does not match it.
