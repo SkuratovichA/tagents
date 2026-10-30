@@ -4,7 +4,7 @@ Each mutated copy of the tree was mounted at the same path with a shared target 
 
 ## A sed over Cargo.lock by line number raised the version of another package (30.10.2026)
 
-Raising the workspace version in the lock file with a `sed` on the lines that held `version = "0.2.0"` also changed `foldhash 0.2.0`, which has the same number. `cargo build --locked` did not fail on it at once, and the diff showed a dependency bump nobody meant. Change the version of a workspace crate in `Cargo.lock` by naming the package (`cargo update -p tagents-core --offline`, or an edit anchored on the `name = ` line above it) and read `git diff Cargo.lock` before the commit.
+Raising the workspace version in the lock file with a `sed` on the lines that held `version = "0.2.0"` also changed `foldhash 0.2.0`, which has the same number. The diff showed a dependency moving that nobody meant to move, and the line was put back. Anchor an edit of a version in `Cargo.lock` on the `name = ` line of the package above it, and read `git diff Cargo.lock` before the commit.
 
 ## A call that gave up on its pipes at the drain discarded what its reader threads had not read yet (30.10.2026)
 
