@@ -4,6 +4,7 @@
 //! Out: one line per message, written by one `write_all` under one lock, so two threads can never interleave their bytes.
 //! The keys of a message come in the SDK's order, because the parity suite compares lines byte for byte.
 
+use std::borrow::Cow;
 use std::io::{self, Write};
 use std::sync::Mutex;
 
@@ -69,7 +70,9 @@ pub enum Incoming {
 
 /// What one line holds, or `None` when the SDK would not act on it: not JSON, not an object, a key the envelope does not have, a wrong `jsonrpc`, a response, `params` that is not an object, a bad `_meta`.
 pub fn parse(line: &str) -> Option<Incoming> {
-    let Value::Object(mut object) = serde_json::from_str::<Value>(line).ok()? else {
+    let Value::Object(mut object) =
+        serde_json::from_str::<Value>(&without_lone_surrogates(line)).ok()?
+    else {
         return None;
     };
     if object.get("jsonrpc") != Some(&Value::String("2.0".to_owned())) {
@@ -96,6 +99,53 @@ pub fn parse(line: &str) -> Option<Incoming> {
             params,
         }),
     })
+}
+
+/// `JSON.parse` takes a lone surrogate escape (`"\ud83d"`), and `JSON.stringify` writes one for a string cut inside a pair, where `serde_json` refuses it, so the line would be dropped here and answered by the node server. Node's spawn encodes the lone half as U+FFFD, and each one is written as that here, as `\ufffd`, before the line is read. A pair stays a pair, and a backslash that is itself escaped starts no escape.
+fn without_lone_surrogates(line: &str) -> Cow<'_, str> {
+    let bytes = line.as_bytes();
+    let mut fixed = String::new();
+    let mut copied = 0;
+    let mut at = 0;
+    while let Some(&byte) = bytes.get(at) {
+        if byte != b'\\' {
+            at += 1;
+            continue;
+        }
+        let Some(unit) = unicode_escape(bytes, at) else {
+            // `\\`, `\"`, `\n`: two bytes, so that the second backslash of `\\` pairs with nothing.
+            at += 2;
+            continue;
+        };
+        match unit {
+            0xD800..=0xDBFF if matches!(unicode_escape(bytes, at + 6), Some(0xDC00..=0xDFFF)) => {
+                at += 12;
+            }
+            0xD800..=0xDFFF => {
+                fixed.push_str(&line[copied..at]);
+                fixed.push_str("\\ufffd");
+                at += 6;
+                copied = at;
+            }
+            _ => at += 6,
+        }
+    }
+    if copied == 0 {
+        return Cow::Borrowed(line);
+    }
+    fixed.push_str(&line[copied..]);
+    Cow::Owned(fixed)
+}
+
+/// The code unit of the `\uXXXX` escape that starts at `at`, when one does.
+fn unicode_escape(bytes: &[u8], at: usize) -> Option<u16> {
+    let [b'\\', b'u', digits @ ..] = bytes.get(at..at + 6)? else {
+        return None;
+    };
+    if !digits.iter().all(u8::is_ascii_hexdigit) {
+        return None;
+    }
+    u16::from_str_radix(std::str::from_utf8(digits).ok()?, 16).ok()
 }
 
 /// `params._meta` as `RequestMetaSchema` has it: an object whose `progressToken`, when present, is a string or a safe integer, and whose related-task entry, when present, is an object with a string `taskId`. Other keys pass.
@@ -342,6 +392,38 @@ mod tests {
         ] {
             assert_eq!(parse(line), None, "{line}");
         }
+    }
+
+    #[test]
+    fn a_lone_surrogate_escape_is_read_as_the_replacement_character_and_a_pair_stays_one_character()
+    {
+        let name = |escaped: &str| -> Option<String> {
+            let line = format!(
+                r#"{{"jsonrpc":"2.0","id":1,"method":"m","params":{{"name":"{escaped}"}}}}"#
+            );
+            let Some(Incoming::Request(r)) = parse(&line) else {
+                return None;
+            };
+            r.params?.get("name")?.as_str().map(str::to_owned)
+        };
+        for (escaped, want) in [
+            (r"\ud83d", "\u{fffd}"),
+            (r"\ude00", "\u{fffd}"),
+            (r"a\ud83db", "a\u{fffd}b"),
+            (r"\ud83d\ude00", "\u{1f600}"),
+            (r"\uD83D\uDE00", "\u{1f600}"),
+            (r"\ud83dA", "\u{fffd}A"),
+            (r"\ud83d\ud83d\ude00", "\u{fffd}\u{1f600}"),
+            (r"\ude00\ud83d", "\u{fffd}\u{fffd}"),
+            // An escaped backslash starts no escape, however many come before the text that looks like one.
+            (r"\\ud83d", r"\ud83d"),
+            (r"\\\ud83d", "\\\u{fffd}"),
+            (r"\\\\ud83d\ud83d", "\\\\ud83d\u{fffd}"),
+        ] {
+            assert_eq!(name(escaped).as_deref(), Some(want), "{escaped}");
+        }
+        // Three hex digits are no escape, so the line is not JSON and is ignored, as before.
+        assert_eq!(name(r"\ud83"), None);
     }
 
     #[test]
