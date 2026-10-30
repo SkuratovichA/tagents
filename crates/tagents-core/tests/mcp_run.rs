@@ -76,6 +76,21 @@ fn in_flight(tool: Tool, deps: RunDeps, stop: Stop) -> Receiver<CallResult> {
     receiver
 }
 
+/// A program that starts a helper in a session of its own, so outside the call's group, then waits for the helper's pid file and runs `after`. `perl` is what the helper runs before it replaces itself with the code of `exec`.
+fn escapee_program(perl: &str, after: &str) -> String {
+    format!(
+        r#"/usr/bin/perl -MPOSIX -e 'POSIX::setsid(); open(F, ">", "$ARGV[0]/escaped.pid"); print F "$$\n"; close F; {perl}' "$D" & n=0; until [ -s "$D/escaped.pid" ] || [ $n -ge 200 ]; do n=$((n+1)); sleep 0.05; done; {after}"#
+    )
+}
+
+fn has_perl() -> bool {
+    let found = std::path::Path::new("/usr/bin/perl").exists();
+    if !found {
+        eprintln!("no perl to start a process in a session of its own: skipped");
+    }
+    found
+}
+
 fn marker() -> String {
     format!("\n[output cut at {MAX_STREAM} bytes]")
 }
@@ -550,18 +565,19 @@ fn a_holder_of_the_pipes_that_left_the_group_cannot_be_killed_and_still_does_not
     }
     let rig = Rig::new(
         "process_escapee",
-        r#"/usr/bin/perl -MPOSIX -e 'POSIX::setsid(); open(F, ">", "$ARGV[0]/escaped.pid"); print F "$$\n"; close F; exec "sleep", "30"' "$D" & n=0; until [ -s "$D/escaped.pid" ] || [ $n -ge 200 ]; do n=$((n+1)); sleep 0.05; done; echo done"#,
+        &escapee_program(r#"exec "sleep", "30""#, "echo done"),
     );
     let deps = RunDeps {
         timeout: Duration::from_secs(60),
-        drain: ms(300),
+        drain: ms(100),
+        kill_grace: ms(5000),
         ..RunDeps::standard(rig.env())
     };
     let started = Instant::now();
     let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
     assert!(
-        started.elapsed() < ms(300 + 10_000),
-        "long before the holder's 30 s"
+        started.elapsed() < ms(3000),
+        "the call gave up at the drain, not at the grace of 5 s"
     );
     assert_eq!(body(&result)["stdout"], json!("done\n"));
     // The escapee is out of the group, so the call could not stop it; the rig's drop does.
@@ -570,6 +586,61 @@ fn a_holder_of_the_pipes_that_left_the_group_cannot_be_killed_and_still_does_not
         alive(rig.pids()["escaped"]),
         "the escapee left the group, so the call could not stop it"
     );
+}
+
+#[test]
+fn a_holder_of_the_stdout_alone_does_not_hold_the_call_longer_than_the_drain() {
+    if !has_perl() {
+        return;
+    }
+    // The stderr pipe has no writer left, so it polls as hung up unless its end is named as the one that ended.
+    let rig = Rig::new(
+        "process_escapee_stdout_only",
+        &escapee_program(
+            r#"open(STDERR, ">", "/dev/null"); exec "sleep", "30""#,
+            "echo done",
+        ),
+    );
+    let deps = RunDeps {
+        timeout: Duration::from_secs(60),
+        drain: ms(100),
+        kill_grace: ms(5000),
+        ..RunDeps::standard(rig.env())
+    };
+    let started = Instant::now();
+    let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
+    assert!(
+        started.elapsed() < ms(3000),
+        "the call gave up at the drain, not at the grace of 5 s"
+    );
+    assert_eq!(body(&result)["stdout"], json!("done\n"));
+}
+
+#[test]
+fn a_holder_of_the_stderr_alone_does_not_hold_the_call_longer_than_the_drain() {
+    if !has_perl() {
+        return;
+    }
+    let rig = Rig::new(
+        "process_escapee_stderr_only",
+        &escapee_program(
+            r#"open(STDOUT, ">", "/dev/null"); exec "sleep", "30""#,
+            "echo done",
+        ),
+    );
+    let deps = RunDeps {
+        timeout: Duration::from_secs(60),
+        drain: ms(100),
+        kill_grace: ms(5000),
+        ..RunDeps::standard(rig.env())
+    };
+    let started = Instant::now();
+    let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
+    assert!(
+        started.elapsed() < ms(3000),
+        "the call gave up at the drain, not at the grace of 5 s"
+    );
+    assert_eq!(body(&result)["stdout"], json!("done\n"));
 }
 
 #[test]
@@ -582,7 +653,7 @@ fn a_holder_outside_the_group_that_keeps_writing_holds_the_call_no_longer_than_t
     // The escapee writes to the call's stdout for good, so its pipe is never empty for long and the call waits for it, but only up to the drain and the grace.
     let rig = Rig::new(
         "process_escapee_writing",
-        r#"/usr/bin/perl -MPOSIX -e 'POSIX::setsid(); open(F, ">", "$ARGV[0]/escaped.pid"); print F "$$\n"; close F; exec "yes"' "$D" & n=0; until [ -s "$D/escaped.pid" ] || [ $n -ge 200 ]; do n=$((n+1)); sleep 0.05; done; echo done"#,
+        &escapee_program(r#"exec "yes""#, "echo done"),
     );
     let deps = RunDeps {
         timeout: Duration::from_secs(60),
@@ -590,17 +661,46 @@ fn a_holder_outside_the_group_that_keeps_writing_holds_the_call_no_longer_than_t
         kill_grace: ms(500),
         ..RunDeps::standard(rig.env())
     };
-    let started = Instant::now();
-    let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
-    assert!(
-        started.elapsed() < ms(100 + 500 + 10_000),
-        "a holder that keeps writing did not hold the call for good"
-    );
+    let result = in_flight(tool("fake_hang"), deps, Stop::default())
+        .recv_timeout(ms(10_000))
+        .expect("a holder that keeps writing did not hold the call for good");
     assert_eq!(body(&result)["exit"], json!(0));
     // The call let go of the pipe, so the next write of the holder is a write to a pipe nobody reads.
     let pid = rig.pids()["escaped"];
     assert!(
         until(|| !alive(pid), 5000),
         "the holder died of SIGPIPE once the call was over"
+    );
+}
+
+#[test]
+fn a_call_that_was_stopped_is_given_up_on_at_the_drain_even_when_a_holder_keeps_writing() {
+    if !has_perl() {
+        return;
+    }
+    // The program ignores SIGTERM and has a writing helper outside the group: after the kill at the grace the pipe is never empty for long, and a stopped call must not wait for it a second grace.
+    let rig = Rig::new(
+        "process_stopped_escapee_writing",
+        &format!(
+            "trap '' TERM; {}",
+            escapee_program(r#"exec "yes""#, "while :; do sleep 1; done")
+        ),
+    );
+    let stop = Stop::default();
+    let deps = RunDeps {
+        timeout: Duration::from_secs(60),
+        drain: ms(100),
+        kill_grace: ms(3000),
+        ..RunDeps::standard(rig.env())
+    };
+    let result = in_flight(tool("fake_hang"), deps, stop.clone());
+    assert!(rig.started(1), "the helper started");
+    let stopped = Instant::now();
+    stop.stop();
+    let result = result.recv_timeout(ms(12_000)).expect("the call resolved");
+    assert_eq!(body_of_outcome(&result), "cancelled");
+    assert!(
+        stopped.elapsed() < ms(5000),
+        "a stopped call was given up on at the drain, not held for a second grace"
     );
 }
