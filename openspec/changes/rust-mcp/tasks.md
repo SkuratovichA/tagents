@@ -38,14 +38,14 @@ Archive this change after `mcp-tools-from-contract`: the requirement "The tools 
 
 - [x] 7.1 `write_wrapper` takes the word, and the `tagents-mcp` entry of `install_commands` names the binary of `tagents-core` with `mcp` (`bash tests/install.sh`, sections 13 and 14)
 - [x] 7.2 With no binary the wrapper is byte for byte the old one; a binary that vanishes or loses its executable bit falls through to node; `TAGENTS_NO_NATIVE=1` and a version without a release leave node (`bash tests/install.sh`)
-- [x] 7.3 Mutations of the installer each make `tests/install.sh` fail: the word left out, the binary named when none is installed, the version check dropped (`bash tests/install.sh`)
+- [x] 7.3 Mutations of the installer each make `tests/install.sh` fail: the word `mcp` left out (7 checks fail), the binary named when none is installed (11), the version check of a hand-built binary dropped (4), and a version the installer cannot read named (1) (`bash tests/install.sh`)
 - [x] 7.4 `shellcheck -s sh install.sh` has no finding that `origin/main` does not have (four SC2016 on both)
 
 ## 8. CI
 
 - [x] 8.1 `rust.yml` installs the node dependencies before the Rust steps, lists `packages/mcp/**`, `tests/rust-mcp-parity.sh` and its driver in both `paths` and runs the suite after the existing parity step (`actionlint`)
-- [x] 8.2 The workflow run of the pull request passes the new step (`rust-mcp-parity: 219 passed, 0 failed` in the `rust` job)
-- [x] 8.3 The `rust` job runs on ubuntu-latest and macos-latest (proved by the workflow run of the pull request: both legs pass, each with `rust-parity: 391 passed` and `rust-mcp-parity: 219 passed`)
+- [x] 8.2 The workflow run of the pull request passes the new step (`bash tests/rust-mcp-parity.sh`: 222 passed at d0ef4a1; the `rust` job of the pull request ran it, and `gh run list --branch feat/rust-mcp` shows the `rust`, `ci`, `release` and `site` workflows succeeded on d0ef4a1 for both the push and the pull request)
+- [x] 8.3 The `rust` job runs on ubuntu-latest and macos-latest (`bash tests/rust-parity.sh`: 391 passed at d0ef4a1; the `rust` job ran green on Linux and macOS at d0ef4a1, checked with `gh run list --branch feat/rust-mcp`)
 
 ## 9. Documents
 

@@ -68,18 +68,18 @@ The server SHALL derive its tools, check a call and tell its result by the rules
 - **THEN** their answers are the same bytes, for every exit code of the verb, for JSON and for text output, and for an output cut at 256 KiB
 
 ### Requirement: Nothing a call starts outlives the call
-A call SHALL run its program in a process group of its own, and when the program exits, the call times out after five minutes, the client cancels it or the server ends, the whole group SHALL be stopped. A helper that left the group and holds the pipes after its program exited SHALL hold the call no longer than a short drain, plus the kill grace when it keeps writing. A helper that calls `setsid` leaves the group and is not stopped: it outlives the call, with both servers.
+A call SHALL run its program in a process group of its own and stop the whole group when the program exits, the call times out after five minutes, the client cancels it or the server ends. A helper that left the group and holds the pipes SHALL hold the call no longer than a short drain, plus the kill grace when it keeps writing; with no such helper the call SHALL return all of the program's output. A helper that calls `setsid` is not stopped: it outlives the call, with both servers.
 
 #### Scenario: A program that starts a helper
 - **WHEN** a program starts a background process in its group and exits
 - **THEN** the helper is gone when the answer is written
 
 #### Scenario: A helper that holds the pipes
-- **WHEN** a helper outside the group keeps the pipes open after the program exited
+- **WHEN** a helper outside the group keeps the pipes open after the program exited and writes nothing
 - **THEN** the call is answered within the drain and not when the helper lets go
 
 #### Scenario: Output left in the pipe at the exit
-- **WHEN** a program writes its output and exits before the server has read it
+- **WHEN** a program writes its output and exits before the server has read it, and no helper outside the group holds the pipes
 - **THEN** the call returns all of it
 
 #### Scenario: A helper that keeps writing
