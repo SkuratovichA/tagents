@@ -19,7 +19,7 @@ export const en = {
     '  plugin new <name> [--dir D]',
     '  config convert [FILE] [--write] [--all]',
     '  doctor',
-    '  mcp --contract F',
+    '  mcp --contract F   (Rust binary only)',
     '  <plugin> <command> [args]   a configured plugin’s own verb (plugin list names them)',
     '',
     'reserved: session · sessions · plugin · config · doctor · help — a core verb always wins',

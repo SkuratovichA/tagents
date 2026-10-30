@@ -20,7 +20,7 @@ export const ru: Partial<Record<keyof typeof en, string>> = {
     '  plugin new <имя> [--dir D]',
     '  config convert [FILE] [--write] [--all]',
     '  doctor',
-    '  mcp --contract F',
+    '  mcp --contract F   (только бинарник на Rust)',
     '  <плагин> <команда> [аргументы]   команда настроенного плагина (см. plugin list)',
     '',
     'зарезервировано: session · sessions · plugin · config · doctor · help — команда ядра важнее',
