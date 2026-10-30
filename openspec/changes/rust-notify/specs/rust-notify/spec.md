@@ -16,7 +16,7 @@
 - **THEN** they gain the entry of the verb and no tool
 
 ### Requirement: The Rust service meets the requirements of the node service
-`tagents-core notify run` SHALL meet every requirement of the `notify` and `notify-service` capabilities that concerns the running service: which events raise a notice, how a notice reads, when it is withdrawn, the prompt-cache deadlines, the options, the lock, the stop, the exit codes and the log. The requirements below add what the port itself promises.
+`tagents-core notify run` SHALL meet every requirement of the `notify` and `notify-service` capabilities that concerns the running service: which events raise a notice, how a notice reads, when it is withdrawn, the prompt-cache deadlines, the options, the lock, the stop, the exit codes and the log, except where a requirement below says otherwise; a requirement below wins over the one it departs from, and adds what the port itself promises.
 
 #### Scenario: The same events
 - **WHEN** both services run on identical state, options and stub helper and are fed the same events
@@ -42,11 +42,15 @@ The service SHALL take `notify.lock` in the state directory in the node service'
 - **THEN** the stop leaves it in place
 
 ### Requirement: A signal ends the service as it ends the node service
-The service SHALL register SIGTERM, SIGINT and SIGHUP before it does anything else, so that a signal during start is acted on when start settles and the first signal wins. A stop SHALL log `stopping (<signal name>)`, let a post in flight finish, drop what is queued behind it, remove `events.on`, release the lock last and exit 0.
+The service SHALL register SIGTERM, SIGINT and SIGHUP before it does anything else, so that a signal during start is acted on when start settles and the first signal wins. A stop SHALL log `stopping (<signal name>)` from the thread that receives the signal, before anything else of the stop, let a post in flight finish, drop what is queued behind it, remove `events.on`, release the lock last and exit 0.
 
 #### Scenario: A signal during a post
 - **WHEN** SIGTERM arrives while the helper is posting a notice
 - **THEN** the post finishes, no queued event posts after it, and the service exits 0 with neither the lock nor `events.on` left
+
+#### Scenario: The stopping line comes first
+- **WHEN** SIGTERM arrives while the helper is posting a notice
+- **THEN** `stopping (SIGTERM)` is logged before the `notice` line of that post
 
 #### Scenario: A signal during start
 - **WHEN** SIGTERM arrives before the service has logged `started`
@@ -57,7 +61,7 @@ The service SHALL register SIGTERM, SIGINT and SIGHUP before it does anything el
 - **THEN** the service logs `backend none: nothing to post; exiting` or `no notification backend for <os> yet; exiting`, releases the lock and exits 0
 
 ### Requirement: The log is the node service's
-The service SHALL write to stderr one line per event of the `notify-service` requirement "The log lines of the service", as `<ISO time with milliseconds> <the parts joined by a space>`, in the node service's words, with `started pid <n> backend <name> options <file> (found|not found|invalid)` as the last line of a start. It SHALL write nothing to stdout and add no line of its own but the hand-over line.
+The service SHALL write to stderr the lines listed below, as `<ISO time with milliseconds> <the parts joined by a space>` and in the node service's words, `started pid <n> backend <name> options <file> (found|not found|invalid)` being the last line of a start. It SHALL write nothing to stdout and add only the two hand-over lines of the YAML requirement below, and an operating system's text in a line SHALL come from `node::io_message` (`crates/tagents-core/src/node.rs`).
 
 #### Scenario: The started line
 - **WHEN** the service starts with an options file that is valid, missing or invalid
@@ -71,12 +75,44 @@ The service SHALL write to stderr one line per event of the `notify-service` req
 - **WHEN** the helper fails to post the same way twice and then succeeds
 - **THEN** `post failed <kind> <key> <reason>` is logged once and `posting works again` once
 
+#### Scenario: The lines of a start and a stop
+- **WHEN** the service starts, finds a lock held, has no backend, or stops
+- **THEN** its lines are `started pid <n> backend <name> options <file> (found|not found|invalid)`, `another notify service holds <file> (pid <n>); exiting`, `backend none: nothing to post; exiting`, `no notification backend for <os> yet; exiting`, `stopping (<signal name>)`, `could not release the lock <file> <why>`, `drain failed <why>` and `the notify service stopped: <why>`
+
+#### Scenario: The lines of the options
+- **WHEN** the options are read, reloaded or cannot be watched
+- **THEN** its lines are `options: <problem>` for each problem, `options reloaded`, `backend changes take effect after a restart (tagents notify install)`, `options reload is off: <dir> does not exist` and `options watch failed <dir> <why>`
+
+#### Scenario: The lines of a notice
+- **WHEN** the engine posts, drops, withdraws or holds back a notice
+- **THEN** its lines are `notice <kind> <key> <title as JSON> shown`, the same with `dropped` and `: <why>` when there is one, `notice <kind> <key> skipped: tmux has no pane <pane>`, `post failed <kind> <key> <why>`, `posting works again`, `withdraw <id>`, `withdraw failed <id> <why>` and `permission prompt held back by the question on screen <key>`
+
+#### Scenario: The lines of a failing part
+- **WHEN** the tmux probe, an event or the follower fails
+- **THEN** its lines are `screen probe failed <pane> <why>`, `error <why>`, `feed error <message>`, `follow failed <why> trying again in <n>s`, `arming from the state rows failed <why>` and `feed follower died <message> following again in <n>s`
+
+#### Scenario: The lines of the log backend
+- **WHEN** the backend is `log` and a notice is posted
+- **THEN** the line is `post <id> <kind> <title JSON> <subtitle JSON> <body JSON> click=<command, or terminal> pid=<n or none> <skip-if-frontmost or always>`, 28 lines in all with the ones above
+
 ### Requirement: The events file is followed from its end
-The service SHALL create `events.tsv` (mode 0600) and `events.on` when it follows, start at the end the file has then, read to its end on every wake and keep the bytes of a partial line. It SHALL drop a line that is not 13 fields with a known event, restart at 0 when the file is shorter than its offset, reopen from 0 when the path names another inode, and rotate at 1 MiB to `events.tsv.1`, reading the old file to its end for 2 seconds.
+The service SHALL create `events.tsv` (mode 0600) and `events.on` when it follows, start at its end, read to the end on every wake and keep a partial line. It SHALL drop a line with fewer than 13 fields, a time that is not a number or an unknown event (a trailing carriage return is tolerated, extra fields are ignored), restart at 0 when the file is shorter than its offset, reopen from 0 when the path names another inode, and rotate at 1 MiB, reading the old `events.tsv.1` for 2 seconds.
 
 #### Scenario: A line in two writes
 - **WHEN** a line arrives in two writes with a wake between them
 - **THEN** it is handled once, after the second
+
+#### Scenario: A line of 14 fields
+- **WHEN** a line with a known event and 14 tab-separated fields is appended
+- **THEN** it is handled as a line of 13
+
+#### Scenario: A line that ends in a carriage return
+- **WHEN** a line with a known event and 13 fields ends in a carriage return
+- **THEN** it is handled as the same line without it
+
+#### Scenario: A line of 12 fields
+- **WHEN** a line with a known event and 12 fields is appended
+- **THEN** it is dropped and the next line is handled
 
 #### Scenario: A truncated file
 - **WHEN** the file is truncated and appended to
@@ -178,11 +214,11 @@ A file that is not TOML SHALL be reported as the one problem `options: <file>: I
 - **THEN** the file is invalid and the reason says the value cannot be represented losslessly
 
 ### Requirement: A YAML-only options file is run by the node service
-When `notify.toml` is not a regular file and `notify.yaml` is, at start or at a reload, the Rust service SHALL log `options: <file> is YAML; handing over to the node service`, stop what it started, release the lock and `events.on` as a stop does, and replace its process with `node <root>/packages/notify/dist/main.js run`, with the environment it had. It SHALL read no YAML.
+When `notify.toml` is not a regular file and `notify.yaml` is, the Rust service SHALL read no YAML. At start it SHALL log `options: <file> is YAML; handing over to the node service`, keep `notify.lock` held, remove `events.on`, and replace its process with `node <root>/packages/notify/dist/main.js run` with the environment it had. At a reload it SHALL keep the options in force and log `options: <file> is YAML; a restart hands it to the node service`.
 
 #### Scenario: Only a YAML file at start
 - **WHEN** `plugins/notify.yaml` exists and `plugins/notify.toml` does not
-- **THEN** the node service runs in the process, with the same pid, and reads the file
+- **THEN** the node service runs in the process, with the same pid, takes over the lock and reads the file
 
 #### Scenario: Both files
 - **WHEN** both exist
@@ -190,10 +226,18 @@ When `notify.toml` is not a regular file and `notify.yaml` is, at start or at a 
 
 #### Scenario: The options move to YAML while it runs
 - **WHEN** `notify.toml` is removed and `notify.yaml` is created
-- **THEN** the Rust service hands over at the reload, and the node service takes the lock
+- **THEN** the Rust service keeps running with the values in force and logs the line once, and a restart hands over to the node service
+
+#### Scenario: The lock is kept across the exec
+- **WHEN** the service hands over while a manual `run` starts at the same moment
+- **THEN** the lock never names a dead pid, the manual `run` logs `another notify service holds` and exits 0, and the node service runs
 
 ### Requirement: A start that fails is handed to the node service
-When the Rust service cannot start (it cannot arm a watch, or the operating system refuses one), it SHALL log the reason, release what it took and replace its process with the node service, which either runs or fails by its own rules with its own `the notify service stopped:` line and exit 1. A failure after the start SHALL NOT be handed over.
+When a step of the start before the `started` line fails, the Rust service SHALL, unless a stop was requested, log the reason, keep the lock held and replace its process with the node service, which runs or fails by its own rules with its own `the notify service stopped:` line and exit 1. A stop requested during start SHALL end the process as a stop does, and a failure after `started` SHALL NOT be handed over.
+
+#### Scenario: The steps that hand over
+- **WHEN** creating the state directory, taking the lock (not a held lock), reading the options, picking the backend, starting the follower or arming the engine from the state rows fails
+- **THEN** the service hands over to the node service
 
 #### Scenario: A watch that cannot be armed
 - **WHEN** the watch on the events file fails at start
@@ -202,6 +246,14 @@ When the Rust service cannot start (it cannot arm a watch, or the operating syst
 #### Scenario: A failure that node shares
 - **WHEN** the state directory cannot be created
 - **THEN** the node service fails with `the notify service stopped:` and exit 1, the code launchd retries
+
+#### Scenario: The options directory cannot be watched
+- **WHEN** the watch on the options directory fails at start
+- **THEN** the service logs `options watch failed <dir> <why>`, logs `started` and runs without a reload
+
+#### Scenario: A stop during a failing start
+- **WHEN** SIGTERM arrives while a step of the start fails
+- **THEN** the process stops, releases the lock and exits 0, and the node service is not started
 
 ### Requirement: The helper is called as the node service calls it
 A notice SHALL be posted by running `<app>/Contents/MacOS/tagents-notify post` with the notice as JSON on stdin and a withdrawal by `<app>/Contents/MacOS/tagents-notify withdraw <id>`, each with a deadline of 5 seconds after which the helper's process group is killed. Only `ok`, `shown`, `why` and `error` of the one JSON line answered are read, and an answer that is not that line is the node service's `unreadable output from the notification helper` error.

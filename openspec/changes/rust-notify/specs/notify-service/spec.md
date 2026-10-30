@@ -22,3 +22,14 @@ The LaunchAgent SHALL live at `~/Library/LaunchAgents/io.github.skuratovicha.tag
 #### Scenario: the binary disappears
 - **WHEN** the plist names the wrapper and the binary is removed by a later update
 - **THEN** the next start of the service runs the node program and the plist is not rewritten
+
+### Requirement: Resource use
+The service SHALL poll nothing. It holds one file watch on the events stream and one on the options directory, and at most three timed waits: the cache deadline's (only while a deadline is armed, at most 5 minutes), the follower's re-follow (only while the follower is dead) and the rotation grace (2 seconds after the events file rotates). The Rust service also watches the options file when it is a regular file. Each notice costs one tmux invocation and one helper invocation.
+
+#### Scenario: idle
+- **WHEN** no session is waiting and the follower is alive
+- **THEN** no timed wait is pending
+
+#### Scenario: the Rust service at rest
+- **WHEN** the Rust service is idle
+- **THEN** it has three threads (the engine, the watch, the signals) and, besides the descriptors of its files, one for the watch and two for its wake pipe, and it has a thread for a tmux, `ps` or helper call only while that call runs
