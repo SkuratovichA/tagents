@@ -576,3 +576,7 @@ The shell that runs the check has the pattern in its own command line, so the co
 ## A Rust test that calls the node CLI passes where `node_modules` exists and fails on the CI runner that has none yet (30.10.2026)
 
 The smoke test in `crates/tagents-core/tests/mcp_server.rs` runs `packages/core/src/cli/main.ts` through the server, and that file imports `zod`. It passed on the machine where `pnpm install` had run and failed on the first push of the branch with `ERR_MODULE_NOT_FOUND`, because `rust.yml` installed pnpm and node only after `cargo test`. The job now installs the node dependencies before the Rust steps, so the call half runs in CI with the pinned node, and the test skips that half, saying why, where the workspace has no `node_modules`.
+
+## A `\uXXXX` escape pair written through an edit request carried as JSON lands in the file as the character it names (30.10.2026)
+
+The test cases for surrogate escapes in `crates/tagents-core/src/mcp/rpc.rs` were meant to hold the six-character escapes `\ud83d\ude00`, and so was one scenario of `tests/rust-mcp-parity.sh`. The edit requests that wrote them were JSON, the JSON layer decoded the pair, and four places held the literal character U+1F600 instead: the tests compared a decoded character with itself and could not fail. Write text that must hold a backslash-u escape through a script that builds the backslash with `chr(92)`, and check the bytes afterwards: `grep -c` for the escape, and `LC_ALL=C grep -c -P '[^\x00-\x7F]'` for any non-ASCII byte that should not be there.
