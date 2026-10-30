@@ -11,6 +11,7 @@ use std::{
     ffi::{OsStr, OsString},
     fs,
     io::{BufRead, BufReader, Write},
+    os::unix::process::ExitStatusExt,
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, ExitStatus, Stdio},
     sync::mpsc::{self, Receiver},
@@ -24,12 +25,12 @@ use tagents_core::mcp::run::MAX_STREAM;
 
 mod common;
 use common::{
+    REPO,
     rig::{Rig, WITH_GRANDCHILD, until},
     run, scratch, start, write_executable,
 };
 
 const BIN: &str = env!("CARGO_BIN_EXE_tagents-core");
-const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
 /// A server process and the client side of its pipes.
 struct Session {
@@ -422,6 +423,36 @@ fn sigint_stops_the_program_of_a_call_in_flight_and_the_server_exits() {
 #[test]
 fn sighup_stops_the_program_of_a_call_in_flight_and_the_server_exits() {
     signal_stops_the_call_in_flight("server_sighup", Signal::HUP);
+}
+
+#[test]
+fn a_second_signal_during_the_ending_ends_the_server_by_that_signal_before_the_grace_is_over() {
+    let rig = Rig::new(
+        "server_second_sigterm",
+        r#"trap '' TERM; echo $$ > "$D/main.pid"; while :; do sleep 1; done"#,
+    );
+    let mut session = Session::of(&rig);
+    session.initialize();
+    session.call(2, "fake_hang", &json!({}));
+    assert!(rig.started(1), "the program started");
+    let pid = Pid::from_raw(rig.pids()["main"]).unwrap();
+    // The first signal starts the ending, which the program that ignores SIGTERM keeps busy for the whole grace.
+    session.signal(Signal::TERM);
+    thread::sleep(Duration::from_millis(300));
+    assert!(
+        session.exit(Duration::ZERO).is_none(),
+        "the ending is still going"
+    );
+    session.signal(Signal::TERM);
+    let status = session
+        .exit(Duration::from_millis(1000))
+        .expect("the second signal ended the server before the grace was over");
+    let _ = kill_process(pid, Signal::KILL);
+    assert_eq!(
+        status.signal(),
+        Some(15),
+        "by the signal, not by an exit code"
+    );
 }
 
 // What only a process can show.
