@@ -189,7 +189,7 @@ the pattern contains a pipe, and check `git diff --stat` before running anything
 
 ## tmux's default pane title is the FULL host name; every "that is just the hostname" check used `hostname -s` (18.09.2026)
 
-On a Mac `hostname` is `sukas-MacBook-Pro.local` and `hostname -s` is `sukas-MacBook-Pro`; tmux titles
+On a Mac `hostname` is `alex-MacBook-Pro.local` and `hostname -s` is `alex-MacBook-Pro`; tmux titles
 an untitled pane with the former, so the "names nothing" rule in preview_name, ask_kill, the list and the
 window names never fired here and the machine name became the agent's name. Found by D4 of
 tests/headless.sh, whose parent pane is a fake claude that sets no title. One rule now (`host_title` in
@@ -473,7 +473,7 @@ Both are measured on tmux 3.7b (dot kept in session names, a refused join-pane, 
 In the cockpit it works on a client: with no terminal attached to the server there is none to take to the session `tagents`, so it returns 1 silently and creates nothing. Attach a terminal first (`tmux attach -t <session>`), then run it, or press `prefix + A` in that terminal.
 
 ## `hostname -s` is not a machine's identity on a Mac (12.10.2026)
-The per-machine overlay was keyed on `hostname -s` alone, and with HostName never set (`scutil --get HostName`: "not set") that is whatever macOS derived last: one laptop answered `sukas-MBP` for weeks and `sukas-MacBook-Pro` after a reboot. Its overlay was not found, the base profiles applied without a word, rows on the second login showed `?`, and the reboot restore resumed every one of them logged out. `tagents --check` had nothing to say, because the base profile's directory existed — an earlier logged-out launch had left it there. A key that selects per-machine config has to be a name the machine keeps: `cfg_hosts` offers `hostname -s` and then the LocalHostName, and the first that has a file wins. When a row shows `?`, `tagents --config` is the one command to run: it printed the other laptop's profiles.
+The per-machine overlay was keyed on `hostname -s` alone, and with HostName never set (`scutil --get HostName`: "not set") that is whatever macOS derived last: one laptop answered `alex-MBP` for weeks and `alex-MacBook-Pro` after a reboot. Its overlay was not found, the base profiles applied without a word, rows on the second login showed `?`, and the reboot restore resumed every one of them logged out. `tagents --check` had nothing to say, because the base profile's directory existed — an earlier logged-out launch had left it there. A key that selects per-machine config has to be a name the machine keeps: `cfg_hosts` offers `hostname -s` and then the LocalHostName, and the first that has a file wins. When a row shows `?`, `tagents --config` is the one command to run: it printed the other laptop's profiles.
 ## An apostrophe in a comment inside `list.sh`'s awk program ends the program (17.10.2026)
 The awk program in `lib/tagents/list.sh` is one single-quoted shell string, so a `don't` or `it's` in a comment inside it closes the quote and the rest of the program is parsed as shell. Write comments there without apostrophes ("does not", "it is"). It happened again on 27.10.2026 with "glyph's", and a test run started in that minute failed for reasons that had nothing to do with it: run `bash -n lib/tagents/list.sh` after every edit of the program, before anything runs it.
 ## A verb removed while tmux hooks still call it (23.10.2026)
@@ -556,3 +556,11 @@ Build the site the way `site.yml` does, `SITE_DOMAIN=tagents.arstoien.com pnpm b
 ## In the zsh of this machine `grep` is ugrep and an unquoted glob is expanded before the command runs (29.10.2026)
 
 A `\b` pattern behaved differently under ugrep, and `grep -rn x --include=*.ts` stopped with "no matches found" before grep ran. Use `command grep`, and quote globs passed as arguments: `--include='*.ts'`.
+
+## The core tests run the built bin, and `packages/core/dist` is git-ignored, so a removed verb keeps passing or failing from a stale build (30.10.2026)
+
+After deleting `config convert` the CLI-driven tests still failed with "has no verb config convert" because they ran the old `dist`. Run `rm -rf packages/core/dist && pnpm --filter @tagents/core build` before testing a change to the core sources.
+
+## A shell suite must run under a scratch tmux server, and macOS has no `timeout` (30.10.2026)
+
+`tests/*.sh` refuse to start without `TMUX_TMPDIR` (scratch-guard). Run them as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/<name>.sh`, and without `timeout`, which is not installed.

@@ -1,7 +1,7 @@
-// The options of `<configDir>/plugins/notify.toml` (or the `notify.yaml` that is there instead).
+// The options of `<configDir>/plugins/notify.toml`.
 //
 // Every key is optional and the schema fills in the rest, so a file that says
-// only `click: goto` is a complete configuration. Objects are strict at every
+// only `click = "goto"` is a complete configuration. Objects are strict at every
 // level: a misspelt `skip_visble` that is silently ignored leaves the user
 // wondering why nothing changed, while one that is a problem names the key.
 import { z } from 'zod';

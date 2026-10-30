@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { configDir, configFile, configFormat, readConfigFile } from '@tagents/core';
+import { configDir, configFile, parseConfigFile } from '@tagents/core';
 
 export const DB_BASENAME = 'knowledge.sqlite';
 /** What was read, kept apart from the index: the index is derived and rebuilt, this is not. */
@@ -33,7 +33,7 @@ export const ConfigSchema = z.object({
 export function configuredDir(file: string = configFile()): string | null {
   let raw: unknown;
   try {
-    raw = readConfigFile(file);
+    raw = parseConfigFile(file);
   } catch {
     return null;
   }
@@ -42,11 +42,9 @@ export function configuredDir(file: string = configFile()): string | null {
   return dir === undefined ? null : path.resolve(path.dirname(file), expandHome(dir));
 }
 
-/** What to write in the config at `file` to name the folder, in the format that file is in. */
-export function dirSnippet(file: string): string {
-  return configFormat(file) === 'toml'
-    ? '  [knowledge]\n  dir = "~/git/personal/knowledge"'
-    : '  knowledge:\n    dir: ~/git/personal/knowledge';
+/** What to write in the config to name the folder. */
+export function dirSnippet(): string {
+  return '  [knowledge]\n  dir = "~/git/personal/knowledge"';
 }
 
 export type DirResult =

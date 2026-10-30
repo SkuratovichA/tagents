@@ -301,7 +301,7 @@ mod tests {
         let spec = Spec::bundled().expect("the data file matches the model");
         assert_eq!(spec.program, "tagents-core");
         assert_eq!(spec.exit["usage"], 2);
-        assert_eq!(spec.commands.len(), 14);
+        assert_eq!(spec.commands.len(), 13);
         let rust: Vec<String> = spec
             .served_by(Implementation::Rust)
             .map(|c| c.path.join(" "))

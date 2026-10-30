@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Locating the documents folder
-The folder of documents SHALL be chosen, in order of precedence, from the `--dir` flag, the `TAGENTS_KNOWLEDGE_DIR` environment variable, then `knowledge.dir` in the tagents config (`config.toml`, else `config.yaml`, in the tagents config directory, `~/.config/tagents` unless `TAGENTS_CONFIG_DIR` moves it). There SHALL be no default folder, and a blank value is treated as not given.
+The folder of documents SHALL be chosen, in order of precedence, from the `--dir` flag, the `TAGENTS_KNOWLEDGE_DIR` environment variable, then `knowledge.dir` in the tagents config (`config.toml`, in the tagents config directory, `~/.config/tagents` unless `TAGENTS_CONFIG_DIR` moves it). There SHALL be no default folder, and a blank value is treated as not given.
 
 #### Scenario: Environment beats config, flag beats both
 - **WHEN** config names folder A, `TAGENTS_KNOWLEDGE_DIR` names folder B and `--dir` names folder C
@@ -10,10 +10,6 @@ The folder of documents SHALL be chosen, in order of precedence, from the `--dir
 #### Scenario: Config alone is enough
 - **WHEN** only `config.toml` holds `[knowledge]` with `dir = "./knowledge"`
 - **THEN** `tagents-knowledge list` reads the `knowledge` folder next to the config file
-
-#### Scenario: A YAML config still works
-- **WHEN** only `config.yaml` holds `knowledge: { dir: ./knowledge }`
-- **THEN** `tagents-knowledge list` reads the same folder
 
 #### Scenario: Blank value ignored
 - **WHEN** `TAGENTS_KNOWLEDGE_DIR` is set to an empty or whitespace string and config names a folder

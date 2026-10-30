@@ -84,8 +84,8 @@ Tab indentation, flow style (`{}` or `[]` as a value), block scalars (`|` or `>`
 `config.<host>.yaml` beside the config file (the file's name with `.yaml` replaced by `.<host>.yaml`) SHALL be laid over the base file, where `<host>` is the short hostname (`hostname -s`) or `TA_HOST` when that is set. Every subtree of two path segments that the overlay mentions (`claude.profiles`, `claude.rules`, `notes.send`, …) SHALL replace the base's subtree wholesale, never merged; everything else is inherited.
 
 #### Scenario: Replaced, not merged
-- **WHEN** the base defines profiles `personal` and `work`, and `config.mbp.yaml` defines profiles `sasha` and `nuzhin` and one rule
-- **THEN** on host `mbp` the effective config has profiles `sasha` and `nuzhin` only, and the overlay's one rule only
+- **WHEN** the base defines profiles `personal` and `work`, and `config.mbp.yaml` defines profiles `sam` and `client` and one rule
+- **THEN** on host `mbp` the effective config has profiles `sam` and `client` only, and the overlay's one rule only
 - **AND** `claude.args`, `notes.send` and `usage.*` are inherited from the base
 
 #### Scenario: Refusals in the overlay
@@ -160,7 +160,7 @@ The file in a problem line SHALL be the overlay for a key in a subtree the overl
 
 #### Scenario: Two files
 - **WHEN** the overlay has a bad profile directory and the base has a bad `notes.send`
-- **THEN** one line starts with `config.mbp.yaml: claude.profiles.nuzhin.config_dir` and another with the base file and `notes.send`
+- **THEN** one line starts with `config.mbp.yaml: claude.profiles.client.config_dir` and another with the base file and `notes.send`
 - **AND** on another host only the base's line is listed
 
 ### Requirement: What is not a problem

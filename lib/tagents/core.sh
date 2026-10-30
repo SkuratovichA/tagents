@@ -89,7 +89,7 @@ lock_age() {  # <dir> -> seconds
 unlock_dir() { rm -rf "${1:?}" 2>/dev/null; return 0; }
 
 # tmux default pane title is the machine name, which names nothing — and it is
-# the FULL name (`hostname`, sukas-MacBook-Pro.local) while the comparisons
+# the FULL name (`hostname`, alex-MacBook-Pro.local) while the comparisons
 # here were all made against the short one (`hostname -s`), so on a Mac the
 # default title slipped through as the name of every agent that had not set a
 # title of its own. Both forms are "nothing"; anything else somebody chose.

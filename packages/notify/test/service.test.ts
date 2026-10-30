@@ -68,7 +68,7 @@ async function settledWithin(p: Promise<void> | undefined, ms: number): Promise<
 }
 
 interface RigOptions<F extends AgentFeed> {
-  /** The text of plugins/notify.yaml; omitted: no file, and no plugins dir either unless `plugins` is set. */
+  /** The text of plugins/notify.toml; omitted: no file, and no plugins dir either unless `plugins` is set. */
   readonly options?: string;
   readonly plugins?: boolean;
   readonly configDir?: string;
@@ -82,7 +82,7 @@ interface RigOptions<F extends AgentFeed> {
 function rig<F extends AgentFeed = FakeFeed>(o: RigOptions<F> = {}) {
   const dir = tmpDir('notify-svc-state');
   const configDir = o.configDir ?? tmpDir('notify-svc-cfg');
-  const optionsFile = path.join(configDir, 'plugins', 'notify.yaml');
+  const optionsFile = path.join(configDir, 'plugins', 'notify.toml');
   if (o.options !== undefined || o.plugins === true) fs.mkdirSync(path.dirname(optionsFile), { recursive: true });
   if (o.options !== undefined) fs.writeFileSync(optionsFile, o.options);
   const feed: F | FakeFeed = o.feed?.(dir) ?? fakeFeed(dir);
@@ -254,13 +254,13 @@ test('a lock someone else took over survives our stop', async () => {
 });
 
 test('an invalid options file: each problem is logged once however often it is read, and the defaults still post a finished turn', async () => {
-  const bad = 'events:\n  turn_done:\n    enabled: nope\nbogus: 1\n';
+  const bad = 'bogus = 1\n\n[events.turn_done]\nenabled = "nope"\n';
   // A second invalid file whose problems are not the first one's.
-  const worse = 'events: 7\nclick: nope\n';
+  const worse = 'events = 7\nclick = "nope"\n';
   const problemsOf = (text: string): readonly string[] => {
     const dir = tmpDir('notify-svc-probe');
     fs.mkdirSync(path.join(dir, 'plugins'));
-    fs.writeFileSync(path.join(dir, 'plugins', 'notify.yaml'), text);
+    fs.writeFileSync(path.join(dir, 'plugins', 'notify.toml'), text);
     const checked = loadPluginOptions(dir, 'notify', NotifyOptionsSchema);
     return checked.ok ? [] : checked.problems;
   };
@@ -300,13 +300,13 @@ test('an invalid options file: each problem is logged once however often it is r
   read(`${worse}\n`);
   assert.deepEqual(counts(), onceEach(1, 1), 'and not news twice');
   // The sentinel: a valid change, which is a reload.
-  read('click: goto\n');
+  read('click = "goto"\n');
   assert.equal(r.logs.filter((l) => l.endsWith('options reloaded')).length, 1);
   assert.deepEqual(counts(), onceEach(1, 1));
 });
 
 test('with an invalid options file the defaults run: a Stop posts turn_done', async () => {
-  const r = rig({ options: 'events: 7\n' });
+  const r = rig({ options: 'events = 7\n' });
   await r.start();
   r.feed.emit(event());
   await until('the notice', () => r.notifier.posts.length === 1);
@@ -319,7 +319,7 @@ test('a reload takes effect on the next event: turn_done off posts nothing', asy
   r.feed.emit(event());
   await until('the first notice', () => r.notifier.posts.length === 1);
   await until('the reload', () => r.has('options reloaded'), () =>
-    writeAtomic(r.optionsFile, 'events:\n  turn_done:\n    enabled: false\n')
+    writeAtomic(r.optionsFile, '[events.turn_done]\nenabled = false\n')
   );
   await stopThenSentinel(r);
   assert.deepEqual(
@@ -334,13 +334,13 @@ test('a reload to the value already running is ignored, and a changed backend wa
   await r.start();
   const reloads = (): number => r.logs.filter((l) => l.endsWith('options reloaded')).length;
   await until('the backend line', () => r.has('backend changes take effect after a restart (tagents notify install)'), () =>
-    writeAtomic(r.optionsFile, 'backend: log\n')
+    writeAtomic(r.optionsFile, 'backend = "log"\n')
   );
   assert.equal(reloads(), 1);
   // The same value in other words is no change; the next real change is the second reload.
   await until('the second reload', () => reloads() === 2, () => {
-    writeAtomic(r.optionsFile, 'backend: "log"\n');
-    writeAtomic(r.optionsFile, 'backend: log\nclick: goto\n');
+    writeAtomic(r.optionsFile, "backend = 'log'\n");
+    writeAtomic(r.optionsFile, 'backend = "log"\nclick = "goto"\n');
   });
   assert.equal(reloads(), 2);
 });
@@ -354,7 +354,7 @@ test('the options directory may appear after the service started', async () => {
   await until('the reload', () => r.has('options reloaded'), () => {
     fs.rmSync(dir, { recursive: true, force: true });
     fs.mkdirSync(dir, { recursive: true });
-    writeAtomic(r.optionsFile, 'events:\n  turn_done:\n    enabled: false\n');
+    writeAtomic(r.optionsFile, '[events.turn_done]\nenabled = false\n');
   });
 });
 
@@ -370,7 +370,7 @@ test('a directory created after the first look and before the watch on its paren
     if (String(target) === parent) {
       // The gap: the directory and its file appear before this watch exists, so no event will ever announce them.
       fs.mkdirSync(plugins);
-      fs.writeFileSync(r.optionsFile, 'events:\n  turn_done:\n    enabled: false\n');
+      fs.writeFileSync(r.optionsFile, '[events.turn_done]\nenabled = false\n');
       parentListener = listener;
     }
     return real(target, options, listener);
@@ -386,12 +386,12 @@ test('a directory created after the first look and before the watch on its paren
   assert.ok(r.has('options reloaded'), 'the file that came with the directory is read');
   assert.deepEqual(watched.filter((w) => w === plugins), [plugins], 'the directory is watched once');
   await until('a change in the adopted directory', () => r.logs.filter((l) => l.endsWith('options reloaded')).length === 2, () =>
-    writeAtomic(r.optionsFile, 'click: goto\n')
+    writeAtomic(r.optionsFile, 'click = "goto"\n')
   );
 });
 
 test('a file that changes between the first read and the arming of the watch on its directory is read once more', async () => {
-  const first = 'events:\n  turn_done:\n    enabled: true\n';
+  const first = '[events.turn_done]\nenabled = true\n';
   // `during` is written into the options file just before the watch on the plugins directory is armed.
   async function startWith(during: string): Promise<FakeRig> {
     const r = rig({ options: first });
@@ -408,7 +408,7 @@ test('a file that changes between the first read and the arming of the watch on 
     return r;
   }
   const reloads = (r: FakeRig): number => r.logs.filter((l) => l.endsWith('options reloaded')).length;
-  const changed = await startWith('events:\n  turn_done:\n    enabled: false\n');
+  const changed = await startWith('[events.turn_done]\nenabled = false\n');
   assert.equal(reloads(changed), 1, 'the change the watch could not see is applied, once');
   const unchanged = await startWith(first);
   assert.equal(reloads(unchanged), 0, 'the same file read again is no reload');
@@ -431,21 +431,7 @@ test('the options watch follows a symlinked config dir to the real one', async (
   const r = rig({ configDir: link });
   await r.start();
   await until('the reload', () => r.has('options reloaded'), () =>
-    writeAtomic(path.join(real, 'plugins', 'notify.yaml'), 'click: goto\n')
-  );
-});
-
-test('the options may move to notify.toml while the service runs: that file is reloaded too, and wins over notify.yaml', async () => {
-  const r = rig({ options: 'click: goto\n' });
-  await r.start();
-  await until('the reload', () => r.has('options reloaded'), () =>
-    writeAtomic(path.join(path.dirname(r.optionsFile), 'notify.toml'), '[events.turn_done]\nenabled = false\n')
-  );
-  await stopThenSentinel(r);
-  assert.deepEqual(
-    r.notifier.posts.map((n) => n.kind),
-    ['question'],
-    'the toml turned turn_done off, the yaml beside it left it on: the Stop posted nothing'
+    writeAtomic(path.join(real, 'plugins', 'notify.toml'), 'click = "goto"\n')
   );
 });
 
@@ -493,7 +479,7 @@ test('linux with the auto backend: the service says there is no backend, follows
 });
 
 test('backend none: nothing to post, the service is done and the lock is released', async () => {
-  const r = rig({ real: true, options: 'backend: none\n', deps: { os: 'darwin' } });
+  const r = rig({ real: true, options: 'backend = "none"\n', deps: { os: 'darwin' } });
   const h = await r.start();
   assert.ok(await settledWithin(h.done, 500));
   assert.ok(r.has('backend none: nothing to post; exiting'));

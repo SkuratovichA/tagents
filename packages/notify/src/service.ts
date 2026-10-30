@@ -15,7 +15,7 @@ import {
   PLUGIN_OPTIONS_DIR,
   isAlive,
   loadPluginOptions,
-  pluginOptionsBasenames,
+  pluginOptionsFile,
   type OptionsResult,
   type PluginContext,
   type ServiceDef,
@@ -310,10 +310,9 @@ export function createNotifyService(deps: ServiceDeps = {}): ServiceDef {
     engine.start();
 
     const watchers: fs.FSWatcher[] = [];
-    // Either spelling reloads: the options may move from notify.yaml to notify.toml while this runs.
-    const optionsNames = pluginOptionsBasenames(SERVICE_NAME);
+    const optionsName = path.basename(pluginOptionsFile(ctx.configDir, SERVICE_NAME));
     const reload = (name: string | null): void => {
-      if (name === null || optionsNames.includes(name)) apply(load(), backend);
+      if (name === null || name === optionsName) apply(load(), backend);
     };
     const watchPlugins = (dir: string): void => {
       const w = watchDir(dir, reload, log);

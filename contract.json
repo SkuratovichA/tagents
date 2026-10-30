@@ -232,27 +232,6 @@
         },
         {
           "path": [
-            "config",
-            "convert"
-          ],
-          "positionals": [
-            "[FILE]"
-          ],
-          "options": {
-            "write": {
-              "type": "boolean"
-            },
-            "all": {
-              "type": "boolean"
-            }
-          },
-          "required": [],
-          "summary": "turns config.yaml into config.toml: prints it by default, writes it beside the YAML with --write, and also converts the per-host overlays with --all",
-          "effect": "write",
-          "tool": false
-        },
-        {
-          "path": [
             "doctor"
           ],
           "positionals": [],
@@ -1246,7 +1225,7 @@
     }
   },
   "api": {
-    "@tagents/core": "sha256:fcde7d242c32f2670bf7ca89c55513907ac0199ed06e19f0cb178c18f9580819",
+    "@tagents/core": "sha256:403a1efba0bd90b6542530c5c9def9d6a554254068b0b361cfe80a92ed188d60",
     "@tagents/knowledge": "sha256:63465226fcb49e8f6a20867948332ff35da600f4a020fa9701ef88730f5c2d8a",
     "@tagents/notify": "sha256:9fd35c43c5dd7262667bfdd48944a46e39551f1e7441438455c7859a39f8fb7e",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"

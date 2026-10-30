@@ -1,6 +1,6 @@
 // schemas/config.schema.json is what an editor reads to check config.toml and to show what a key means. Nothing in tagents reads it, so nothing would notice if it drifted from the readers: this file is the thing that notices. It pins the schema from four sides.
 //   * the schema is itself valid, and says what every key is (description, examples);
-//   * the shipped examples (config.example.toml, the YAML twin the converter takes) and the converter's output validate, and wrong documents do not;
+//   * the shipped example (config.example.toml) validates, and wrong documents do not;
 //   * every key the bash dashboard reads is in the schema, and every key in the schema is read by it or by the TypeScript half (zod, below);
 //   * the zod schemas of the TypeScript readers describe the same keys.
 import assert from 'node:assert/strict';
@@ -11,9 +11,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import AjvModule from 'ajv/dist/2020.js';
 import { parse as parseToml } from 'smol-toml';
-import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
-import { CONFIG_SCHEMA_URL, convertYamlConfig } from '../src/config-convert.ts';
 import { ConfigSchema } from '../src/host.ts';
 import { findOnPath } from '../src/path-lookup.ts';
 import { HERE } from './helpers.ts';
@@ -21,7 +19,7 @@ import { HERE } from './helpers.ts';
 const REPO = path.resolve(HERE, '..', '..', '..');
 const SCHEMA_FILE = path.join(REPO, 'schemas', 'config.schema.json');
 const EXAMPLE_TOML = path.join(REPO, 'config.example.toml');
-const EXAMPLE_YAML = path.join(REPO, 'tests', 'fixtures', 'config.example.yaml');
+const CONFIG_SCHEMA_URL = 'https://raw.githubusercontent.com/SkuratovichA/tagents/main/schemas/config.schema.json';
 
 // ------------------------------------------------------------ the schema ----
 
@@ -117,17 +115,6 @@ const ok = (doc: unknown): string => (validate(plain(doc)) ? '' : JSON.stringify
 
 test('config.example.toml validates', () => {
   assert.equal(ok(example()), '');
-});
-
-test('the YAML example the converter takes validates once its empty values are empty tables', () => {
-  const yaml: unknown = parseYaml(fs.readFileSync(EXAMPLE_YAML, 'utf8'));
-  assert.equal(ok(JSON.parse(JSON.stringify(yaml), (_k, v: unknown) => (v === null ? {} : v))), '');
-});
-
-test('what the converter makes of the YAML example validates', () => {
-  const result = convertYamlConfig(EXAMPLE_YAML);
-  assert.ok(result.ok, result.ok ? '' : result.problem);
-  assert.equal(ok(parseToml(result.toml)), '');
 });
 
 test('a document with a mistake in it does not', () => {

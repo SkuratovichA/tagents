@@ -142,19 +142,6 @@
       "effect": "write"
     },
     {
-      "path": ["config", "convert"],
-      "positionals": ["[FILE]"],
-      "options": {
-        "write": { "type": "boolean" },
-        "all": { "type": "boolean" }
-      },
-      "required": [],
-      "summary": "summaryConfigConvert",
-      "impl": "node",
-      "effect": "write",
-      "tool": false
-    },
-    {
       "path": ["doctor"],
       "positionals": [],
       "options": {},

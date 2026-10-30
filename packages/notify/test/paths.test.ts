@@ -56,7 +56,7 @@ test('a configured icon is an absolute path, a ~/ path, or relative to the optio
   fs.writeFileSync(path.join(home, 'pics', 'home.png'), 'png');
   fs.mkdirSync(path.join(dir, 'plugins'));
   fs.writeFileSync(path.join(dir, 'plugins', 'beside.png'), 'png');
-  const options = path.join(dir, 'plugins', 'notify.yaml');
+  const options = path.join(dir, 'plugins', 'notify.toml');
   assert.deepEqual(resolveIcon(png, options, {}, home), { file: png });
   assert.deepEqual(resolveIcon('~/pics/home.png', options, {}, home), { file: path.join(home, 'pics', 'home.png') });
   assert.deepEqual(resolveIcon('beside.png', options, {}, home), { file: path.join(dir, 'plugins', 'beside.png') });
@@ -65,7 +65,7 @@ test('a configured icon is an absolute path, a ~/ path, or relative to the optio
 
 test('a configured icon that is not a file gives no icon and a problem naming the path', () => {
   const { dir } = iconDir();
-  const options = path.join(dir, 'notify.yaml');
+  const options = path.join(dir, 'notify.toml');
   const missing = resolveIcon('nope.png', options, {}, '/h');
   assert.equal(missing.file, null);
   assert.match(missing.problem ?? '', new RegExp(`icon ${path.join(dir, 'nope.png')} does not exist`));
@@ -78,7 +78,7 @@ test('a configured icon that is not a file gives no icon and a problem naming th
 test('without the option the icon is notify-icon.png next to the app, when that file exists', () => {
   const { dir } = iconDir();
   const app = path.join(dir, 'TagentsNotify.app');
-  const options = path.join(dir, 'notify.yaml');
+  const options = path.join(dir, 'notify.toml');
   assert.deepEqual(resolveIcon(undefined, options, { TA_NOTIFY_APP: app }, '/h'), { file: null }, 'no file, no icon, and nothing to complain about');
   fs.writeFileSync(path.join(dir, 'notify-icon.png'), 'png');
   assert.deepEqual(resolveIcon(undefined, options, { TA_NOTIFY_APP: app }, '/h'), { file: path.join(dir, 'notify-icon.png') });
@@ -104,7 +104,7 @@ test('the script a click runs counts only as an executable regular file', () => 
 
 test('an icon that is a dangling symlink, a directory or unreadable gives no icon and a problem', (t) => {
   const { dir } = iconDir();
-  const options = path.join(dir, 'notify.yaml');
+  const options = path.join(dir, 'notify.toml');
   fs.symlinkSync(path.join(dir, 'gone.png'), path.join(dir, 'dangling.png'));
   const dangling = resolveIcon('dangling.png', options, {}, '/h');
   assert.equal(dangling.file, null);

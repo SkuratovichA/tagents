@@ -10,8 +10,6 @@
 #
 # A table (`[claude]`) owns every plain `key = value` line under it up to the next header, so a plain key goes ABOVE the first sub-table of its table: `default` belongs next to `args`, before `[claude.profiles.personal]`, and a line written after a `[[claude.rules]]` header is that rule's.
 #
-# An old config.yaml still works while no config.toml exists, with a warning in `tagents --check`. `tagents config convert` writes the TOML twin of it.
-
 # ONE FILE, SEVERAL MACHINES. Put the accounts that differ per machine in config.<hostname>.toml next to this file (`hostname -s`): every `a.b` subtree it names — claude.profiles, claude.rules, claude.default, notes.send … — replaces the one here wholesale, everything else is inherited. Profiles and rules are tables, so they are replaced and never merged: a profile whose config_dir does not exist on this machine starts a logged-out Claude.
 #
 # NAME IT AFTER THE NAME THAT STAYS. The overlay is looked for under `hostname -s` and then, on a Mac, under the LocalHostName (`scutil --get LocalHostName`). Use the second there: with HostName never set, `hostname -s` is whatever macOS derived last and can be something else after a reboot, and an overlay that is not found means the profiles below apply without a word.

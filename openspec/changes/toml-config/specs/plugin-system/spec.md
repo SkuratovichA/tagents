@@ -6,7 +6,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Plugins are listed explicitly and never discovered
-The host SHALL load exactly the plugins named in the `[plugins.<key>]` tables of `config.toml` (or the `plugins:` map of `config.yaml`, when that is the config in use), in file order, each entry carrying a non-empty `from`, and SHALL NOT scan `node_modules` or any directory for plugins. A missing or unreadable config file, and a config without a `plugins` table, SHALL mean no plugins and not an error; a config that reads but does not parse SHALL be an error naming the file.
+The host SHALL load exactly the plugins named in the `[plugins.<key>]` tables of `config.toml`, in file order, each entry carrying a non-empty `from`, and SHALL NOT scan `node_modules` or any directory for plugins. A missing or unreadable config file, and a config without a `plugins` table, SHALL mean no plugins and not an error; a config that reads but does not parse SHALL be an error naming the file.
 
 #### Scenario: A plugin the config does not name is not loaded
 - **WHEN** a valid plugin package sits next to the config but is not listed under `plugins`
@@ -24,12 +24,8 @@ The host SHALL load exactly the plugins named in the `[plugins.<key>]` tables of
 - **WHEN** `config.toml` reads but is not valid TOML
 - **THEN** reading the plugin list throws an error whose message names the file
 
-#### Scenario: The same plugins in either format
-- **WHEN** one config is TOML and the other is the YAML it was converted from
-- **THEN** the host lists the same plugins in the same order for both
-
 ### Requirement: Where the config lives
-The tagents config directory SHALL be `$TAGENTS_CONFIG_DIR` when it is set and not blank, otherwise `$XDG_CONFIG_HOME/tagents` when that is set and not blank, otherwise `~/.config/tagents`. The plugin list SHALL be read from `config.toml` in that directory, or from `config.yaml` when there is no `config.toml`.
+The tagents config directory SHALL be `$TAGENTS_CONFIG_DIR` when it is set and not blank, otherwise `$XDG_CONFIG_HOME/tagents` when that is set and not blank, otherwise `~/.config/tagents`. The plugin list SHALL be read from `config.toml` in that directory; a `config.yaml` is not looked at.
 
 #### Scenario: The override wins
 - **WHEN** `TAGENTS_CONFIG_DIR` and `XDG_CONFIG_HOME` are both set
@@ -39,9 +35,9 @@ The tagents config directory SHALL be `$TAGENTS_CONFIG_DIR` when it is set and n
 - **WHEN** neither variable is set
 - **THEN** the config directory is `~/.config/tagents`
 
-#### Scenario: TOML before YAML
-- **WHEN** the directory holds both `config.toml` and `config.yaml`
-- **THEN** the plugin list is read from `config.toml`
+#### Scenario: A YAML file is not a config
+- **WHEN** the directory holds `config.yaml` and no `config.toml`
+- **THEN** the plugin list is empty and nothing is an error
 
 ### Requirement: plugin list
 `tagents-core plugin list` SHALL print, for each loaded plugin, `<config key> → <from>` and then `  commands: <names> · services: <names> · mcp tools: <names>`, with `—` for an empty group; the name printed is the config key, because that is what `plugin remove` takes. With nothing configured it SHALL print `no plugins configured in <config file>` and exit 0. Each plugin that failed to load SHALL be printed as `<key>: <error>` on stderr and the exit code SHALL be 1.
@@ -78,7 +74,7 @@ The tagents config directory SHALL be `$TAGENTS_CONFIG_DIR` when it is set and n
 - **THEN** `plugin add` exits 1 and the file is byte for byte unchanged
 
 ### Requirement: plugin remove
-`tagents-core plugin remove <name>` SHALL take the entry with that config key out of the plugins and print `removed <name> from <config file>`. When it was the last entry in a YAML config, the `plugins:` line SHALL go with it, so the file is as it was before the entry was added; in a TOML config the file is as it was before the entry was added too. A name that is not listed, or a missing config, SHALL be refused with exit 3 and `<name> is not listed in <config file>`; no name SHALL be exit 2.
+`tagents-core plugin remove <name>` SHALL take the entry with that config key out of the plugins and print `removed <name> from <config file>`. When it was the last entry, the file is as it was before the entry was added. A name that is not listed, or a missing config, SHALL be refused with exit 3 and `<name> is not listed in <config file>`; no name SHALL be exit 2.
 
 #### Scenario: The last entry
 - **WHEN** the only plugin is removed
@@ -103,32 +99,28 @@ The tagents config directory SHALL be `$TAGENTS_CONFIG_DIR` when it is set and n
 - **WHEN** a plugin is listed under the key `doctor`
 - **THEN** `doctor` prints the doctor report
 
-#### Scenario: config is a core verb
-- **WHEN** a plugin is listed under the key `config`
-- **THEN** `config convert` runs the converter, not the plugin
-
 #### Scenario: Exit code
 - **WHEN** a command returns 7
 - **THEN** the process exits 7
 
 ### Requirement: Plugin options live in a file of their own
-A plugin's options SHALL be read from `<configDir>/plugins/<name>.toml`, or from `<configDir>/plugins/<name>.yaml` when there is no TOML file, and checked against the plugin's schema, without throwing. Reading an options file SHALL say nothing about the file's format.
+A plugin's options SHALL be read from `<configDir>/plugins/<name>.toml`, and checked against the plugin's schema, without throwing. Reading an options file SHALL say nothing about the file's format.
 
 #### Scenario: No file
 - **WHEN** the options file does not exist
 - **THEN** the result is the schema's defaults and `found` is false
 
 #### Scenario: Broken YAML
-- **WHEN** only `<name>.yaml` exists and is not valid YAML
+- **WHEN** only `<name>.yaml` exists, valid or not
+- **THEN** it is not looked at and the result is the schema's defaults with `found` false
+
+#### Scenario: Broken TOML
+- **WHEN** `<name>.toml` exists and is not valid TOML
 - **THEN** there is one problem and it names the file
 
 #### Scenario: Schema mismatch
 - **WHEN** two fields do not fit the schema
 - **THEN** there are two problem lines, each `<path>: <message>`
-
-#### Scenario: A YAML options file
-- **WHEN** only `<name>.yaml` exists
-- **THEN** it is read as YAML with the same schema
 
 #### Scenario: A valid file
 - **WHEN** `<name>.toml` is valid and fits the schema
@@ -165,11 +157,11 @@ A caller holding a plugin definition SHALL be able to start one of its services 
 - **THEN** the call fails with `plugin "<name>" has no service "<service>" (it has: <names>)`, an empty list reading `none`
 
 ### Requirement: The usage names the plugin verbs
-The usage that `tagents-core help`, `--help` and `-h` print (exit 0; no arguments prints it and exits 2) SHALL list the four `plugin` verbs with their options, `config convert [FILE] [--write] [--all]`, `doctor`, the line `<plugin> <command> [args]` for a configured plugin's own verb, the line `reserved: session · sessions · plugin · config · doctor · help — a core verb always wins` and the exit codes `0 ok · 1 error · 2 usage · 3 refused · 4 timeout`.
+The usage that `tagents-core help`, `--help` and `-h` print (exit 0; no arguments prints it and exits 2) SHALL list the four `plugin` verbs with their options, `doctor`, the line `<plugin> <command> [args]` for a configured plugin's own verb, the line `reserved: session · sessions · plugin · doctor · help — a core verb always wins` and the exit codes `0 ok · 1 error · 2 usage · 3 refused · 4 timeout`.
 
 #### Scenario: Help
 - **WHEN** `help` runs
-- **THEN** the exit code is 0 and the plugin line, the `config convert` line and the reserved words are in the output
+- **THEN** the exit code is 0 and the plugin line and the reserved words are in the output
 
 ## ADDED Requirements
 
@@ -186,13 +178,6 @@ Removing an entry from a `config.toml` SHALL cut its `[plugins.<key>]` table and
 #### Scenario: Removing the only entry
 - **WHEN** `plugin remove x` runs on a `config.toml` whose only plugin is `[plugins.x]`, followed by a `[usage]` table
 - **THEN** the `[plugins.x]` table is cut, no empty `[plugins]` is left, and `[usage]` is unchanged
-
-### Requirement: Adding to a YAML config
-In a `config.yaml` a new entry SHALL go after the last existing one at the map's own indentation, replace an empty `plugins:` or `plugins: {}`, or be appended as a new `plugins:` block when the key is absent.
-
-#### Scenario: A config without the plugins key
-- **WHEN** a plugin is added to a `config.yaml` that has no `plugins:` key
-- **THEN** a `plugins:` block holding the entry is appended after everything else
 
 ### Requirement: A new config is TOML
 When no config exists, `plugin add` SHALL create `config.toml`.

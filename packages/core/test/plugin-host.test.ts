@@ -57,9 +57,6 @@ test('a config that cannot be read for any reason is no plugins', async () => {
 test('a config that reads but does not parse throws, naming the file', () => {
   const toml = writeConfig('[plugins.x\nfrom = 1\n');
   assert.throws(() => readPluginList(toml), (e: unknown) => e instanceof Error && e.message.includes(toml));
-  const yaml = path.join(tmp, 'broken.yaml');
-  fs.writeFileSync(yaml, 'plugins:\n  x: [unclosed\n');
-  assert.throws(() => readPluginList(yaml), (e: unknown) => e instanceof Error && e.message.includes(yaml));
 });
 
 test('a good TOML config lists its plugins', () => {

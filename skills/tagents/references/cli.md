@@ -158,19 +158,6 @@ Usage: `tagents-core plugin new <name> [--dir <dir>]`
 |---|---|---|---|
 | `--dir` | string | no | no |
 
-### config convert
-
-turns config.yaml into config.toml: prints it by default, writes it beside the YAML with --write, and also converts the per-host overlays with --all
-
-CLI only: no tool runs this verb.
-
-Usage: `tagents-core config convert [FILE] [--write] [--all]`
-
-| Flag | Type | Required | Repeatable |
-|---|---|---|---|
-| `--write` | boolean | no | no |
-| `--all` | boolean | no | no |
-
 ### doctor
 
 prints the node version, the state directory, the config file and whether claude is on PATH

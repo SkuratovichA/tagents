@@ -54,7 +54,7 @@ function sandbox(options: string): Sandbox {
   const state = tmpDir('notify-main-state');
   const config = tmpDir('notify-main-cfg');
   fs.mkdirSync(path.join(config, 'plugins'));
-  fs.writeFileSync(path.join(config, 'plugins', 'notify.yaml'), options);
+  fs.writeFileSync(path.join(config, 'plugins', 'notify.toml'), options);
   return {
     state,
     lock: path.join(state, LOCK_FILE),
@@ -112,7 +112,7 @@ async function exitsWithin(r: Run, ms: number): Promise<{ code: number | null; s
 }
 
 test('run, with the lock held by a live process of the start time it recorded: exit 0 at once, lock untouched', async () => {
-  const sb = sandbox('backend: log\n');
+  const sb = sandbox('backend = "log"\n');
   const start = await psProcessStart()(process.pid);
   assert.ok(start !== null, 'ps names our start time');
   const held = `${process.pid} ${start}\n`;
@@ -125,7 +125,7 @@ test('run, with the lock held by a live process of the start time it recorded: e
 });
 
 test('run, then SIGTERM: exit 0, and neither the lock nor events.on is left', async () => {
-  const sb = sandbox('backend: log\n');
+  const sb = sandbox('backend = "log"\n');
   const r = runVerb(sb);
   await until('the service to start', () => r.output().includes('started'));
   assert.ok(fs.existsSync(sb.lock), 'the lock is held while it runs');
@@ -138,7 +138,7 @@ test('run, then SIGTERM: exit 0, and neither the lock nor events.on is left', as
 });
 
 test('run with backend none: nothing to post, exit 0, no lock left', async () => {
-  const sb = sandbox('backend: none\n');
+  const sb = sandbox('backend = "none"\n');
   const r = runVerb(sb);
   const end = await exitsWithin(r, 20_000);
   assert.deepEqual(end, { code: 0, signal: null }, r.output());
@@ -148,7 +148,7 @@ test('run with backend none: nothing to post, exit 0, no lock left', async () =>
 
 // The defaults pick the macOS backend, which the other platforms do not have: there the service leaves at once.
 test('run with an invalid options file: it keeps running on the defaults until SIGTERM, then exits 0', { skip: process.platform !== 'darwin' }, async () => {
-  const sb = sandbox('events: 7\n');
+  const sb = sandbox('events = 7\n');
   const r = runVerb(sb);
   await until('the service to start', () => r.output().includes('started'));
   assert.match(r.output(), /options: /, 'the problem is logged');
