@@ -5,7 +5,7 @@
 # Every scenario runs twice through tests/rust-mcp-parity-driver.mts, once against `node packages/mcp/dist/main.js --contract F` and once against `target/debug/tagents-core mcp --contract F` (or $TAGENTS_CORE_BIN), under the same `env -i` environment, and passes only when the two transcripts are byte for byte the same once `serverInfo.version` is dropped. A transcript is every answer the server wrote keyed by request id, the order the answers came in, how the server ended, and which processes of the call were still there at the end.
 # No real tagents program runs: PATH is a scratch directory of stubs followed by /usr/bin:/bin, and HOME is a scratch directory. The stubs print what a real program could (JSON the way JavaScript writes it, text, nothing, more than the cap, a character across the cap, each exit code), and `emit` keeps the pids of what it started in $PARITY_DIR, which the driver checks at the end.
 # Calls that end by a timeout or by the grace period are not here: the servers take both from constants, and the Rust tests for `run` take them as arguments (crates/tagents-core/tests/mcp_run.rs).
-# Differences that are known and listed in docs/architecture/rust-core.md are not scenarios: the parameter-validation errors, a lone surrogate in a program's JSON, the echo of a request string with a lone surrogate (`unknown tool <name>`: Rust writes U+FFFD, node the escape), objects and requests nested deeper than 128 levels, and the wording of start-up failures (only their exit codes are compared). The answers of calls that an ending stopped (stdin closed, a signal) are not compared either: node races its exit against writing them, the Rust server always writes them, and `rust_answers` pins that.
+# Differences that are known and listed in docs/architecture/rust-core.md are not scenarios: the parameter-validation errors, a lone surrogate in a program's JSON, the echo of a request string with a lone surrogate (`unknown tool <name>` and the `id` of a request: Rust writes U+FFFD, node the escape), a second signal during the ending, objects and requests nested deeper than 128 levels, and the wording of start-up failures (only their exit codes are compared). The answers of calls that an ending stopped (stdin closed, a signal) are not compared either: node races its exit against writing them, the Rust server always writes them, and `rust_answers` pins that.
 # Tripwires assert on the node transcript alone, so a scenario that stopped provoking what it exists for fails here instead of passing for nothing.
 #
 # PARITY_ONLY=<text> runs only the scenarios whose label holds the text, and PARITY_SHOW=<n> prints both transcripts of each, cut at n characters a line. Needs a built node server (pnpm build). Uses no real home, no tmux server, no network. bash 3.2.
@@ -240,6 +240,11 @@ rust_answers() {  # <label> <id>...
     if grep -q "^answer $id$(printf '\t')" "$TMP/raw.rust"; then ok; else bad "tripwire $label: the Rust server did not answer request $id" "the answers of calls stopped by the ending are written before it leaves"; fi
   done
 }
+# The request text of the last scenario is ASCII only: an escape in it that was decoded would put the same literal text in front of both servers, and they would agree for nothing.
+ascii_only() {  # <label> <request text>
+  [ -n "$RAN" ] || return 0
+  if [ -z "$(printf '%s' "$2" | LC_ALL=C tr -d '\000-\177')" ]; then ok; else bad "tripwire $1: the request text holds a non-ASCII byte, so an escape in it was decoded" ""; fi
+}
 # The reverse: the string is not in it.
 must_not() {  # <label> <needle>
   [ -n "$RAN" ] || return 0
@@ -431,8 +436,13 @@ t "the wire: what a client may send that is not a plain request"
 play "split across writes" "$(session '{"raw":"{\"jsonrpc\":\"2.0\",\"id\":2,\"meth"}' "$(quiet 80)" '{"raw":"od\":\"ping\"}\n"}' "$(await 2)")"
 play "CRLF line ends, empty lines, two requests in one write" "$(session '{"raw":"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}\r\n\n\r\n{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\"}\n{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"ping\"}\n"}' "$(await 2 3 4)")"
 play "lines that are not requests are ignored" "$(session '{"raw":"not json\n"}' '{"raw":"[]\n"}' '{"raw":"5\n"}' '{"raw":"{}\n"}' '{"raw":"{\"jsonrpc\":\"1.0\",\"id\":8,\"method\":\"ping\"}\n"}' '{"raw":"{\"jsonrpc\":\"2.0\",\"id\":9}\n"}' '{"raw":"{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"ping\"}\n"}' '{"raw":"{\"jsonrpc\":\"2.0\",\"id\":1.5,\"method\":\"ping\"}\n"}' '{"raw":"{\"jsonrpc\":\"2.0\",\"id\":true,\"method\":\"ping\"}\n"}' '{"raw":"{\"jsonrpc\":\"2.0\",\"id\":77,\"result\":{}}\n"}' "$(req 2 ping)" "$(await 2)" "$(quiet 150)")"
-play "a request with unicode and escapes in its strings" "$(session "$(call 2 fake_say '{"name":"caf\u00e9 \ud83d\ude00","label":"\u00e9\n\t\"\\","words":["\u2028","\u0001"]}')" "$(await 2)")"
-play "a request with lone surrogate escapes in its strings, a pair beside them and an escaped backslash" "$(session "$(call 2 fake_say '{"name":"a\ud83db","label":"\ude00\ud83d\ud83d\ude00","words":["x\\ud83d","\ud83dA"]}')" "$(await 2)")"
+req_unicode='{"name":"caf\u00e9 \ud83d\ude00","label":"\u00e9\n\t\"\\","words":["\u2028","\u0001"]}'
+play "a request with unicode and escapes in its strings" "$(session "$(call 2 fake_say "$req_unicode")" "$(await 2)")"
+ascii_only "unicode and escapes" "$req_unicode"
+req_surrogates='{"name":"a\ud83db","label":"\ude00\ud83d\ud83d\ude00","words":["x\\ud83d","\ud83dA"]}'
+play "a request with lone surrogate escapes in its strings, a pair beside them and an escaped backslash" "$(session "$(call 2 fake_say "$req_surrogates")" "$(await 2)")"
+ascii_only "lone surrogate escapes" "$req_surrogates"
+must "lone surrogate escapes" "$(printf '\357\277\275')"
 play "an empty request line and an end of input with no newline" "$(session '{"raw":"\n"}' '{"raw":"{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}"}' "$(quiet 100)")"
 
 t "start-up: only the exit codes are compared, the words of the messages are the servers' own"

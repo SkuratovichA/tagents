@@ -493,7 +493,7 @@ fn a_program_that_exits_at_once_and_leaves_a_grandchild_holding_its_pipes_does_n
     let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
     assert!(
         started.elapsed() < ms(300 + 10_000),
-        "within the drain and a margin"
+        "long before the holder's 30 s"
     );
     let body = body(&result);
     assert_eq!(body["exit"], json!(0));
@@ -521,9 +521,13 @@ fn a_holder_of_the_pipes_that_left_the_group_cannot_be_killed_and_still_does_not
     let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
     assert!(
         started.elapsed() < ms(300 + 10_000),
-        "within the drain and a margin"
+        "long before the holder's 30 s"
     );
     assert_eq!(body(&result)["stdout"], json!("done\n"));
     // The escapee is out of the group, so the call could not stop it; the rig's drop does.
     assert!(until(|| rig.pids().len() == 1, 1000));
+    assert!(
+        alive(rig.pids()["escaped"]),
+        "the escapee left the group, so the call could not stop it"
+    );
 }

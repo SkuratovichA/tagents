@@ -26,7 +26,7 @@ use tagents_core::mcp::run::MAX_STREAM;
 mod common;
 use common::{
     REPO,
-    rig::{Rig, WITH_GRANDCHILD, until},
+    rig::{Rig, WITH_GRANDCHILD, alive, until},
     run, scratch, start, write_executable,
 };
 
@@ -614,10 +614,16 @@ fn a_holder_of_the_pipes_that_left_the_group_does_not_hold_the_call_longer_than_
     session.call(2, "fake_echo", &json!({}));
     let reply = session.reply(2);
     assert!(
-        started.elapsed() < Duration::from_millis(250 + 2000),
-        "within the drain and a margin"
+        started.elapsed() < Duration::from_millis(250 + 10_000),
+        "long before the holder's 30 s"
     );
     assert_eq!(call_body(&reply)["stdout"], json!("done\n"));
+    // The escapee is out of the group, so the call could not stop it; the rig's drop does.
+    assert!(until(|| rig.pids().len() == 1, 1000));
+    assert!(
+        alive(rig.pids()["escaped"]),
+        "the escapee left the group, so the call could not stop it"
+    );
     // The server still answers, and its own end is not held by the escapee either.
     session.request(3, "ping", &json!({}));
     session.reply(3);
