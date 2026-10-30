@@ -6,6 +6,7 @@ pub mod date;
 pub mod front_door;
 pub mod js;
 pub mod json;
+pub mod mcp;
 pub mod node;
 pub mod sessions;
 pub mod transcripts;

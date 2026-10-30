@@ -1,3 +1,7 @@
+## A call that gave up on its pipes at the drain discarded what its reader threads had not read yet (30.10.2026)
+
+`tagents-core mcp` waited 250 ms for the pipes after the program exited and then dropped them. Node's one thread reads whatever a pipe holds long before its drain timer fires, but a reader thread of ours can be descheduled for longer than that on a loaded machine, and the bytes the program had written before it exited were lost (a call returned an empty or cut stdout). Past the drain the call now polls a duplicate of each open pipe and keeps waiting, up to the kill grace, while a pipe holds bytes or has lost its last writer; an empty open pipe is a holder's and the call gives up. `a_program_that_exits_with_its_output_still_in_the_pipe_loses_none_of_it` runs sixteen lanes of ten calls side by side and failed against the old code in every run, where twenty calls one after the other passed it; the drain-against-grace tests in `mcp_run.rs` fail when `readable` always answers true or `Eof` names the wrong stream.
+
 ## install.sh has no `local`, and `write_wrapper` assigns the global `target`, so a test of "did the update move" made after `install_hooks` read a path (29.10.2026)
 
 `run_setup` compared `$prev` with `$target` to decide whether the update changed the registration, and it ran after `install_hooks`. By then `target` held the destination of the last wrapper written, the comparison was always true, and `tagents setup` ran on every install, the quiet no-op run of tests/install.sh section 4 included. The decision now sits in `main` right after `prev` and `target` are set, while they still name the commits, and the answer is carried in `SETUP_DUE`, a name nothing else assigns. Any value a POSIX sh function needs late in `main` has to be copied under a name of its own before the wrappers are written.
@@ -556,3 +560,31 @@ Build the site the way `site.yml` does, `SITE_DOMAIN=tagents.arstoien.com pnpm b
 ## In the zsh of this machine `grep` is ugrep and an unquoted glob is expanded before the command runs (29.10.2026)
 
 A `\b` pattern behaved differently under ugrep, and `grep -rn x --include=*.ts` stopped with "no matches found" before grep ran. Use `command grep`, and quote globs passed as arguments: `--include='*.ts'`.
+
+## A registry that reports empty before the last answer is written lets the MCP server exit without it (30.10.2026)
+
+The ending of `tagents-core mcp` waits for the calls in flight to leave a registry, so a call has to leave it only after its answer is written, or the ending returns and the process exits with that answer unwritten. `Registry::settle` only decides whether the request is answered and frees its id, the call thread writes the answer, and `finish` then removes the call and wakes `wait_empty` (`crates/tagents-core/src/mcp/server.rs`); `the_ending_returns_only_after_the_answers_of_the_calls_it_stopped_are_written` pins the order.
+
+## Rust's shortest float digits round a tie up where JavaScript takes the even digit, so a number printer is fuzzed against node (30.10.2026)
+
+`270348394056782.125` lies halfway between two 17-digit texts: `String(x)` in node gives `.12`, the shortest digits of Rust's `{:e}` give `.13`. `shortest_scientific` in `crates/tagents-core/src/js.rs` takes the digits the way ECMAScript does; the first differential fuzz (40 seeds of 5000 numbers each, through both servers) found exactly this case, and a unit test and a parity scenario pin it. A formatter that has to match JavaScript byte for byte gets a fuzz against node before hand-picked cases are trusted.
+
+## bash 3.2 brace-expands a JSON object written in double quotes inside `$( )` (30.10.2026)
+
+Inside a command substitution that is itself inside double quotes, bash 3.2 brace-expands the comma list of `"{\"a\":1,\"b\":2}"` and the JSON comes out mangled. Build such JSON in a function body or write it in single quotes; `tests/rust-mcp-parity.sh` does and says so in a comment.
+
+## `ps | grep -c <name>` counts its own shell when the command line holds the name (30.10.2026)
+
+The shell that runs the check has the pattern in its own command line, so the count is one too high and a test for "nothing is left running" never reads 0. Write the pattern with a bracket, `grep -c '[s]leep 30'`, so the line of the check does not match it.
+
+## A Rust test that calls the node CLI passes where `node_modules` exists and fails on the CI runner that has none yet (30.10.2026)
+
+The smoke test in `crates/tagents-core/tests/mcp_server.rs` runs `packages/core/src/cli/main.ts` through the server, and that file imports `zod`. It passed on the machine where `pnpm install` had run and failed on the first push of the branch with `ERR_MODULE_NOT_FOUND`, because `rust.yml` installed pnpm and node only after `cargo test`. The job now installs the node dependencies before the Rust steps, so the call half runs in CI with the pinned node, and the test skips that half, saying why, where the workspace has no `node_modules`.
+
+## A `\uXXXX` escape pair written through an edit request carried as JSON lands in the file as the character it names (30.10.2026)
+
+The test cases for surrogate escapes in `crates/tagents-core/src/mcp/rpc.rs` were meant to hold the six-character escapes `\ud83d\ude00`, and so was one scenario of `tests/rust-mcp-parity.sh`. The edit requests that wrote them were JSON, the JSON layer decoded the pair, and four places held the literal character U+1F600 instead: the tests compared a decoded character with itself and could not fail. Write text that must hold a backslash-u escape through a script that builds the backslash with `chr(92)`, and check the bytes afterwards: `grep -c` for the escape, and `LC_ALL=C grep -c -P '[^\x00-\x7F]'` for any non-ASCII byte that should not be there.
+
+## Ending at once on a second signal can beat the ending to the SIGTERM of the calls (30.10.2026)
+
+The MCP server's signal thread ended the process by the second signal's default action while the ending ran on another thread. The ending only asks each call's own thread to send SIGTERM to its process group, so a second signal that came quickly killed the server before any group was signalled, and every call's program outlived it. An ending that is bounded by the grace and a margin finishes on its own: later signals are caught and ignored, which `a_second_signal_during_the_ending_does_not_cut_it_short` in `crates/tagents-core/tests/mcp_server.rs` pins.

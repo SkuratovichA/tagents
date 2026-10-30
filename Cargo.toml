@@ -4,7 +4,7 @@ members = ["crates/*"]
 default-members = ["crates/tagents-core"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.99"
 license = "MIT"
@@ -15,9 +15,13 @@ publish = false
 # Internal crates.
 tagents-spec = { path = "crates/tagents-spec" }
 
-# serde and serde_json read the language-neutral CLI spec (spec/cli/tagents-core.json). No other parser is in the tree.
+# serde and serde_json read the language-neutral CLI spec (spec/cli/tagents-core.json) and speak the MCP server's JSON-RPC. No other parser is in the tree. `preserve_order` keeps a program's keys and the contract's maps in the order they were written; `arbitrary_precision` keeps a number's digits, so mcp::run reads it into a double the way `JSON.parse` does and tells it the way `JSON.stringify` does (a program's `1.0` is `1`, `1e400` is `null`) and not as serde_json's own number types would. Cargo features are additive, so both apply to every crate of the workspace.
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision"] }
+# rustix signals a process group, waits on a child without reaping it and asks a pipe whether it is readable without reading it (`poll`, feature `event`), in safe code (mcp::run). Its `waitid` with NOWAIT, `kill_process_group` and `poll` exist on aarch64-apple-darwin, x86_64-apple-darwin and x86_64-unknown-linux-musl, so `nix` is not needed.
+rustix = { version = "1", default-features = false, features = ["std", "process", "event"] }
+# signal-hook turns SIGTERM, SIGINT and SIGHUP into a stream of values read on a thread of its own, so no handler runs arbitrary code (mcp::server).
+signal-hook = "0.4"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

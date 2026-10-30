@@ -260,36 +260,39 @@ impl Parser<'_> {
                     b'n' => out.push('\n'),
                     b'r' => out.push('\r'),
                     b't' => out.push('\t'),
-                    b'u' => out.push(self.unicode_escape()?),
+                    b'u' => {
+                        let (unit, len) = unicode_escape(self.b, self.i - 2)?;
+                        self.i += len - 2;
+                        out.push(unit.unwrap_or('\u{fffd}'));
+                    }
                     _ => return None,
                 },
                 _ => return None,
             }
         }
     }
+}
 
-    fn hex4(&mut self) -> Option<u32> {
-        let digits = self.text.get(self.i..self.i + 4)?;
-        if !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return None;
-        }
-        self.i += 4;
-        u32::from_str_radix(digits, 16).ok()
+/// The backslash-u escape that starts at `at` (the backslash) and the number of bytes it takes: a character, or `None` for a surrogate that stands alone, which `JSON.parse` keeps and `serde_json` refuses. A high surrogate followed by an escaped low one is one character in 12 bytes. `None` when no escape with four hex digits starts there.
+pub(crate) fn unicode_escape(bytes: &[u8], at: usize) -> Option<(Option<char>, usize)> {
+    let first = code_unit(bytes, at)?;
+    if (0xd800..0xdc00).contains(&first)
+        && let Some(second) = code_unit(bytes, at + 6).filter(|s| (0xdc00..0xe000).contains(s))
+    {
+        let pair = 0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00);
+        return Some((char::from_u32(pair), 12));
     }
+    Some((char::from_u32(first), 6))
+}
 
-    /// After `\u`: one code unit, or a pair when a high surrogate is followed by an escaped low one. Any other surrogate stands alone.
-    fn unicode_escape(&mut self) -> Option<char> {
-        let first = self.hex4()?;
-        if (0xd800..0xdc00).contains(&first) && self.b[self.i..].starts_with(b"\\u") {
-            let save = self.i;
-            self.i += 2;
-            if let Some(second) = self.hex4().filter(|s| (0xdc00..0xe000).contains(s)) {
-                return char::from_u32(0x10000 + ((first - 0xd800) << 10) + (second - 0xdc00));
-            }
-            self.i = save;
-        }
-        Some(char::from_u32(first).unwrap_or('\u{fffd}'))
+fn code_unit(bytes: &[u8], at: usize) -> Option<u32> {
+    let [b'\\', b'u', digits @ ..] = bytes.get(at..at + 6)? else {
+        return None;
+    };
+    if !digits.iter().all(u8::is_ascii_hexdigit) {
+        return None;
     }
+    u32::from_str_radix(std::str::from_utf8(digits).ok()?, 16).ok()
 }
 
 #[cfg(test)]
@@ -350,6 +353,27 @@ mod tests {
             ok(r#""\ude00\ud83d""#),
             Value::String("\u{fffd}\u{fffd}".into())
         );
+    }
+
+    #[test]
+    fn the_shared_reader_of_backslash_u_escapes() {
+        type Read = Option<(Option<char>, usize)>;
+        let cases: &[(&[u8], usize, Read)] = &[
+            (b"\\ud83d\\ude00", 0, Some((Some('\u{1f600}'), 12))),
+            (b"\\ud800x", 0, Some((None, 6))),
+            (b"\\udc00", 0, Some((None, 6))),
+            (b"\\ud83d\\u0041", 0, Some((None, 6))),
+            (b"\\ud83d\\ude", 0, Some((None, 6))),
+            (b"\\u00E9", 0, Some((Some('\u{e9}'), 6))),
+            (b"x\\u0041", 1, Some((Some('A'), 6))),
+            (b"\\u00zz", 0, None),
+            (b"\\u004", 0, None),
+            (b"\\n\\u0041", 0, None),
+            (b"\\\\u0041", 0, None),
+        ];
+        for (bytes, at, want) in cases {
+            assert_eq!(unicode_escape(bytes, *at), *want, "{bytes:?} at {at}");
+        }
     }
 
     #[test]

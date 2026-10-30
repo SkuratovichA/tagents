@@ -301,14 +301,14 @@ mod tests {
         let spec = Spec::bundled().expect("the data file matches the model");
         assert_eq!(spec.program, "tagents-core");
         assert_eq!(spec.exit["usage"], 2);
-        assert_eq!(spec.commands.len(), 14);
+        assert_eq!(spec.commands.len(), 15);
         let rust: Vec<String> = spec
             .served_by(Implementation::Rust)
             .map(|c| c.path.join(" "))
             .collect();
         assert_eq!(
             rust,
-            ["sessions recent", "sessions search", "sessions show"]
+            ["sessions recent", "sessions search", "sessions show", "mcp"]
         );
     }
 

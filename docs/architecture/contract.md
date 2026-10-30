@@ -31,7 +31,7 @@ An installed plugin stays on its version until the version changes, which is why
 
 ## The tools follow the verbs
 
-The `tagents` MCP server (`packages/mcp`) has one tool for each verb that is in a spec above, except the verbs that run until they are stopped and the verbs that say `tool: false`, and it knows no verb by name: `toolSpecs()` derives the tools from the specs, the generator records them in `contract.json` under `mcp.tagents.tools`, and the server derives them again from that file when it starts. A verb added to a spec is therefore a new tool, a new digest and a minor bump after `pnpm plugin:gen`, with no tool code written.
+The `tagents` MCP server (`packages/mcp`, and `tagents-core mcp` in the Rust binary, which derives the same tools from `contract.json`) has one tool for each verb that is in a spec above, except the verbs that run until they are stopped and the verbs that say `tool: false`, and it knows no verb by name: `toolSpecs()` derives the tools from the specs, the generator records them in `contract.json` under `mcp.tagents.tools`, and the server derives them again from that file when it starts. A verb added to a spec is therefore a new tool, a new digest and a minor bump after `pnpm plugin:gen`, with no tool code written.
 
 A verb may declare an `effect` (`read`, `write`, `spawn`, `destructive` or `serve`). The effect becomes the tool's annotations, which is what Claude Code's permission prompt shows. A verb that declares none is offered as a tool that is not read-only, and `pnpm plugin:gen` and `pnpm plugin:check` print a `notice:` line naming it, without failing. The verbs of `tagents-core` say it in the data file `spec/cli/tagents-core.json`, whose schema takes the five words and nothing else:
 
