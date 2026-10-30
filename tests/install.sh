@@ -703,6 +703,8 @@ printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.1.0"; 
 out=$(run_native); rc=$?
 contains "a hand-built binary of the checkout's version is named again" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
 set_version 0.2.0-rc.1
+# A binary that answers with an empty version is the one an unreadable version would match if the check were skipped.
+printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core "; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
 out=$(run_native); rc=$?
 lacks "a Cargo.toml whose version cannot be read names no binary for tagents-mcp" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
 contains "...while tagents-core still names it" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
