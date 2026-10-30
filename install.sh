@@ -15,6 +15,7 @@
 #   ~/.local/bin/tagents-knowledge          exec <node> $TAGENTS_HOME/packages/knowledge/dist/cli/main.js
 #   ~/.local/bin/tagents-notify             exec <node> $TAGENTS_HOME/packages/notify/dist/main.js
 #   ~/.local/bin/tagents-mcp                exec <node> $TAGENTS_HOME/packages/mcp/dist/main.js
+#                                           or `tagents-core mcp` of the same binary when it exists at install time (the node server stays the fallback)
 #   <hooks dir>/<name>.sh                   exec sh $TAGENTS_HOME/hooks/<name>.sh, one per hooks/*.sh
 #   <node> is the node the install found on PATH, or node on the caller's PATH once that file is gone.
 #
@@ -69,10 +70,10 @@ short() { printf '%s' "$1" | cut -c1-7; }
 
 xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
-# A wrapper names the one file to run and passes everything through, stdin included, which is what a hook is fed on; an interpreter given by its absolute path is pinned, so the wrapper runs that file while it is executable and otherwise the interpreter of the same name on the caller's PATH. A native binary, when one is given, is run in place of the file, with the interpreter handed to it as TAGENTS_NODE.
+# A wrapper names the one file to run and passes everything through, stdin included, which is what a hook is fed on; an interpreter given by its absolute path is pinned, so the wrapper runs that file while it is executable and otherwise the interpreter of the same name on the caller's PATH. A native binary, when one is given, is run in place of the file, with the interpreter handed to it as TAGENTS_NODE and, when a word is given too, with that word before the arguments (tagents-mcp runs `tagents-core mcp`).
 # A native binary is looked up in the tree and the wrapper cannot tell which source it was built from; fetch_native keeps the one it installed to the version of the checkout, and a binary built by hand goes stale after `tagents update` until the next `cargo build --release`.
-write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary]
-  dest=$1; target=$2; interp=${3:-}; native=${4:-}
+write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary] [word for the native binary]
+  dest=$1; target=$2; interp=${3:-}; native=${4:-}; word=${5:-}
   if [ -L "$dest" ]; then
     rm -f "$dest"
   elif [ -e "$dest" ] && ! grep -q "$MARK" "$dest" 2>/dev/null; then
@@ -89,7 +90,7 @@ write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary]
       *) runner=${interp:+$interp }; pin= ;;
     esac
     # Only a binary that exists now is named, so with none the file is the one this function always wrote. A binary that is gone by run time falls through to the node CLI below.
-    if [ -n "$native" ]; then printf 'r="%s"\n[ ! -f "$r" ] || [ ! -x "$r" ] || { %sexec "$r" "$@"; }\n' "$native" "$pin"; fi
+    if [ -n "$native" ]; then printf 'r="%s"\n[ ! -f "$r" ] || [ ! -x "$r" ] || { %sexec "$r" %s"$@"; }\n' "$native" "$pin" "${word:+$word }"; fi
     printf 'exec %s"%s" "$@"\n' "$runner" "$target"
   } > "$tmp"
   chmod 755 "$tmp"
@@ -280,14 +281,15 @@ install_commands() {
   case $node_bin in /*) ;; *) node_bin=node ;; esac
   for pair in tagents-core:core/dist/cli/main.js tagents-knowledge:knowledge/dist/cli/main.js tagents-notify:notify/dist/main.js tagents-mcp:mcp/dist/main.js; do
     cli=$TAGENTS_HOME/packages/${pair#*:}
-    native=
-    # tagents-core has a Rust front door that serves the verbs ported so far and hands every other word to the node CLI. It is named here when fetch_native or a `cargo build --release` has put an executable binary in the tree; this function builds and fetches nothing.
-    if [ "${pair%%:*}" = tagents-core ]; then
+    native=; word=
+    # tagents-core has a Rust front door that serves the verbs ported so far and hands every other word to the node CLI, and tagents-mcp is its verb `mcp`, so both name the same binary. It is named here when fetch_native or a `cargo build --release` has put an executable binary in the tree; this function builds and fetches nothing.
+    case ${pair%%:*} in tagents-core|tagents-mcp)
       rust_bin=$TAGENTS_HOME/target/release/tagents-core
       if [ -f "$rust_bin" ] && [ -x "$rust_bin" ]; then native=$rust_bin; fi
-    fi
+      if [ "${pair%%:*}" = tagents-mcp ]; then word=mcp; fi ;;
+    esac
     if [ -f "$cli" ]; then
-      write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin" "$native"
+      write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin" "$native" "$word"
     else
       warn "no $cli after the build, so ${pair%%:*} was not installed"
       SKIPPED=$((SKIPPED + 1))
