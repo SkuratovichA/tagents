@@ -94,6 +94,28 @@ fn has_perl() -> bool {
     found
 }
 
+/// A call of `fake_hang` whose helper outside the group holds the pipes and writes nothing, with a drain of 100 ms and a grace of 5 s. It must be answered at the drain: the time is taken from the moment the helper started, since starting it can take seconds on a loaded machine.
+fn call_held_by_an_idle_holder(rig: &Rig) -> CallResult {
+    let deps = RunDeps {
+        timeout: Duration::from_secs(60),
+        drain: ms(100),
+        kill_grace: ms(5000),
+        ..RunDeps::standard(rig.env())
+    };
+    let call = in_flight(tool("fake_hang"), deps, Stop::default());
+    assert!(
+        until(|| !rig.pids().is_empty(), 20_000),
+        "the helper started"
+    );
+    let started = Instant::now();
+    let result = call.recv_timeout(ms(20_000)).expect("the call resolved");
+    assert!(
+        started.elapsed() < ms(3000),
+        "the call gave up at the drain, not at the grace of 5 s"
+    );
+    result
+}
+
 fn marker() -> String {
     format!("\n[output cut at {MAX_STREAM} bytes]")
 }
@@ -570,18 +592,7 @@ fn a_holder_of_the_pipes_that_left_the_group_cannot_be_killed_and_still_does_not
         "process_escapee",
         &escapee_program(r#"exec "sleep", "30""#, "echo done"),
     );
-    let deps = RunDeps {
-        timeout: Duration::from_secs(60),
-        drain: ms(100),
-        kill_grace: ms(5000),
-        ..RunDeps::standard(rig.env())
-    };
-    let started = Instant::now();
-    let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
-    assert!(
-        started.elapsed() < ms(3000),
-        "the call gave up at the drain, not at the grace of 5 s"
-    );
+    let result = call_held_by_an_idle_holder(&rig);
     assert_eq!(body(&result)["stdout"], json!("done\n"));
     // The escapee is out of the group, so the call could not stop it; the rig's drop does.
     assert!(until(|| rig.pids().len() == 1, 1000));
@@ -604,18 +615,7 @@ fn a_holder_of_the_stdout_alone_does_not_hold_the_call_longer_than_the_drain() {
             "echo done",
         ),
     );
-    let deps = RunDeps {
-        timeout: Duration::from_secs(60),
-        drain: ms(100),
-        kill_grace: ms(5000),
-        ..RunDeps::standard(rig.env())
-    };
-    let started = Instant::now();
-    let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
-    assert!(
-        started.elapsed() < ms(3000),
-        "the call gave up at the drain, not at the grace of 5 s"
-    );
+    let result = call_held_by_an_idle_holder(&rig);
     assert_eq!(body(&result)["stdout"], json!("done\n"));
 }
 
@@ -631,18 +631,7 @@ fn a_holder_of_the_stderr_alone_does_not_hold_the_call_longer_than_the_drain() {
             "echo done",
         ),
     );
-    let deps = RunDeps {
-        timeout: Duration::from_secs(60),
-        drain: ms(100),
-        kill_grace: ms(5000),
-        ..RunDeps::standard(rig.env())
-    };
-    let started = Instant::now();
-    let result = call(&tool("fake_hang"), &json!({}), &deps, &Stop::default());
-    assert!(
-        started.elapsed() < ms(3000),
-        "the call gave up at the drain, not at the grace of 5 s"
-    );
+    let result = call_held_by_an_idle_holder(&rig);
     assert_eq!(body(&result)["stdout"], json!("done\n"));
 }
 
