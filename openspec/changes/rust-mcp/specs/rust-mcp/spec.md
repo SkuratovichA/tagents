@@ -41,6 +41,10 @@ An unknown method SHALL be answered with the error `-32601`, an unknown tool wit
 - **WHEN** the client calls a tool that is not in the list
 - **THEN** the answer is the error `-32602` naming the tool
 
+#### Scenario: Params that fail validation
+- **WHEN** the client sends `initialize` or `tools/call` with params of the wrong shape (missing, a version that is not a string, a tool name that is missing, arguments that are not an object) or `tools/list` with a cursor that is not a string
+- **THEN** each is answered with the error `-32602` and a message that starts `Invalid params: `, and none is ignored
+
 #### Scenario: Noise
 - **WHEN** the client sends a line that is not JSON and then a notification of an unknown name
 - **THEN** nothing is answered, nothing is written to stderr, and the next request is answered
@@ -64,7 +68,7 @@ The server SHALL derive its tools, check a call and tell its result by the rules
 - **THEN** their answers are the same bytes, for every exit code of the verb, for JSON and for text output, and for an output cut at 256 KiB
 
 ### Requirement: Nothing a call starts outlives the call
-A call SHALL run its program in a process group of its own, and when the program exits, the call times out after five minutes, the client cancels it or the server ends, the whole group SHALL be stopped. A helper that left the group and holds the pipes after its program exited SHALL hold the call no longer than a short drain.
+A call SHALL run its program in a process group of its own, and when the program exits, the call times out after five minutes, the client cancels it or the server ends, the whole group SHALL be stopped. A helper that left the group and holds the pipes after its program exited SHALL hold the call no longer than a short drain. A helper that calls `setsid` leaves the group and is not stopped: it outlives the call, with both servers.
 
 #### Scenario: A program that starts a helper
 - **WHEN** a program starts a background process in its group and exits
@@ -73,6 +77,10 @@ A call SHALL run its program in a process group of its own, and when the program
 #### Scenario: A helper that holds the pipes
 - **WHEN** a helper outside the group keeps the pipes open after the program exited
 - **THEN** the call is answered within the drain and not when the helper lets go
+
+#### Scenario: A helper that leaves the group
+- **WHEN** a helper calls `setsid` and so leaves the process group of its program
+- **THEN** it outlives the call, with both servers, because only the group is stopped
 
 #### Scenario: A timeout
 - **WHEN** a program outlives the call's time limit
@@ -99,6 +107,14 @@ The server SHALL end when stdin ends and on SIGTERM, SIGINT and SIGHUP: it stops
 #### Scenario: A signal
 - **WHEN** the server receives SIGTERM while a call runs
 - **THEN** it ends in the same way
+
+#### Scenario: A write error on stdout
+- **WHEN** an answer cannot be written to stdout
+- **THEN** the server starts the ending and leaves, and does not go on serving
+
+#### Scenario: A second signal
+- **WHEN** a second signal arrives while the ending is still waiting for a program that ignores SIGTERM
+- **THEN** the server ends at once by the default action of that signal
 
 ### Requirement: The node server is the reference
 `tests/rust-mcp-parity.sh` SHALL feed one script of requests to `packages/mcp` and to `tagents-core mcp` with stub programs on `PATH` and SHALL compare the two answers byte for byte, leaving out only `serverInfo.version`, and the workflow `rust.yml` SHALL run it on every change to either server.

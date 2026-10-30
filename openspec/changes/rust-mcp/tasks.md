@@ -1,3 +1,5 @@
+Archive this change after `mcp-tools-from-contract`: the requirement "The tools follow the rules of the node server" (`specs/rust-mcp/spec.md`) cites seven requirement names that reach `openspec/specs/claude-code-plugin/spec.md` only when that change is archived, since they exist today only in `openspec/changes/mcp-tools-from-contract/specs/claude-code-plugin/spec.md`.
+
 ## 1. The verb and the contract
 
 - [x] 1.1 `mcp` in `spec/cli/tagents-core.json` with `impl: rust`, `effect: serve`, its summary in `en.ts` and `ru.ts`; the generated contract and references gain exactly that entry (`pnpm plugin:check`, `contract-stable`)
@@ -36,13 +38,14 @@
 
 - [x] 7.1 `write_wrapper` takes the word, and the `tagents-mcp` entry of `install_commands` names the binary of `tagents-core` with `mcp` (`bash tests/install.sh`, sections 13 and 14)
 - [x] 7.2 With no binary the wrapper is byte for byte the old one; a binary that vanishes or loses its executable bit falls through to node; `TAGENTS_NO_NATIVE=1` and a version without a release leave node (`bash tests/install.sh`)
-- [x] 7.3 Mutations of the installer each make `tests/install.sh` fail: the word left out, the binary named when none is installed (`bash tests/install.sh`)
+- [x] 7.3 Mutations of the installer each make `tests/install.sh` fail: the word left out, the binary named when none is installed, the version check dropped (`bash tests/install.sh`)
 - [x] 7.4 `shellcheck -s sh install.sh` has no finding that `origin/main` does not have (four SC2016 on both)
 
 ## 8. CI
 
 - [x] 8.1 `rust.yml` installs the node dependencies before the Rust steps, lists `packages/mcp/**`, `tests/rust-mcp-parity.sh` and its driver in both `paths` and runs the suite after the existing parity step (`actionlint`)
 - [ ] 8.2 The workflow run of the pull request passes the new step
+- [ ] 8.3 The `rust` job runs on ubuntu-latest and macos-latest (proved by the workflow run of the pull request)
 
 ## 9. Documents
 
