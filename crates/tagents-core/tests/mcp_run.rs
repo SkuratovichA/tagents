@@ -16,11 +16,11 @@ use std::{
 };
 
 use serde_json::{Value, json};
+use tagents_core::ending::Stop;
 use tagents_core::mcp::{
     contract,
     rpc::CallResult,
     run::{MAX_STREAM, RunDeps, call_tool},
-    server::Stop,
     tools::{Tool, tool_specs},
 };
 
