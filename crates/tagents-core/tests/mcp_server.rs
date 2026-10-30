@@ -426,7 +426,7 @@ fn sighup_stops_the_program_of_a_call_in_flight_and_the_server_exits() {
 }
 
 #[test]
-fn a_second_signal_during_the_ending_ends_the_server_by_that_signal_before_the_grace_is_over() {
+fn a_second_signal_during_the_ending_does_not_cut_it_short() {
     let rig = Rig::new(
         "server_second_sigterm",
         r#"trap '' TERM; echo $$ > "$D/main.pid"; while :; do sleep 1; done"#,
@@ -435,23 +435,26 @@ fn a_second_signal_during_the_ending_ends_the_server_by_that_signal_before_the_g
     session.initialize();
     session.call(2, "fake_hang", &json!({}));
     assert!(rig.started(1), "the program started");
-    let pid = Pid::from_raw(rig.pids()["main"]).unwrap();
+    let started = Instant::now();
     // The first signal starts the ending, which the program that ignores SIGTERM keeps busy for the whole grace.
     session.signal(Signal::TERM);
     thread::sleep(Duration::from_millis(300));
-    assert!(
-        session.exit(Duration::ZERO).is_none(),
-        "the ending is still going"
-    );
     session.signal(Signal::TERM);
     let status = session
-        .exit(Duration::from_millis(1000))
-        .expect("the second signal ended the server before the grace was over");
-    let _ = kill_process(pid, Signal::KILL);
+        .exit(Duration::from_secs(10))
+        .expect("the server ended");
     assert_eq!(
-        status.signal(),
-        Some(15),
-        "by the signal, not by an exit code"
+        status.code(),
+        Some(0),
+        "by its own exit after the ending, not by the second signal"
+    );
+    assert!(
+        started.elapsed() >= Duration::from_millis(1900),
+        "only after the grace of 2 s: the second signal did not cut the ending short"
+    );
+    assert!(
+        until(|| rig.none_alive(), 2000),
+        "the program that ignores SIGTERM got its SIGKILL"
     );
 }
 

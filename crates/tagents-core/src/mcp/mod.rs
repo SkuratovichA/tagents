@@ -20,7 +20,6 @@ use std::sync::Arc;
 
 use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
-use signal_hook::low_level::emulate_default_handler;
 
 use crate::sessions::exit;
 use rpc::Out;
@@ -102,14 +101,9 @@ fn serve(path: &OsString) -> Result<(), String> {
     std::thread::Builder::new()
         .name("tagents-signals".into())
         .spawn(move || {
-            let mut received = signals.forever();
-            if received.next().is_none() {
-                return;
-            }
-            // The ending takes seconds when a program ignores SIGTERM, so it runs on a thread of its own and this one goes on reading: a second signal is the client insisting, and it ends the process at once, as node's `process.once` lets it.
-            std::thread::spawn(move || ending.end_and_exit());
-            for signal in received {
-                let _ = emulate_default_handler(signal);
+            // A later signal is caught and ignored: the ending is over within the grace and the margin, and leaving before it ends would leave a program that ignores SIGTERM without its SIGKILL.
+            if signals.forever().next().is_some() {
+                ending.end_and_exit();
             }
         })
         .map_err(|e| format!("cannot start a thread: {e}"))?;
