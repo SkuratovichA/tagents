@@ -572,3 +572,7 @@ Inside a command substitution that is itself inside double quotes, bash 3.2 brac
 ## `ps | grep -c <name>` counts its own shell when the command line holds the name (30.10.2026)
 
 The shell that runs the check has the pattern in its own command line, so the count is one too high and a test for "nothing is left running" never reads 0. Write the pattern with a bracket, `grep -c '[s]leep 30'`, so the line of the check does not match it.
+
+## A Rust test that calls the node CLI passes where `node_modules` exists and fails on the CI runner that has none yet (30.10.2026)
+
+The smoke test in `crates/tagents-core/tests/mcp_server.rs` runs `packages/core/src/cli/main.ts` through the server, and that file imports `zod`. It passed on the machine where `pnpm install` had run and failed on the first push of the branch with `ERR_MODULE_NOT_FOUND`, because `rust.yml` installed pnpm and node only after `cargo test`. The job now installs the node dependencies before the Rust steps, so the call half runs in CI with the pinned node, and the test skips that half, saying why, where the workspace has no `node_modules`.

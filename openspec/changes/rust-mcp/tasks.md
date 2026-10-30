@@ -41,7 +41,7 @@
 
 ## 8. CI
 
-- [x] 8.1 `rust.yml` lists `packages/mcp/**`, `tests/rust-mcp-parity.sh` and its driver in both `paths` and runs the suite after the existing parity step (`actionlint`)
+- [x] 8.1 `rust.yml` installs the node dependencies before the Rust steps, lists `packages/mcp/**`, `tests/rust-mcp-parity.sh` and its driver in both `paths` and runs the suite after the existing parity step (`actionlint`)
 - [ ] 8.2 The workflow run of the pull request passes the new step
 
 ## 9. Documents

@@ -57,21 +57,21 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install the toolchain rust-toolchain.toml pins
         run: rustup toolchain install
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Install the node dependencies, which the smoke test of the MCP server and the parity suites run against
+        run: pnpm install --frozen-lockfile
       - name: Formatting
         run: cargo fmt --all --check
       - name: Lints, tests included
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit and integration tests
         run: cargo test --workspace --locked
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
       - name: Build the node CLI the Rust binary is compared with
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm build
+        run: pnpm build
       - name: Parity with the node CLI, byte for byte
         run: bash tests/rust-parity.sh
       - name: Parity of the MCP server with the node one, byte for byte

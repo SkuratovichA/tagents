@@ -249,8 +249,11 @@ fn a_call_for_a_tool_that_does_not_exist_is_a_protocol_error_not_a_result() {
 
 // smoke.test.ts
 
-/// The directory of the `node` on PATH, if there is one.
+/// The directory of the `node` on PATH, if there is one and the workspace has its node dependencies installed: the CLI this test calls runs from its TypeScript sources and imports them.
 fn node_dir() -> Option<PathBuf> {
+    if !Path::new(REPO).join("node_modules").is_dir() {
+        return None;
+    }
     std::env::split_paths(&std::env::var_os("PATH")?).find(|dir| dir.join("node").is_file())
 }
 
@@ -307,7 +310,9 @@ fn tools_list_is_the_list_the_contract_records_and_a_read_only_tool_answers_agai
     assert_eq!(fields(&listed["result"]["tools"]), fields(wanted));
 
     if node.is_none() {
-        eprintln!("no node on PATH: the call half of the smoke test is skipped");
+        eprintln!(
+            "no node on PATH, or no node_modules (run pnpm install): the call half of the smoke test is skipped"
+        );
         return;
     }
     session.call(3, "core_plugin_list", &json!({"json": true}));
