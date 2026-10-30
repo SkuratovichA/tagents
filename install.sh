@@ -286,7 +286,13 @@ install_commands() {
     case ${pair%%:*} in tagents-core|tagents-mcp)
       rust_bin=$TAGENTS_HOME/target/release/tagents-core
       if [ -f "$rust_bin" ] && [ -x "$rust_bin" ]; then native=$rust_bin; fi
-      if [ "${pair%%:*}" = tagents-mcp ]; then word=mcp; fi ;;
+      if [ "${pair%%:*}" = tagents-mcp ]; then
+        word=mcp
+        # A binary older than the checkout hands the word `mcp` to the node CLI, which does not know it, and a session would lose every tool of the plugin. fetch_native keeps the binary it installed at the checkout's version; one built by hand is asked once per install, and one that says another version, or cannot say, is not named, which leaves the node server.
+        want=
+        if [ -f "$TAGENTS_HOME/Cargo.toml" ]; then want=$(core_version "$TAGENTS_HOME/Cargo.toml"); fi
+        if [ -n "$native" ] && [ -n "$want" ] && [ "$("$native" --version </dev/null 2>/dev/null)" != "tagents-core $want" ]; then native=; fi
+      fi ;;
     esac
     if [ -f "$cli" ]; then
       write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin" "$native" "$word"

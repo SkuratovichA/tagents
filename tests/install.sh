@@ -672,7 +672,7 @@ nothing_installed "...and nothing is installed"
 fresh_native 0.1.0
 TAGENTS_NO_NATIVE=1 run_native >/dev/null
 mkdir -p "$(dirname "$RUST_BIN")"
-printf '#!/bin/sh\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.1.0"; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
 out=$(run_native); rc=$?
 ok "an install over a hand-built binary exits 0" 0 "$rc"
 ok "it made no request" 0 "$(calls)"
@@ -686,6 +686,21 @@ chmod 644 "$RUST_BIN"
 out=$(run_native); rc=$?
 ok "a hand-built file that is not executable is left alone too" yes "$(grep -q handbuilt "$RUST_BIN" && echo yes || echo no)"
 ok "...with no request" 0 "$(calls)"
+
+# A binary of another version hands the word mcp to the node CLI, which does not know it: tagents-mcp leaves such a binary and runs the node server, where tagents-core still names it because every verb it lacks goes to the node CLI.
+printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.0.9"; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+out=$(run_native); rc=$?
+ok "an install over a hand-built binary of another version exits 0" 0 "$rc"
+ok "tagents-core still names it" "handbuilt" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core")"
+lacks "tagents-mcp does not name it" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+ok "...so a session gets the node server" "node-c $TAGENTS_HOME/packages/mcp/dist/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a b)"
+printf '#!/nonexistent/interpreter\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+out=$(run_native); rc=$?
+lacks "a hand-built binary that cannot say its version is not named by tagents-mcp either" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+contains "...while tagents-core names it" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.1.0"; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+out=$(run_native); rc=$?
+contains "a hand-built binary of the checkout's version is named again" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
 
 # --- TAGENTS_NO_NATIVE=1 --------------------------------------------------------
 fresh_native 0.1.0
