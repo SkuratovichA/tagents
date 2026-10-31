@@ -1,16 +1,18 @@
 //! The watch against real files, on whichever of inotify and kqueue the machine has. A key that has to come is waited for `HEARD`; a key that must not come is waited for `QUIET` and found missing, so a test of silence can pass by being early but never fails by being late.
 
+use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
-use std::io::{ErrorKind, Read, Write};
+use std::io::{self, ErrorKind, Read, Write};
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Barrier};
 use std::time::Duration;
 use std::{process, thread};
 
-use super::{Key, Watch};
+use super::{Fired, Heard, Key, Poller, Watch, run};
 
 const HEARD: Duration = Duration::from_secs(10);
 const QUIET: Duration = Duration::from_millis(400);
@@ -43,21 +45,27 @@ impl Drop for Scratch {
     }
 }
 
-fn start() -> (Watch, Receiver<Key>) {
+fn start() -> (Watch, Receiver<Heard>) {
     let (sink, keys) = mpsc::channel();
     (Watch::start(sink).unwrap(), keys)
 }
 
-fn heard(keys: &Receiver<Key>) -> Key {
-    keys.recv_timeout(HEARD).expect("the watch heard nothing")
+fn heard(keys: &Receiver<Heard>) -> Key {
+    match keys.recv_timeout(HEARD).expect("the watch heard nothing") {
+        Heard::Fired(key) => key,
+        Heard::Ended(err) => panic!("the watch ended: {err}"),
+    }
 }
 
-fn silent(keys: &Receiver<Key>) {
-    assert_eq!(keys.recv_timeout(QUIET), Err(RecvTimeoutError::Timeout));
+fn silent(keys: &Receiver<Heard>) {
+    match keys.recv_timeout(QUIET) {
+        Err(RecvTimeoutError::Timeout) => {}
+        other => panic!("the watch was meant to be silent, and sent {other:?}"),
+    }
 }
 
 /// Takes every key that one action made, however many batches the system sent it in.
-fn settle(keys: &Receiver<Key>) {
+fn settle(keys: &Receiver<Heard>) {
     while keys.recv_timeout(QUIET).is_ok() {}
 }
 
@@ -155,6 +163,83 @@ fn a_file_watch_alone_follows_the_path_across_a_rename() {
     append(&path, "c");
 
     assert_eq!(heard(&keys), Key::Events);
+}
+
+#[test]
+fn a_file_replaced_while_a_reader_still_holds_the_old_one_is_followed_to_the_new_one() {
+    let scratch = Scratch::new();
+    let path = scratch.dir("d").join("events.tsv");
+    fs::write(&path, "a").unwrap();
+    // The old file is not freed while it is open, so the system says nothing of its removal.
+    let _reader = File::open(&path).unwrap();
+    let (watch, keys) = start();
+    watch.file(&path, Key::Events).unwrap();
+
+    replace(&path, "b");
+    assert_eq!(heard(&keys), Key::Events);
+    settle(&keys);
+    append(&path, "c");
+
+    assert_eq!(heard(&keys), Key::Events);
+}
+
+#[test]
+fn a_file_truncated_in_place_is_heard() {
+    let scratch = Scratch::new();
+    let path = scratch.dir("d").join("notify.toml");
+    fs::write(&path, "abc").unwrap();
+    let (watch, keys) = start();
+    watch.file(&path, Key::Options).unwrap();
+    silent(&keys);
+
+    let file = OpenOptions::new().write(true).open(&path).unwrap();
+    file.set_len(0).unwrap();
+
+    assert_eq!(heard(&keys), Key::Options);
+}
+
+#[test]
+fn a_file_truncated_by_creating_it_again_is_heard() {
+    let scratch = Scratch::new();
+    let path = scratch.dir("d").join("notify.toml");
+    fs::write(&path, "abc").unwrap();
+    let (watch, keys) = start();
+    watch.file(&path, Key::Options).unwrap();
+    silent(&keys);
+
+    File::create(&path).unwrap();
+
+    assert_eq!(heard(&keys), Key::Options);
+}
+
+#[test]
+fn a_fifo_does_not_hold_the_watch_thread_for_a_writer() {
+    let scratch = Scratch::new();
+    let fifo = scratch.dir("d").join("events.tsv");
+    assert!(
+        Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let (watch, _keys) = start();
+    let watch = Arc::new(watch);
+
+    let (done, finished) = mpsc::channel();
+    let armer = Arc::clone(&watch);
+    thread::spawn(move || {
+        let armed = armer.file(&fifo, Key::Events);
+        // Handed back, so that the last owner of the watch is this test and it is dropped here.
+        let _ = done.send((armed, armer));
+    });
+
+    // Armed or refused, either is an answer; waiting for someone to open the other end is not.
+    let (_armed, armer) = finished
+        .recv_timeout(HEARD)
+        .expect("arming a FIFO waited for a writer");
+    drop(armer);
+    drop(watch);
 }
 
 #[test]
@@ -261,6 +346,40 @@ fn a_second_directory_for_a_key_takes_the_place_of_the_first() {
 }
 
 #[test]
+fn two_keys_on_one_directory_both_hear_an_entry_written() {
+    let scratch = Scratch::new();
+    let shared = scratch.dir("shared");
+    let (watch, keys) = start();
+    watch.dir(&shared, Key::Events).unwrap();
+    watch.dir(&shared, Key::Options).unwrap();
+
+    fs::write(shared.join("notify.toml"), "a").unwrap();
+
+    let told = [heard(&keys), heard(&keys)];
+    assert!(
+        told.contains(&Key::Events) && told.contains(&Key::Options),
+        "{told:?}"
+    );
+}
+
+#[test]
+fn a_key_that_leaves_a_directory_does_not_take_the_watch_of_another_key_with_it() {
+    let scratch = Scratch::new();
+    let (shared, elsewhere) = (scratch.dir("shared"), scratch.dir("elsewhere"));
+    let (watch, keys) = start();
+    watch.dir(&shared, Key::Events).unwrap();
+    watch.dir(&shared, Key::Options).unwrap();
+
+    watch.dir(&elsewhere, Key::Events).unwrap();
+    fs::write(shared.join("notify.toml"), "a").unwrap();
+    assert_eq!(heard(&keys), Key::Options);
+    settle(&keys);
+    fs::write(elsewhere.join("events.tsv"), "a").unwrap();
+
+    assert_eq!(heard(&keys), Key::Events);
+}
+
+#[test]
 fn arming_does_not_wait_for_an_event() {
     let scratch = Scratch::new();
     let dir = scratch.dir("d");
@@ -313,6 +432,8 @@ fn no_byte_is_missed_when_writes_land_as_the_watch_is_armed() {
     let dir = scratch.dir("d");
     let (watch, keys) = start();
     for round in 0..ROUNDS {
+        // A key left from the last round would satisfy the wait of this one.
+        while keys.try_recv().is_ok() {}
         let path = dir.join(format!("events-{round}.tsv"));
         File::create(&path).unwrap();
         let mut follower = Follower::open(&path);
@@ -391,8 +512,56 @@ fn a_watch_is_dropped_while_its_thread_waits() {
 
     drop(watch);
 
-    assert_eq!(
-        keys.recv_timeout(QUIET),
-        Err(RecvTimeoutError::Disconnected)
-    );
+    match keys.recv_timeout(QUIET) {
+        Err(RecvTimeoutError::Disconnected) => {}
+        other => panic!("a dropped watch was meant to end without a word, and sent {other:?}"),
+    }
+}
+
+/// A backend that is not one: `wait` answers from a list, so that the loop of the thread runs with no operating system behind it.
+struct Script(VecDeque<io::Result<Fired>>);
+
+impl Poller for Script {
+    fn dir(&mut self, _path: &Path, _key: Key) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn file(&mut self, _path: &Path, _key: Key) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn wait(&mut self) -> io::Result<Fired> {
+        self.0
+            .pop_front()
+            .unwrap_or_else(|| Err(io::Error::other("the script is over")))
+    }
+}
+
+#[test]
+fn a_wait_that_fails_is_the_last_thing_the_sink_hears_and_then_the_thread_ends() {
+    let script = Script(VecDeque::from([
+        Ok(Fired {
+            keys: vec![Key::Events],
+            ..Fired::default()
+        }),
+        Err(io::Error::new(
+            ErrorKind::BrokenPipe,
+            "the descriptor is gone",
+        )),
+    ]));
+    // The sender stays alive: a closed inbox ends the thread before it waits.
+    let (_commands, inbox) = mpsc::channel();
+    let (sink, keys) = mpsc::channel();
+    let thread = thread::spawn(move || run(script, &inbox, &sink));
+
+    assert_eq!(heard(&keys), Key::Events);
+    match keys.recv_timeout(HEARD) {
+        Ok(Heard::Ended(err)) => assert_eq!(err.kind(), ErrorKind::BrokenPipe),
+        other => panic!("a failed wait was meant to reach the sink as Ended, and it got {other:?}"),
+    }
+    thread.join().unwrap();
+    match keys.recv_timeout(QUIET) {
+        Err(RecvTimeoutError::Disconnected) => {}
+        other => panic!("the thread was meant to end after Ended, and the sink got {other:?}"),
+    }
 }

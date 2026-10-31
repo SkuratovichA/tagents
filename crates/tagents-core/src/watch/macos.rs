@@ -10,7 +10,7 @@ use kqueue::{EventData, EventFilter, FilterFlag, Ident, Vnode, Watcher};
 use rustix::fs::{Mode, OFlags, open};
 use rustix::io::Errno;
 
-use super::{Fired, Key, Kind, drain};
+use super::{Fired, Key, Kind, Poller, drain};
 
 /// A file: written, grown, its attributes changed, removed, renamed, or revoked.
 const FILE_NOTES: FilterFlag = FilterFlag::NOTE_WRITE
@@ -48,32 +48,6 @@ impl Backend {
         })
     }
 
-    pub(super) fn dir(&mut self, path: &Path, key: Key) -> io::Result<()> {
-        let dir = open(
-            path,
-            OFlags::RDONLY | OFlags::CLOEXEC | OFlags::DIRECTORY,
-            Mode::empty(),
-        )?;
-        self.keep((key, Kind::Dir), Some(File::from(dir)))
-    }
-
-    /// `O_NOFOLLOW` fails with `ELOOP` on a symlink, which is no watch and not an error. The crate's `add_filename` would open the path itself, and follow it.
-    pub(super) fn file(&mut self, path: &Path, key: Key) -> io::Result<()> {
-        let slot = (key, Kind::File);
-        match open(
-            path,
-            OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
-            Mode::empty(),
-        ) {
-            Ok(file) => self.keep(slot, Some(File::from(file))),
-            Err(Errno::LOOP) => self.keep(slot, None),
-            Err(err) => {
-                self.keep(slot, None)?;
-                Err(err.into())
-            }
-        }
-    }
-
     /// Puts `file` in the place of the watch of `slot` and registers it. The crate registers every watch it holds each time, which keeps the activation of one that has not been read yet.
     fn keep(&mut self, slot: (Key, Kind), file: Option<File>) -> io::Result<()> {
         let notes = if slot.1 == Kind::Dir {
@@ -95,26 +69,6 @@ impl Backend {
         self.queue.watch()
     }
 
-    pub(super) fn wait(&mut self) -> io::Result<Fired> {
-        let mut fired = Fired::default();
-        let mut event = self.queue.poll_forever(None);
-        while let Some(found) = event {
-            match found.data {
-                EventData::Error(err)
-                    if matches!(
-                        err.kind(),
-                        io::ErrorKind::Interrupted | io::ErrorKind::NotFound
-                    ) => {}
-                EventData::Error(err) => return Err(err),
-                EventData::ReadReady(_) => drain(&self.wake),
-                EventData::Vnode(note) => self.note(&found.ident, &note, &mut fired),
-                _ => {}
-            }
-            event = self.queue.poll(None);
-        }
-        Ok(fired)
-    }
-
     /// An event of a descriptor that was replaced meanwhile is ignored.
     fn note(&self, ident: &Ident, note: &Vnode, fired: &mut Fired) {
         let Ident::Fd(fd) = ident else { return };
@@ -124,5 +78,56 @@ impl Backend {
         };
         let gone = matches!(note, Vnode::Delete | Vnode::Rename | Vnode::Revoke);
         fired.add(key, kind == Kind::Dir || gone);
+    }
+}
+
+impl Poller for Backend {
+    fn dir(&mut self, path: &Path, key: Key) -> io::Result<()> {
+        let dir = open(
+            path,
+            OFlags::RDONLY | OFlags::CLOEXEC | OFlags::DIRECTORY,
+            Mode::empty(),
+        )?;
+        self.keep((key, Kind::Dir), Some(File::from(dir)))
+    }
+
+    /// `O_NOFOLLOW` fails with `ELOOP` on a symlink, which is no watch and not an error. The crate's `add_filename` would open the path itself, and follow it. `O_NONBLOCK` keeps the open of a FIFO from waiting for a writer, which would hold this thread, and `Watch::drop` behind it, for as long as none comes.
+    fn file(&mut self, path: &Path, key: Key) -> io::Result<()> {
+        let slot = (key, Kind::File);
+        match open(
+            path,
+            OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
+            Mode::empty(),
+        ) {
+            Ok(file) => self.keep(slot, Some(File::from(file))),
+            Err(Errno::LOOP) => self.keep(slot, None),
+            Err(err) => {
+                self.keep(slot, None)?;
+                Err(err.into())
+            }
+        }
+    }
+
+    fn wait(&mut self) -> io::Result<Fired> {
+        let mut fired = Fired::default();
+        let mut event = self.queue.poll_forever(None);
+        while let Some(found) = event {
+            match found.data {
+                // The crate builds `InvalidData` for a vnode event with no flag it knows, which is no failed wait.
+                EventData::Error(err)
+                    if matches!(
+                        err.kind(),
+                        io::ErrorKind::Interrupted
+                            | io::ErrorKind::NotFound
+                            | io::ErrorKind::InvalidData
+                    ) => {}
+                EventData::Error(err) => return Err(err),
+                EventData::ReadReady(_) => drain(&self.wake),
+                EventData::Vnode(note) => self.note(&found.ident, &note, &mut fired),
+                _ => {}
+            }
+            event = self.queue.poll(None);
+        }
+        Ok(fired)
     }
 }

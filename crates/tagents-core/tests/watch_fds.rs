@@ -13,7 +13,7 @@ use std::{
     sync::{Mutex, PoisonError, mpsc},
 };
 
-use tagents_core::watch::{Key, Watch};
+use tagents_core::watch::{Heard, Key, Watch};
 
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 
@@ -40,7 +40,7 @@ fn fds_of_a_child() -> String {
 }
 
 fn armed_watch(root: &std::path::Path) -> Watch {
-    let (sink, _keys) = mpsc::channel::<Key>();
+    let (sink, _keys) = mpsc::channel::<Heard>();
     let watch = Watch::start(sink).unwrap();
     let file = root.join("events.tsv");
     fs::write(&file, "").unwrap();

@@ -4,6 +4,8 @@
 //!
 //! A file watch goes stale when the path is renamed over: its inode is gone. The thread therefore opens the path again, before it reports the key, whenever the directory of that key reports anything or the file's own watch reports that the inode was removed, renamed or revoked. The path is remembered per key from the first `file` call on, whether or not that call found a file to watch, so a file created later is watched from the next directory event on. A re-arm that fails (the file is gone) leaves the key without a file watch until the next directory event or the next `file` call, and the key is reported all the same.
 //!
+//! The sink hears a `Heard`: `Fired(key)` for every key whose watch fired and, when a wait fails and the thread has to end, one last `Ended(error)`. The sink of a daemon is a channel other threads send to as well, so a thread that ended without a word would leave a daemon that is running and never hears of a file again. A `Watch` that is dropped, and a sink that has no receiver, end the thread without a value.
+//!
 //! Arm, then read. An edge-triggered watch reports nothing for a write that landed between the caller's last read and the arming, so `dir` and `file` return only once the watch is armed, and a caller reads to the end right after they return and again on every key it hears.
 //!
 //! Every descriptor the watch opens is close-on-exec, with two limits. macOS has no `pipe2`, so a child forked by another thread between the `pipe` and the `fcntl` of the wake pipe inherits its two ends until it execs. And the kqueue descriptor is made by the `kqueue` crate, which exposes it only as a raw descriptor that safe code cannot flag; kqueue(2) says a queue is not inherited by a child, and `tests/watch_fds.rs` pins that a child spawned beside a live watch sees none of the watch's descriptors.
@@ -43,6 +45,15 @@ pub enum Key {
     Options,
 }
 
+/// What the watch thread sends to its sink.
+#[derive(Debug)]
+pub enum Heard {
+    /// The watch of this key fired.
+    Fired(Key),
+    /// A wait failed and the thread has ended, so nothing more will come: `dir` and `file` fail from now on. It is the last value the sink gets from this watch.
+    Ended(io::Error),
+}
+
 /// The two things a key can watch.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Kind {
@@ -68,6 +79,14 @@ impl Fired {
     }
 }
 
+/// What the thread asks of the backend of a platform, so that a test can run the loop over a backend of its own.
+trait Poller {
+    fn dir(&mut self, path: &Path, key: Key) -> io::Result<()>;
+    fn file(&mut self, path: &Path, key: Key) -> io::Result<()>;
+    /// Blocks until the operating system, or a wake of the pipe, has something to say.
+    fn wait(&mut self) -> io::Result<Fired>;
+}
+
 struct Command {
     kind: Kind,
     path: PathBuf,
@@ -82,8 +101,8 @@ pub struct Watch {
 }
 
 impl Watch {
-    /// Starts the thread. It sends `T::from(key)` to `sink` for every key whose watch fired, in the order the operating system reported them, and ends when the `Watch` is dropped or when the sink has no receiver. A failed wait also ends it: the next `dir` or `file` then fails, and the sink hears nothing more.
-    pub fn start<T: From<Key> + Send + 'static>(sink: mpsc::Sender<T>) -> io::Result<Watch> {
+    /// Starts the thread. It sends `T::from(Heard::Fired(key))` to `sink` for every key whose watch fired, in the order the operating system reported them, and ends when the `Watch` is dropped or when the sink has no receiver. A failed wait also ends it, after one last `T::from(Heard::Ended(error))`: the next `dir` or `file` then fails, and nothing more comes.
+    pub fn start<T: From<Heard> + Send + 'static>(sink: mpsc::Sender<T>) -> io::Result<Watch> {
         let (wake_read, wake) = wake_pipe()?;
         let backend = Backend::new(wake_read)?;
         let (commands, inbox) = mpsc::channel();
@@ -141,8 +160,8 @@ impl Drop for Watch {
     }
 }
 
-fn run<T: From<Key>>(
-    mut backend: Backend,
+fn run<T: From<Heard>>(
+    mut backend: impl Poller,
     inbox: &mpsc::Receiver<Command>,
     sink: &mpsc::Sender<T>,
 ) {
@@ -165,14 +184,20 @@ fn run<T: From<Key>>(
                 Err(mpsc::TryRecvError::Disconnected) => return,
             }
         }
-        let Ok(fired) = backend.wait() else { return };
+        let fired = match backend.wait() {
+            Ok(fired) => fired,
+            Err(err) => {
+                let _ = sink.send(Heard::Ended(err).into());
+                return;
+            }
+        };
         for key in &fired.rearm {
             if let Some(path) = files.get(key) {
                 let _ = backend.file(path, *key);
             }
         }
         for key in fired.keys {
-            if sink.send(key.into()).is_err() {
+            if sink.send(Heard::Fired(key).into()).is_err() {
                 return;
             }
         }
