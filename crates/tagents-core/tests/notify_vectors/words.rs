@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::process::Command;
+use std::path::Path;
 
 use serde_json::Value;
 use tagents_core::node;
@@ -160,25 +160,7 @@ fn notices_match_node() {
 
 /// `untitle_of` of `lib/tagents/names.sh`, run by bash on `title`.
 fn shell_untitle(title: &str) -> String {
-    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-    let out = Command::new("bash")
-        .args([
-            "-c",
-            r#". "$1/lib/tagents/names.sh" && untitle_of "$2""#,
-            "_",
-            root,
-            title,
-        ])
-        .env("STATE_DIR", "/nonexistent")
-        .output()
-        .unwrap();
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let text = String::from_utf8(out.stdout).unwrap();
-    text.strip_suffix('\n').unwrap_or(&text).to_owned()
+    common::names_sh("untitle_of", title, Path::new("/nonexistent"))
 }
 
 #[test]

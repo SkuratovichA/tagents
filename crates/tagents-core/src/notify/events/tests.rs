@@ -1035,3 +1035,16 @@ fn a_deleted_events_file_is_made_again_and_heard() {
     settle(&keys);
     assert_eq!(texts(&follower.wake(&watch, 0)), ["after the delete"]);
 }
+
+/// Node: `'﻿'.trim() === ''` and `Number('﻿123﻿') === 123`.
+#[test]
+fn a_u_feff_at_both_ends_of_the_time_is_white_space_to_the_trim_and_to_number() {
+    let bom = '\u{feff}';
+    let blank = bare("").replacen("1760000000", &bom.to_string(), 1);
+    assert!(
+        parse_event_line(&blank).is_none(),
+        "a time of U+FEFF alone is blank, so the line is dropped"
+    );
+    let wrapped = bare("").replacen("1760000000", &format!("{bom}123{bom}"), 1);
+    assert_eq!(parse_event_line(&wrapped).unwrap().at, 123_000.0);
+}

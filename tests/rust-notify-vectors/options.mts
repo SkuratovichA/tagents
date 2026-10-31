@@ -296,5 +296,10 @@ function configDirs(): unknown[] {
 }
 
 export async function optionsVectors(): Promise<unknown> {
+  // Root reads a file whose mode is 0, so the "a file without read permission" expectation would come out as a valid file and a root run would write another fixture than every other run does.
+  if (process.geteuid?.() === 0) {
+    console.error('rust-notify-vectors: refusing to run as root: the unreadable-file case would be written as readable, and the fixture would differ from the one a user writes');
+    process.exit(1);
+  }
   return { documents: [...documents.map(([name, toml]) => run({ name, setup: 'document', toml })), ...layouts.map(run)], configDirs: configDirs() };
 }

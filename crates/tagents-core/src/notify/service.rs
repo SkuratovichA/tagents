@@ -120,6 +120,15 @@ impl Signalling {
         self.stop.stop();
         let _ = self.messages.send(Message::Stop);
     }
+
+    /// What the main thread does when start has settled: the `stopping` line of a signal that came during start, unless a line was written already.
+    fn settle(&self) {
+        if let Some(name) = self.gate.settled()
+            && self.said.first()
+        {
+            self.log.line(&[&format!("stopping ({name})")]);
+        }
+    }
 }
 
 /// What the file says now about the options in force: `apply` of `service.ts`.
@@ -410,19 +419,22 @@ fn var<'a>(env: &'a [(String, String)], name: &str) -> Option<&'a str> {
         .map(|(_, value)| value.as_str())
 }
 
-/// The `tagents` script a click runs: `TA_NOTIFY_TAGENTS` when set, else the first `tagents` on PATH, as found (a symlink stays the symlink), else the one at the root. tagents re-installs the global tmux focus hooks pointing at whichever script ran, so a click must run the one the person's dashboard runs, which is the one on their PATH.
+/// The `tagents` script a click runs: `TA_NOTIFY_TAGENTS` when set, else what `script_on` finds.
 fn tagents_script(env: &[(String, String)]) -> String {
     if let Some(script) = var(env, "TA_NOTIFY_TAGENTS").filter(|script| !script.is_empty()) {
         return script.to_owned();
     }
-    if let Some(found) = var(env, "PATH").and_then(|path| node::find_on_path("tagents", path)) {
+    script_on(var(env, "PATH"), node::root().ok().as_deref())
+}
+
+/// The first `tagents` on `path_var`, as found (a symlink stays the symlink), else the checkout's script when `root` has one, else the bare name, which the click's own PATH may still find. tagents re-installs the global tmux focus hooks pointing at whichever script ran, so a click must run the one the person's dashboard runs, which is the one on their PATH; a release binary has no checkout above it, so a root with no script names nothing.
+fn script_on(path_var: Option<&str>, root: Option<&Path>) -> String {
+    if let Some(found) = path_var.and_then(|path| node::find_on_path("tagents", path)) {
         return found;
     }
-    match node::root() {
-        Ok(root) => node::join(&root.to_string_lossy(), "tagents"),
-        // No root to name: the bare name is what the click's own PATH may still find.
-        Err(_) => "tagents".to_owned(),
-    }
+    root.map(|root| node::join(&root.to_string_lossy(), "tagents"))
+        .filter(|script| Path::new(script).is_file())
+        .unwrap_or_else(|| "tagents".to_owned())
 }
 
 /// `os.hostname()`: macOS renames the host with the network, so each notice reads it afresh.
@@ -563,9 +575,7 @@ pub fn run() -> ExitCode {
 
     // Last, because the line marks the end of start: whoever waits for it, a reader of the log or a test that signals the process, finds the lock, the stream, the engine and the watchers all up.
     log_started(&*log, pid, backend_name, &options_file, settings.state);
-    if let Some(name) = signalling.gate.settled() {
-        log.line(&[&format!("stopping ({name})")]);
-    }
+    signalling.settle();
     serve(
         messages,
         Daemon {

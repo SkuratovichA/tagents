@@ -69,6 +69,11 @@ fn hand_over_with(
     }
     log.line(&["handing over to the node service:", why]);
     close();
+    // `close` can drain a helper post for a long while, and a stop that lands then is recorded and never read again: node would start with none pending.
+    if stop.is_stopped() {
+        lock.release(log);
+        return ExitCode::SUCCESS;
+    }
     let failure = exec();
     lock.release(log);
     log.line(&[
@@ -132,6 +137,36 @@ mod tests {
         exits(code, 0);
         assert_eq!(*steps.borrow(), ["close"]);
         assert_eq!(log.lines(), Vec::<String>::new());
+        assert!(!fs::exists(lock.file()).unwrap(), "the lock is released");
+    }
+
+    #[test]
+    fn a_stop_that_lands_during_the_close_execs_nothing_and_exits_0() {
+        let scratch = Scratch::new();
+        let lock = taken(&scratch);
+        let log = RecordingLog::new();
+        let stop = Stop::default();
+        let steps = RefCell::new(Vec::new());
+        let code = hand_over_with(
+            "EISDIR: illegal operation on a directory",
+            &stop,
+            &lock,
+            &log,
+            || {
+                steps.borrow_mut().push("close");
+                stop.stop();
+            },
+            || {
+                steps.borrow_mut().push("exec");
+                ExecFailure::Missing("never".into())
+            },
+        );
+        exits(code, 0);
+        assert_eq!(*steps.borrow(), ["close"]);
+        assert_eq!(
+            log.lines(),
+            ["handing over to the node service: EISDIR: illegal operation on a directory"]
+        );
         assert!(!fs::exists(lock.file()).unwrap(), "the lock is released");
     }
 

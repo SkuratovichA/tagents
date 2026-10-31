@@ -74,7 +74,7 @@ function eventLines(): string[] {
   const times = [
     '0', '-1', '+5', '17', '007', '.5', '5.', '1e3', '1E3', '1e-3', '0x10', '0X1f', '0b11', '0o7', '0B2', '0xg', '0x', '1e', '--1', '1 2', '1_000', '12abc', 'abc',
     '1760000000.123456', '1760000000123456789', '1e305', '1e999', '-1e999', 'Infinity', '-Infinity', '+Infinity', 'infinity', 'NaN', 'nan', 'inf',
-    ' 12 ', '12 ', ' 12', '', ' ', '  ', ' ', ' 12 ', '﻿12', ' ', '  5', '　', '​12', '\u0085 12', '\u000b12\u000c', '١٢٣', '１２', '9007199254740993', '0.1', '0.000001', '1e21',
+    ' 12 ', '12 ', ' 12', '', ' ', '  ', '\u{a0}', '\u{a0}12\u{a0}', '\u{feff}12', '\u{2028}', '\u{2029} 5', '\u{3000}', '\u{200b}12', '\u0085 12', '\u000b12\u000c', '١٢٣', '１２', '9007199254740993', '0.1', '0.000001', '1e21',
   ];
   for (const at of times) lines.push(eventLine({ at }));
   return lines;
@@ -108,7 +108,7 @@ function stateLines(): { key: string; line: string }[] {
   for (const state of ['new', 'working', 'blocked', 'done', 'gone', 'subdone', 'Working', 'DONE', '', 'toString', '__proto__', 'running', 'subdone ', ' new']) {
     lines.push(row('1760000000', state, 's', '/c', '/t', 'd'));
   }
-  const times = ['0', '-1', '17', '.5', '1e3', '0x10', '0b11', '1_0', 'abc', '', ' ', ' ', '﻿12', '12 ', 'Infinity', '-Infinity', 'NaN', '1e999', '1760000000.5', '1e305', '٣'];
+  const times = ['0', '-1', '17', '.5', '1e3', '0x10', '0b11', '1_0', 'abc', '', ' ', '\u{a0}', '\u{feff}12', '12 ', 'Infinity', '-Infinity', 'NaN', '1e999', '1760000000.5', '1e305', '٣'];
   for (const at of times) lines.push(row(at, 'done', 's', '/c', '/t', 'd'));
   // One trailing newline is dropped and no more; a carriage return is part of the last field.
   lines.push(`${row('1', 'done', 's', '/c', '/t', 'd')}\n`);
@@ -212,7 +212,7 @@ const dirCases: DirCase[] = [
     '1.tsv': row('1', 'done', 's', '/c', '/t', 'no newline'),
     '2.tsv': `${row('2', 'done', 's', '/c', '/t', 'cr')}\r\n`,
     '3.tsv': '',
-    '4.tsv': `﻿${row('4', 'done', 's', '/c', '/t', 'bom')}\n`,
+    '4.tsv': `\u{feff}${row('4', 'done', 's', '/c', '/t', 'bom')}\n`,
     '5.tsv': `\n${row('5', 'done', 's', '/c', '/t', 'a blank first line')}\n`,
   } },
   { name: 'history of starts and turns', files: { 'history.tsv': `${historyLines.join('\n')}\n` } },

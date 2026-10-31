@@ -20,6 +20,7 @@ use std::time::{Duration, Instant};
 
 use super::*;
 use crate::testing::Scratch;
+use crate::testing::gate::forking;
 
 fn screen(visible: bool, client_pid: Option<u32>, title: &str) -> Option<ScreenAnswer> {
     Some(ScreenAnswer::Screen(Screen {
@@ -207,6 +208,7 @@ fn stub(script: &str) -> (Command, Scratch) {
 }
 
 fn ask(command: Command) -> Option<ScreenAnswer> {
+    let _forking = forking();
     probe(command, "%12", &Stop::default())
 }
 
@@ -296,6 +298,7 @@ fn a_stop_ends_the_probe_with_no_answer() {
     let stop = Stop::default();
     stop.stop();
     let started = Instant::now();
+    let _forking = forking();
     assert_eq!(probe(slow, "%12", &stop), None);
     assert!(started.elapsed() < Duration::from_secs(10));
 }

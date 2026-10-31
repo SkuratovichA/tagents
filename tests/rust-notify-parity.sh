@@ -204,12 +204,12 @@ sentinel() { printf '%s,%s' "$(ev Stop $SENTINEL_KEY)" "$(expect "notice turn_do
 sentinel_permission() { printf '%s,%s' "$(ev Notification $SENTINEL_KEY sub=permission_prompt text=sentinel)" "$(expect "notice permission $SENTINEL_KEY ")"; }
 sentinel_end() { printf '%s,%s' "$(ev SessionEnd $SENTINEL_KEY)" "$(expect "notice session_end $SENTINEL_KEY ")"; }
 
-# What a transcript is compared after: the time of a line, the pid a service names itself or the holder of a lock by, the scratch directory (the one path both daemons work in, which differs from run to run), and in the scenario about a start that cannot take the state directory (HANDOVER) the one line only the Rust daemon writes: it hands over to node, and from there on the lines are node's own (design.md, "Where the two are known to differ", the third item).
+# What a transcript is compared after: the time of a line, the pid a service names itself by (the holder of a lock is said as its role by the driver), the scratch directory (the one path both daemons work in, which differs from run to run), and in the scenario about a start that cannot take the state directory (HANDOVER) the one line only the Rust daemon writes: it hands over to node, and from there on the lines are node's own (design.md, "Where the two are known to differ", the third item).
 HANDOVER=
 norm() {  # <file>
   local ts='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z' drop=()
   [ -z "$HANDOVER" ] || drop+=(-e "/^stderr${TAB}TS handing over to the node service: /d")
-  sed -E -e "s/^((second-)?stderr${TAB})$ts /\\1TS /" -e 's/ started pid [0-9]+ backend / started pid PID backend /' -e 's/ \(pid [0-9]+\); exiting/ (pid PID); exiting/' -e "s#$TMP#TMP#g" ${drop[@]+"${drop[@]}"} "$1"
+  sed -E -e "s/^((second-)?stderr${TAB})$ts /\\1TS /" -e 's/ started pid [0-9]+ backend / started pid PID backend /' -e "s#$TMP#TMP#g" ${drop[@]+"${drop[@]}"} "$1"
 }
 
 # The first line the two transcripts differ at and a window of 160 characters at the first differing character.
@@ -322,13 +322,15 @@ alone() {  # <driver verb>
     "$NODE" "$DRIVER" "$1" "$RUN" -- "${RUST_CMD[@]}"
 }
 first_check() {
-  local report base want image claimed pid started
+  local report want image claimed pid started
   report=$(alone probe 2> "$TMP/probe.err") || { echo "rust-notify-parity: the first check could not run the driver: $(head -c 300 "$TMP/probe.err")" >&2; exit 2; }
   started=$(printf '%s\n' "$report" | sed -n 's/^started //p')
   pid=$(printf '%s\n' "$report" | sed -n 's/^pid //p')
   claimed=$(printf '%s\n' "$report" | sed -n 's/^claimed //p')
   image=$(printf '%s\n' "$report" | sed -n 's/^image //p')
-  base=$(basename "$RUST"); want=${base:0:15}
+  # What `ps -o comm=` prints is the whole path on macOS and the name cut to 15 characters on Linux, and the driver takes its basename.
+  want=$(basename "$RUST")
+  [ "$OS" = Linux ] && want=${want:0:15}
   if [ "$started" != yes ]; then
     printf "rust-notify-parity: FIRST CHECK FAILED: \`%s notify run\` never said it had started.\n" "$RUST"
     printf "  The front door hands a verb with no arm to the node CLI (crates/tagents-core/src/front_door.rs, the \`None => exec_node\` arm), so a binary without the \`notify\` arm ends here, and so does a daemon that fails to start. What it did:\n"
@@ -397,8 +399,9 @@ verdict "Stop of a subagent is nothing" "$(ev Stop 1 agent=sub-1)"
 must_count "subagent Stop: only the sentinel has a notice" 'notice ' 1
 verdict "SubagentStop is nothing" "$(ev SubagentStop 1 agent=sub-1)"
 must_count "SubagentStop: only the sentinel has a notice" 'notice ' 1
-verdict "SessionEnd with session_end off only withdraws" "$(ev SessionEnd 1)"
-must_count "SessionEnd off: only the sentinel has a notice" 'notice ' 1
+withdraws "SessionEnd with session_end off only withdraws" "$(ev SessionEnd 1)" "$(expect 'withdraw tagents-1')"
+must "SessionEnd off: the notice that stands is withdrawn" 'withdraw tagents-1'
+must_count "SessionEnd off: the question and the sentinel have a notice, the end none" 'notice ' 2
 OPTS='backend = "log"
 [events.session_end]
 enabled = true'
@@ -563,7 +566,7 @@ OPTS=$SHORT
 play "cache: a question answered is not waiting" "$(steps "$(start)" "$(row 1 working at=0 detail=AskUserQuestion)" "$(ev PreToolUse 1 at=4 tool=AskUserQuestion text=q)" "$(ev PostToolUse 1 at=4 tool=AskUserQuestion)" "$(row 2 'done' at=0)" "$(ev Stop 2 at=4 text=other)" "$(expect 'notice cache_expiring 2 ')")"
 must_count "cache: only the other session" 'notice cache_expiring' 1
 OPTS=$SHORT
-play "cache: a session that ended is not warned about" "$(steps "$(start)" "$(row 1 gone at=0)" "$(row 2 'done' at=0)" "$(ev Stop 1 at=2 text=a)" "$(ev Stop 2 at=2 text=b)" "$(expect 'notice cache_expiring 2 ')")"
+play "cache: a session that ended is not warned about" "$(steps "$(start)" "$(row 1 gone at=0)" "$(row 2 'done' at=0)" "$(ev Stop 1 at=2 text=a)" "$(ev Stop 2 at=2 text=b)" "$(expect 'notice cache_expiring 2 ')" "$(quiet 600)")"
 must_count "cache: gone: only the other" 'notice cache_expiring' 1
 OPTS=$SHORT
 play "cache: a turn that is running is not warned about" "$(steps "$(start)" "$(row 1 working at=3 detail=Bash)" "$(row 2 'done' at=0)" "$(ev Stop 1 at=2 text=a)" "$(ev Stop 2 at=2 text=b)" "$(expect 'notice cache_expiring 2 ')")"
@@ -575,12 +578,12 @@ play "cache: 55 minutes idle, 5 left" "$(steps "$(start)" "$(row 1 'done' at=-33
 must "cache: 55 and 5" 'Idle 55 min — send anything within ~5 min to keep the prompt cache'
 play "cache: 59 minutes idle, within a minute left" "$(steps "$(start)" "$(row 1 'done' at=-3575)" "$(ev Stop 1 at=-3575 text=done)" "$(expect 'notice cache_expiring 1 ')")"
 must "cache: within a minute" 'Idle 60 min — send anything within a minute to keep the prompt cache'
-play "cache: the cache is gone already" "$(steps "$(start)" "$(row 1 'done' at=-3700)" "$(ev Stop 1 at=-3700 text=done)" "$(sentinel)")"
+play "cache: the cache is gone already" "$(steps "$(start)" "$(row 1 'done' at=-3700)" "$(ev Stop 1 at=-3700 text=done)" "$(quiet 600)" "$(sentinel)")"
 must_count "cache: gone already: no warning" 'notice cache_expiring' 0
 OPTS='backend = "log"
 [events.cache_expiring]
 enabled = false'
-play "cache: switched off, nothing is armed" "$(steps "$(start)" "$(row 1 'done' at=-3300)" "$(ev Stop 1 at=-3300 text=done)" "$(sentinel)")"
+play "cache: switched off, nothing is armed" "$(steps "$(start)" "$(row 1 'done' at=-3300)" "$(ev Stop 1 at=-3300 text=done)" "$(quiet 600)" "$(sentinel)")"
 must_count "cache: off" 'notice cache_expiring' 0
 OPTS='backend = "log"
 [events.cache_expiring]
@@ -599,12 +602,12 @@ play "rows: the newest first, and the order of the names for the same time" "$(s
 must_before "rows: 3 first" 'notice cache_expiring 3 ' 'notice cache_expiring 1 '
 must_before "rows: 1 before 10" 'notice cache_expiring 1 ' 'notice cache_expiring 10 '
 must_before "rows: 10 before 2" 'notice cache_expiring 10 ' 'notice cache_expiring 2 '
-play "rows: a cache that is over is not armed" "$(steps "$(row 1 'done' at=-3700)" "$(start)" "$(sentinel)")"
+play "rows: a cache that is over is not armed" "$(steps "$(row 1 'done' at=-3700)" "$(start)" "$(quiet 600)" "$(sentinel)")"
 must_count "rows: over: no warning" 'notice cache_expiring' 0
 OPTS='backend = "log"
 [events.cache_expiring]
 enabled = false'
-play "rows: switched off, nothing is armed" "$(steps "$(row 1 'done' at=-3300)" "$(start)" "$(sentinel)")"
+play "rows: switched off, nothing is armed" "$(steps "$(row 1 'done' at=-3300)" "$(start)" "$(quiet 600)" "$(sentinel)")"
 must_count "rows: off" 'notice cache_expiring' 0
 OPTS=$SHORT
 play "rows: a deadline in the future falls due when it is time" "$(steps "$(row 1 'done' at=0)" "$(start)" "$(expect 'notice cache_expiring 1 ')")"
@@ -746,7 +749,7 @@ gone_or_failed "tmux says the pane is not there, the old way" nopane '' 'notice 
 gone_or_failed "tmux 3.7 says the pane is not there, with exit 0" nopane37 '' 'notice cache_expiring 1 skipped: tmux has no pane %1'
 gone_or_failed "tmux answers with nothing to read" answer '' 'notice cache_expiring 1 "project" shown'
 # The deadline of the Stop falls due at once and the daemon runs it after the Stop's own post. The sentinel waits for both lines: written at once, it is read about as fast as the timer fires, and the skipped line would land before or after the sentinel's notice from one run to the next.
-play "probe: a pane that is gone gets no cache warning, and its question is forgotten" "$(steps "$(tmuxmode nopane)" "$(start)" "$(row 1 'done' at=-3300)" "$(row 2 'done' at=-3300)" "$(ev PreToolUse 3 at=0 tool=AskUserQuestion text=q)" "$(ev Notification 3 at=6 sub=permission_prompt text=p)" "$(expect 'notice permission 3 ')" "$(ev Stop 1 at=-3300 text=d)" "$(expect 'notice turn_done 1 ')" "$(expect 'notice cache_expiring 1 skipped')" "$(sentinel)")"
+play "probe: a pane that is gone gets no cache warning, and its question is forgotten" "$(steps "$(tmuxmode nopane)" "$(start)" "$(row 1 'done' at=-3300)" "$(row 2 'done' at=-3300)" "$(ev PreToolUse 3 at=0 tool=AskUserQuestion text=q)" "$(ev Notification 3 at=6 sub=permission_prompt text=p)" "$(expect 'notice permission 3 ')" "$(ev Stop 1 at=-3300 text=d)" "$(expect 'notice turn_done 1 ')" "$(expect 'notice cache_expiring 1 skipped')" "$(quiet 600)" "$(sentinel)")"
 must "probe: gone: a prompt is not held back" 'notice permission 3 '
 must "probe: gone: skipped" 'notice cache_expiring 1 skipped: tmux has no pane %1'
 must_count "probe: gone: no cache post" 'cache_expiring "' 0
@@ -1105,7 +1108,7 @@ must "log backend: the started line" 'started pid PID backend log options TMP/ru
 t "the lock, the backend none, a start that fails"
 # One notify daemon per state directory, whichever kind: the second one says who holds the lock and leaves with 0. The scenario runs once per kind of first, because the daemon of the other kind is the second (node first and rust second in the node transcript, the other way round in the rust one), and the two transcripts must be the same.
 play "lock: a second daemon leaves, whoever the first is" "$(steps "$(start)" "$(second)" "$(ev Stop 1 text=done)" "$(expect 'notice turn_done 1 ')")"
-HELD='another notify service holds TMP/run/state/notify.lock (pid PID); exiting'
+HELD='another notify service holds TMP/run/state/notify.lock (pid daemon); exiting'
 must "lock: the second said who holds it" "second-stderr	TS $HELD"
 must "lock: it left" 'second-exit 0'
 must_count "lock: the first one posted" 'notice turn_done 1 ' 1
@@ -1117,7 +1120,7 @@ lock_taken() {  # <kind>
 }
 for kind in dead reused bare-dead bare-old junk empty; do lock_taken $kind; done
 play "lock: a bare pid that is alive is held" "$(steps "$(lock_ bare-live)" "$(start exit)")"
-must "lock bare-live: held" "stderr	TS $HELD"
+must "lock bare-live: held" "stderr	TS another notify service holds TMP/run/state/notify.lock (pid driver); exiting"
 must "lock bare-live: it left" 'exit 0'
 must "lock bare-live: the file is the script's" 'lock as the script wrote it (bare-live)'
 OPTS='backend = "none"'
@@ -1250,5 +1253,9 @@ resource_checks() {
 }
 resource_checks
 
+if [ -n "${PARITY_ONLY:-}" ] && [ "$ran" -eq 0 ] && [ "$skipped" -eq 0 ]; then
+  echo "rust-notify-parity: PARITY_ONLY=$PARITY_ONLY matches no scenario" >&2
+  exit 2
+fi
 printf '\nrust-notify-parity: %d scenarios ran, %d skipped (macOS only); %d checks passed, %d failed\n' "$ran" "$skipped" "$pass" "$fail"
 [ "$fail" -eq 0 ]

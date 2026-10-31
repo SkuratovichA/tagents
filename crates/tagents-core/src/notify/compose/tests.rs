@@ -22,12 +22,13 @@
 //! - turn_done: the event text wins over the transcript, and is clipped: `the_event_text_wins_over_the_transcript`
 
 use std::fs;
-use std::process::Command;
+use std::path::Path;
 
 use super::super::events::AgentHookEvent;
 use super::super::phrases::{Locale, phrases_for};
 use super::*;
 use crate::testing::Scratch;
+use crate::testing::gate::names_sh;
 
 fn event() -> AgentEvent {
     AgentEvent {
@@ -112,25 +113,7 @@ fn titles() -> Vec<String> {
 
 /// `untitle_of` of `lib/tagents/names.sh`, run by bash on `title`.
 fn shell_untitle(title: &str) -> String {
-    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-    let out = Command::new("bash")
-        .args([
-            "-c",
-            r#". "$1/lib/tagents/names.sh" && untitle_of "$2""#,
-            "_",
-            root,
-            title,
-        ])
-        .env("STATE_DIR", "/nonexistent")
-        .output()
-        .unwrap();
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let text = String::from_utf8(out.stdout).unwrap();
-    text.strip_suffix('\n').unwrap_or(&text).to_owned()
+    names_sh("untitle_of", title, Path::new("/nonexistent"))
 }
 
 #[test]

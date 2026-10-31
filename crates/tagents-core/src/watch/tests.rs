@@ -12,7 +12,7 @@ use std::thread;
 use std::time::Duration;
 
 use super::{Fired, Heard, Key, Poller, Watch, run};
-use crate::testing::{HEARD, QUIET, Scratch, heard, settle};
+use crate::testing::{HEARD, QUIET, Scratch, gate, heard, settle};
 
 fn start() -> (Watch, Receiver<Heard>) {
     let (sink, keys) = mpsc::channel();
@@ -193,10 +193,8 @@ fn a_fifo_does_not_hold_the_watch_thread_for_a_writer() {
     let fifo = scratch.sub("d").join("events.tsv");
     // rustix has no `mknodat` on macOS, where this test matters most, so the program makes the FIFO.
     assert!(
-        Command::new("mkfifo")
-            .arg(&fifo)
-            .status()
-            .unwrap()
+        gate::run(Command::new("mkfifo").arg(&fifo))
+            .status
             .success()
     );
     let (watch, _keys) = start();

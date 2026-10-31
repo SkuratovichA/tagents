@@ -1,8 +1,9 @@
 //! What a start is made of that needs no process: the backend it picks, the lines it writes, the script a click runs and the host a notice names.
 
-use std::os::unix::fs::{PermissionsExt, symlink};
+use std::os::unix::fs::symlink;
 
 use super::*;
+use crate::testing::gate::write_executable;
 
 fn backend(os: &str, which: Backend) -> Result<&'static str, String> {
     let log: Arc<dyn Log> = Arc::new(RecordingLog::new());
@@ -74,8 +75,7 @@ fn env(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
 fn program(scratch: &Scratch, bin: &str, name: &str) -> PathBuf {
     let dir = scratch.sub(bin);
     let file = dir.join(name);
-    fs::write(&file, "#!/bin/sh\n").unwrap();
-    fs::set_permissions(&file, fs::Permissions::from_mode(0o755)).unwrap();
+    write_executable(&file, "#!/bin/sh\n");
     dir
 }
 
@@ -113,17 +113,35 @@ fn without_an_override_it_is_the_first_tagents_on_the_path_as_found() {
 }
 
 #[test]
-fn with_none_on_the_path_it_is_the_one_at_the_root() {
+fn with_none_on_the_path_it_is_the_script_at_the_root_when_there_is_one_and_the_bare_name_when_not()
+{
     let scratch = Scratch::new();
-    let empty = scratch.sub("empty");
-    let root = node::root().unwrap();
+    let empty = scratch.sub("empty").to_string_lossy().into_owned();
+    let checkout = scratch.sub("checkout");
+    fs::write(checkout.join("tagents"), "#!/bin/sh\n").unwrap();
+    let release = scratch.sub("release");
     assert_eq!(
-        tagents_script(&env(&[("PATH", &empty.to_string_lossy())])),
-        node::join(&root.to_string_lossy(), "tagents")
+        script_on(Some(&empty), Some(&checkout)),
+        format!("{}/tagents", checkout.display())
     );
     assert_eq!(
-        tagents_script(&[]),
-        node::join(&root.to_string_lossy(), "tagents")
+        script_on(None, Some(&checkout)),
+        format!("{}/tagents", checkout.display())
+    );
+    assert_eq!(script_on(Some(&empty), Some(&release)), "tagents");
+    assert_eq!(script_on(Some(&empty), None), "tagents");
+    assert_eq!(script_on(None, None), "tagents");
+}
+
+#[test]
+fn the_path_wins_over_the_root() {
+    let scratch = Scratch::new();
+    let bin = program(&scratch, "bin", "tagents");
+    let checkout = scratch.sub("checkout");
+    fs::write(checkout.join("tagents"), "#!/bin/sh\n").unwrap();
+    assert_eq!(
+        script_on(Some(&bin.to_string_lossy()), Some(&checkout)),
+        format!("{}/tagents", bin.display())
     );
 }
 

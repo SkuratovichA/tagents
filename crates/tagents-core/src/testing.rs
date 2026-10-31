@@ -8,6 +8,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
+pub(crate) mod gate;
+
 use crate::notify::events::Arming;
 use crate::watch::{Heard, Key};
 

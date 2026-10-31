@@ -9,6 +9,7 @@ use std::{
     os::unix::{fs::MetadataExt, process::CommandExt},
     path::{Path, PathBuf},
     process::Command,
+    sync::{Arc, atomic::AtomicBool},
 };
 
 use crate::js;
@@ -209,7 +210,7 @@ pub enum ExecFailure {
     Run { node: OsString, err: io::Error },
 }
 
-/// Replace this process with the node program at `relative` below the root, given `args`, in the same environment. Only returns when that could not be done, and then with SIGPIPE at its default, as std's `Command::exec` leaves it: a caller that goes on writes to a closed pipe at its own risk, and a test never calls this with a program that fails (the front door's process test does).
+/// Replace this process with the node program at `relative` below the root, given `args`, in the same environment. Only returns when that could not be done, and then with SIGPIPE caught again: `Command::exec` leaves it at its default, which would kill a caller that writes its line to a closed stderr instead of letting it exit with its own code.
 pub fn exec(relative: &str, args: &[OsString]) -> ExecFailure {
     let program = match program(relative) {
         Ok(program) => program,
@@ -219,6 +220,11 @@ pub fn exec(relative: &str, args: &[OsString]) -> ExecFailure {
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| OsString::from("node"));
     let err = Command::new(&node).arg(program).args(args).exec();
+    // A handler that only sets a flag is the safe form of ignoring the signal; a failed registration leaves the default, which is all there was.
+    let _ = signal_hook::flag::register(
+        signal_hook::consts::SIGPIPE,
+        Arc::new(AtomicBool::new(false)),
+    );
     ExecFailure::Run { node, err }
 }
 
