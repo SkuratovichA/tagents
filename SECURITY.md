@@ -14,11 +14,12 @@ This policy makes no promise about how fast a report is answered or when a fix i
 
 ## What is in scope
 
-- The tokens that the notifier (`packages/notify`) and the Telegram plugin (`packages/telegram`) hold: how they are stored, logged, passed to other programs or sent anywhere.
+- The token that the Telegram plugin (`packages/telegram`) holds: how they are stored, logged, passed to other programs or sent anywhere.
 - The headless runner, which starts Claude Code sessions on your behalf: anything that lets input from outside start a session, choose its arguments or its working directory, or read its output.
 - `install.sh`, which downloads a prebuilt `tagents-core` and checks its SHA-256 sum before it uses it: a way to make it run an archive that was not checked, or to write outside the install directories.
 - The MCP servers (`tagents-core mcp` and `packages/mcp`, `packages/knowledge`): a tool call that does more than its contract says.
-- The hooks and `tagents setup`, which write to `~/.claude/settings.json`: anything that changes or loses settings it should leave alone.
+- `tagents setup`, which writes to `~/.claude/settings.json`: anything that changes or loses settings it should leave alone.
+- The hooks, which write tagents' state directory: anything that lets a session write elsewhere or read another session's state.
 
 ## What is out of scope
 

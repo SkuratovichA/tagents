@@ -9,7 +9,7 @@ git clone https://github.com/SkuratovichA/tagents.git && cd tagents
 pnpm install    # Node 22.18 or newer; also switches on the pre-commit hook
 ```
 
-The Rust toolchain is pinned in `rust-toolchain.toml`, so `rustup` installs the right one on the first `cargo` call. Work in a clone of your own, never in `~/.local/share/tagents` ([why](docs/development.md#work-in-a-clone-of-your-own)).
+Run `rustup toolchain install` in the clone to install the Rust toolchain that `rust-toolchain.toml` pins. Work in a clone of your own, never in `~/.local/share/tagents` ([why](docs/development.md#work-in-a-clone-of-your-own)).
 
 ## The pre-commit hook
 
@@ -17,11 +17,14 @@ The Rust toolchain is pinned in `rust-toolchain.toml`, so `rustup` installs the 
 
 ## Tests
 
-Run the suites of the part you changed before you open a pull request: [the TypeScript packages, the bash suites](docs/development.md#running-the-tests) and [the Rust crates](docs/development.md#the-rust-crates). CI runs them all.
+Run the suites of the part you changed before you open a pull request: [the TypeScript packages, the bash suites](docs/development.md#running-the-tests) and [the Rust crates](docs/development.md#the-rust-crates). CI runs `pnpm plugin:check`, `pnpm spec:check` and `claude plugin validate` (`ci.yml`), and the Rust lanes, the two parity suites, the version gate, `tests/release.sh` and `tests/install.sh` (`rust.yml`). The TypeScript tests (`pnpm test`) and the tmux suites run only on your machine.
 
 ## Releases
 
-A pull request that changes what the `tagents-core` binary is built from raises the workspace version in `Cargo.toml`, and the `release-path` job fails it when it does not. Which files count, and how a tag becomes a release, is in [How a release is made](docs/architecture/rust-core.md#how-a-release-is-made); the check runs locally as `sh .github/scripts/core-release.sh gate origin/main`.
+A pull request that changes what the `tagents-core` binary is built from raises the workspace version in `Cargo.toml`, and the `release-path` job fails it otherwise: [How a release is made](docs/architecture/rust-core.md#how-a-release-is-made).
+
+A Dependabot pull request that changes `Cargo.lock` fails that job by construction until a maintainer raises the workspace version on its branch (`.github/scripts/core-release.sh:20`). One that changes what the contract is generated from needs `pnpm plugin:gen` run on its branch, because the pre-commit hook does not run on Dependabot's commits.
+
 ## Changes to behaviour
 
 What tagents does is specified in `openspec/specs/`. A change that alters behaviour starts as a proposal in `openspec/changes/<id>/` and is archived into the specs when it lands; `pnpm spec:check` validates them and CI runs it. [How specs work](docs/development.md#specs).
