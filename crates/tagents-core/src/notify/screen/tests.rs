@@ -287,7 +287,7 @@ fn a_failing_a_slow_and_a_missing_tmux_say_nothing() {
     let (empty, _) = stub("exit 0");
     assert_eq!(ask(empty), None);
     assert_eq!(ask(Command::new("/nonexistent/tmux")), None);
-    let (slow, _) = stub("echo \"can't find pane: %99\" >&2; exec sleep 30");
+    let (slow, _) = stub("trap '' TERM; echo \"can't find pane: %99\" >&2; sleep 30");
     let started = Instant::now();
     assert_eq!(
         ask(slow),
@@ -302,7 +302,7 @@ fn a_failing_a_slow_and_a_missing_tmux_say_nothing() {
 
 #[test]
 fn a_stop_ends_the_probe_with_no_answer() {
-    let (slow, _) = stub("exec sleep 30");
+    let (slow, _) = stub("trap '' TERM; sleep 30");
     let stop = Stop::default();
     stop.stop();
     let started = Instant::now();
