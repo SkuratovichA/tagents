@@ -2,15 +2,14 @@
 //!
 //! The cases of `packages/core/test/agent-events.test.ts` map as follows. Line parser: "a good line gives every field" is `a_good_line_gives_every_field_with_at_in_milliseconds`; "every event the hook writes is accepted" is `every_event_the_hook_writes_is_accepted`; "twelve fields, an unknown event and a non-numeric at give null" is `twelve_fields_an_unknown_event_and_a_bad_time_give_none`; "a trailing carriage return is tolerated" is `a_trailing_carriage_return_is_tolerated`; "a 14th field from a newer hook is ignored" is `a_fourteenth_field_from_a_newer_hook_is_ignored`; "the hook of this tree writes lines parseEventLine reads" runs the shell hook under jq and is node's test of the hook, with no Rust counterpart (the vectors pin the lines the hook writes). Switch: "setEventsOn: on creates the switch and an empty events.tsv, off removes only the switch" and "creates the directory" are `the_first_follower_turns_the_switch_on_and_the_last_turns_it_off`; the five `createAgentFeed` cases are `a_follower_that_dies_is_counted_out_and_the_switch_goes_before_the_death_is_reported`, `followers_of_two_spellings_of_one_directory_count_together`, `a_switch_that_cannot_be_removed_is_reported_and_close_does_not_panic`, and `a_dead_follower_with_a_stuck_switch_reports_both` (the node cases for onDead and onError ordering have no callbacks here: a death is a value of the `Delivery` that also carries the switch's error); "follow delivers what the hook appends, and states() is readAgentState" is the real hook's business and `the_watch_wakes_the_follower...`. Follower: "a line appended after the start is delivered" is `a_line_appended_after_the_start_is_delivered_and_the_lines_before_it_are_not`; "a malformed line is skipped" is `a_malformed_line_is_skipped_and_the_next_one_arrives`; "a line written in two appends" is `a_line_written_in_two_appends_is_delivered_once_complete`; "a multibyte character split across two appends" is `a_multibyte_character_split_across_two_appends_arrives_intact` and `a_character_split_by_the_chunk_of_a_read_arrives_intact`; "truncate then append" is `truncate_then_append_delivers_the_new_line`; "a deleted file followed by an append" is `a_deleted_file_followed_by_an_append_to_the_recreated_path_delivers`; "an external mv followed at once by appends" is `an_external_mv_followed_at_once_by_appends_delivers_them_and_the_old_file_first`; "an external mv that leaves no file" is `an_external_mv_that_leaves_no_file_is_answered_by_recreating_it`; "the follower rotates itself at rotateBytes" is `the_follower_rotates_itself_at_the_size_losing_and_duplicating_nothing`; "a line appended to the OLD file inside the grace" is `a_line_appended_to_the_old_file_inside_the_grace_is_delivered_when_it_ends`; "nothing is delivered after close(), and a second close() is harmless" and "closing from inside the callback stops the lines that came with it" are `nothing_is_delivered_after_close_and_a_second_close_is_harmless` (a call hands its events back whole, so there is no callback to close from); "a missing directory is created" is `a_missing_directory_is_created_and_the_file_in_it`; "an exception thrown by the consumer goes to onError" has no Rust counterpart (no consumer is called). Death: "when watching again fails the follower closes itself" is `when_arming_fails_after_a_replacement_the_follower_dies_once`; "a watching failure during the rotation grace" is `when_arming_fails_during_a_rotation_the_follower_dies_and_drops_the_grace`; "a failed open when the path was replaced is a death" is `when_the_path_cannot_be_opened_again_the_follower_dies_once`; "a failed open of the fresh file after a rotation is a death" shares that site (`open_cursor` through `?`) and cannot be made to fail after a successful rename without a permission the tests may not assume (the container runs as root); the four cases about the watcher's 'error' event, an explicit close and an onDead that throws belong to node's `fs.watch` and callbacks, and the end of the real watch is the engine's `Heard::Ended`; "close() during the grace leaves no timer and no handle" holds by construction (there is no timer, and `Drop` closes the files) and its observable half is in `nothing_is_delivered_after_close...`; "constants: the rotation threshold is 1 MiB" is `the_rotation_threshold_is_one_mebibyte`. `a_line_with_all_its_fields_waits_for_its_newline` has no node counterpart: the half lines of the other tests lack fields, so the parser would drop them anyway, and this one pins the half line that already parses.
 
-use std::cell::{Cell, RefCell};
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::io::Write;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
 use super::*;
-use crate::testing::{Scratch, heard, settle};
+use crate::testing::{Recorder, Scratch, heard, settle};
 use crate::watch::Heard;
 
 /// A line as the hook writes it, 13 fields, with `text` in the twelfth.
@@ -36,46 +35,6 @@ fn append(file: &Path, bytes: impl AsRef<[u8]>) {
 fn texts(d: &Delivery) -> Vec<&str> {
     assert!(d.errors.is_empty() && d.death.is_none(), "{d:?}");
     d.events.iter().map(|e| e.text.as_str()).collect()
-}
-
-/// An `Arming` that arms nothing, writes down what it was asked, and does what it is told: fail the `file` calls from the Nth, fail `dir`, or run something in the middle of the next `file` (what a hook writes between the open of a file and the arming of it).
-#[derive(Default)]
-struct Recorder {
-    calls: RefCell<Vec<String>>,
-    file_fails_from: Cell<Option<usize>>,
-    dir_fails: Cell<bool>,
-    during_file: RefCell<Option<Box<dyn FnOnce()>>>,
-}
-
-impl Arming for Recorder {
-    fn dir(&self, path: &Path, key: Key) -> io::Result<()> {
-        self.calls
-            .borrow_mut()
-            .push(format!("dir {} {key:?}", path.display()));
-        if self.dir_fails.get() {
-            return Err(io::Error::from_raw_os_error(24));
-        }
-        Ok(())
-    }
-
-    fn file(&self, path: &Path, key: Key) -> io::Result<()> {
-        self.calls
-            .borrow_mut()
-            .push(format!("file {} {key:?}", path.display()));
-        if let Some(run) = self.during_file.borrow_mut().take() {
-            run();
-        }
-        let nth = self
-            .calls
-            .borrow()
-            .iter()
-            .filter(|call| call.starts_with("file"))
-            .count();
-        if self.file_fails_from.get().is_some_and(|from| nth >= from) {
-            return Err(io::Error::from_raw_os_error(24));
-        }
-        Ok(())
-    }
 }
 
 /// A state directory of a test's own, which does not exist yet.

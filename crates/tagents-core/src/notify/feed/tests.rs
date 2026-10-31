@@ -1,25 +1,11 @@
 //! `FollowerFeed` over a real state directory and an `Arming` that arms nothing: the adapter hands what the follower and the state reader find to the engine, and the tests of the follower itself (`events/tests.rs`) cover what the follower does with a file.
 
 use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::io::Write;
 use std::path::Path;
 
 use super::*;
-use crate::testing::Scratch;
-use crate::watch::Key;
-
-/// An `Arming` that arms nothing and never fails: the tests wake the feed by hand, as the engine does when the watch says the file changed.
-struct Unwatched;
-
-impl Arming for Unwatched {
-    fn dir(&self, _path: &Path, _key: Key) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn file(&self, _path: &Path, _key: Key) -> io::Result<()> {
-        Ok(())
-    }
-}
+use crate::testing::{Recorder, Scratch};
 
 /// A line as the hook writes it, 13 fields, with `text` in the twelfth.
 fn line(text: &str) -> String {
@@ -46,7 +32,8 @@ fn texts(delivery: &Delivery) -> Vec<&str> {
 
 #[test]
 fn the_feed_names_the_directory_it_was_given() {
-    let feed = FollowerFeed::new(&Unwatched, "/some/state");
+    let arming = Recorder::default();
+    let feed = FollowerFeed::new(&arming, "/some/state");
     assert_eq!(feed.dir(), "/some/state");
 }
 
@@ -54,7 +41,8 @@ fn the_feed_names_the_directory_it_was_given() {
 fn start_makes_the_directory_and_the_file_and_delivers_nothing_from_before_it() {
     let scratch = Scratch::new();
     let dir = state_dir(&scratch);
-    let mut feed = FollowerFeed::new(&Unwatched, &dir);
+    let arming = Recorder::default();
+    let mut feed = FollowerFeed::new(&arming, &dir);
     assert_eq!(feed.start(0), Ok(Delivery::default()));
     assert!(Path::new(&dir).join("events.tsv").exists());
     assert_eq!(feed.close(), None);
@@ -64,7 +52,8 @@ fn start_makes_the_directory_and_the_file_and_delivers_nothing_from_before_it() 
 fn a_line_appended_after_start_is_delivered_by_wake_once() {
     let scratch = Scratch::new();
     let dir = state_dir(&scratch);
-    let mut feed = FollowerFeed::new(&Unwatched, &dir);
+    let arming = Recorder::default();
+    let mut feed = FollowerFeed::new(&arming, &dir);
     feed.start(0).unwrap();
     append(&dir, &line("hello"));
     let delivery = feed.wake(0);
@@ -78,7 +67,8 @@ fn a_line_appended_after_start_is_delivered_by_wake_once() {
 fn wake_before_start_and_after_close_finds_nothing() {
     let scratch = Scratch::new();
     let dir = state_dir(&scratch);
-    let mut feed = FollowerFeed::new(&Unwatched, &dir);
+    let arming = Recorder::default();
+    let mut feed = FollowerFeed::new(&arming, &dir);
     assert_eq!(feed.wake(0), Delivery::default());
     feed.start(0).unwrap();
     assert_eq!(feed.close(), None);
@@ -90,7 +80,8 @@ fn wake_before_start_and_after_close_finds_nothing() {
 fn close_is_idempotent_and_before_start_it_closes_nothing() {
     let scratch = Scratch::new();
     let dir = state_dir(&scratch);
-    let mut feed = FollowerFeed::new(&Unwatched, &dir);
+    let arming = Recorder::default();
+    let mut feed = FollowerFeed::new(&arming, &dir);
     assert_eq!(feed.close(), None);
     feed.start(0).unwrap();
     assert_eq!(feed.close(), None);
@@ -102,7 +93,8 @@ fn a_directory_that_cannot_be_made_is_an_err_with_a_reason_and_nothing_is_follow
     let scratch = Scratch::new();
     let blocker = format!("{}/not-a-directory", scratch.dir());
     fs::write(&blocker, "").unwrap();
-    let mut feed = FollowerFeed::new(&Unwatched, &format!("{blocker}/state"));
+    let arming = Recorder::default();
+    let mut feed = FollowerFeed::new(&arming, &format!("{blocker}/state"));
     let why = feed.start(0).unwrap_err();
     assert!(!why.is_empty());
     assert_eq!(feed.wake(0), Delivery::default());
@@ -123,14 +115,16 @@ fn states_reads_the_rows_of_the_directory_newest_first() {
         "1700000100\tblocked\tsess-2\t/v\t\t\n",
     )
     .unwrap();
-    let feed = FollowerFeed::new(&Unwatched, dir);
+    let arming = Recorder::default();
+    let feed = FollowerFeed::new(&arming, dir);
     let keys: Vec<String> = feed.states().into_iter().map(|row| row.key).collect();
     assert_eq!(keys, ["13", "12"]);
 }
 
 #[test]
 fn a_directory_that_cannot_be_read_has_no_rows() {
-    let feed = FollowerFeed::new(&Unwatched, "/no/such/state/directory");
+    let arming = Recorder::default();
+    let feed = FollowerFeed::new(&arming, "/no/such/state/directory");
     assert!(feed.states().is_empty());
 }
 
@@ -138,7 +132,8 @@ fn a_directory_that_cannot_be_read_has_no_rows() {
 fn due_is_the_end_of_the_grace_of_a_file_the_follower_replaced() {
     let scratch = Scratch::new();
     let dir = state_dir(&scratch);
-    let mut feed = FollowerFeed::new(&Unwatched, &dir);
+    let arming = Recorder::default();
+    let mut feed = FollowerFeed::new(&arming, &dir);
     assert_eq!(feed.due(), None, "no follower, nothing to wake for");
     feed.start(0).unwrap();
     assert_eq!(feed.due(), None);
