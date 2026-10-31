@@ -2,11 +2,12 @@
 //
 //   pnpm mascot
 //
-// It writes src/mascot/pikachu.ts, the sprite the hero draws, and the icons in public/mascot/. It needs ImageMagick (`magick`) on the PATH. To swap the mascot, replace the two pictures in source/ (and the colours below, if the new picture has others), run the command and commit the result.
+// It writes src/mascot/pikachu.ts, the sprite the hero draws, and the icons in public/mascot/, which are that sprite on the empty plate of source/plate.png. It needs ImageMagick (`magick`) on the PATH. To swap the mascot, replace the two pictures in source/ (and the colours below, if the new picture has others), run the command and commit the result.
 import { execFileSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { hexToRgb } from '../lib/color.ts'
+import { runsOf } from '../lib/pixels.ts'
 
 const here = import.meta.dirname
 const source = resolve(here, 'source')
@@ -46,8 +47,8 @@ interface Picture {
   rgba: Uint8Array
 }
 
-function magick(args: string[]): Buffer {
-  return execFileSync('magick', args, { maxBuffer: 1 << 28 })
+function magick(args: string[], input?: Uint8Array): Buffer {
+  return execFileSync('magick', args, { maxBuffer: 1 << 28, input })
 }
 
 function readPicture(file: string): Picture {
@@ -189,29 +190,65 @@ ${lines}
   )
 }
 
-/** The icons are the plate from source/plate.png at the sizes a browser asks for. */
-function writeIcons(): void {
-  const plate = resolve(source, 'plate.png')
-  const resize = (size: number, out: string, flatten: boolean) =>
-    magick([
-      plate,
-      '-filter',
-      'Lanczos',
-      '-resize',
-      `${size}x${size}`,
-      ...(flatten ? ['-background', '#f7f7f7', '-alpha', 'remove', '-alpha', 'off'] : []),
-      resolve(publicDir, out),
-    ])
-  resize(64, 'favicon-64.png', false)
+/** The sprite as raw RGBA bytes, one pixel per letter, with "." left transparent. */
+function spritePixels(rows: readonly string[], width: number): Uint8Array {
+  const pixels = new Uint8Array(width * rows.length * 4)
+  for (const letter of LETTERS) {
+    const [r, g, b] = hexToRgb(COLORS[letter])
+    for (const { x, y, length } of runsOf(rows, letter))
+      for (let i = 0; i < length; i++) pixels.set([r, g, b, 255], (y * width + x + i) * 4)
+  }
+  return pixels
+}
+
+/** Each icon at the size a browser asks for, and how many icon pixels make one side of a sprite pixel: a whole number, so that the sprite's edges stay sharp. */
+const ICONS = [
+  { file: 'favicon-64.png', size: 64, scale: 1, flatten: false },
   // iOS paints transparency black, so the touch icon is the plate on the plate's own colour.
-  resize(180, 'apple-touch-icon.png', true)
+  { file: 'apple-touch-icon.png', size: 180, scale: 3, flatten: true },
   // The picture a link preview shows.
-  resize(512, 'social.png', false)
+  { file: 'social.png', size: 512, scale: 6, flatten: false },
+] as const
+
+/** The icons are the sprite in the middle of the plate from source/plate.png. */
+function writeIcons(rows: readonly string[]): void {
+  const width = Math.max(...rows.map((row) => row.length))
+  const pixels = spritePixels(rows, width)
+  for (const { file, size, scale, flatten } of ICONS) {
+    magick(
+      [
+        resolve(source, 'plate.png'),
+        // A plate that holds only greys is read as a grey picture, and the sprite drawn on it would turn grey too.
+        '-colorspace',
+        'sRGB',
+        '-filter',
+        'Lanczos',
+        '-resize',
+        `${size}x${size}`,
+        '(',
+        '-size',
+        `${width}x${rows.length}`,
+        '-depth',
+        '8',
+        'rgba:-',
+        '-sample',
+        `${scale * 100}%`,
+        ')',
+        '-gravity',
+        'center',
+        '-composite',
+        ...(flatten ? ['-background', '#f7f7f7', '-alpha', 'remove', '-alpha', 'off'] : []),
+        resolve(publicDir, file),
+      ],
+      pixels,
+    )
+  }
 }
 
 if (import.meta.main) {
-  writeSprite(spriteRows(resolve(source, 'pikachu.png')))
-  writeIcons()
+  const rows = spriteRows(resolve(source, 'pikachu.png'))
+  writeSprite(rows)
+  writeIcons(rows)
   console.log(
     'mascot: src/mascot/pikachu.ts and public/mascot/{favicon-64,apple-touch-icon,social}.png',
   )
