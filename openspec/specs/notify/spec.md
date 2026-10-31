@@ -2,7 +2,9 @@
 
 ## Purpose
 Desktop notifications for tagents, the part that decides what is worth a banner: which agent events raise a notice, what a notice says, when it is withdrawn, the prompt-cache warning, what a click does, and the plugin's options. The service, the macOS helper and the commands are in the `notify-service` capability.
+
 ## Requirements
+
 ### Requirement: Notices come only from pane agents
 The notify service SHALL raise notices only for agents, meaning a Claude session in a tmux pane of its own whose state key is that pane's number. A session whose key starts with `s-` (a child session that an agent started from its Bash tool, or a headless session with no pane) SHALL never raise a notice or arm a cache deadline, and no option turns this on.
 
@@ -341,15 +343,19 @@ The click SHALL run the script named by `TA_NOTIFY_TAGENTS` when it is set and n
 - **THEN** `install` warns that a click raises the terminal and docks nothing, and `status` shows `missing`
 
 ### Requirement: Plugin options and defaults
-The options SHALL live in `<configDir>/plugins/notify.yaml` with every key optional: `backend: auto` (one of `auto`, `macos`, `log`, `none`); `click: dock` (one of `dock`, `goto`, `focus`); `icon` unset; `events.question`, `events.permission` and `events.turn_done` each `enabled: true, skip_visible: true`; `events.cache_expiring` as `enabled: true, skip_visible: false, after: 50m, ttl: 60m`; `events.session_end` as `enabled: false, skip_visible: true`.
+The options SHALL live in `<configDir>/plugins/notify.toml`, with every key optional: `backend = "auto"` (one of `auto`, `macos`, `log`, `none`); `click = "dock"` (one of `dock`, `goto`, `focus`); `icon` unset.
 
 #### Scenario: a partial file
-- **WHEN** the file says only `click: goto`
+- **WHEN** the file says only `click = "goto"`
 - **THEN** every event setting is still its default
 
 #### Scenario: a partial event
-- **WHEN** the file says only `events.question.enabled: false`
+- **WHEN** the file says only `enabled = false` under `[events.question]`
 - **THEN** `events.question.skip_visible` is still `true`
+
+#### Scenario: a YAML file
+- **WHEN** only `notify.yaml` exists
+- **THEN** it is not looked at and the defaults hold
 
 ### Requirement: Invalid options
 Unknown keys at any level (the top, `events`, and inside an event) and values outside the enums SHALL be problems that name the key, so that a misspelt key does not silently do nothing.
@@ -415,10 +421,10 @@ An invalid options file SHALL run the engine on the defaults, and each distinct 
 - **THEN** its values take effect and a later problem is logged anew
 
 ### Requirement: Where the options are watched
-The service SHALL watch the real path of the `plugins` directory, so a config directory that is a symlink (for example into a dotfiles repository) works. A `plugins` directory that appears after the service started is found. A `notify.yaml` that is itself a symlink is noticed only when the link is replaced, not when its target is edited. With no config directory at all the service runs and logs that options reload is off.
+The service SHALL watch the real path of the `plugins` directory, so a config directory that is a symlink (for example into a dotfiles repository) works. A `plugins` directory that appears after the service started is found. With no config directory at all the service runs and logs that options reload is off.
 
 #### Scenario: symlinked config directory
-- **WHEN** the config directory is a symlink into another directory and the real `notify.yaml` is edited
+- **WHEN** the config directory is a symlink into another directory and the real `notify.toml` is edited
 - **THEN** the change is seen
 
 #### Scenario: the directory appears later
@@ -429,3 +435,20 @@ The service SHALL watch the real path of the `plugins` directory, so a config di
 - **WHEN** the config directory does not exist
 - **THEN** the service runs and logs that options reload is off
 
+### Requirement: Notify event defaults
+Each notification event SHALL have these settings when the file leaves them out: `events.question`, `events.permission` and `events.turn_done` each `enabled: true, skip_visible: true`; `events.cache_expiring` as `enabled: true, skip_visible: false, after: 50m, ttl: 60m`; `events.session_end` as `enabled: false, skip_visible: true`.
+
+#### Scenario: no file
+- **WHEN** there is no options file
+- **THEN** `events.cache_expiring` is `enabled: true, skip_visible: false, after: 50m, ttl: 60m` and `events.session_end` is `enabled: false, skip_visible: true`
+
+### Requirement: Which options files are watched
+`notify.toml` SHALL be watched, so a change to it while the service runs is seen. Editing the target of an options file that is a symlink does not reload the options by itself, and replacing the link does.
+
+#### Scenario: the options file is written while the service runs
+- **WHEN** `notify.toml` is written, with a `notify.yaml` beside it or without one
+- **THEN** the next event uses the values of `notify.toml`
+
+#### Scenario: a symlinked options file
+- **WHEN** `notify.toml` is a symlink and its target is edited
+- **THEN** the edit does not reload the options, and replacing the link does

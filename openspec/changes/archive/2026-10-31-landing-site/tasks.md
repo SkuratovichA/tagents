@@ -34,4 +34,4 @@
 ## 6. The spec
 
 - [x] 6.1 The change is valid OpenSpec (`pnpm spec:check` at the repository root)
-- [ ] 6.2 Archiving the change replaces the placeholder Purpose that `openspec archive` writes for the new capability `site` in `openspec/specs/site/spec.md` with its own sentence, by hand, before `pnpm spec:check` is run on the archived specs
+- [x] 6.2 Archiving the change replaces the placeholder Purpose that `openspec archive` writes for the new capability `site` in `openspec/specs/site/spec.md` with its own sentence, by hand, before `pnpm spec:check` is run on the archived specs

@@ -31,4 +31,4 @@
 ## 6. Specs
 
 - [x] 6.1 Write the deltas in this change and edit the `site` requirement of the `landing-site` change in place. Proved by `pnpm spec:check` with no warnings.
-- [ ] 6.2 At archive, bring the Purpose line of the `claude-settings` spec, which a delta cannot write, from its placeholder to a sentence that says what `tagents setup` is for.
+- [x] 6.2 At archive, bring the Purpose line of the `claude-settings` spec, which a delta cannot write, from its placeholder to a sentence that says what `tagents setup` is for.

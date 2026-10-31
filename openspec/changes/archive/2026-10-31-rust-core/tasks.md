@@ -31,4 +31,4 @@
 - [x] 5.1 `.github/workflows/rust.yml`: `cargo fmt --check`, `clippy -D warnings`, `cargo test`, `pnpm build` and the parity suite, on changes to the Rust workspace, `spec/` and `packages/core/` (the workflow run of the pull request)
 - [x] 5.2 One page under `docs/architecture/` describing the front door, the lookup order, the spec file and how to run the parity suite (`pnpm docs:build`)
 - [x] 5.3 `pnpm spec:check` accepts this change
-- [ ] 5.4 When the change is archived, replace the placeholder Purpose that `openspec archive` writes into the new `core-front-door` spec by hand (the delta format has no place for a Purpose), then run `pnpm spec:check`
+- [x] 5.4 When the change is archived, replace the placeholder Purpose that `openspec archive` writes into the new `core-front-door` spec by hand (the delta format has no place for a Purpose), then run `pnpm spec:check`

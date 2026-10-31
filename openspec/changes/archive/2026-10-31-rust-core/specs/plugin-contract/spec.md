@@ -1,11 +1,11 @@
 ## MODIFIED Requirements
 
 ### Requirement: What generation covers
-The generator SHALL read four things from the code: the verbs, flags and exit codes of the `tagents-core` and `tagents-knowledge` CLIs; the tools of the knowledge MCP server with their input (and output) schemas, as a client lists them; the public TypeScript API of every public package (not private, with `exports`); and the `--help` text of the `tagents`, `tusage` and `tnotes` scripts. `contract.json` SHALL hold the CLI contracts, the MCP tools and a hash of each API report.
+The generator SHALL read four things from the code: the verbs, flags, exit codes, effects and requirements of the CLI specs (`tagents-core`, `tagents-knowledge`, `tagents-notify`, `tagents.cli.json`); the tools of the knowledge MCP server as a client lists them and the tools of the `tagents` server derived from the CLI specs; the public TypeScript API of every public package (not private, with `exports`); and the `--help` text of the `tagents`, `tusage` and `tnotes` scripts.
 
 #### Scenario: Where the CLI and MCP parts come from
 - **WHEN** the CLI contracts and MCP tools are collected
-- **THEN** the `tagents-core` CLI is read as the requirement below says, the `tagents-knowledge` CLI from the command spec it parses with, and the tools from the server's tool list without opening a database
+- **THEN** the `tagents-core` CLI is read from `spec/cli/tagents-core.json`, the other CLIs from the command specs they parse with (and, for the script, from `tagents.cli.json`), the knowledge tools from the server's tool list without opening a database, and the `tagents` tools from the CLI contracts
 
 #### Scenario: Reading the sources, not a build
 - **WHEN** a package's built output is older than its sources

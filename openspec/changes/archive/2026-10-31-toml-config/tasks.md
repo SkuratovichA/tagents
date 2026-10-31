@@ -33,4 +33,4 @@
 
 - [x] 6.1 Bring the README, `docs/`, the package READMEs, the skill text, the installer and the header comments to `config.toml`.
 - [x] 6.2 Write the deltas in this change. Proved by `pnpm spec:check` with no warnings.
-- [ ] 6.3 At archive, bring the Purpose lines of the `configuration` and `plugin-system` specs, which a delta cannot reach, to `config.toml`.
+- [x] 6.3 At archive, bring the Purpose lines of the `configuration` and `plugin-system` specs, which a delta cannot reach, to `config.toml`.

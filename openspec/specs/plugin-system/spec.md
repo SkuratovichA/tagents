@@ -1,7 +1,7 @@
 # plugin-system Specification
 
 ## Purpose
-How tagents is extended: a plugin is a package that offers CLI verbs, long-running services and MCP tools as data. This capability covers the plugin definition, how the host finds and loads plugins from config.yaml, the `tagents-core plugin` verbs, running a plugin's verbs and services, plugin options files, the testkit and `tagents-core doctor`.
+How tagents is extended: a plugin is a package that offers CLI verbs, long-running services and MCP tools as data. This capability covers the plugin definition, how the host finds and loads plugins from `config.toml`, the `tagents-core plugin` verbs, running a plugin's verbs and services, plugin options files, the testkit and `tagents-core doctor`.
 
 ## Requirements
 
@@ -17,18 +17,26 @@ A plugin package SHALL default-export one object made with `definePlugin`, carry
 - **THEN** the commands, services and MCP tools are read from the exported object without running any of them
 
 ### Requirement: Plugins are listed explicitly and never discovered
-The host SHALL load exactly the plugins named in the `plugins:` map of `config.yaml`, in file order, each entry carrying a non-empty `from`, and SHALL NOT scan `node_modules` or any directory for plugins. A missing config file, and a config without a `plugins:` key, SHALL mean no plugins and not an error.
+The host SHALL load exactly the plugins named in the `[plugins.<key>]` tables of `config.toml`, in file order, each entry carrying a non-empty `from`, and SHALL NOT scan `node_modules` or any directory for plugins. A missing or unreadable config file, and a config without a `plugins` table, SHALL mean no plugins and not an error; a config that reads but does not parse SHALL be an error naming the file.
 
 #### Scenario: A plugin the config does not name is not loaded
-- **WHEN** a valid plugin package sits next to the config but is not listed under `plugins:`
+- **WHEN** a valid plugin package sits next to the config but is not listed under `plugins`
 - **THEN** the host does not load it
 
 #### Scenario: No config file
 - **WHEN** the config file does not exist
 - **THEN** the list of plugins is empty and loading reports no error
 
+#### Scenario: An unreadable plugin list is treated as empty
+- **WHEN** the config path cannot be read, because it is a directory or its permissions forbid reading
+- **THEN** the list of plugins is empty and loading reports no error
+
+#### Scenario: A TOML plugin list that does not parse is an error that names the file
+- **WHEN** `config.toml` reads but is not valid TOML
+- **THEN** reading the plugin list throws an error whose message names the file
+
 ### Requirement: Where the config lives
-The tagents config directory SHALL be `$TAGENTS_CONFIG_DIR` when it is set and not blank, otherwise `$XDG_CONFIG_HOME/tagents` when that is set and not blank, otherwise `~/.config/tagents`. The plugin list SHALL be read from `config.yaml` in that directory.
+The tagents config directory SHALL be `$TAGENTS_CONFIG_DIR` when it is set and not blank, otherwise `$XDG_CONFIG_HOME/tagents` when that is set and not blank, otherwise `~/.config/tagents`. The plugin list SHALL be read from `config.toml` in that directory; a `config.yaml` is not looked at.
 
 #### Scenario: The override wins
 - **WHEN** `TAGENTS_CONFIG_DIR` and `XDG_CONFIG_HOME` are both set
@@ -37,6 +45,10 @@ The tagents config directory SHALL be `$TAGENTS_CONFIG_DIR` when it is set and n
 #### Scenario: The default
 - **WHEN** neither variable is set
 - **THEN** the config directory is `~/.config/tagents`
+
+#### Scenario: A YAML file is not a config
+- **WHEN** the directory holds `config.yaml` and no `config.toml`
+- **THEN** the plugin list is empty and nothing is an error
 
 ### Requirement: Where a plugin's package is found
 `from` SHALL name a package by path or by package name. A path that starts with `.` or is absolute SHALL be resolved against the directory of the config file, not the working directory. When a relative path has no `package.json` there and the config directory is a symlink, it SHALL be tried once more from the real directory; a lexical hit wins, and a miss on both keeps the lexical path in the error. Anything else is a package name, resolved from the config directory.
@@ -76,7 +88,7 @@ Loading the configured plugins SHALL report a plugin that fails as an error entr
 
 #### Scenario: Nothing configured
 - **WHEN** `plugin list` runs against a config with no plugins
-- **THEN** stdout is `no plugins configured in <config dir>/config.yaml` and the exit code is 0
+- **THEN** stdout is `no plugins configured in <config dir>/config.toml` and the exit code is 0
 
 #### Scenario: A configured plugin
 - **WHEN** a plugin offering verbs, a service and an MCP tool is listed
@@ -142,27 +154,19 @@ The key SHALL be `--name` when given, otherwise the package name with its scope 
 - **WHEN** `--name demo` is given
 - **THEN** the entry is listed under `demo`
 
-### Requirement: Editing config.yaml changes only the plugins map
-`plugin add` and `plugin remove` SHALL change only the `plugins:` map of `config.yaml`: every other byte, including comments, key order and hand-aligned spacing, SHALL come back unchanged. A new entry goes after the last existing one at the map's own indentation, replaces an empty `plugins:` or `plugins: {}`, or is appended as a new `plugins:` block when the key is absent. A config file that does not parse SHALL be refused with exit 1 and left untouched.
+### Requirement: Editing the config changes only the plugins entries
+`plugin add` and `plugin remove` SHALL edit the config file in use and change only its `plugins` entries: every other byte, including comments, key order and hand-aligned spacing, SHALL come back unchanged. A config file that does not parse, or an entry the edit cannot place or cut, SHALL be refused with exit 1 and left untouched.
 
 #### Scenario: A hand-written config
 - **WHEN** a plugin is added to a config full of comments
-- **THEN** the file differs only by the appended `plugins:` entry
-
-#### Scenario: A second entry
-- **WHEN** a plugin is added to a map that already has one
-- **THEN** the new entry lands after the last one, indented like it
-
-#### Scenario: An empty map
-- **WHEN** the file has `plugins:` with nothing under it, or `plugins: {}`
-- **THEN** that line becomes a block holding the new entry
+- **THEN** the file differs only by the appended entry
 
 #### Scenario: A config that does not parse
-- **WHEN** the config has a YAML syntax error
+- **WHEN** the config has a syntax error
 - **THEN** `plugin add` exits 1 and the file is byte for byte unchanged
 
 ### Requirement: plugin remove
-`tagents-core plugin remove <name>` SHALL take the entry with that config key out of `plugins:` and print `removed <name> from <config file>`. When it was the last entry, the `plugins:` line SHALL go with it, so the file is as it was before the entry was added. A name that is not listed, or a missing config, SHALL be refused with exit 3 and `<name> is not listed in <config file>`; no name SHALL be exit 2.
+`tagents-core plugin remove <name>` SHALL take the entry with that config key out of the plugins and print `removed <name> from <config file>`. When it was the last entry, the file is as it was before the entry was added. A name that is not listed, or a missing config, SHALL be refused with exit 3 and `<name> is not listed in <config file>`; no name SHALL be exit 2.
 
 #### Scenario: The last entry
 - **WHEN** the only plugin is removed
@@ -170,7 +174,7 @@ The key SHALL be `--name` when given, otherwise the package name with its scope 
 
 #### Scenario: One of several
 - **WHEN** one of two entries is removed
-- **THEN** the other entry and the comments after the map stay as they were
+- **THEN** the other entry and the comments after the entries stay as they were
 
 #### Scenario: Not listed
 - **WHEN** an unknown name is removed
@@ -282,7 +286,7 @@ A first word that is no core verb and no configured plugin SHALL be reported as 
 - **THEN** a verb of a working plugin runs normally
 
 ### Requirement: A plugin's own executable
-A plugin package SHALL be able to ship its own executable that ends in one call to `runPluginBin(plugin)` and uses the result as the process exit code, which runs the plugin's verbs with no `config.yaml` registration; the verbs, argument rules, listings and exit codes are exactly those of `tagents-core <plugin> <verb>`, with arguments taken from the process arguments by default.
+A plugin package SHALL be able to ship its own executable that ends in one call to `runPluginBin(plugin)` and uses the result as the process exit code, which runs the plugin's verbs with no registration in the config; the verbs, argument rules, listings and exit codes are exactly those of `tagents-core <plugin> <verb>`, with arguments taken from the process arguments by default.
 
 #### Scenario: A known verb
 - **WHEN** the executable runs a verb the plugin declares
@@ -319,7 +323,7 @@ The translator SHALL be bound to the core catalogue with the plugin's `locales` 
 - **THEN** the context uses that locale
 
 ### Requirement: Running one service without a config file
-A caller holding a plugin definition SHALL be able to start one of its services under a context, with no `config.yaml`, and receive `drain()` (finish what is in flight, take no new work), `stop(reason?)` (give up now; the reason reaches the service) and `done` (settles when the service is over). `done` is the service's own when it supplies one; otherwise it settles once `drain` or `stop` was called. An unknown service SHALL fail naming the plugin, the service and the services it has.
+A caller holding a plugin definition SHALL be able to start one of its services under a context, with no config file, and receive `drain()` (finish what is in flight, take no new work), `stop(reason?)` (give up now; the reason reaches the service) and `done` (settles when the service is over). `done` is the service's own when it supplies one; otherwise it settles once `drain` or `stop` was called. An unknown service SHALL fail naming the plugin, the service and the services it has.
 
 #### Scenario: Started and stopped
 - **WHEN** a named service is run and then stopped
@@ -357,19 +361,19 @@ Running a service with `signals: true` SHALL turn SIGINT, SIGTERM and SIGHUP int
 - **THEN** no signal listener is added by the call
 
 ### Requirement: Plugin options live in a file of their own
-A plugin's options SHALL be read from `<configDir>/plugins/<name>.yaml` and checked against the plugin's schema, without throwing. A missing file gives the schema's defaults and reports it was not found; an empty file gives the defaults, found; a valid file gives the parsed value. A file that cannot be read or parsed gives one problem naming the file; one that does not fit the schema gives one `<path>: <message>` line per issue, with dotted paths.
+A plugin's options SHALL be read from `<configDir>/plugins/<name>.toml`, and checked against the plugin's schema, without throwing. Reading an options file SHALL say nothing about the file's format.
 
 #### Scenario: No file
 - **WHEN** the options file does not exist
 - **THEN** the result is the schema's defaults and `found` is false
 
-#### Scenario: Broken YAML
-- **WHEN** the file is not valid YAML
-- **THEN** there is one problem and it names the file
+#### Scenario: A YAML options file
+- **WHEN** only `<name>.yaml` exists, valid or not
+- **THEN** it is not looked at and the result is the schema's defaults with `found` false
 
-#### Scenario: Schema mismatch
-- **WHEN** two fields do not fit the schema
-- **THEN** there are two problem lines, each `<path>: <message>`
+#### Scenario: A valid file
+- **WHEN** `<name>.toml` is valid and fits the schema
+- **THEN** the result is the parsed value
 
 ### Requirement: doctor
 `tagents-core doctor` SHALL print four lines on stdout and exit 0 with nothing on stderr: `node <version> (<path of the node binary>)`, `agent state <state dir> (<n> record(s))`, `config <config file>: present|missing` and `claude: <path of claude on PATH>|missing`. The `claude` line SHALL be answered by looking along `PATH`, not by running it. The words are localised; the state dir and the records are those of the `agent-state` capability.
@@ -403,3 +407,42 @@ The usage that `tagents-core help`, `--help` and `-h` print (exit 0; no argument
 #### Scenario: A fake clock
 - **WHEN** a test advances a `FakeClock` by some milliseconds
 - **THEN** the timers that fall inside that span fire in order and the clock's now moves by that amount
+
+### Requirement: Adding to a TOML config
+In a `config.toml` a new entry SHALL be a `[plugins.<key>]` table with a `from` line, appended after everything else behind one blank line.
+
+#### Scenario: A second entry in a TOML config
+- **WHEN** a plugin is added to a `config.toml` that already has `[plugins.a]`
+- **THEN** `[plugins.b]` follows the rest of the file and `[plugins.a]` is unchanged
+
+### Requirement: Removing from a TOML config
+Removing an entry from a `config.toml` SHALL cut its `[plugins.<key>]` table and any `[plugins.<key>.…]` tables under it, with the comment lines just above the next header that belong to it, and the result SHALL be parsed again before it is written.
+
+#### Scenario: Removing the only entry
+- **WHEN** `plugin remove x` runs on a `config.toml` whose only plugin is `[plugins.x]`, followed by a `[usage]` table
+- **THEN** the `[plugins.x]` table is cut, no empty `[plugins]` is left, and `[usage]` is unchanged
+
+### Requirement: A new config is TOML
+When no config exists, `plugin add` SHALL create `config.toml`.
+
+#### Scenario: No config yet
+- **WHEN** `plugin add` runs in a config directory with no config file
+- **THEN** `config.toml` is created holding the entry
+
+### Requirement: A plugin options file with a problem
+A plugin's options file that cannot be read or parsed SHALL give one problem naming the file; one that does not fit the plugin's schema SHALL give one `<path>: <message>` line per issue, with dotted paths.
+
+#### Scenario: Broken TOML
+- **WHEN** the file is not valid TOML
+- **THEN** there is one problem and it names the file
+
+#### Scenario: Schema mismatch
+- **WHEN** two fields do not fit the schema
+- **THEN** there are two problem lines, each `<path>: <message>`
+
+### Requirement: A missing or empty plugin options file
+A missing plugin options file SHALL give the schema's defaults and report that it was not found, naming the `.toml` path; an empty file the defaults, found; a valid file the parsed value.
+
+#### Scenario: An empty file
+- **WHEN** the options file is empty
+- **THEN** the result is the schema's defaults and `found` is true
