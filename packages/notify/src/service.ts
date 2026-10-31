@@ -15,7 +15,6 @@ import {
   PLUGIN_OPTIONS_DIR,
   isAlive,
   loadPluginOptions,
-  pluginOptionsFile,
   type OptionsResult,
   type PluginContext,
   type ServiceDef,
@@ -310,10 +309,8 @@ export function createNotifyService(deps: ServiceDeps = {}): ServiceDef {
     engine.start();
 
     const watchers: fs.FSWatcher[] = [];
-    const optionsName = path.basename(pluginOptionsFile(ctx.configDir, SERVICE_NAME));
-    const reload = (name: string | null): void => {
-      if (name === null || name === optionsName) apply(load(), backend);
-    };
+    // Every event in the options directory reads the file, and `apply` ignores what changed nothing: an edit of a symlink's target raises no event there, and takes effect at the next event of any name.
+    const reload = (): void => apply(load(), backend);
     const watchPlugins = (dir: string): void => {
       const w = watchDir(dir, reload, log);
       if (w === null) return;

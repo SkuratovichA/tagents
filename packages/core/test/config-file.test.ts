@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { after, before, test } from 'node:test';
+import { after, before, mock, test } from 'node:test';
 import { configFile, loadPlugins, readPluginList } from '../src/host.ts';
 import { parseConfigFile, parseConfigText, tomlKey } from '../src/config-file.ts';
 import { tmpDir } from '../src/testkit.ts';
@@ -81,4 +81,51 @@ test('tomlKey leaves a bare key as it is, quotes any other through the string wr
   assert.equal(tomlKey('a b'), '"a b"');
   assert.equal(tomlKey('a"b'), '"a\\"b"');
   assert.equal(tomlKey('a\tb'), null);
+});
+
+/** `fs.readFileSync` failing with `codes` in turn, then reading for real. Returns the number of reads made. */
+function failingReads(codes: readonly string[]): { calls: () => number } {
+  const real = fs.readFileSync;
+  let n = 0;
+  mock.method(fs, 'readFileSync', ((file: fs.PathOrFileDescriptor, enc: BufferEncoding) => {
+    const code = codes[n++];
+    if (code !== undefined) throw Object.assign(new Error(`${code}: read failed`), { code });
+    return real(file, enc);
+  }) as typeof fs.readFileSync);
+  return { calls: () => n };
+}
+
+test('a read that fails with EINVAL twice, then succeeds, is the file', () => {
+  const dir = dirWith({ 'a.toml': 'x = 1\n' });
+  const reads = failingReads(['EINVAL', 'EINVAL']);
+  try {
+    assert.deepEqual({ ...(parseConfigFile(path.join(dir, 'a.toml')) as object) }, { x: 1 });
+    assert.equal(reads.calls(), 3);
+  } finally {
+    mock.restoreAll();
+  }
+});
+
+test('a read that fails with EINVAL three times throws the third, after three tries in all', () => {
+  const dir = dirWith({ 'a.toml': 'x = 1\n' });
+  const reads = failingReads(['EINVAL', 'EINVAL', 'EINVAL', 'EINVAL']);
+  try {
+    assert.throws(() => parseConfigFile(path.join(dir, 'a.toml')), { code: 'EINVAL' });
+    assert.equal(reads.calls(), 3);
+  } finally {
+    mock.restoreAll();
+  }
+});
+
+test('a read that fails with ENOENT or EACCES is not tried again', () => {
+  const dir = dirWith({ 'a.toml': 'x = 1\n' });
+  for (const code of ['ENOENT', 'EACCES']) {
+    const reads = failingReads([code, code, code]);
+    try {
+      assert.throws(() => parseConfigFile(path.join(dir, 'a.toml')), { code });
+      assert.equal(reads.calls(), 1, code);
+    } finally {
+      mock.restoreAll();
+    }
+  }
 });

@@ -146,11 +146,16 @@ The service SHALL learn of a change to the events file and to the options direct
 - **THEN** the read that follows the arming handles it
 
 ### Requirement: The watch does not follow a symlink
-An options file that is a symlink SHALL be noticed when the link is replaced, and an edit of its target SHALL NOT by itself cause a reload: it takes effect at the next reload. The options directory SHALL be watched by its real path, so a config directory that is a symlink into a dotfiles repository works.
+An options file that is a symlink SHALL be noticed when the link is replaced, and an edit of its target SHALL NOT by itself cause a reload: it takes effect at the next event of any name in the options directory, because both daemons read the file again at every event there and ignore a read that changed nothing. The options directory SHALL be watched by its real path, so a config directory that is a symlink into a dotfiles repository works.
 
 #### Scenario: A linked options file is edited
 - **WHEN** `notify.toml` is a symlink to a file in another directory, that file is edited, and nothing else happens in the options directory
 - **THEN** the service does not reload
+- **AND** the old values stay in force
+
+#### Scenario: A linked options file is edited, then a file of another name is written
+- **WHEN** `notify.toml` is a symlink to a file in another directory, that file is edited, and then a file of another name is written in the options directory
+- **THEN** the service reloads once and the new values apply
 
 #### Scenario: The link is replaced
 - **WHEN** the link is replaced by another that points to a file with other values
@@ -199,8 +204,8 @@ An event in the options directory SHALL make the service read the options file a
 - **THEN** the one problem is `options: <file>: <the text node prints for the failed read>`, such as `EISDIR: illegal operation on a directory, read`, the defaults hold and the `started` line ends `(invalid)`
 
 #### Scenario: An open that fails while a rename replaces the symlink
-- **WHEN** the open of `plugins/notify.toml` fails with EINVAL because a rename is replacing a symlink on the path (macOS)
-- **THEN** the open is tried again, three tries in all, and an EINVAL on the third try is reported as "A file that cannot be read" says
+- **WHEN** the read of `plugins/notify.toml` fails with EINVAL because a rename is replacing a symlink on the path (macOS)
+- **THEN** the read is tried again, three tries in all, and an EINVAL on the third try is reported as "A file that cannot be read" says
 
 #### Scenario: A file without read permission
 - **WHEN** `plugins/notify.toml` has mode 000 at start

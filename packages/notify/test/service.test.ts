@@ -435,38 +435,54 @@ test('the options watch follows a symlinked config dir to the real one', async (
   );
 });
 
-test('a symlinked notify.toml is noticed when the link is replaced, not when its target is edited', async () => {
+test('a symlinked notify.toml: an edit of its target waits for the next event in the options directory, a replaced link is a reload at once', async () => {
   const r = rig({ plugins: true });
   const optionsDir = path.dirname(r.optionsFile);
   const away = tmpDir('notify-svc-target');
-  const target = path.join(away, 'options.toml');
   const link = path.join(optionsDir, 'notify.toml');
-  fs.writeFileSync(target, 'click = "goto"\n');
-  fs.symlinkSync(target, link);
+  const turnDoneOff = '[events.turn_done]\nenabled = false\n';
+  const first = path.join(away, 'a.toml');
+  const target = path.join(away, 'b.toml');
+  const last = path.join(away, 'c.toml');
+  fs.writeFileSync(first, 'click = "goto"\n');
+  fs.writeFileSync(target, 'click = "focus"\n');
+  fs.writeFileSync(last, '[events.turn_done]\nenabled = true\n');
+  fs.symlinkSync(first, link);
   await r.start();
   const reloads = (): number => r.logs.filter((l) => l.endsWith('options reloaded')).length;
   const kinds = (): string[] => r.notifier.posts.map((n) => n.kind);
-  const turnDoneOff = '[events.turn_done]\nenabled = false\n';
-
-  // The directory that is watched holds the link, not the target: this edit raises no event there.
-  fs.writeFileSync(target, turnDoneOff);
-  fs.writeFileSync(path.join(optionsDir, 'unrelated.toml'), '');
-  await stopThenSentinel(r);
-  assert.equal(reloads(), 0, 'the edit of the target is not a reload');
-  assert.deepEqual(kinds(), ['turn_done', 'question'], 'the old values are in force: the Stop still posts');
-
-  // Replacing the link is a rename in the watched directory.
-  const next = path.join(away, 'next.toml');
-  fs.writeFileSync(next, turnDoneOff);
   let n = 0;
-  await until('the reload', () => reloads() === 1, () => {
+  /** Replaces the link by one to `to`: a rename in the watched directory. */
+  const repoint = (to: string): void => {
     n += 1;
     const fresh = path.join(optionsDir, `notify.toml.${n}`);
-    fs.symlinkSync(next, fresh);
+    fs.symlinkSync(to, fresh);
     fs.renameSync(fresh, link);
-  });
+  };
+
+  // The events of a directory arrive in the order they happened, so this reload proves that every earlier one, the creation of the link above included, has been read.
+  // The link is replaced once, so nothing more is written while this waits.
+  repoint(target);
+  await until('the first reload', () => reloads() === 1);
+
+  // The directory that is watched holds the link, not the target: this edit raises no event there, and nothing else happens in it.
+  fs.writeFileSync(target, turnDoneOff);
   await stopThenSentinel(r);
+  assert.equal(reloads(), 1, 'the edit of the target is not a reload');
+  assert.deepEqual(kinds(), ['turn_done', 'question'], 'the old values are in force: the Stop still posts');
+
+  // A file of another name written in the directory is an event there: the file is read again, through the link.
+  await until('the second reload', () => reloads() === 2, () => fs.writeFileSync(path.join(optionsDir, 'unrelated.toml'), ''));
+  await stopThenSentinel(r);
+  assert.equal(reloads(), 2, 'one reload, however many events came');
   assert.deepEqual(kinds(), ['turn_done', 'question', 'question'], 'the new values apply: the second Stop posted nothing');
+
+  // Replacing the link is a reload at once, and the new file's content differs from the last one's.
+  // A retry points at the same file, so a late event of it reads unchanged content and `apply` ignores it.
+  await until('the third reload', () => reloads() === 3, () => repoint(last));
+  await stopThenSentinel(r);
+  assert.equal(reloads(), 3, 'one more reload');
+  assert.deepEqual(kinds(), ['turn_done', 'question', 'question', 'turn_done', 'question'], 'the newest values apply: the Stop posts again');
 });
 
 test('linux with the auto backend: the service says there is no backend, follows nothing and releases the lock', async () => {
