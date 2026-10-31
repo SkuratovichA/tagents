@@ -48,6 +48,9 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **macOS has no `timeout`** — run suites bare, they bound themselves (30.10.2026, 11.09.2026)
 - **bash 3.2 brace-expands a JSON object written in double quotes inside `$( )`** — the comma list comes out mangled. Build such JSON in a function body or in single quotes, as `tests/rust-mcp-parity.sh` does (30.10.2026)
 - **`ps | grep -c <name>` counts the shell that runs the check** — its command line holds the pattern. Write it with a bracket, `grep -c '[s]leep 30'`, so a "nothing is left running" check can read 0 (30.10.2026)
+- **APFS is case-insensitive** — `0a1b` and `0A1B` are one file, so two fixtures meant to differ overwrote each other. Name fixtures that must coexist by more than case (31.10.2026)
+- **`$VAR.log` with `VAR` unset creates `.log` in the cwd** — the log went to a hidden file in the cwd. Write `${VAR:?}.log` (31.10.2026)
+- **zsh does not split an unquoted multi-word `$t`** — the whole string became one command word. Use `${=t}` or an array (31.10.2026)
 
 ## tmux
 
@@ -187,6 +190,19 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **Removing an inotify watch queues an `IN_IGNORED` that a test can take for the event it waits for** — with the removal made unconditional, the backend reported a key for a slot still on the removed descriptor, and a "the watch is still armed" test passed on it. Such a test takes what the arming and the removal made first (`settle`) and writes after (31.10.2026).
 - **`cargo test --lib` after a signature change leaves the callers in `tests/` unbuilt** — `Watch::start` became generic over `T: From<Heard>` and `tests/watch_fds.rs` failed only in the Linux run. After a change to a public signature, run `cargo clippy --workspace --all-targets` before any narrower run (31.10.2026).
 - **A test for an inotify re-arm needs the event that reaches it, and a mutation to prove it** — `File::set_modified` sent `MODIFY` on the Docker image's 5.15 kernel, so no re-arm ran and the mutated `keep` stayed green; `chmod` sends `ATTRIB`. A removal that is wrong heals through `IN_IGNORED`, so the test tells it by the second wake: `silent` after the first key, not `settle` (31.10.2026).
+- **Cargo can reuse a mutated build after a restore within the same second** — the restored sources kept a modification time the build took for unchanged, so a mutation run looked green. Touch the sources after restoring them (31.10.2026)
+- **A half-line test needs a half line that parses** — 13 fields cut before the newline, or the test passes on a parse error instead of the half-line rule. Prove it with a mutation (31.10.2026)
+- **On Linux the directory watch fires on any write and masks a missing re-arm of a file watch** — a test of the re-arm passes there for the wrong reason. kqueue is the strict check, so run it on macOS (31.10.2026)
+- **A failing-open test must not rely on permissions** — Docker runs as root and opens a mode-000 file. Use a dangling symlink, which fails the same on both (31.10.2026)
+- **The vector generator imports node sources by relative path** — `@tagents/core` does not resolve from `tests/`. Import by relative path, and rebuild `dist/` after an `en.ts` change, because `packages/core` tests use the built `dist/` when present (31.10.2026)
+- **`let (a, _) = f();` drops the unbound guard at once** — a scratch directory was removed before the test used it. Bind it as `_dir`; two inherent impl blocks on one type cannot share a method name across modules, so per-module helpers on a shared test type go through a local trait (31.10.2026)
+- **A test hook that asserts inside an engine call has its panic caught as a failed job** — the test passed silently. Hooks record and the test asserts after the call (31.10.2026)
+- **A deadline re-armed from a row after a re-follow is already past** — it fires at the next wake, so `armed() == 1` fails by timing. Assert the post (31.10.2026)
+- **Never run a failing `Command::exec` in-process in a test** — a failing one returns into the test process that meant to be replaced. Run it in a child process (31.10.2026)
+- **A pass on macOS hid a macOS-only pin in a timing suite** — the Linux container ran it differently. Run a timing suite in the Linux container before calling it done (31.10.2026)
+- **A machine that sleeps mid-run voids the run** — the timings were wrong and the suite failed or passed by accident. Compare the wall time with the usual one, read `pmset -g log`, and run under `caffeinate -i` (31.10.2026)
+- **A tripwire tied to "the last scenario run" fails under `PARITY_ONLY`** — the scenario it watched never ran. Put per-document pins inside the helper that runs the document (31.10.2026)
+- **A mutating `sed` can change nothing or too much, and the run is green anyway** — check `git diff --stat` after it before trusting a green run (31.10.2026)
 
 ## Other
 
