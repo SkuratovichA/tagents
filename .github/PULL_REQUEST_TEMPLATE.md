@@ -2,7 +2,7 @@
 
 ## How it was tested
 
-Which suites you ran (`pnpm test`, `bash tests/<suite>.sh`, `cargo test --workspace`, the parity suites).
+Which suites you ran: `pnpm test`, the [bash suites](https://tagents.arstoien.com/docs/development#the-bash-suites) (they need the scratch tmux prefix described there), `cargo test --workspace` and the parity suites.
 
 ## Checklist
 

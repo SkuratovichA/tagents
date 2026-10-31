@@ -14,6 +14,13 @@ body:
     validations:
       required: true
   - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`tagents` has no `--version`. Give the commit of the managed copy, from `git -C ~/.local/share/tagents log -1 --format='%h %cs'`, or the commit of your clone."
+    validations:
+      required: true
+  - type: input
     id: os
     attributes:
       label: Operating system
@@ -23,7 +30,7 @@ body:
   - type: input
     id: terminal
     attributes:
-      label: Terminal and tmux
+      label: Terminal, tmux and fzf
       description: The terminal emulator, and the output of `tmux -V` and `fzf --version`.
     validations:
       required: true
