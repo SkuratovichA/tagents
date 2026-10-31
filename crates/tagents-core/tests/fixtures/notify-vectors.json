@@ -1,5 +1,2354 @@
 {
   "options": [],
-  "feed": [],
+  "feed": {
+    "eventLines": [
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000.123\tNotification\t12\tsess-a\tagent-9\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t/Users/demo/.claude-work\tBash\tsub\tClaude needs your permission to use Bash\tdashboard",
+        "event": {
+          "at": 1760000000123,
+          "event": "Notification",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "agent-9",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "/Users/demo/.claude-work",
+          "tool": "Bash",
+          "sub": "sub",
+          "text": "Claude needs your permission to use Bash",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tStop\ts-sess-b\tsess-a\t\t\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\t",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "s-sess-b",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": ""
+        }
+      },
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/tmp/ünïcode dir\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tГотово… ждёт ответа 🙂\tdashboard",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/tmp/ünïcode dir",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Готово… ждёт ответа 🙂",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\t leading and trailing spaces \t x ",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": " leading and trailing spaces ",
+          "label": " x "
+        }
+      },
+      {
+        "line": "1760000000\tStop\t\t\t\t%12\t\t\t\t\t\t\t",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "",
+          "sessionId": "",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "",
+          "transcript": "",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "",
+          "label": ""
+        }
+      },
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone",
+        "event": null
+      },
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t",
+        "event": null
+      },
+      {
+        "line": "1760000000\tStop",
+        "event": null
+      },
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard\textra",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard\textra\tand more\t",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard\t\t\t",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard\r",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard\r\r",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard\r"
+        }
+      },
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\t\r",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": ""
+        }
+      },
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tin\rthe middle\tdashboard",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "in\rthe middle",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard\textra\r",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "",
+        "event": null
+      },
+      {
+        "line": "\r",
+        "event": null
+      },
+      {
+        "line": "not an event",
+        "event": null
+      },
+      {
+        "line": "\t\t\t\t\t\t\t\t\t\t\t\t",
+        "event": null
+      },
+      {
+        "line": "\t\t\t\t\t\t\t\t\t\t\t\t\t",
+        "event": null
+      },
+      {
+        "line": "1760000000\tSessionStart\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1760000000000,
+          "event": "SessionStart",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tUserPromptSubmit\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1760000000000,
+          "event": "UserPromptSubmit",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tPreToolUse\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1760000000000,
+          "event": "PreToolUse",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tPostToolUse\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1760000000000,
+          "event": "PostToolUse",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tNotification\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1760000000000,
+          "event": "Notification",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1760000000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tSubagentStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1760000000000,
+          "event": "SubagentStop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tSessionEnd\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1760000000000,
+          "event": "SessionEnd",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000\tPreCompact\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1760000000\tstop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1760000000\tSTOP\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1760000000\t Stop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1760000000\tStop \t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1760000000\t\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1760000000\ttoString\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1760000000\t__proto__\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1760000000\tconstructor\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1760000000\thasOwnProperty\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1760000000\tvalueOf\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1760000000\tStopp\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1760000000\tSessionEnd\n\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "0\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 0,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "-1\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": -1000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "+5\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 5000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "17\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 17000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "007\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 7000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": ".5\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 500,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "5.\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 5000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1e3\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1E3\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1000000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1e-3\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "0x10\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 16000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "0X1f\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 31000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "0b11\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 3000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "0o7\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 7000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "0B2\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "0xg\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "0x\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1e\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "--1\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1 2\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1_000\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "12abc\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "abc\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "1760000000.123456\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1760000000123.456,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1760000000123456789\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1.7600000001234567e+21,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1e305\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1e+308,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1e999\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "-1e999\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "Infinity\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "-Infinity\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "+Infinity\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "infinity\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "NaN\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "nan\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "inf\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": " 12 \tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 12000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "12 \tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 12000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": " 12\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 12000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": " \tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "  \tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": " \tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": " 12 \tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 12000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "﻿12\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 12000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": " \tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "  5\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 5000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "　\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "​12\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": " 12\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "\u000b12\f\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 12000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "١٢٣\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "１２\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": null
+      },
+      {
+        "line": "9007199254740993\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 9007199254740992000,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "0.1\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 100,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "0.000001\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 0.001,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      },
+      {
+        "line": "1e21\tStop\t12\tsess-a\t\t%12\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\t\t\t\tDone\tdashboard",
+        "event": {
+          "at": 1e+24,
+          "event": "Stop",
+          "key": "12",
+          "sessionId": "sess-a",
+          "agentId": "",
+          "pane": "%12",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+          "configDir": "",
+          "tool": "",
+          "sub": "",
+          "text": "Done",
+          "label": "dashboard"
+        }
+      }
+    ],
+    "stateLines": [
+      {
+        "key": "12",
+        "line": "1760000000",
+        "row": null
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\tworking",
+        "row": null
+      },
+      {
+        "key": "12",
+        "line": "1760000000\tworking\tsess-a",
+        "row": null
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\tworking\tsess-a\t/Users/demo/git/demo",
+        "row": null
+      },
+      {
+        "key": "12",
+        "line": "1760000000\tworking\tsess-a\t/Users/demo/git/demo\t/t/sess-a.jsonl",
+        "row": null
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\tworking\tsess-a\t/Users/demo/git/demo\t/t/sess-a.jsonl\tBash ls",
+        "row": {
+          "key": "s-sess-b",
+          "at": 1760000000,
+          "state": "working",
+          "sessionId": "sess-a",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/t/sess-a.jsonl",
+          "detail": "Bash ls",
+          "configDir": null
+        }
+      },
+      {
+        "key": "12",
+        "line": "1760000000\tworking\tsess-a\t/Users/demo/git/demo\t/t/sess-a.jsonl\tBash ls\t",
+        "row": {
+          "key": "12",
+          "at": 1760000000,
+          "state": "working",
+          "sessionId": "sess-a",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/t/sess-a.jsonl",
+          "detail": "Bash ls",
+          "configDir": ""
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\tworking\tsess-a\t/Users/demo/git/demo\t/t/sess-a.jsonl\tBash ls\t\t4242",
+        "row": {
+          "key": "s-sess-b",
+          "at": 1760000000,
+          "state": "working",
+          "sessionId": "sess-a",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/t/sess-a.jsonl",
+          "detail": "Bash ls",
+          "configDir": ""
+        }
+      },
+      {
+        "key": "12",
+        "line": "1760000000\tworking\tsess-a\t/Users/demo/git/demo\t/t/sess-a.jsonl\tBash ls\t\t4242\t/tmp/log",
+        "row": {
+          "key": "12",
+          "at": 1760000000,
+          "state": "working",
+          "sessionId": "sess-a",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/t/sess-a.jsonl",
+          "detail": "Bash ls",
+          "configDir": ""
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\tworking\tsess-a\t/Users/demo/git/demo\t/t/sess-a.jsonl\tBash ls\t\t4242\t/tmp/log\tname",
+        "row": {
+          "key": "s-sess-b",
+          "at": 1760000000,
+          "state": "working",
+          "sessionId": "sess-a",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/t/sess-a.jsonl",
+          "detail": "Bash ls",
+          "configDir": ""
+        }
+      },
+      {
+        "key": "12",
+        "line": "1760000000\tworking\tsess-a\t/Users/demo/git/demo\t/t/sess-a.jsonl\tBash ls\t\t4242\t/tmp/log\tname\ts-parent",
+        "row": {
+          "key": "12",
+          "at": 1760000000,
+          "state": "working",
+          "sessionId": "sess-a",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/t/sess-a.jsonl",
+          "detail": "Bash ls",
+          "configDir": ""
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\tworking\tsess-a\t/Users/demo/git/demo\t/t/sess-a.jsonl\tBash ls\t\t4242\t/tmp/log\tname\ts-parent\tparent-sid",
+        "row": {
+          "key": "s-sess-b",
+          "at": 1760000000,
+          "state": "working",
+          "sessionId": "sess-a",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/t/sess-a.jsonl",
+          "detail": "Bash ls",
+          "configDir": ""
+        }
+      },
+      {
+        "key": "12",
+        "line": "1760000000\tworking\tsess-a\t/Users/demo/git/demo\t/t/sess-a.jsonl\tBash ls\t\t4242\t/tmp/log\tname\ts-parent\tparent-sid\tx",
+        "row": {
+          "key": "12",
+          "at": 1760000000,
+          "state": "working",
+          "sessionId": "sess-a",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/t/sess-a.jsonl",
+          "detail": "Bash ls",
+          "configDir": ""
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\tworking\tsess-a\t/Users/demo/git/demo\t/t/sess-a.jsonl\tBash ls\t\t4242\t/tmp/log\tname\ts-parent\tparent-sid\tx\ty",
+        "row": {
+          "key": "s-sess-b",
+          "at": 1760000000,
+          "state": "working",
+          "sessionId": "sess-a",
+          "cwd": "/Users/demo/git/demo",
+          "transcript": "/t/sess-a.jsonl",
+          "detail": "Bash ls",
+          "configDir": ""
+        }
+      },
+      {
+        "key": "12",
+        "line": "1760000000\tnew\ts\t/c\t/t\td",
+        "row": {
+          "key": "12",
+          "at": 1760000000,
+          "state": "new",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\tworking\ts\t/c\t/t\td",
+        "row": {
+          "key": "s-sess-b",
+          "at": 1760000000,
+          "state": "working",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "12",
+        "line": "1760000000\tblocked\ts\t/c\t/t\td",
+        "row": {
+          "key": "12",
+          "at": 1760000000,
+          "state": "blocked",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "s-sess-b",
+          "at": 1760000000,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "12",
+        "line": "1760000000\tgone\ts\t/c\t/t\td",
+        "row": {
+          "key": "12",
+          "at": 1760000000,
+          "state": "gone",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\tsubdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "s-sess-b",
+          "at": 1760000000,
+          "state": "subdone",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "12",
+        "line": "1760000000\tWorking\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\tDONE\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "12",
+        "line": "1760000000\t\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\ttoString\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "12",
+        "line": "1760000000\t__proto__\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\trunning\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "12",
+        "line": "1760000000\tsubdone \ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1760000000\t new\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "12",
+        "line": "0\tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "12",
+          "at": 0,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "-1\tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "s-sess-b",
+          "at": -1,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "12",
+        "line": "17\tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "12",
+          "at": 17,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": ".5\tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "s-sess-b",
+          "at": 0.5,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "12",
+        "line": "1e3\tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "12",
+          "at": 1000,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "0x10\tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "s-sess-b",
+          "at": 16,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "12",
+        "line": "0b11\tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "12",
+          "at": 3,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1_0\tdone\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "12",
+        "line": "abc\tdone\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "s-sess-b",
+        "line": "\tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "s-sess-b",
+          "at": 0,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "12",
+        "line": " \tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "12",
+          "at": 0,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": " \tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "s-sess-b",
+          "at": 0,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "12",
+        "line": "﻿12\tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "12",
+          "at": 12,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "12 \tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "s-sess-b",
+          "at": 12,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "12",
+        "line": "Infinity\tdone\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "s-sess-b",
+        "line": "-Infinity\tdone\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "12",
+        "line": "NaN\tdone\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1e999\tdone\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "12",
+        "line": "1760000000.5\tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "12",
+          "at": 1760000000.5,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1e305\tdone\ts\t/c\t/t\td",
+        "row": {
+          "key": "s-sess-b",
+          "at": 1e+305,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "12",
+        "line": "٣\tdone\ts\t/c\t/t\td",
+        "row": null
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1\tdone\ts\t/c\t/t\td\n",
+        "row": {
+          "key": "s-sess-b",
+          "at": 1,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": null
+        }
+      },
+      {
+        "key": "12",
+        "line": "1\tdone\ts\t/c\t/t\td\n\n",
+        "row": {
+          "key": "12",
+          "at": 1,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d\n",
+          "configDir": null
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1\tdone\ts\t/c\t/t\td\r",
+        "row": {
+          "key": "s-sess-b",
+          "at": 1,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d\r",
+          "configDir": null
+        }
+      },
+      {
+        "key": "12",
+        "line": "1\tdone\ts\t/c\t/t\td\tacct\n",
+        "row": {
+          "key": "12",
+          "at": 1,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": "acct"
+        }
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1\tdone\ts\t/c\t/t\td\t\n",
+        "row": {
+          "key": "s-sess-b",
+          "at": 1,
+          "state": "done",
+          "sessionId": "s",
+          "cwd": "/c",
+          "transcript": "/t",
+          "detail": "d",
+          "configDir": ""
+        }
+      },
+      {
+        "key": "12",
+        "line": "1\tdone\ts\t/c\t/t\n",
+        "row": null
+      },
+      {
+        "key": "s-sess-b",
+        "line": "1\tdone\tСессия\t/ünï\t/t\tГотово… 🙂\t/Users/демо/.claude",
+        "row": {
+          "key": "s-sess-b",
+          "at": 1,
+          "state": "done",
+          "sessionId": "Сессия",
+          "cwd": "/ünï",
+          "transcript": "/t",
+          "detail": "Готово… 🙂",
+          "configDir": "/Users/демо/.claude"
+        }
+      },
+      {
+        "key": "12",
+        "line": "",
+        "row": null
+      },
+      {
+        "key": "s-sess-b",
+        "line": "nope",
+        "row": null
+      }
+    ],
+    "stateDirs": [
+      {
+        "name": "a directory that does not exist",
+        "files": null,
+        "rows": [],
+        "labelsBySession": {},
+        "labels": {}
+      },
+      {
+        "name": "an empty directory",
+        "files": {},
+        "rows": [],
+        "labelsBySession": {},
+        "labels": {}
+      },
+      {
+        "name": "what the hook published",
+        "files": {
+          "12.tsv": "1760000000\tworking\tsess-a\t/Users/demo/git/demo\t/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl\tBash ls\t\n",
+          "s-sess-b.tsv": "1760000100\tblocked\tsess-b\t/Users/demo/git/other\t\tClaude needs your permission to use Bash\t/Users/demo/.claude-work\t4242\n",
+          "13.tsv": "1759000000\tdone\tsess-c\t\t\t\n",
+          "s-sess-d.tsv": "1760000050\tworking\tsess-d\t/Users/demo/git/demo\t\t\t\t5151\t/tmp/ticket-agent.log\tticket-agent\n",
+          "s-sess-e.tsv": "1760000060\tworking\tsess-e\t/Users/demo/git/scratch\t\t\t\t5252\t\t\ts-sess-d\tsess-d\n",
+          "not-a-key.tsv": "garbage\n",
+          "history.tsv": "1760000000\tstart\tsess-a\t%12\tdashboard\t/Users/demo/git/demo\n1760000100\tstart\tsess-b\t%0\ttg-orchestrator\t/Users/demo/git/other\n1760000200\tturn\tsess-b\t%0\ttg-orchestrator\t/Users/demo/git/other\n1760000300\tstart\tsess-e\t\t\t/Users/demo/git/scratch\tsess-d\n"
+        },
+        "rows": [
+          {
+            "key": "s-sess-b",
+            "at": 1760000100,
+            "state": "blocked",
+            "sessionId": "sess-b",
+            "cwd": "/Users/demo/git/other",
+            "transcript": "",
+            "detail": "Claude needs your permission to use Bash",
+            "configDir": "/Users/demo/.claude-work"
+          },
+          {
+            "key": "s-sess-e",
+            "at": 1760000060,
+            "state": "working",
+            "sessionId": "sess-e",
+            "cwd": "/Users/demo/git/scratch",
+            "transcript": "",
+            "detail": "",
+            "configDir": ""
+          },
+          {
+            "key": "s-sess-d",
+            "at": 1760000050,
+            "state": "working",
+            "sessionId": "sess-d",
+            "cwd": "/Users/demo/git/demo",
+            "transcript": "",
+            "detail": "",
+            "configDir": ""
+          },
+          {
+            "key": "12",
+            "at": 1760000000,
+            "state": "working",
+            "sessionId": "sess-a",
+            "cwd": "/Users/demo/git/demo",
+            "transcript": "/Users/demo/.claude/projects/-Users-demo-git-demo/sess-a.jsonl",
+            "detail": "Bash ls",
+            "configDir": ""
+          },
+          {
+            "key": "13",
+            "at": 1759000000,
+            "state": "done",
+            "sessionId": "sess-c",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          }
+        ],
+        "labelsBySession": {
+          "sess-a": "dashboard",
+          "sess-b": "tg-orchestrator"
+        },
+        "labels": {}
+      },
+      {
+        "name": "rows with one time keep the order of their names",
+        "files": {
+          "s-a.tsv": "1760000000\tdone\ts-a\t\t\t\n",
+          "5.tsv": "1760000000\tdone\t5\t\t\t\n",
+          "10.tsv": "1760000000\tdone\t10\t\t\t\n",
+          "s-B.tsv": "1760000000\tdone\ts-B\t\t\t\n",
+          "9.tsv": "1760000000\tdone\t9\t\t\t\n",
+          "0.tsv": "1760000000\tdone\t0\t\t\t\n",
+          "100.tsv": "1760000000\tdone\t100\t\t\t\n",
+          "s-_.tsv": "1760000000\tdone\ts-_\t\t\t\n",
+          "s-..tsv": "1760000000\tdone\ts-.\t\t\t\n",
+          "s--.tsv": "1760000000\tdone\ts--\t\t\t\n",
+          "s-1.tsv": "1760000000\tdone\ts-1\t\t\t\n"
+        },
+        "rows": [
+          {
+            "key": "0",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "0",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          },
+          {
+            "key": "10",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "10",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          },
+          {
+            "key": "100",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "100",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          },
+          {
+            "key": "5",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "5",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          },
+          {
+            "key": "9",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "9",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          },
+          {
+            "key": "s--",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "s--",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          },
+          {
+            "key": "s-.",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "s-.",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          },
+          {
+            "key": "s-1",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "s-1",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          },
+          {
+            "key": "s-B",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "s-B",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          },
+          {
+            "key": "s-_",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "s-_",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          },
+          {
+            "key": "s-a",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "s-a",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          }
+        ],
+        "labelsBySession": {},
+        "labels": {}
+      },
+      {
+        "name": "which file names are keys",
+        "files": {
+          "12.tsv": "1760000000\tdone\t12\t\t\t\n",
+          "0.tsv": "1760000000\tdone\t0\t\t\t\n",
+          "007.tsv": "1760000000\tdone\t007\t\t\t\n",
+          "s-a.b_c-d.tsv": "1760000000\tdone\ts-a.b_c-d\t\t\t\n",
+          "s-.tsv": "1760000000\tdone\ts-\t\t\t\n",
+          "1a.tsv": "1760000000\tdone\t1a\t\t\t\n",
+          "s-a b.tsv": "1760000000\tdone\ts-a b\t\t\t\n",
+          "S-x.tsv": "1760000000\tdone\tS-x\t\t\t\n",
+          "s-é.tsv": "1760000000\tdone\ts-é\t\t\t\n",
+          "٣.tsv": "1760000000\tdone\t٣\t\t\t\n",
+          "-1.tsv": "1760000000\tdone\t-1\t\t\t\n",
+          ".tsv": "1760000000\tdone\tx\t\t\t\n",
+          "12.tsv.tsv": "1760000000\tdone\t12.tsv\t\t\t\n",
+          "not-a-key.tsv": "1760000000\tdone\tnot-a-key\t\t\t\n",
+          "s-ünï.tsv": "1760000000\tdone\ts-ünï\t\t\t\n",
+          "１２.tsv": "1760000000\tdone\t１２\t\t\t\n",
+          "s-Ж.tsv": "1760000000\tdone\ts-Ж\t\t\t\n",
+          "12tsv": "1760000000\tdone\t12tsv\t\t\t\n",
+          "12.tsv.bak": "1760000000\tdone\t12\t\t\t\n",
+          "5.tsv.tsv": "1760000000\tdone\t5\t\t\t\n"
+        },
+        "rows": [
+          {
+            "key": "0",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "0",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          },
+          {
+            "key": "007",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "007",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          },
+          {
+            "key": "12",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "12",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          },
+          {
+            "key": "s-a.b_c-d",
+            "at": 1760000000,
+            "state": "done",
+            "sessionId": "s-a.b_c-d",
+            "cwd": "",
+            "transcript": "",
+            "detail": "",
+            "configDir": null
+          }
+        ],
+        "labelsBySession": {},
+        "labels": {}
+      },
+      {
+        "name": "an upper case extension is not .tsv",
+        "files": {
+          "12.TSV": "1760000000\tdone\t12\t\t\t\n"
+        },
+        "rows": [],
+        "labelsBySession": {},
+        "labels": {}
+      },
+      {
+        "name": "only the first line of a row file counts",
+        "files": {
+          "7.tsv": "1\tdone\ts\t/c\t/t\tfirst\n2\tworking\tt\t/c\t/t\tsecond\n"
+        },
+        "rows": [
+          {
+            "key": "7",
+            "at": 1,
+            "state": "done",
+            "sessionId": "s",
+            "cwd": "/c",
+            "transcript": "/t",
+            "detail": "first",
+            "configDir": null
+          }
+        ],
+        "labelsBySession": {},
+        "labels": {}
+      },
+      {
+        "name": "a row file with no newline, with a carriage return, empty, and with a byte order mark",
+        "files": {
+          "1.tsv": "1\tdone\ts\t/c\t/t\tno newline",
+          "2.tsv": "2\tdone\ts\t/c\t/t\tcr\r\n",
+          "3.tsv": "",
+          "4.tsv": "﻿4\tdone\ts\t/c\t/t\tbom\n",
+          "5.tsv": "\n5\tdone\ts\t/c\t/t\ta blank first line\n"
+        },
+        "rows": [
+          {
+            "key": "4",
+            "at": 4,
+            "state": "done",
+            "sessionId": "s",
+            "cwd": "/c",
+            "transcript": "/t",
+            "detail": "bom",
+            "configDir": null
+          },
+          {
+            "key": "2",
+            "at": 2,
+            "state": "done",
+            "sessionId": "s",
+            "cwd": "/c",
+            "transcript": "/t",
+            "detail": "cr\r",
+            "configDir": null
+          },
+          {
+            "key": "1",
+            "at": 1,
+            "state": "done",
+            "sessionId": "s",
+            "cwd": "/c",
+            "transcript": "/t",
+            "detail": "no newline",
+            "configDir": null
+          }
+        ],
+        "labelsBySession": {},
+        "labels": {}
+      },
+      {
+        "name": "history of starts and turns",
+        "files": {
+          "history.tsv": "1\tstart\tx\t%1\tfirst\t/c\n2\tturn\tx\t%1\tsecond\t/c\n3\tend\tx\t%1\t\t/c\n4\tbogus\tx\t%1\tbogus kind\t/c\nnan\tstart\tx\t%1\tbogus time\t/c\n5\tstart\tx\t%1\tshort\n6\tstart\t\t%1\tno session\t/c\n\n7\tstart\ty\t%1\tother\t/c\tparent\n\tstart\tz\t%1\tempty time is zero\t/c\n0x10\tturn\tw\t%1\thex time\t/c\nInfinity\tstart\tv\t%1\tinfinite time\t/c\n8\tStart\tu\t%1\tkind in capitals\t/c\n9\tstart\tt\t%1\twith cr\t/c\r\n10\tend\tünï\t%1\tГотово 🙂\t/c\n11\tstart\tx\t\tthird\t\tp1\tp2\n"
+        },
+        "rows": [],
+        "labelsBySession": {
+          "x": "third",
+          "y": "other",
+          "z": "empty time is zero",
+          "w": "hex time",
+          "t": "with cr",
+          "ünï": "Готово 🙂"
+        },
+        "labels": {}
+      },
+      {
+        "name": "history without a final newline, and with carriage returns",
+        "files": {
+          "history.tsv": "1\tstart\tx\t%1\tfirst\t/c\r\n2\tturn\tx\t%1\tsecond\t/c\r\n3\tend\tx\t%1\t\t/c\r\n4\tbogus\tx\t%1\tbogus kind\t/c\r\nnan\tstart\tx\t%1\tbogus time\t/c\r\n5\tstart\tx\t%1\tshort\r\n6\tstart\t\t%1\tno session\t/c\r\n\r\n7\tstart\ty\t%1\tother\t/c\tparent\r\n\tstart\tz\t%1\tempty time is zero\t/c\r\n0x10\tturn\tw\t%1\thex time\t/c\r\nInfinity\tstart\tv\t%1\tinfinite time\t/c\r\n8\tStart\tu\t%1\tkind in capitals\t/c\r\n9\tstart\tt\t%1\twith cr\t/c\r\r\n10\tend\tünï\t%1\tГотово 🙂\t/c\r\n11\tstart\tx\t\tthird\t\tp1\tp2"
+        },
+        "rows": [],
+        "labelsBySession": {
+          "x": "third",
+          "y": "other",
+          "z": "empty time is zero",
+          "w": "hex time",
+          "t": "with cr",
+          "ünï": "Готово 🙂"
+        },
+        "labels": {}
+      },
+      {
+        "name": "labels typed by the owner",
+        "files": {
+          "labels.tsv": "sess-a\tRenamed agent\n%12\tpane name\nno-tab-here\n\tno key\nsess-b\t\nsess-a\tlater line\nsess-c\tname\textra\nk\t\nk\tx\n\n \tblank key\ncr\tname\r\n%1\tПривет 🙂\nsess-d\t \t\n"
+        },
+        "rows": [],
+        "labelsBySession": {},
+        "labels": {
+          "sess-a": "Renamed agent",
+          "%12": "pane name",
+          "no-tab-here": "",
+          "sess-b": "",
+          "sess-c": "name",
+          "k": "",
+          " ": "blank key",
+          "cr": "name\r",
+          "%1": "Привет 🙂",
+          "sess-d": " "
+        }
+      },
+      {
+        "name": "labels with carriage returns and no final newline",
+        "files": {
+          "labels.tsv": "sess-a\tRenamed agent\r\n%12\tpane name\r\nno-tab-here\r\n\tno key\r\nsess-b\t\r\nsess-a\tlater line\r\nsess-c\tname\textra\r\nk\t\r\nk\tx\r\n\r\n \tblank key\r\ncr\tname\r\r\n%1\tПривет 🙂\r\nsess-d\t \t"
+        },
+        "rows": [],
+        "labelsBySession": {},
+        "labels": {
+          "sess-a": "Renamed agent\r",
+          "%12": "pane name\r",
+          "no-tab-here\r": "",
+          "sess-b": "\r",
+          "sess-c": "name",
+          "k": "\r",
+          "\r": "",
+          " ": "blank key\r",
+          "cr": "name\r\r",
+          "%1": "Привет 🙂\r",
+          "sess-d": " "
+        }
+      },
+      {
+        "name": "a directory where a file should be",
+        "files": {
+          "8.tsv/inner": "x",
+          "history.tsv/inner": "x",
+          "labels.tsv/inner": "x"
+        },
+        "rows": [],
+        "labelsBySession": {},
+        "labels": {}
+      }
+    ],
+    "decode": [
+      {
+        "hex": "",
+        "text": ""
+      },
+      {
+        "hex": "41",
+        "text": "A"
+      },
+      {
+        "hex": "e282ac",
+        "text": "€"
+      },
+      {
+        "hex": "ff",
+        "text": "�"
+      },
+      {
+        "hex": "80",
+        "text": "�"
+      },
+      {
+        "hex": "bf",
+        "text": "�"
+      },
+      {
+        "hex": "c0",
+        "text": "�"
+      },
+      {
+        "hex": "c080",
+        "text": "��"
+      },
+      {
+        "hex": "c0af",
+        "text": "��"
+      },
+      {
+        "hex": "c1bf",
+        "text": "��"
+      },
+      {
+        "hex": "c2",
+        "text": "�"
+      },
+      {
+        "hex": "c2c2",
+        "text": "��"
+      },
+      {
+        "hex": "c2a9",
+        "text": "©"
+      },
+      {
+        "hex": "e2",
+        "text": "�"
+      },
+      {
+        "hex": "e282",
+        "text": "�"
+      },
+      {
+        "hex": "e282e282ac",
+        "text": "�€"
+      },
+      {
+        "hex": "e28241",
+        "text": "�A"
+      },
+      {
+        "hex": "e0",
+        "text": "�"
+      },
+      {
+        "hex": "e08080",
+        "text": "���"
+      },
+      {
+        "hex": "e0a080",
+        "text": "ࠀ"
+      },
+      {
+        "hex": "e09f80",
+        "text": "���"
+      },
+      {
+        "hex": "eda080",
+        "text": "���"
+      },
+      {
+        "hex": "edbfbf",
+        "text": "���"
+      },
+      {
+        "hex": "ed9fbf",
+        "text": "퟿"
+      },
+      {
+        "hex": "ef",
+        "text": "�"
+      },
+      {
+        "hex": "efbbbf41",
+        "text": "﻿A"
+      },
+      {
+        "hex": "efbfbd",
+        "text": "�"
+      },
+      {
+        "hex": "f0",
+        "text": "�"
+      },
+      {
+        "hex": "f09f",
+        "text": "�"
+      },
+      {
+        "hex": "f09f98",
+        "text": "�"
+      },
+      {
+        "hex": "f09f9880",
+        "text": "😀"
+      },
+      {
+        "hex": "f0808080",
+        "text": "����"
+      },
+      {
+        "hex": "f08f8080",
+        "text": "����"
+      },
+      {
+        "hex": "f48f8080",
+        "text": "􏀀"
+      },
+      {
+        "hex": "f4908080",
+        "text": "����"
+      },
+      {
+        "hex": "f5808080",
+        "text": "����"
+      },
+      {
+        "hex": "f8888080",
+        "text": "����"
+      },
+      {
+        "hex": "fc",
+        "text": "�"
+      },
+      {
+        "hex": "4180",
+        "text": "A�"
+      },
+      {
+        "hex": "4180ff42",
+        "text": "A��B"
+      },
+      {
+        "hex": "80808080",
+        "text": "����"
+      },
+      {
+        "hex": "ff00ff",
+        "text": "�\u0000�"
+      },
+      {
+        "hex": "0a41",
+        "text": "\nA"
+      },
+      {
+        "hex": "41e2828a42",
+        "text": "A₊B"
+      },
+      {
+        "hex": "e282acff",
+        "text": "€�"
+      },
+      {
+        "hex": "f09f9880f09f98",
+        "text": "😀�"
+      },
+      {
+        "hex": "c3a9",
+        "text": "é"
+      },
+      {
+        "hex": "c3",
+        "text": "�"
+      },
+      {
+        "hex": "c328",
+        "text": "�("
+      },
+      {
+        "hex": "4100",
+        "text": "A\u0000"
+      }
+    ]
+  },
   "words": []
 }
