@@ -128,7 +128,7 @@ The service SHALL create `events.tsv` (mode 0600) and `events.on` when it follow
 
 #### Scenario: Rotation
 - **WHEN** the file passes 1 MiB while the service follows it
-- **THEN** the lines written to the old file before the 2 seconds end are still handled, and the lines of the new file are handled after them
+- **THEN** the lines of the new file are handled as they are written, and the lines written to the old file before the 2 seconds end are handled once, when they end, so a line of the new file can be handled before the last lines of the old one, as the node service does
 
 #### Scenario: Two thousand lines in a tight loop
 - **WHEN** two thousand events are appended with no pause
