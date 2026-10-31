@@ -252,7 +252,7 @@ A file that is not TOML SHALL be reported as the one problem `options: <file>: I
 When a step of the start before the `started` line fails, the Rust service SHALL, unless a stop was requested, log `handing over to the node service: <why>`, keep the lock held and replace its process with the node service (`node <root>/packages/notify/dist/main.js run`, the same environment), which runs or fails by its own lines. A stop requested during start SHALL end the process without a `stopping` line, and a failure after `started`, such as a failed watch, SHALL NOT be handed over.
 
 #### Scenario: The steps that hand over
-- **WHEN** registering the handlers of SIGTERM, SIGINT and SIGHUP, creating the state directory, taking the lock (not a held lock), starting the watch, starting the follower or arming the engine from the state rows fails (the node service has no first step: its handlers cannot fail to register)
+- **WHEN** registering the handlers of SIGTERM, SIGINT and SIGHUP, creating the state directory, taking the lock (not a held lock), starting the watch, starting the follower or arming the engine from the state rows fails (the node service has no such step: its handlers cannot fail to register)
 - **THEN** the service hands over to the node service
 
 #### Scenario: A watch that cannot be armed
