@@ -1,6 +1,6 @@
 // The notify plugin: what the host sees, and the five verbs a person types.
 //
-// Registering it in the config (`tagents plugin add`) gives `tagents notify <verb>`; the same verbs run from the package's own bin (main.ts), which is what the LaunchAgent starts. The service that actually posts notifications is `run`: under launchd it is the process, and a host that merely lists plugins never starts it.
+// Registering it in the config (`tagents plugin add`) gives `tagents notify <verb>`; the same verbs run from the package's own bin (main.ts), which the LaunchAgent starts, directly or through the installer's `tagents-notify` command, which may run the Rust binary instead (see `runSpecFor`). The service that actually posts notifications is `run`: under launchd it is the process, and a host that merely lists plugins never starts it.
 //
 // Every verb takes its directories from `deps.env` and not from the context, so a test points it at a temporary config and state dir without touching the process's own environment. In production `deps.env` is the process's, and the two agree.
 import { randomUUID } from 'node:crypto';
@@ -36,7 +36,7 @@ import { execText, type Exec } from './exec.ts';
 import type { NoticeKind } from './kinds.ts';
 import type { Notice, Platform, RunSpec, ServiceManager } from './notifier.ts';
 import { NotifyOptionsSchema, type NotifyOptions } from './options.ts';
-import { BUNDLE_ID, MAIN_JS, appPath, logPath, resolveIcon, tagentsScript, type ResolvedIcon } from './paths.ts';
+import { BUNDLE_ID, MAIN_JS, appPath, installedCommand, logPath, resolveIcon, tagentsScript, type ResolvedIcon } from './paths.ts';
 import { pickPlatform } from './platform/index.ts';
 import { appState } from './platform/macos/app.ts';
 import { helperStatus } from './platform/macos/helper.ts';
@@ -127,7 +127,10 @@ function runSpecFor(env: NodeJS.ProcessEnv, home: string, mainJs: string): { rea
   }
   // Decided here and carried, not looked up again by the service on its own PATH: see `tagentsScript`.
   out['TA_NOTIFY_TAGENTS'] = tagentsScript(env);
-  return { spec: { program: process.execPath, args: [mainJs, 'run'], env: out, logFile: logPath(home) }, tmux };
+  // The installer's `tagents-notify` command when it runs this checkout: it chooses between the Rust binary and node at each start, so a binary that an update removed leaves node running and not a plist pointing at nothing. Otherwise node runs the built entry itself.
+  const command = installedCommand(env['PATH'], mainJs);
+  const program = command === null ? { program: process.execPath, args: [mainJs, 'run'] } : { program: command, args: ['run'] };
+  return { spec: { ...program, env: out, logFile: logPath(home) }, tmux };
 }
 
 /**

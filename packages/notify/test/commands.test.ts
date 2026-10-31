@@ -4,7 +4,7 @@
 // config dir and state dir handed in through `deps.env`: nothing here reads or
 // writes the real ones, and nothing patches the process's own environment.
 import assert from 'node:assert/strict';
-import { spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -14,6 +14,7 @@ import { SEND_MESSAGE_MAX, SEND_TITLE_MAX } from '../src/cli/spec.ts';
 import type { Exec, ExecResult } from '../src/exec.ts';
 import type { Platform, RunSpec, ServiceStatus } from '../src/notifier.ts';
 import { tagentsScript } from '../src/paths.ts';
+import { renderPlist } from '../src/platform/macos/launchd.ts';
 import { ALLOWING_NOTIFICATIONS, createNotifyPlugin } from '../src/plugin.ts';
 import { LOCK_FILE } from '../src/service.ts';
 import { recordingNotifier } from './fakes.ts';
@@ -364,6 +365,91 @@ test('install writes the run spec: node, the built entry, the dirs the service n
     'LANG defaults to UTF-8, an empty TMUX_TMPDIR is left out, the config home and the locale the service would otherwise lose are forwarded, and with no tagents on PATH the click script is the package\'s own'
   );
   assert.ok(!r.err().includes('no tmux'));
+});
+
+/** A directory holding a `tagents-notify` as `write_wrapper` in install.sh writes it: the program it execs is named in double quotes. */
+function wrapperDir(text: string, mode = 0o755): { readonly dir: string; readonly file: string } {
+  const dir = tmpDir('notify-cmd-wrapper');
+  const file = path.join(dir, 'tagents-notify');
+  fs.writeFileSync(file, `#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\n${text}\n`);
+  fs.chmodSync(file, mode);
+  return { dir, file };
+}
+const execLine = (program: string): string => `n="/usr/bin/node"\n[ -x "$n" ] || n=node\nexec "$n" "${program}" "$@"`;
+
+/** Installs from a shell whose PATH is `dirs`, for the entry `mainJs` (a file made here), and returns the run spec the service got. */
+async function installFrom(dirs: readonly string[], mainJs: string): Promise<RunSpec> {
+  const r = rig({ mainJs, platform: { setup: async () => 'authorized', permission: async () => 'authorized' }, env: { PATH: dirs.join(path.delimiter) } });
+  assert.equal(await r.run('install'), 0, r.err());
+  const spec = r.service.installed[0];
+  assert.ok(spec !== undefined);
+  return spec;
+}
+const checkoutMain = (): string => path.join(tmpDir('notify-cmd-checkout'), 'main.js');
+const nodeSpec = (mainJs: string): { program: string; args: string[] } => ({ program: process.execPath, args: [mainJs, 'run'] });
+const picked = (spec: RunSpec): { program: string; args: readonly string[] } => ({ program: spec.program, args: spec.args });
+
+test('install names the installer\'s tagents-notify and the one argument run when its text names this checkout\'s entry', async () => {
+  const mainJs = checkoutMain();
+  const w = wrapperDir(execLine(mainJs));
+  assert.deepEqual(picked(await installFrom([w.dir, '/usr/bin'], mainJs)), { program: w.file, args: ['run'] });
+});
+
+test('install runs node itself with no tagents-notify on PATH, and with one that is not an executable file', async () => {
+  const mainJs = checkoutMain();
+  assert.deepEqual(picked(await installFrom([tmpDir('notify-cmd-empty')], mainJs)), nodeSpec(mainJs));
+  const plain = wrapperDir(execLine(mainJs), 0o644);
+  assert.deepEqual(picked(await installFrom([plain.dir], mainJs)), nodeSpec(mainJs), 'a file without the executable bit is not a command');
+});
+
+test('install runs node itself when the tagents-notify found names another checkout\'s entry, and only the first one on PATH counts', async () => {
+  const mainJs = checkoutMain();
+  const other = wrapperDir(execLine(checkoutMain()));
+  assert.deepEqual(picked(await installFrom([other.dir], mainJs)), nodeSpec(mainJs));
+  const ours = wrapperDir(execLine(mainJs));
+  assert.deepEqual(picked(await installFrom([other.dir, ours.dir], mainJs)), nodeSpec(mainJs), 'the shell would run the first one');
+  assert.deepEqual(picked(await installFrom([ours.dir, other.dir], mainJs)), { program: ours.file, args: ['run'] });
+});
+
+test('install matches the quoted path of the entry and not a bare substring of the wrapper\'s text', async () => {
+  const mainJs = checkoutMain();
+  const longer = wrapperDir(execLine(`${mainJs}.old`));
+  assert.deepEqual(picked(await installFrom([longer.dir], mainJs)), nodeSpec(mainJs), 'a longer path that starts with this one');
+  const inside = wrapperDir(execLine(`/elsewhere${mainJs}`));
+  assert.deepEqual(picked(await installFrom([inside.dir], mainJs)), nodeSpec(mainJs), 'a path that holds this one');
+  const comment = wrapperDir(`# ${mainJs}\n${execLine(checkoutMain())}`);
+  assert.deepEqual(picked(await installFrom([comment.dir], mainJs)), nodeSpec(mainJs), 'this path in a comment, unquoted');
+});
+
+test('install recognises the wrapper of a TAGENTS_HOME that is a symlink: the wrapper names the link, MAIN_JS is where node resolved the module', async () => {
+  const home = tmpDir('notify-cmd-real');
+  const entry = path.join(home, 'packages', 'notify', 'dist', 'main.js');
+  fs.mkdirSync(path.dirname(entry), { recursive: true });
+  fs.writeFileSync(entry, '');
+  const link = path.join(tmpDir('notify-cmd-link'), 'tagents');
+  fs.symlinkSync(home, link, 'dir');
+  const named = path.join(link, 'packages', 'notify', 'dist', 'main.js');
+  assert.notEqual(named, entry);
+  const w = wrapperDir(execLine(named));
+  assert.deepEqual(picked(await installFrom([w.dir], entry)), { program: w.file, args: ['run'] });
+  const stale = wrapperDir(execLine(path.join(link, 'packages', 'gone', 'dist', 'main.js')));
+  assert.deepEqual(picked(await installFrom([stale.dir], entry)), nodeSpec(entry), 'a link into a tree that is not this entry');
+});
+
+test('install runs node itself when the tagents-notify found cannot be read', { skip: process.getuid?.() === 0 }, async () => {
+  const mainJs = checkoutMain();
+  const w = wrapperDir(execLine(mainJs), 0o111);
+  assert.deepEqual(picked(await installFrom([w.dir], mainJs)), nodeSpec(mainJs));
+});
+
+test('the plist written for the installer\'s command runs it with run, and passes plutil -lint', { skip: process.platform !== 'darwin' }, async () => {
+  const mainJs = checkoutMain();
+  const w = wrapperDir(execLine(mainJs));
+  const spec = await installFrom([w.dir, '/usr/bin'], mainJs);
+  const plist = path.join(tmpDir('notify-cmd-plist'), 'x.plist');
+  fs.writeFileSync(plist, renderPlist(spec));
+  assert.ok(new RegExp(`<key>ProgramArguments</key>\\s*<array>\\s*<string>${w.file}</string>\\s*<string>run</string>\\s*</array>`).test(fs.readFileSync(plist, 'utf8')));
+  assert.ok(execFileSync('/usr/bin/plutil', ['-lint', plist], { encoding: 'utf8' }).includes('OK'));
 });
 
 test('install without tmux on PATH warns that the service cannot tell what is on screen', async () => {
