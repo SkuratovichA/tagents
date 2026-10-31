@@ -89,7 +89,7 @@ The service SHALL write to stderr the lines listed below, as `<ISO time with mil
 
 #### Scenario: The lines of the options
 - **WHEN** the options are read, reloaded or cannot be watched
-- **THEN** its lines are `options: <problem>` for each problem, `options reloaded`, `backend changes take effect after a restart (tagents notify install)`, `options reload is off: <dir> does not exist` and `options watch failed <dir> <why>`
+- **THEN** its lines are `options: <problem>` for each problem, `options reloaded`, `backend changes take effect after a restart (tagents notify install)`, `options reload is off: <dir> does not exist` and `options watch failed <path> <why>`
 
 #### Scenario: The lines of a notice
 - **WHEN** the engine posts, drops, withdraws or holds back a notice
@@ -198,6 +198,10 @@ An event in the options directory SHALL make the service read the options file a
 - **WHEN** `plugins/notify.toml` is a directory or a file that cannot be read
 - **THEN** the one problem is `options: <file>: <the text node prints for the failed read>`, such as `EISDIR: illegal operation on a directory, read`, the defaults hold and the `started` line ends `(invalid)`
 
+#### Scenario: A file without read permission
+- **WHEN** `plugins/notify.toml` has mode 000 at start
+- **THEN** the log has the problem line above and `options watch failed <file> <why>` (the file watch cannot be armed, `EACCES`), before `started` ending `(invalid)`, and the service runs without that file watch, the directory watch still hearing a replacement
+
 ### Requirement: A bad options file is worded as the node service words it
 For every problem of the schema the service SHALL log `options: <line>` with the line the node service writes, byte for byte, in the order zod 4 reports it: each key's issues in the order of the schema, then the object's unrecognized keys, then the `after`/`ttl` check, which a type problem inside `cache_expiring` skips. It SHALL then run on the defaults, and log each distinct set of problems once.
 
@@ -245,7 +249,7 @@ A file that is not TOML SHALL be reported as the one problem `options: <file>: I
 - **THEN** the file is invalid and the reason says the value cannot be represented losslessly
 
 ### Requirement: A start that fails is handed to the node service
-When a step of the start before the `started` line fails, the Rust service SHALL, unless a stop was requested, log `handing over to the node service: <why>`, keep the lock held and replace its process with the node service (`node <root>/packages/notify/dist/main.js run`, the same environment), which runs or fails by its own lines. A stop requested during start SHALL end the process as a stop does, and a failure after `started`, such as a failed watch, SHALL NOT be handed over.
+When a step of the start before the `started` line fails, the Rust service SHALL, unless a stop was requested, log `handing over to the node service: <why>`, keep the lock held and replace its process with the node service (`node <root>/packages/notify/dist/main.js run`, the same environment), which runs or fails by its own lines. A stop requested during start SHALL end the process without a `stopping` line, and a failure after `started`, such as a failed watch, SHALL NOT be handed over.
 
 #### Scenario: The steps that hand over
 - **WHEN** creating the state directory, taking the lock (not a held lock), picking the backend, starting the follower or arming the engine from the state rows fails
@@ -272,16 +276,19 @@ When a step of the start before the `started` line fails, the Rust service SHALL
 - **THEN** the node service fails with its own line `the notify service stopped: <why>` and exit 1, the code launchd retries
 
 #### Scenario: The options directory cannot be watched
-- **WHEN** the watch on the options directory fails at start
+- **WHEN** the watch on the options directory fails at start, as when `plugins` is a regular file (`ENOTDIR`)
 - **THEN** the service logs `options watch failed <dir> <why>`, logs `started` and runs without a reload
 
 #### Scenario: A stop during a failing start
 - **WHEN** SIGTERM arrives while a step of the start fails
 - **THEN** the process writes no `stopping` line, releases the lock, exits 0 and does not start the node service
 
+### Requirement: When the watch ends
+The service SHALL stop as a signal stop does when its watch ends (a failed wait, or a failed re-arm of a file watch for a reason other than a missing file or a symlink), with the reason `watch failed: <why>` in the line `stopping (<reason>)`, and exit 1. The stop is written when the engine reads the end, after the post in flight and the wakes queued ahead of it.
+
 #### Scenario: The watch fails after start
-- **WHEN** the wait of the watch fails while a post is in flight
-- **THEN** the log has `stopping (watch failed: <why>)`, the post finishes, `drain failed <why>` follows when the drain fails, the lock and `events.on` are released, the service exits 1 and the node service is not started
+- **WHEN** the wait of the watch fails while a post is in flight and a wake is queued behind it
+- **THEN** the post finishes with its `notice` line, the queued wake is served, then the log has `stopping (watch failed: <why>)`, `drain failed <why>` follows when the drain fails, the lock and `events.on` are released, the service exits 1 and the node service is not started
 
 ### Requirement: The helper is called as the node service calls it
 A notice SHALL be posted by running `<app>/Contents/MacOS/tagents-notify post` with the notice as JSON on stdin and a withdrawal by `<app>/Contents/MacOS/tagents-notify withdraw <id>`, each with a deadline of 5 seconds after which the helper's process group is killed. Only `ok`, `shown`, `why` and `error` of the one JSON line answered are read, and an answer that is not that line is the node service's `unreadable output from the notification helper` error.

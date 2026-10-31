@@ -20,7 +20,7 @@ When `$TAGENTS_HOME/target/release/tagents-core` is an executable file of the ch
 - **THEN** the wrapper is written without it and `tagents-notify run` runs the node program (`tests/install.sh`)
 
 ### Requirement: The tagents-notify wrapper without a binary is the node wrapper
-With no executable binary of the checkout's version at install time the installer SHALL write the `tagents-notify` wrapper byte for byte as it wrote it before a native service existed, and every verb of `tagents-notify` other than `run` SHALL reach the node program in both cases.
+With no executable binary of the checkout's version at install time the installer SHALL write the `tagents-notify` wrapper with no line that names a binary, so that its one command is the `exec` of the node program with the wrapper's arguments, and every verb of `tagents-notify` other than `run` SHALL reach the node program in both cases.
 
 #### Scenario: No binary
 - **WHEN** the installer runs on a machine without the binary
