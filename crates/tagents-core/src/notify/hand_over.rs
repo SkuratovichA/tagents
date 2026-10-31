@@ -1,6 +1,6 @@
 //! A start that fails is handed to the node service: the order of what the Rust daemon does when a step before its `started` line fails.
 //!
-//! A stop that was requested wins: the process ends as a stop ends it (the follower closed, the lock released, exit 0, no `stopping` line, because that line belongs to a service that logged `started`) and nothing is exec'd. Otherwise the daemon says so, closes what the follower and the watches hold, keeps the lock held and replaces the process with the node service, which runs, or fails by its own lines. The exec keeps the pid, so the lock still names it, and the node service treats a lock held by its own pid as not held: there is no moment in which a manual `run` could take the lock and the node service find it held. The lock is released only on the paths that end the process.
+//! A stop that was requested wins: the process ends as a stop ends it (the follower closed, the lock released, exit 0, no `stopping` line, because that line belongs to a service that logged `started`) and nothing is exec'd. Otherwise the daemon says so, closes what the follower and the watches hold, keeps the lock held and replaces the process with the node service, which runs, or fails by its own lines. The exec keeps the pid, so the lock still names it, and the node service treats a lock held by its own pid as not held: there is no moment in which a manual `run` could take the lock and the node service find it held. The lock is released only on the paths that end the process. The `handing over to the node service:` line is written before the close because it states the intent of a close that can take long, so a stop that lands during the close still exits 0 without the exec, after that line.
 
 use std::{ffi::OsString, process::ExitCode};
 
@@ -40,7 +40,7 @@ impl Lock {
     }
 }
 
-/// What a failed start does, given `why` it failed. `close` closes the follower and the watches the start opened, and runs on every path; the process is replaced and this does not return, unless the node service could not be started or a stop was requested.
+/// What a failed start does, given `why` it failed. `close` closes the follower and the watches the start opened, and runs on every path; the process is replaced and this does not return, unless the node service could not be started or a stop was requested. A stop that lands during `close` is checked a second time: it exits 0 without the exec, after the `handing over to the node service:` line was written.
 pub fn hand_over(
     why: &str,
     stop: &Stop,

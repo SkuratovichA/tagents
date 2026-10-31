@@ -93,6 +93,7 @@ fn parse_line(text: &str) -> Option<(&str, Option<&str>)> {
     if !spaced || js::is_space(first) || started.contains('\n') {
         return None;
     }
+    // Changes no input after the trim above; kept because node's `m[2]?.trim()` (`packages/notify/src/service.ts:128`) follows `raw.trim()` (`:123`) the same way.
     Some((digits, Some(js::trim(started))))
 }
 
