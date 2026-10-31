@@ -19,6 +19,7 @@ export const en = {
     '  plugin new <name> [--dir D]',
     '  doctor',
     '  mcp --contract F   (Rust binary only)',
+    '  notify run   (Rust binary only)',
     '  <plugin> <command> [args]   a configured plugin’s own verb (plugin list names them)',
     '',
     'reserved: session · sessions · plugin · doctor · help — a core verb always wins',
@@ -70,4 +71,5 @@ export const en = {
   summaryPluginNew: 'scaffolds a package that is already a plugin',
   summaryDoctor: 'prints the node version, the state directory, the config file and whether claude is on PATH',
   summaryMcp: 'serves the tools of a contract file to an MCP client over stdin and stdout until the client closes them',
+  summaryNotifyRun: 'runs the notification service in this process until a signal stops it: it follows the event stream of the agents and posts a notice for each turn that ends, each question and each permission prompt',
 } as const;

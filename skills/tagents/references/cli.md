@@ -180,6 +180,16 @@ Usage: `tagents-core mcp --contract <contract>`
 |---|---|---|---|
 | `--contract` | string | yes | no |
 
+### notify run
+
+runs the notification service in this process until a signal stops it: it follows the event stream of the agents and posts a notice for each turn that ends, each question and each permission prompt
+
+CLI only: no tool runs this verb.
+
+Usage: `tagents-core notify run`
+
+This verb takes no flags.
+
 ## tagents-knowledge
 
 ### Exit codes

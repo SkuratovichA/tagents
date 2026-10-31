@@ -14,6 +14,7 @@ use tagents_spec::Spec;
 
 use crate::{
     mcp, node,
+    notify::service,
     sessions::{self, Output},
     transcripts::Context,
 };
@@ -41,8 +42,10 @@ const GROUPS: &[Group] = &[Group {
 
 /// The first word of the verb that serves a protocol on stdin and stdout until the client is gone: it streams, so it cannot be a `Group` (whose `run` answers with the whole of its output at once), and it has its own arm in `run`.
 const MCP: &str = "mcp";
+/// The verb that runs the notification service in this process until a signal stops it. It has an arm of its own because it runs until stopped, and it matches both words and nothing after them: the rest of `notify` (`install`, `status`, and a `run` with an argument) is the node CLI's.
+const NOTIFY_RUN: &[&str] = &["notify", "run"];
 /// The verbs served apart from the groups.
-const STREAMING: &[&[&str]] = &[&[MCP]];
+const STREAMING: &[&[&str]] = &[&[MCP], NOTIFY_RUN];
 
 /// The data-file entries of the verbs this binary implements, as JSON: what `--spec` prints.
 pub fn served_spec() -> Result<String, String> {
@@ -131,6 +134,9 @@ pub fn run(args: Vec<OsString>) -> ExitCode {
     let first = args.first().and_then(|first| first.to_str());
     if first == Some(MCP) {
         return mcp::run(&args[1..]);
+    }
+    if args.iter().eq(NOTIFY_RUN) {
+        return service::run();
     }
     let group = first.and_then(|first| GROUPS.iter().find(|g| g.word == first));
     match group {
