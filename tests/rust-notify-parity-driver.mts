@@ -217,11 +217,18 @@ interface Proc {
   status: string | undefined;
 }
 
+const launched: ChildProcessByStdio<null, Readable, Readable>[] = [];
+// A driver that dies on an error leaves no daemon behind: the shell's cleanup knows the pids of the last scenario only.
+process.on('exit', () => {
+  for (const child of launched) child.kill('SIGKILL');
+});
+
 /** The daemon, with the environment the driver has, in the root of the scratch, and its pid noted for the shell's cleanup. */
 function launch(command: readonly string[], root: string): Proc {
   const [program, ...args] = command;
   if (program === undefined) throw new Error('no daemon command');
   const child = spawn(program, args, { cwd: root, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+  launched.push(child);
   const err = new Lines();
   const out = new Lines();
   const proc: Proc = {
