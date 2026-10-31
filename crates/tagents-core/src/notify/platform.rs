@@ -6,27 +6,7 @@ use crate::node;
 use crate::notify::helper::{self, HelperNotifier};
 use crate::notify::log::Log;
 use crate::notify::notifier::{Notice, Notifier, PostResult};
-
-/// The values of the `backend` option (`z.enum(['auto', 'macos', 'log', 'none'])` of `options.ts`). The options module owns the option; this is the choice's own copy of its four words.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Backend {
-    Auto,
-    Macos,
-    Log,
-    None,
-}
-
-impl Backend {
-    pub fn parse(word: &str) -> Option<Backend> {
-        match word {
-            "auto" => Some(Backend::Auto),
-            "macos" => Some(Backend::Macos),
-            "log" => Some(Backend::Log),
-            "none" => Some(Backend::None),
-            _ => None,
-        }
-    }
-}
+use crate::notify::options::Backend;
 
 /// A chosen backend: its name, which the `started` line carries, and the notifier the engine posts through.
 pub struct Platform {

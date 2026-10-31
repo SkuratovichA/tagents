@@ -6,7 +6,7 @@
 //! - a post logs one line and reports it shown (log-notifier): `a_post_logs_one_line_and_reports_it_shown`
 //! - a withdraw logs one line with the id (log-notifier): `a_withdraw_logs_one_line_with_the_id`
 //!
-//! Cases the node files do not have: `the_log_line_of_a_post_is_node_s_word_for_word`, `the_helper_app_is_the_environment_s_or_the_application_support_copy`, `the_names_of_the_systems_are_node_s`, `the_backend_words_are_the_options_four`.
+//! Cases the node files do not have: `the_log_line_of_a_post_is_node_s_word_for_word`, `the_helper_app_is_the_environment_s_or_the_application_support_copy`, `the_names_of_the_systems_are_node_s`.
 
 use super::*;
 use crate::notify::kinds::NoticeKind;
@@ -172,13 +172,4 @@ fn the_names_of_the_systems_are_node_s() {
             "linux"
         }
     );
-}
-
-#[test]
-fn the_backend_words_are_the_options_four() {
-    assert_eq!(Backend::parse("auto"), Some(Backend::Auto));
-    assert_eq!(Backend::parse("macos"), Some(Backend::Macos));
-    assert_eq!(Backend::parse("log"), Some(Backend::Log));
-    assert_eq!(Backend::parse("none"), Some(Backend::None));
-    assert_eq!(Backend::parse("Log"), None);
 }
