@@ -157,7 +157,7 @@ A caller that must not lose a write does three things. It arms the watch and onl
 | run with backend none: exit 0, no lock left | `notify_service::backend_none_leaves_at_once_and_releases_the_lock`, and through the front door `a_verb_the_front_door_serves_is_not_forwarded` in `crates/tagents-core/tests/front_door.rs` |
 | run with an invalid options file: keeps running on the defaults, exit 0 at SIGTERM (macOS only) | `notify_service::an_invalid_options_file_keeps_the_service_running_on_the_defaults_until_sigterm` |
 
-`options.test.ts`: the ten cases that read and validate options are mapped by name in the header of `options::tests` (`crates/tagents-core/src/notify/options.rs:647`), and the eleventh, that the package exports the schema beside the type derived from it, is not applicable: it is a module export of a TypeScript package. None of the eleven is about the service or the verb.
+`options.test.ts`: the ten cases that read and validate options are mapped by name in the header of `options::tests` (`crates/tagents-core/src/notify/options.rs:675`), and the eleventh, that the package exports the schema beside the type derived from it, is not applicable: it is a module export of a TypeScript package. None of the eleven is about the service or the verb.
 
 ## Where the binary is looked for
 
