@@ -146,6 +146,7 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **`check:links` reads the sitemap the build wrote** — build with the site domain variable set as `site.yml` does, copy `docs/.vitepress/dist/.` into `site/dist/client/docs/`, then run the check (29.10.2026)
 - **A link check that looks only for a file passes on a made-up page** — the prerender wrote the not-found page for `/docs/`. Skip mount paths (`MOUNTS` in `site/build/links.ts`) and require `docs/index.html`; run the check once without the other tool's output (29.10.2026)
 - **`vitepress preview` after a rebuild serves an unstyled page** — restart the preview after each `pnpm docs:build` (25.10.2026)
+- **A plate that holds only greys turns the sprite drawn on it grey** — after `-colorize`, ImageMagick saved `site/src/mascot/source/plate.png` as grey and alpha, and every icon came out with a grey sprite. `writeIcons` converts the plate with `-colorspace sRGB`, and the plate is saved with `-define png:color-type=6` (31.10.2026)
 
 ## Test practice
 
