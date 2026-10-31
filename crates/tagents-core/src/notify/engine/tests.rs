@@ -286,6 +286,8 @@ struct FeedState {
     started_at: Vec<i64>,
     /// How many times a wake reached the feed.
     wakes: usize,
+    /// How many times the end of a grace reached the feed.
+    graces: usize,
     /// A follower is open: events emitted while none is open are lost, as the file's would be.
     open: bool,
     fail_follows: usize,
@@ -396,6 +398,11 @@ impl Feed for FakeFeed {
             errors: std::mem::take(&mut state.errors),
             death: state.death.take(),
         }
+    }
+
+    fn end_grace(&mut self, _now_ms: i64) -> Delivery {
+        self.state.borrow_mut().graces += 1;
+        Delivery::default()
     }
 
     fn due(&self) -> Option<i64> {
@@ -727,8 +734,12 @@ impl Rig {
         self.wake();
     }
 
+    /// `start`, and the first call of the loop after it, which runs what `start` left: an overdue deadline and the lines of the first read make `next_due` immediate, and the loop calls `tick` at once.
     fn start(&mut self) {
         self.engine.start().unwrap();
+        if self.engine.next_due() == Some(Duration::ZERO) {
+            self.engine.tick();
+        }
     }
 
     /// Deadlines that are armed.

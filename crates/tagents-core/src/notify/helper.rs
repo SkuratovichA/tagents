@@ -201,8 +201,8 @@ fn run_binary(
         Some(Err(text)) => Err(text),
         None => Err(format!(
             "unreadable output from the notification helper: stdout {}, stderr {}",
-            json::quote(&js::take16(&finished.stdout, 200)),
-            json::quote(&js::take16(&finished.stderr, 200))
+            json::quote_prefix16(&finished.stdout, 200),
+            json::quote_prefix16(&finished.stderr, 200)
         )),
     }
 }

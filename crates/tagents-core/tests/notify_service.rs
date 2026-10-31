@@ -13,7 +13,7 @@ use std::{
     path::PathBuf,
     process::{Child, Command, ExitStatus, Stdio},
     thread,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use rustix::process::{Pid, Signal, kill_process};
@@ -436,6 +436,42 @@ fn a_running_service_posts_a_notice_and_stops_on_sigterm() {
     );
     assert!(!fake.lock().exists(), "the lock is released");
     assert!(!fake.events_on(), "the stream is off");
+}
+
+/// The parity scenarios `rows: ...` and `locale: ...`: node's timer for a deadline that is overdue at start runs after the synchronous start, so `started` is the first line and the notice is the second.
+#[test]
+fn a_notice_that_is_due_at_start_is_logged_after_started() {
+    let fake = Fake::logging("service-due-at-start");
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    // at state sessionId cwd transcript detail
+    fs::write(
+        fake.state().join("12.tsv"),
+        format!("{}\tdone\tsess-1\t/tmp/x\t\t\n", now - 55 * 60),
+    )
+    .unwrap();
+    let mut running = fake.spawn();
+    assert!(
+        running.says("notice cache_expiring 12 "),
+        "{}",
+        running.log()
+    );
+    let lines = running.lines();
+    let at = |text: &str| {
+        lines
+            .iter()
+            .position(|line| line.starts_with(text))
+            .unwrap()
+    };
+    assert!(
+        at("started pid ") < at("notice cache_expiring 12 "),
+        "started comes before the notice that was due at start:\n{}",
+        running.log()
+    );
+    running.signal(Signal::TERM);
+    assert_eq!(running.exit().code(), Some(0));
 }
 
 #[test]

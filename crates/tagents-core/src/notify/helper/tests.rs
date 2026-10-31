@@ -9,7 +9,7 @@
 //! - status, delivered and authorize: not applicable: `helperStatus`, `helperDelivered` and `helperAuthorize` serve CLI verbs that stay node
 //! - authorize reports its own timeout in seconds: not applicable: `helperAuthorize` stays node; the seconds text of the daemon's calls is `a_timeout_names_the_seconds_and_kills_the_helper`
 //!
-//! Cases of the Rust copy that node's file does not have: the helper's input is `JSON.stringify` of the notice (`the_input_is_the_notice_with_node_keys_in_node_order`, `the_input_escapes_as_json_stringify_does`), the schema (`a_field_of_the_wrong_type_makes_the_line_unreadable`) and the exit code is not read (`the_exit_code_is_not_read`).
+//! Cases of the Rust copy that node's file does not have: the helper's input is `JSON.stringify` of the notice (`the_input_is_the_notice_with_node_keys_in_node_order`, `the_input_escapes_as_json_stringify_does`), the schema (`a_field_of_the_wrong_type_makes_the_line_unreadable`) the exit code is not read (`the_exit_code_is_not_read`) and the cut of the unreadable output that falls inside a surrogate pair (`a_cut_between_the_halves_of_a_pair_is_written_as_the_escape_of_the_high_half`).
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -185,6 +185,22 @@ fn unreadable_output_gives_stdout_and_stderr_cut_at_200_units() {
             .post(&notice())
             .unwrap_err(),
         "unreadable output from the notification helper: stdout \"\", stderr \"\""
+    );
+}
+
+/// The parity scenario `helper: emoji garbage, cut in half of a pair` (`tests/rust-notify-parity.sh`): node stringifies `stdout.slice(0, 200)`, a cut that can leave the high half of a pair, which `JSON.stringify` writes as an escape and never as U+FFFD.
+#[test]
+fn a_cut_between_the_halves_of_a_pair_is_written_as_the_escape_of_the_high_half() {
+    let app = App::new(
+        "printf 'a'; i=0; while [ $i -lt 100 ]; do printf '😀'; i=$((i+1)); done; echo b >&2",
+    );
+    let failed = HelperNotifier::new(&app.app()).post(&notice()).unwrap_err();
+    assert_eq!(
+        failed,
+        format!(
+            "unreadable output from the notification helper: stdout \"a{}\\ud83d\", stderr \"b\\n\"",
+            "😀".repeat(99)
+        )
     );
 }
 

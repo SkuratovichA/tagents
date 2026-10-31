@@ -308,6 +308,70 @@ fn the_errors_and_the_death_of_a_wake_are_logged_before_any_of_its_jobs_run() {
     );
 }
 
+/// The parity scenarios `rows: ...` and `locale: ...` (`tests/rust-notify-parity.sh`): node writes `started` before the notice of a deadline that is overdue at start, because its timer runs after the synchronous start.
+#[test]
+fn start_runs_no_job_an_overdue_deadline_waits_for_the_first_call_of_the_loop() {
+    let mut r = rig_with(Setup {
+        rows: vec![row_of("12", RowState::Done, T0 - 55.0 * MIN)],
+        ..Setup::default()
+    });
+    r.engine.start().unwrap();
+    assert!(r.notifier.ops().is_empty(), "no post inside start");
+    assert_eq!(r.armed(), 1);
+    assert_eq!(r.engine.next_due(), Some(Duration::ZERO));
+    r.engine.tick();
+    assert_eq!(r.notifier.kinds(), ["cache_expiring"]);
+    assert_eq!(r.armed(), 0);
+}
+
+#[test]
+fn what_the_first_read_found_waits_for_the_first_call_of_the_loop_too() {
+    let mut r = rig();
+    r.feed.state.borrow_mut().on_start = vec![r.now(), r.now().on(H::UserPromptSubmit)];
+    r.engine.start().unwrap();
+    assert!(r.notifier.ops().is_empty(), "no post inside start");
+    assert_eq!(r.engine.next_due(), Some(Duration::ZERO));
+    r.engine.tick();
+    assert_eq!(r.notifier.ops(), ["post", "withdraw"]);
+    assert_eq!(r.engine.next_due(), None);
+}
+
+/// The parity scenario `events: a second rotation replaces the first file`: node's grace timer reads the old file and nothing else, so a followed file that is full waits for the next wake of the watch to be rotated.
+#[test]
+fn a_tick_reads_no_line_where_a_wake_reads_the_file() {
+    let mut r = rig();
+    r.start();
+    r.feed.emit(r.now());
+    r.engine.tick();
+    assert_eq!(
+        r.feed.state.borrow().wakes,
+        0,
+        "the tick did not read the file"
+    );
+    assert_eq!(r.feed.state.borrow().graces, 1, "the tick ended the grace");
+    assert!(r.notifier.ops().is_empty(), "the line waits for the watch");
+    r.wake();
+    assert_eq!(r.feed.state.borrow().wakes, 1);
+    assert_eq!(
+        r.feed.state.borrow().graces,
+        1,
+        "a wake is not the end of a grace"
+    );
+    assert_eq!(r.notifier.kinds(), ["turn_done"]);
+}
+
+#[test]
+fn a_tick_follows_a_dead_follower_again_when_its_time_has_come() {
+    let mut r = rig();
+    r.start();
+    r.kill("the watch failed");
+    assert_eq!(r.feed.followers(), 1);
+    r.clock.advance(1000.0);
+    r.engine.tick();
+    assert_eq!(r.feed.followers(), 2);
+    assert_eq!(r.engine.next_due(), None);
+}
+
 #[test]
 fn what_the_first_read_of_a_follow_found_appended_meanwhile_is_handled_by_start() {
     let mut r = rig();

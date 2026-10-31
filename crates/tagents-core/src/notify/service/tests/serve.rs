@@ -69,6 +69,10 @@ impl Feed for Stubborn<'_> {
         self.0.wake(now_ms)
     }
 
+    fn end_grace(&mut self, now_ms: i64) -> Delivery {
+        self.0.end_grace(now_ms)
+    }
+
     fn due(&self) -> Option<i64> {
         self.0.due()
     }

@@ -561,6 +561,65 @@ fn the_call_that_ends_the_grace_reads_the_old_file_before_the_fresh_one() {
     assert_eq!(texts(&rig.wake(&mut follower, 2000)), ["late", "newer"]);
 }
 
+/// The parity scenario `events: a second rotation replaces the first file`: node's grace timer (`finishOld`) reads the old file and closes it and never drains the followed file, so a followed file that filled up inside the grace is rotated by the next wake of the watch and not at the end of the grace.
+#[test]
+fn the_end_of_the_grace_reads_the_old_file_only_and_a_full_file_is_rotated_by_the_next_wake() {
+    let rig = Rig::new();
+    let mut follower = rig.start_rotating(200);
+    let mut hook = OpenOptions::new().append(true).open(&rig.file).unwrap();
+    let fill = || -> String { (0..5).map(|i| line(&format!("fill{i}"))).collect() };
+    append(&rig.file, fill());
+    assert_eq!(rig.wake(&mut follower, 1000).events.len(), 5);
+    assert_eq!(follower.due(), Some(3000), "the first rotation");
+    // The fresh file fills up inside the grace: no second rotation while the grace is pending.
+    append(&rig.file, fill());
+    assert_eq!(rig.wake(&mut follower, 1500).events.len(), 5);
+    assert_eq!(follower.due(), Some(3000));
+    hook.write_all(line("late, on the old file").as_bytes())
+        .unwrap();
+    append(&rig.file, line("waits for a wake"));
+
+    assert_eq!(
+        follower.end_grace(2999),
+        Delivery::default(),
+        "one millisecond early"
+    );
+    assert_eq!(follower.due(), Some(3000));
+    assert_eq!(
+        texts(&follower.end_grace(3000)),
+        ["late, on the old file"],
+        "the old file and nothing of the followed one"
+    );
+    assert_eq!(
+        follower.due(),
+        None,
+        "the followed file is full and is not rotated at the end of the grace"
+    );
+    assert_eq!(follower.end_grace(3001), Delivery::default());
+
+    assert_eq!(texts(&rig.wake(&mut follower, 3002)), ["waits for a wake"]);
+    assert_eq!(
+        follower.due(),
+        Some(5002),
+        "the wake of the watch rotated the full file"
+    );
+}
+
+#[test]
+fn the_end_of_the_grace_of_a_follower_that_is_closed_or_has_no_grace_finds_nothing() {
+    let rig = Rig::new();
+    let mut follower = rig.start();
+    append(&rig.file, line("a line"));
+    assert_eq!(
+        follower.end_grace(0),
+        Delivery::default(),
+        "no grace and a line in the file: the end of a grace does not read it"
+    );
+    assert_eq!(texts(&rig.wake(&mut follower, 0)), ["a line"]);
+    assert_eq!(follower.close(), None);
+    assert_eq!(follower.end_grace(10_000), Delivery::default());
+}
+
 #[test]
 fn a_rotation_that_cannot_rename_is_reported_and_the_follower_goes_on() {
     let rig = Rig::new();

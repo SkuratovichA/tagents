@@ -8,7 +8,9 @@
 //! This parser takes exactly the grammar of ECMA-404 and keeps no number but its truthiness, which is all `isMeta` needs.
 //! It keeps its own stack of open containers, so nesting costs heap, not call frames.
 //!
-//! `quote` is the other direction for one string: `JSON.stringify(text)`, which the daemon writes into the helper's input, into its log lines and into the text of a problem.
+//! `quote` is the other direction for one string: `JSON.stringify(text)`, which the daemon writes into the helper's input, into its log lines and into the text of a problem. `quote_prefix16` is `JSON.stringify(text.slice(0, n))`, whose cut can leave half of a surrogate pair that only an escape can write.
+
+use crate::js;
 
 /// A parsed value. A lone surrogate escape reads as U+FFFD, which is how stdout would write it.
 #[derive(Debug, Clone, PartialEq)]
@@ -79,6 +81,17 @@ enum Open {
 /// `JSON.stringify(text)` of a string: a quote, a backslash, `\b \f \n \r \t`, any other control character as lowercase `\u00xx`, and U+2028, U+2029 and everything above ASCII raw, which the tests pin against V8.
 pub fn quote(text: &str) -> String {
     serde_json::Value::String(text.to_owned()).to_string()
+}
+
+/// `JSON.stringify(text.slice(0, n))`, with `n` in UTF-16 units. A cut between the two halves of a surrogate pair leaves the high half alone, which `JSON.stringify` writes as the escape `\ud83d`, where text written raw would show U+FFFD.
+pub fn quote_prefix16(text: &str, n: usize) -> String {
+    let (head, lone) = js::split16(text, n);
+    let mut out = quote(&head);
+    if let Some(unit) = lone {
+        out.pop();
+        out.push_str(&format!("\\u{unit:04x}\""));
+    }
+    out
 }
 
 /// `JSON.parse(text)`, or `None` where it would throw.
@@ -318,6 +331,16 @@ mod tests {
             quote(text),
             "\"a\\\"\\\\\\n\\t\\u001f\u{2028}\u{2029}\u{e9}\\b\\f\\r\u{7f}\\u0000\""
         );
+    }
+
+    /// The expected text is what `node -e 'JSON.stringify("a😀b".slice(0, 2))'` printed (31.10.2026): the high half of the pair as `\ud83d`.
+    #[test]
+    fn quote_prefix16_writes_the_high_half_of_a_cut_pair_as_an_escape() {
+        assert_eq!(quote_prefix16("a😀b", 2), "\"a\\ud83d\"");
+        assert_eq!(quote_prefix16("a😀b", 3), "\"a😀\"");
+        assert_eq!(quote_prefix16("a\n😀", 2), "\"a\\n\"");
+        assert_eq!(quote_prefix16("abc", 10), "\"abc\"");
+        assert_eq!(quote_prefix16("😀", 0), "\"\"");
     }
 
     #[test]
