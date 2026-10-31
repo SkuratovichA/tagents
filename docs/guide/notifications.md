@@ -51,6 +51,14 @@ macOS leaves the choice of Alert Style to you. When it is Temporary, `install` a
 macOS may announce a new background item in System Settings → General → Login Items & Extensions. It must stay allowed or launchd will not start the service.
 :::
 
+### Which program runs the service
+
+The LaunchAgent starts `~/.local/bin/tagents-notify run`, the command `install.sh` wrote, when that command is on the `PATH` of the shell that ran `tagents notify install` and runs this copy of tagents. Otherwise it starts node on `packages/notify/dist/main.js run` itself. The command decides at each start: when the prebuilt Rust binary of this version is on the machine it runs `tagents-core notify run`, and with no binary, or one that is gone or not executable by then, it runs the node program. Only the call `tagents-notify run` goes to the binary; `install`, `uninstall`, `status`, `test` and `send` are always the node program's. Both programs are the same service: the same options file, the same lock, the same notices.
+
+A binary the daily update removes (its version has no release yet) leaves the next start of the service on node, and the plist is not rewritten. A service that is already running keeps the program it started with: installing the binary does not restart it, and `tagents notify install` or the next login does.
+
+To see which program runs, take the pid from the `service:` line of `tagents notify status` and run `footprint <pid>`: it names the process, `tagents-core` for the binary and `node` for the node program.
+
 ## Clicking a notice
 
 What a click does is the `click` option:
@@ -84,7 +92,7 @@ session_end    = { enabled = false, skip_visible = true }
 - **Durations** are `<n>s|m|h`, combined like `1h30m`, or a bare number of seconds. `after` must be below `ttl`.
 - **`skip_visible`**: when the agent's tmux pane is in some client's current window and that terminal is the frontmost app, the notice is dropped.
 - **Reloading**: the file is reloaded when it changes, so there is nothing to restart. An invalid file is logged once per problem and the engine runs on the defaults; `tagents notify status` prints the problems.
-- **Symlinked config directories** work in full, such as `~/.config/tagents` pointing into a dotfiles repository. A `notify.toml` that is itself a symlink is seen only when the link is replaced, not when its target is edited.
+- **Symlinked config directories** work in full, such as `~/.config/tagents` pointing into a dotfiles repository. A `notify.toml` that is itself a symlink is reloaded when the link is replaced; an edit of its target does not cause a reload by itself and takes effect at the next event of any name in the options directory.
 
 ### The icon
 
@@ -102,10 +110,10 @@ session_end    = { enabled = false, skip_visible = true }
 |---------|--------------|
 | `tagents notify install` | builds the app if stale, asks for permission, writes and starts the LaunchAgent, waits up to 5 s for it to run, prints the status and the steps. Exits 1, naming the cause, when the permission is not `authorized`, the options file is invalid, or the service is not running |
 | `tagents notify uninstall [--purge]` | boots the service out, deletes the plist and switches the event stream off; `--purge` deletes the app too |
-| `tagents notify status` | platform, backend, app (up to date, stale or missing), icon, permission and alert style, the script a click runs, the LaunchAgent, the stream, the options file and its problems, the service's memory |
+| `tagents notify status` | platform, backend, app (up to date, stale or missing), icon, permission and alert style, the script a click runs, the LaunchAgent, the stream, the options file and its problems, the service's pid and memory |
 | `tagents notify test [--kind <kind>]` | posts one sample notice now; a click docks `$TMUX_PANE` when it is set |
 | `tagents notify send [--title <text>] <message…>` | posts a notice with this message now, through the configured backend, ignoring the per-kind switches and `skip_visible`; the title defaults to `tagents`, and a click docks `$TMUX_PANE` when it is set. This is what the `notify_send` tool of the [plugin](./claude-code-plugin) runs |
-| `tagents notify run` | the engine in the foreground until it is stopped. This is what the LaunchAgent runs |
+| `tagents notify run` | the engine in the foreground until it is stopped. The LaunchAgent runs it through `tagents-notify run` ([which program runs the service](#which-program-runs-the-service)) |
 
 ## Troubleshooting
 
@@ -121,13 +129,15 @@ Each click shows the command it ran, the app it raised, the child's exit status 
 
 ## What it costs
 
-No polling. The service watches the state directory and the options directory with `fs.watch` and keeps at most two timers. Measured on an Apple M4 Pro with macOS 26.7.1, idle:
+No polling. The node program watches the state directory and the options directory with `fs.watch` and keeps at most two timers; the binary watches the same two directories with the kernel's own file events. Measured on an Apple M4 Pro with macOS 26.7.1, idle, with the node program:
 
 | | |
 |--|--|
 | resident memory | 22.5 MiB (about 60 MiB right after start, before the heap settles) |
 | CPU | 0.005 % |
 | one notice, event to helper exited | 67 ms (median of three) |
+
+The binary, idle on the same state beside the node program, has a footprint (`footprint <pid>`) of 1.3 MB against node's 22 MB, and reaches its `started` line 5.4 ms after it is spawned against 72 ms for node (median of ten starts each; [the measurement](../architecture/rust-core#rules-for-the-rust-code)).
 
 ## For developers
 

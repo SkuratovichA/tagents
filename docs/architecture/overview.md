@@ -19,7 +19,7 @@ tagents is a bash dashboard plus a small family of TypeScript packages. This pag
 | `packages/core/` | `@tagents/core`, the TypeScript package for **headless** sessions |
 | `packages/knowledge/` | [`@tagents/knowledge`](https://github.com/SkuratovichA/tagents/blob/main/packages/knowledge/README.md), your notes as markdown documents with an FTS5 index, a `tagents-knowledge` CLI and an MCP server |
 | `packages/telegram/` | [`@tagents/telegram`](https://github.com/SkuratovichA/tagents/blob/main/packages/telegram/README.md), the Telegram Bot API typed and small: one client for every plugin that has a bot token |
-| `packages/notify/` | [`@tagents/notify`](https://github.com/SkuratovichA/tagents/blob/main/packages/notify/README.md), desktop notifications, see [Notifications](../guide/notifications) |
+| `packages/notify/` | [`@tagents/notify`](https://github.com/SkuratovichA/tagents/blob/main/packages/notify/README.md), desktop notifications, see [Notifications](../guide/notifications). Its service runs in the prebuilt Rust binary (`tagents-core notify run`, see [the Rust core](./rust-core)) when the installer has put one on the machine, and in a node process otherwise; Notifications says [how to see which one is running](../guide/notifications#which-program-runs-the-service) |
 | `packages/contract/` | `@tagents/contract`, private: generates the contract of the [Claude Code plugin](../guide/claude-code-plugin) from the code and moves the plugin's version |
 | `.claude-plugin/`, `skills/tagents/`, `contract.json` | the plugin: its manifest, its skill, and the contract generated from the code |
 | `openspec/` | the [specs](../development#specs): what every part of tagents does, one capability per spec, and the changes proposed against them |
