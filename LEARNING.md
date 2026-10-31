@@ -203,6 +203,9 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **A machine that sleeps mid-run voids the run** — the timings were wrong and the suite failed or passed by accident. Compare the wall time with the usual one, read `pmset -g log`, and run under `caffeinate -i` (31.10.2026)
 - **A tripwire tied to "the last scenario run" fails under `PARITY_ONLY`** — the scenario it watched never ran. Put per-document pins inside the helper that runs the document (31.10.2026)
 - **A mutating `sed` can change nothing or too much, and the run is green anyway** — check `git diff --stat` after it before trusting a green run (31.10.2026)
+- **`rust:1` is Debian trixie now, and its binary needs GLIBC_2.39** — the node:22-bookworm-slim run refused it. Build in `rust:1-bookworm` for a bookworm run (31.10.2026).
+- **A mutation that survives the parity suite means a scenario is missing** — the suite was green with the option order, the lock, the stop, the events cut and a helper field broken one at a time until each got its own scenario. Mutate before calling a suite complete (31.10.2026).
+- **The slim Linux image has no `/bin/ps`** — the lock's start time and the driver's first look use it, and the run failed for that, not for the daemon. Install `procps` before the Linux parity run (31.10.2026).
 
 ## Other
 
