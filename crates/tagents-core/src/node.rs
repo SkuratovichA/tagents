@@ -3,9 +3,18 @@
 //! The node CLI works on strings, so a path with bytes that are not UTF-8 reaches the kernel as another path.
 //! Paths here are strings as well, which keeps the two programs looking at the same files.
 
-use std::{fs, io, os::unix::fs::MetadataExt};
+use std::{
+    ffi::OsString,
+    fs, io,
+    os::unix::{fs::MetadataExt, process::CommandExt},
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use crate::js;
+
+/// The node binary the wrapper `install.sh` writes pinned, or `node` on `PATH`.
+const NODE_ENV: &str = "TAGENTS_NODE";
 
 /// `os.homedir()`: `$HOME` when it is set, empty or not, else the passwd entry.
 pub fn homedir() -> String {
@@ -142,6 +151,77 @@ pub fn io_message(err: &io::Error, syscall: &str, path: Option<&str>) -> String 
     }
 }
 
+/// `isExecutableFile`: a regular file this process may execute, a symlink followed. Answered by looking, never by running it.
+fn is_executable_file(file: &str) -> bool {
+    rustix::fs::access(file, rustix::fs::Access::EXEC_OK).is_ok()
+        && fs::metadata(file).is_ok_and(|meta| meta.is_file())
+}
+
+/// `findOnPath`: the first `name` on `path_var` (the value of `PATH`) that is an executable file, as found, the one a shell would pick.
+pub fn find_on_path(name: &str, path_var: &str) -> Option<String> {
+    path_var
+        .split(':')
+        .filter(|dir| !dir.is_empty())
+        .map(|dir| join(dir, name))
+        .find(|file| is_executable_file(file))
+}
+
+/// The root this binary belongs to: `<root>/target/{release,debug}/tagents-core` lives two directories below it. The error is why there was none.
+pub fn root() -> Result<PathBuf, String> {
+    let exe = std::env::current_exe()
+        .and_then(|exe| exe.canonicalize())
+        .map_err(|e| format!("cannot tell where this binary is: {e}"))?;
+    root_of(&exe)
+}
+
+fn root_of(exe: &Path) -> Result<PathBuf, String> {
+    exe.ancestors()
+        .nth(3)
+        .map(Path::to_path_buf)
+        .ok_or_else(|| {
+            format!(
+                "{} is too close to the root of the file system",
+                exe.display()
+            )
+        })
+}
+
+/// A node program that belongs to this binary, `relative` to its root. The error is the path that was looked at, or why there was none.
+pub fn program(relative: &str) -> Result<PathBuf, String> {
+    program_in(&root()?, relative)
+}
+
+fn program_in(root: &Path, relative: &str) -> Result<PathBuf, String> {
+    let program = root.join(relative);
+    if program.is_file() {
+        Ok(program)
+    } else {
+        Err(format!("{} is not a file", program.display()))
+    }
+}
+
+/// Why `exec` could not replace the process. Nothing is printed: the caller words it and chooses the exit code.
+#[derive(Debug)]
+pub enum ExecFailure {
+    /// The program is not a file below the root: what `program` said.
+    Missing(String),
+    /// The node binary could not be run, with the error the system gave for it.
+    Run { node: OsString, err: io::Error },
+}
+
+/// Replace this process with the node program at `relative` below the root, given `args`, in the same environment. Only returns when that could not be done, and then with SIGPIPE at its default, as std's `Command::exec` leaves it: a caller that goes on writes to a closed pipe at its own risk, and a test never calls this with a program that fails (the front door's process test does).
+pub fn exec(relative: &str, args: &[OsString]) -> ExecFailure {
+    let program = match program(relative) {
+        Ok(program) => program,
+        Err(why) => return ExecFailure::Missing(why),
+    };
+    let node = std::env::var_os(NODE_ENV)
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| OsString::from("node"));
+    let err = Command::new(&node).arg(program).args(args).exec();
+    ExecFailure::Run { node, err }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,5 +261,81 @@ mod tests {
         ] {
             assert_eq!(join(base, name), want, "{base:?} + {name:?}");
         }
+    }
+
+    /// A scratch directory holding `files` as (name, mode) pairs, each with a body that makes it a file.
+    fn bin_dir(tag: &str, files: &[(&str, u32)]) -> String {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("tagents-node-{tag}-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        for (name, mode) in files {
+            let file = dir.join(name);
+            fs::write(&file, "#!/bin/sh\n").unwrap();
+            fs::set_permissions(&file, fs::Permissions::from_mode(*mode)).unwrap();
+        }
+        dir.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn the_first_executable_file_on_the_path_is_found_as_it_is_named() {
+        let first = bin_dir("first", &[("tagents", 0o644), ("other", 0o755)]);
+        let second = bin_dir("second", &[("tagents", 0o755)]);
+        let third = bin_dir("third", &[("tagents", 0o755)]);
+        // A directory of that name and a file that cannot be run are skipped, empty entries and missing directories too.
+        fs::create_dir_all(format!("{second}/dir-tagents")).unwrap();
+        let path_var = format!(":{first}::/no/such/dir:{second}:{third}");
+        assert_eq!(
+            find_on_path("tagents", &path_var),
+            Some(format!("{second}/tagents"))
+        );
+        assert_eq!(
+            find_on_path("other", &path_var),
+            Some(format!("{first}/other"))
+        );
+        assert_eq!(find_on_path("dir-tagents", &path_var), None);
+        assert_eq!(find_on_path("tagents", ""), None);
+        // A symlink is a file, and the path is the symlink, not what it points to.
+        std::os::unix::fs::symlink(format!("{third}/tagents"), format!("{first}/linked")).unwrap();
+        assert_eq!(
+            find_on_path("linked", &first),
+            Some(format!("{first}/linked"))
+        );
+        for dir in [first, second, third] {
+            fs::remove_dir_all(dir).unwrap();
+        }
+    }
+
+    #[test]
+    fn the_root_is_three_levels_above_the_binary() {
+        assert_eq!(
+            root_of(Path::new("/work/tagents/target/debug/tagents-core")).unwrap(),
+            Path::new("/work/tagents")
+        );
+        let why = root_of(Path::new("/target/tagents-core")).unwrap_err();
+        assert_eq!(
+            why,
+            "/target/tagents-core is too close to the root of the file system"
+        );
+    }
+
+    #[test]
+    fn a_program_is_a_file_below_the_root_or_the_path_that_is_not() {
+        let dir = std::env::temp_dir().join(format!("tagents-node-test-{}", std::process::id()));
+        fs::create_dir_all(dir.join("packages")).unwrap();
+        fs::write(dir.join("packages/main.js"), "").unwrap();
+        assert_eq!(
+            program_in(&dir, "packages/main.js").unwrap(),
+            dir.join("packages/main.js")
+        );
+        // A directory is not a program either.
+        assert_eq!(
+            program_in(&dir, "packages").unwrap_err(),
+            format!("{} is not a file", dir.join("packages").display())
+        );
+        assert_eq!(
+            program_in(&dir, "packages/other.js").unwrap_err(),
+            format!("{} is not a file", dir.join("packages/other.js").display())
+        );
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

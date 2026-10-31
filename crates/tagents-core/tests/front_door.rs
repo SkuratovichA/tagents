@@ -404,12 +404,18 @@ fn a_verb_the_front_door_serves_is_not_forwarded() {
     let checkout = Checkout::new("served-not-forwarded");
     let home = checkout.root.join("home");
     fs::create_dir_all(&home).unwrap();
+    // `notify run` serves until a signal, unless there is nothing to post: the options of this checkout say so.
+    let config = checkout.root.join("config");
+    fs::create_dir_all(config.join("plugins")).unwrap();
+    fs::write(config.join("plugins/notify.toml"), "backend = \"none\"\n").unwrap();
     // Every verb the data file gives to Rust, run without its arguments: each answers on its own, and the stub node never runs.
     for command in data_file().served_by(Implementation::Rust) {
         let out = run(checkout
             .command()
             .env("HOME", &home)
             .env("CLAUDE_HOMES", home.join(".claude"))
+            .env("TAGENTS_CONFIG_DIR", &config)
+            .env("TA_STATE_DIR", checkout.root.join("state"))
             .args(&command.path));
         assert!(out.status.code().is_some(), "{:?}", command.path);
         assert!(

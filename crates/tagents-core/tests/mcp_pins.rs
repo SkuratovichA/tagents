@@ -147,14 +147,16 @@ fn the_core_program_of_the_contract_is_the_one_the_spec_describes() {
         assert!(!got.requires_tmux, "{at}: requires");
         assert!(got.tool_defaults.is_empty(), "{at}: toolDefaults");
     }
+    let serving: Vec<String> = program
+        .commands
+        .iter()
+        .filter(|c| c.effect == Some(Effect::Serve))
+        .map(|c| c.path.join(" "))
+        .collect();
     assert_eq!(
-        program
-            .commands
-            .iter()
-            .filter(|c| c.effect == Some(Effect::Serve))
-            .count(),
-        1,
-        "mcp is the one verb that serves"
+        serving,
+        ["mcp", "notify run"],
+        "the verbs that serve are the MCP server and the notify service"
     );
 }
 
