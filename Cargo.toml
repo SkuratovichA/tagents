@@ -20,7 +20,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision"] }
 # rustix signals a process group, waits on a child without reaping it, asks a pipe whether it is readable without reading it (`poll`, feature `event`), in safe code (child, mcp::run). `fs` is inotify and the symlink-safe open of the file watch, `pipe` is its wake pipe (watch), `system` is `uname`, whose node name is the host name a notice carries (notify::service). Its `waitid` with NOWAIT, `kill_process_group` and `poll` exist on aarch64-apple-darwin, x86_64-apple-darwin and x86_64-unknown-linux-musl, so `nix` is not needed.
 rustix = { version = "1", default-features = false, features = ["std", "process", "event", "fs", "pipe", "system"] }
-# signal-hook turns SIGTERM, SIGINT and SIGHUP into a stream of values read on a thread of its own, so no handler runs arbitrary code (ending, mcp::server); node::exec also uses it to catch SIGPIPE again after a failed exec, with a handler that only sets a flag.
+# signal-hook turns SIGTERM, SIGINT and SIGHUP into a stream of values read on a thread of its own, so no handler runs arbitrary code (ending); node::exec also uses it to catch SIGPIPE again after a failed exec, with a handler that only sets a flag.
 signal-hook = "0.4"
 # kqueue is the macOS half of the file watch (watch::macos), a macOS-only target dependency of tagents-core. `rustix` declares `kevent` unsafe and the workspace forbids `unsafe`, and the crate's own call sites are safe, so it is the one place kqueue is spoken. It brings `kqueue-sys` and `libc` and nothing else that the tree lacks.
 kqueue = "1.2"
