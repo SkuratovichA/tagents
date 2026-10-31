@@ -17,7 +17,7 @@ Run `rustup toolchain install` in the clone to install the Rust toolchain that `
 
 ## Tests
 
-Run the suites of the part you changed before you open a pull request: [the TypeScript packages, the bash suites](docs/development.md#running-the-tests) and [the Rust crates](docs/development.md#the-rust-crates). CI runs `pnpm plugin:check`, `pnpm spec:check` and `claude plugin validate` (`ci.yml`), and the Rust lanes, the two parity suites, the version gate, `tests/release.sh` and `tests/install.sh` (`rust.yml`). The TypeScript tests (`pnpm test`) and the tmux suites run only on your machine.
+Run the suites of the part you changed before you open a pull request: [the TypeScript packages, the bash suites](docs/development.md#running-the-tests) and [the Rust crates](docs/development.md#the-rust-crates). CI runs `pnpm plugin:check`, `pnpm spec:check`, `claude plugin validate` and a check that every action is pinned by commit SHA (`ci.yml`); the Rust lanes, the two parity suites, the version gate, `tests/release.sh` and `tests/install.sh` (`rust.yml`); and, for a change under `site/` or `docs/`, to the README or to `package.json`, the site's lint, typecheck, tests and build, the docs build and a link check (`site.yml`). The tests of `packages/` (`pnpm test`) and the tmux suites run only on your machine.
 
 ## Releases
 
@@ -31,6 +31,6 @@ What tagents does is specified in `openspec/specs/`. A change that alters behavi
 
 ## Commits and pull requests
 
-Commits are conventional commits with a scope when one fits, and a short sentence in the subject that says what is true afterwards, not what was done: `fix(tusage): a moved transcript is the same file wherever Claude Code moves it`, `feat(core): tagents-core mcp, the plugin's MCP server in Rust`. The common types are `feat`, `fix`, `docs`, `test`, `refactor` and `ci`; a breaking change is marked with `!`. Pull requests are squash-merged and the title is the squashed subject with the pull request number after it, so write the title the same way.
+Commits are conventional commits with a scope when one fits, and a short sentence in the subject that says what is true afterwards, not what was done: `fix(tusage): a moved transcript is the same file wherever Claude Code moves it`, `feat(core): tagents-core mcp, the plugin's MCP server in Rust`. The common types are `feat`, `fix`, `docs`, `test`, `refactor`, `ci` and `chore`; a breaking change is marked with `!`. Pull requests are squash-merged and the title is the squashed subject with the pull request number after it, so write the title the same way.
 
 Fill in the pull request template. Report a security problem as [SECURITY.md](SECURITY.md) says, not in a public issue.

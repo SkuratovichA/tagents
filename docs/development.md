@@ -81,7 +81,7 @@ The other suites in `tests/` are named after the part they cover.
 What tagents does is written down in [OpenSpec](https://github.com/Fission-AI/OpenSpec) specs under `openspec/specs/`, one capability per spec: the list, the keys, docking, the refresher, the agent-state hook, notes, usage, resurrect, configuration, the headless sessions, the plugin system and each package.
 
 - They describe behaviour someone can observe: keys, verbs, flags, exit codes, config keys, and the files and tmux options other parts read. They do not describe how the code gets there.
-- There is no dated log of work: the history stays in git, and [`CHANGELOG.md`](https://github.com/SkuratovichA/tagents/blob/main/CHANGELOG.md) lists only what each release of `tagents-core` contains.
+- There is no dated log of work: the history stays in git, and [`CHANGELOG.md`](https://github.com/SkuratovichA/tagents/blob/main/CHANGELOG.md) lists what each release of `tagents-core` contains and what `main` holds beyond the last one.
 
 A change starts as a proposal under `openspec/changes/<name>/`: why, what changes, the tasks, and the spec deltas it makes. It is archived into the specs once it has landed. In a Claude Code session in this repository the `/opsx:propose`, `/opsx:apply` and `/opsx:archive` commands drive that. From a shell, the CLI is a pinned dev dependency:
 
