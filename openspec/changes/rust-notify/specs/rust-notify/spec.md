@@ -46,7 +46,7 @@ The service SHALL take `notify.lock` in the state directory in the node service'
 - **THEN** the stop leaves it in place
 
 ### Requirement: A signal ends the service as it ends the node service
-The service SHALL register SIGTERM, SIGINT and SIGHUP before it does anything else, so that a signal during start is acted on when start settles and the first signal wins. A stop SHALL log `stopping (<signal name>)` from the thread that receives the signal, before anything else of the stop, let a post in flight finish, drop what is queued behind it, remove `events.on`, release the lock last and exit 0.
+The service SHALL register SIGTERM, SIGINT and SIGHUP before it does anything else, so that a signal during start is acted on when start settles and the first signal wins. A stop SHALL log `stopping (<signal name>)` before anything else of the stop (for a signal that comes during start, after `started`, and not at all when the start fails), let a post in flight finish, drop what is queued behind it, remove `events.on`, release the lock last and exit 0.
 
 #### Scenario: A signal during a post
 - **WHEN** SIGTERM arrives while the helper is posting a notice
@@ -61,8 +61,8 @@ The service SHALL register SIGTERM, SIGINT and SIGHUP before it does anything el
 - **THEN** the line is `stopping (SIGINT)` or `stopping (SIGHUP)`
 
 #### Scenario: A signal during start
-- **WHEN** SIGTERM arrives before the service has logged `started`
-- **THEN** start settles, the service stops and exits 0
+- **WHEN** SIGTERM arrives before the service has logged `started` and the start succeeds
+- **THEN** the log has `started` and after it `stopping (SIGTERM)`, in that order, and the service exits 0 with neither the lock nor `events.on` left
 
 #### Scenario: A deliberate exit
 - **WHEN** the backend is `none`, or the operating system has no backend
@@ -85,7 +85,7 @@ The service SHALL write to stderr the lines listed below, as `<ISO time with mil
 
 #### Scenario: The lines of a start and a stop
 - **WHEN** the service starts, finds a lock held, has no backend, or stops
-- **THEN** its lines are `started pid <n> backend <name> options <file> (found|not found|invalid)`, `another notify service holds <file> (pid <n>); exiting`, `backend none: nothing to post; exiting`, `no notification backend for <os> yet; exiting`, `stopping (<signal name>)`, `could not release the lock <file> <why>` and `drain failed <why>`
+- **THEN** its lines are `started pid <n> backend <name> options <file> (found|not found|invalid)`, `another notify service holds <file> (pid <n>); exiting`, `backend none: nothing to post; exiting`, `no notification backend for <os> yet; exiting`, `stopping (<reason>)` where the reason is a signal's name or `watch failed: <why>`, `could not release the lock <file> <why>` and `drain failed <why>`
 
 #### Scenario: The lines of the options
 - **WHEN** the options are read, reloaded or cannot be watched
@@ -146,7 +146,7 @@ The service SHALL learn of a change to the events file and to the options direct
 - **THEN** the read that follows the arming handles it
 
 ### Requirement: The watch does not follow a symlink
-An options file that is a symlink SHALL be noticed when the link is replaced and SHALL NOT be noticed when its target is edited. The options directory SHALL be watched by its real path, so a config directory that is a symlink into a dotfiles repository works.
+An options file that is a symlink SHALL be noticed when the link is replaced, and an edit of its target SHALL NOT by itself cause a reload: it takes effect at the next reload. The options directory SHALL be watched by its real path, so a config directory that is a symlink into a dotfiles repository works.
 
 #### Scenario: A linked options file is edited
 - **WHEN** `notify.toml` is a symlink to a file in another directory, that file is edited, and nothing else happens in the options directory
@@ -263,6 +263,10 @@ When a step of the start before the `started` line fails, the Rust service SHALL
 - **WHEN** the node program cannot be executed
 - **THEN** the service releases the lock, logs `could not hand over to the node service: <why>` and exits 1
 
+#### Scenario: The node build is missing
+- **WHEN** `packages/notify/dist/main.js` is not there
+- **THEN** the service logs the same line `could not hand over to the node service: <why>`, with no `tagents-core: cannot find` line, releases the lock and exits 1
+
 #### Scenario: A failure that node shares
 - **WHEN** the state directory cannot be created
 - **THEN** the node service fails with its own line `the notify service stopped: <why>` and exit 1, the code launchd retries
@@ -273,11 +277,11 @@ When a step of the start before the `started` line fails, the Rust service SHALL
 
 #### Scenario: A stop during a failing start
 - **WHEN** SIGTERM arrives while a step of the start fails
-- **THEN** the process stops, releases the lock and exits 0, and the node service is not started
+- **THEN** the process writes no `stopping` line, releases the lock, exits 0 and does not start the node service
 
 #### Scenario: The watch fails after start
-- **WHEN** the wait of the watch fails while the service runs
-- **THEN** the service logs `watch failed <why>`, stops as a signal stops it and exits 1, and the node service is not started
+- **WHEN** the wait of the watch fails while a post is in flight
+- **THEN** the log has `stopping (watch failed: <why>)`, the post finishes, `drain failed <why>` follows when the drain fails, the lock and `events.on` are released, the service exits 1 and the node service is not started
 
 ### Requirement: The helper is called as the node service calls it
 A notice SHALL be posted by running `<app>/Contents/MacOS/tagents-notify post` with the notice as JSON on stdin and a withdrawal by `<app>/Contents/MacOS/tagents-notify withdraw <id>`, each with a deadline of 5 seconds after which the helper's process group is killed. Only `ok`, `shown`, `why` and `error` of the one JSON line answered are read, and an answer that is not that line is the node service's `unreadable output from the notification helper` error.
