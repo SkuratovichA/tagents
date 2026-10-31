@@ -2,7 +2,7 @@
 //!
 //! It is a plain struct with no thread, no channel and no timer. The service's loop calls it: `start` once, `wake` when the watch says the events file changed and when `next_due` has elapsed, `reload` with new options, `stop` once. Each call runs every job it makes before it returns, so the loop serves one message at a time, as node's promise chain runs events and due deadlines one at a time.
 //!
-//! The order is node's. One FIFO queue of jobs: at each wake the follower's lines are ingested, each a job at the back of the queue, then the deadlines are swept, each due key a job behind them, and only then does the first job run, so a prompt that cancels a key is seen before that key's cache notice runs (`engine.ts:399-408`). Node sweeps after each line and Rust sweeps once after all of a wake's lines, so with two lines and a due key node runs the first line, the due key and the second line, and Rust the two lines and the due key. A deadline that passes while a post is in flight loses to a prompt line that is in the file when the post ends, where node, whose timer enqueued the due job first, posts: the engine is blocked in the post and cannot order the two after the fact (a known difference, pinned by `a_deadline_that_passes_during_a_post_loses_to_the_prompt_that_is_in_the_file_when_it_ends`).
+//! The order is node's. One FIFO queue of jobs: at each wake the follower's lines are ingested, each a job at the back of the queue and each followed by a sweep of the deadlines that are due, so with two lines and a due key the first line runs, then the due key, then the second line, and a prompt that cancels a key is seen before that key's cache notice runs (`engine.ts:399-408`). A wake that brought no line sweeps once, as node's deadline timer does. A deadline that passes while a post is in flight loses to a prompt line that is in the file when the post ends, where node, whose timer enqueued the due job first, posts: the engine is blocked in the post and cannot order the two after the fact (a known difference, pinned by `a_deadline_that_passes_during_a_post_loses_to_the_prompt_that_is_in_the_file_when_it_ends`).
 //!
 //! Time comes only from the `Clock` and a deadline is a wall-clock time, so `next_due` is when the loop must call `wake` though nothing was heard, and a loop that sleeps through it is late by the sleep, never wrong. A signal is the `Stop` of the service: it is checked between jobs, never inside one, so a post in flight lands and the jobs behind it are dropped.
 
@@ -276,7 +276,7 @@ impl<'a> Engine<'a> {
         Ok(())
     }
 
-    /// What the service calls when the watch says the events file changed, and when `next_due` has elapsed: follows again when the time has come, takes in what the follower found, sweeps the deadlines and runs every job that makes. A call with nothing to do is cheap and harmless, so a spurious wake costs nothing.
+    /// What the service calls when the watch says the events file changed, and when `next_due` has elapsed: follows again when the time has come, takes in what the follower found, sweeps the deadlines (a wake that brought no line is node's deadline timer) and runs every job that makes. A call with nothing to do is cheap and harmless, so a spurious wake costs nothing.
     pub fn wake(&mut self) {
         if self.stopped.is_some() {
             return;
@@ -365,13 +365,13 @@ impl<'a> Engine<'a> {
         }
     }
 
-    /// What a delivery of the follower becomes: its lines are jobs at the back of the queue, and its errors and its death are logged at once, before any job runs, as node's callbacks write them while the jobs wait their turn.
+    /// What a delivery of the follower becomes: each line is a job at the back of the queue with the due deadlines right behind it (the follow callback of `engine.ts:399-408` handles a line and sweeps), and its errors and its death are logged at once, before any job runs, as node's callbacks write them while the jobs wait their turn.
     fn ingest(&mut self, delivery: Delivery) {
-        if !delivery.events.is_empty() {
+        for e in delivery.events {
             self.heard = true;
+            self.queue.push_back(Job::Event(Box::new(e)));
+            self.sweep();
         }
-        self.queue
-            .extend(delivery.events.into_iter().map(|e| Job::Event(Box::new(e))));
         for message in &delivery.errors {
             self.say(&["feed error", message]);
         }
@@ -380,7 +380,7 @@ impl<'a> Engine<'a> {
         }
     }
 
-    /// The process is awake, so looking costs no wake: after a Mac sleep the first wake of any kind brings out the warnings that fell due meanwhile. Behind the lines already queued, so a prompt that cancels a key is seen first.
+    /// The process is awake, so looking costs no wake: after a Mac sleep the first wake of any kind brings out the warnings that fell due meanwhile. Behind the jobs already queued, so a prompt that cancels a key is seen first.
     fn sweep(&mut self) {
         let now = self.now();
         self.queue.extend(

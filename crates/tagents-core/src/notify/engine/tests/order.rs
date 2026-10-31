@@ -52,8 +52,9 @@ fn an_event_of_the_sleeping_chat_itself_a_prompt_cancels_the_deadline_before_the
 }
 
 #[test]
-fn a_wake_runs_all_its_lines_before_the_deadlines_that_fell_due() {
-    // Node sweeps after each line and Rust once after all of a wake's lines: with two lines and a due key node runs the first line, the due key and the second line, and Rust the two lines and the due key.
+fn a_deadline_that_fell_due_goes_in_right_behind_the_first_line_of_a_delivery_as_node_sweeps_after_each_line()
+ {
+    // Node's follow callback handles a line and then sweeps (`engine.ts:399-408`): with two lines and a due key it runs the first line, the due key and the second line.
     let mut r = rig();
     r.start();
     r.handle(r.now());
@@ -73,8 +74,8 @@ fn a_wake_runs_all_its_lines_before_the_deadlines_that_fell_due() {
         [
             ("tagents-12".to_owned(), "turn_done"),
             ("tagents-13".to_owned(), "turn_done"),
-            ("tagents-14".to_owned(), "turn_done"),
-            ("tagents-12".to_owned(), "cache_expiring")
+            ("tagents-12".to_owned(), "cache_expiring"),
+            ("tagents-14".to_owned(), "turn_done")
         ]
     );
 }
