@@ -6,9 +6,7 @@
 use std::{
     ffi::{OsStr, OsString},
     io::Write,
-    os::unix::process::CommandExt,
-    path::PathBuf,
-    process::{Command, ExitCode},
+    process::ExitCode,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -22,8 +20,6 @@ use crate::{
 
 /// Where the node CLI sits below the root of a checkout (or of `$TAGENTS_HOME`, which is one).
 const NODE_CLI: &str = "packages/core/dist/cli/main.js";
-/// The node binary the wrapper `install.sh` writes pinned, or `node` on `PATH`.
-const NODE_ENV: &str = "TAGENTS_NODE";
 /// The arguments the front door answers itself, each only when it is the only argument.
 const SPEC_FLAG: &str = "--spec";
 const VERSION_FLAG: &str = "--version";
@@ -89,49 +85,24 @@ fn emit(out: &Output) -> ExitCode {
     ExitCode::from(out.code)
 }
 
-/// A node program that belongs to this binary, `relative` to the root: `<root>/target/{release,debug}/tagents-core` lives two directories below the root. The error is the path that was looked at, or why there was none.
-fn node_program(relative: &str) -> Result<PathBuf, String> {
-    let exe = std::env::current_exe()
-        .and_then(|exe| exe.canonicalize())
-        .map_err(|e| format!("cannot tell where this binary is: {e}"))?;
-    let program = exe
-        .ancestors()
-        .nth(3)
-        .ok_or_else(|| {
-            format!(
-                "{} is too close to the root of the file system",
-                exe.display()
-            )
-        })?
-        .join(relative);
-    if program.is_file() {
-        Ok(program)
-    } else {
-        Err(format!("{} is not a file", program.display()))
-    }
-}
-
-/// Replace this process with the node program at `relative` below the root, given `args`. Only returns when that could not be done.
+/// Replace this process with the node program at `relative` below the root, given `args`. Only returns when that could not be done, after saying why.
 fn exec_node(relative: &str, args: &[OsString]) -> ExitCode {
-    let program = match node_program(relative) {
-        Ok(program) => program,
-        Err(why) => {
+    match node::exec(relative, args) {
+        node::ExecFailure::Missing(why) => {
             eprintln!(
                 "tagents-core: cannot find {relative}: {why}; this binary has to stay in <root>/target/<profile>/ of a root where it is built"
             );
-            return ExitCode::from(sessions::exit::USAGE);
+            ExitCode::from(sessions::exit::USAGE)
         }
-    };
-    let node = std::env::var_os(NODE_ENV)
-        .filter(|n| !n.is_empty())
-        .unwrap_or_else(|| OsString::from("node"));
-    let err = Command::new(&node).arg(program).args(args).exec();
-    eprintln!("tagents-core: cannot run {}: {err}", node.to_string_lossy());
-    ExitCode::from(if err.kind() == std::io::ErrorKind::NotFound {
-        sessions::exit::NOT_FOUND
-    } else {
-        sessions::exit::CANNOT_EXECUTE
-    })
+        node::ExecFailure::Run { node, err } => {
+            eprintln!("tagents-core: cannot run {}: {err}", node.to_string_lossy());
+            ExitCode::from(if err.kind() == std::io::ErrorKind::NotFound {
+                sessions::exit::NOT_FOUND
+            } else {
+                sessions::exit::CANNOT_EXECUTE
+            })
+        }
+    }
 }
 
 /// The program: `args` are the words after its name.
