@@ -152,6 +152,7 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **`vitepress preview` after a rebuild serves an unstyled page** — restart the preview after each `pnpm docs:build` (25.10.2026)
 - **A plate that holds only greys turns the sprite drawn on it grey** — after `-colorize`, ImageMagick saved `site/src/mascot/source/plate.png` as grey and alpha, and every icon came out with a grey sprite. `writeIcons` converts the plate with `-colorspace sRGB`, and the plate is saved with `-define png:color-type=6` (31.10.2026)
 - **A document that quotes a suite's counts goes stale with the next scenario** — say what the suite's last line reports instead of the numbers (31.10.2026)
+- **A comment line added to a file moves every `file:line` citation below it** — grep the documents for the file's citations after each edit to it and renumber them in the same commit (31.10.2026)
 
 ## Test practice
 
@@ -212,6 +213,8 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **An early return that the later fire path repeats leaves no trace in a transcript** — dropping one guard kept the suite green. Drop both guards to prove the early return (31.10.2026)
 - **`ps -o comm=` prints the full path on macOS and a 15-character name on Linux** — compare against the binary's name, cut to 15 characters only on Linux (31.10.2026)
 - **A test that holds `forking()` and calls `writing()` deadlocks** — the fork gate is one `RwLock`. Take one side of it per test (31.10.2026)
+- **`eprintln!` panics when stderr is a closed pipe** — the front door exited 101 instead of its own code after a failed exec. Write a last line through a function that ignores the write error and returns the exit code (31.10.2026)
+- **libtest captures `eprintln!` but not `writeln!(io::stderr(), …)`** — a skip line written with `eprintln!` never showed in the run's output. Write a line the run must show with `writeln!(io::stderr(), …)` (31.10.2026)
 
 ## Other
 
