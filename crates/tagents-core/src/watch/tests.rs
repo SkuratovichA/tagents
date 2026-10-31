@@ -1,15 +1,15 @@
 //! The watch against real files, on whichever of inotify and kqueue the machine has. A key that has to come is waited for `HEARD`; a key that must not come is waited for `QUIET` and found missing, so a test of silence can pass by being early but never fails by being late.
 
 use std::collections::VecDeque;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File, OpenOptions, Permissions};
 use std::io::{self, ErrorKind, Read, Write};
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Barrier};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use std::{process, thread};
 
 use super::{Fired, Heard, Key, Poller, Watch, run};
@@ -199,7 +199,7 @@ fn a_file_truncated_in_place_is_heard() {
 }
 
 #[test]
-fn a_file_watch_alone_survives_the_re_arm_a_touch_makes() {
+fn a_file_watch_alone_survives_the_re_arm_a_chmod_makes() {
     let scratch = Scratch::new();
     let path = scratch.dir("d").join("events.tsv");
     fs::write(&path, "a").unwrap();
@@ -207,15 +207,10 @@ fn a_file_watch_alone_survives_the_re_arm_a_touch_makes() {
     watch.file(&path, Key::Events).unwrap();
     silent(&keys);
 
-    // A touch sends `ATTRIB`, which opens the path again; the inode is the same, so the watch has to stay.
-    OpenOptions::new()
-        .write(true)
-        .open(&path)
-        .unwrap()
-        .set_modified(SystemTime::now() + Duration::from_secs(5))
-        .unwrap();
+    // A chmod sends `ATTRIB` (a touch sent `MODIFY` on the Linux kernel of the Docker image), which opens the path again; the inode is the same, so the watch has to stay. A re-arm that removed it would queue an `IN_IGNORED`, which the thread hears as a second wake and answers by arming again, so the watch heals and only the second wake tells.
+    fs::set_permissions(&path, Permissions::from_mode(0o600)).unwrap();
     assert_eq!(heard(&keys), Key::Events);
-    settle(&keys);
+    silent(&keys);
 
     append(&path, "b");
     assert_eq!(heard(&keys), Key::Events);
