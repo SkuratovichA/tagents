@@ -495,6 +495,14 @@ fn read_lock_reads_both_formats() {
         (Some(7), Some("x".to_owned())),
         "a JavaScript trim removes U+FEFF"
     );
+    // node's `readLock` on each text, run once: a U+FEFF at both ends of the text and of the start time is trimmed away, and one right after the space is not a start time.
+    assert_eq!(
+        pair("\u{feff}7 Sat Oct  3 10:23:45 2026\u{feff}\n"),
+        (Some(7), Some("Sat Oct  3 10:23:45 2026".to_owned()))
+    );
+    assert_eq!(pair("\u{feff}7\u{feff}\n"), (Some(7), None));
+    assert_eq!(pair("7 x\u{feff}\n"), (Some(7), Some("x".to_owned())));
+    assert_eq!(pair("7 \u{feff}x\u{feff}\n"), (None, None));
     for junk in [
         "",
         "not a pid\n",
