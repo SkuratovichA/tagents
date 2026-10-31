@@ -129,7 +129,7 @@ Each click shows the command it ran, the app it raised, the child's exit status 
 
 ## What it costs
 
-No polling. The node program watches the state directory and the options directory with `fs.watch` and keeps at most two timers; the binary watches the same two directories with the kernel's own file events. Measured on an Apple M4 Pro with macOS 26.7.1, idle, with the node program:
+No polling. The node program watches the events stream and the options directory with `fs.watch` and keeps at most three timed waits: the cache deadline's, the follower's re-follow and the rotation grace; the binary watches the same two, and the options file when it is a regular file, with the kernel's own file events. Measured on an Apple M4 Pro with macOS 26.7.1, idle, with the node program:
 
 | | |
 |--|--|

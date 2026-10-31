@@ -411,15 +411,19 @@ With no executable binary at install time the installer SHALL write the `tagents
 - **THEN** `tagents-mcp` is the node wrapper and `tagents-mcp a b` runs `packages/mcp/dist/main.js` (`tests/install.sh` section 13)
 
 ### Requirement: A machine with no release keeps the node server
-`TAGENTS_NO_NATIVE=1`, a failed or refused fetch and a version without a release SHALL leave the `tagents-mcp` wrapper as the node wrapper, so no machine is without a server.
+A failed or refused fetch, a version without a release and `TAGENTS_NO_NATIVE=1` SHALL leave the `tagents-mcp` wrapper as the node wrapper, so no machine is without a server. `TAGENTS_NO_NATIVE=1` SHALL remove only a prebuilt binary, the one the installer fetched with its release marker: a binary built on the machine is left in place.
 
 #### Scenario: No release for the version
 - **WHEN** the installer runs on a copy whose version has no release
 - **THEN** the old binary is removed and `tagents-mcp` runs the node server (`tests/install.sh` section 14)
 
 #### Scenario: Native disabled
-- **WHEN** the installer runs with `TAGENTS_NO_NATIVE=1` over an installed binary
+- **WHEN** the installer runs with `TAGENTS_NO_NATIVE=1` over an installed prebuilt binary
 - **THEN** the binary is removed and `tagents-mcp` runs the node server (`tests/install.sh` section 14)
+
+#### Scenario: Native disabled over a binary built on the machine
+- **WHEN** the installer runs with `TAGENTS_NO_NATIVE=1` over a binary built on the machine, with no release marker
+- **THEN** the binary is not removed and the wrapper is written as it would be without the variable (`tests/install.sh` section 14, "a binary built by hand is not ours")
 
 ### Requirement: The tagents-core wrapper runs a Rust binary built before the install
 When `$TAGENTS_HOME/target/release/tagents-core` is an executable file at the time of the install, the `tagents-core` wrapper SHALL run it, with the node it pinned passed on as `TAGENTS_NODE`, for as long as it is an executable file, and the node CLI otherwise. Both files belong to the managed copy, so the wrapper runs nothing outside it, and the installer never builds that binary.
@@ -478,12 +482,16 @@ With no executable binary of the checkout's version at install time the installe
 - **THEN** `tagents-notify` is the node wrapper and `tagents-notify run` runs `packages/notify/dist/main.js` (`tests/install.sh`)
 
 ### Requirement: A machine with no release keeps the node service
-`TAGENTS_NO_NATIVE=1`, a failed or refused fetch and a version without a release SHALL leave the `tagents-notify` wrapper as the node wrapper, so no machine is without a service and a LaunchAgent that names the wrapper starts the node service.
+A failed or refused fetch, a version without a release and `TAGENTS_NO_NATIVE=1` SHALL leave the `tagents-notify` wrapper as the node wrapper, so no machine is without a service and a LaunchAgent that names the wrapper starts the node service. `TAGENTS_NO_NATIVE=1` SHALL remove only a prebuilt binary, the one the installer fetched with its release marker: a binary built on the machine is left in place.
 
 #### Scenario: No release for the version
 - **WHEN** the installer runs on a copy whose version has no release
 - **THEN** the old binary is removed and `tagents-notify run` runs the node program (`tests/install.sh`)
 
 #### Scenario: Native disabled
-- **WHEN** the installer runs with `TAGENTS_NO_NATIVE=1` over an installed binary
-- **THEN** the binary is removed and `tagents-notify run` runs the node program (`tests/install.sh`)
+- **WHEN** the installer runs with `TAGENTS_NO_NATIVE=1` over an installed prebuilt binary
+- **THEN** the binary is removed and `tagents-notify run` runs the node program (`tests/install.sh` section 14)
+
+#### Scenario: Native disabled over a binary built on the machine
+- **WHEN** the installer runs with `TAGENTS_NO_NATIVE=1` over a binary built on the machine, with no release marker
+- **THEN** the binary is not removed and the wrapper is written as it would be without the variable (`tests/install.sh` section 14, "a binary built by hand is not ours")

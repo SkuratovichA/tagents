@@ -74,7 +74,7 @@ The service SHALL register SIGTERM, SIGINT and SIGHUP before it does anything el
 - **THEN** the service logs `backend none: nothing to post; exiting` or `no notification backend for <os> yet; exiting`, releases the lock and exits 0
 
 ### Requirement: The log is the node service's
-The service SHALL write to stderr the lines listed below, as `<ISO time with milliseconds> <the parts joined by a space>` and in the node service's words, `started pid <n> backend <name> options <file> (found|not found|invalid)` being the last line of a start. It SHALL write nothing to stdout and add only the lines of "A start that fails is handed to the node service", and an operating system's text in a line SHALL come from `node::io_message` (`crates/tagents-core/src/node.rs`).
+The service SHALL write to stderr the lines listed below, as `<ISO time with milliseconds> <the parts joined by a space>` and in the node service's words, `started pid <n> backend <name> options <file> (found|not found|invalid)` being the last line of a start. It SHALL write nothing to stdout and add only the lines of "A start that fails is handed to the node service", and an operating system's error text in a line SHALL be the text the node service writes for the same error.
 
 #### Scenario: The started line
 - **WHEN** the service starts with an options file that is valid, missing or invalid
@@ -186,7 +186,7 @@ An event in the options directory SHALL make the service read the options file a
 - **THEN** the service logs `options reloaded`
 
 ### Requirement: The options file is read as TOML
-`<config dir>/plugins/notify.toml` SHALL be read with the `toml` crate and checked against the schema of the `notify` requirements "Plugin options and defaults", "Invalid options" and "Durations": the same keys, lists and defaults. A duration is a whole number of seconds, as a TOML number or a string of ASCII digits, or a string `<n>h<n>m<n>s` of ASCII digits with each part optional, the total a safe integer; dates, booleans, arrays, tables and non-finite floats are not durations.
+`<config dir>/plugins/notify.toml` SHALL be read as TOML and checked against the schema of the `notify` requirements "Plugin options and defaults", "Invalid options" and "Durations": the same keys, lists and defaults. A duration is a whole number of seconds, as a TOML number or a string of ASCII digits, or a string `<n>h<n>m<n>s` of ASCII digits with each part optional, the total a safe integer; dates, booleans, arrays, tables and non-finite floats are not durations.
 
 #### Scenario: A partial file
 - **WHEN** the file says only `click = "goto"`
