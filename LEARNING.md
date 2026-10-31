@@ -215,6 +215,7 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **A test that holds `forking()` and calls `writing()` deadlocks** — the fork gate is one `RwLock`. Take one side of it per test (31.10.2026)
 - **`eprintln!` panics when stderr is a closed pipe** — the front door exited 101 instead of its own code after a failed exec. Write a last line through a function that ignores the write error and returns the exit code (31.10.2026)
 - **libtest captures `eprintln!` but not `writeln!(io::stderr(), …)`** — a skip line written with `eprintln!` never showed in the run's output. Write a line the run must show with `writeln!(io::stderr(), …)` (31.10.2026)
+- **macOS `open` gives EINVAL while a rename replaces a symlink on the path** — a reader woken by a directory event can meet it; try the open again, three tries in all (31.10.2026)
 
 ## Other
 

@@ -198,6 +198,10 @@ An event in the options directory SHALL make the service read the options file a
 - **WHEN** `plugins/notify.toml` is a directory or a file that cannot be read
 - **THEN** the one problem is `options: <file>: <the text node prints for the failed read>`, such as `EISDIR: illegal operation on a directory, read`, the defaults hold and the `started` line ends `(invalid)`
 
+#### Scenario: An open that fails while a rename replaces the symlink
+- **WHEN** the open of `plugins/notify.toml` fails with EINVAL because a rename is replacing a symlink on the path (macOS)
+- **THEN** the open is tried again, three tries in all, and only an EINVAL on the third try is the problem line of "A file that cannot be read"
+
 #### Scenario: A file without read permission
 - **WHEN** `plugins/notify.toml` has mode 000 at start
 - **THEN** the log has the problem line above and `options watch failed <file> <why>` (the file watch cannot be armed, `EACCES`), before `started` ending `(invalid)`, and the service runs without that file watch, the directory watch still hearing a replacement
