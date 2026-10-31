@@ -2,9 +2,9 @@
 //!
 //! A `Watch` holds at most one directory watch and one file watch per `Key`. A directory watch fires when an entry of the directory is added, removed or renamed, and on Linux also when a file in it is written (kqueue does not report that, so nothing may depend on it). A file watch is on the inode and fires when the file is written, truncated, removed or renamed; a path that names a symlink gets no file watch at all, so a link's target being edited is never seen and the link being replaced is seen through the directory. The watch takes the path as the caller wrote it: the caller resolves the directory it wants watched by its real path.
 //!
-//! A file watch goes stale when the path is renamed over: its inode is gone. The thread therefore opens the path again, before it reports the key, whenever the directory of that key reports anything or the file's own watch reports that the inode was removed, renamed or revoked. The path is remembered per key from the first `file` call on, whether or not that call found a file to watch, so a file created later is watched from the next directory event on. A re-arm that fails (the file is gone) leaves the key without a file watch until the next directory event or the next `file` call, and the key is reported all the same.
+//! A file watch goes stale when the path is renamed over: its inode is gone. The thread therefore opens the path again, before it reports the key, whenever the directory of that key reports anything or the file's own watch reports that the inode was removed, renamed or revoked. The path is remembered per key from the first `file` call on, whether or not that call found a file to watch, so a file created later is watched from the next directory event on. A re-arm that finds the file gone leaves the key without a file watch until the next directory event or the next `file` call, and the key is reported all the same. A re-arm that fails for any other reason (the limit of watches or of descriptors) would leave the key deaf with nothing to say so, and ends the thread with `Ended` like a failed wait.
 //!
-//! The sink hears a `Heard`: `Fired(key)` for every key whose watch fired and, when a wait fails and the thread has to end, one last `Ended(error)`. The sink of a daemon is a channel other threads send to as well, so a thread that ended without a word would leave a daemon that is running and never hears of a file again. A `Watch` that is dropped, and a sink that has no receiver, end the thread without a value.
+//! The sink hears a `Heard`: `Fired(key)` for every key whose watch fired and, when the thread has to end because a wait failed or a re-arm failed for any reason but a file that is gone, one last `Ended(error)`. The sink of a daemon is a channel other threads send to as well, so a thread that ended without a word would leave a daemon that is running and never hears of a file again. A `Watch` that is dropped, and a sink that has no receiver, end the thread without a value.
 //!
 //! Arm, then read. An edge-triggered watch reports nothing for a write that landed between the caller's last read and the arming, so `dir` and `file` return only once the watch is armed, and a caller reads to the end right after they return and again on every key it hears.
 //!
@@ -101,7 +101,7 @@ pub struct Watch {
 }
 
 impl Watch {
-    /// Starts the thread. It sends `T::from(Heard::Fired(key))` to `sink` for every key whose watch fired, in the order the operating system reported them, and ends when the `Watch` is dropped or when the sink has no receiver. A failed wait also ends it, after one last `T::from(Heard::Ended(error))`: the next `dir` or `file` then fails, and nothing more comes.
+    /// Starts the thread. It sends `T::from(Heard::Fired(key))` to `sink` for every key whose watch fired, once per wake for each key that fired (the order between keys is unspecified), and ends when the `Watch` is dropped or when the sink has no receiver. A failed wait, or a failed re-arm of a file watch that is not a missing file, also ends it, after one last `T::from(Heard::Ended(error))`: the next `dir` or `file` then fails, and nothing more comes.
     pub fn start<T: From<Heard> + Send + 'static>(sink: mpsc::Sender<T>) -> io::Result<Watch> {
         let (wake_read, wake) = wake_pipe()?;
         let backend = Backend::new(wake_read)?;
@@ -192,8 +192,14 @@ fn run<T: From<Heard>>(
             }
         };
         for key in &fired.rearm {
-            if let Some(path) = files.get(key) {
-                let _ = backend.file(path, *key);
+            let Some(path) = files.get(key) else { continue };
+            // A file that is gone has no watch to give; any other refusal (a descriptor or watch limit) leaves the key deaf, so it is an ending like a failed wait.
+            match backend.file(path, *key) {
+                Err(err) if err.kind() != io::ErrorKind::NotFound => {
+                    let _ = sink.send(Heard::Ended(err).into());
+                    return;
+                }
+                _ => {}
             }
         }
         for key in fired.keys {

@@ -55,6 +55,7 @@ impl Backend {
         } else {
             FILE_NOTES
         };
+        let adding = file.is_some();
         if let Some(file) = &file {
             self.queue
                 .add_file(file, EventFilter::EVFILT_VNODE, notes)?;
@@ -66,7 +67,15 @@ impl Backend {
         if let Some(old) = old {
             let _ = self.queue.remove_file(&old, EventFilter::EVFILT_VNODE);
         }
-        self.queue.watch()
+        let registered = self.queue.watch();
+        // `watch` registers every entry of the crate's list, and the crate keeps an entry the kernel refused (`watcher.rs` `watch`, `add_fd`: the list is only trimmed by `remove_fd`). Left there, it fails every later `watch`, and so the arming of every other key.
+        if registered.is_err()
+            && adding
+            && let Some(refused) = self.armed.remove(&slot)
+        {
+            let _ = self.queue.remove_file(&refused, EventFilter::EVFILT_VNODE);
+        }
+        registered
     }
 
     /// An event of a descriptor that was replaced meanwhile is ignored.
@@ -113,14 +122,7 @@ impl Poller for Backend {
         let mut event = self.queue.poll_forever(None);
         while let Some(found) = event {
             match found.data {
-                // The crate builds `InvalidData` for a vnode event with no flag it knows, which is no failed wait.
-                EventData::Error(err)
-                    if matches!(
-                        err.kind(),
-                        io::ErrorKind::Interrupted
-                            | io::ErrorKind::NotFound
-                            | io::ErrorKind::InvalidData
-                    ) => {}
+                EventData::Error(err) if benign(&err) => {}
                 EventData::Error(err) => return Err(err),
                 EventData::ReadReady(_) => drain(&self.wake),
                 EventData::Vnode(note) => self.note(&found.ident, &note, &mut fired),
@@ -129,5 +131,39 @@ impl Poller for Backend {
             event = self.queue.poll(None);
         }
         Ok(fired)
+    }
+}
+
+/// An error event that is no failed wait. The crate builds `InvalidData` for a vnode event with no flag it knows.
+fn benign(err: &io::Error) -> bool {
+    matches!(
+        err.kind(),
+        io::ErrorKind::Interrupted | io::ErrorKind::NotFound | io::ErrorKind::InvalidData
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Error, ErrorKind};
+
+    use super::benign;
+
+    #[test]
+    fn an_interrupt_a_missing_file_and_an_unknown_note_are_no_failed_wait() {
+        for kind in [
+            ErrorKind::Interrupted,
+            ErrorKind::NotFound,
+            ErrorKind::InvalidData,
+        ] {
+            assert!(benign(&Error::from(kind)), "{kind:?}");
+        }
+    }
+
+    #[test]
+    fn a_bad_descriptor_is_a_failed_wait() {
+        assert!(!benign(&Error::from_raw_os_error(
+            rustix::io::Errno::BADF.raw_os_error()
+        )));
+        assert!(!benign(&Error::from(ErrorKind::BrokenPipe)));
     }
 }
