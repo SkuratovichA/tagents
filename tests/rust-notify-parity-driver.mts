@@ -38,7 +38,7 @@
 //
 // `probe` starts the command as the first check of the shell needs it: it waits for the `started` line and says what the process is.
 //
-// `resources` starts the command for the resource checks of the shell (task 7.4) and prints what it measured, one fact to a line: `started yes|no`, `cpu <ticks at the first reading> <ticks ten seconds later>` of an idle daemon, `threads <n>`, `fd <number> <KIND> <name>` for each descriptor at rest (KIND is INOTIFY, KQUEUE, PIPE, SOCKET, REG, DIR, CHR or ANON, the name `-` where there is none, the root of the scratch ROOT), `reloads <n>` the lines `options reloaded` seen while the options file was rewritten twelve times by replacing it and twelve times in place, `fds-after-reloads <n>` and `timeout <what>`. The shell judges the facts.
+// `resources` starts the command for the resource checks of the shell (task 7.4) and prints what it measured, one fact to a line: `started yes|no`, `cpu <ticks at the first reading> <ticks ten seconds later>` of an idle daemon, `threads <n>`, `inherited <numbers>|-` the descriptors from 3 up that a child gets without opening them, `fd <number> <KIND> <name>` for each descriptor at rest that is not inherited (KIND is INOTIFY, KQUEUE, PIPE, SOCKET, REG, DIR, CHR or ANON, the name `-` where there is none, the root of the scratch ROOT), `reloads <n>` the lines `options reloaded` seen while the options file was rewritten twelve times by replacing it and twelve times in place, `fds-after-reloads <n>` and `timeout <what>`. The shell judges the facts.
 //
 // Needs node 22.18 or newer (it runs TypeScript as it is). No dependency of the repo is imported.
 import { type ChildProcessByStdio, spawn, spawnSync } from 'node:child_process';
@@ -627,8 +627,29 @@ function descriptors(pid: number, root: string): string[] {
   return found.sort((a, b) => Number(a.split(' ')[1]) - Number(b.split(' ')[1]));
 }
 
+/** The descriptors from 3 up that a child gets without opening them, read from a `sleep` launched as the daemon is: what the driver's own parent left open without close-on-exec (a GitHub runner leaves two pipes at high numbers). The daemon cannot open a descriptor at a number that is already taken, so these are never its own. */
+async function inheritedNumbers(root: string): Promise<ReadonlySet<number>> {
+  const probe = launch(['/bin/sleep', '30'], root);
+  const pid = probe.child.pid;
+  try {
+    if (pid === undefined) return new Set();
+    // The dynamic loader opens and closes its own files while it starts the program: read once it has settled.
+    await sleep(300);
+    return new Set(
+      descriptors(pid, root)
+        .map((line) => Number(line.split(' ')[1]))
+        .filter((number) => number >= 3),
+    );
+  } finally {
+    probe.child.kill('SIGTERM');
+    await leave(probe);
+  }
+}
+
 /** The resource checks of the shell: the daemon alone, idle for ten seconds, then through repeated reloads of its options file. */
 async function resources(root: string, daemon: readonly string[]): Promise<void> {
+  const inherited = await inheritedNumbers(root);
+  const own = (pid: number): string[] => descriptors(pid, root).filter((line) => !inherited.has(Number(line.split(' ')[1])));
   const proc = launch(daemon, root);
   const pid = proc.child.pid;
   await until(() => hasStarted(proc) || proc.status !== undefined, WAIT_MS);
@@ -638,7 +659,7 @@ async function resources(root: string, daemon: readonly string[]): Promise<void>
     await sleep(1_000);
     const first = cpuTicks(pid);
     await sleep(IDLE_MS);
-    report.push(`cpu ${first} ${cpuTicks(pid)}`, `threads ${threadCount(pid)}`, ...descriptors(pid, root));
+    report.push(`cpu ${first} ${cpuTicks(pid)}`, `threads ${threadCount(pid)}`, `inherited ${[...inherited].join(' ') || '-'}`, ...own(pid));
     const options = path.join(root, 'config', 'plugins', 'notify.toml');
     const reloaded = (): number => proc.err.count('options reloaded');
     // Each rewrite is waited for through the line it gives; a write in place may give two (the file empty, then written), so a short pause lets the second one come before the descriptors are read.
@@ -650,7 +671,7 @@ async function resources(root: string, daemon: readonly string[]): Promise<void>
       if (!(await until(() => reloaded() > before, WAIT_MS))) report.push(`timeout reload ${n + 1}`);
       await sleep(150);
     }
-    report.push(`reloads ${reloaded()}`, `fds-after-reloads ${descriptors(pid, root).length}`);
+    report.push(`reloads ${reloaded()}`, `fds-after-reloads ${own(pid).length}`);
   }
   proc.child.kill('SIGTERM');
   if (!(await leave(proc))) report.push('timeout the process did not leave on SIGTERM');
