@@ -6,55 +6,17 @@ use std::io::{self, ErrorKind, Read, Write};
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Barrier};
+use std::thread;
 use std::time::Duration;
-use std::{process, thread};
 
 use super::{Fired, Heard, Key, Poller, Watch, run};
-
-const HEARD: Duration = Duration::from_secs(10);
-const QUIET: Duration = Duration::from_millis(400);
-
-/// A directory of a test's own, removed when the test ends.
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new() -> Scratch {
-        static COUNT: AtomicUsize = AtomicUsize::new(0);
-        let dir = std::env::temp_dir().join(format!(
-            "tagents-watch-{}-{}",
-            process::id(),
-            COUNT.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&dir).unwrap();
-        Scratch(dir)
-    }
-
-    fn dir(&self, name: &str) -> PathBuf {
-        let dir = self.0.join(name);
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
+use crate::testing::{HEARD, QUIET, Scratch, gate, heard, settle};
 
 fn start() -> (Watch, Receiver<Heard>) {
     let (sink, keys) = mpsc::channel();
     (Watch::start(sink).unwrap(), keys)
-}
-
-fn heard(keys: &Receiver<Heard>) -> Key {
-    match keys.recv_timeout(HEARD).expect("the watch heard nothing") {
-        Heard::Fired(key) => key,
-        Heard::Ended(err) => panic!("the watch ended: {err}"),
-    }
 }
 
 fn silent(keys: &Receiver<Heard>) {
@@ -62,11 +24,6 @@ fn silent(keys: &Receiver<Heard>) {
         Err(RecvTimeoutError::Timeout) => {}
         other => panic!("the watch was meant to be silent, and sent {other:?}"),
     }
-}
-
-/// Takes every key that one action made, however many batches the system sent it in.
-fn settle(keys: &Receiver<Heard>) {
-    while keys.recv_timeout(QUIET).is_ok() {}
 }
 
 fn append(path: &Path, text: &str) {
@@ -84,7 +41,7 @@ fn replace(path: &Path, text: &str) {
 #[test]
 fn a_file_written_in_place_is_heard() {
     let scratch = Scratch::new();
-    let path = scratch.dir("d").join("notify.toml");
+    let path = scratch.sub("d").join("notify.toml");
     fs::write(&path, "a").unwrap();
     let (watch, keys) = start();
     watch.file(&path, Key::Options).unwrap();
@@ -98,7 +55,7 @@ fn a_file_written_in_place_is_heard() {
 #[test]
 fn a_directory_hears_an_entry_added_replaced_and_removed() {
     let scratch = Scratch::new();
-    let dir = scratch.dir("d");
+    let dir = scratch.sub("d");
     let path = dir.join("notify.toml");
     let (watch, keys) = start();
     watch.dir(&dir, Key::Options).unwrap();
@@ -118,7 +75,7 @@ fn a_directory_hears_an_entry_added_replaced_and_removed() {
 #[test]
 fn keys_are_told_apart() {
     let scratch = Scratch::new();
-    let (options, events) = (scratch.dir("options"), scratch.dir("events"));
+    let (options, events) = (scratch.sub("options"), scratch.sub("events"));
     let (watch, keys) = start();
     watch.dir(&options, Key::Options).unwrap();
     watch.dir(&events, Key::Events).unwrap();
@@ -134,7 +91,7 @@ fn keys_are_told_apart() {
 #[test]
 fn a_file_saved_by_rename_and_then_edited_in_place_is_heard_again() {
     let scratch = Scratch::new();
-    let dir = scratch.dir("d");
+    let dir = scratch.sub("d");
     let path = dir.join("notify.toml");
     fs::write(&path, "a").unwrap();
     let (watch, keys) = start();
@@ -152,7 +109,7 @@ fn a_file_saved_by_rename_and_then_edited_in_place_is_heard_again() {
 #[test]
 fn a_file_watch_alone_follows_the_path_across_a_rename() {
     let scratch = Scratch::new();
-    let path = scratch.dir("d").join("events.tsv");
+    let path = scratch.sub("d").join("events.tsv");
     fs::write(&path, "a").unwrap();
     let (watch, keys) = start();
     watch.file(&path, Key::Events).unwrap();
@@ -168,7 +125,7 @@ fn a_file_watch_alone_follows_the_path_across_a_rename() {
 #[test]
 fn a_file_replaced_while_a_reader_still_holds_the_old_one_is_followed_to_the_new_one() {
     let scratch = Scratch::new();
-    let path = scratch.dir("d").join("events.tsv");
+    let path = scratch.sub("d").join("events.tsv");
     fs::write(&path, "a").unwrap();
     // The old file is not freed while it is open, so the system says nothing of its removal.
     let _reader = File::open(&path).unwrap();
@@ -186,7 +143,7 @@ fn a_file_replaced_while_a_reader_still_holds_the_old_one_is_followed_to_the_new
 #[test]
 fn a_file_truncated_in_place_is_heard() {
     let scratch = Scratch::new();
-    let path = scratch.dir("d").join("notify.toml");
+    let path = scratch.sub("d").join("notify.toml");
     fs::write(&path, "abc").unwrap();
     let (watch, keys) = start();
     watch.file(&path, Key::Options).unwrap();
@@ -201,7 +158,7 @@ fn a_file_truncated_in_place_is_heard() {
 #[test]
 fn a_file_watch_alone_survives_a_chmod() {
     let scratch = Scratch::new();
-    let path = scratch.dir("d").join("events.tsv");
+    let path = scratch.sub("d").join("events.tsv");
     fs::write(&path, "a").unwrap();
     let (watch, keys) = start();
     watch.file(&path, Key::Events).unwrap();
@@ -219,7 +176,7 @@ fn a_file_watch_alone_survives_a_chmod() {
 #[test]
 fn a_file_truncated_by_creating_it_again_is_heard() {
     let scratch = Scratch::new();
-    let path = scratch.dir("d").join("notify.toml");
+    let path = scratch.sub("d").join("notify.toml");
     fs::write(&path, "abc").unwrap();
     let (watch, keys) = start();
     watch.file(&path, Key::Options).unwrap();
@@ -233,13 +190,11 @@ fn a_file_truncated_by_creating_it_again_is_heard() {
 #[test]
 fn a_fifo_does_not_hold_the_watch_thread_for_a_writer() {
     let scratch = Scratch::new();
-    let fifo = scratch.dir("d").join("events.tsv");
+    let fifo = scratch.sub("d").join("events.tsv");
     // rustix has no `mknodat` on macOS, where this test matters most, so the program makes the FIFO.
     assert!(
-        Command::new("mkfifo")
-            .arg(&fifo)
-            .status()
-            .unwrap()
+        gate::run(Command::new("mkfifo").arg(&fifo))
+            .status
             .success()
     );
     let (watch, _keys) = start();
@@ -264,7 +219,7 @@ fn a_fifo_does_not_hold_the_watch_thread_for_a_writer() {
 #[test]
 fn a_file_that_did_not_exist_is_watched_from_the_next_directory_event() {
     let scratch = Scratch::new();
-    let dir = scratch.dir("d");
+    let dir = scratch.sub("d");
     let path = dir.join("notify.toml");
     let (watch, keys) = start();
     watch.dir(&dir, Key::Options).unwrap();
@@ -284,7 +239,7 @@ fn a_file_that_did_not_exist_is_watched_from_the_next_directory_event() {
 #[test]
 fn a_symlink_has_no_file_watch_so_its_target_edited_is_not_heard_and_the_link_replaced_is() {
     let scratch = Scratch::new();
-    let (config, elsewhere) = (scratch.dir("config"), scratch.dir("elsewhere"));
+    let (config, elsewhere) = (scratch.sub("config"), scratch.sub("elsewhere"));
     let (first, second) = (elsewhere.join("first.toml"), elsewhere.join("second.toml"));
     fs::write(&first, "a").unwrap();
     fs::write(&second, "b").unwrap();
@@ -312,7 +267,7 @@ fn a_symlink_has_no_file_watch_so_its_target_edited_is_not_heard_and_the_link_re
 #[test]
 fn a_symlink_that_is_replaced_by_a_file_is_watched_from_then_on() {
     let scratch = Scratch::new();
-    let (config, elsewhere) = (scratch.dir("config"), scratch.dir("elsewhere"));
+    let (config, elsewhere) = (scratch.sub("config"), scratch.sub("elsewhere"));
     let target = elsewhere.join("real.toml");
     fs::write(&target, "a").unwrap();
     let link = config.join("notify.toml");
@@ -335,7 +290,7 @@ fn a_symlink_that_is_replaced_by_a_file_is_watched_from_then_on() {
 #[test]
 fn a_directory_that_is_a_symlink_is_followed_and_a_file_is_not_a_directory() {
     let scratch = Scratch::new();
-    let real = scratch.dir("real");
+    let real = scratch.sub("real");
     let link = scratch.0.join("link");
     symlink(&real, &link).unwrap();
     let file = real.join("notify.toml");
@@ -352,7 +307,7 @@ fn a_directory_that_is_a_symlink_is_followed_and_a_file_is_not_a_directory() {
 #[test]
 fn a_second_directory_for_a_key_takes_the_place_of_the_first() {
     let scratch = Scratch::new();
-    let (old, new) = (scratch.dir("old"), scratch.dir("new"));
+    let (old, new) = (scratch.sub("old"), scratch.sub("new"));
     let (watch, keys) = start();
     watch.dir(&old, Key::Options).unwrap();
     watch.dir(&new, Key::Options).unwrap();
@@ -367,7 +322,7 @@ fn a_second_directory_for_a_key_takes_the_place_of_the_first() {
 #[test]
 fn two_keys_on_one_directory_both_hear_an_entry_written() {
     let scratch = Scratch::new();
-    let shared = scratch.dir("shared");
+    let shared = scratch.sub("shared");
     let (watch, keys) = start();
     watch.dir(&shared, Key::Events).unwrap();
     watch.dir(&shared, Key::Options).unwrap();
@@ -384,7 +339,7 @@ fn two_keys_on_one_directory_both_hear_an_entry_written() {
 #[test]
 fn a_key_that_leaves_a_directory_does_not_take_the_watch_of_another_key_with_it() {
     let scratch = Scratch::new();
-    let (shared, elsewhere) = (scratch.dir("shared"), scratch.dir("elsewhere"));
+    let (shared, elsewhere) = (scratch.sub("shared"), scratch.sub("elsewhere"));
     let (watch, keys) = start();
     watch.dir(&shared, Key::Events).unwrap();
     watch.dir(&shared, Key::Options).unwrap();
@@ -403,7 +358,7 @@ fn a_key_that_leaves_a_directory_does_not_take_the_watch_of_another_key_with_it(
 #[test]
 fn arming_does_not_wait_for_an_event() {
     let scratch = Scratch::new();
-    let dir = scratch.dir("d");
+    let dir = scratch.sub("d");
     let (watch, _keys) = start();
     let watch = Arc::new(watch);
     thread::sleep(Duration::from_millis(100));
@@ -450,7 +405,7 @@ fn no_byte_is_missed_when_writes_land_as_the_watch_is_armed() {
     const ROUNDS: usize = 200;
     const BYTES: usize = 5;
     let scratch = Scratch::new();
-    let dir = scratch.dir("d");
+    let dir = scratch.sub("d");
     let (watch, keys) = start();
     for round in 0..ROUNDS {
         // A key left from the last round would satisfy the wait of this one.
@@ -492,7 +447,7 @@ fn no_byte_is_missed_when_writes_land_as_the_watch_is_armed() {
 fn arming_another_watch_loses_no_wake_of_one_already_armed() {
     const BYTES: usize = 300;
     let scratch = Scratch::new();
-    let dir = scratch.dir("d");
+    let dir = scratch.sub("d");
     let events = dir.join("events.tsv");
     File::create(&events).unwrap();
     let (watch, keys) = start();
@@ -532,7 +487,7 @@ fn arming_another_watch_loses_no_wake_of_one_already_armed() {
 fn a_watch_is_dropped_while_its_thread_waits() {
     let scratch = Scratch::new();
     let (watch, keys) = start();
-    watch.dir(&scratch.dir("d"), Key::Options).unwrap();
+    watch.dir(&scratch.sub("d"), Key::Options).unwrap();
     thread::sleep(Duration::from_millis(100));
 
     drop(watch);
@@ -720,5 +675,5 @@ fn a_watch_the_kernel_refuses_does_not_stop_the_arming_of_the_next() {
     let refused = watch.file(Path::new(&path), Key::Events);
     assert!(refused.is_err(), "the kernel was meant to refuse a pipe");
 
-    watch.dir(&scratch.dir("d"), Key::Options).unwrap();
+    watch.dir(&scratch.sub("d"), Key::Options).unwrap();
 }

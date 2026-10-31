@@ -48,6 +48,9 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **macOS has no `timeout`** — run suites bare, they bound themselves (30.10.2026, 11.09.2026)
 - **bash 3.2 brace-expands a JSON object written in double quotes inside `$( )`** — the comma list comes out mangled. Build such JSON in a function body or in single quotes, as `tests/rust-mcp-parity.sh` does (30.10.2026)
 - **`ps | grep -c <name>` counts the shell that runs the check** — its command line holds the pattern. Write it with a bracket, `grep -c '[s]leep 30'`, so a "nothing is left running" check can read 0 (30.10.2026)
+- **APFS is case-insensitive** — `0a1b` and `0A1B` are one file, so two fixtures meant to differ overwrote each other. Name fixtures that must coexist by more than case (31.10.2026)
+- **`$VAR.log` with `VAR` unset creates `.log` in the cwd** — the log went to a hidden file in the cwd. Write `${VAR:?}.log` (31.10.2026)
+- **zsh does not split an unquoted multi-word `$t`** — the whole string became one command word. Use `${=t}` or an array (31.10.2026)
 
 ## tmux
 
@@ -139,6 +142,7 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **API Extractor treats `.d.ts` under `node_modules` as external** — emit declarations into `packages/contract/.cache/`, one `mkdtemp` directory per call (12.10.2026)
 - **API Extractor resolves `types` from the cwd given only a tsconfig path** — use `compiler.overrideTsconfig` with explicit `typeRoots` and run the test from two other cwds (12.10.2026)
 - **`tusage --help` creates its state directory and needs jq** — run scripts for their help text with a throwaway `HOME` and the caller's `PATH` (12.10.2026)
+- **A usage line whose description starts with a lowercase word is read as part of the verb path** — `cli-spec.test.ts` took `notify run   (the …` as more words. Start the description with a parenthesis or a capital (31.10.2026)
 
 ## Docs and the site
 
@@ -147,6 +151,8 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **A link check that looks only for a file passes on a made-up page** — the prerender wrote the not-found page for `/docs/`. Skip mount paths (`MOUNTS` in `site/build/links.ts`) and require `docs/index.html`; run the check once without the other tool's output (29.10.2026)
 - **`vitepress preview` after a rebuild serves an unstyled page** — restart the preview after each `pnpm docs:build` (25.10.2026)
 - **A plate that holds only greys turns the sprite drawn on it grey** — after `-colorize`, ImageMagick saved `site/src/mascot/source/plate.png` as grey and alpha, and every icon came out with a grey sprite. `writeIcons` converts the plate with `-colorspace sRGB`, and the plate is saved with `-define png:color-type=6` (31.10.2026)
+- **A document that quotes a suite's counts goes stale with the next scenario** — say what the suite's last line reports instead of the numbers (31.10.2026)
+- **A comment line added to a file moves every `file:line` citation below it** — grep the documents for the file's citations after each edit to it and renumber them in the same commit (31.10.2026)
 
 ## Test practice
 
@@ -174,6 +180,7 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **A control run of `git show HEAD:tagents` needs HEAD's lib beside it** — `git archive HEAD lib/tagents | tar -x -C "$CONTROL"` and a guard that the control started (12.09.2026)
 - **Do not touch the working tree while the bash suite runs in the background** — a stash mixed two trees; use a scratch worktree for probes (11.09.2026)
 - **Mutation runs that fail identically are one run, not three** — copies of a mutated tree mounted at one path with a shared target directory were judged built by their file times, so cargo ran the first mutation's binary for all three. Copy each mutation to a writable path and touch every source first; each mutation must turn the test that guards it red and no other.
+- **A GitHub Linux runner leaks pipe descriptors without close-on-exec into every child** — a descriptor count that passed on macOS failed in CI (node on macOS spawns with close-by-default, on Linux it forks and the child keeps them); read the numbers a `sleep` launched the same way holds and leave them out (31.10.2026)
 
 ## Rust core and the MCP server
 
@@ -187,6 +194,29 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **Removing an inotify watch queues an `IN_IGNORED` that a test can take for the event it waits for** — with the removal made unconditional, the backend reported a key for a slot still on the removed descriptor, and a "the watch is still armed" test passed on it. Such a test takes what the arming and the removal made first (`settle`) and writes after (31.10.2026).
 - **`cargo test --lib` after a signature change leaves the callers in `tests/` unbuilt** — `Watch::start` became generic over `T: From<Heard>` and `tests/watch_fds.rs` failed only in the Linux run. After a change to a public signature, run `cargo clippy --workspace --all-targets` before any narrower run (31.10.2026).
 - **A test for an inotify re-arm needs the event that reaches it, and a mutation to prove it** — `File::set_modified` sent `MODIFY` on the Docker image's 5.15 kernel, so no re-arm ran and the mutated `keep` stayed green; `chmod` sends `ATTRIB`. A removal that is wrong heals through `IN_IGNORED`, so the test tells it by the second wake: `silent` after the first key, not `settle` (31.10.2026).
+- **Cargo can reuse a mutated build after a restore within the same second** — the restored sources kept a modification time the build took for unchanged, so a mutation run looked green. Touch the sources after restoring them (31.10.2026)
+- **A half-line test needs a half line that parses** — 13 fields cut before the newline, or the test passes on a parse error instead of the half-line rule. Prove it with a mutation (31.10.2026)
+- **On Linux the directory watch fires on any write and masks a missing re-arm of a file watch** — a test of the re-arm passes there for the wrong reason. kqueue is the strict check, so run it on macOS (31.10.2026)
+- **A failing-open test must not rely on permissions** — Docker runs as root and opens a mode-000 file. Use a dangling symlink, which fails the same on both (31.10.2026)
+- **The vector generator imports node sources by relative path** — `@tagents/core` does not resolve from `tests/`. Import by relative path, and rebuild `dist/` after an `en.ts` change, because `packages/core` tests use the built `dist/` when present (31.10.2026)
+- **`let (a, _) = f();` drops the unbound guard at once** — a scratch directory was removed before the test used it. Bind it as `_dir`; two inherent impl blocks on one type cannot share a method name across modules, so per-module helpers on a shared test type go through a local trait (31.10.2026)
+- **A test hook that asserts inside an engine call has its panic caught as a failed job** — the test passed silently. Hooks record and the test asserts after the call (31.10.2026)
+- **A deadline re-armed from a row after a re-follow is already past** — it fires at the next wake, so `armed() == 1` fails by timing. Assert the post (31.10.2026)
+- **Never run a failing `Command::exec` in-process in a test** — a failing one returns into the test process that meant to be replaced. Run it in a child process (31.10.2026)
+- **A pass on macOS hid a macOS-only pin in a timing suite** — the Linux container ran it differently. Run a timing suite in the Linux container before calling it done (31.10.2026)
+- **A machine that sleeps mid-run voids the run** — the timings were wrong and the suite failed or passed by accident. Compare the wall time with the usual one, read `pmset -g log`, and run under `caffeinate -i` (31.10.2026)
+- **A tripwire tied to "the last scenario run" fails under `PARITY_ONLY`** — the scenario it watched never ran. Put per-document pins inside the helper that runs the document (31.10.2026)
+- **A mutating `sed` can change nothing or too much, and the run is green anyway** — check `git diff --stat` after it before trusting a green run (31.10.2026)
+- **`rust:1` is Debian trixie now, and its binary needs GLIBC_2.39** — the node:22-bookworm-slim run refused it. Build in `rust:1-bookworm` for a bookworm run (31.10.2026).
+- **A mutation that survives the parity suite means a scenario is missing** — the suite was green with the option order, the lock, the stop, the events cut and a helper field broken one at a time until each got its own scenario. Mutate before calling a suite complete (31.10.2026).
+- **The slim Linux image has no `/bin/ps`** — the lock's start time and the driver's first look use it, and the run failed for that, not for the daemon. Install `procps` before the Linux parity run (31.10.2026).
+- **A parity mutation stayed green because the suite reused the old binary** — it builds the Rust binary only when missing. Run `cargo build -p tagents-core` after each mutation (31.10.2026)
+- **An early return that the later fire path repeats leaves no trace in a transcript** — dropping one guard kept the suite green. Drop both guards to prove the early return (31.10.2026)
+- **`ps -o comm=` prints the full path on macOS and a 15-character name on Linux** — compare against the binary's name, cut to 15 characters only on Linux (31.10.2026)
+- **A test that holds `forking()` and calls `writing()` deadlocks** — the fork gate is one `RwLock`. Take one side of it per test (31.10.2026)
+- **`eprintln!` panics when stderr is a closed pipe** — the front door exited 101 instead of its own code after a failed exec. Write a last line through a function that ignores the write error and returns the exit code (31.10.2026)
+- **libtest captures `eprintln!` but not `writeln!(io::stderr(), …)`** — a skip line written with `eprintln!` never showed in the run's output. Write a line the run must show with `writeln!(io::stderr(), …)` (31.10.2026)
+- **macOS `open` gives EINVAL while a rename replaces a symlink on the path** — a reader woken by a directory event can meet it; try the open again, three tries in all (31.10.2026)
 
 ## Other
 

@@ -158,6 +158,15 @@
       "summary": "summaryMcp",
       "impl": "rust",
       "effect": "serve"
+    },
+    {
+      "path": ["notify", "run"],
+      "positionals": [],
+      "options": {},
+      "required": [],
+      "summary": "summaryNotifyRun",
+      "impl": "rust",
+      "effect": "serve"
     }
   ]
 }

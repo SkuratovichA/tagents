@@ -21,7 +21,7 @@ use std::{
 use tagents_spec::{Implementation, Spec};
 
 mod common;
-use common::{REPO, run, scratch, start, write_executable, writing};
+use common::{REPO, closed_pipe, run, scratch, start, write_executable, writing};
 
 const BIN: &str = env!("CARGO_BIN_EXE_tagents-core");
 const SPEC_FILE: &str = "spec/cli/tagents-core.json";
@@ -404,12 +404,18 @@ fn a_verb_the_front_door_serves_is_not_forwarded() {
     let checkout = Checkout::new("served-not-forwarded");
     let home = checkout.root.join("home");
     fs::create_dir_all(&home).unwrap();
+    // `notify run` serves until a signal, unless there is nothing to post: the options of this checkout say so.
+    let config = checkout.root.join("config");
+    fs::create_dir_all(config.join("plugins")).unwrap();
+    fs::write(config.join("plugins/notify.toml"), "backend = \"none\"\n").unwrap();
     // Every verb the data file gives to Rust, run without its arguments: each answers on its own, and the stub node never runs.
     for command in data_file().served_by(Implementation::Rust) {
         let out = run(checkout
             .command()
             .env("HOME", &home)
             .env("CLAUDE_HOMES", home.join(".claude"))
+            .env("TAGENTS_CONFIG_DIR", &config)
+            .env("TA_STATE_DIR", checkout.root.join("state"))
             .args(&command.path));
         assert!(out.status.code().is_some(), "{:?}", command.path);
         assert!(
@@ -468,6 +474,36 @@ fn a_node_that_cannot_run_is_exit_127_or_126() {
         .env("TAGENTS_NODE", checkout.root.join("not-executable"))
         .arg("doctor"));
     assert_eq!(denied.status.code(), Some(126));
+}
+
+#[test]
+fn a_failed_exec_with_stderr_a_closed_pipe_exits_with_the_front_doors_code_not_a_panic() {
+    // The line cannot be written; the exit is the same as when it can: 2 when the node CLI is missing, 127 when node cannot run.
+    let checkout = Checkout::new("forward-failed-exec-closed-stderr");
+    let main = checkout.root.join("packages/core/dist/cli/main.js");
+    fs::remove_file(&main).unwrap();
+    let missing = start(
+        checkout
+            .command()
+            .arg("doctor")
+            .stdout(Stdio::null())
+            .stderr(closed_pipe()),
+    )
+    .wait()
+    .unwrap();
+    assert_eq!(missing.code(), Some(2), "{missing:?}");
+    fs::write(&main, "// stub\n").unwrap();
+    let cannot_run = start(
+        checkout
+            .command()
+            .env("TAGENTS_NODE", checkout.root.join("no-such-node"))
+            .arg("doctor")
+            .stdout(Stdio::null())
+            .stderr(closed_pipe()),
+    )
+    .wait()
+    .unwrap();
+    assert_eq!(cannot_run.code(), Some(127), "{cannot_run:?}");
 }
 
 #[test]

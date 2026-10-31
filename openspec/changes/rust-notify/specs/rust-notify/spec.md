@@ -128,7 +128,7 @@ The service SHALL create `events.tsv` (mode 0600) and `events.on` when it follow
 
 #### Scenario: Rotation
 - **WHEN** the file passes 1 MiB while the service follows it
-- **THEN** the lines written to the old file before the 2 seconds end are still handled, and the lines of the new file are handled after them
+- **THEN** the lines of the new file are handled as they are written, and the lines written to the old file before the 2 seconds end are handled once, when they end, so a line of the new file can be handled before the last lines of the old one, as the node service does
 
 #### Scenario: Two thousand lines in a tight loop
 - **WHEN** two thousand events are appended with no pause
@@ -198,6 +198,10 @@ An event in the options directory SHALL make the service read the options file a
 - **WHEN** `plugins/notify.toml` is a directory or a file that cannot be read
 - **THEN** the one problem is `options: <file>: <the text node prints for the failed read>`, such as `EISDIR: illegal operation on a directory, read`, the defaults hold and the `started` line ends `(invalid)`
 
+#### Scenario: An open that fails while a rename replaces the symlink
+- **WHEN** the open of `plugins/notify.toml` fails with EINVAL because a rename is replacing a symlink on the path (macOS)
+- **THEN** the open is tried again, three tries in all, and an EINVAL on the third try is reported as "A file that cannot be read" says
+
 #### Scenario: A file without read permission
 - **WHEN** `plugins/notify.toml` has mode 000 at start
 - **THEN** the log has the problem line above and `options watch failed <file> <why>` (the file watch cannot be armed, `EACCES`), before `started` ending `(invalid)`, and the service runs without that file watch, the directory watch still hearing a replacement
@@ -252,7 +256,7 @@ A file that is not TOML SHALL be reported as the one problem `options: <file>: I
 When a step of the start before the `started` line fails, the Rust service SHALL, unless a stop was requested, log `handing over to the node service: <why>`, keep the lock held and replace its process with the node service (`node <root>/packages/notify/dist/main.js run`, the same environment), which runs or fails by its own lines. A stop requested during start SHALL end the process without a `stopping` line, and a failure after `started`, such as a failed watch, SHALL NOT be handed over.
 
 #### Scenario: The steps that hand over
-- **WHEN** creating the state directory, taking the lock (not a held lock), picking the backend, starting the follower or arming the engine from the state rows fails
+- **WHEN** registering the handlers of SIGTERM, SIGINT and SIGHUP, creating the state directory, taking the lock (not a held lock), starting the watch, starting the follower or arming the engine from the state rows fails (the node service has no such step: its handlers cannot fail to register)
 - **THEN** the service hands over to the node service
 
 #### Scenario: A watch that cannot be armed
@@ -281,6 +285,10 @@ When a step of the start before the `started` line fails, the Rust service SHALL
 
 #### Scenario: A stop during a failing start
 - **WHEN** SIGTERM arrives while a step of the start fails
+- **THEN** the process writes no `stopping` line, releases the lock, exits 0 and does not start the node service
+
+#### Scenario: A stop during the close of a hand-over
+- **WHEN** SIGTERM arrives while the service closes the follower and the watch for a hand-over
 - **THEN** the process writes no `stopping` line, releases the lock, exits 0 and does not start the node service
 
 ### Requirement: When the watch ends

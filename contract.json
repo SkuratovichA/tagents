@@ -255,6 +255,17 @@
           ],
           "summary": "serves the tools of a contract file to an MCP client over stdin and stdout until the client closes them",
           "effect": "serve"
+        },
+        {
+          "path": [
+            "notify",
+            "run"
+          ],
+          "positionals": [],
+          "options": {},
+          "required": [],
+          "summary": "runs the notification service in this process until a signal stops it: it follows the event stream of the agents and posts a notice for each turn that ends, each question and each permission prompt",
+          "effect": "serve"
         }
       ]
     },
@@ -1241,7 +1252,7 @@
     }
   },
   "api": {
-    "@tagents/core": "sha256:cfb30b274efc817960f87ad29580af1c9ac45856f679acfd7ed4b825ee215489",
+    "@tagents/core": "sha256:181c05338ec423475dcc10c1232953d04c95e36061ddf818bdce3b7a12209cc5",
     "@tagents/knowledge": "sha256:63465226fcb49e8f6a20867948332ff35da600f4a020fa9701ef88730f5c2d8a",
     "@tagents/notify": "sha256:9fd35c43c5dd7262667bfdd48944a46e39551f1e7441438455c7859a39f8fb7e",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"

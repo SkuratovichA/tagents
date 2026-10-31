@@ -431,6 +431,7 @@ mod tests {
     use std::thread;
 
     use super::*;
+    use crate::testing::gate::forking;
 
     /// The cap of `mcp`: the arithmetic of the tests below is its.
     const CAP: usize = 256 * 1024;
@@ -510,6 +511,7 @@ mod tests {
 
     /// A call of `sh -c script` with nothing to stop it but its policy. The scripts use `/bin/sh` and programs that are in `/bin`, and write no file, so a test needs no rig of its own.
     fn sh(script: &str, policy: &Policy, stop: &Stop) -> Finished {
+        let _forking = forking();
         let mut command = Command::new("/bin/sh");
         command.arg("-c").arg(script);
         run(command, policy, stop).unwrap()
@@ -711,6 +713,7 @@ mod tests {
 
     #[test]
     fn a_program_that_is_not_there_is_an_error_of_the_spawn() {
+        let _forking = forking();
         let error = run(
             Command::new("/nonexistent/tagents-child-test"),
             &policy(None, ms(5000), None),

@@ -36,9 +36,11 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 bash tests/rust-parity.sh        # the Rust sessions verbs against the node CLI
 bash tests/rust-mcp-parity.sh    # the Rust MCP server against the node one
+node tests/rust-notify-vectors.mts && git diff --exit-code crates/tagents-core/tests/fixtures/notify-vectors.json   # the node rules the daemon copies
+bash tests/rust-notify-parity.sh # the Rust notify daemon against the node one
 ```
 
-What the parity suites compare is in [The parity suite](./architecture/rust-core#the-parity-suite). They need a built `packages/core` and `packages/mcp` (`pnpm build`) and build the debug binary themselves when it is missing. A pull request that changes what the `tagents-core` binary is built from also raises the workspace version in `Cargo.toml`: [How a release is made](./architecture/rust-core#how-a-release-is-made) says which files count and how to run the check, `sh .github/scripts/core-release.sh gate origin/main`.
+What the parity suites compare is in [The parity suite](./architecture/rust-core#the-parity-suite). They need a built `packages/core`, `packages/mcp` and `packages/notify` (`pnpm build`) and build the debug binary themselves when it is missing. A pull request that changes what the `tagents-core` binary is built from also raises the workspace version in `Cargo.toml`: [How a release is made](./architecture/rust-core#how-a-release-is-made) says which files count and how to run the check, `sh .github/scripts/core-release.sh gate origin/main`.
 
 ### The bash suites
 

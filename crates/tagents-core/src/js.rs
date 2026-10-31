@@ -79,20 +79,27 @@ pub fn len16(s: &str) -> usize {
 /// `s.slice(0, n)`.
 /// A cut between the two halves of a surrogate pair leaves the high half alone, which stdout writes as U+FFFD.
 pub fn take16(s: &str, n: usize) -> String {
+    let (mut out, lone) = split16(s, n);
+    if lone.is_some() {
+        out.push('\u{fffd}');
+    }
+    out
+}
+
+/// `s.slice(0, n)` as the whole characters before the cut and, when the cut falls between the two halves of a surrogate pair, the high half that the string would end with and a `String` cannot hold.
+pub fn split16(s: &str, n: usize) -> (String, Option<u16>) {
     let mut out = String::new();
     let mut used = 0;
     for c in s.chars() {
         let width = c.len_utf16();
         if used + width > n {
-            if used < n {
-                out.push('\u{fffd}');
-            }
-            break;
+            let lone = (used < n).then(|| c.encode_utf16(&mut [0; 2])[0]);
+            return (out, lone);
         }
         out.push(c);
         used += width;
     }
-    out
+    (out, None)
 }
 
 /// `s.padEnd(n)`.
@@ -303,6 +310,10 @@ mod tests {
         assert_eq!(take16("a😀b", 3), "a😀");
         assert_eq!(take16("a😀b", 4), "a😀b");
         assert_eq!(take16("abc", 10), "abc");
+        assert_eq!(split16("a😀b", 2), ("a".to_owned(), Some(0xd83d)));
+        assert_eq!(split16("a😀b", 3), ("a😀".to_owned(), None));
+        assert_eq!(split16("abc", 10), ("abc".to_owned(), None));
+        assert_eq!(split16("😀", 0), (String::new(), None));
         assert_eq!(pad_end("😀", 4), "😀  ");
         assert_eq!(pad_end("long", 2), "long");
     }

@@ -20,6 +20,7 @@ export const ru: Partial<Record<keyof typeof en, string>> = {
     '  plugin new <имя> [--dir D]',
     '  doctor',
     '  mcp --contract F   (только бинарник на Rust)',
+    '  notify run   (сервис уведомлений: его обслуживает бинарник на Rust, а если он не может стартовать, управление передаётся node)',
     '  <плагин> <команда> [аргументы]   команда настроенного плагина (см. plugin list)',
     '',
     'зарезервировано: session · sessions · plugin · doctor · help — команда ядра важнее',

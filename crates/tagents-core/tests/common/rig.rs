@@ -8,6 +8,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     ffi::OsString,
     fs,
+    io::Write,
     path::PathBuf,
     thread,
     time::{Duration, Instant},
@@ -113,7 +114,11 @@ pub fn escapee_program(perl: &str, after: &str) -> String {
 pub fn has_perl() -> bool {
     let found = std::path::Path::new("/usr/bin/perl").exists();
     if !found {
-        eprintln!("no perl to start a process in a session of its own: skipped");
+        // libtest captures `eprintln!` of a passing test; a write to the stderr handle is shown.
+        let _ = writeln!(
+            std::io::stderr(),
+            "no perl to start a process in a session of its own: skipped"
+        );
     }
     found
 }

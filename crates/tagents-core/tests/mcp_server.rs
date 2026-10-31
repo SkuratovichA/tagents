@@ -310,7 +310,9 @@ fn tools_list_is_the_list_the_contract_records_and_a_read_only_tool_answers_agai
     assert_eq!(fields(&listed["result"]["tools"]), fields(wanted));
 
     if node.is_none() {
-        eprintln!(
+        // libtest captures `eprintln!` of a passing test; a write to the stderr handle is shown.
+        let _ = writeln!(
+            std::io::stderr(),
             "no node on PATH, or no node_modules (run pnpm install): the call half of the smoke test is skipped"
         );
         return;
