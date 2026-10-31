@@ -439,6 +439,10 @@ fn a_missing_node_cli_is_exit_2_and_names_where_it_looked() {
     assert_eq!(out.stdout, b"");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains(&checkout.cli()), "{stderr}");
+    assert!(
+        stderr.contains("cannot find packages/core/dist/cli/main.js:"),
+        "{stderr}"
+    );
     assert!(stderr.contains("<root>/target/<profile>/"), "{stderr}");
     assert!(!checkout.argv.exists());
 }

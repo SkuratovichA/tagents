@@ -1,30 +1,22 @@
 //! A call: the program of the verb, run as a child with no stdin, and what it did told back in one JSON document. Nothing here knows a verb; the program, the words and the exit table all come from the tool. It is `packages/mcp/src/run.ts`.
 //!
-//! Nothing a call starts outlives the call. The child leads a process group of its own, a call ends by exit, timeout, cancellation of its request or closing of the server, and each time the whole group is stopped: SIGTERM, then SIGKILL once the grace is over, and whatever is left in the group after the program itself exited is killed at once.
-//!
-//! One thread runs the call and waits on a channel with a deadline. Three more feed the channel: one per output pipe, which reads, keeps the first `MAX_STREAM` bytes and discards the rest so the program never blocks on a full pipe, and one that waits for the program to exit without reaping it (the zombie keeps the group's id from being reused while the call signals the group). The stop of the request arrives on the same channel.
+//! Nothing a call starts outlives the call: `child` runs the program as the leader of a process group of its own and, however the call ends (exit, timeout, cancellation of its request, closing of the server), stops the whole group.
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
-use std::io::{self, ErrorKind, Read};
-use std::os::fd::{AsFd, OwnedFd};
-use std::os::unix::process::CommandExt;
-use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::{Duration, Instant};
+use std::io::{self, ErrorKind};
+use std::process::Command;
+use std::time::Duration;
 
-use rustix::event::{PollFd, PollFlags, Timespec, poll};
-use rustix::io::Errno;
-use rustix::process::{Pid, Signal, WaitId, WaitIdOptions, kill_process_group, waitid};
 use serde::Serialize;
 use serde_json::ser::{Formatter, PrettyFormatter};
 use serde_json::{Map, Number, Serializer, Value};
 
 use super::rpc::{CallResult, ToolEntry};
-use super::server::{Stop, Tools};
+use super::server::Tools;
 use super::tools::{Tool, argv_for};
+use crate::child::{self, Policy, Reason};
+use crate::ending::Stop;
 use crate::js;
 
 /// More than this many bytes of one stream is cut: a transcript or an index can be larger than any client will take.
@@ -35,8 +27,6 @@ pub const CALL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 pub const KILL_GRACE: Duration = Duration::from_millis(2000);
 /// How long the call waits for the output pipes after the program exited: a process that left the group can hold them open for good. A pipe that still holds bytes, or has lost its last writer, is not held by such a process but waits for its reader thread, and is waited for on past this, up to the grace.
 pub const DRAIN: Duration = Duration::from_millis(250);
-/// How often a call whose drain is over looks again at the pipes that have bytes or an end to read. The Rust server's own: the node server reads in its event loop's poll phase and has no such wait.
-const DRAIN_STEP: Duration = Duration::from_millis(10);
 
 pub struct RunDeps {
     /// The environment the program is looked up and run in: the server's own.
@@ -56,10 +46,6 @@ impl RunDeps {
             drain: DRAIN,
         }
     }
-}
-
-fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// The tools of a contract, run: `tools/list` is their entries and a call is `call_tool`.
@@ -100,59 +86,6 @@ fn parsed_or_text(stdout: &str) -> Value {
         return Value::String(stdout.to_owned());
     }
     serde_json::from_str(stdout).unwrap_or_else(|_| Value::String(stdout.to_owned()))
-}
-
-/// The first bytes of a stream up to the cap.
-#[derive(Default)]
-struct Capture {
-    bytes: Vec<u8>,
-    cut: bool,
-}
-
-impl Capture {
-    /// A stream is cut when it is longer than the cap, not when it reaches it.
-    fn push(&mut self, chunk: &[u8]) {
-        let room = MAX_STREAM - self.bytes.len();
-        if chunk.len() <= room {
-            self.bytes.extend_from_slice(chunk);
-            return;
-        }
-        self.bytes.extend_from_slice(&chunk[..room]);
-        self.cut = true;
-    }
-
-    /// The text read so far; once cut, it ends before the character the cap fell in, and a marker says so.
-    fn text(&self) -> String {
-        if !self.cut {
-            return String::from_utf8_lossy(&self.bytes).into_owned();
-        }
-        let whole = &self.bytes[..complete_end(&self.bytes)];
-        format!(
-            "{}\n[output cut at {MAX_STREAM} bytes]",
-            String::from_utf8_lossy(whole)
-        )
-    }
-}
-
-/// The end of the last whole UTF-8 character of `bytes`: a sequence the cap cut in the middle is left out whole. It looks at the last four bytes only, as `completeEnd` of `run.ts` does, so a stream that is not UTF-8 is cut where node cuts it.
-fn complete_end(bytes: &[u8]) -> usize {
-    let Some(mut lead) = bytes.len().checked_sub(1) else {
-        return 0;
-    };
-    while lead > 0 && bytes.len() - lead < 4 && bytes[lead] & 0xc0 == 0x80 {
-        lead -= 1;
-    }
-    let length = match bytes[lead] {
-        0xf0.. => 4,
-        0xe0.. => 3,
-        0xc0.. => 2,
-        _ => 1,
-    };
-    if lead + length > bytes.len() {
-        lead
-    } else {
-        bytes.len()
-    }
 }
 
 #[derive(Serialize)]
@@ -298,48 +231,6 @@ pub fn call_tool(
     run(tool, &argv, deps, stop)
 }
 
-#[derive(Clone, Copy, PartialEq)]
-enum Reason {
-    Timeout,
-    Cancelled,
-}
-
-/// One of the two output pipes of the program.
-#[derive(Clone, Copy, PartialEq)]
-enum Stream {
-    Out,
-    Err,
-}
-
-impl Stream {
-    /// The name of the stream's reader thread.
-    fn name(self) -> &'static str {
-        match self {
-            Stream::Out => "out",
-            Stream::Err => "err",
-        }
-    }
-}
-
-enum Event {
-    /// The program exited; its code, or none when a signal ended it.
-    Exited(Option<i32>),
-    /// One output pipe is closed, by the program and by everything that held it.
-    Eof(Stream),
-    Stop,
-}
-
-/// What the supervisor saw of the program.
-struct Ended {
-    reason: Option<Reason>,
-    code: Option<i32>,
-}
-
-fn signal_group(group: Pid, signal: Signal) {
-    // The group is gone already, or never was: either way there is nothing left to signal.
-    let _ = kill_process_group(group, signal);
-}
-
 /// The text of a spawn failure: the operating system's, except for a program that is not there, which names the program.
 fn spawn_failure(program: &str, error: &io::Error) -> String {
     if error.kind() == ErrorKind::NotFound {
@@ -349,245 +240,23 @@ fn spawn_failure(program: &str, error: &io::Error) -> String {
     }
 }
 
-fn group_of(child: &Child) -> Option<Pid> {
-    Pid::from_raw(i32::try_from(child.id()).ok()?)
-}
-
-fn spawn_thread(name: &str, work: impl FnOnce() + Send + 'static) -> Result<(), String> {
-    std::thread::Builder::new()
-        .name(name.into())
-        .spawn(work)
-        .map(drop)
-        .map_err(|e| format!("could not start a thread for the call: {e}"))
-}
-
-/// Reads a pipe to its end. The first `MAX_STREAM` bytes are kept; once the call is over the thread lets go of the pipe at the next byte it reads, so a process that outlived the call gets EPIPE as it would from a pipe that was destroyed.
-fn read_stream(mut pipe: impl Read, capture: &Mutex<Capture>, over: &AtomicBool) {
-    let mut chunk = vec![0u8; 32 * 1024];
-    loop {
-        match pipe.read(&mut chunk) {
-            Ok(0) => return,
-            Ok(n) => {
-                if over.load(Ordering::Acquire) {
-                    return;
-                }
-                locked(capture).push(&chunk[..n]);
-            }
-            Err(e) if e.kind() == ErrorKind::Interrupted => {}
-            Err(_) => return,
-        }
-    }
-}
-
-/// Waits for the program to exit without reaping it.
-fn wait_for_exit(group: Pid) -> Option<i32> {
-    loop {
-        match waitid(
-            WaitId::Pid(group),
-            WaitIdOptions::EXITED | WaitIdOptions::NOWAIT,
-        ) {
-            Ok(status) => return status.and_then(|status| status.exit_status()),
-            Err(Errno::INTR) => {}
-            Err(_) => return None,
-        }
-    }
-}
-
-/// A second descriptor of the read end of `pipe`, to ask whether it is readable without reading it. It is the same pipe, so it keeps the pipe open: it must be dropped once the call is over, or a process that outlived the call would never get EPIPE.
-fn duplicate(pipe: &impl AsFd) -> Result<OwnedFd, String> {
-    pipe.as_fd()
-        .try_clone_to_owned()
-        .map_err(|e| format!("could not duplicate an output pipe of the call: {e}"))
-}
-
-struct Launched {
-    events: Receiver<Event>,
-    /// The pipes whose reader has not sent its `Eof` yet, each by its duplicate.
-    open: Vec<(Stream, OwnedFd)>,
-    stdout: Arc<Mutex<Capture>>,
-    stderr: Arc<Mutex<Capture>>,
-    /// Set when the call is over; the readers let go of their pipes.
-    over: Arc<AtomicBool>,
-}
-
-/// Starts the threads that watch the program. When one cannot be started the program is stopped and reaped here.
-fn launch(child: &mut Child, group: Pid, stop: &Stop) -> Result<Launched, String> {
-    let (sender, events) = mpsc::channel();
-    let stdout_pipe = child
-        .stdout
-        .take()
-        .ok_or("the program was started without an output pipe")?;
-    let stderr_pipe = child
-        .stderr
-        .take()
-        .ok_or("the program was started without an error pipe")?;
-    let (stdout, stderr, over) = (
-        Arc::<Mutex<Capture>>::default(),
-        Arc::<Mutex<Capture>>::default(),
-        Arc::<AtomicBool>::default(),
-    );
-    let streams = [
-        (
-            Stream::Out,
-            duplicate(&stdout_pipe)?,
-            Box::new(stdout_pipe) as Box<dyn Read + Send>,
-            &stdout,
-        ),
-        (
-            Stream::Err,
-            duplicate(&stderr_pipe)?,
-            Box::new(stderr_pipe) as Box<dyn Read + Send>,
-            &stderr,
-        ),
-    ];
-    let mut open = Vec::new();
-    for (stream, duplicate, pipe, capture) in streams {
-        open.push((stream, duplicate));
-        let (capture, over, events) = (Arc::clone(capture), Arc::clone(&over), sender.clone());
-        spawn_thread(&format!("tagents-{}", stream.name()), move || {
-            read_stream(pipe, &capture, &over);
-            let _ = events.send(Event::Eof(stream));
-        })?;
-    }
-    let exits = sender.clone();
-    spawn_thread("tagents-wait", move || {
-        let _ = exits.send(Event::Exited(wait_for_exit(group)));
-    })?;
-    // A stop that has come already is delivered at once.
-    stop.watch(move || {
-        let _ = sender.send(Event::Stop);
-    });
-    Ok(Launched {
-        events,
-        open,
-        stdout,
-        stderr,
-        over,
-    })
-}
-
-/// Whether a pipe of `open` holds bytes or has lost its last writer, so that its reader has something to take that it has not taken yet. A pipe that is empty and still open is held by a process the call cannot stop, or its reader has taken everything. An error of the poll counts as not readable: the call gives up at the drain.
-fn readable(open: &[(Stream, OwnedFd)]) -> bool {
-    let mut fds: Vec<PollFd<'_>> = open
-        .iter()
-        .map(|(_, fd)| PollFd::new(fd, PollFlags::IN))
-        .collect();
-    poll(&mut fds, Some(&Timespec::default())).is_ok()
-        && fds
-            .iter()
-            .any(|fd| fd.revents().intersects(PollFlags::IN | PollFlags::HUP))
-}
-
-/// Follows the program to its end and, whatever ends it, stops everything it started in its group. A timeout, or a stop of the request, sends SIGTERM to the group and SIGKILL when the grace is over; the exit of the program kills the group at once and gives the pipes the drain to run dry. When the drain is over a pipe that is still `readable` is waited for in steps, up to the drain and the grace after the exit: its reader thread has not run yet, which a process holding an empty pipe never causes. `open` is the pipes whose reader has not finished, each by a duplicate, and it is dropped when the call is.
-fn supervise(
-    events: &Receiver<Event>,
-    group: Pid,
-    child: &mut Child,
-    deps: &RunDeps,
-    mut open: Vec<(Stream, OwnedFd)>,
-) -> Ended {
-    let mut reason = None;
-    // The code of the program, and when the call saw it exit.
-    let mut exited: Option<(Option<i32>, Instant)> = None;
-    // The next thing that happens if nothing else does: the timeout, then the end of the grace, then (after the exit) the end of the drain.
-    let mut deadline = Some(Instant::now() + deps.timeout);
-    loop {
-        let event = match deadline {
-            Some(at) => events.recv_timeout(at.saturating_duration_since(Instant::now())),
-            None => events.recv().map_err(|_| RecvTimeoutError::Disconnected),
-        };
-        match event {
-            Ok(Event::Stop) => {
-                if exited.is_none() && reason.is_none() {
-                    reason = Some(Reason::Cancelled);
-                    signal_group(group, Signal::TERM);
-                    deadline = Some(Instant::now() + deps.kill_grace);
-                }
-            }
-            Ok(Event::Eof(stream)) => {
-                open.retain(|(ended, _)| *ended != stream);
-                if open.is_empty() && exited.is_some() {
-                    break;
-                }
-            }
-            Ok(Event::Exited(code)) => {
-                let at = Instant::now();
-                exited = Some((code, at));
-                // What the program left running in its group dies with it. The pipes are given a moment to drain, and no longer: a process outside the group can hold them open for good.
-                signal_group(group, Signal::KILL);
-                // The zombie has done its work: it held the group's id while the group was signalled.
-                let _ = child.wait();
-                if open.is_empty() {
-                    break;
-                }
-                deadline = Some(at + deps.drain);
-            }
-            Err(RecvTimeoutError::Timeout) => match (exited, reason) {
-                (Some((_, at)), _) => {
-                    // The drain, or a step after it, is over. A pipe with bytes or an end to read has a reader the machine has not run yet, and no holder: wait for it, up to the grace. A call that was stopped is given up on at the drain: its answer is `cancelled` or its output is partial already, and the server's ending waits only `KILL_GRACE` plus `SHUTDOWN_MARGIN` for the calls, which a second grace could overrun.
-                    let bound = at + deps.drain + deps.kill_grace;
-                    let now = Instant::now();
-                    if reason.is_some() || now >= bound || !readable(&open) {
-                        break;
-                    }
-                    deadline = Some((now + DRAIN_STEP).min(bound));
-                }
-                (None, None) => {
-                    reason = Some(Reason::Timeout);
-                    signal_group(group, Signal::TERM);
-                    deadline = Some(Instant::now() + deps.kill_grace);
-                }
-                (None, Some(_)) => {
-                    signal_group(group, Signal::KILL);
-                    deadline = None;
-                }
-            },
-            Err(RecvTimeoutError::Disconnected) => break,
-        }
-    }
-    Ended {
-        reason,
-        code: exited.and_then(|(code, _)| code),
-    }
-}
-
+/// Runs the program of `tool` as a child and tells what it did.
 fn run(tool: &Tool, argv: &[String], deps: &RunDeps, stop: &Stop) -> CallResult {
     let error = |message: &str| refusal(&tool.code("error", 1), "error", message);
     let mut command = Command::new(&tool.program);
-    command
-        .args(argv)
-        .env_clear()
-        .envs(&deps.env)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .process_group(0);
-    let mut child = match command.spawn() {
-        Ok(child) => child,
+    command.args(argv).env_clear().envs(&deps.env);
+    let policy = Policy {
+        input: None,
+        timeout: deps.timeout,
+        kill_grace: Some(deps.kill_grace),
+        drain: deps.drain,
+        cap: MAX_STREAM,
+    };
+    let finished = match child::run(command, &policy, stop) {
+        Ok(finished) => finished,
         Err(e) => return error(&spawn_failure(&tool.program, &e)),
     };
-    let Some(group) = group_of(&child) else {
-        let _ = child.kill();
-        let _ = child.wait();
-        return error(&format!(
-            "{} was started with a process id that is not one",
-            tool.program
-        ));
-    };
-    let launched = match launch(&mut child, group, stop) {
-        Ok(launched) => launched,
-        Err(message) => {
-            signal_group(group, Signal::KILL);
-            let _ = child.wait();
-            return error(&message);
-        }
-    };
-    let ended = supervise(&launched.events, group, &mut child, deps, launched.open);
-    launched.over.store(true, Ordering::Release);
-
-    let stdout = locked(&launched.stdout);
-    let stderr = locked(&launched.stderr);
-    let (code, name, note) = match ended.reason {
+    let (code, name, note) = match finished.reason {
         Some(Reason::Timeout) => (
             tool.code("timeout", 4),
             "timeout".to_owned(),
@@ -607,7 +276,7 @@ fn run(tool: &Tool, argv: &[String], deps: &RunDeps, stop: &Stop) -> CallResult 
         ),
         None => {
             // A program a signal ended has no code: the table's error.
-            let code = ended
+            let code = finished
                 .code
                 .map_or_else(|| tool.code("error", 1), Number::from);
             let name = outcome_of(&tool.exit, &code);
@@ -617,88 +286,16 @@ fn run(tool: &Tool, argv: &[String], deps: &RunDeps, stop: &Stop) -> CallResult 
     finish(
         &code,
         &name,
-        &stdout.text(),
-        &format!("{}{note}", stderr.text()),
-        stdout.cut,
-        stderr.cut,
+        &finished.stdout,
+        &format!("{}{note}", finished.stderr),
+        finished.stdout_cut,
+        finished.stderr_cut,
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn capture(chunks: &[&[u8]]) -> Capture {
-        let mut capture = Capture::default();
-        for chunk in chunks {
-            capture.push(chunk);
-        }
-        capture
-    }
-
-    fn marker() -> String {
-        format!("\n[output cut at {MAX_STREAM} bytes]")
-    }
-
-    #[test]
-    fn a_stream_that_reaches_the_cap_is_not_cut_and_one_byte_more_is() {
-        let exact = capture(&[&vec![b'a'; MAX_STREAM]]);
-        assert!(!exact.cut);
-        assert_eq!(exact.text().len(), MAX_STREAM);
-        let over = capture(&[&vec![b'a'; MAX_STREAM], b"a"]);
-        assert!(over.cut);
-        assert_eq!(
-            over.text(),
-            format!("{}{}", "a".repeat(MAX_STREAM), marker())
-        );
-    }
-
-    #[test]
-    fn the_cap_counts_bytes_across_chunks_and_not_the_size_of_one() {
-        let chunk = "€".repeat(300).into_bytes();
-        let mut capture = Capture::default();
-        for _ in 0..400 {
-            capture.push(&chunk);
-        }
-        assert!(capture.cut);
-        // 262144 = 3 * 87381 + 1: the euro the cap fell in is dropped whole.
-        let text = capture.text();
-        let kept = text.strip_suffix(&marker()).unwrap_or("");
-        assert_eq!(kept.len(), 3 * 87381);
-        assert!(!kept.contains('\u{fffd}'));
-    }
-
-    #[test]
-    fn a_character_the_cap_cuts_is_dropped_whole_and_one_that_ends_at_the_cap_stays() {
-        let mut straddling = vec![b'a'; MAX_STREAM - 1];
-        straddling.extend_from_slice("é".as_bytes());
-        straddling.extend_from_slice(&[b'b'; 1000]);
-        let text = capture(&[&straddling]).text();
-        assert_eq!(text, format!("{}{}", "a".repeat(MAX_STREAM - 1), marker()));
-
-        let mut ending = vec![b'a'; MAX_STREAM - 2];
-        ending.extend_from_slice("é".as_bytes());
-        ending.extend_from_slice(&[b'b'; 1000]);
-        let text = capture(&[&ending]).text();
-        assert_eq!(text, format!("{}é{}", "a".repeat(MAX_STREAM - 2), marker()));
-    }
-
-    #[test]
-    fn complete_end_looks_back_at_most_four_bytes_and_by_the_lead_byte() {
-        assert_eq!(complete_end(b""), 0);
-        assert_eq!(complete_end(b"abc"), 3);
-        // A lead byte of a two-byte character with its continuation missing.
-        assert_eq!(complete_end(b"ab\xc3"), 2);
-        assert_eq!(complete_end(b"ab\xc3\xa9"), 4);
-        // A three-byte character cut after two bytes, and after one.
-        assert_eq!(complete_end(b"a\xe2\x82"), 1);
-        assert_eq!(complete_end(b"a\xe2"), 1);
-        // A four-byte character cut after three bytes.
-        assert_eq!(complete_end(b"a\xf0\x9f\x98"), 1);
-        // Continuation bytes with no lead in reach: kept, as node keeps them.
-        assert_eq!(complete_end(b"\x80\x80\x80\x80\x80"), 5);
-        assert_eq!(complete_end(b"\x80"), 1);
-    }
 
     #[test]
     fn stdout_that_is_a_document_is_parsed_and_anything_else_stays_text() {

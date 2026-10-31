@@ -18,9 +18,7 @@ use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
-use signal_hook::iterator::Signals;
-
+use crate::ending;
 use crate::sessions::exit;
 use rpc::Out;
 use run::{KILL_GRACE, RunDeps, Runner};
@@ -95,18 +93,8 @@ fn serve(path: &OsString) -> Result<(), String> {
     });
 
     // The client may also go away by a signal: the calls in flight are stopped first, then the process leaves.
-    let mut signals = Signals::new([SIGTERM, SIGINT, SIGHUP])
-        .map_err(|e| format!("cannot watch for signals: {e}"))?;
     let ending = Arc::clone(&server);
-    std::thread::Builder::new()
-        .name("tagents-signals".into())
-        .spawn(move || {
-            // A later signal is caught and ignored: the ending is over within the grace and the margin, and leaving before it ends would leave a program that ignores SIGTERM without its SIGKILL.
-            if signals.forever().next().is_some() {
-                ending.end_and_exit();
-            }
-        })
-        .map_err(|e| format!("cannot start a thread: {e}"))?;
+    ending::on_signals(move |_| ending.end_and_exit()).map_err(|e| e.to_string())?;
 
     server.serve(io::stdin().lock());
     Ok(())

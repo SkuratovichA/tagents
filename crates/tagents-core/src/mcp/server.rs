@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::io::{self, Read};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -15,6 +15,8 @@ use super::rpc::{
     CallResult, Framer, INTERNAL_ERROR, INVALID_PARAMS, Id, Incoming, METHOD_NOT_FOUND,
     Notification, Out, Request, ToolEntry, parse,
 };
+use crate::ending::Stop;
+use crate::sync::locked;
 
 /// What the server is called, and the version it tells: the workspace's, which the node server's constant `0.1.0` never followed.
 pub const SERVER_NAME: &str = "tagents";
@@ -31,49 +33,6 @@ pub const PROTOCOL_VERSIONS: [&str; 5] = [
 
 /// What the server waits, beyond the grace a stopped call has, for the calls to be gone before it ends anyway.
 pub const SHUTDOWN_MARGIN: Duration = Duration::from_millis(2000);
-
-fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// Says that a call has to stop: the client cancelled its request, or the server is closing. It is the SDK's `AbortSignal`.
-#[derive(Clone, Default)]
-pub struct Stop(Arc<Mutex<StopState>>);
-
-#[derive(Default)]
-struct StopState {
-    stopped: bool,
-    watchers: Vec<Box<dyn FnOnce() + Send>>,
-}
-
-impl Stop {
-    /// Idempotent. The watchers run on the calling thread, once each, outside the lock.
-    pub fn stop(&self) {
-        let watchers = {
-            let mut state = locked(&self.0);
-            state.stopped = true;
-            std::mem::take(&mut state.watchers)
-        };
-        for watcher in watchers {
-            watcher();
-        }
-    }
-
-    pub fn is_stopped(&self) -> bool {
-        locked(&self.0).stopped
-    }
-
-    /// Runs `watcher` when the stop comes, at once when it has come.
-    pub fn watch(&self, watcher: impl FnOnce() + Send + 'static) {
-        let mut state = locked(&self.0);
-        if state.stopped {
-            drop(state);
-            watcher();
-        } else {
-            state.watchers.push(Box::new(watcher));
-        }
-    }
-}
 
 /// What the loop needs of a server's tools; the verbs behind them are none of its business.
 pub trait Tools: Send + Sync + 'static {
@@ -448,7 +407,7 @@ fn call_params(
 mod tests {
     use std::io::Write;
     use std::sync::atomic::AtomicUsize;
-    use std::sync::mpsc;
+    use std::sync::{PoisonError, mpsc};
     use std::time::Instant;
 
     use super::*;
