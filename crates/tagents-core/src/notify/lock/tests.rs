@@ -20,6 +20,7 @@
 //! - readLock reads both formats: `read_lock_reads_both_formats`
 
 use std::fs::{self, File};
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -265,7 +266,11 @@ fn a_lock_someone_else_took_over_survives_our_release() {
 #[test]
 fn a_lock_that_cannot_be_removed_gives_the_failure_text_and_stays() {
     if rustix::process::geteuid().is_root() {
-        eprintln!("skipped: root removes a file from a directory it cannot write");
+        // libtest captures `eprintln!` of a passing test; a write to the stderr handle is shown.
+        let _ = writeln!(
+            std::io::stderr(),
+            "skipped: root removes a file from a directory it cannot write"
+        );
         return;
     }
     let dir = Scratch::new();

@@ -530,13 +530,16 @@ fn an_unrelated_file_in_the_options_directory_logs_nothing_and_keeps_the_options
     // The wakes come on one channel in the order they happened: a marker event the service must answer, written after the two that must not be, shows by its own notice that the first two were read.
     fake.append_event("1760000000\tStop\t12\tsess-marker\t\t%12\t/tmp/x\t\t\t\t\t\t\n");
     assert!(running.says("notice turn_done 12 "), "{}", running.log());
-    assert_eq!(
-        running.lines()[before.len()..]
-            .iter()
-            .filter(|line| line.starts_with("options"))
-            .count(),
-        0,
-        "an unrelated file and the same bytes written again say nothing: {}",
+    let after = running.lines();
+    let since: Vec<&str> = after[before.len()..]
+        .iter()
+        .map(String::as_str)
+        .take_while(|line| !line.starts_with("notice turn_done 12 "))
+        .collect();
+    // The marker's own `post` line comes before its notice; it is the only line expected between `before` and the notice.
+    assert!(
+        matches!(since.as_slice(), [post] if post.starts_with("post tagents-12 turn_done ")),
+        "an unrelated file and the same bytes written again say nothing, whatever the line: {since:?} in {}",
         running.log()
     );
     fake.options("backend = \"log\"\nclick = \"focus\"\n");
