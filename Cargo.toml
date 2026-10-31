@@ -24,7 +24,7 @@ rustix = { version = "1", default-features = false, features = ["std", "process"
 signal-hook = "0.4"
 # kqueue is the macOS half of the file watch (watch::macos), a macOS-only target dependency of tagents-core. `rustix` declares `kevent` unsafe and the workspace forbids `unsafe`, and the crate's own call sites are safe, so it is the one place kqueue is spoken. It brings `kqueue-sys` and `libc` and nothing else that the tree lacks.
 kqueue = "1.2"
-# toml reads `<configDir>/plugins/notify.toml` (notify::options) into its parse tree, `toml::de::DeTable`, which keeps each integer and float as the text the file wrote so the reader decides what the node service's parser would have made of it. `default-features = false` leaves out `serde` and the writer; `preserve_order` keeps the keys in the order of the file, which the problem lines depend on. It brings `toml_parser`, `toml_datetime`, `serde_spanned` and `winnow`.
+# toml reads `<configDir>/plugins/notify.toml` (notify::options) into its parse tree, `toml::de::DeTable`, which keeps each integer and float as the text the file wrote so the reader decides what the node service's parser would have made of it. `default-features = false` leaves out `serde` and the writer; `preserve_order` keeps the keys in the order of the file, which the problem lines depend on. It builds `toml_parser`, `toml_datetime`, `serde_spanned` and `winnow` besides `indexmap`, which `serde_json`'s `preserve_order` already brings; `Cargo.lock` also lists `toml_writer`, which these features do not build (`cargo tree --workspace --target all -e all -i toml_writer` prints nothing).
 toml = { version = "1", default-features = false, features = ["std", "parse", "preserve_order"] }
 
 [workspace.lints.rust]

@@ -21,7 +21,6 @@
 
 use std::fs::{self, File};
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
@@ -29,24 +28,19 @@ use std::sync::{Arc, Barrier};
 use std::time::{Duration, SystemTime};
 
 use super::*;
+use crate::testing::Scratch;
 
 /// Pid 1 always exists, and `kill(1, 0)` is refused for it unless we are root: a live process that is not us.
 const INIT: u64 = 1;
 
-struct Scratch(PathBuf);
+/// What the lock tests ask of a scratch directory besides its path.
+trait LockDir {
+    fn file(&self) -> String;
+    fn names(&self) -> Vec<String>;
+    fn make(&self, name: &str, age_ms: u64) -> String;
+}
 
-impl Scratch {
-    fn new() -> Scratch {
-        static COUNT: AtomicUsize = AtomicUsize::new(0);
-        let dir = std::env::temp_dir().join(format!(
-            "tagents-lock-{}-{}",
-            std::process::id(),
-            COUNT.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&dir).unwrap();
-        Scratch(dir)
-    }
-
+impl LockDir for Scratch {
     fn file(&self) -> String {
         self.0.join(LOCK_FILE).to_string_lossy().into_owned()
     }
@@ -67,12 +61,6 @@ impl Scratch {
             set_age(&path, age_ms);
         }
         name.to_owned()
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }
 

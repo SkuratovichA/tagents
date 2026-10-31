@@ -4,42 +4,15 @@
 
 use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::path::Path;
 
 use serde_json::Value;
 use tagents_core::js;
 use tagents_core::notify::options::{Loaded, Options, config_dir_from, load, options_file};
 
-use super::section;
+use super::{common, section};
 
 const FILE: &str = "<file>";
-
-/// A scratch config directory, removed when it goes out of scope.
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new() -> Scratch {
-        static COUNT: AtomicUsize = AtomicUsize::new(0);
-        let dir = std::env::temp_dir().join(format!(
-            "tagents-options-vectors-{}-{}",
-            std::process::id(),
-            COUNT.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&dir).unwrap();
-        Scratch(dir)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let file = self.0.join("plugins/notify.toml");
-        if fs::metadata(&file).is_ok() {
-            fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).ok();
-        }
-        fs::remove_dir_all(&self.0).ok();
-    }
-}
 
 fn hex_bytes(hex: &str) -> Vec<u8> {
     (0..hex.len())
@@ -144,10 +117,10 @@ fn judge(case: &Value) -> Option<String> {
     if setup == "unreadable" && rustix::process::geteuid().is_root() {
         return None;
     }
-    let scratch = Scratch::new();
-    lay_out(case, &scratch.0);
-    let file = options_file(&scratch.0);
-    let got = load(&scratch.0);
+    let scratch = common::scratch("notify-options-vectors");
+    lay_out(case, &scratch);
+    let file = options_file(&scratch);
+    let got = load(&scratch);
     let want = &case["expect"];
     let kind = want["kind"].as_str().unwrap();
     match (kind, got) {

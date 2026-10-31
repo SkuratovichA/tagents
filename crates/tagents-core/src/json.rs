@@ -7,6 +7,8 @@
 //! A line one of those fails on is skipped by Rust and read by node, so the two programs would list different prompts.
 //! This parser takes exactly the grammar of ECMA-404 and keeps no number but its truthiness, which is all `isMeta` needs.
 //! It keeps its own stack of open containers, so nesting costs heap, not call frames.
+//!
+//! `quote` is the other direction for one string: `JSON.stringify(text)`, which the daemon writes into the helper's input, into its log lines and into the text of a problem.
 
 /// A parsed value. A lone surrogate escape reads as U+FFFD, which is how stdout would write it.
 #[derive(Debug, Clone, PartialEq)]
@@ -72,6 +74,11 @@ impl Value {
 enum Open {
     Array(Vec<Value>),
     Object(Vec<(String, Value)>, String),
+}
+
+/// `JSON.stringify(text)` of a string: a quote, a backslash, `\b \f \n \r \t`, any other control character as lowercase `\u00xx`, and U+2028, U+2029 and everything above ASCII raw, which the tests pin against V8.
+pub fn quote(text: &str) -> String {
+    serde_json::Value::String(text.to_owned()).to_string()
 }
 
 /// `JSON.parse(text)`, or `None` where it would throw.
@@ -301,6 +308,16 @@ mod tests {
 
     fn ok(text: &str) -> Value {
         parse(text).unwrap_or_else(|| panic!("{text:?} should parse"))
+    }
+
+    /// The expected text is what `node -e 'JSON.stringify(...)'` printed for the same string (31.10.2026): a quote, a backslash, `\n`, `\t`, `\b`, `\f`, `\r`, U+001f and U+0000 as lowercase `\u00xx`, DEL, U+2028, U+2029 and a non-ASCII letter raw.
+    #[test]
+    fn quote_escapes_as_json_stringify_does() {
+        let text = "a\"\\\n\t\u{1f}\u{2028}\u{2029}\u{e9}\u{8}\u{c}\r\u{7f}\u{0}";
+        assert_eq!(
+            quote(text),
+            "\"a\\\"\\\\\\n\\t\\u001f\u{2028}\u{2029}\u{e9}\\b\\f\\r\u{7f}\\u0000\""
+        );
     }
 
     #[test]

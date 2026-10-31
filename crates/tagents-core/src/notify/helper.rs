@@ -94,11 +94,6 @@ pub fn notice_json(notice: &Notice) -> String {
     Value::Object(object).to_string()
 }
 
-/// `JSON.stringify(text)` of a string.
-pub(crate) fn quote(text: &str) -> String {
-    Value::String(text.to_owned()).to_string()
-}
-
 /// What `runHelper` reads out of the line: the fields a caller of the daemon uses. The rest of the schema is checked and dropped.
 #[derive(Debug, PartialEq)]
 struct HelperLine {
@@ -148,20 +143,12 @@ fn read_line(stdout: &str) -> Option<Result<HelperLine, String>> {
     }))
 }
 
-/// The name node gives a failed `spawn`, `spawn <file> <CODE>`; the codes whose numbers are the same on Linux and macOS are named, any other prints what Rust says.
+/// The name node gives a failed `spawn`, `spawn <file> <CODE>`; an error `node::ERRNOS` does not name prints what Rust says.
 fn spawn_message(err: &io::Error, file: &str) -> String {
-    let code = match err.raw_os_error() {
-        Some(2) => "ENOENT",
-        Some(7) => "E2BIG",
-        Some(8) => "ENOEXEC",
-        Some(12) => "ENOMEM",
-        Some(13) => "EACCES",
-        Some(20) => "ENOTDIR",
-        Some(24) => "EMFILE",
-        Some(26) => "ETXTBSY",
-        _ => return err.to_string(),
-    };
-    format!("spawn {file} {code}")
+    match node::errno(err) {
+        Some(errno) => format!("spawn {file} {}", errno.code),
+        None => err.to_string(),
+    }
 }
 
 fn run_helper(
@@ -214,8 +201,8 @@ fn run_binary(
         Some(Err(text)) => Err(text),
         None => Err(format!(
             "unreadable output from the notification helper: stdout {}, stderr {}",
-            quote(&js::take16(&finished.stdout, 200)),
-            quote(&js::take16(&finished.stderr, 200))
+            json::quote(&js::take16(&finished.stdout, 200)),
+            json::quote(&js::take16(&finished.stderr, 200))
         )),
     }
 }

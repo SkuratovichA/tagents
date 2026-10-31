@@ -4,7 +4,6 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
 
 use serde_json::Value;
@@ -15,7 +14,7 @@ use tagents_core::notify::kinds::{self, NoticeKind};
 use tagents_core::notify::phrases::{self, Locale, Phrases};
 use tagents_core::notify::screen::{self, Screen, ScreenAnswer};
 
-use super::section;
+use super::{common, section};
 
 fn words(part: &str) -> Value {
     section("words")
@@ -75,14 +74,6 @@ fn locale(name: &str) -> Locale {
     }
 }
 
-/// A directory of this test's own, removed by the caller.
-fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("tagents-vectors-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 #[test]
 fn verdicts_match_node() {
     let cases = words("verdicts");
@@ -120,7 +111,7 @@ fn notices_match_node() {
     let cases = words("notices");
     let cases = cases.as_array().unwrap();
     assert!(!cases.is_empty());
-    let dir = scratch("notices");
+    let dir = common::scratch("notices");
     for (at, case) in cases.iter().enumerate() {
         let mut e = agent_event(&case["event"]);
         match &case["transcript"] {

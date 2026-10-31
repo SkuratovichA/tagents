@@ -16,11 +16,10 @@
 //! - tmuxScreen: a failing tmux, a timeout and a tmux that cannot start are all null: `a_failing_a_slow_and_a_missing_tmux_say_nothing`
 
 use std::fs;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use super::*;
+use crate::testing::Scratch;
 
 fn screen(visible: bool, client_pid: Option<u32>, title: &str) -> Option<ScreenAnswer> {
     Some(ScreenAnswer::Screen(Screen {
@@ -197,22 +196,10 @@ fn a_pane_line_with_no_window_id_is_no_such_pane() {
     );
 }
 
-/// A directory of this test's own; the process's temp directory is shared, so the name carries the process and a count.
-fn scratch() -> PathBuf {
-    static COUNT: AtomicUsize = AtomicUsize::new(0);
-    let dir = std::env::temp_dir().join(format!(
-        "tagents-screen-{}-{}",
-        std::process::id(),
-        COUNT.fetch_add(1, Ordering::Relaxed)
-    ));
-    fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 /// A stand-in for tmux: `/bin/sh` running `script`, which sees the arguments the probe gives tmux. It is never an executable file of its own, so no other test's fork can hold it busy for writing.
-fn stub(script: &str) -> (Command, PathBuf) {
-    let dir = scratch();
-    let file = dir.join("tmux.sh");
+fn stub(script: &str) -> (Command, Scratch) {
+    let dir = Scratch::new();
+    let file = dir.path().join("tmux.sh");
     fs::write(&file, script).unwrap();
     let mut command = Command::new("/bin/sh");
     command.arg(&file);
@@ -229,7 +216,7 @@ fn the_probe_runs_tmux_once_with_the_node_arguments() {
         r#"printf '%s\n' "$@" > "$(dirname "$0")/args"; echo run >> "$(dirname "$0")/runs"; printf 'P|@|@3|@|build\nC|@|5|@|9|@|@3\n'"#,
     );
     assert_eq!(ask(command), screen(true, Some(9), "build"));
-    let args = fs::read_to_string(dir.join("args")).unwrap();
+    let args = fs::read_to_string(dir.path().join("args")).unwrap();
     let expected = [
         "display",
         "-p",
@@ -248,7 +235,10 @@ fn the_probe_runs_tmux_once_with_the_node_arguments() {
         "V|@|#{@tagents_viewport_tty}",
     ];
     assert_eq!(args.lines().collect::<Vec<_>>(), expected);
-    assert_eq!(fs::read_to_string(dir.join("runs")).unwrap(), "run\n");
+    assert_eq!(
+        fs::read_to_string(dir.path().join("runs")).unwrap(),
+        "run\n"
+    );
     assert!(
         !args.contains('\t'),
         "a literal tab in a tmux format renders as _ without a UTF-8 locale"
@@ -261,18 +251,18 @@ fn the_probe_gives_tmux_the_environment_it_has() {
         stub(r#"printf '%s' "$PATH" > "$(dirname "$0")/path"; printf 'P|@|@3|@|t\n'"#);
     assert!(ask(command).is_some());
     assert_eq!(
-        fs::read_to_string(dir.join("path")).unwrap(),
+        fs::read_to_string(dir.path().join("path")).unwrap(),
         std::env::var("PATH").unwrap()
     );
 }
 
 #[test]
 fn only_tmux_saying_so_is_no_such_pane() {
-    let (exit_zero, _) = stub("printf 'P|@||@|\\n'");
+    let (exit_zero, _dir) = stub("printf 'P|@||@|\\n'");
     assert_eq!(ask(exit_zero), Some(ScreenAnswer::NoSuchPane));
-    let (older_tmux, _) = stub("echo \"can't find pane: %99\" >&2; exit 1");
+    let (older_tmux, _dir) = stub("echo \"can't find pane: %99\" >&2; exit 1");
     assert_eq!(ask(older_tmux), Some(ScreenAnswer::NoSuchPane));
-    let (no_server, _) = stub("echo 'no server running on /tmp/tmux-501/default' >&2; exit 1");
+    let (no_server, _dir) = stub("echo 'no server running on /tmp/tmux-501/default' >&2; exit 1");
     assert_eq!(
         ask(no_server),
         None,
@@ -282,12 +272,12 @@ fn only_tmux_saying_so_is_no_such_pane() {
 
 #[test]
 fn a_failing_a_slow_and_a_missing_tmux_say_nothing() {
-    let (failing, _) = stub("echo 'unknown option' >&2; exit 1");
+    let (failing, _dir) = stub("echo 'unknown option' >&2; exit 1");
     assert_eq!(ask(failing), None);
-    let (empty, _) = stub("exit 0");
+    let (empty, _dir) = stub("exit 0");
     assert_eq!(ask(empty), None);
     assert_eq!(ask(Command::new("/nonexistent/tmux")), None);
-    let (slow, _) = stub("trap '' TERM; echo \"can't find pane: %99\" >&2; sleep 30");
+    let (slow, _dir) = stub("trap '' TERM; echo \"can't find pane: %99\" >&2; sleep 30");
     let started = Instant::now();
     assert_eq!(
         ask(slow),
@@ -302,7 +292,7 @@ fn a_failing_a_slow_and_a_missing_tmux_say_nothing() {
 
 #[test]
 fn a_stop_ends_the_probe_with_no_answer() {
-    let (slow, _) = stub("trap '' TERM; sleep 30");
+    let (slow, _dir) = stub("trap '' TERM; sleep 30");
     let stop = Stop::default();
     stop.stop();
     let started = Instant::now();

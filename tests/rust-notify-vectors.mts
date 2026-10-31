@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { errnoVectors } from './rust-notify-vectors/errno.mts';
 import { feedVectors } from './rust-notify-vectors/feed.mts';
 import { optionsVectors } from './rust-notify-vectors/options.mts';
 import { wordsVectors } from './rust-notify-vectors/words.mts';
@@ -15,6 +16,7 @@ const vectors = {
   options: await optionsVectors(),
   feed: await feedVectors(),
   words: await wordsVectors(),
+  errno: await errnoVectors(),
 };
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.writeFileSync(out, `${JSON.stringify(vectors, null, 2)}\n`);

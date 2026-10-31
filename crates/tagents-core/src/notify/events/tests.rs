@@ -8,14 +8,10 @@ use std::io::{self, Write};
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
-use std::time::Duration;
 
 use super::*;
-use crate::notify::state::tests::Scratch;
+use crate::testing::{Scratch, heard, settle};
 use crate::watch::Heard;
-
-const HEARD: Duration = Duration::from_secs(10);
-const QUIET: Duration = Duration::from_millis(400);
 
 /// A line as the hook writes it, 13 fields, with `text` in the twelfth.
 fn line(text: &str) -> String {
@@ -948,18 +944,6 @@ fn a_dead_follower_with_a_stuck_switch_reports_both() {
 fn watching() -> (Watch, Receiver<Heard>) {
     let (sink, keys) = mpsc::channel();
     (Watch::start(sink).unwrap(), keys)
-}
-
-fn heard(keys: &Receiver<Heard>) -> Key {
-    match keys.recv_timeout(HEARD).expect("the watch heard nothing") {
-        Heard::Fired(key) => key,
-        Heard::Ended(err) => panic!("the watch ended: {err}"),
-    }
-}
-
-/// Takes every key that one action made, however many batches the system sent it in.
-fn settle(keys: &Receiver<Heard>) {
-    while keys.recv_timeout(QUIET).is_ok() {}
 }
 
 #[test]

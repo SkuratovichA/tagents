@@ -26350,5 +26350,47 @@
         }
       }
     ]
-  }
+  },
+  "errno": [
+    {
+      "code": "ENOENT",
+      "message": "no such file or directory"
+    },
+    {
+      "code": "EIO",
+      "message": "i/o error"
+    },
+    {
+      "code": "E2BIG",
+      "message": "argument list too long"
+    },
+    {
+      "code": "ENOEXEC",
+      "message": "exec format error"
+    },
+    {
+      "code": "ENOMEM",
+      "message": "not enough memory"
+    },
+    {
+      "code": "EACCES",
+      "message": "permission denied"
+    },
+    {
+      "code": "ENOTDIR",
+      "message": "not a directory"
+    },
+    {
+      "code": "EISDIR",
+      "message": "illegal operation on a directory"
+    },
+    {
+      "code": "EMFILE",
+      "message": "too many open files"
+    },
+    {
+      "code": "ETXTBSY",
+      "message": "text file is busy"
+    }
+  ]
 }

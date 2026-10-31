@@ -267,15 +267,11 @@ fn the_input_is_the_notice_with_node_keys_in_node_order() {
     }
 }
 
-/// The expected text is what `node -e 'JSON.stringify(...)'` printed for the same string (31.10.2026): a quote, a backslash, `\n`, `\t`, `\b`, `\f`, `\r`, U+001f and U+0000 as lowercase `\u00xx`, DEL, U+2028, U+2029 and a non-ASCII letter raw.
+/// The escaping itself is pinned by `json::tests::quote_escapes_as_json_stringify_does`; here the input reaches the line through the same writer.
 #[test]
 fn the_input_escapes_as_json_stringify_does() {
     let text = "a\"\\\n\t\u{1f}\u{2028}\u{2029}\u{e9}\u{8}\u{c}\r\u{7f}\u{0}";
-    assert_eq!(
-        quote(text),
-        "\"a\\\"\\\\\\n\\t\\u001f\u{2028}\u{2029}\u{e9}\\b\\f\\r\u{7f}\\u0000\""
-    );
     let mut n = notice();
     n.body = text.to_owned();
-    assert!(notice_json(&n).contains(&format!("\"body\":{}", quote(text))));
+    assert!(notice_json(&n).contains(&format!("\"body\":{}", json::quote(text))));
 }

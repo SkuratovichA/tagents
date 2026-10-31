@@ -22,13 +22,12 @@
 //! - turn_done: the event text wins over the transcript, and is clipped: `the_event_text_wins_over_the_transcript`
 
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::super::events::AgentHookEvent;
 use super::super::phrases::{Locale, phrases_for};
 use super::*;
+use crate::testing::Scratch;
 
 fn event() -> AgentEvent {
     AgentEvent {
@@ -64,21 +63,9 @@ fn say(kind: NoticeKind, e: &AgentEvent, name: &str, extra: &Extra, p: &Phrases)
     compose(kind, e, name, extra, p)
 }
 
-/// A directory of this test's own; the process's temp directory is shared, so the name carries the process and a count.
-fn scratch() -> PathBuf {
-    static COUNT: AtomicUsize = AtomicUsize::new(0);
-    let dir = std::env::temp_dir().join(format!(
-        "tagents-compose-{}-{}",
-        std::process::id(),
-        COUNT.fetch_add(1, Ordering::Relaxed)
-    ));
-    fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-/// A transcript whose last answer is `text`, and its path.
-fn transcript(text: &str) -> String {
-    let file = scratch().join("t.jsonl");
+/// A transcript whose last answer is `text`, written into `dir`, and its path.
+fn transcript(dir: &Scratch, text: &str) -> String {
+    let file = dir.path().join("t.jsonl");
     let line = serde_json::json!({ "type": "assistant", "message": { "content": [{ "type": "text", "text": text }] } });
     fs::write(&file, format!("{line}\n")).unwrap();
     file.to_string_lossy().into_owned()
@@ -291,8 +278,9 @@ fn an_empty_label_is_a_label_and_a_directory_is_named_as_basename_names_it() {
 
 #[test]
 fn turn_done_body_is_the_first_non_empty_line() {
+    let dir = Scratch::new();
     let e = AgentEvent {
-        transcript: transcript("\n\nFirst line\nsecond"),
+        transcript: transcript(&dir, "\n\nFirst line\nsecond"),
         ..event()
     };
     assert_eq!(
@@ -303,9 +291,10 @@ fn turn_done_body_is_the_first_non_empty_line() {
 
 #[test]
 fn a_line_is_trimmed_as_javascript_trims_it() {
+    let dir = Scratch::new();
     let b = bom();
     let e = AgentEvent {
-        transcript: transcript(&format!("{b}\n {b} \n{b}First{b}\nsecond")),
+        transcript: transcript(&dir, &format!("{b}\n {b} \n{b}First{b}\nsecond")),
         ..event()
     };
     assert_eq!(
@@ -313,7 +302,7 @@ fn a_line_is_trimmed_as_javascript_trims_it() {
         "First"
     );
     let only = AgentEvent {
-        transcript: transcript(&format!("{b}\n{b}")),
+        transcript: transcript(&dir, &format!("{b}\n{b}")),
         ..event()
     };
     assert_eq!(
@@ -324,15 +313,16 @@ fn a_line_is_trimmed_as_javascript_trims_it() {
 
 #[test]
 fn turn_done_clips_a_long_line_to_200_characters() {
+    let dir = Scratch::new();
     let e = AgentEvent {
-        transcript: transcript(&"x".repeat(500)),
+        transcript: transcript(&dir, &"x".repeat(500)),
         ..event()
     };
     let body = say(NoticeKind::TurnDone, &e, "proj", &no_extra(), en()).body;
     assert_eq!(body.chars().count(), 200);
     assert!(body.ends_with('…'));
     let exact = AgentEvent {
-        transcript: transcript(&"y".repeat(200)),
+        transcript: transcript(&dir, &"y".repeat(200)),
         ..event()
     };
     assert_eq!(
@@ -592,7 +582,8 @@ fn an_empty_session_end_reason_falls_back_to_a_phrase() {
 
 #[test]
 fn the_event_text_wins_over_the_transcript() {
-    let file = transcript("Older answer");
+    let dir = Scratch::new();
+    let file = transcript(&dir, "Older answer");
     let fresh = AgentEvent {
         text: "Fresh answer".into(),
         transcript: file.clone(),

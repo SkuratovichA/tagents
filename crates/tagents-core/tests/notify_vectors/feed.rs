@@ -3,10 +3,7 @@
 // Test code: a failed unwrap here is the failure report.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::fs;
 
 use serde_json::Value;
 use tagents_core::notify::{
@@ -16,7 +13,7 @@ use tagents_core::notify::{
     },
 };
 
-use super::section;
+use super::{common, section};
 
 fn cases(name: &str) -> Vec<Value> {
     let section = section("feed");
@@ -128,14 +125,6 @@ fn state_lines_parse_as_node_parses_them() {
     );
 }
 
-/// A directory of this case's own, empty, under the target directory.
-fn fresh_dir(name: &str) -> PathBuf {
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 fn assert_same_map(context: &str, want: &Value, got: &std::collections::HashMap<String, String>) {
     let want = want.as_object().unwrap();
     let mut got: Vec<(&str, &str)> = got.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
@@ -152,7 +141,7 @@ fn assert_same_map(context: &str, want: &Value, got: &std::collections::HashMap<
 fn state_directories_read_as_node_reads_them() {
     for (i, case) in cases("stateDirs").iter().enumerate() {
         let name = text(case, "name");
-        let root = fresh_dir(&format!("notify-feed-vectors-{i}"));
+        let root = common::scratch(&format!("notify-feed-vectors-{i}"));
         let dir = root.join("agent-state");
         if let Some(files) = case["files"].as_object() {
             fs::create_dir_all(&dir).unwrap();
