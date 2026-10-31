@@ -26,6 +26,20 @@ pnpm typecheck
 pnpm build
 ```
 
+### The Rust crates
+
+`rust-toolchain.toml` pins the toolchain, with `clippy` and `rustfmt`; `rustup` installs it on the first `cargo` call. These are the commands the `rust` job of `.github/workflows/rust.yml` runs, on Linux and macOS:
+
+```sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+bash tests/rust-parity.sh        # the Rust sessions verbs against the node CLI
+bash tests/rust-mcp-parity.sh    # the Rust MCP server against the node one
+```
+
+The parity suites need a built `packages/core` and `packages/mcp` (`pnpm build`) and build the debug binary themselves when it is missing. A pull request that changes what the `tagents-core` binary is built from also raises the workspace version in `Cargo.toml`: [How a release is made](./architecture/rust-core#how-a-release-is-made) says which files count and how to run the check, `sh .github/scripts/core-release.sh gate origin/main`.
+
 ### The bash suites
 
 Every shell suite under `tests/` runs on a scratch tmux server, one at a time:
