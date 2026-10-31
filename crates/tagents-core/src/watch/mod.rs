@@ -50,7 +50,7 @@ pub enum Key {
 pub enum Heard {
     /// The watch of this key fired.
     Fired(Key),
-    /// A wait failed and the thread has ended, so nothing more will come: `dir` and `file` fail from now on. It is the last value the sink gets from this watch.
+    /// A wait failed, or a re-arm of a file watch failed for any reason but a missing file, and the thread has ended, so nothing more will come: `dir` and `file` fail from now on. It is the last value the sink gets from this watch.
     Ended(io::Error),
 }
 

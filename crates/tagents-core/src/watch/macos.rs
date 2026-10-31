@@ -65,6 +65,7 @@ impl Backend {
             None => self.armed.remove(&slot),
         };
         if let Some(old) = old {
+            // The old entry goes away with its descriptor, so an error here is dropped on purpose: `ENOENT`, the kernel no longer having it, is the expected one.
             let _ = self.queue.remove_file(&old, EventFilter::EVFILT_VNODE);
         }
         let registered = self.queue.watch();
@@ -73,6 +74,7 @@ impl Backend {
             && adding
             && let Some(refused) = self.armed.remove(&slot)
         {
+            // `ENOENT` is expected: the kernel never registered the entry it refused.
             let _ = self.queue.remove_file(&refused, EventFilter::EVFILT_VNODE);
         }
         registered

@@ -199,7 +199,7 @@ fn a_file_truncated_in_place_is_heard() {
 }
 
 #[test]
-fn a_file_watch_alone_survives_the_re_arm_a_chmod_makes() {
+fn a_file_watch_alone_survives_a_chmod() {
     let scratch = Scratch::new();
     let path = scratch.dir("d").join("events.tsv");
     fs::write(&path, "a").unwrap();
@@ -207,7 +207,7 @@ fn a_file_watch_alone_survives_the_re_arm_a_chmod_makes() {
     watch.file(&path, Key::Events).unwrap();
     silent(&keys);
 
-    // A chmod sends `ATTRIB` (a touch sent `MODIFY` on the Linux kernel of the Docker image), which opens the path again; the inode is the same, so the watch has to stay. A re-arm that removed it would queue an `IN_IGNORED`, which the thread hears as a second wake and answers by arming again, so the watch heals and only the second wake tells.
+    // On Linux a chmod sends `ATTRIB` (a touch sent `MODIFY` on the kernel of the Docker image), which is in `FILE_GONE` and so makes a re-arm that opens the path again; the inode is the same, so the watch has to stay, and that is what the test pins there. A re-arm that removed it would queue an `IN_IGNORED`, which the thread hears as a second wake and answers by arming again, so the watch heals and only the second wake tells. On macOS a chmod sends `NOTE_ATTRIB`, which `note()` does not count as gone, so no re-arm runs and the test pins only that the file watch survives.
     fs::set_permissions(&path, Permissions::from_mode(0o600)).unwrap();
     assert_eq!(heard(&keys), Key::Events);
     silent(&keys);
@@ -543,8 +543,29 @@ fn a_watch_is_dropped_while_its_thread_waits() {
     }
 }
 
-/// A backend that is not one: `wait` answers from a list, so that the loop of the thread runs with no operating system behind it.
-struct Script(VecDeque<io::Result<Fired>>);
+/// A backend that is not one: `wait` answers from a list, so that the loop of the thread runs with no operating system behind it. With a `refusal`, the first `file` arms and the later ones, the re-arms, fail with it.
+struct Script {
+    waits: VecDeque<io::Result<Fired>>,
+    refusal: Option<fn() -> io::Error>,
+    armed: bool,
+}
+
+impl Script {
+    fn new(waits: impl Into<VecDeque<io::Result<Fired>>>) -> Self {
+        Self {
+            waits: waits.into(),
+            refusal: None,
+            armed: false,
+        }
+    }
+
+    fn refusing(refusal: fn() -> io::Error, waits: Vec<io::Result<Fired>>) -> Self {
+        Self {
+            refusal: Some(refusal),
+            ..Self::new(waits)
+        }
+    }
+}
 
 impl Poller for Script {
     fn dir(&mut self, _path: &Path, _key: Key) -> io::Result<()> {
@@ -552,19 +573,40 @@ impl Poller for Script {
     }
 
     fn file(&mut self, _path: &Path, _key: Key) -> io::Result<()> {
-        Ok(())
+        match self.refusal {
+            Some(refusal) if std::mem::replace(&mut self.armed, true) => Err(refusal()),
+            _ => Ok(()),
+        }
     }
 
     fn wait(&mut self) -> io::Result<Fired> {
-        self.0
+        self.waits
             .pop_front()
             .unwrap_or_else(|| Err(io::Error::other("the script is over")))
     }
 }
 
+/// Runs the loop of the thread over `script`, with `commands` already in its inbox. The returned sender keeps the inbox open: a closed inbox ends the thread before it waits.
+fn spawn_loop(
+    script: Script,
+    commands: Vec<super::Command>,
+) -> (
+    Receiver<Heard>,
+    thread::JoinHandle<()>,
+    mpsc::Sender<super::Command>,
+) {
+    let (sender, inbox) = mpsc::channel();
+    for command in commands {
+        sender.send(command).unwrap();
+    }
+    let (sink, keys) = mpsc::channel();
+    let thread = thread::spawn(move || run(script, &inbox, &sink));
+    (keys, thread, sender)
+}
+
 #[test]
 fn a_wait_that_fails_is_the_last_thing_the_sink_hears_and_then_the_thread_ends() {
-    let script = Script(VecDeque::from([
+    let script = Script::new([
         Ok(Fired {
             keys: vec![Key::Events],
             ..Fired::default()
@@ -573,11 +615,8 @@ fn a_wait_that_fails_is_the_last_thing_the_sink_hears_and_then_the_thread_ends()
             ErrorKind::BrokenPipe,
             "the descriptor is gone",
         )),
-    ]));
-    // The sender stays alive: a closed inbox ends the thread before it waits.
-    let (_commands, inbox) = mpsc::channel();
-    let (sink, keys) = mpsc::channel();
-    let thread = thread::spawn(move || run(script, &inbox, &sink));
+    ]);
+    let (keys, thread, _commands) = spawn_loop(script, Vec::new());
 
     assert_eq!(heard(&keys), Key::Events);
     match keys.recv_timeout(HEARD) {
@@ -591,32 +630,6 @@ fn a_wait_that_fails_is_the_last_thing_the_sink_hears_and_then_the_thread_ends()
     }
 }
 
-/// A backend whose first `file` arms and whose later ones, the re-arms, fail with `refusal`.
-struct Refuses {
-    waits: VecDeque<io::Result<Fired>>,
-    armed: bool,
-    refusal: fn() -> io::Error,
-}
-
-impl Poller for Refuses {
-    fn dir(&mut self, _path: &Path, _key: Key) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn file(&mut self, _path: &Path, _key: Key) -> io::Result<()> {
-        if std::mem::replace(&mut self.armed, true) {
-            return Err((self.refusal)());
-        }
-        Ok(())
-    }
-
-    fn wait(&mut self) -> io::Result<Fired> {
-        self.waits
-            .pop_front()
-            .unwrap_or_else(|| Err(io::Error::other("the script is over")))
-    }
-}
-
 /// Runs the loop over a backend that arms `Key::Events` once and then reports it stale, with the wait results given. Returns what the sink hears.
 fn run_refusing(
     refusal: fn() -> io::Error,
@@ -626,25 +639,14 @@ fn run_refusing(
     thread::JoinHandle<()>,
     mpsc::Sender<super::Command>,
 ) {
-    let backend = Refuses {
-        waits: waits.into(),
-        armed: false,
-        refusal,
-    };
-    let (commands, inbox) = mpsc::channel();
     let (reply, _answer) = mpsc::channel();
-    commands
-        .send(super::Command {
-            kind: super::Kind::File,
-            path: PathBuf::from("events.tsv"),
-            key: Key::Events,
-            reply,
-        })
-        .unwrap();
-    let (sink, keys) = mpsc::channel();
-    let thread = thread::spawn(move || run(backend, &inbox, &sink));
-    // The sender stays alive: a closed inbox ends the thread before it waits.
-    (keys, thread, commands)
+    let arm = super::Command {
+        kind: super::Kind::File,
+        path: PathBuf::from("events.tsv"),
+        key: Key::Events,
+        reply,
+    };
+    spawn_loop(Script::refusing(refusal, waits), vec![arm])
 }
 
 fn stale(key: Key) -> io::Result<Fired> {
@@ -711,11 +713,11 @@ fn a_watch_the_kernel_refuses_does_not_stop_the_arming_of_the_next() {
     let scratch = Scratch::new();
     let (pipe, _writer) = rustix::pipe::pipe().unwrap();
     let (watch, _keys) = start();
+    let path = format!("/dev/fd/{}", pipe.as_raw_fd());
+    // The open must work, or a failed `file` below would not be the kernel's refusal.
+    std::fs::File::open(&path).expect("/dev/fd/N of the pipe was meant to open");
 
-    let refused = watch.file(
-        Path::new(&format!("/dev/fd/{}", pipe.as_raw_fd())),
-        Key::Events,
-    );
+    let refused = watch.file(Path::new(&path), Key::Events);
     assert!(refused.is_err(), "the kernel was meant to refuse a pipe");
 
     watch.dir(&scratch.dir("d"), Key::Options).unwrap();
