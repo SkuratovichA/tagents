@@ -440,3 +440,15 @@ fn labels_are_read_per_key_exactly_as_label_of_reads_them() {
         assert_eq!(labels.get(key).map_or("", String::as_str), shell, "{key}");
     }
 }
+
+/// Node: `'﻿'.trim().length === 0` and `('﻿/x﻿').trim().length > 0`.
+#[test]
+fn a_u_feff_alone_is_an_unset_state_dir_and_a_u_feff_at_both_ends_is_kept_as_written() {
+    let bom = '\u{feff}';
+    assert_eq!(
+        state_dir_in(Some(&bom.to_string()), "/home/u"),
+        "/home/u/.claude/agent-state"
+    );
+    let wrapped = format!("{bom}/x{bom}");
+    assert_eq!(state_dir_in(Some(&wrapped), "/home/u"), wrapped);
+}

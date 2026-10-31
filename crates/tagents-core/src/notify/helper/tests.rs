@@ -288,3 +288,16 @@ fn the_input_escapes_as_json_stringify_does() {
     n.body = text.to_owned();
     assert!(notice_json(&n).contains(&format!("\"body\":{}", json::quote(text))));
 }
+
+/// Node: `JSON.parse(('﻿{"ok":true,"shown":true}﻿').trim())` is `{ ok: true, shown: true }`.
+#[test]
+fn a_u_feff_at_both_ends_of_the_helper_output_is_trimmed_before_it_is_parsed() {
+    let bom = '\u{feff}';
+    assert_eq!(
+        read_line(&format!("{bom}{{\"ok\":true,\"shown\":true}}{bom}")),
+        Some(Ok(HelperLine {
+            shown: Some(true),
+            why: None
+        }))
+    );
+}

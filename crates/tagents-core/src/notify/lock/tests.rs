@@ -527,3 +527,16 @@ fn the_boot_time_comes_from_the_uptime_or_from_kern_boottime() {
     let _forking = forking();
     assert!(boot_ms(date_now()) <= date_now());
 }
+
+/// Node: `('﻿Sat Oct 17 10:23:45 2026﻿\n').trim()` is the date and `('﻿\n').trim() === ''`.
+#[test]
+fn a_u_feff_at_both_ends_of_the_ps_answer_is_trimmed_and_one_alone_is_an_empty_answer() {
+    let dir = Scratch::new();
+    let bom = '\u{feff}';
+    let wrapped = format!("echo '{bom}Sat Oct 17 10:23:45 2026{bom}'");
+    assert_eq!(
+        gated(stub(&dir, &wrapped), 1).as_deref(),
+        Some("Sat Oct 17 10:23:45 2026")
+    );
+    assert_eq!(gated(stub(&dir, &format!("echo '{bom}'")), 1), None);
+}
