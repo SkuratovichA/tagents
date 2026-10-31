@@ -983,6 +983,10 @@ click = \"goto\"")" "$(expect 'options reloaded')" "$(sentinel)")"
   must "options at reload: $1, the good one" 'click=/parity/bin/tagents --goto %99'
 }
 bad_options "an unknown key" 'colour = "red"' 'Unrecognized key: "colour"'
+bad_options "several unknown keys, the array indexes first" 'zeta = 1
+10 = 1
+alpha = 1
+2 = 1' 'Unrecognized keys: "2", "10", "zeta", "alpha"'
 bad_options "an unknown backend" 'backend = "telepathy"' 'backend: Invalid option: expected one of "auto"|"macos"|"log"|"none"'
 bad_options "an unknown click" 'click = "bounce"' 'click: Invalid option: expected one of "dock"|"goto"|"focus"'
 bad_options "a backend that is not a string" 'backend = 3' 'backend: Invalid option: expected one of "auto"|"macos"|"log"|"none"'
