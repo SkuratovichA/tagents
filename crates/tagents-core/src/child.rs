@@ -1,6 +1,6 @@
 //! A program run as a child, and what it did told back. The child leads a process group of its own and gets the bytes it is given on stdin, or none. It has a deadline, a cap on what is kept of each output stream and a drain for the pipes once it has exited. `mcp` runs a tool call with it; nothing here knows `mcp`, so whatever else runs a program with a deadline uses it as it is.
 //!
-//! Nothing a call starts outlives the call. A call ends by exit, timeout, a stop or the exit of the program, and each time the whole group is stopped: SIGTERM and then SIGKILL once the grace is over (or SIGKILL at once, when there is no grace), and whatever is left in the group after the program itself exited is killed at once.
+//! Nothing a call starts outlives the call. A call ends when the program exits, when its timeout comes or when a stop arrives, and whichever it is the whole group is stopped: a timeout or a stop sends SIGTERM and then SIGKILL once the grace is over (or SIGKILL at once, when there is no grace), and whatever is left in the group after the program itself exited is killed at once.
 //!
 //! One thread runs the call and waits on a channel with a deadline. More feed the channel: one per output pipe, which reads, keeps the first `cap` bytes and discards the rest so the program never blocks on a full pipe, and one that waits for the program to exit without reaping it (the zombie keeps the group's id from being reused while the call signals the group). The stop of the request arrives on the same channel. A thread of its own writes the input, so that a program that does not read it holds up nothing but that thread.
 
@@ -33,7 +33,7 @@ pub struct Policy {
     pub timeout: Duration,
     /// `Some`: SIGTERM at the timeout or at a stop, and SIGKILL once the grace is over. `None`: SIGKILL at once.
     pub kill_grace: Option<Duration>,
-    /// How long the call waits for the output pipes after the program exited: a process that left the group can hold them open for good. A pipe that still holds bytes, or has lost its last writer, is not held by such a process but waits for its reader thread, and is waited for on past this, up to the grace (`READER_WAIT` with no grace).
+    /// How long the call waits for the output pipes after the program exited: a process that left the group can hold them open for good. A pipe that still holds bytes, or has lost its last writer, is not held by such a process but waits for its reader thread, and is waited for on past this, up to the grace (`READER_WAIT` with no grace). A call that was stopped is given up on at the drain.
     pub drain: Duration,
     /// More than this many bytes of one stream is cut, at a character.
     pub cap: usize,
@@ -621,14 +621,15 @@ mod tests {
 
     #[test]
     fn with_no_grace_the_deadline_is_a_sigkill_and_not_a_sigterm() {
+        // The timeout is how long `sh` has to print `ready`; a program that ignores SIGTERM and is not killed at it would hold the call for its 30 s.
         let started = Instant::now();
-        let finished = within(ms(8000), || {
-            sh(DEAF, &policy(None, ms(1500), None), &Stop::default())
+        let finished = within(ms(15_000), || {
+            sh(DEAF, &policy(None, ms(5000), None), &Stop::default())
         });
         assert_eq!(finished.reason, Some(Reason::Timeout));
         assert_eq!(finished.code, None);
         assert_eq!(finished.stdout, "ready\n");
-        assert!(started.elapsed() < ms(7000), "{:?}", started.elapsed());
+        assert!(started.elapsed() < ms(9000), "{:?}", started.elapsed());
     }
 
     #[test]
@@ -659,6 +660,36 @@ mod tests {
         });
         assert_eq!(finished.reason, Some(Reason::Timeout));
         assert!(started.elapsed() >= ms(2700), "{:?}", started.elapsed());
+    }
+
+    #[test]
+    fn with_no_grace_a_program_that_exits_with_its_output_still_in_the_pipe_loses_none_of_it() {
+        // No grace and no drain: the only wait for the readers is `READER_WAIT`. The output is under the cap and over the pipe's buffer, so the program waited for the readers while it wrote. Calls side by side, so that the readers of one compete with the threads of the others, as the same test of `mcp` does.
+        let everything = Policy {
+            drain: ms(0),
+            ..policy(None, ms(10_000), None)
+        };
+        thread::scope(|scope| {
+            for lane in 1..=16 {
+                let everything = &everything;
+                scope.spawn(move || {
+                    for call in 1..=10 {
+                        let finished = sh(
+                            "head -c 100000 /dev/zero | tr '\\0' x",
+                            everything,
+                            &Stop::default(),
+                        );
+                        assert_eq!(finished.reason, None, "lane {lane} call {call}");
+                        assert_eq!(finished.code, Some(0), "lane {lane} call {call}");
+                        assert_eq!(
+                            finished.stdout.len(),
+                            100_000,
+                            "lane {lane} call {call} lost output"
+                        );
+                    }
+                });
+            }
+        });
     }
 
     #[test]
