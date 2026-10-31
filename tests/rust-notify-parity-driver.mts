@@ -2,6 +2,7 @@
 //
 //   node tests/rust-notify-parity-driver.mts run <script.json> <root> -- <daemon command...> [--other <command of the other kind...>]
 //   node tests/rust-notify-parity-driver.mts probe <root> -- <daemon command...>
+//   node tests/rust-notify-parity-driver.mts resources <root> -- <daemon command...>
 //
 // `run` starts nothing itself but what the script says, with the environment it was started with, so the shell decides what the daemon sees. The script is a JSON array of steps, each an object with a `do`; paths are relative to <root> unless they are absolute, and the state directory is $TA_STATE_DIR:
 //
@@ -36,6 +37,8 @@
 //   timeout <the step that did not complete>
 //
 // `probe` starts the command as the first check of the shell needs it: it waits for the `started` line and says what the process is.
+//
+// `resources` starts the command for the resource checks of the shell (task 7.4) and prints what it measured, one fact to a line: `started yes|no`, `cpu <ticks at the first reading> <ticks ten seconds later>` of an idle daemon, `threads <n>`, `fd <number> <KIND> <name>` for each descriptor at rest (KIND is INOTIFY, KQUEUE, PIPE, SOCKET, REG, DIR, CHR or ANON, the name `-` where there is none, the root of the scratch ROOT), `reloads <n>` the lines `options reloaded` seen while the options file was rewritten twelve times by replacing it and twelve times in place, `fds-after-reloads <n>` and `timeout <what>`. The shell judges the facts.
 //
 // Needs node 22.18 or newer (it runs TypeScript as it is). No dependency of the repo is imported.
 import { type ChildProcessByStdio, spawn, spawnSync } from 'node:child_process';
@@ -544,6 +547,109 @@ async function probe(root: string, daemon: readonly string[]): Promise<void> {
   process.stdout.write(`${report.join('\n')}\n`);
 }
 
+const IDLE_MS = 10_000;
+const REWRITES = 12;
+/** What the options file says in turn: valid documents on the log backend that differ, so that each one is a reload. */
+const DOCUMENTS = ['backend = "log"\nclick = "goto"\n', 'backend = "log"\nclick = "focus"\n'] as const;
+
+/** The processor time the process has used, in clock ticks of a hundredth of a second: `/proc/<pid>/stat` on Linux (utime and stime, the 14th and 15th fields) and `ps -o cputime` on macOS (`[h:]mm:ss.cc`). */
+function cpuTicks(pid: number): number {
+  if (process.platform === 'linux') {
+    const fields = fs.readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ').pop()?.split(' ') ?? [];
+    // After the command name the fields start at the 3rd, the state: utime is the 12th of them and stime the 13th.
+    return Number(fields[11]) + Number(fields[12]);
+  }
+  const ps = spawnSync('/bin/ps', ['-o', 'cputime=', '-p', String(pid)], { encoding: 'utf8' });
+  const seconds = ps.stdout.trim().split(':').reduce((total, part) => total * 60 + Number(part), 0);
+  if (ps.status !== 0 || Number.isNaN(seconds)) throw new Error(`ps -o cputime of ${pid} said ${JSON.stringify(ps.stdout)}`);
+  return Math.round(seconds * 100);
+}
+
+/** The threads of the process: the entries of `/proc/<pid>/task` on Linux, the lines of `ps -M` after its header on macOS. */
+function threadCount(pid: number): number {
+  if (process.platform === 'linux') return fs.readdirSync(`/proc/${pid}/task`).length;
+  const ps = spawnSync('/bin/ps', ['-M', '-p', String(pid)], { encoding: 'utf8' });
+  if (ps.status !== 0) throw new Error(`ps -M of ${pid} said ${JSON.stringify(ps.stderr)}`);
+  return ps.stdout.split('\n').filter((line) => line.trim() !== '').length - 1;
+}
+
+/** `lsof -F` says `unix` for a socket and nothing else needs a word of its own. */
+const LSOF_KINDS: Readonly<Record<string, string>> = { unix: 'SOCKET' };
+
+/** What a descriptor is, from the target `/proc/<pid>/fd/<n>` links to: the kinds the shell counts. */
+function linuxKind(target: string): string {
+  if (target === 'anon_inode:inotify') return 'INOTIFY';
+  if (target.startsWith('pipe:')) return 'PIPE';
+  if (target.startsWith('socket:')) return 'SOCKET';
+  if (target.startsWith('anon_inode:')) return 'ANON';
+  if (target.startsWith('/dev/')) return 'CHR';
+  return fs.statSync(target.replace(/ \(deleted\)$/, '')).isDirectory() ? 'DIR' : 'REG';
+}
+
+/** The descriptors of the process as `fd <number> <KIND> <name>` lines, by number. */
+function descriptors(pid: number, root: string): string[] {
+  const named = (kind: string, name: string): string => (kind === 'REG' || kind === 'DIR' || kind === 'CHR' ? name.split(root).join('ROOT') : '-');
+  if (process.platform === 'linux') {
+    return fs
+      .readdirSync(`/proc/${pid}/fd`)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .flatMap((number) => {
+        const target = fs.readlinkSync(`/proc/${pid}/fd/${number}`);
+        const kind = linuxKind(target);
+        return [`fd ${number} ${kind} ${named(kind, target)}`];
+      });
+  }
+  // `-F ftn`: a line per field, each file starting with its `f`. Entries with no number (cwd, txt) are not descriptors.
+  const lsof = spawnSync('/usr/sbin/lsof', ['-nP', '-p', String(pid), '-F', 'ftn'], { encoding: 'utf8' });
+  if (lsof.status !== 0) throw new Error(`lsof -p ${pid} said ${JSON.stringify(lsof.stderr)}`);
+  const found: string[] = [];
+  let number: number | undefined;
+  let kind = '';
+  for (const line of lsof.stdout.split('\n')) {
+    const value = line.slice(1);
+    if (line.startsWith('f')) {
+      number = /^\d+$/.test(value) ? Number(value) : undefined;
+      kind = '';
+    } else if (line.startsWith('t')) {
+      kind = LSOF_KINDS[value] ?? value;
+    } else if (line.startsWith('n') && number !== undefined) {
+      found.push(`fd ${number} ${kind} ${named(kind, value)}`);
+    }
+  }
+  return found.sort((a, b) => Number(a.split(' ')[1]) - Number(b.split(' ')[1]));
+}
+
+/** The resource checks of the shell: the daemon alone, idle for ten seconds, then through repeated reloads of its options file. */
+async function resources(root: string, daemon: readonly string[]): Promise<void> {
+  const proc = launch(daemon, root);
+  const pid = proc.child.pid;
+  await until(() => hasStarted(proc) || proc.status !== undefined, WAIT_MS);
+  const report = [`started ${hasStarted(proc) ? 'yes' : 'no'}`];
+  if (pid !== undefined && hasStarted(proc)) {
+    // The work of the start is not idle time: the first reading comes a second after the line.
+    await sleep(1_000);
+    const first = cpuTicks(pid);
+    await sleep(IDLE_MS);
+    report.push(`cpu ${first} ${cpuTicks(pid)}`, `threads ${threadCount(pid)}`, ...descriptors(pid, root));
+    const options = path.join(root, 'config', 'plugins', 'notify.toml');
+    const reloaded = (): number => proc.err.count('options reloaded');
+    // Each rewrite is waited for through the line it gives; a write in place may give two (the file empty, then written), so a short pause lets the second one come before the descriptors are read.
+    for (let n = 0; n < 2 * REWRITES && report.every((line) => !line.startsWith('timeout')); n++) {
+      const document = DOCUMENTS[n % DOCUMENTS.length] ?? '';
+      const before = reloaded();
+      if (n < REWRITES) write(options, document);
+      else fs.writeFileSync(options, document);
+      if (!(await until(() => reloaded() > before, WAIT_MS))) report.push(`timeout reload ${n + 1}`);
+      await sleep(150);
+    }
+    report.push(`reloads ${reloaded()}`, `fds-after-reloads ${descriptors(pid, root).length}`);
+  }
+  proc.child.kill('SIGTERM');
+  if (!(await leave(proc))) report.push('timeout the process did not leave on SIGTERM');
+  process.stdout.write(`${report.join('\n')}\n`);
+}
+
 function commands(rest: readonly string[]): { daemon: readonly string[]; other: readonly string[] } {
   const at = rest.indexOf('--other');
   return at < 0 ? { daemon: rest, other: rest } : { daemon: rest.slice(0, at), other: rest.slice(at + 1) };
@@ -555,7 +661,9 @@ if (verb === 'run' && rest[0] !== undefined && rest[1] !== undefined && rest[2] 
   await run(rest[0], rest[1], daemon, other);
 } else if (verb === 'probe' && rest[0] !== undefined && rest[1] === '--') {
   await probe(rest[0], commands(rest.slice(2)).daemon);
+} else if (verb === 'resources' && rest[0] !== undefined && rest[1] === '--') {
+  await resources(rest[0], commands(rest.slice(2)).daemon);
 } else {
-  process.stderr.write('usage: rust-notify-parity-driver.mts run <script.json> <root> -- <daemon command...> [--other <command...>] | probe <root> -- <daemon command...>\n');
+  process.stderr.write('usage: rust-notify-parity-driver.mts run <script.json> <root> -- <daemon command...> [--other <command...>] | probe <root> -- <daemon command...> | resources <root> -- <daemon command...>\n');
   process.exitCode = 2;
 }

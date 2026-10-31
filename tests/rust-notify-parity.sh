@@ -10,7 +10,8 @@
 # Tripwires assert on the node transcript alone, so a scenario that stopped provoking what it exists for fails here instead of passing for nothing.
 #
 # The first check, before any scenario: the process `<rust> notify run` starts must say it has started and must be the Rust binary. A binary with no `notify` arm hands the verb to the node CLI (front_door.rs, the `None => exec_node` arm), whose process is `node` and which writes no `started` line of the notify service, so the suite would compare node with node. It fails, with that said, and runs no scenario.
-# PARITY_SELF_TEST=1 skips the first check and runs node on both sides: it proves the suite and node's determinism, not the Rust daemon. It is how the suite is proven before the Rust daemon exists and how a change to a scenario is checked for flakiness.
+# After the last scenario one more run starts the Rust daemon alone and checks its resource use (the processor time of an idle daemon, its threads, the descriptors of its watch and their number across repeated reloads of the options file), because node's numbers are not the reference for those; PARITY_ONLY=resources picks it.
+# PARITY_SELF_TEST=1 skips the first check and the resource checks and runs node on both sides: it proves the suite and node's determinism, not the Rust daemon. It is how the suite is proven before the Rust daemon exists and how a change to a scenario is checked for flakiness.
 # PARITY_ONLY=<text> runs only the scenarios whose label holds the text, and PARITY_SHOW=<n> prints both transcripts of each, cut at n characters a line. TAGENTS_NODE names the node program. Needs a built node daemon (pnpm build). Exit codes: 0 all passed, 1 a scenario or the first check failed, 2 a prerequisite is missing. bash 3.2.
 #   env -u TMUX -u TMUX_PANE bash tests/rust-notify-parity.sh
 
@@ -313,12 +314,16 @@ must_before() {  # <label> <first> <second>
 
 # ------------------------------------------------------------ first check ---
 # A daemon that is only the front door's forward to the node CLI would pass every scenario by being node. So before any scenario the Rust side is started once: it must say `started pid <its own pid>` (the node CLI, with no notify plugin in the scratch config, never writes that line) and the process must be the Rust binary, not `node` (what exec_node leaves, and what a hand-over to node leaves too).
-first_check() {
-  local report base want image claimed pid started
+# The Rust daemon on a scratch of its own, started by the driver's verb with no node daemon beside it, and the driver's report: the first check and the resource checks, where node's numbers are not the reference.
+alone() {  # <driver verb>
   rm -rf "$RUN"; mkdir -p "$RUN/home" "$RUN/rec" "$RUN/tmux" "$RUN/config/plugins"
   printf '%s\n' "$DEFAULT_OPTS" > "$RUN/config/plugins/notify.toml"
-  report=$(env -i PATH="$SHIM:/usr/bin:/bin" HOME="$RUN/home" LANG=en_US.UTF-8 TA_STATE_DIR="$RUN/state" TAGENTS_CONFIG_DIR="$RUN/config" TAGENTS_LOCALE=en TMUX_TMPDIR="$RUN/tmux" TA_NOTIFY_APP="$APP" PARITY_REC="$RUN/rec" TAGENTS_NODE="$NODE" TA_NOTIFY_TAGENTS="$CLICK_SCRIPT" \
-    "$NODE" "$DRIVER" probe "$RUN" -- "${RUST_CMD[@]}" 2> "$TMP/probe.err") || { echo "rust-notify-parity: the first check could not run the driver: $(head -c 300 "$TMP/probe.err")" >&2; exit 2; }
+  env -i PATH="$SHIM:/usr/bin:/bin" HOME="$RUN/home" LANG=en_US.UTF-8 TA_STATE_DIR="$RUN/state" TAGENTS_CONFIG_DIR="$RUN/config" TAGENTS_LOCALE=en TMUX_TMPDIR="$RUN/tmux" TA_NOTIFY_APP="$APP" PARITY_REC="$RUN/rec" TAGENTS_NODE="$NODE" TA_NOTIFY_TAGENTS="$CLICK_SCRIPT" \
+    "$NODE" "$DRIVER" "$1" "$RUN" -- "${RUST_CMD[@]}"
+}
+first_check() {
+  local report base want image claimed pid started
+  report=$(alone probe 2> "$TMP/probe.err") || { echo "rust-notify-parity: the first check could not run the driver: $(head -c 300 "$TMP/probe.err")" >&2; exit 2; }
   started=$(printf '%s\n' "$report" | sed -n 's/^started //p')
   pid=$(printf '%s\n' "$report" | sed -n 's/^pid //p')
   claimed=$(printf '%s\n' "$report" | sed -n 's/^claimed //p')
@@ -1200,6 +1205,50 @@ for mode in many one; do
   must_count "2000 $mode: all of them" 'notice turn_done' 2000
   must_before "2000 $mode: in order" 'notice turn_done 1 ' 'notice turn_done 2000 '
 done
+
+t "resource use: the Rust daemon alone"
+# Task 7.4, against the Rust daemon only (node's numbers are not the reference). The driver starts it on a scratch, lets it idle for ten seconds, reads its processor time, its threads and its descriptors, then rewrites the options file twelve times by replacing it and twelve times in place, and reads the descriptors again; each line of its report is one fact, judged here against the requirement "Resource use" of the notify-service spec. Linux counts what /proc says, macOS what `ps -M` and `lsof` say. Under PARITY_SELF_TEST there is no Rust daemon and nothing is checked.
+# The descriptors of the report from number 3 up (0, 1 and 2 are the driver's stdio) of one kind that name something holding the text.
+fds_of() {  # <report> <kind> [text]
+  printf '%s\n' "$1" | awk -v kind="$2" -v text="${3:-}" '$1 == "fd" && $2 >= 3 && $3 == kind && (text == "" || index($4, text) > 0) { n++ } END { print n + 0 }'
+}
+# The report's descriptors of a kind are as many as wanted.
+want_fds() {  # <report> <what it is> <wanted> <kind> [text]
+  local found
+  found=$(fds_of "$1" "$4" "${5:-}")
+  if [ "$found" = "$3" ]; then ok; else bad "resources: $2: $found descriptors, wanted $3" "descriptors at rest: $(printf '%s\n' "$1" | grep '^fd ' | tr '\n' '|')"; fi
+}
+resource_checks() {
+  local label="resources: the Rust daemon at rest, and through reloads" report growth threads after rest reloads
+  [ -z "$SELF_TEST" ] && selected "$label" || return 0
+  ran=$((ran + 1))
+  report=$(alone resources 2> "$TMP/resources.err") || { bad "$label: the driver failed (exit $?)" "$(head -c 400 "$TMP/resources.err" | tr '\n' '|')"; return; }
+  if ! printf '%s\n' "$report" | grep -q '^started yes$'; then bad "$label: the daemon never said it had started" "$(printf '%s\n' "$report" | tr '\n' '|' | head -c 400)"; return; fi
+  if printf '%s\n' "$report" | grep -q '^timeout '; then bad "$label: a wait ran out" "$(printf '%s\n' "$report" | grep '^timeout ' | head -3 | tr '\n' '|')"; return; fi
+  growth=$(printf '%s\n' "$report" | awk '$1 == "cpu" { print $3 - $2 }')
+  if [ "${growth:-x}" -le 1 ] 2>/dev/null; then ok; else bad "resources: idle processor time grew by ${growth:-?} ticks in ten seconds, at most 1" "$(printf '%s\n' "$report" | grep '^cpu ')"; fi
+  threads=$(printf '%s\n' "$report" | awk '$1 == "threads" { print $2 }')
+  if [ "$threads" = 3 ]; then ok; else bad "resources: ${threads:-?} threads, wanted 3 (the engine, the watch, the signals)"; fi
+  # The wake pipe is the two pipes that are not stdout and stderr; the follower's own read of the events file is one more descriptor of it.
+  if [ "$OS" = Darwin ]; then
+    want_fds "$report" "the kqueue" 1 KQUEUE
+    want_fds "$report" "the wake pipe" 2 PIPE
+    want_fds "$report" "the events file: the watch's and the follower's" 2 REG /state/events.tsv
+    want_fds "$report" "the state directory, which the events file's watch holds with it" 1 DIR /state
+    want_fds "$report" "the options directory" 1 DIR /config/plugins
+    want_fds "$report" "the options file" 1 REG /config/plugins/notify.toml
+  else
+    want_fds "$report" "the inotify instance" 1 INOTIFY
+    want_fds "$report" "the wake pipe" 2 PIPE
+    want_fds "$report" "the events file: the follower's, since an inotify watch holds none" 1 REG /state/events.tsv
+  fi
+  reloads=$(printf '%s\n' "$report" | awk '$1 == "reloads" { print $2 }')
+  if [ "${reloads:-0}" -ge 24 ] 2>/dev/null; then ok; else bad "resources: the daemon reloaded ${reloads:-no} times, wanted 24 or more, so the descriptors below say nothing" "$(printf '%s\n' "$report" | grep '^reloads ')"; fi
+  rest=$(printf '%s\n' "$report" | grep -c '^fd ')
+  after=$(printf '%s\n' "$report" | awk '$1 == "fds-after-reloads" { print $2 }')
+  if [ "${after:-x}" -le "$rest" ] 2>/dev/null; then ok; else bad "resources: $rest descriptors at rest and ${after:-?} after the reloads, which must not be more" "$(printf '%s\n' "$report" | grep '^fds-after-reloads')"; fi
+}
+resource_checks
 
 printf '\nrust-notify-parity: %d scenarios ran, %d skipped (macOS only); %d checks passed, %d failed\n' "$ran" "$skipped" "$pass" "$fail"
 [ "$fail" -eq 0 ]
