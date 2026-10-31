@@ -10,6 +10,7 @@ pub mod js;
 pub mod json;
 pub mod mcp;
 pub mod node;
+pub mod notify;
 pub mod sessions;
 mod sync;
 pub mod transcripts;
