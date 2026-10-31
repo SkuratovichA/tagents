@@ -186,6 +186,7 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **A `sed` over `Cargo.lock` by version number moves other packages** — raising `version = "0.2.0"` also raised `foldhash 0.2.0`. Anchor the edit on the `name = ` line of the package above it, and read `git diff Cargo.lock` before the commit.
 - **Removing an inotify watch queues an `IN_IGNORED` that a test can take for the event it waits for** — with the removal made unconditional, the backend reported a key for a slot still on the removed descriptor, and a "the watch is still armed" test passed on it. Such a test takes what the arming and the removal made first (`settle`) and writes after.
 - **`cargo test --lib` after a signature change leaves the callers in `tests/` unbuilt** — `Watch::start` became generic over `T: From<Heard>` and `tests/watch_fds.rs` failed only in the Linux run. After a change to a public signature, run `cargo clippy --workspace --all-targets` before any narrower run.
+- **A test for an inotify re-arm needs the event that reaches it, and a mutation to prove it** — `File::set_modified` sent `MODIFY` on the Docker image's 5.15 kernel, so no re-arm ran and the mutated `keep` stayed green; `chmod` sends `ATTRIB`. A removal that is wrong heals through `IN_IGNORED`, so the test tells it by the second wake: `silent` after the first key, not `settle` (31.10.2026).
 
 ## Other
 
