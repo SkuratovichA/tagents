@@ -142,6 +142,7 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **API Extractor treats `.d.ts` under `node_modules` as external** — emit declarations into `packages/contract/.cache/`, one `mkdtemp` directory per call (12.10.2026)
 - **API Extractor resolves `types` from the cwd given only a tsconfig path** — use `compiler.overrideTsconfig` with explicit `typeRoots` and run the test from two other cwds (12.10.2026)
 - **`tusage --help` creates its state directory and needs jq** — run scripts for their help text with a throwaway `HOME` and the caller's `PATH` (12.10.2026)
+- **A usage line whose description starts with a lowercase word is read as part of the verb path** — `cli-spec.test.ts` took `notify run   (the …` as more words. Start the description with a parenthesis or a capital (31.10.2026)
 
 ## Docs and the site
 
@@ -150,6 +151,7 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **A link check that looks only for a file passes on a made-up page** — the prerender wrote the not-found page for `/docs/`. Skip mount paths (`MOUNTS` in `site/build/links.ts`) and require `docs/index.html`; run the check once without the other tool's output (29.10.2026)
 - **`vitepress preview` after a rebuild serves an unstyled page** — restart the preview after each `pnpm docs:build` (25.10.2026)
 - **A plate that holds only greys turns the sprite drawn on it grey** — after `-colorize`, ImageMagick saved `site/src/mascot/source/plate.png` as grey and alpha, and every icon came out with a grey sprite. `writeIcons` converts the plate with `-colorspace sRGB`, and the plate is saved with `-define png:color-type=6` (31.10.2026)
+- **A document that quotes a suite's counts goes stale with the next scenario** — say what the suite's last line reports instead of the numbers (31.10.2026)
 
 ## Test practice
 
@@ -206,6 +208,10 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **`rust:1` is Debian trixie now, and its binary needs GLIBC_2.39** — the node:22-bookworm-slim run refused it. Build in `rust:1-bookworm` for a bookworm run (31.10.2026).
 - **A mutation that survives the parity suite means a scenario is missing** — the suite was green with the option order, the lock, the stop, the events cut and a helper field broken one at a time until each got its own scenario. Mutate before calling a suite complete (31.10.2026).
 - **The slim Linux image has no `/bin/ps`** — the lock's start time and the driver's first look use it, and the run failed for that, not for the daemon. Install `procps` before the Linux parity run (31.10.2026).
+- **A parity mutation stayed green because the suite reused the old binary** — it builds the Rust binary only when missing. Run `cargo build -p tagents-core` after each mutation (31.10.2026)
+- **An early return that the later fire path repeats leaves no trace in a transcript** — dropping one guard kept the suite green. Drop both guards to prove the early return (31.10.2026)
+- **`ps -o comm=` prints the full path on macOS and a 15-character name on Linux** — compare against the binary's name, cut to 15 characters only on Linux (31.10.2026)
+- **A test that holds `forking()` and calls `writing()` deadlocks** — the fork gate is one `RwLock`. Take one side of it per test (31.10.2026)
 
 ## Other
 
