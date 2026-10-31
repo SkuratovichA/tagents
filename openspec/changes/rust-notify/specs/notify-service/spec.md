@@ -32,4 +32,4 @@ The service SHALL poll nothing. It holds one file watch on the events stream and
 
 #### Scenario: the Rust service at rest
 - **WHEN** the Rust service is idle
-- **THEN** it has three threads (the engine, the watch, the signals) and, besides the descriptors of its files, one for the watch and two for its wake pipe, and it has a thread for a tmux, `ps` or helper call only while that call runs
+- **THEN** it has three threads (the engine, the watch, the signals), and a thread for a tmux, `ps` or helper call only while that call runs; the watch holds, on Linux, the inotify descriptor and the two of its wake pipe, and on macOS the kqueue descriptor, the two of its wake pipe and one open descriptor each for the events file, the options directory and the options file when that is a regular file

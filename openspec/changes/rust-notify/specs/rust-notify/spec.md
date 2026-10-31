@@ -23,8 +23,8 @@
 - **THEN** the helper receives the same calls with the same bytes of input, and the logs are the same lines apart from the time and the pid
 
 #### Scenario: A prompt while a post is in flight
-- **WHEN** a post is in flight, the cache notice of a session falls due, and a prompt of that session reaches the events file before the post ends
-- **THEN** the prompt is taken in and the deadlines are swept before the due notice runs, so the cache notice of that session is not posted, as the node service sweeps at every event before it runs a job
+- **WHEN** a post is in flight, the cache deadline of a session passes during it, and then a prompt of that session reaches the events file before the post ends
+- **THEN** the prompt is taken in and the deadlines are swept before the due notice runs, so the cache notice of that session is not posted, where the node service posts in this order (a known difference, listed in `docs/architecture/rust-core.md`)
 
 ### Requirement: One service per machine, whichever program runs it
 The service SHALL take `notify.lock` in the state directory in the node service's format, `<pid> <start time as ps prints it>` or the older bare pid, and judge a holder as the node service does, so a node service and a Rust service on one state directory exclude each other in both directions. A live holder SHALL make it log `another notify service holds <file> (pid <n>); exiting` and exit 0.
@@ -56,6 +56,10 @@ The service SHALL register SIGTERM, SIGINT and SIGHUP before it does anything el
 - **WHEN** SIGTERM arrives while the helper is posting a notice
 - **THEN** `stopping (SIGTERM)` is logged before the `notice` line of that post
 
+#### Scenario: The name of the signal
+- **WHEN** SIGINT or SIGHUP arrives
+- **THEN** the line is `stopping (SIGINT)` or `stopping (SIGHUP)`
+
 #### Scenario: A signal during start
 - **WHEN** SIGTERM arrives before the service has logged `started`
 - **THEN** start settles, the service stops and exits 0
@@ -65,7 +69,7 @@ The service SHALL register SIGTERM, SIGINT and SIGHUP before it does anything el
 - **THEN** the service logs `backend none: nothing to post; exiting` or `no notification backend for <os> yet; exiting`, releases the lock and exits 0
 
 ### Requirement: The log is the node service's
-The service SHALL write to stderr the lines listed below, as `<ISO time with milliseconds> <the parts joined by a space>` and in the node service's words, `started pid <n> backend <name> options <file> (found|not found|invalid)` being the last line of a start. It SHALL write nothing to stdout and add only the two hand-over lines of the YAML requirement below, and an operating system's text in a line SHALL come from `node::io_message` (`crates/tagents-core/src/node.rs`).
+The service SHALL write to stderr the lines listed below, as `<ISO time with milliseconds> <the parts joined by a space>` and in the node service's words, `started pid <n> backend <name> options <file> (found|not found|invalid)` being the last line of a start. It SHALL write nothing to stdout and add only the lines of "A start that fails is handed to the node service", and an operating system's text in a line SHALL come from `node::io_message` (`crates/tagents-core/src/node.rs`).
 
 #### Scenario: The started line
 - **WHEN** the service starts with an options file that is valid, missing or invalid
@@ -81,7 +85,7 @@ The service SHALL write to stderr the lines listed below, as `<ISO time with mil
 
 #### Scenario: The lines of a start and a stop
 - **WHEN** the service starts, finds a lock held, has no backend, or stops
-- **THEN** its lines are `started pid <n> backend <name> options <file> (found|not found|invalid)`, `another notify service holds <file> (pid <n>); exiting`, `backend none: nothing to post; exiting`, `no notification backend for <os> yet; exiting`, `stopping (<signal name>)`, `could not release the lock <file> <why>`, `drain failed <why>` and `the notify service stopped: <why>`
+- **THEN** its lines are `started pid <n> backend <name> options <file> (found|not found|invalid)`, `another notify service holds <file> (pid <n>); exiting`, `backend none: nothing to post; exiting`, `no notification backend for <os> yet; exiting`, `stopping (<signal name>)`, `could not release the lock <file> <why>` and `drain failed <why>`
 
 #### Scenario: The lines of the options
 - **WHEN** the options are read, reloaded or cannot be watched
@@ -89,7 +93,7 @@ The service SHALL write to stderr the lines listed below, as `<ISO time with mil
 
 #### Scenario: The lines of a notice
 - **WHEN** the engine posts, drops, withdraws or holds back a notice
-- **THEN** its lines are `notice <kind> <key> <title as JSON> shown`, the same with `dropped` and `: <why>` when there is one, `notice <kind> <key> skipped: tmux has no pane <pane>`, `post failed <kind> <key> <why>`, `posting works again`, `withdraw <id>`, `withdraw failed <id> <why>` and `permission prompt held back by the question on screen <key>`
+- **THEN** its lines are `notice <kind> <key> <title as JSON> shown`, the same with `dropped` and `: <why>` when there is one, `notice <kind> <key> skipped: tmux has no pane <pane>`, `post failed <kind> <key> <why>`, `posting works again`, `withdraw <id>`, `withdraw failed <id> <why>` and `permission prompt held back by the question on screen <key>`; on the `log` backend a withdrawal writes `withdraw <id>` twice, once from the backend and once from the engine, as the node service does
 
 #### Scenario: The lines of a failing part
 - **WHEN** the tmux probe, an event or the follower fails
@@ -97,7 +101,7 @@ The service SHALL write to stderr the lines listed below, as `<ISO time with mil
 
 #### Scenario: The lines of the log backend
 - **WHEN** the backend is `log` and a notice is posted
-- **THEN** the line is `post <id> <kind> <title JSON> <subtitle JSON> <body JSON> click=<command, or terminal> pid=<n or none> <skip-if-frontmost or always>`, 28 lines in all with the ones above
+- **THEN** the line is `post <id> <kind> <title JSON> <subtitle JSON> <body JSON> click=<command, or terminal> pid=<n or none> <skip-if-frontmost or always>`, 27 lines in all with the ones above
 
 ### Requirement: The events file is followed from its end
 The service SHALL create `events.tsv` (mode 0600) and `events.on` when it follows, start at its end, read to the end on every wake and keep a partial line. It SHALL drop a line with fewer than 13 fields, a time that is not a number or an unknown event (a trailing carriage return is tolerated, extra fields are ignored), restart at 0 when the file is shorter than its offset, reopen from 0 when the path names another inode, and rotate at 1 MiB, reading the old `events.tsv.1` for 2 seconds.
@@ -145,7 +149,7 @@ The service SHALL learn of a change to the events file and to the options direct
 An options file that is a symlink SHALL be noticed when the link is replaced and SHALL NOT be noticed when its target is edited. The options directory SHALL be watched by its real path, so a config directory that is a symlink into a dotfiles repository works.
 
 #### Scenario: A linked options file is edited
-- **WHEN** `notify.toml` is a symlink to a file in another directory and that file is edited
+- **WHEN** `notify.toml` is a symlink to a file in another directory, that file is edited, and nothing else happens in the options directory
 - **THEN** the service does not reload
 
 #### Scenario: The link is replaced
@@ -155,6 +159,21 @@ An options file that is a symlink SHALL be noticed when the link is replaced and
 #### Scenario: A file edited in place
 - **WHEN** `notify.toml` is a regular file and is written in place, with no rename
 - **THEN** the service reloads, on macOS as on Linux
+
+### Requirement: An event in the options directory reloads only a changed file
+An event in the options directory SHALL make the service read the options file and apply it only when what it read, the bytes of the file, its absence or the failure of the read, differs from what is in force. An unchanged file SHALL log nothing and change nothing.
+
+#### Scenario: An unrelated file
+- **WHEN** a file other than `notify.toml` is written in the options directory
+- **THEN** the service logs no `options` line and keeps its options
+
+#### Scenario: The file written with the same bytes
+- **WHEN** `notify.toml` is written again with the bytes it has
+- **THEN** the service logs no `options` line and keeps its options
+
+#### Scenario: The file written with other values
+- **WHEN** `notify.toml` is written with other valid values
+- **THEN** the service logs `options reloaded`
 
 ### Requirement: The options file is read as TOML
 `<config dir>/plugins/notify.toml` SHALL be read with the `toml` crate and checked against the schema of the `notify` requirements "Plugin options and defaults", "Invalid options" and "Durations": the same keys, lists and defaults. A duration is a whole number of seconds, as a TOML number or a string of ASCII digits, or a string `<n>h<n>m<n>s` of ASCII digits with each part optional, the total a safe integer; dates, booleans, arrays, tables and non-finite floats are not durations.
@@ -170,6 +189,14 @@ An options file that is a symlink SHALL be noticed when the link is replaced and
 #### Scenario: A duration that is a date
 - **WHEN** `after = 1979-05-27`
 - **THEN** the file is invalid with the problem at `events.cache_expiring.after`
+
+#### Scenario: Only a YAML file
+- **WHEN** only `plugins/notify.yaml` exists
+- **THEN** no YAML is read, every setting is its default and the `started` line ends `(not found)`
+
+#### Scenario: A file that cannot be read
+- **WHEN** `plugins/notify.toml` is a directory or a file that cannot be read
+- **THEN** the one problem is `options: <file>: <the text node prints for the failed read>`, such as `EISDIR: illegal operation on a directory, read`, the defaults hold and the `started` line ends `(invalid)`
 
 ### Requirement: A bad options file is worded as the node service words it
 For every problem of the schema the service SHALL log `options: <line>` with the line the node service writes, byte for byte, in the order zod 4 reports it: each key's issues in the order of the schema, then the object's unrecognized keys, then the `after`/`ttl` check, which a type problem inside `cache_expiring` skips. It SHALL then run on the defaults, and log each distinct set of problems once.
@@ -217,39 +244,28 @@ A file that is not TOML SHALL be reported as the one problem `options: <file>: I
 - **WHEN** `after = 9007199254740993`
 - **THEN** the file is invalid and the reason says the value cannot be represented losslessly
 
-### Requirement: A YAML-only options file is run by the node service
-When `notify.toml` is not a regular file and `notify.yaml` is, the Rust service SHALL read no YAML. At start it SHALL log `options: <file> is YAML; handing over to the node service`, keep `notify.lock` held, remove `events.on`, and replace its process with `node <root>/packages/notify/dist/main.js run` with the environment it had. At a reload it SHALL keep the options in force and log `options: <file> is YAML; a restart hands it to the node service`.
+### Requirement: A start that fails is handed to the node service
+When a step of the start before the `started` line fails, the Rust service SHALL, unless a stop was requested, log `handing over to the node service: <why>`, keep the lock held and replace its process with the node service (`node <root>/packages/notify/dist/main.js run`, the same environment), which runs or fails by its own lines. A stop requested during start SHALL end the process as a stop does, and a failure after `started`, such as a failed watch, SHALL NOT be handed over.
 
-#### Scenario: Only a YAML file at start
-- **WHEN** `plugins/notify.yaml` exists and `plugins/notify.toml` does not
-- **THEN** the node service runs in the process, with the same pid, takes over the lock and reads the file
+#### Scenario: The steps that hand over
+- **WHEN** creating the state directory, taking the lock (not a held lock), picking the backend, starting the follower or arming the engine from the state rows fails
+- **THEN** the service hands over to the node service
 
-#### Scenario: Both files
-- **WHEN** both exist
-- **THEN** `notify.toml` is read and the Rust service keeps running
-
-#### Scenario: The options move to YAML while it runs
-- **WHEN** `notify.toml` is removed and `notify.yaml` is created
-- **THEN** the Rust service keeps running with the values in force and logs the line once, and a restart hands over to the node service
+#### Scenario: A watch that cannot be armed
+- **WHEN** the watch on the events file fails at start
+- **THEN** the node service runs in its place, with the same pid, and the lock is held by it
 
 #### Scenario: The lock is kept across the exec
 - **WHEN** the service hands over while a manual `run` starts at the same moment
 - **THEN** the lock never names a dead pid, the manual `run` logs `another notify service holds` and exits 0, and the node service runs
 
-### Requirement: A start that fails is handed to the node service
-When a step of the start before the `started` line fails, the Rust service SHALL, unless a stop was requested, log the reason, keep the lock held and replace its process with the node service, which runs or fails by its own rules with its own `the notify service stopped:` line and exit 1. A stop requested during start SHALL end the process as a stop does, and a failure after `started` SHALL NOT be handed over.
-
-#### Scenario: The steps that hand over
-- **WHEN** creating the state directory, taking the lock (not a held lock), reading the options, picking the backend, starting the follower or arming the engine from the state rows fails
-- **THEN** the service hands over to the node service
-
-#### Scenario: A watch that cannot be armed
-- **WHEN** the watch on the events file fails at start
-- **THEN** the node service runs in its place and the lock is held by it
+#### Scenario: The exec fails
+- **WHEN** the node program cannot be executed
+- **THEN** the service releases the lock, logs `could not hand over to the node service: <why>` and exits 1
 
 #### Scenario: A failure that node shares
 - **WHEN** the state directory cannot be created
-- **THEN** the node service fails with `the notify service stopped:` and exit 1, the code launchd retries
+- **THEN** the node service fails with its own line `the notify service stopped: <why>` and exit 1, the code launchd retries
 
 #### Scenario: The options directory cannot be watched
 - **WHEN** the watch on the options directory fails at start
@@ -258,6 +274,10 @@ When a step of the start before the `started` line fails, the Rust service SHALL
 #### Scenario: A stop during a failing start
 - **WHEN** SIGTERM arrives while a step of the start fails
 - **THEN** the process stops, releases the lock and exits 0, and the node service is not started
+
+#### Scenario: The watch fails after start
+- **WHEN** the wait of the watch fails while the service runs
+- **THEN** the service logs `watch failed <why>`, stops as a signal stops it and exits 1, and the node service is not started
 
 ### Requirement: The helper is called as the node service calls it
 A notice SHALL be posted by running `<app>/Contents/MacOS/tagents-notify post` with the notice as JSON on stdin and a withdrawal by `<app>/Contents/MacOS/tagents-notify withdraw <id>`, each with a deadline of 5 seconds after which the helper's process group is killed. Only `ok`, `shown`, `why` and `error` of the one JSON line answered are read, and an answer that is not that line is the node service's `unreadable output from the notification helper` error.
