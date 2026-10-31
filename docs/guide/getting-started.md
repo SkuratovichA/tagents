@@ -33,7 +33,7 @@ sh ~/.local/share/tagents/install.sh --hooks-dir ~/.claude/hooks
 
 | where | what |
 |-------|------|
-| `~/.local/bin` | `tagents`, `tusage`, `tnotes`, `tagents-core` and `tagents-knowledge`; `tagents-core` runs the prebuilt Rust binary when a release exists for the version you installed, and the node CLI otherwise |
+| `~/.local/bin` | `tagents`, `tusage`, `tnotes`, `tagents-core` and `tagents-knowledge`; `tagents-core` runs the prebuilt Rust binary when a release exists for the version you installed, and the node CLI otherwise; `tagents-mcp` runs the same binary as `tagents-core mcp` in that case, and the node server otherwise |
 | each `--hooks-dir` | one wrapper per `hooks/*.sh` |
 | `settings.json` of each Claude config directory | the state hook and the status line, added by `tagents setup` (see [Tell Claude Code about it](#tell-claude-code-about-it)) |
 

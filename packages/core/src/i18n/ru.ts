@@ -19,6 +19,7 @@ export const ru: Partial<Record<keyof typeof en, string>> = {
     '  plugin remove <имя>',
     '  plugin new <имя> [--dir D]',
     '  doctor',
+    '  mcp --contract F   (только бинарник на Rust)',
     '  <плагин> <команда> [аргументы]   команда настроенного плагина (см. plugin list)',
     '',
     'зарезервировано: session · sessions · plugin · doctor · help — команда ядра важнее',

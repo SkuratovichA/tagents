@@ -46,6 +46,8 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **A group header carries its member's pane key** — `--list | awk '$1 == pane'` finds the header first. Skip it by the marker `index($2, "\342\226\276") == 0` (11.09.2026)
 - **`( cmd; echo "exit=$?" )` hides failure from `set -e`** — a commit landed with typecheck red. Gate with `gate() { "$@" > log || { tail log; exit 1; }; }` (11.09.2026)
 - **macOS has no `timeout`** — run suites bare, they bound themselves (30.10.2026, 11.09.2026)
+- **bash 3.2 brace-expands a JSON object written in double quotes inside `$( )`** — the comma list comes out mangled. Build such JSON in a function body or in single quotes, as `tests/rust-mcp-parity.sh` does (30.10.2026)
+- **`ps | grep -c <name>` counts the shell that runs the check** — its command line holds the pattern. Write it with a bracket, `grep -c '[s]leep 30'`, so a "nothing is left running" check can read 0 (30.10.2026)
 
 ## tmux
 
@@ -170,6 +172,15 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **Timing checks fail on main on a loaded box** — compare `tests/panes.sh` section 18 and the port-claim checks with a control run of main in a scratch worktree (14.10.2026)
 - **A control run of `git show HEAD:tagents` needs HEAD's lib beside it** — `git archive HEAD lib/tagents | tar -x -C "$CONTROL"` and a guard that the control started (12.09.2026)
 - **Do not touch the working tree while the bash suite runs in the background** — a stash mixed two trees; use a scratch worktree for probes (11.09.2026)
+
+## Rust core and the MCP server
+
+- **A call that gives up on its pipes at the drain loses what its reader threads have not read** — a reader thread can be descheduled past a 250 ms drain on a loaded machine. Past the drain the call keeps waiting, up to the kill grace, while a pipe holds bytes or has lost its last writer; `a_program_that_exits_with_its_output_still_in_the_pipe_loses_none_of_it` pins it (30.10.2026)
+- **A registry of calls in flight reports empty only after the last answer is written** — otherwise the ending returns and the process exits with an answer unwritten. `Registry::settle` decides and frees the id, the call thread writes, `finish` removes the call and wakes `wait_empty` (`crates/tagents-core/src/mcp/server.rs`) (30.10.2026)
+- **Rust's shortest float digits round a tie up where JavaScript takes the even digit** — `270348394056782.125` prints `.12` in node and `.13` through `{:e}`. `shortest_scientific` in `crates/tagents-core/src/js.rs` follows ECMAScript; fuzz a formatter that must match JavaScript against node before trusting hand-picked cases (30.10.2026)
+- **A Rust test that calls the node CLI fails where `node_modules` is missing** — `rust.yml` installs the node dependencies before the Rust steps, and the smoke test in `crates/tagents-core/tests/mcp_server.rs` skips its call half, saying why, where there are none (30.10.2026)
+- **A backslash-u escape written through an edit request carried as JSON lands as the character it names** — four tests compared a decoded character with itself. Build the backslash with `chr(92)` in a script, then check the bytes: `grep -c` for the escape and `LC_ALL=C grep -c -P '[^\x00-\x7F]'` for a stray non-ASCII byte (30.10.2026)
+- **A second signal must not end the process before the ending has signalled the calls** — the ending is bounded by the grace and a margin, so later signals are caught and ignored; `a_second_signal_during_the_ending_does_not_cut_it_short` in `crates/tagents-core/tests/mcp_server.rs` pins it (30.10.2026)
 
 ## Other
 

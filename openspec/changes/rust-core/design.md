@@ -132,7 +132,10 @@ Rejected: `anyhow`-style error aggregation and `tokio`, because the verbs are st
 | dependency | used by | reason | cost |
 |---|---|---|---|
 | `serde` (derive) | `tagents-spec` | reads the data file into a typed model that refuses unknown fields | the derive macro pulls `serde_derive`, `syn`, `quote`, `proc-macro2`, `unicode-ident`, `serde_core` at build time |
-| `serde_json` | `tagents-spec`, `tagents-core` | parses the data file and prints `--spec` | `itoa`, `memchr`, `zmij`; its parser is not used for transcripts |
+| `serde_json` | `tagents-spec`, `tagents-core` | parses the data file, prints `--spec` and, for `mcp`, speaks JSON-RPC and reads the contract | `itoa`, `memchr`, `zmij`; its parser is not used for transcripts |
+| `serde_json` features `preserve_order`, `arbitrary_precision` | `mcp` | a program's JSON keeps the order of its keys and the digits of its numbers, and the contract's maps keep the file's order | `indexmap`, `equivalent`, `foldhash`, `hashbrown`; additive, so they apply to every crate of the workspace |
+| `rustix` (feature `process`) | `mcp::run` | signal a process group and wait for a child without reaping it, in safe code | `bitflags`, `errno`, `libc` |
+| `signal-hook` | `mcp::server` | end on SIGTERM, SIGINT or SIGHUP from a thread, in safe code | `signal-hook-registry` |
 
 The transcripts are parsed by `json.rs`, a small parser of its own, because `serde_json` differs from `JSON.parse` in three ways that change which transcript lines are read: it refuses a lone surrogate escape, it refuses a number that overflows a float, and it stops at 128 levels of nesting. A line that one program skips and the other reads would list different prompts, so the parser takes exactly the grammar of ECMA-404, keeps its open containers on the heap and drops a deep value iteratively. It is the one deliberate second copy of logic in the change; the parity suite pins it to node.
 

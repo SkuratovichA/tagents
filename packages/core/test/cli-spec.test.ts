@@ -117,7 +117,7 @@ test('coreCliContract lists every verb with a non-empty English summary', () => 
     [
       'session open', 'session prompt', 'session last', 'session list', 'session abort',
       'sessions recent', 'sessions search', 'sessions show',
-      'plugin list', 'plugin add', 'plugin remove', 'plugin new', 'doctor',
+      'plugin list', 'plugin add', 'plugin remove', 'plugin new', 'doctor', 'mcp',
     ],
   );
   for (const c of contract.commands) {

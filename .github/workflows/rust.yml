@@ -1,16 +1,20 @@
 name: rust
 
-# The Rust workspace and everything its tests compare it with: the shared CLI spec, the node CLI that stays the reference, and the parity suite. The `release-path` job holds the version gate and the two shell suites of the release path (the packaging script and the installer's fetch), and `tests/release.sh` reads `release.yml` and `rust.yml`, so both are listed; the other shell suites for `tagents` are not run here, so those files are not listed.
+# The Rust workspace and everything its tests compare it with: the shared CLI spec and its generated `contract.json` (which the MCP tests read), the node CLI that stays the reference, and the parity suite. The `rust` job runs on Linux and on macOS; the `release-path` job, on Linux, holds the version gate and the two shell suites of the release path (the packaging script and the installer's fetch), and `tests/release.sh` reads `release.yml` and `rust.yml`, so both are listed; the other shell suites for `tagents` are not run here, so those files are not listed.
 on:
   push:
     paths:
       - Cargo.toml
       - Cargo.lock
       - rust-toolchain.toml
+      - contract.json
       - crates/**
       - spec/**
       - packages/core/**
+      - packages/mcp/**
       - tests/rust-parity.sh
+      - tests/rust-mcp-parity.sh
+      - tests/rust-mcp-parity-driver.mts
       - .node-version
       - package.json
       - pnpm-lock.yaml
@@ -26,10 +30,14 @@ on:
       - Cargo.toml
       - Cargo.lock
       - rust-toolchain.toml
+      - contract.json
       - crates/**
       - spec/**
       - packages/core/**
+      - packages/mcp/**
       - tests/rust-parity.sh
+      - tests/rust-mcp-parity.sh
+      - tests/rust-mcp-parity-driver.mts
       - .node-version
       - package.json
       - pnpm-lock.yaml
@@ -46,28 +54,34 @@ permissions:
 
 jobs:
   rust:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Install the toolchain rust-toolchain.toml pins
         run: rustup toolchain install
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Install the node dependencies, which the smoke test of the MCP server and the parity suites run against
+        run: pnpm install --frozen-lockfile
       - name: Formatting
         run: cargo fmt --all --check
       - name: Lints, tests included
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit and integration tests
         run: cargo test --workspace --locked
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
       - name: Build the node CLI the Rust binary is compared with
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm build
+        run: pnpm build
       - name: Parity with the node CLI, byte for byte
         run: bash tests/rust-parity.sh
+      - name: Parity of the MCP server with the node one, byte for byte
+        run: bash tests/rust-mcp-parity.sh
 
   # A change to what the tagents-core binary is built from must raise the workspace version (docs/architecture/rust-core.md, "How a release is made"). Every such input is in the paths above, so a pull request that breaks the rule always runs this job. The history is deep because the gate compares with the merge base.
   release-path:

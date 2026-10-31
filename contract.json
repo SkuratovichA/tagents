@@ -239,6 +239,22 @@
           "required": [],
           "summary": "prints the node version, the state directory, the config file and whether claude is on PATH",
           "effect": "read"
+        },
+        {
+          "path": [
+            "mcp"
+          ],
+          "positionals": [],
+          "options": {
+            "contract": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "contract"
+          ],
+          "summary": "serves the tools of a contract file to an MCP client over stdin and stdout until the client closes them",
+          "effect": "serve"
         }
       ]
     },
@@ -1225,7 +1241,7 @@
     }
   },
   "api": {
-    "@tagents/core": "sha256:403a1efba0bd90b6542530c5c9def9d6a554254068b0b361cfe80a92ed188d60",
+    "@tagents/core": "sha256:cfb30b274efc817960f87ad29580af1c9ac45856f679acfd7ed4b825ee215489",
     "@tagents/knowledge": "sha256:63465226fcb49e8f6a20867948332ff35da600f4a020fa9701ef88730f5c2d8a",
     "@tagents/notify": "sha256:9fd35c43c5dd7262667bfdd48944a46e39551f1e7441438455c7859a39f8fb7e",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"

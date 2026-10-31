@@ -149,6 +149,15 @@
       "summary": "summaryDoctor",
       "impl": "node",
       "effect": "read"
+    },
+    {
+      "path": ["mcp"],
+      "positionals": [],
+      "options": { "contract": { "type": "string" } },
+      "required": ["contract"],
+      "summary": "summaryMcp",
+      "impl": "rust",
+      "effect": "serve"
     }
   ]
 }

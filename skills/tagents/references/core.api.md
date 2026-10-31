@@ -714,10 +714,11 @@ export const resources: {
             readonly summaryPluginRemove: "takes one plugin entry back out of the config";
             readonly summaryPluginNew: "scaffolds a package that is already a plugin";
             readonly summaryDoctor: "prints the node version, the state directory, the config file and whether claude is on PATH";
+            readonly summaryMcp: "serves the tools of a contract file to an MCP client over stdin and stdout until the client closes them";
         };
     };
     readonly ru: {
-        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "abortPaneAgent" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryDoctor", string>>;
+        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "abortPaneAgent" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryDoctor" | "summaryMcp", string>>;
     };
 };
 

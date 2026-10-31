@@ -343,12 +343,16 @@ out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
 ok "an install with no Rust binary exits 0" 0 "$rc"
 wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/core/dist/cli/main.js" > "$TMP/expected-core"
 wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/knowledge/dist/cli/main.js" > "$TMP/expected-knowledge"
+wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/mcp/dist/main.js" > "$TMP/expected-mcp"
 printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nexec sh "%s" "$@"\n' "$TAGENTS_HOME/hooks/tmux-agent-state.sh" > "$TMP/expected-hook"
 same_bytes "with no binary, tagents-core is byte for byte what it always was" "$TMP/expected-core" "$TAGENTS_BIN/tagents-core"
 same_bytes "tagents-knowledge too" "$TMP/expected-knowledge" "$TAGENTS_BIN/tagents-knowledge"
+same_bytes "and tagents-mcp, which names no binary either" "$TMP/expected-mcp" "$TAGENTS_BIN/tagents-mcp"
 same_bytes "and a hook wrapper" "$TMP/expected-hook" "$HOOKS_A/tmux-agent-state.sh"
 ok "the node CLI answers" "node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$("$TAGENTS_BIN/tagents-core" a b)"
+ok "the node server answers through tagents-mcp" "node-c $TAGENTS_HOME/packages/mcp/dist/main.js a b" "$("$TAGENTS_BIN/tagents-mcp" a b)"
 
+# The fixtures of this section have no Cargo.toml, so the version check of tagents-mcp never applies here; it is covered under "a binary built by hand is not ours" below.
 # A binary that is executable at install time is named by the wrapper, and gets the pinned node as TAGENTS_NODE.
 RUST_BIN=$TAGENTS_HOME/target/release/tagents-core
 mkdir -p "$(dirname "$RUST_BIN")"
@@ -360,29 +364,46 @@ contains "and still names the node CLI as the way out" 'exec "$n" "'"$TAGENTS_HO
 ok "the wrapper runs the binary, with the pinned node and every argument" "rust node=$TMP/node-c/node a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
 env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a >/dev/null; rc=$?
 ok "its exit code comes through untouched" 7 "$rc"
+contains "tagents-mcp names the same binary" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+contains "...and hands it the word mcp before the arguments, with the pinned node" 'TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" mcp "$@"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+contains "...and still names the node server as the way out" 'exec "$n" "'"$TAGENTS_HOME"'/packages/mcp/dist/main.js" "$@"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+lacks "tagents-core hands its binary no word" 'exec "$r" mcp' "$(cat "$TAGENTS_BIN/tagents-core")"
+ok "tagents-mcp runs the binary with the word, then every argument" "rust node=$TMP/node-c/node mcp a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a b)"
+env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a >/dev/null; rc=$?
+ok "...and its exit code comes through untouched" 7 "$rc"
 same_bytes "tagents-knowledge does not change" "$TMP/expected-knowledge" "$TAGENTS_BIN/tagents-knowledge"
 same_bytes "nor does a hook wrapper" "$TMP/expected-hook" "$HOOKS_A/tmux-agent-state.sh"
 # The wrapper's two guards are each pinned by a case only that guard catches, on the wrapper written for the real binary and without a reinstall.
 node_answer="node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b"
+mcp_answer="node-c $TAGENTS_HOME/packages/mcp/dist/main.js a b"
 rm -f "$RUST_BIN"; mkdir "$RUST_BIN"
+ok "...and tagents-mcp falls through to the node server" "$mcp_answer" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a b)"
 ok "a directory where the binary was (it passes -x, so only the -f guard stops it) falls through to the node CLI" "$node_answer" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
 rmdir "$RUST_BIN"
 printf '#!/bin/sh\necho "rust"\n' > "$RUST_BIN"; chmod 644 "$RUST_BIN"
 ok "a file without the executable bit (only the -x guard stops it) falls through to the node CLI" "$node_answer" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+ok "...and tagents-mcp falls through to the node server" "$mcp_answer" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a b)"
 rm -f "$RUST_BIN"
+ok "once the binary is gone tagents-mcp runs the node server" "$mcp_answer" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a b)"
 ok "once the binary is gone the same wrapper runs the node CLI" "node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
 printf '#!/bin/sh\necho "rust"\n' > "$RUST_BIN"; chmod 644 "$RUST_BIN"
 out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
 same_bytes "a binary that is not executable is not named" "$TMP/expected-core" "$TAGENTS_BIN/tagents-core"
+same_bytes "...by tagents-mcp either" "$TMP/expected-mcp" "$TAGENTS_BIN/tagents-mcp"
 rm -f "$RUST_BIN"
 out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
 same_bytes "after the binary is removed, the next update writes the old bytes back" "$TMP/expected-core" "$TAGENTS_BIN/tagents-core"
+same_bytes "...for tagents-mcp too" "$TMP/expected-mcp" "$TAGENTS_BIN/tagents-mcp"
 
 # A binary that is present and executable but cannot run (its interpreter is missing) is an error: the wrapper must not fall back to the node CLI, which would print the marker.
 mkdir -p "$(dirname "$RUST_BIN")"
 printf '#!/nonexistent/interpreter\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
 PATH="$TMP/node-c:$PATH" run >/dev/null
 contains "an install with a binary that cannot run still names it" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+out=$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a b 2>/dev/null); rc=$?
+if [ "$rc" -ne 0 ]; then rc_state=nonzero; else rc_state=zero; fi
+ok "tagents-mcp over a binary that cannot run fails too" nonzero "$rc_state"
+lacks "...without starting the node server" "node-c" "$out"
 out=$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b 2>"$TMP/cannot-run.err"); rc=$?
 if [ "$rc" -ne 0 ]; then rc_state=nonzero; else rc_state=zero; fi
 ok "a binary that cannot run fails with a non-zero exit" nonzero "$rc_state"
@@ -392,6 +413,7 @@ lacks "...and the node CLI was not run" "node-c" "$out"
 rm -f "$RUST_BIN"; mkdir "$RUST_BIN"
 out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
 lacks "an install with a directory at the binary's path does not name it" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+lacks "...nor does tagents-mcp" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
 ok "...and the wrapper runs the node CLI" "node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
 rmdir "$RUST_BIN"
 out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
@@ -407,10 +429,15 @@ else
   contains "the wrapper names the binary" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
   lacks "and pins no node" 'TAGENTS_NODE=' "$(cat "$TAGENTS_BIN/tagents-core")"
   ok "the binary is run without a node handed to it" "rust node=unset a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+  contains "tagents-mcp names the binary and the word, and pins no node" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+  contains "...with the word right before the arguments" '{ exec "$r" mcp "$@"; }' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+  ok "...and it runs the binary with the word" "rust node=unset mcp a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a)"
   rm -f "$RUST_BIN"
   out=$(PATH=/usr/bin:/bin run); rc=$?
   wrapper_bytes "" "$TAGENTS_HOME/packages/core/dist/cli/main.js" > "$TMP/expected-core-unpinned"
   same_bytes "without the binary it is the old unpinned wrapper" "$TMP/expected-core-unpinned" "$TAGENTS_BIN/tagents-core"
+  wrapper_bytes "" "$TAGENTS_HOME/packages/mcp/dist/main.js" > "$TMP/expected-mcp-unpinned"
+  same_bytes "...and so is tagents-mcp" "$TMP/expected-mcp-unpinned" "$TAGENTS_BIN/tagents-mcp"
 fi
 
 # A managed copy whose path holds a space: the wrapper must name the binary and run it with its arguments whole.
@@ -424,6 +451,8 @@ printf '#!/bin/sh\necho "rust $# $*"\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
 out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
 contains "the wrapper names the binary under the spaced home" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
 ok "...and runs it with every argument" "rust 2 a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+contains "tagents-mcp names the binary under the spaced home" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+ok "...and passes the word and each argument whole, an argument with a space and an empty one included" "rust 4 mcp a b  c" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" "a b" "" c)"
 
 # ---------------------------------------------------------------------------
 t "14. the prebuilt Rust tagents-core: fetched for the version of the checkout, checked, and never kept when it is another version"
@@ -470,6 +499,7 @@ nothing_installed() {  # <name> — neither the binary nor its marker, and nothi
 }
 node_cli_answers() {  # <name>
   ok "$1: the wrapper runs the node CLI" "node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+  ok "$1: tagents-mcp runs the node server" "node-c $TAGENTS_HOME/packages/mcp/dist/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a b)"
 }
 
 # --- the first install fetches, checks and installs --------------------------
@@ -483,6 +513,8 @@ ok "target/release holds those two and nothing else" "tagents-core
 tagents-core.release" "$(ls -A "$TAGENTS_HOME/target/release")"
 contains "the wrapper names the binary" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
 ok "the binary answers through the wrapper, with every argument" "native-core 0.1.0 a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
+contains "tagents-mcp names the binary too" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+ok "...and the binary answers through it with the word mcp first" "native-core 0.1.0 mcp a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a b)"
 ok "two files were requested: the checksum, then the archive" "2" "$(calls)"
 contains "the checksum was asked for first" "$ARCHIVE.sha256" "$(head -n 1 "$CURL_LOG")"
 contains "every wait is bounded, whatever the URL" "--connect-timeout 15 --max-time 120" "$(cat "$CURL_LOG")"
@@ -511,6 +543,7 @@ out=$(run_native); rc=$?
 ok "an update to a version with a release exits 0" 0 "$rc"
 ok "the marker moved to the new version" "0.1.1 $TRIPLE $(sha_of "$RUST_BIN")" "$(cat "$RUST_BIN.release")"
 ok "and the binary is the new one" "native-core 0.1.1 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+ok "...also through tagents-mcp" "native-core 0.1.1 mcp a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a)"
 
 # --- the version moves and its release is missing: the old binary goes ---------
 set_version 0.1.2; use_release 0.1.2
@@ -519,6 +552,7 @@ ok "an update to a version with no release exits 0" 0 "$rc"
 contains "it says there is no release, with the URL it tried" "no prebuilt tagents-core 0.1.2 for $TRIPLE (file://$RELEASES/v0.1.2/tagents-core-0.1.2-$TRIPLE.tar.gz.sha256), using the node CLI" "$out"
 nothing_installed "the old binary of 0.1.1 is not kept"
 same_bytes "the wrapper is the plain node one" <(wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/core/dist/cli/main.js") "$TAGENTS_BIN/tagents-core"
+same_bytes "...and so is the tagents-mcp one" <(wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/mcp/dist/main.js") "$TAGENTS_BIN/tagents-mcp"
 node_cli_answers "an install with no release"
 out=$(run_native --quiet); rc=$?
 ok "--quiet exits 0 too" 0 "$rc"
@@ -639,19 +673,43 @@ nothing_installed "...and nothing is installed"
 fresh_native 0.1.0
 TAGENTS_NO_NATIVE=1 run_native >/dev/null
 mkdir -p "$(dirname "$RUST_BIN")"
-printf '#!/bin/sh\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.1.0"; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
 out=$(run_native); rc=$?
 ok "an install over a hand-built binary exits 0" 0 "$rc"
 ok "it made no request" 0 "$(calls)"
 ok "the binary is as it was" "handbuilt" "$("$RUST_BIN")"
 ok "and gained no marker" no "$(exists "$RUST_BIN.release")"
 ok "the wrapper names it" "handbuilt" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core")"
+ok "...and tagents-mcp runs it too" "handbuilt" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp")"
 out=$(TAGENTS_NO_NATIVE=1 run_native); rc=$?
 ok "TAGENTS_NO_NATIVE=1 leaves it alone as well" "handbuilt" "$("$RUST_BIN")"
 chmod 644 "$RUST_BIN"
 out=$(run_native); rc=$?
 ok "a hand-built file that is not executable is left alone too" yes "$(grep -q handbuilt "$RUST_BIN" && echo yes || echo no)"
 ok "...with no request" 0 "$(calls)"
+
+# A binary of another version hands the word mcp to the node CLI, which does not know it: tagents-mcp leaves such a binary and runs the node server, where tagents-core still names it because every verb it lacks goes to the node CLI.
+printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.0.9"; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+out=$(run_native); rc=$?
+ok "an install over a hand-built binary of another version exits 0" 0 "$rc"
+ok "tagents-core still names it" "handbuilt" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core")"
+lacks "tagents-mcp does not name it" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+ok "...so a session gets the node server" "node-c $TAGENTS_HOME/packages/mcp/dist/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a b)"
+printf '#!/nonexistent/interpreter\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+out=$(run_native); rc=$?
+lacks "a hand-built binary that cannot say its version is not named by tagents-mcp either" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+contains "...while tagents-core names it" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.1.0"; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+out=$(run_native); rc=$?
+contains "a hand-built binary of the checkout's version is named again" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+set_version 0.2.0-rc.1
+# A binary that answers with an empty version is the one an unreadable version would match if the check were skipped.
+printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core "; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+out=$(run_native); rc=$?
+lacks "a Cargo.toml whose version cannot be read names no binary for tagents-mcp" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
+contains "...while tagents-core still names it" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
+set_version 0.1.0
+out=$(run_native); rc=$?
 
 # --- TAGENTS_NO_NATIVE=1 --------------------------------------------------------
 fresh_native 0.1.0
