@@ -442,18 +442,18 @@ OPTS='backend = "log"
 [events.question]
 enabled = false'
 play "window: a switched-off question and a permission 6 s later" "$(steps "$(start)" "$(ev PreToolUse 1 at=0 tool=AskUserQuestion text='Which colour?')" "$(ev Notification 1 at=6 sub=permission_prompt text='May I?')" "$(sentinel)")"
+must "window: a switched-off question holds nothing back" 'notice permission 1 '
+must_count "window: a switched-off question: no permission is held back" 'held back' 0
 
 t "kinds switched off"
-for kind in question permission turn_done cache_expiring session_end; do
+# The kinds that are on by default. A cache_expiring switched off is the cache group's (nothing is armed, or the deadline is armed all the same), and session_end is off by default and on in the last scenario here.
+for kind in question permission turn_done; do
   OPTS="backend = \"log\"
 [events.$kind]
 enabled = false"
   sent=sentinel; [ $kind != turn_done ] || sent=sentinel_permission
   play "off: $kind" "$(steps "$(start)" "$(ev PreToolUse 1 tool=AskUserQuestion text=q)" "$(ev Notification 2 sub=permission_prompt text=p)" "$(ev Stop 3 text=s)" "$(ev SessionEnd 4)" "$($sent)")"
-  case $kind in
-    turn_done) must_not "off: turn_done" 'notice turn_done' ;;
-    question|permission) must_not "off: $kind" "notice $kind" ;;
-  esac
+  must_not "off: $kind" "notice $kind"
 done
 OPTS='backend = "log"
 [events.question]
@@ -470,6 +470,7 @@ OPTS='backend = "log"
 [events.question]
 enabled = false'
 play "off: a withdraw still reaches the notice of another kind" "$(steps "$(start)" "$(ev Notification 1 sub=permission_prompt text=p)" "$(expect 'notice permission 1 ')" "$(ev PreToolUse 1 tool=AskUserQuestion text=q)" "$(ev PostToolUse 1 tool=AskUserQuestion)" "$(sentinel)")"
+must_count "off: a withdraw still reaches the notice of another kind, once for each event" 'withdraw tagents-1' 2
 
 t "skip_visible: a pane in front of a client, and every way the probe can answer"
 # The probe runs for every notice, whatever skip_visible says: skip_visible only decides whether a notice of a pane in front of a client is left to the helper to drop (skip-if-frontmost) or is always shown, and the pid after `pid=` is the client the probe found.
@@ -1056,10 +1057,15 @@ click = \"goto\"")" "$(expect 'options reloaded')" "$(sentinel)")"
 must_count "other files: one reload" 'options reloaded' 1
 must_count "other files: no problem" 'options: ' 0
 # A daemon that starts with no options file, no plugins directory or no config directory runs on the defaults, whose backend is `auto`: the helper on macOS, and on every other system no backend at all, where the daemon leaves. So the scenarios that go on from there run on macOS only, the helper's calls telling what the notice carried, and the start itself is a scenario everywhere.
+not_found_at_start() {  # <label>: the started line says it, where there is one
+  if [ "$OS" = Darwin ]; then must "$1: the started line" 'notify.toml (not found)'; elif [ "$OS" = Linux ]; then must "$1: no backend on linux" 'no notification backend for linux yet; exiting'; fi
+}
 NOFILE=1
 play "options file: not found at start" "$(steps "$(start settled)")"
+not_found_at_start "options file: not found"
 NOPLUGINS=1
 play "options file: no plugins directory at start" "$(steps "$(start settled)")"
+not_found_at_start "options file: no plugins directory"
 NOCONFIG=1
 play "options file: no config directory at start" "$(steps "$(start settled)")"
 must "no config: told" 'options reload is off: TMP/run/config does not exist'
