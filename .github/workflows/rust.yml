@@ -16,6 +16,8 @@ on:
       - tests/rust-parity.sh
       - tests/rust-mcp-parity.sh
       - tests/rust-mcp-parity-driver.mts
+      - tests/rust-notify-parity.sh
+      - tests/rust-notify-parity-driver.mts
       - .node-version
       - package.json
       - pnpm-lock.yaml
@@ -42,6 +44,8 @@ on:
       - tests/rust-parity.sh
       - tests/rust-mcp-parity.sh
       - tests/rust-mcp-parity-driver.mts
+      - tests/rust-notify-parity.sh
+      - tests/rust-notify-parity-driver.mts
       - .node-version
       - package.json
       - pnpm-lock.yaml
@@ -92,6 +96,8 @@ jobs:
         run: bash tests/rust-parity.sh
       - name: Parity of the MCP server with the node one, byte for byte
         run: bash tests/rust-mcp-parity.sh
+      - name: Parity of the notify daemon with the node one, byte for byte
+        run: bash tests/rust-notify-parity.sh
 
   # A change to what the tagents-core binary is built from must raise the workspace version (docs/architecture/rust-core.md, "How a release is made"). Every such input is in the paths above, so a pull request that breaks the rule always runs this job. The history is deep because the gate compares with the merge base.
   release-path:
