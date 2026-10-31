@@ -2,11 +2,11 @@
 //!
 //! The hook appends one tab separated line per event to `<state dir>/events.tsv` while `<state dir>/events.on` exists. A `Follower` reads that file back from its end, once each line and in file order, and keeps what a read could not finish: the bytes of a line without its newline (bytes, not text, since a read can end in the middle of a character), and the offset it has read to.
 //!
-//! The follower has no thread, no timer and no poll. The engine calls `wake` when the watch sends `Key::Events` and again when the time `due` names has come, and nothing else wakes it. Time comes in as an argument, so a test drives the grace of a rotated file with a clock of its own. What a call finds comes back as a `Delivery`: events, failed reads and a death are values, and the texts are the ones node's `Error` carries for the same failure.
+//! The follower has no thread, no timer and no poll. The engine calls `wake` when the watch sends `Key::Events` and `end_grace` when the time `due` names has come, and nothing else wakes it. Time comes in as an argument, so a test drives the grace of a rotated file with a clock of its own. What a call finds comes back as a `Delivery`: events, failed reads and a death are values, and the texts are the ones node's `Error` carries for the same failure.
 //!
 //! Arm, then read, as the module doc of `watch` asks: `start` arms the directory and the file and reads to the end afterwards, and a file the follower opens afresh (the path was replaced, or the follower rotated it) is armed before it is read. A write that lands between the open and the arming raises no wake, and the read after the arming is what finds it.
 //!
-//! A `Follower` survives what the hook and the owner do to the file. A size below the offset restarts at 0. A path that is gone or names another inode is read to its end first, then opened again from 0, created when missing. At 1 MiB, once drained, the follower rotates the file itself: `events.tsv` becomes `events.tsv.1`, a fresh `events.tsv` is watched, and the old file stays open for 2 seconds so that a hook that opened the old path just before the rename still lands its line. What arrives through the grace is delivered by the call that finds the grace over, ahead of that call's own events, so it can follow newer events of the fresh file that earlier calls delivered; each event carries its own time.
+//! A `Follower` survives what the hook and the owner do to the file. A size below the offset restarts at 0. A path that is gone or names another inode is read to its end first, then opened again from 0, created when missing. At 1 MiB, once drained, the follower rotates the file itself: `events.tsv` becomes `events.tsv.1`, a fresh `events.tsv` is watched, and the old file stays open for 2 seconds so that a hook that opened the old path just before the rename still lands its line. What arrives through the grace is delivered by the call that finds the grace over, which is `end_grace` at its time or the next `wake` when that comes first and then ahead of that call's own events, so it can follow newer events of the fresh file that earlier calls delivered; each event carries its own time. `end_grace` reads nothing but the old file, as node's timer does, so a file that is full when its grace ends is rotated by the next `wake`.
 //!
 //! Not detectable without polling: a truncation followed by growth beyond the old offset before the follower wakes. The hook only appends and renames. A symlink as `events.tsv` is read through the link, but the watch does not follow a symlink, so a write to its target raises nothing.
 //!
@@ -215,7 +215,7 @@ impl Follower {
         start_with(arming, dir, now_ms, ROTATE_BYTES)
     }
 
-    /// Reads what the file has gained since the last call. The engine calls it when the watch sends `Key::Events`, and when `due` has come; a call that finds nothing to do is cheap and harmless, so a spurious wake costs nothing. After `close` or a death it finds nothing.
+    /// Reads what the file has gained since the last call. The engine calls it when the watch sends `Key::Events`; a call that finds nothing to do is cheap and harmless, so a spurious wake costs nothing. After `close` or a death it finds nothing.
     pub fn wake(&mut self, arming: &impl Arming, now_ms: i64) -> Delivery {
         let mut out = Delivery::default();
         let Some(inner) = self.0.as_mut() else {
@@ -228,7 +228,16 @@ impl Follower {
         out
     }
 
-    /// When the engine must call `wake` though the watch says nothing: the end of the grace of a rotated file. `None` when no grace is pending.
+    /// The end of the grace of a rotated file, which node's timer does and the engine calls when `due` has come: the old file is read to its end and closed, and the file followed is not read, so a file that is full is rotated at the next `wake` and not at the end of the grace. A call before `due` does nothing.
+    pub fn end_grace(&mut self, now_ms: i64) -> Delivery {
+        let mut out = Delivery::default();
+        if let Some(inner) = self.0.as_mut() {
+            inner.end_grace(now_ms, &mut out);
+        }
+        out
+    }
+
+    /// When the engine must call `end_grace` though the watch says nothing: the end of the grace of a rotated file. `None` when no grace is pending.
     pub fn due(&self) -> Option<i64> {
         self.0.as_ref()?.grace.as_ref().map(|grace| grace.due)
     }
@@ -279,22 +288,20 @@ fn start_with(
 }
 
 impl Inner {
-    /// What a wake of the watch and the end of a grace do in node, in one call: the grace first, when it is over, so a rotation that is due can follow at once, then the file.
+    /// What a wake of the watch does in node: the grace first when its time is over and its timer has not been served yet, so a rotation that is due can follow at once, then the file.
     fn wake(
         &mut self,
         arming: &impl Arming,
         now_ms: i64,
         out: &mut Delivery,
     ) -> Result<(), String> {
-        if self.grace.as_ref().is_some_and(|grace| now_ms >= grace.due) {
-            self.finish_grace(out);
-        }
+        self.end_grace(now_ms, out);
         self.drain(arming, now_ms, out)
     }
 
-    /// `finishOld`: read what the old file gained during the grace, then close it.
-    fn finish_grace(&mut self, out: &mut Delivery) {
-        let Some(mut grace) = self.grace.take() else {
+    /// `finishOld`, which node's timer runs when the grace is over: read what the old file gained during the grace, then close it. It reads nothing else.
+    fn end_grace(&mut self, now_ms: i64, out: &mut Delivery) {
+        let Some(mut grace) = self.grace.take_if(|grace| now_ms >= grace.due) else {
             return;
         };
         if let Err(message) = pump(&mut grace.cursor, &mut out.events) {

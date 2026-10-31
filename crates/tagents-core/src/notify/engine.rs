@@ -1,10 +1,10 @@
 //! The engine of the notify daemon: agent events in, notices out, and the prompt-cache deadlines in between (`createEngine` of `packages/notify/src/engine.ts`). It knows no platform: a `Feed`, a `Notifier`, the options, a clock and a screen probe are everything it touches, which is also what makes it testable with five fakes and no sleeping.
 //!
-//! It is a plain struct with no thread, no channel and no timer. The service's loop calls it: `start` once, `wake` when the watch says the events file changed and when `next_due` has elapsed, `reload` with new options, `stop` once. Each call runs every job it makes before it returns, so the loop serves one message at a time, as node's promise chain runs events and due deadlines one at a time.
+//! It is a plain struct with no thread, no channel and no timer. The service's loop calls it: `start` once, `wake` when the watch says the events file changed, `tick` when `next_due` has elapsed, `reload` with new options, `stop` once. Each call runs every job it makes before it returns, so the loop serves one message at a time, as node's promise chain runs events and due deadlines one at a time.
 //!
-//! The order is node's. One FIFO queue of jobs: at each wake the follower's lines are ingested, each a job at the back of the queue and each followed by a sweep of the deadlines that are due, so with two lines and a due key the first line runs, then the due key, then the second line, and a prompt that cancels a key is seen before that key's cache notice runs (`engine.ts:399-408`). A wake that brought no line sweeps once, as node's deadline timer does. A deadline that passes while a post is in flight loses to a prompt line that is in the file when the post ends, where node, whose timer enqueued the due job first, posts: the engine is blocked in the post and cannot order the two after the fact (a known difference, pinned by `a_deadline_that_passes_during_a_post_loses_to_the_prompt_that_is_in_the_file_when_it_ends`).
+//! The order is node's. One FIFO queue of jobs: at each wake the follower's lines are ingested, each a job at the back of the queue and each followed by a sweep of the deadlines that are due, so with two lines and a due key the first line runs, then the due key, then the second line, and a prompt that cancels a key is seen before that key's cache notice runs (`engine.ts:399-408`). A wake that brought no line sweeps once, and so does a `tick`, which is node's deadline timer and reads no line: node's timers never read the events file, so a file that is full when its grace ends is rotated at the next wake of the watch and not at the tick. `start` runs no job: a line the first read found and a deadline that is overdue run at the first call after it, which `next_due` makes immediate, so `started` is written before the first notice as it is in node, where the timer and the microtask run after the synchronous start. A deadline that passes while a post is in flight loses to a prompt line that is in the file when the post ends, where node, whose timer enqueued the due job first, posts: the engine is blocked in the post and cannot order the two after the fact (a known difference, pinned by `a_deadline_that_passes_during_a_post_loses_to_the_prompt_that_is_in_the_file_when_it_ends`).
 //!
-//! Time comes only from the `Clock` and a deadline is a wall-clock time, so `next_due` is when the loop must call `wake` though nothing was heard, and a loop that sleeps through it is late by the sleep, never wrong. A signal is the `Stop` of the service: it is checked between jobs, never inside one, so a post in flight lands and the jobs behind it are dropped.
+//! Time comes only from the `Clock` and a deadline is a wall-clock time, so `next_due` is when the loop must call `tick` though nothing was heard, and a loop that sleeps through it is late by the sleep, never wrong. A signal is the `Stop` of the service: it is checked between jobs, never inside one, so a post in flight lands and the jobs behind it are dropped.
 
 use std::any::Any;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -263,7 +263,7 @@ impl<'a> Engine<'a> {
         }
     }
 
-    /// `start()`: follows the feed and arms what the state rows say is waiting, then runs the jobs that makes. An `Err` is the text node's `start` throws (the follow failed, so nothing is armed), and the service then stops the engine and hands over to node. Nothing happens after `stop`, or while a follower is open or a re-follow is waiting.
+    /// `start()`: follows the feed and arms what the state rows say is waiting. It runs no job: node's `start` returns before the timer of an overdue deadline and the microtask of a line the first read found have run, and the service writes `started` right after it, so an overdue deadline stays armed and a line the first read found stays queued until the first call of the loop, which `next_due` makes immediate for both. An `Err` is the text node's `start` throws (the follow failed, so nothing is armed), and the service then stops the engine and hands over to node. Nothing happens after `stop`, or while a follower is open or a re-follow is waiting.
     pub fn start(&mut self) -> Result<(), String> {
         if self.stopped.is_some() || self.following || self.refollow.is_some() {
             return Ok(());
@@ -271,13 +271,21 @@ impl<'a> Engine<'a> {
         // Follow first: if it fails there is nothing armed to leave behind.
         self.follow(0.0)?;
         self.caught(Self::arm_from_states)?;
-        self.sweep();
-        self.run();
         Ok(())
     }
 
-    /// What the service calls when the watch says the events file changed, and when `next_due` has elapsed: follows again when the time has come, takes in what the follower found, sweeps the deadlines (a wake that brought no line is node's deadline timer) and runs every job that makes. A call with nothing to do is cheap and harmless, so a spurious wake costs nothing.
+    /// What the service calls when the watch says the events file changed: follows again when the time has come, takes in what the follower found, sweeps the deadlines and runs every job that makes. A call with nothing to do is cheap and harmless, so a spurious wake costs nothing.
     pub fn wake(&mut self) {
+        self.turn(|feed, now_ms| feed.wake(now_ms));
+    }
+
+    /// What the service calls when `next_due` has elapsed and the watch said nothing: the timers of node's engine and follower. A rotated file's grace ends (its old file is read to its end and closed, and the file followed is not read), a dead follower is followed again when its time has come, and the deadlines that are due are swept and their jobs run.
+    pub fn tick(&mut self) {
+        self.turn(|feed, now_ms| feed.end_grace(now_ms));
+    }
+
+    /// A call of the loop: the re-follow when its time has come, then what `read` takes from the feed, the sweep and every job that makes.
+    fn turn(&mut self, read: impl FnOnce(&mut dyn Feed, i64) -> Delivery) {
         if self.stopped.is_some() {
             return;
         }
@@ -287,16 +295,20 @@ impl<'a> Engine<'a> {
             self.refollow = None;
             self.follow_again(refollow.wait);
         }
-        let delivery = self.feed.wake(self.now() as i64);
+        let now_ms = self.now() as i64;
+        let delivery = read(&mut *self.feed, now_ms);
         self.ingest(delivery);
         self.sweep();
         self.run();
     }
 
-    /// How long the loop may block before it must call `wake`: until the earliest of the cache deadlines (never more than `deadlines::MAX_SLEEP_MS`), the end of the grace of a rotated events file and the re-follow of a dead follower. `None` when nothing waits, and after `stop`. A wake that comes sooner does no harm.
+    /// How long the loop may block before it must call `tick`: until the earliest of the cache deadlines (never more than `deadlines::MAX_SLEEP_MS`), the end of the grace of a rotated events file and the re-follow of a dead follower, and no time at all while a job waits that `start` queued (an overdue deadline is already no time at all). `None` when nothing waits, and after `stop`. A call that comes sooner does no harm.
     pub fn next_due(&self) -> Option<Duration> {
         if self.stopped.is_some() {
             return None;
+        }
+        if !self.queue.is_empty() {
+            return Some(Duration::ZERO);
         }
         let now = self.now();
         [

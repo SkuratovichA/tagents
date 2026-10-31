@@ -6,7 +6,7 @@ use crate::notify::state::{AgentStateRow, read_agent_state};
 #[cfg(test)]
 mod tests;
 
-/// The feed as the engine uses it. It holds no thread and no timer: the engine calls `wake` when the watch says the events file changed and when `due` has come.
+/// The feed as the engine uses it. It holds no thread and no timer: the engine calls `wake` when the watch says the events file changed and `end_grace` when `due` has come.
 pub trait Feed {
     /// The state directory: the state rows, the labels and `events.tsv` live in it.
     fn dir(&self) -> &str;
@@ -20,7 +20,10 @@ pub trait Feed {
     /// What the events file gained since the last call, with the errors that left it followed and the death that ended it. Nothing before `start`, after `close` or after a death.
     fn wake(&mut self, now_ms: i64) -> Delivery;
 
-    /// When `wake` must be called though the watch says nothing, in epoch milliseconds: the end of the grace of a rotated file.
+    /// The grace of a rotated file, when `due` has come: the old file is read to its end and closed, and nothing else is read, as node's grace timer does. Nothing before `start`, after `close` or after a death.
+    fn end_grace(&mut self, now_ms: i64) -> Delivery;
+
+    /// When `end_grace` must be called though the watch says nothing, in epoch milliseconds: the end of the grace of a rotated file.
     fn due(&self) -> Option<i64>;
 
     /// Stops following. The text is the error node's `close()` throws when the hook's switch cannot be removed. Idempotent.
@@ -62,6 +65,13 @@ impl<A: Arming> Feed for FollowerFeed<'_, A> {
     fn wake(&mut self, now_ms: i64) -> Delivery {
         match self.follower.as_mut() {
             Some(follower) => follower.wake(self.arming, now_ms),
+            None => Delivery::default(),
+        }
+    }
+
+    fn end_grace(&mut self, now_ms: i64) -> Delivery {
+        match self.follower.as_mut() {
+            Some(follower) => follower.end_grace(now_ms),
             None => Delivery::default(),
         }
     }

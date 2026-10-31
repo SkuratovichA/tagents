@@ -333,9 +333,8 @@ fn serve(messages: Receiver<Message>, mut daemon: Daemon<'_>) -> ExitCode {
             break Ending::Signal;
         }
         match heard {
-            Ok(Message::Wake(Key::Events)) | Err(RecvTimeoutError::Timeout) => {
-                daemon.engine.wake();
-            }
+            Ok(Message::Wake(Key::Events)) => daemon.engine.wake(),
+            Err(RecvTimeoutError::Timeout) => daemon.engine.tick(),
             Ok(Message::Wake(Key::Options)) => {
                 daemon.options.heard(&mut daemon.settings, &*daemon.log);
                 daemon.engine.reload(daemon.settings.current.clone());
