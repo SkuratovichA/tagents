@@ -117,7 +117,7 @@ fn exec_node(relative: &str, args: &[OsString]) -> ExitCode {
         Ok(program) => program,
         Err(why) => {
             eprintln!(
-                "tagents-core: the node CLI is not there: {why}; this binary has to stay in <root>/target/<profile>/ next to a built {relative}"
+                "tagents-core: cannot find {relative}: {why}; this binary has to stay in <root>/target/<profile>/ of a root where it is built"
             );
             return ExitCode::from(sessions::exit::USAGE);
         }
