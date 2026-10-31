@@ -1,11 +1,10 @@
 //! The state rows and the labels against real files. The cases of `packages/core/test/agent-state.test.ts` map as follows: "records are read newest first" is `rows_are_newest_first_and_only_real_keys`; "the seventh column is the account" is `the_seventh_column_is_the_account_and_its_absence_is_not_an_empty_one`; "an eighth column is the headless pid", "the columns past the account belong to the rows with no pane" and "a history line names the parent of a child" read columns and a reader this module does not port (see its doc), so the fixture keeps rows of 7, 10 and 12 fields and `rows_with_more_columns_read_the_same_first_seven` pins that they parse as before; "a truncated or nonsense line is skipped" is `a_truncated_or_nonsense_line_is_skipped`; "a missing directory is no agents" is `a_missing_directory_is_no_agents_and_no_labels`; "TA_STATE_DIR decides where the records are" is `the_state_dir_is_the_variable_or_the_default`; "history carries the labels" is `history_carries_the_labels_and_the_latest_start_wins`; "labels.tsv is read per key exactly as label_of reads it" is `labels_are_read_per_key_exactly_as_label_of_reads_them`; the two cases that drive `ClaudeHeadlessDriver` ("the driver lists what the hook published", "last() reads the transcript") test the node driver and have no Rust counterpart. The vectors in `tests/notify_vectors/feed.rs` pin the same functions to node's answers.
 
 use std::fs;
-use std::path::Path;
-use std::process::Command;
 
 use super::*;
 use crate::testing::Scratch;
+use crate::testing::gate::names_sh;
 
 fn write(scratch: &Scratch, name: &str, text: &str) {
     fs::write(scratch.path().join(name), text).unwrap();
@@ -428,7 +427,6 @@ fn labels_are_read_per_key_exactly_as_label_of_reads_them() {
             ("sess-c", "name")
         ]
     );
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for key in [
         "sess-a",
         "%12",
@@ -438,25 +436,7 @@ fn labels_are_read_per_key_exactly_as_label_of_reads_them() {
         "k",
         "missing",
     ] {
-        let out = Command::new("bash")
-            .arg("-c")
-            .arg(r#"TAB=$'\t'; . "$1/lib/tagents/names.sh" && label_of "$2""#)
-            .arg("_")
-            .arg(&root)
-            .arg(key)
-            .env("STATE_DIR", s.path())
-            .output()
-            .unwrap();
-        assert!(
-            out.status.success(),
-            "{}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        let shell = String::from_utf8_lossy(&out.stdout);
-        assert_eq!(
-            labels.get(key).map_or("", String::as_str),
-            shell.strip_suffix('\n').unwrap_or(&shell),
-            "{key}"
-        );
+        let shell = names_sh("label_of", key, s.path());
+        assert_eq!(labels.get(key).map_or("", String::as_str), shell, "{key}");
     }
 }

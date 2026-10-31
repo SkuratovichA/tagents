@@ -128,6 +128,21 @@ fn the_stopping_line_is_written_once_by_the_signal_or_by_the_watch_that_ended() 
 }
 
 #[test]
+fn a_signal_during_start_and_a_second_one_after_it_give_one_stopping_line() {
+    let (rig, _messages) = Rig::new();
+    let signalling = rig.signalling();
+    signalling.signal("SIGTERM");
+    signalling.settle();
+    assert_eq!(rig.log.lines(), ["stopping (SIGTERM)"]);
+    signalling.signal("SIGINT");
+    assert_eq!(
+        rig.log.lines(),
+        ["stopping (SIGTERM)"],
+        "the second signal adds no second line"
+    );
+}
+
+#[test]
 fn a_signal_whose_loop_is_gone_still_trips_the_stop() {
     let (rig, messages) = Rig::new();
     drop(messages);

@@ -29,6 +29,7 @@ use std::time::{Duration, SystemTime};
 
 use super::*;
 use crate::testing::Scratch;
+use crate::testing::gate::{forking, write_executable};
 
 /// Pid 1 always exists, and `kill(1, 0)` is refused for it unless we are root: a live process that is not us.
 const INIT: u64 = 1;
@@ -111,6 +112,7 @@ fn stale_lock(dir: &Scratch) -> String {
 
 /// A pid that has been reaped: a short-lived child, killed and waited for.
 fn gone_pid() -> u64 {
+    let _forking = forking();
     let mut child = Command::new("sleep")
         .arg("60")
         .stdout(Stdio::null())
@@ -282,9 +284,20 @@ fn a_lock_that_cannot_be_removed_gives_the_failure_text_and_stays() {
 /// A stand-in for `ps`: records its arguments and its environment, then prints what the test says.
 fn stub(dir: &Scratch, script: &str) -> Command {
     let path = dir.0.join("ps-stub");
-    fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    write_executable(&path, &format!("#!/bin/sh\n{script}\n"));
     Command::new(path)
+}
+
+/// `start_via` with the spawn under the fork gate; the command is made before the call, so a stub is written outside the gate.
+fn gated(command: Command, pid: u64) -> Option<String> {
+    let _forking = forking();
+    start_via(command, pid)
+}
+
+/// `ps_process_start` under the fork gate.
+fn ps_started(pid: u64) -> Option<String> {
+    let _forking = forking();
+    ps_process_start(pid)
 }
 
 #[test]
@@ -296,7 +309,7 @@ fn ps_is_asked_for_the_start_time_with_a_fixed_locale_and_zone_and_nothing_else_
         "echo \"$@\" > '{0}'; /usr/bin/env | LC_ALL=C sort >> '{0}'; echo 'Sat Oct 17 10:23:45 2026'",
         record.display()
     );
-    let got = start_via(stub(&dir, &script), 123);
+    let got = gated(stub(&dir, &script), 123);
     assert_eq!(got.as_deref(), Some("Sat Oct 17 10:23:45 2026"));
     let text = fs::read_to_string(&record).unwrap();
     let mut lines = text.lines();
@@ -314,21 +327,21 @@ fn ps_is_asked_for_the_start_time_with_a_fixed_locale_and_zone_and_nothing_else_
 #[test]
 fn ps_says_nothing_for_a_failure_an_empty_answer_a_timeout_and_no_ps() {
     let dir = Scratch::new();
-    assert_eq!(start_via(stub(&dir, "exit 1"), 1), None, "no such pid");
-    assert_eq!(start_via(stub(&dir, "echo '  '"), 1), None, "empty output");
+    assert_eq!(gated(stub(&dir, "exit 1"), 1), None, "no such pid");
+    assert_eq!(gated(stub(&dir, "echo '  '"), 1), None, "empty output");
     assert_eq!(
-        start_via(stub(&dir, "echo 'Sat Oct 17 10:23:45 2026'; exit 3"), 1),
+        gated(stub(&dir, "echo 'Sat Oct 17 10:23:45 2026'; exit 3"), 1),
         None,
         "failing exit"
     );
     assert_eq!(
-        start_via(Command::new(dir.0.join("no-such-ps")), 1),
+        gated(Command::new(dir.0.join("no-such-ps")), 1),
         None,
         "no ps"
     );
     let slow = std::time::Instant::now();
     assert_eq!(
-        start_via(stub(&dir, "echo 'Sat Oct 17 10:23:45 2026'; sleep 30"), 1),
+        gated(stub(&dir, "echo 'Sat Oct 17 10:23:45 2026'; sleep 30"), 1),
         None,
         "killed at the deadline"
     );
@@ -337,10 +350,10 @@ fn ps_says_nothing_for_a_failure_an_empty_answer_a_timeout_and_no_ps() {
 
 #[test]
 fn ps_on_real_processes_is_stable_and_a_gone_pid_has_none() {
-    let mine = ps_process_start(me());
+    let mine = ps_started(me());
     assert!(mine.as_deref().is_some_and(|t| !t.is_empty()), "{mine:?}");
-    assert_eq!(ps_process_start(me()), mine);
-    assert_eq!(ps_process_start(gone_pid()), None);
+    assert_eq!(ps_started(me()), mine);
+    assert_eq!(ps_started(gone_pid()), None);
 }
 
 #[test]
@@ -511,5 +524,6 @@ fn the_boot_time_comes_from_the_uptime_or_from_kern_boottime() {
         Some(1_791_766_984_222)
     );
     assert_eq!(boot_from_boottime("garbage"), None);
+    let _forking = forking();
     assert!(boot_ms(date_now()) <= date_now());
 }
