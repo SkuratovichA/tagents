@@ -21,8 +21,7 @@ Run the suites of the part you changed before you open a pull request: [the Type
 
 ## Releases
 
-A pull request that changes what the `tagents-core` binary is built from raises the workspace version in `Cargo.toml`, and the `release-path` job fails it when it does not. Which files count, and how a tag becomes a release, is in [How a release is made](docs/architecture/rust-core.md#how-a-release-is-made); the check runs locally as `sh .github/scripts/core-release.sh gate origin/main`. Notable changes go under `[Unreleased]` in `CHANGELOG.md`.
-
+A pull request that changes what the `tagents-core` binary is built from raises the workspace version in `Cargo.toml`, and the `release-path` job fails it when it does not. Which files count, and how a tag becomes a release, is in [How a release is made](docs/architecture/rust-core.md#how-a-release-is-made); the check runs locally as `sh .github/scripts/core-release.sh gate origin/main`.
 ## Changes to behaviour
 
 What tagents does is specified in `openspec/specs/`. A change that alters behaviour starts as a proposal in `openspec/changes/<id>/` and is archived into the specs when it lands; `pnpm spec:check` validates them and CI runs it. [How specs work](docs/development.md#specs).
