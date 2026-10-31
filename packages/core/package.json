@@ -27,13 +27,13 @@
     "test": "node --test \"test/**/*.test.ts\""
   },
   "dependencies": {
-    "i18next": "^26.4.2",
+    "i18next": "^26.5.11",
     "smol-toml": "^1.9.1",
     "zod": "^4.6"
   },
   "devDependencies": {
-    "@types/node": "^22",
+    "@types/node": "^26",
     "ajv": "^8.20",
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   }
 }
