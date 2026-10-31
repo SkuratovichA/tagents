@@ -5,6 +5,7 @@
 // The bash dashboard reads the same file in lib/tagents/config.sh (cfg_parse_toml); tests/config-toml.sh pins the bash side, and test/config-schema.test.ts keeps the schema, the keys the dashboard reads and the zod schemas of the TypeScript readers from drifting apart.
 import fs from 'node:fs';
 import { parse as parseToml } from 'smol-toml';
+import { errnoCode } from './errno.ts';
 
 /** Is there a regular file at `file`? A directory of that name is not a config. */
 export function isFile(file: string): boolean {
@@ -43,8 +44,7 @@ function readText(file: string): string {
     try {
       return fs.readFileSync(file, 'utf8');
     } catch (e) {
-      const einval = e instanceof Error && (e as NodeJS.ErrnoException).code === 'EINVAL';
-      if (!einval || tried >= READ_TRIES) throw e;
+      if (errnoCode(e) !== 'EINVAL' || tried >= READ_TRIES) throw e;
     }
   }
 }

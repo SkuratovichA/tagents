@@ -6,6 +6,7 @@
 import path from 'node:path';
 import type { z } from 'zod';
 import { parseConfigFile } from './config-file.ts';
+import { errnoCode } from './errno.ts';
 import { issueLines } from './zod-issues.ts';
 
 export const PLUGIN_OPTIONS_DIR = 'plugins';
@@ -32,8 +33,7 @@ export function loadPluginOptions<S extends z.ZodType>(
     raw = parseConfigFile(file);
     found = true;
   } catch (e) {
-    const code = e instanceof Error ? (e as NodeJS.ErrnoException).code : undefined;
-    if (code !== 'ENOENT') {
+    if (errnoCode(e) !== 'ENOENT') {
       return { ok: false, file, problems: [`${file}: ${e instanceof Error ? e.message : String(e)}`] };
     }
   }
