@@ -199,6 +199,10 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **A test hook that asserts inside an engine call has its panic caught as a failed job** — the test passed silently. Hooks record and the test asserts after the call (31.10.2026)
 - **A deadline re-armed from a row after a re-follow is already past** — it fires at the next wake, so `armed() == 1` fails by timing. Assert the post (31.10.2026)
 - **Never run a failing `Command::exec` in-process in a test** — a failing one returns into the test process that meant to be replaced. Run it in a child process (31.10.2026)
+- **A pass on macOS hid a macOS-only pin in a timing suite** — the Linux container ran it differently. Run a timing suite in the Linux container before calling it done (31.10.2026)
+- **A machine that sleeps mid-run voids the run** — the timings were wrong and the suite failed or passed by accident. Compare the wall time with the usual one, read `pmset -g log`, and run under `caffeinate -i` (31.10.2026)
+- **A tripwire tied to "the last scenario run" fails under `PARITY_ONLY`** — the scenario it watched never ran. Put per-document pins inside the helper that runs the document (31.10.2026)
+- **A mutating `sed` can change nothing or too much, and the run is green anyway** — check `git diff --stat` after it before trusting a green run (31.10.2026)
 
 ## Other
 
