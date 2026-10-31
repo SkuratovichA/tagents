@@ -12,6 +12,7 @@ on:
       - spec/**
       - packages/core/**
       - packages/mcp/**
+      - packages/notify/**
       - tests/rust-parity.sh
       - tests/rust-mcp-parity.sh
       - tests/rust-mcp-parity-driver.mts
@@ -19,6 +20,8 @@ on:
       - package.json
       - pnpm-lock.yaml
       - tests/rust-parity-seed.mts
+      - tests/rust-notify-vectors.mts
+      - tests/rust-notify-vectors/**
       - .github/workflows/rust.yml
       - .github/workflows/release.yml
       - .github/scripts/core-release.sh
@@ -35,6 +38,7 @@ on:
       - spec/**
       - packages/core/**
       - packages/mcp/**
+      - packages/notify/**
       - tests/rust-parity.sh
       - tests/rust-mcp-parity.sh
       - tests/rust-mcp-parity-driver.mts
@@ -42,6 +46,8 @@ on:
       - package.json
       - pnpm-lock.yaml
       - tests/rust-parity-seed.mts
+      - tests/rust-notify-vectors.mts
+      - tests/rust-notify-vectors/**
       - .github/workflows/rust.yml
       - .github/workflows/release.yml
       - .github/scripts/core-release.sh
@@ -78,6 +84,10 @@ jobs:
         run: cargo test --workspace --locked
       - name: Build the node CLI the Rust binary is compared with
         run: pnpm build
+      - name: The notify vectors node writes are the ones committed, so a change to a function the Rust daemon copies fails here until the copy follows
+        run: |
+          node tests/rust-notify-vectors.mts
+          git diff --exit-code crates/tagents-core/tests/fixtures/notify-vectors.json
       - name: Parity with the node CLI, byte for byte
         run: bash tests/rust-parity.sh
       - name: Parity of the MCP server with the node one, byte for byte

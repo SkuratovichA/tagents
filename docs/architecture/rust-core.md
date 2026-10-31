@@ -197,7 +197,7 @@ The MCP server differs from `packages/mcp` in these ways. The suite leaves them 
 ## Rules for the Rust code
 
 - `unsafe` is forbidden, and `unwrap` and `expect` are denied outside tests, for the whole workspace (`Cargo.toml`, `crates/clippy.toml`).
-- No async runtime. Every dependency is a row of the table below with its reason and its cost, and a new one is a new row.
+- No async runtime, and no parser in the tree but `serde_json` and `toml`: the notify daemon's options file is TOML and the daemon has to read it. Every dependency is a row of the table below with its reason and its cost, and a new one is a new row.
 
 | dependency | used by | reason | cost |
 |------------|---------|--------|------|
