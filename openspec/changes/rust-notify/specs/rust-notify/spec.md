@@ -283,6 +283,10 @@ When a step of the start before the `started` line fails, the Rust service SHALL
 - **WHEN** SIGTERM arrives while a step of the start fails
 - **THEN** the process writes no `stopping` line, releases the lock, exits 0 and does not start the node service
 
+#### Scenario: A stop during the close of a hand-over
+- **WHEN** SIGTERM arrives while the service closes the follower and the watch for a hand-over
+- **THEN** the process writes no `stopping` line, releases the lock, exits 0 and does not start the node service
+
 ### Requirement: When the watch ends
 The service SHALL stop as a signal stop does when its watch ends (a failed wait, or a failed re-arm of a file watch for a reason other than a missing file or a symlink), with the reason `watch failed: <why>` in the line `stopping (<reason>)`, and exit 1. The stop is written when the engine reads the end, after the post in flight and the wakes queued ahead of it.
 
