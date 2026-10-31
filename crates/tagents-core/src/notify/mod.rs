@@ -3,6 +3,7 @@
 pub mod clock;
 pub mod compose;
 pub mod deadlines;
+pub mod engine;
 pub mod events;
 pub mod feed;
 pub mod helper;
