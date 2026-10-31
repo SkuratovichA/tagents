@@ -180,6 +180,7 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **A control run of `git show HEAD:tagents` needs HEAD's lib beside it** — `git archive HEAD lib/tagents | tar -x -C "$CONTROL"` and a guard that the control started (12.09.2026)
 - **Do not touch the working tree while the bash suite runs in the background** — a stash mixed two trees; use a scratch worktree for probes (11.09.2026)
 - **Mutation runs that fail identically are one run, not three** — copies of a mutated tree mounted at one path with a shared target directory were judged built by their file times, so cargo ran the first mutation's binary for all three. Copy each mutation to a writable path and touch every source first; each mutation must turn the test that guards it red and no other.
+- **A GitHub Linux runner leaks pipe descriptors without close-on-exec into every child** — a descriptor count that passed on macOS failed in CI (node on macOS spawns with close-by-default, on Linux it forks and the child keeps them); read the numbers a `sleep` launched the same way holds and leave them out (31.10.2026)
 
 ## Rust core and the MCP server
 
