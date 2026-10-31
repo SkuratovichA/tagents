@@ -4,7 +4,11 @@
 //!
 //! A bad file never stops the service: it runs on `Options::default()` and logs the lines of `Loaded::Invalid`. A file that is not TOML is reported as `<file>: Invalid TOML document: <reason>`, the reason being the parser's own except for an integer beyond 2^53, which the node parser refuses and this one reads.
 
-use std::{fs, io::Read, path::Path};
+use std::{
+    fs,
+    io::{self, Read},
+    path::Path,
+};
 
 use toml::de::{DeFloat, DeInteger, DeTable, DeValue};
 
@@ -181,7 +185,7 @@ pub fn options_file(config_dir: &Path) -> String {
 /// `loadPluginOptions(configDir, 'notify', NotifyOptionsSchema)`: read the file, parse it, check it. Nothing here fails: every outcome is a `Loaded`.
 pub fn load(config_dir: &Path) -> Loaded {
     let file = options_file(config_dir);
-    match read(&file) {
+    match read(&file, |path| fs::File::open(path)) {
         Ok(Some(text)) => match parse(&text, &file) {
             Ok(options) => Loaded::Found(options),
             Err(lines) => Loaded::Invalid(lines),
@@ -191,11 +195,36 @@ pub fn load(config_dir: &Path) -> Loaded {
     }
 }
 
-/// `fs.readFileSync(file, 'utf8')`: the text, `None` for `ENOENT`, and for any other failure the text node prints. Bytes that are not UTF-8 become U+FFFD, as node decodes them.
-fn read(file: &str) -> Result<Option<String>, String> {
-    let mut handle = match fs::File::open(file) {
+/// macOS fails an open with EINVAL when the path crosses a symlink that a rename is replacing; the daemon reads at an event of any name in the directory, so it can read during that rename (node reads only at an event named `notify.toml`, after it). Three tries close the window.
+const OPEN_TRIES: u32 = 3;
+
+/// `open(file)`, tried again while it fails with EINVAL, `OPEN_TRIES` tries in all.
+fn open_with(
+    file: &str,
+    mut open: impl FnMut(&str) -> io::Result<fs::File>,
+) -> io::Result<fs::File> {
+    let mut tried = 1;
+    loop {
+        match open(file) {
+            Err(err)
+                if err.raw_os_error() == Some(rustix::io::Errno::INVAL.raw_os_error())
+                    && tried < OPEN_TRIES =>
+            {
+                tried += 1;
+            }
+            other => return other,
+        }
+    }
+}
+
+/// `fs.readFileSync(file, 'utf8')`: the text, `None` for `ENOENT`, and for any other failure the text node prints. Bytes that are not UTF-8 become U+FFFD, as node decodes them. `open` is `fs::File::open` in `load`, a parameter so a test can feed it errors.
+fn read(
+    file: &str,
+    open: impl FnMut(&str) -> io::Result<fs::File>,
+) -> Result<Option<String>, String> {
+    let mut handle = match open_with(file, open) {
         Ok(handle) => handle,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(node::io_message(&err, "open", Some(file))),
     };
     let mut bytes = Vec::new();
@@ -1171,6 +1200,76 @@ mod tests {
                 "{path}: EACCES: permission denied, open '{path}'"
             )])
         );
+    }
+
+    /// An opener that gives the errors of `errors` one per call, then opens `file`; `calls` counts the calls.
+    fn opener<'a>(
+        errors: &'a [i32],
+        file: &'a Path,
+        calls: &'a std::cell::Cell<usize>,
+    ) -> impl FnMut(&str) -> io::Result<fs::File> + 'a {
+        move |_| {
+            let call = calls.get();
+            calls.set(call + 1);
+            match errors.get(call) {
+                Some(&number) => Err(io::Error::from_raw_os_error(number)),
+                None => fs::File::open(file),
+            }
+        }
+    }
+
+    const EINVAL: i32 = rustix::io::Errno::INVAL.raw_os_error();
+
+    #[test]
+    fn an_open_that_fails_with_einval_twice_is_tried_a_third_time() {
+        let scratch = Scratch::new();
+        let file = scratch.0.join("real.toml");
+        fs::write(&file, "click = \"goto\"\n").unwrap();
+        let calls = std::cell::Cell::new(0);
+        assert_eq!(
+            read("<file>", opener(&[EINVAL, EINVAL], &file, &calls)),
+            Ok(Some("click = \"goto\"\n".to_string()))
+        );
+        assert_eq!(calls.get(), 3);
+    }
+
+    #[test]
+    fn an_open_that_always_fails_with_einval_is_tried_three_times_and_reports_it() {
+        let calls = std::cell::Cell::new(0);
+        let err = io::Error::from_raw_os_error(EINVAL);
+        let expected = node::io_message(&err, "open", Some("<file>"));
+        assert_eq!(
+            read(
+                "<file>",
+                opener(&[EINVAL; 5], Path::new("/nowhere"), &calls)
+            ),
+            Err(expected)
+        );
+        assert_eq!(calls.get(), 3);
+    }
+
+    #[test]
+    fn an_open_that_fails_with_enoent_or_eacces_is_tried_once() {
+        let calls = std::cell::Cell::new(0);
+        let enoent = rustix::io::Errno::NOENT.raw_os_error();
+        assert_eq!(
+            read("<file>", opener(&[enoent], Path::new("/nowhere"), &calls)),
+            Ok(None)
+        );
+        assert_eq!(calls.get(), 1);
+
+        let calls = std::cell::Cell::new(0);
+        let eacces = rustix::io::Errno::ACCESS.raw_os_error();
+        let expected = node::io_message(
+            &io::Error::from_raw_os_error(eacces),
+            "open",
+            Some("<file>"),
+        );
+        assert_eq!(
+            read("<file>", opener(&[eacces], Path::new("/nowhere"), &calls)),
+            Err(expected)
+        );
+        assert_eq!(calls.get(), 1);
     }
 
     #[test]
