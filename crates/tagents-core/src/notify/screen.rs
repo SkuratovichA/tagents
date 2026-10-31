@@ -45,7 +45,7 @@ struct Client<'a> {
 }
 
 /// `/^\d+$/`: ASCII digits only, and at least one.
-fn is_digits(text: &str) -> bool {
+pub(super) fn is_digits(text: &str) -> bool {
     !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit())
 }
 
