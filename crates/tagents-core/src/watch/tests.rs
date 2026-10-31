@@ -371,6 +371,8 @@ fn a_key_that_leaves_a_directory_does_not_take_the_watch_of_another_key_with_it(
     watch.dir(&shared, Key::Options).unwrap();
 
     watch.dir(&elsewhere, Key::Events).unwrap();
+    // A watch that is removed is announced by an event of its own, which the key left on it would take for a write.
+    settle(&keys);
     fs::write(shared.join("notify.toml"), "a").unwrap();
     assert_eq!(heard(&keys), Key::Options);
     settle(&keys);
