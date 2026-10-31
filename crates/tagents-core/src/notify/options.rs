@@ -195,7 +195,7 @@ pub fn load(config_dir: &Path) -> Loaded {
     }
 }
 
-/// macOS fails an open with EINVAL when the path crosses a symlink that a rename is replacing; the daemon reads at an event of any name in the directory, so it can read during that rename (node reads only at an event named `notify.toml`, after it). Three tries close the window.
+/// macOS fails an open with EINVAL when the path crosses a symlink that a rename is replacing; the daemon reads at an event of any name in the directory, so it can read during that rename (node reads only at an event named `notify.toml` or one without a name, `packages/notify/src/service.ts:315`). Three tries close the window.
 const OPEN_TRIES: u32 = 3;
 
 /// `open(file)`, tried again while it fails with EINVAL, `OPEN_TRIES` tries in all.

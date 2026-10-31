@@ -200,7 +200,7 @@ An event in the options directory SHALL make the service read the options file a
 
 #### Scenario: An open that fails while a rename replaces the symlink
 - **WHEN** the open of `plugins/notify.toml` fails with EINVAL because a rename is replacing a symlink on the path (macOS)
-- **THEN** the open is tried again, three tries in all, and only an EINVAL on the third try is the problem line of "A file that cannot be read"
+- **THEN** the open is tried again, three tries in all, and an EINVAL on the third try is reported as "A file that cannot be read" says
 
 #### Scenario: A file without read permission
 - **WHEN** `plugins/notify.toml` has mode 000 at start
