@@ -46,7 +46,7 @@ An argument starting with `-` that the dashboard does not know SHALL print `tage
 - **THEN** stderr has `tagents: unknown option --nope`, the exit code is 2 and `tagents-core` was not started
 
 ### Requirement: Any other verb goes to tagents-core unchanged
-A first argument that does not start with `-` SHALL be handed to `tagents-core` with the whole argument list exactly as given, each argument still one argument, by replacing the script's process, so that the verb's exit code is the exit code of `tagents`. `tagents session list` and `tagents-core session list` are the same call, and an unknown verb is refused by `tagents-core`, not by the script.
+A first argument that does not start with `-`, other than `update` and `setup`, which the script answers itself, SHALL be handed to `tagents-core` with the whole argument list exactly as given, each argument still one argument, by replacing the script's process, so that the verb's exit code is the exit code of `tagents`. `tagents session list` and `tagents-core session list` are the same call, and an unknown verb is refused by `tagents-core`, not by the script.
 
 #### Scenario: Arguments survive
 - **WHEN** `tagents session prompt ref "two words"` runs
@@ -60,8 +60,12 @@ A first argument that does not start with `-` SHALL be handed to `tagents-core` 
 - **WHEN** `tagents nonsense` runs
 - **THEN** `tagents-core` is handed `nonsense` and its exit code (2 for an unknown verb) is the result
 
+#### Scenario: The verbs the script answers
+- **WHEN** `tagents setup --check` or `tagents update --check` runs
+- **THEN** the script answers it and `tagents-core` is not started
+
 ### Requirement: Where tagents-core is looked for
-The script SHALL use the `tagents-core` found on `PATH` first, because that is the installed one and the one the user chose. Failing that, in a repository checkout it SHALL use the built `packages/core/dist/cli/main.js` beside the script, executing it directly when it is executable and through `node` when it is only readable and `node` is on `PATH`.
+The script SHALL use the `tagents-core` found on `PATH` first, because that is the installed one and the one the user chose. Failing that, in a repository checkout it SHALL use the Rust binary `target/release/tagents-core` beside the script when that is an executable file, and failing that the built `packages/core/dist/cli/main.js` beside it, executed directly when it is executable and through `node` when it is only readable and `node` is on `PATH`.
 
 #### Scenario: A checkout with nothing on PATH
 - **WHEN** a built core sits beside the script and no `tagents-core` is on `PATH`
@@ -71,11 +75,23 @@ The script SHALL use the `tagents-core` found on `PATH` first, because that is t
 - **WHEN** both exist
 - **THEN** the one on `PATH` is used
 
+#### Scenario: A Rust binary that is not executable
+- **WHEN** `target/release/tagents-core` exists without the executable bit and a built core sits beside the script
+- **THEN** the verb is handed to the built core
+
+#### Scenario: A directory where the Rust binary would be
+- **WHEN** `target/release/tagents-core` is a directory and a built core sits beside the script
+- **THEN** the verb is handed to the built core
+
+#### Scenario: No Rust binary
+- **WHEN** there is no `target/release/tagents-core` beside the script and a built core sits beside it
+- **THEN** the verb is handed to the built core
+
 ### Requirement: Without tagents-core the verb says where it went
-When there is no `tagents-core` on `PATH` and no built file beside the script, a forwarded verb SHALL print one line on stderr, `tagents: no tagents-core on PATH and none at <path to packages/core/dist/cli/main.js>, so "<verb>" goes nowhere`, and exit 2, the code of a usage error.
+When there is no `tagents-core` on `PATH`, no executable Rust binary and no built file beside the script, a forwarded verb SHALL print one line on stderr, `tagents: no tagents-core on PATH and none at <path to packages/core/dist/cli/main.js>, so "<verb>" goes nowhere`, and exit 2, the code of a usage error.
 
 #### Scenario: Nothing to forward to
-- **WHEN** `tagents session list` runs with neither a `tagents-core` on `PATH` nor a built core
+- **WHEN** `tagents session list` runs with neither a `tagents-core` on `PATH`, nor a Rust binary, nor a built core
 - **THEN** exactly one line is printed, naming the verb, saying there is no `tagents-core` on `PATH` and naming the built path, and the exit code is 2
 
 ### Requirement: The script finds its modules beside the real file
@@ -117,3 +133,14 @@ The list of modules the script loads and the files in `lib/tagents/` SHALL name 
 #### Scenario: A focus hook of the previous version
 - **WHEN** `tagents --poke %67` runs
 - **THEN** the exit code is 0, nothing is printed and `tagents-core` was not started
+
+### Requirement: A Rust binary beside the script gets the verb whole
+The Rust binary serves the verbs ported to Rust and hands every other word to the node CLI, so the script SHALL pass it the whole argument list and return its exit code. A Rust binary that is present and cannot be run SHALL be an error of its own, never a reason to try the next lookup.
+
+#### Scenario: A Rust binary beside the script
+- **WHEN** an executable `target/release/tagents-core` and a built core sit beside the script and no `tagents-core` is on `PATH`
+- **THEN** the verb is handed to the Rust binary with the whole argument list and its exit code is passed through
+
+#### Scenario: A Rust binary that cannot run
+- **WHEN** an executable file `target/release/tagents-core` whose interpreter is missing sits beside the script and no `tagents-core` is on `PATH`
+- **THEN** the command fails with a non-zero exit code and a message on stderr, and the node CLI is not run

@@ -91,17 +91,19 @@ EOF
 printf '#!/bin/sh\nexit 0\n' >"$BIN/tusage"
 chmod +x "$BIN/claude" "$BIN/tusage"
 
-CFG="$ROOT/config.yaml"
+CFG="$ROOT/config.toml"
 cat >"$CFG" <<EOF
-claude:
-  args: --dangerously-skip-permissions
-  profiles:
-    personal:
-      config_dir: ~/.claude-personal
-    work:
-  rules:
-    - dir: $ROOT/personal
-      profile: personal
+[claude]
+args = "--dangerously-skip-permissions"
+
+[claude.profiles.personal]
+config_dir = "~/.claude-personal"
+
+[claude.profiles.work]
+
+[[claude.rules]]
+dir = "$ROOT/personal"
+profile = "personal"
 EOF
 
 # EXPORTED BEFORE THE SERVER EXISTS. A tmux server keeps the environment it was
@@ -321,17 +323,16 @@ ok "a six-field record falls back to the rules" \
 # an empty recorded value, because the column has to say something; a config
 # with a profile actually NAMED default must not have that label handed back to
 # it as a match, or the session comes back on a login it never ran on.
-cat >"$ROOT/collide.yaml" <<EOF
-claude:
-  profiles:
-    default:
-      config_dir: ~/.claude-work
-    personal:
-      config_dir: ~/.claude-personal
+cat >"$ROOT/collide.toml" <<EOF
+[claude.profiles.default]
+config_dir = "~/.claude-work"
+
+[claude.profiles.personal]
+config_dir = "~/.claude-personal"
 EOF
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
   "$(date +%s)" done "sid-collide" "$PERS" "" closed "" >"$STATE/9103.tsv"
-line=$(TA_CONFIG="$ROOT/collide.yaml" run --preview %9103 dead 2>/dev/null |
+line=$(TA_CONFIG="$ROOT/collide.toml" run --preview %9103 dead 2>/dev/null |
          sed 's/\033\[[0-9;]*m//g' | tail -1)
 hasnt "a profile named default is not the unset account" "CLAUDE_CONFIG_DIR=" "$line"
 has "...it resumes on the account it ran on" "env -u CLAUDE_CONFIG_DIR" "$line"
@@ -341,14 +342,14 @@ rm -f "$STATE/9103.tsv"
 t "7. no config file at all changes nothing"
 # ---------------------------------------------------------------------------
 clear_out
-TA_CONFIG=/nonexistent/config.yaml run --new "$PERS"
+TA_CONFIG=/nonexistent/config.toml run --new "$PERS"
 f=$(waitout) || { echo "  FAIL nothing started"; fail=$((fail+1)); f=/dev/null; }
 ok "the environment is inherited, as it always was" "<unset>" "$(field CFG "$f")"
 ok "and the arguments are the old default" "--dangerously-skip-permissions" "$(field ARGS "$f")"
 
 clear_out
 before=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
-TA_CONFIG=/nonexistent/config.yaml run --act pick "$PERS" '' '' "$PERS"
+TA_CONFIG=/nonexistent/config.toml run --act pick "$PERS" '' '' "$PERS"
 sleep 0.6
 after=$(tm list-windows -a -F x 2>/dev/null | wc -l | tr -d ' ')
 ok "ctrl-p with nothing configured opens no window" "$before" "$after"

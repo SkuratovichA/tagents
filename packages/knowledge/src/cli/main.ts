@@ -63,7 +63,7 @@ function needDir(explicit: string | null, io: Io, t: Translate): string | null {
   const dir = resolveDir(explicit);
   if (dir.ok) return dir.dir;
   io.err(
-    `${dir.reason === 'unset' ? t('noDir', { config: dir.config, snippet: dirSnippet(dir.config) }) : t('missingDir', { dir: dir.dir ?? '' })}\n`
+    `${dir.reason === 'unset' ? t('noDir', { config: dir.config, snippet: dirSnippet() }) : t('missingDir', { dir: dir.dir ?? '' })}\n`
   );
   return null;
 }

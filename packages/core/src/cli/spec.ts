@@ -157,7 +157,6 @@ const PARSED = {
   'plugin add': { name: { type: 'string' } },
   'plugin remove': {},
   'plugin new': { dir: { type: 'string' } },
-  'config convert': { write: { type: 'boolean' }, all: { type: 'boolean' } },
 } as const satisfies Record<string, ParseArgsOptionsConfig>;
 
 function sameOptions(a: ParseArgsOptionsConfig, b: ParseArgsOptionsConfig): boolean {
@@ -188,7 +187,6 @@ export const PLUGIN_LIST = parsed('plugin list');
 export const PLUGIN_ADD = parsed('plugin add');
 export const PLUGIN_REMOVE = parsed('plugin remove');
 export const PLUGIN_NEW = parsed('plugin new');
-export const CONFIG_CONVERT = parsed('config convert');
 
 export const CORE_COMMANDS: readonly LoadedCommand[] = SPEC.commands;
 

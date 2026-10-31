@@ -9,7 +9,7 @@
 // So: `createContext` builds the PluginContext a plugin is entitled to (a
 // driver, a translator on the plugin's own catalogue, a log sink, the tagents
 // config dir), and `runService` starts one named service under it and hands
-// back the supervisor's three handles. Nothing here scans, reads YAML or
+// back the supervisor's three handles. Nothing here scans, reads a config file or
 // imports anything: the caller already has the definition object.
 import { createInstance, type Resource } from 'i18next';
 import { createAgentFeed, type AgentFeed } from './agent-events.ts';

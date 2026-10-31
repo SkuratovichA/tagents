@@ -67,7 +67,7 @@ A plugin is an ordinary package that default-exports one `definePlugin({ name, a
 }
 ```
 
-- `tagents plugin add <package-or-path>` checks that manifest, without importing anything, and writes the package as a `[plugins.<name>]` table in `~/.config/tagents/config.toml` (a `config.yaml` that is there instead is edited as before).
+- `tagents plugin add <package-or-path>` checks that manifest, without importing anything, and writes the package as a `[plugins.<name>]` table in `~/.config/tagents/config.toml`.
 - The host loads exactly what that map names and never scans `node_modules`, because scanning is how a machine ends up running code nobody chose.
 - `tagents plugin new <name>` scaffolds a package that is already a plugin and typechecks as written.
 

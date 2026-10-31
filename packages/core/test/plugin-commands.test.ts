@@ -130,21 +130,11 @@ test('a core verb wins over a plugin that took its name', () => {
   assert.equal(r.stderr, '');
 });
 
-test('config is a core verb too: a plugin that took its name does not answer it', () => {
-  const env = inDir(configDir([['config', GOOD]]));
-  const yaml = path.join(tmp, `config-verb-${++seq}.yaml`);
-  fs.writeFileSync(yaml, 'usage:\n  workdays: true\n');
-  const r = runCli(['config', 'convert', yaml], env);
-  assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, /^#:schema /, 'the converter answered, not the plugin');
-  assert.ok(!r.stderr.includes('unknown command'), r.stderr);
-});
-
 test('the usage names the plugin line and the reserved words', () => {
   const r = runCli(['help'], installed());
   assert.equal(r.code, 0);
   assert.match(r.stdout, /^ {2}<plugin> <command> \[args]/m);
-  assert.match(r.stdout, /^reserved: session · sessions · plugin · config · doctor · help/m);
+  assert.match(r.stdout, /^reserved: session · sessions · plugin · doctor · help/m);
 });
 
 // ------------------------------------------------------------ the broken ---

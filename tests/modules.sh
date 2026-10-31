@@ -24,7 +24,7 @@ LIB="$HERE/../lib/tagents"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/tagents-modules.XXXXXX") || exit 1
 TMP=$(cd "$TMP" && pwd -P) || exit 1
 trap 'rm -rf "$TMP"' EXIT INT TERM
-mkdir -p "$TMP/state"; : > "$TMP/none.yaml"
+mkdir -p "$TMP/state"; : > "$TMP/none.toml"
 
 pass=0; fail=0
 ok() {  # <name> <expected> <actual>
@@ -98,7 +98,7 @@ t "2. a module defines things and does nothing"
 # status bar makes: anything that runs here runs hundreds of times a day, and
 # anything that prints corrupts --list, which is parsed.
 out=$(env -i HOME="$TMP" PATH=/usr/bin:/bin TERM=dumb \
-        TA_STATE_DIR="$TMP/state" TA_CONFIG="$TMP/none.yaml" \
+        TA_STATE_DIR="$TMP/state" TA_CONFIG="$TMP/none.toml" \
         /bin/bash -c 'for m in '"$LISTED"'; do . "'"$LIB"'/$m.sh"; done
                       echo "FUNCS=$(compgen -A function | wc -l | tr -d " ")"' 2>&1)
 case $out in
@@ -136,12 +136,12 @@ t "4. how it is reached: through symlinks, and not as a lonely copy"
 ln -s "$TA" "$TMP/link"
 ln -s "$TMP/link" "$TMP/link-to-link"
 for l in link link-to-link; do
-  out=$(TA_STATE_DIR="$TMP/state" TA_CONFIG="$TMP/none.yaml" /bin/bash "$TMP/$l" --config 2>&1); rc=$?
+  out=$(TA_STATE_DIR="$TMP/state" TA_CONFIG="$TMP/none.toml" /bin/bash "$TMP/$l" --config 2>&1); rc=$?
   ok "reached through a $l it finds its modules" 0 "$rc"
 done
 
 cp "$TA" "$TMP/lonely"
-out=$(TA_STATE_DIR="$TMP/state" TA_CONFIG="$TMP/none.yaml" /bin/bash "$TMP/lonely" --config 2>&1); rc=$?
+out=$(TA_STATE_DIR="$TMP/state" TA_CONFIG="$TMP/none.toml" /bin/bash "$TMP/lonely" --config 2>&1); rc=$?
 ok "a copy of the entry on its own refuses to run" 1 "$rc"
 contains "...and says what is missing" "cannot load" "$out"
 contains "...and that it is an entry point, not a script" "entry point of a checkout" "$out"

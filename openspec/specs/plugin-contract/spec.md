@@ -282,3 +282,10 @@ A file SHALL be a source of the contract when it is under `packages/<package>/sr
 #### Scenario: The data file of tagents-core
 - **WHEN** a file is `spec/cli/tagents-core.json` or its schema
 - **THEN** it is a source of the contract
+
+### Requirement: The tagents-core verbs come from the CLI spec file
+The verbs of `tagents-core` SHALL be read from `spec/cli/tagents-core.json`, whichever implementation serves them, so that moving a verb to Rust changes no byte of the contract.
+
+#### Scenario: A verb changes implementation
+- **WHEN** the `impl` of a command in `spec/cli/tagents-core.json` changes from `node` to `rust` and `pnpm plugin:gen` runs
+- **THEN** no generated file differs

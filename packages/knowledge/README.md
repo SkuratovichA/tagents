@@ -72,7 +72,6 @@ Two kinds of link to another document are understood, and `lint` reports the dea
 dir = "~/git/personal/knowledge"
 ```
 
-A `config.yaml` with `knowledge:` and `dir:` is read when there is no `config.toml`.
 
 There is no default documents folder because guessing one would index whatever
 happened to be under it. Without one, every command exits 1 with the sentence

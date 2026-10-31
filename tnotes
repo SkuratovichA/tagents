@@ -240,7 +240,7 @@ commit_notes() {  # <dir> — every draft is kept, whether or not it was sent
       commit -q -m "$subj" >/dev/null 2>&1
 }
 
-# tnotes has no YAML parser and is not getting one: tagents already reads the
+# tnotes has no config parser and is not getting one: tagents already reads the
 # config and `--config` prints it flattened, one path<TAB>value line per leaf.
 # It lives beside this script in both places tnotes is ever installed.
 send_mode() {  # -> reference | paste | submit

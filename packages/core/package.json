@@ -29,7 +29,6 @@
   "dependencies": {
     "i18next": "^26.4.2",
     "smol-toml": "^1.9.1",
-    "yaml": "^2.8",
     "zod": "^4.6"
   },
   "devDependencies": {

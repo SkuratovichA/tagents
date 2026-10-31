@@ -199,7 +199,7 @@ dependencies = [
 
 [[package]]
 name = "tagents-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "kqueue",
  "rustix",
@@ -211,7 +211,7 @@ dependencies = [
 
 [[package]]
 name = "tagents-spec"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",

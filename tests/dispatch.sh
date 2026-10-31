@@ -83,7 +83,7 @@ run() {  # <script> <PATH> [args…] — prints stdout+stderr, sets $rc; with $E
   local script path_
   script=$1; path_=$2; shift 2
   rm -f "$ARGV"
-  out=$(PATH="$path_" TA_STATE_DIR="$TMP/state" TA_CONFIG="$TMP/no-config.yaml" \
+  out=$(PATH="$path_" TA_STATE_DIR="$TMP/state" TA_CONFIG="$TMP/no-config.toml" \
         /bin/bash "$script" "$@" 2>"${ERR_FILE:-/dev/stdout}")
   rc=$?
   printf '%s' "$out"

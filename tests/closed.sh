@@ -80,14 +80,15 @@ codesign -f -s - "$LIVEBIN/claude" >/dev/null 2>&1
 "$LIVEBIN/claude" 0 >/dev/null 2>&1 ||
   { echo "closed.sh: cannot build a stub agent (codesign?)"; exit 1; }
 
-CFG="$ROOT/config.yaml"
+CFG="$ROOT/config.toml"
 cat >"$CFG" <<EOF
-claude:
-  args: --dangerously-skip-permissions
-  profiles:
-    work:
-    personal:
-      config_dir: $HOMED/.claude-p
+[claude]
+args = "--dangerously-skip-permissions"
+
+[claude.profiles.work]
+
+[claude.profiles.personal]
+config_dir = "$HOMED/.claude-p"
 EOF
 
 NOW=$(date +%s)

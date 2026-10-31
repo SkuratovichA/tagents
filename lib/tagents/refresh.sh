@@ -214,7 +214,7 @@ refresher() {
   # THE CONFIG IS LOADED IN THIS SHELL, not left to the first lookup. --refresher
   # is dispatched without a cfg_load, and cfg_get is almost always called inside
   # a $(...): the load it triggers there dies with the subshell, so every lookup
-  # parsed the YAML again (an awk and a hostname each) while usage_on, which
+  # parsed the config again (an awk and a hostname each) while usage_on, which
   # memoises in THIS shell, answered once from whatever the file said at its first
   # call. A config edited under a running refresher then turned the footer on and
   # the tusage update off at the same time. Loaded here, both read the one copy,
@@ -326,7 +326,7 @@ refresher() {
       # The memos are cleared with it: the usage switch is asked once per
       # process, and a config that has gone away must read as empty, not as the
       # last one that was there.
-      # A config.toml that appeared beside the config.yaml being read, or an overlay that changed format, is another file: which one is remembered, not only whether there was one.
+      # A config or an overlay that appeared, or went away, is another file: which one is remembered, not only whether there was one.
       cfgnow=""; ovlnow=""
       cfg_resolve; cfg_overlay_for "${TA_HOST:-$HOST_S}"; ovl=$CFG_OVL
       [ -e "$CONFIG_FILE" ] && cfgnow=$CONFIG_FILE

@@ -16,7 +16,7 @@ The binary is `target/release/tagents-core`. A contributor builds it with `cargo
 target/release/tagents-core sessions recent 3   # answered in Rust
 target/release/tagents-core plugin list         # exec node packages/core/dist/cli/main.js plugin list
 target/release/tagents-core --spec              # the verbs this binary serves, as JSON
-target/release/tagents-core --version           # tagents-core 0.3.0: the workspace version it was built from
+target/release/tagents-core --version           # tagents-core 0.4.0: the workspace version it was built from
 ```
 
 For a word it does not serve, the binary replaces itself with `node packages/core/dist/cli/main.js` of the checkout it sits in, with the same arguments, environment, working directory and stdio. There is no wrapper process left: the exit code, and a signal the call ends with, are the node CLI's own. The node is `$TAGENTS_NODE` when that is set (the wrappers `install.sh` writes set it to the node they pinned), and `node` on `PATH` otherwise.
@@ -113,8 +113,8 @@ A pull request that changes the workflow, the scripts or an input of the binary 
 
 ```sh
 git switch main && git pull --ff-only          # the commit that holds the bump
-sh .github/scripts/core-release.sh version     # 0.3.0
-git tag v0.3.0 && git push origin v0.3.0       # starts the release workflow
+sh .github/scripts/core-release.sh version     # 0.4.0
+git tag v0.4.0 && git push origin v0.4.0       # starts the release workflow
 ```
 
 **When `main` is ahead of the last release,** a managed copy that follows `main` holds a version with no release yet. Its installer finds nothing to download, says so, and the node CLI runs until the tag of that version is pushed; it never keeps the binary of an older version in the meantime. Nothing releases on a push to `main`: the person who merges the bump pushes the tag.
@@ -215,4 +215,4 @@ The watch adds `kqueue` and `kqueue-sys` to the macOS build and nothing to the L
 
 ## What is not decided yet
 
-How plugins (JavaScript) are hosted once more of the CLI is Rust, and which verbs move next, are open. The change that introduced the front door, `openspec/changes/rust-core/`, lays out the slices and the three options for the plugin host. Signing or notarising the archives is not done (see the last paragraph of "How the installer fetches it"), and a Windows build does not exist.
+How plugins (JavaScript) are hosted once more of the CLI is Rust, and which verbs move next, are open. The change that introduced the front door, `openspec/changes/archive/2026-10-31-rust-core/`, lays out the slices and the three options for the plugin host. Signing or notarising the archives is not done (see the last paragraph of "How the installer fetches it"), and a Windows build does not exist.

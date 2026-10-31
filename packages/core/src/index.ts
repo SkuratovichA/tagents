@@ -111,21 +111,13 @@ export type {
   ServiceHandle,
 } from './plugin.ts';
 
-export { PLUGIN_OPTIONS_DIR, loadPluginOptions, pluginOptionsBasenames, pluginOptionsFile } from './plugin-options.ts';
+export { PLUGIN_OPTIONS_DIR, loadPluginOptions, pluginOptionsFile } from './plugin-options.ts';
 export type { OptionsResult } from './plugin-options.ts';
 
 export { createContext, mergeLocales, runService } from './service.ts';
 export type { ContextOptions, RunServiceOptions, RunningService } from './service.ts';
 
-export {
-  TOML_BASENAME,
-  YAML_BASENAME,
-  configFormat,
-  parseConfigFile,
-  readConfigFile,
-  resolveConfigFile,
-} from './config-file.ts';
-export type { ConfigFormat } from './config-file.ts';
+export { parseConfigFile } from './config-file.ts';
 
 export {
   CONFIG_BASENAME,

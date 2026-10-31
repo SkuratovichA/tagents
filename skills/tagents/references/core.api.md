@@ -190,12 +190,6 @@ export function configDir(env?: NodeJS.ProcessEnv): string;
 export function configFile(env?: NodeJS.ProcessEnv): string;
 
 // @public (undocumented)
-export type ConfigFormat = 'toml' | 'yaml';
-
-// @public
-export function configFormat(file: string): ConfigFormat;
-
-// @public (undocumented)
 export interface ContextOptions {
     readonly agents?: AgentFeed;
     readonly configDir?: string;
@@ -594,9 +588,6 @@ export interface PluginListing {
 }
 
 // @public
-export function pluginOptionsBasenames(name: string): string[];
-
-// @public
 export function pluginOptionsFile(configDir: string, name: string): string;
 
 // @public (undocumented)
@@ -631,9 +622,6 @@ export interface PromptOptions {
 export function readAgentState(dir?: string): AgentStateRow[];
 
 // @public
-export function readConfigFile(file: string): unknown;
-
-// @public
 export function readHistory(dir?: string): HistoryRow[];
 
 // @public
@@ -659,9 +647,6 @@ export function renderSearch(words: readonly string[]): string;
 
 // @public
 export function renderShow(prefix: string): string | null;
-
-// @public
-export function resolveConfigFile(dir: string): string;
 
 // @public
 export function resolvePackageDir(from: string, base: string): string;
@@ -710,13 +695,6 @@ export const resources: {
             readonly pluginNoCommands: "{{plugin}} offers no commands";
             readonly pluginBadFlag: "not a usable option: {{arg}}";
             readonly pluginNoPositionals: "{{plugin}} {{command}} takes no positional arguments: {{args}}";
-            readonly configNoSource: "no config.yaml in {{dir}} — there is nothing to convert";
-            readonly configNoFile: "{{file}} does not exist";
-            readonly configNotYaml: "{{file}} is not a YAML file";
-            readonly configTargetExists: "{{file}} already exists — nothing was written, and nothing was changed";
-            readonly configWrote: "wrote {{target}} — {{source}} is still there, and tagents reads the TOML first and says so while both exist";
-            readonly configCommentsLost: "comments are not carried over to the TOML — copy the ones worth keeping by hand";
-            readonly configWriteFailed: "could not write {{file}}: {{error}} — nothing was kept";
             readonly doctorNode: "node {{version}} ({{path}})";
             readonly doctorStateDir: "agent state {{dir}} ({{count}} record(s))";
             readonly doctorConfig: "config {{file}}: {{status}}";
@@ -735,13 +713,12 @@ export const resources: {
             readonly summaryPluginAdd: "validates a package manifest and writes the plugin into the config";
             readonly summaryPluginRemove: "takes one plugin entry back out of the config";
             readonly summaryPluginNew: "scaffolds a package that is already a plugin";
-            readonly summaryConfigConvert: "turns config.yaml into config.toml: prints it by default, writes it beside the YAML with --write, and also converts the per-host overlays with --all";
             readonly summaryDoctor: "prints the node version, the state directory, the config file and whether claude is on PATH";
             readonly summaryMcp: "serves the tools of a contract file to an MCP client over stdin and stdout until the client closes them";
         };
     };
     readonly ru: {
-        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "abortPaneAgent" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "configNoSource" | "configNoFile" | "configNotYaml" | "configTargetExists" | "configWrote" | "configCommentsLost" | "configWriteFailed" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryConfigConvert" | "summaryDoctor" | "summaryMcp", string>>;
+        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "abortPaneAgent" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryDoctor" | "summaryMcp", string>>;
     };
 };
 
@@ -935,9 +912,6 @@ export type TimeoutOutcome = z.infer<typeof Timeout>;
 export function tmpDir(prefix?: string): string;
 
 // @public (undocumented)
-export const TOML_BASENAME = "config.toml";
-
-// @public (undocumented)
 export function tryCatch<T, E = Error>(promise: T | Promise<T>): Promise<readonly [Awaited<T>, null] | readonly [null, E]>;
 
 // @public
@@ -1030,9 +1004,6 @@ export const TurnOutcomeSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
 
 // @public (undocumented)
 export function writeAtomic(file: string, data: string): void;
-
-// @public (undocumented)
-export const YAML_BASENAME = "config.yaml";
 
 // (No @packageDocumentation comment for this package)
 

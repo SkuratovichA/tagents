@@ -33,7 +33,7 @@ tagents plugin add ~/.local/share/tagents/packages/notify
 tagents notify install
 ```
 
-The first writes a `[plugins.notify]` table in `~/.config/tagents/config.toml` (the `config.yaml` that is there instead, when there is no TOML) and prints `added notify → …`.
+The first writes a `[plugins.notify]` table in `~/.config/tagents/config.toml` and prints `added notify → …`.
 
 On macOS this builds the helper app if it is stale, asks for permission, then writes and starts a LaunchAgent that runs the engine in the background. Elsewhere `install` refuses with `no notification backend for <os> yet` and exits 2.
 
@@ -80,7 +80,6 @@ cache_expiring = { enabled = true,  skip_visible = false, after = "50m", ttl = "
 session_end    = { enabled = false, skip_visible = true }
 ```
 
-A `notify.yaml` that is there instead is still read, with the same keys.
 
 - **Durations** are `<n>s|m|h`, combined like `1h30m`, or a bare number of seconds. `after` must be below `ttl`.
 - **`skip_visible`**: when the agent's tmux pane is in some client's current window and that terminal is the frontmost app, the notice is dropped.

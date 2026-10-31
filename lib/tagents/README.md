@@ -15,7 +15,7 @@ others are built on `STATE_DIR` and `TAB`.
 | file | lines | what is in it |
 |---|---:|---|
 | `core.sh` | 208 | constants, and the plumbing every dialog is built on |
-| `config.sh` | 1000 | config.toml (and the config.yaml fallback), flattened — and what is wrong with it |
+| `config.sh` | 730 | config.toml, flattened — and what is wrong with it |
 | `accounts.sh` | 361 | which Claude login an agent runs on, and whether it is there |
 | `usage.sh` | 324 | the monthly limit, on screen |
 | `state.sh` | 447 | the raw data every view reads |

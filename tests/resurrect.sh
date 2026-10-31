@@ -98,16 +98,18 @@ printf '#!/bin/sh\nexit 0\n' >"$BIN/tusage"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"$TA_STUB_OUT/tnotes.log"\n' >"$BIN/tnotes"
 chmod +x "$BIN/claude" "$BIN/tusage" "$BIN/tnotes"
 
-CFG="$ROOT/config.yaml"
+CFG="$ROOT/config.toml"
 cat >"$CFG" <<EOF
-claude:
-  args: --dangerously-skip-permissions
-  profiles:
-    personal:
-      config_dir: $ROOT/cfg-p
-    work:
-resurrect:
-  every: 0
+[claude]
+args = "--dangerously-skip-permissions"
+
+[claude.profiles.personal]
+config_dir = "$ROOT/cfg-p"
+
+[claude.profiles.work]
+
+[resurrect]
+every = 0
 EOF
 
 # EXPORTED BEFORE THE SERVER EXISTS. A tmux server keeps the environment it was
@@ -557,8 +559,8 @@ has "...with its effort" "--effort max" "$(field ARGS "$f")"
 # ---------------------------------------------------------------------------
 t "11. --auto: off in the config is silent; on, the report goes to the log"
 # ---------------------------------------------------------------------------
-CFG2="$ROOT/config-off.yaml"
-{ cat "$CFG"; printf '  auto: false\n'; } >"$CFG2"
+CFG2="$ROOT/config-off.toml"
+{ cat "$CFG"; printf 'auto = false\n'; } >"$CFG2"
 transcript sid-auto
 arow sid-auto "" 1 tatest-auto 0 0 Auto "" "$NOR" "" "" "" "" >"$SNAP/auto.tsv"
 before=$(nouts)
@@ -658,16 +660,16 @@ ok "due, the same set: not written twice" $((before + 2)) "$(resurrect_files)"
 # ---------------------------------------------------------------------------
 t "15. --check names a resurrect key it cannot read"
 # ---------------------------------------------------------------------------
-sed 's/every: 0/every: soon/' "$CFG" >"$ROOT/config-every.yaml"
-{ cat "$CFG"; printf '  notes: maybe\n'; }     >"$ROOT/config-notes.yaml"
-{ cat "$CFG"; printf '  auto: sometimes\n'; }  >"$ROOT/config-auto.yaml"
+sed 's/every = 0/every = "soon"/' "$CFG" >"$ROOT/config-every.toml"
+{ cat "$CFG"; printf 'notes = "maybe"\n'; }     >"$ROOT/config-notes.toml"
+{ cat "$CFG"; printf 'auto = "sometimes"\n'; }  >"$ROOT/config-auto.toml"
 hasnt "a good resurrect leaf: nothing said about it" "resurrect." "$(run --check 2>/dev/null)"
-has "every: soon" 'resurrect.every: "soon" is not a number of seconds' \
-    "$(TA_CONFIG="$ROOT/config-every.yaml" run --check 2>/dev/null)"
-has "notes: maybe" 'resurrect.notes: "maybe" is not one of reopen, off' \
-    "$(TA_CONFIG="$ROOT/config-notes.yaml" run --check 2>/dev/null)"
-has "auto: sometimes" 'resurrect.auto: "sometimes" is not true or false' \
-    "$(TA_CONFIG="$ROOT/config-auto.yaml" run --check 2>/dev/null)"
+has "every = soon" 'resurrect.every: "soon" is not a number of seconds' \
+    "$(TA_CONFIG="$ROOT/config-every.toml" run --check 2>/dev/null)"
+has "notes = maybe" 'resurrect.notes: "maybe" is not one of reopen, off' \
+    "$(TA_CONFIG="$ROOT/config-notes.toml" run --check 2>/dev/null)"
+has "auto = sometimes" 'resurrect.auto: "sometimes" is not true or false' \
+    "$(TA_CONFIG="$ROOT/config-auto.toml" run --check 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
 t "15b. a held lock holds a restore and every capture off; a stale one holds nothing"
@@ -919,8 +921,8 @@ ok "...and the ta-notes session is wound up" no "$(tm has-session -t =ta-notes 2
 
 tm kill-session -t =ta-notes >/dev/null 2>&1
 notes_park
-CFG3="$ROOT/config-notes-off.yaml"
-{ cat "$CFG"; printf '  notes: off\n'; } >"$CFG3"
+CFG3="$ROOT/config-notes-off.toml"
+{ cat "$CFG"; printf 'notes = "off"\n'; } >"$CFG3"
 transcript sid-notes-off
 arow sid-notes-off "" 1 tatest-notesoff 0 0 Off "" "$NOR" "" 1 "" "" >"$SNAP/notes-off.tsv"
 rm -f "$OUT/tnotes.log"

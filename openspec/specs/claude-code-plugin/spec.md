@@ -72,14 +72,14 @@ The script `packages/knowledge/bin/knowledge-mcp` SHALL join the session to the 
 - **THEN** the session gets `tagents-knowledge mcp` with the same tools
 
 ### Requirement: The plugin registers no hooks
-The plugin SHALL register no Claude Code hooks and no status line. The agent-state hook and the status line stay manual installation steps, because a plugin cannot set a status line.
+The plugin SHALL register no Claude Code hooks and no status line, because a plugin cannot set a status line. `tagents setup` registers the agent-state hook and the status line in the user's `settings.json` files, as the `claude-settings` capability specifies.
 
 #### Scenario: Nothing hooked
 - **WHEN** the plugin's manifest and files are inspected
-- **THEN** there is no hooks declaration and no `hooks/` registration file; the hook scripts under `hooks/` reach `~/.claude/hooks` through `install.sh`, and registering them in `~/.claude/settings.json` is a manual step
+- **THEN** there is no hooks declaration and no `hooks/hooks.json`; `hooks/claude-settings.json` is what `tagents setup` writes into settings files, not a registration Claude Code reads from the plugin, and the hook scripts under `hooks/` reach `~/.claude/hooks` through `install.sh`
 
 ### Requirement: Installing tagents
-`sh install.sh` from a clone, or `curl -fsSL https://raw.githubusercontent.com/SkuratovichA/tagents/main/install.sh | sh`, SHALL install ONE managed copy in `$TAGENTS_HOME` (default `~/.local/share/tagents`): a clone detached on `origin/main`, made when absent, built with `pnpm install --frozen-lockfile && pnpm build`, not moved while it has local changes. It needs `git`, `node` 22.18 or newer and `pnpm`. Registering the hook and the status line in `~/.claude/settings.json` stays manual.
+`sh install.sh` from a clone, or `curl -fsSL https://raw.githubusercontent.com/SkuratovichA/tagents/main/install.sh | sh`, SHALL install ONE managed copy in `$TAGENTS_HOME` (default `~/.local/share/tagents`): a clone detached on `origin/main`, made when absent, built with `pnpm install --frozen-lockfile && pnpm build`, not moved while it has local changes. It needs `git`, `node` 22.18 or newer and `pnpm`. The hook and the status line are registered by `tagents setup` (see `claude-settings`).
 
 #### Scenario: Piped from curl
 - **WHEN** the one-line `curl … | sh` runs on a machine with no managed copy
@@ -94,12 +94,12 @@ The plugin SHALL register no Claude Code hooks and no status line. The agent-sta
 - **THEN** the copy is not moved and the exit code is 1
 
 #### Scenario: The hook events
-- **WHEN** the hook is registered
-- **THEN** it is registered for `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`, `SubagentStop` and `SessionEnd`, with `PreToolUse`, `PostToolUse` and `SubagentStop` as `"async": true` so they never sit in the tool-call path
+- **WHEN** the installer has registered the hook
+- **THEN** it is registered for every event `claude-settings` names, with `PreToolUse`, `PostToolUse` and `SubagentStop` as `"async": true` so they never sit in the tool-call path
 
 #### Scenario: The status line
-- **WHEN** the status line is configured
-- **THEN** its command runs `claude-statusline.sh` from `~/.claude/hooks`, which feeds the model column
+- **WHEN** the installer has configured the status line
+- **THEN** its command runs `claude-statusline.sh` from the hooks directory `claude-settings` chooses, which feeds the model column
 
 ### Requirement: Prerequisites and the checkout rule
 `tagents` SHALL need `tmux`, `fzf`, `jq` and `awk`, and SHALL be written for bash 3.2, the newest bash macOS ships. The `tagents` script is the entry point of a checkout, not a file to copy on its own: the rest lives in `lib/tagents/*.sh` beside the real file, and a lone copy says so and stops, as the `cli-dispatch` capability specifies.
@@ -420,3 +420,33 @@ With no executable binary at install time the installer SHALL write the `tagents
 #### Scenario: Native disabled
 - **WHEN** the installer runs with `TAGENTS_NO_NATIVE=1` over an installed binary
 - **THEN** the binary is removed and `tagents-mcp` runs the node server (`tests/install.sh` section 14)
+
+### Requirement: The tagents-core wrapper runs a Rust binary built before the install
+When `$TAGENTS_HOME/target/release/tagents-core` is an executable file at the time of the install, the `tagents-core` wrapper SHALL run it, with the node it pinned passed on as `TAGENTS_NODE`, for as long as it is an executable file, and the node CLI otherwise. Both files belong to the managed copy, so the wrapper runs nothing outside it, and the installer never builds that binary.
+
+#### Scenario: A Rust binary built before the install
+- **WHEN** `$TAGENTS_HOME/target/release/tagents-core` is executable when the installer runs, and `tagents-core sessions recent` is run
+- **THEN** the wrapper runs that binary with the whole argument list, its exit code is the result, and `TAGENTS_NODE` holds the node the installer pinned
+
+#### Scenario: The Rust binary is gone
+- **WHEN** the binary the wrapper names has been removed, or replaced by a directory or by a file without the executable bit, after the install
+- **THEN** the wrapper runs the node CLI exactly as the wrapper of an install with no Rust binary does
+
+#### Scenario: A Rust binary that cannot run
+- **WHEN** a file that is executable but cannot run, because its interpreter is missing, sits at `target/release/tagents-core` when the installer runs
+- **THEN** the installed wrapper names it and runs it, and the failure to run it is an error and never a fallback to the node CLI
+
+### Requirement: Without a usable Rust binary the wrapper is the plain one
+When `$TAGENTS_HOME/target/release/tagents-core` is not an executable file at the time of the install, whether it does not exist, lacks the executable bit or is a directory, the `tagents-core` wrapper SHALL be byte for byte the plain wrapper, which runs the node CLI and names no Rust binary.
+
+#### Scenario: No Rust binary
+- **WHEN** the installer runs and `$TAGENTS_HOME/target/release/tagents-core` does not exist
+- **THEN** every wrapper it writes is the plain one, which runs the node CLI and names no Rust binary
+
+#### Scenario: A file without the executable bit
+- **WHEN** a file without the executable bit sits at `$TAGENTS_HOME/target/release/tagents-core` when the installer runs
+- **THEN** the plain wrapper is written, which runs the node CLI and names no Rust binary
+
+#### Scenario: A directory where the Rust binary would be
+- **WHEN** a directory sits at `$TAGENTS_HOME/target/release/tagents-core` when the installer runs
+- **THEN** the plain wrapper is written, which runs the node CLI and names no Rust binary

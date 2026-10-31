@@ -116,36 +116,39 @@ mkrows() {  # <work month-to-date>
 # rules are what TU_ACCOUNT_RULES is built from.
 mkcfg() {  # <file> <usage block, or empty for none>
   cat >"$1" <<EOF
-claude:
-  profiles:
-    personal:
-      config_dir: $ROOT/claude-personal
-    work:
-  rules:
-    - dir: $REPO
-      profile: work
-    - session: personal
-      profile: personal
+[claude.profiles.personal]
+config_dir = "$ROOT/claude-personal"
+
+[claude.profiles.work]
+
+[[claude.rules]]
+dir = "$REPO"
+profile = "work"
+
+[[claude.rules]]
+session = "personal"
+profile = "personal"
+
 ${2:-}
 EOF
 }
 
-CFG="$ROOT/config.yaml"
-mkcfg "$CFG" "usage:
-  watch: work
-  monthly_limit_usd: 850
-  safety_margin_pct: 5"
-CALCFG="$ROOT/config-calendar.yaml"
-mkcfg "$CALCFG" "usage:
-  watch: work
-  monthly_limit_usd: 850
-  safety_margin_pct: 5
-  workdays: false"
-NOWATCH="$ROOT/config-nowatch.yaml"
-mkcfg "$NOWATCH" "usage:
-  monthly_limit_usd: 850
-  safety_margin_pct: 5"
-NOBLOCK="$ROOT/config-noblock.yaml"
+CFG="$ROOT/config.toml"
+mkcfg "$CFG" "[usage]
+watch = \"work\"
+monthly_limit_usd = 850
+safety_margin_pct = 5"
+CALCFG="$ROOT/config-calendar.toml"
+mkcfg "$CALCFG" "[usage]
+watch = \"work\"
+monthly_limit_usd = 850
+safety_margin_pct = 5
+workdays = false"
+NOWATCH="$ROOT/config-nowatch.toml"
+mkcfg "$NOWATCH" "[usage]
+monthly_limit_usd = 850
+safety_margin_pct = 5"
+NOBLOCK="$ROOT/config-noblock.toml"
 mkcfg "$NOBLOCK" ""
 
 unset TMUX TMUX_PANE TA_MODE TA_FLAT TA_COLS TA_HIDE_COLS CLAUDE_CONFIG_DIR FZF_DEFAULT_OPTS
@@ -304,12 +307,12 @@ MTOT=400
 if [ "$D" -gt 1 ]; then printf '%s\twork\t200.0000\t10\t0\n' "$TODAY" >>"$ROWS"; MTOT=600; fi
 
 mkmeter() {  # <when> <what the meter showed> -> the config path
-  mkcfg "$ROOT/config-meter.yaml" "usage:
-  watch: work
-  monthly_limit_usd: 850
-  safety_margin_pct: 5
-  meter: \"$1 = $2\""
-  printf '%s' "$ROOT/config-meter.yaml"
+  mkcfg "$ROOT/config-meter.toml" "[usage]
+watch = \"work\"
+monthly_limit_usd = 850
+safety_margin_pct = 5
+meter = \"$1 = $2\""
+  printf '%s' "$ROOT/config-meter.toml"
 }
 
 # 360 against the 400 the estimate had at that instant: a factor of 0.9.

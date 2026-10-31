@@ -41,11 +41,12 @@ contains() {  # <name> <needle> <haystack>
 t() { printf '\n%s\n' "$1"; }
 
 # ---------------------------------------------------------------------------
-t "1. parser"
+t "1. the example, and what is not a config"
 # ---------------------------------------------------------------------------
 
 # The shipped example is the parser reference: if it stops flattening to this,
-# every rule in every real config is suspect.
+# every rule in every real config is suspect. The reader's own constructs
+# (quotes, comments, arrays, tables, refusals) are tests/config-toml.sh.
 want=$(cat <<'EOF'
 claude.args	--dangerously-skip-permissions
 claude.profiles.personal.config_dir	~/.claude-personal
@@ -69,96 +70,9 @@ resurrect.notes	reopen
 keys.closed	ctrl-y
 EOF
 )
-got=$(TA_CONFIG="$HERE/fixtures/config.example.yaml" bash "$TA" --config 2>&1)
-ok "the YAML example flattens as documented" "$want" "$got"
-
-# Everything the subset promises, in one file, indented four spaces: end-of-line
-# comments, a # that is inside quotes and therefore not one, blank lines, a
-# scalar list, an env map, an escaped quote, and a key with nothing under it.
-cat >"$TMP/odd.yaml" <<'EOF'
-# leading comment
-claude:
-    args:
-        - --dangerously-skip-permissions
-        - --append-system-prompt
-        - "a \"quoted\" word"
-
-    profiles:
-        proxy:                       # trailing comment on a mapping
-            command: /opt/bin/wrap
-            config_dir: ~/.claude-proxy   # and on a value
-            args: --model opus --foo "a b"
-            env:
-                ANTHROPIC_BASE_URL: https://proxy.example.com#frag
-                QUOTED: "it is # not a comment"
-        bare:
-    note: 'single # quoted'
-EOF
-want=$(cat <<'EOF'
-claude.args.0	--dangerously-skip-permissions
-claude.args.1	--append-system-prompt
-claude.args.2	a "quoted" word
-claude.profiles.proxy.command	/opt/bin/wrap
-claude.profiles.proxy.config_dir	~/.claude-proxy
-claude.profiles.proxy.args	--model opus --foo "a b"
-claude.profiles.proxy.env.ANTHROPIC_BASE_URL	https://proxy.example.com#frag
-claude.profiles.proxy.env.QUOTED	it is # not a comment
-claude.profiles.bare	
-claude.note	single # quoted
-EOF
-)
-got=$(TA_CONFIG="$TMP/odd.yaml" bash "$TA" --config 2>&1)
-ok "quotes, comments, lists, env map, 4-space indent, empty key" "$want" "$got"
-
-# A line the subset refuses must cost that line and nothing else.
-printf 'claude:\n  args: fine\n\tbad: tabbed\n  profiles:\n    p:\n      config_dir: ~/x\n' \
-  >"$TMP/tabs.yaml"
-got=$(TA_CONFIG="$TMP/tabs.yaml" bash "$TA" --config 2>/dev/null)
-err=$(TA_CONFIG="$TMP/tabs.yaml" bash "$TA" --config 2>&1 >/dev/null)
-ok "a tab-indented line does not stop the parse" \
-   "claude.args${TAB}fine
-claude.profiles.p.config_dir${TAB}~/x" "$got"
-contains "a tab-indented line is named on stderr" "tabs.yaml:3" "$err"
-contains "...and says what was wrong with it" "tab indentation" "$err"
-
-# A sequence item written as a bare dash, its keys on the lines below. Parsed as
-# the scalar "-" once, which threw away every key under it and took the whole
-# rule with it — silently, since the warnings go to stderr and the dashboard
-# runs this behind execute-silent.
-cat >"$TMP/baredash.yaml" <<'EOF'
-claude:
-  profiles:
-    work:
-  rules:
-    -
-      dir: /tmp
-      profile: work
-EOF
-got=$(TA_CONFIG="$TMP/baredash.yaml" bash "$TA" --config 2>&1)
-ok "a bare dash opens a mapping item" \
-   "claude.profiles.work${TAB}
-claude.rules.0.dir${TAB}/tmp
-claude.rules.0.profile${TAB}work" "$got"
-
-# CRLF is not refused, it is MIS-parsed: the \r sits between the colon and the
-# end of the line, so `key:` stops being a key while `key: value` keeps the \r.
-printf 'claude:\r\n  profiles:\r\n    personal:\r\n      config_dir: ~/.claude-personal\r\n' \
-  >"$TMP/crlf.yaml"
-got=$(TA_CONFIG="$TMP/crlf.yaml" bash "$TA" --config 2>&1)
-ok "a CRLF file parses as its LF twin" \
-   "claude.profiles.personal.config_dir${TAB}~/.claude-personal" "$got"
-
-# An apostrophe in the middle of a plain value is not an opening quote, so the
-# trailing comment after it is still a comment.
-printf 'claude:\n  note: it is a dir   # and this goes\n  odd: do not   # this too\n' \
-  | sed "s/do not/don't/" >"$TMP/apos.yaml"
-got=$(TA_CONFIG="$TMP/apos.yaml" bash "$TA" --config 2>&1)
-contains "an apostrophe mid-value does not swallow the comment" \
-   "claude.odd${TAB}don" "$got"
-case "$got" in
-  *"# this too"*) fail=$((fail + 1)); printf '  FAIL the comment ended up in the value\n' ;;
-  *) pass=$((pass + 1)); printf '  ok   ...the comment is gone\n' ;;
-esac
+EX="$HERE/../config.example.toml"
+got=$(TA_CONFIG="$EX" bash "$TA" --config 2>&1)
+ok "the TOML example flattens as documented" "$want" "$got"
 
 # A directory is readable, so -r alone called it a config and handed it to awk.
 mkdir -p "$TMP/adir"
@@ -171,39 +85,37 @@ case "$err" in
   *) pass=$((pass + 1)); printf '  ok   ...without a raw awk error\n' ;;
 esac
 
-# A per-host overlay: config.<host>.yaml replaces the a.b subtrees it names and
+# A per-host overlay: config.<host>.toml replaces the a.b subtrees it names and
 # inherits the rest. TA_HOST stands in for `hostname -s`.
 mkdir -p "$TMP/ov"
-cp "$HERE/fixtures/config.example.yaml" "$TMP/ov/config.yaml"
-cat >"$TMP/ov/config.mbp.yaml" <<'EOF'
-claude:
-  profiles:
-    sasha:
-      badge: s
-    nuzhin:
-      config_dir: ~/.claude-nuzhin
-  rules:
-    - dir: ~/git
-      profile: sasha
+cp "$EX" "$TMP/ov/config.toml"
+cat >"$TMP/ov/config.mbp.toml" <<'EOF'
+[claude.profiles.sam]
+badge = "s"
+[claude.profiles.client]
+config_dir = "~/.claude-client"
+[[claude.rules]]
+dir = "~/git"
+profile = "sam"
 EOF
-got=$(TA_HOST=mbp TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --config 2>&1)
-contains "overlay: its profiles are there" "claude.profiles.nuzhin.config_dir	~/.claude-nuzhin" "$got"
+got=$(TA_HOST=mbp TA_CONFIG="$TMP/ov/config.toml" bash "$TA" --config 2>&1)
+contains "overlay: its profiles are there" "claude.profiles.client.config_dir	~/.claude-client" "$got"
 case "$got" in *"claude.profiles.personal"*|*"claude.profiles.work"*) ov_base=kept ;; *) ov_base=gone ;; esac
 ok "overlay: the base laptop's profiles are NOT (replaced, not merged)" gone "$ov_base"
 ok "overlay: one rule, the overlay's" 1 "$(printf '%s\n' "$got" | grep -c '^claude\.rules\.[0-9]*\.dir')"
 contains "overlay: claude.args is inherited from the base" "claude.args	--dangerously-skip-permissions" "$got"
 contains "overlay: notes.send is inherited from the base" "notes.send	reference" "$got"
 contains "overlay: so is usage" "usage.monthly_limit_usd	850" "$got"
-ok "overlay: the overlay's profile is what a dir resolves to" sasha \
-   "$(TA_HOST=mbp TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --profile-for "$HOME/git/x" 2>/dev/null)"
+ok "overlay: the overlay's profile is what a dir resolves to" sam \
+   "$(TA_HOST=mbp TA_CONFIG="$TMP/ov/config.toml" bash "$TA" --profile-for "$HOME/git/x" 2>/dev/null)"
 ok "overlay: a base profile is unknown here" 1 \
-   "$(TA_HOST=mbp TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --agent-cmd personal new >/dev/null 2>&1; echo $?)"
+   "$(TA_HOST=mbp TA_CONFIG="$TMP/ov/config.toml" bash "$TA" --agent-cmd personal new >/dev/null 2>&1; echo $?)"
 ok "overlay: another host sees only the base" "" \
-   "$(TA_HOST=other TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --config 2>/dev/null | grep -c nuzhin | sed 's/^0$//')"
-ok "overlay: a missing overlay changes nothing" "$(TA_CONFIG="$HERE/fixtures/config.example.yaml" bash "$TA" --config 2>&1)" \
-   "$(TA_HOST=nowhere TA_CONFIG="$HERE/fixtures/config.example.yaml" bash "$TA" --config 2>&1)"
+   "$(TA_HOST=other TA_CONFIG="$TMP/ov/config.toml" bash "$TA" --config 2>/dev/null | grep -c client | sed 's/^0$//')"
+ok "overlay: a missing overlay changes nothing" "$(TA_CONFIG="$EX" bash "$TA" --config 2>&1)" \
+   "$(TA_HOST=nowhere TA_CONFIG="$EX" bash "$TA" --config 2>&1)"
 
-# A machine answers to more than one name. On a Mac whose HostName was never set, `hostname -s` is whatever macOS derived last, and the overlay has to be found under the name that stays put (the LocalHostName) once the reported one has moved. Both commands are stubbed: what they say on the box running the suite is not the subject.
+# A machine answers to more than one name. On a Mac whose HostName was never set, `hostname -s` is whatever macOS derived last, and the overlay has to be found under the name that stays put (the LocalHostName) 
 HB="$TMP/hostbin"; mkdir -p "$HB"
 host_stub() {  # <what `hostname -s` says> <what `scutil --get LocalHostName` says; empty = scutil fails>
   printf '#!/bin/sh\ncase "${1:-}" in -s) echo %s ;; *) echo %s.local ;; esac\n' "$1" "$1" >"$HB/hostname"
@@ -211,24 +123,22 @@ host_stub() {  # <what `hostname -s` says> <what `scutil --get LocalHostName` sa
   else printf '#!/bin/sh\necho "scutil: nothing to say" >&2\nexit 1\n' >"$HB/scutil"; fi
   chmod +x "$HB/hostname" "$HB/scutil"
 }
-ov_named() { env -u TA_HOST PATH="$HB:$PATH" TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --config; }  # the overlay fixture, under the stubbed names
-ov_plain=$(TA_HOST=nowhere TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --config 2>&1)  # the fixture with no overlay laid over it
-cat >"$TMP/ov/config.second.yaml" <<'EOF'
-claude:
-  profiles:
-    elsewhere:
-      badge: e
+ov_named() { env -u TA_HOST PATH="$HB:$PATH" TA_CONFIG="$TMP/ov/config.toml" bash "$TA" --config; }  # the overlay fixture, under the stubbed names
+ov_plain=$(TA_HOST=nowhere TA_CONFIG="$TMP/ov/config.toml" bash "$TA" --config 2>&1)  # the fixture with no overlay laid over it
+cat >"$TMP/ov/config.second.toml" <<'EOF'
+[claude.profiles.elsewhere]
+badge = "e"
 EOF
 host_stub flaky mbp
 contains "overlay: found under the LocalHostName when hostname -s names no file" \
-  "claude.profiles.nuzhin.config_dir	~/.claude-nuzhin" "$(ov_named 2>&1)"
+  "claude.profiles.client.config_dir	~/.claude-client" "$(ov_named 2>&1)"
 host_stub mbp second
 got=$(ov_named 2>&1)
-case "$got" in *"claude.profiles.elsewhere"*) ov_first=localhostname ;; *"claude.profiles.nuzhin"*) ov_first=hostname ;; *) ov_first=neither ;; esac
+case "$got" in *"claude.profiles.elsewhere"*) ov_first=localhostname ;; *"claude.profiles.client"*) ov_first=hostname ;; *) ov_first=neither ;; esac
 ok "overlay: the name hostname -s reports is looked under first" hostname "$ov_first"
 host_stub flaky mbp
 ok "overlay: TA_HOST is the only name looked under" "$ov_plain" \
-   "$(env PATH="$HB:$PATH" TA_HOST=nowhere TA_CONFIG="$TMP/ov/config.yaml" bash "$TA" --config 2>&1)"
+   "$(env PATH="$HB:$PATH" TA_HOST=nowhere TA_CONFIG="$TMP/ov/config.toml" bash "$TA" --config 2>&1)"
 host_stub flaky ""
 ok "overlay: a machine with no LocalHostName is its hostname, and says nothing about it" "$ov_plain" "$(ov_named 2>&1)"
 
@@ -236,29 +146,29 @@ ok "overlay: a machine with no LocalHostName is its hostname, and says nothing a
 t "2. rules"
 # ---------------------------------------------------------------------------
 
-EX="$HERE/fixtures/config.example.yaml"
 pf() { TA_CONFIG="${CFG:-$EX}" bash "$TA" --profile-for "$@" 2>/dev/null; }
 
 mkdir -p "$TMP/home/git/personal/x" "$TMP/home/git/work/y/z" "$TMP/home/git/personalx"
 # The example config talks about ~/git/..., so the fixture has to be under the
 # real $HOME to be the thing it names.
-cat >"$TMP/rules.yaml" <<EOF
-claude:
-  profiles:
-    personal:
-      config_dir: ~/.claude-personal
-    work:
-  rules:
-    - dir: $TMP/home/git/personal
-      profile: personal
-    - dir: $TMP/home/git/work
-      profile: work
-    - session: personal
-      profile: personal
-    - session: work
-      profile: work
+cat >"$TMP/rules.toml" <<EOF
+[claude.profiles.personal]
+config_dir = "~/.claude-personal"
+[claude.profiles.work]
+[[claude.rules]]
+dir = "$TMP/home/git/personal"
+profile = "personal"
+[[claude.rules]]
+dir = "$TMP/home/git/work"
+profile = "work"
+[[claude.rules]]
+session = "personal"
+profile = "personal"
+[[claude.rules]]
+session = "work"
+profile = "work"
 EOF
-CFG="$TMP/rules.yaml"
+CFG="$TMP/rules.toml"
 ok "a directory under a dir rule"        personal "$(pf "$TMP/home/git/personal/x")"
 ok "...however deep"                     work     "$(pf "$TMP/home/git/work/y/z")"
 ok "a session name that contains the text" work   "$(pf /tmp work/foo)"
@@ -271,91 +181,81 @@ ok "a sibling that merely starts the same" ask    "$(pf "$TMP/home/git/personalx
 ln -s "$TMP/home/git/personal/x" "$TMP/linked"
 ok "a symlink resolves to what it points at" personal "$(pf "$TMP/linked")"
 
-cat >"$TMP/unknown.yaml" <<EOF
-claude:
-  profiles:
-    work:
-  rules:
-    - dir: $TMP/home/git/personal
-      profile: nosuch
-    - dir: $TMP/home/git/personal
-      profile: work
+cat >"$TMP/unknown.toml" <<EOF
+[claude.profiles.work]
+[[claude.rules]]
+dir = "$TMP/home/git/personal"
+profile = "nosuch"
+[[claude.rules]]
+dir = "$TMP/home/git/personal"
+profile = "work"
 EOF
-CFG="$TMP/unknown.yaml"
+CFG="$TMP/unknown.toml"
 ok "a rule naming an unknown profile is skipped" work "$(pf "$TMP/home/git/personal/x")"
-err=$(TA_CONFIG="$TMP/unknown.yaml" bash "$TA" --profile-for "$TMP/home/git/personal/x" 2>&1 >/dev/null)
+err=$(TA_CONFIG="$TMP/unknown.toml" bash "$TA" --profile-for "$TMP/home/git/personal/x" 2>&1 >/dev/null)
 contains "...loudly" 'rule 0 names unknown profile "nosuch"' "$err"
 
-# A rule with no profile at all — what a `profile:` line indented one column
-# short of its `- dir:` item leaves behind. Skipped either way; the point is
-# that it says so.
-cat >"$TMP/noprofile.yaml" <<EOF
-claude:
-  profiles:
-    work:
-  rules:
-    - dir: $TMP/home/git/personal
-    - dir: $TMP/home/git/personal
-      profile: work
+# A rule with no profile at all — what a forgotten `profile` line leaves behind.
+# Skipped either way; the point is that it says so.
+cat >"$TMP/noprofile.toml" <<EOF
+[claude.profiles.work]
+[[claude.rules]]
+dir = "$TMP/home/git/personal"
+[[claude.rules]]
+dir = "$TMP/home/git/personal"
+profile = "work"
 EOF
-CFG="$TMP/noprofile.yaml"
+CFG="$TMP/noprofile.toml"
 ok "a rule naming no profile is skipped" work "$(pf "$TMP/home/git/personal/x")"
-err=$(TA_CONFIG="$TMP/noprofile.yaml" bash "$TA" --profile-for "$TMP/home/git/personal/x" 2>&1 >/dev/null)
+err=$(TA_CONFIG="$TMP/noprofile.toml" bash "$TA" --profile-for "$TMP/home/git/personal/x" 2>&1 >/dev/null)
 contains "...loudly, and in its own words" "rule 0 names no profile" "$err"
 
-cat >"$TMP/default.yaml" <<EOF
-claude:
-  profiles:
-    personal:
-      config_dir: ~/.claude-personal
-    work:
-  rules:
-    - dir: $TMP/home/git/personal
-      profile: personal
-  default: work
+cat >"$TMP/default.toml" <<EOF
+[claude]
+default = "work"
+[claude.profiles.personal]
+config_dir = "~/.claude-personal"
+[claude.profiles.work]
+[[claude.rules]]
+dir = "$TMP/home/git/personal"
+profile = "personal"
 EOF
-CFG="$TMP/default.yaml"
+CFG="$TMP/default.toml"
 ok "default catches what no rule does" work "$(pf "$TMP/home/git")"
 ok "...without overriding a rule"      personal "$(pf "$TMP/home/git/personal/x")"
 
-printf 'claude:\n  args: --dangerously-skip-permissions\n' >"$TMP/noprof.yaml"
-out=$(TA_CONFIG="$TMP/noprof.yaml" bash "$TA" --profile-for /tmp 2>/dev/null); rc=$?
+printf '[claude]\nargs = "--dangerously-skip-permissions"\n' >"$TMP/noprof.toml"
+out=$(TA_CONFIG="$TMP/noprof.toml" bash "$TA" --profile-for /tmp 2>/dev/null); rc=$?
 ok "no profiles: nothing to say"  "" "$out"
 ok "no profiles: and it says so"  1  "$rc"
 
-out=$(TA_CONFIG=/nonexistent/config.yaml bash "$TA" --profile-for /tmp 2>/dev/null); rc=$?
+out=$(TA_CONFIG=/nonexistent/config.toml bash "$TA" --profile-for /tmp 2>/dev/null); rc=$?
 ok "no config file: nothing to say" "" "$out"
 ok "no config file: and it says so"  1 "$rc"
 
-out=$(TA_CONFIG=/nonexistent/config.yaml bash "$TA" --config 2>/dev/null); rc=$?
+out=$(TA_CONFIG=/nonexistent/config.toml bash "$TA" --config 2>/dev/null); rc=$?
 ok "--config on a missing file exits 1" 1 "$rc"
-err=$(TA_CONFIG=/nonexistent/config.yaml bash "$TA" --config 2>&1 >/dev/null)
-contains "...naming the path it looked at" "/nonexistent/config.yaml" "$err"
+err=$(TA_CONFIG=/nonexistent/config.toml bash "$TA" --config 2>&1 >/dev/null)
+contains "...naming the path it looked at" "/nonexistent/config.toml" "$err"
 
 # ---------------------------------------------------------------------------
 t "3. command builder"
 # ---------------------------------------------------------------------------
 
-cat >"$TMP/build.yaml" <<'EOF'
-claude:
-  args: --dangerously-skip-permissions
-  profiles:
-    personal:
-      config_dir: ~/.claude-personal
-    work:
-    proxy:
-      command: /opt/bin/claude-wrap
-      args:
-        - --model
-        - opus
-        - --append-system-prompt
-        - be brief
-      env:
-        ANTHROPIC_BASE_URL: https://proxy.example.com
-        GREETING: it is fine
+cat >"$TMP/build.toml" <<'EOF'
+[claude]
+args = "--dangerously-skip-permissions"
+[claude.profiles.personal]
+config_dir = "~/.claude-personal"
+[claude.profiles.work]
+[claude.profiles.proxy]
+command = "/opt/bin/claude-wrap"
+args = ["--model", "opus", "--append-system-prompt", "be brief"]
+[claude.profiles.proxy.env]
+ANTHROPIC_BASE_URL = "https://proxy.example.com"
+GREETING = "it is fine"
 EOF
-ac() { TA_CONFIG="$TMP/build.yaml" bash "$TA" --agent-cmd "$@" 2>/dev/null; }
-
+ac() { TA_CONFIG="$TMP/build.toml" bash "$TA" --agent-cmd "$@" 2>/dev/null; }
 ok "a profile with a config_dir exports the expanded path" \
    "env -u CLAUDE_CONFIG_DIR CLAUDE_CONFIG_DIR='$HOME/.claude-personal' claude --dangerously-skip-permissions" \
    "$(ac personal new)"
@@ -379,38 +279,36 @@ ok "command, arg list and env all render, quoted" \
 
 # An apostrophe in a value is the one thing that can end the command string
 # early, so it gets a check of its own.
-cat >"$TMP/quote.yaml" <<'EOF'
-claude:
-  profiles:
-    odd:
-      config_dir: /tmp/it's here
-      env:
-        WHO: "it's me"
+cat >"$TMP/quote.toml" <<'EOF'
+[claude.profiles.odd]
+config_dir = "/tmp/it's here"
+[claude.profiles.odd.env]
+WHO = "it's me"
 EOF
 ok "an apostrophe is quoted, not escaped out of the string" \
    "env -u CLAUDE_CONFIG_DIR CLAUDE_CONFIG_DIR='/tmp/it'\\''s here' WHO='it'\\''s me' claude --dangerously-skip-permissions" \
-   "$(TA_CONFIG="$TMP/quote.yaml" bash "$TA" --agent-cmd odd new 2>/dev/null)"
+   "$(TA_CONFIG="$TMP/quote.toml" bash "$TA" --agent-cmd odd new 2>/dev/null)"
 
 ok "TA_NEW_CMD replaces the binary but keeps the account" \
    "env -u CLAUDE_CONFIG_DIR foo --bar" \
-   "$(TA_NEW_CMD='foo --bar' TA_CONFIG="$TMP/build.yaml" bash "$TA" --agent-cmd work new 2>/dev/null)"
+   "$(TA_NEW_CMD='foo --bar' TA_CONFIG="$TMP/build.toml" bash "$TA" --agent-cmd work new 2>/dev/null)"
 ok "TA_RESUME_CMD likewise, session id still appended" \
    "env -u CLAUDE_CONFIG_DIR CLAUDE_CONFIG_DIR='$HOME/.claude-personal' myclaude --resume zz" \
-   "$(TA_RESUME_CMD='myclaude --resume' TA_CONFIG="$TMP/build.yaml" bash "$TA" --agent-cmd personal resume zz 2>/dev/null)"
+   "$(TA_RESUME_CMD='myclaude --resume' TA_CONFIG="$TMP/build.toml" bash "$TA" --agent-cmd personal resume zz 2>/dev/null)"
 
 # NO CONFIG MEANS NO CHANGE. Byte for byte what tagents ran before any of this.
 ok "no profile: exactly the old new command" \
    "claude --dangerously-skip-permissions" \
-   "$(TA_CONFIG=/nonexistent bash "$TA" --agent-cmd '' new 2>/dev/null)"
+   "$(TA_CONFIG=/nonexistent/config.toml bash "$TA" --agent-cmd '' new 2>/dev/null)"
 ok "no profile: exactly the old resume command" \
    "claude --dangerously-skip-permissions --resume X" \
-   "$(TA_CONFIG=/nonexistent bash "$TA" --agent-cmd '' resume X 2>/dev/null)"
+   "$(TA_CONFIG=/nonexistent/config.toml bash "$TA" --agent-cmd '' resume X 2>/dev/null)"
 
 # A config dir no profile claims — what a closed session recorded before the
 # profile was renamed. Resume still has to land on that login.
 ok "a raw config dir builds as itself" \
    "env -u CLAUDE_CONFIG_DIR CLAUDE_CONFIG_DIR='/tmp/other-login' claude --dangerously-skip-permissions --resume q" \
-   "$(TA_CONFIG="$TMP/build.yaml" bash "$TA" --agent-cmd 'dir:/tmp/other-login' resume q 2>/dev/null)"
+   "$(TA_CONFIG="$TMP/build.toml" bash "$TA" --agent-cmd 'dir:/tmp/other-login' resume q 2>/dev/null)"
 
 # A PROFILE NAME A HUMAN TYPED IS NOT A PROFILE. Unvalidated, a typo rendered
 # as a plain `env -u CLAUDE_CONFIG_DIR claude …` — the default login, silently,
@@ -418,7 +316,7 @@ ok "a raw config dir builds as itself" \
 out=$(ac nosuchprofile new); rc=$?
 ok "an unknown profile is refused" 1 "$rc"
 ok "...with nothing to run"        "" "$out"
-err=$(TA_CONFIG="$TMP/build.yaml" bash "$TA" --agent-cmd nosuchprofile new 2>&1 >/dev/null)
+err=$(TA_CONFIG="$TMP/build.toml" bash "$TA" --agent-cmd nosuchprofile new 2>&1 >/dev/null)
 contains "...and it says which name"   'no claude profile "nosuchprofile"' "$err"
 
 out=$(ac ask new); rc=$?
@@ -442,7 +340,7 @@ mkdir -p "$TMP/logins/personal" "$TMP/logins/work"
 : >"$TMP/logins/personal/.claude.json"
 : >"$TMP/logins/work/.claude.json"
 
-# The checker is format-blind, so its fixtures are in the format a config is written in now. The YAML reader's own refusals, and what a YAML config is told, are the last cases of this section and tests/config-toml.sh.
+# The checker's fixtures are TOML; the reader's own refusals are the last cases of this section and tests/config-toml.sh.
 cat >"$TMP/good.toml" <<EOF
 [claude]
 default = "ask"
@@ -473,7 +371,7 @@ out=$(ck "$TMP/good.toml"); rc=$?
 ok "a good config: nothing to say" "" "$out"
 ok "...and exit 0"                 0  "$rc"
 ok "...and a header of keys alone" "enter open here · ? keys · ctrl-q quit" "$(hd "$TMP/good.toml")"
-out=$(TA_CONFIG=/nonexistent/config.yaml bash "$TA" --check 2>/dev/null); rc=$?
+out=$(TA_CONFIG=/nonexistent/config.toml bash "$TA" --check 2>/dev/null); rc=$?
 ok "no config at all is not a problem: nothing, exit 0" "0" "$rc$out"
 
 # THE REPORTED BUG: a profile pointing at a directory this machine does not have.
@@ -638,19 +536,16 @@ done
 ok "...and dashboard is not among them, the section is gone" "" "$(printf '%s\n' "$readme_keys" | grep -x dashboard)"
 
 # The parser's own refusals, which used to be stderr and nothing else.
-out=$(ck "$TMP/tabs.yaml")
-contains "a tab-indented line is in the list" "tabs.yaml:3: tab indentation is not supported" "$out"
-printf 'claude:\n  profiles:\n    work:\n  just words here\n  rules: [a, b]\n' >"$TMP/refused.yaml"
-out=$(ck "$TMP/refused.yaml")
-contains "so is a line that is not key: value" "refused.yaml:4: not a key: value line" "$out"
-contains "...and flow style"                    "refused.yaml:5: flow style is not supported" "$out"
-err=$(TA_CONFIG="$TMP/refused.yaml" bash "$TA" --config 2>&1 >/dev/null)
+printf '[claude.profiles.work]\n[claude.profiles.a\n[usage]\nd = """\n' >"$TMP/refused.toml"
+out=$(ck "$TMP/refused.toml")
+contains "a header that never closes is in the list" "refused.toml:2: the table header is not closed with ]" "$out"
+contains "...and so is a multi-line string"           "refused.toml:4: multi-line strings are not supported" "$out"
+err=$(TA_CONFIG="$TMP/refused.toml" bash "$TA" --config 2>&1 >/dev/null)
 contains "...while stderr still says it, once, for a script" \
-   "tagents: config: $TMP/refused.yaml:4: not a key: value line" "$err"
-ok "...once" 1 "$(printf '%s' "$err" | grep -c 'refused.yaml:4')"
-contains "...and the file is told it is YAML, as any YAML config is" "refused.yaml: YAML config is deprecated" "$out"
-ok "...and the header counts all three" "config: 3 problems (tagents --check)" \
-   "$(hd "$TMP/refused.yaml" | sed 's/.* · //')"
+   "tagents: config: $TMP/refused.toml:2: the table header is not closed with ]" "$err"
+ok "...once" 1 "$(printf '%s' "$err" | grep -c 'refused.toml:2')"
+ok "...and the header counts both" "config: 2 problems (tagents --check)" \
+   "$(hd "$TMP/refused.toml" | sed 's/.* · //')"
 
 # A note names the file its key is in: the overlay for what the overlay
 # replaced, the base for what was inherited.
@@ -662,12 +557,12 @@ config_dir = "$TMP/logins/personal"
 send = "mail"
 EOF
 cat >"$TMP/ov2/config.mbp.toml" <<EOF
-[claude.profiles.nuzhin]
+[claude.profiles.client]
 config_dir = "$TMP/logins/nowhere"
 EOF
 out=$(TA_HOST=mbp TA_CONFIG="$TMP/ov2/config.toml" bash "$TA" --check 2>/dev/null)
 contains "a problem in the overlay names the overlay" \
-   "config.mbp.toml: claude.profiles.nuzhin.config_dir: " "$out"
+   "config.mbp.toml: claude.profiles.client.config_dir: " "$out"
 contains "...and one inherited from the base names the base" "ov2/config.toml: notes.send: " "$out"
 ok "two files, two problems" 2 "$(nlines "$out")"
 out=$(TA_HOST=other TA_CONFIG="$TMP/ov2/config.toml" bash "$TA" --check 2>/dev/null)

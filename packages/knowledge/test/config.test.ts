@@ -36,17 +36,12 @@ test('knowledge.dir is read from config.toml, relative to the config', () => {
   }
 });
 
-test('knowledge.dir is still read from a config.yaml that has no TOML twin', () => {
+test('a config.yaml beside the config is not looked at', () => {
   const root = tmpDir('config-yaml');
   try {
-    const config = path.join(root, 'config.yaml');
     copyKnowledge(path.join(root, 'knowledge'));
-    fs.writeFileSync(config, 'plugins:\n  something:\n    from: ./x\nknowledge:\n  dir: ./knowledge\n');
-    assert.equal(configuredDir(config), path.join(root, 'knowledge'));
-    assert.deepEqual(resolveDir(null, { TAGENTS_CONFIG_DIR: root }), { ok: true, dir: path.join(root, 'knowledge') });
-
-    fs.writeFileSync(config, 'plugins: {}\n');
-    assert.equal(configuredDir(config), null);
+    fs.writeFileSync(path.join(root, 'config.yaml'), 'knowledge:\n  dir: ./knowledge\n');
+    assert.equal(resolveDir(null, { TAGENTS_CONFIG_DIR: root }).ok, false);
   } finally {
     removeDir(root);
   }
@@ -127,9 +122,8 @@ test('the CLI finds the folder through config.toml alone', () => {
   }
 });
 
-test('the hint for a missing folder is written in the format of the config it points at', () => {
-  assert.equal(dirSnippet('/c/config.toml'), '  [knowledge]\n  dir = "~/git/personal/knowledge"');
-  assert.equal(dirSnippet('/c/config.yaml'), '  knowledge:\n    dir: ~/git/personal/knowledge');
+test('the hint for a missing folder is a TOML table to add to the config', () => {
+  assert.equal(dirSnippet(), '  [knowledge]\n  dir = "~/git/personal/knowledge"');
   const root = tmpDir('no-dir');
   try {
     const r = runCli(['list'], { TAGENTS_CONFIG_DIR: root });
