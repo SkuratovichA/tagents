@@ -9,21 +9,14 @@
 use std::{
     fs,
     io::Write,
-    os::unix::fs::{OpenOptionsExt, PermissionsExt},
+    os::unix::fs::PermissionsExt,
     path::PathBuf,
     process::{Child, Command, ExitStatus, Stdio},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
     thread,
     time::Duration,
 };
 
-use rustix::{
-    fs::OFlags,
-    process::{Pid, Signal, kill_process},
-};
+use rustix::process::{Pid, Signal, kill_process};
 
 mod common;
 use common::{rig::until, run, scratch, start, write_executable, writing};
@@ -88,9 +81,12 @@ impl Fake {
         self.root.join("handed")
     }
 
+    /// `notify.toml` as `text`, put in place whole: a service woken in the middle of a truncating write reads an empty file and reloads.
     fn options(&self, text: &str) {
         fs::create_dir_all(self.plugins()).unwrap();
-        fs::write(self.options_file(), text).unwrap();
+        let next = self.root.join("options.next");
+        fs::write(&next, text).unwrap();
+        fs::rename(next, self.options_file()).unwrap();
     }
 
     /// A state directory whose events file cannot be followed: the follower's start fails, which is the failure a hand-over answers.
@@ -210,23 +206,8 @@ impl Drop for Running {
     }
 }
 
-/// The writer end of the FIFO that stands for `notify.toml`: every read of the file is given `text`, until this is dropped. A write end is opened without blocking, so a service that does not read again leaves no thread stuck in an `open`.
-struct Supplier {
-    done: Arc<AtomicBool>,
-    thread: Option<thread::JoinHandle<()>>,
-}
-
-impl Drop for Supplier {
-    fn drop(&mut self) {
-        self.done.store(true, Ordering::SeqCst);
-        if let Some(thread) = self.thread.take() {
-            thread.join().unwrap();
-        }
-    }
-}
-
-/// A service that is waiting to read its options: `notify.toml` is a FIFO with no writer, and the service has taken its lock and registered for signals. The returned function gives each read of the file `text` after the signal thread has had time to see a signal that was sent.
-fn waiting_for_options(fake: &Fake) -> (Running, impl FnOnce(&'static str) -> Supplier) {
+/// A service that is waiting to read its options: `notify.toml` is a FIFO with no writer, and the service has taken its lock and registered for signals. The returned function gives the service `text` to read, after the signal thread has had time to see a signal that was sent. The file that the service reads once more after it armed its watch is the same text as a regular file, put in the place of the FIFO before the first read ends, so that no read waits for a writer that is not there and none is given the text twice.
+fn waiting_for_options(fake: &Fake) -> (Running, impl FnOnce(&'static str)) {
     fs::create_dir_all(fake.plugins()).unwrap();
     let made = run(Command::new("mkfifo").arg(fake.options_file()));
     assert!(made.status.success());
@@ -237,32 +218,17 @@ fn waiting_for_options(fake: &Fake) -> (Running, impl FnOnce(&'static str) -> Su
         running.log()
     );
     let fifo = fake.options_file();
+    let next = fake.root.join("options.next");
     let supply = move |text: &'static str| {
         // The start has no line to wait for: this is the time a signal takes to reach the signal thread.
         thread::sleep(Duration::from_millis(1500));
-        let done = Arc::new(AtomicBool::new(false));
-        let stopped = Arc::clone(&done);
-        let thread = thread::spawn(move || {
-            let nonblocking = i32::try_from(OFlags::NONBLOCK.bits()).unwrap();
-            while !stopped.load(Ordering::SeqCst) {
-                match fs::OpenOptions::new()
-                    .write(true)
-                    .custom_flags(nonblocking)
-                    .open(&fifo)
-                {
-                    // A reader that has gone by the time of the write is the service done reading: the next open finds out. The pause keeps one read from being given the text twice.
-                    Ok(mut file) => {
-                        drop(file.write_all(text.as_bytes()));
-                        thread::sleep(Duration::from_millis(100));
-                    }
-                    Err(_) => thread::sleep(Duration::from_millis(10)),
-                }
-            }
+        fs::write(&next, text).unwrap();
+        // Not joined: a service that never reads leaves this thread waiting in the open, and the test has already failed.
+        thread::spawn(move || {
+            let mut write_end = fs::OpenOptions::new().write(true).open(&fifo).unwrap();
+            write_end.write_all(text.as_bytes()).unwrap();
+            fs::rename(&next, &fifo).unwrap();
         });
-        Supplier {
-            done,
-            thread: Some(thread),
-        }
     };
     (running, supply)
 }
@@ -277,7 +243,7 @@ fn a_stop_during_a_failing_start_ends_the_process_and_does_not_exec() {
     fake.break_follower();
     let (mut running, fill) = waiting_for_options(&fake);
     running.signal(Signal::TERM);
-    let _supplier = fill(LOG_BACKEND);
+    fill(LOG_BACKEND);
     let status = running.exit();
     assert_eq!(status.code(), Some(0), "{}", running.log());
     assert_eq!(fake.handed_over(), None, "the node service was not exec'd");
@@ -291,7 +257,7 @@ fn a_signal_during_a_start_that_fails_logs_no_stopping() {
     fake.break_follower();
     let (mut running, fill) = waiting_for_options(&fake);
     running.signal(Signal::TERM);
-    let _supplier = fill(LOG_BACKEND);
+    fill(LOG_BACKEND);
     running.exit();
     assert!(!running.has("stopping"), "{}", running.log());
     assert!(!running.has("started"), "{}", running.log());
@@ -302,7 +268,7 @@ fn a_signal_during_a_start_that_succeeds_logs_started_and_then_stopping() {
     let fake = Fake::new("service-signal-during-start");
     let (mut running, fill) = waiting_for_options(&fake);
     running.signal(Signal::TERM);
-    let _supplier = fill(LOG_BACKEND);
+    fill(LOG_BACKEND);
     let status = running.exit();
     assert_eq!(status.code(), Some(0), "{}", running.log());
     let lines = running.lines();
@@ -488,12 +454,12 @@ fn stopping_names_sigint_and_sighup() {
 #[test]
 fn an_unrelated_file_in_the_options_directory_logs_nothing_and_keeps_the_options() {
     let fake = Fake::new("service-unrelated-file");
-    fake.options("click = \"goto\"\n");
+    fake.options("backend = \"log\"\nclick = \"goto\"\n");
     let mut running = fake.spawn();
     assert!(running.says("started pid "), "{}", running.log());
     let before = running.lines();
     fs::write(fake.plugins().join("unrelated.toml"), "").unwrap();
-    fake.options("click = \"goto\"\n");
+    fake.options("backend = \"log\"\nclick = \"goto\"\n");
     // The file is read at each wake: quiet is the absence of a line for as long as a wake takes to come.
     thread::sleep(Duration::from_millis(1500));
     assert_eq!(
@@ -502,7 +468,7 @@ fn an_unrelated_file_in_the_options_directory_logs_nothing_and_keeps_the_options
         "an unrelated file and the same bytes written again say nothing"
     );
     // And the watch is alive: a change is a reload.
-    fake.options("click = \"focus\"\n");
+    fake.options("backend = \"log\"\nclick = \"focus\"\n");
     assert!(running.says("options reloaded"), "{}", running.log());
     running.signal(Signal::TERM);
     assert_eq!(running.exit().code(), Some(0));
