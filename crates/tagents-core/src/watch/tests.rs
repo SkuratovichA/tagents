@@ -9,7 +9,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::{Arc, Barrier};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use std::{process, thread};
 
 use super::{Fired, Heard, Key, Poller, Watch, run};
@@ -199,6 +199,29 @@ fn a_file_truncated_in_place_is_heard() {
 }
 
 #[test]
+fn a_file_watch_alone_survives_the_re_arm_a_touch_makes() {
+    let scratch = Scratch::new();
+    let path = scratch.dir("d").join("events.tsv");
+    fs::write(&path, "a").unwrap();
+    let (watch, keys) = start();
+    watch.file(&path, Key::Events).unwrap();
+    silent(&keys);
+
+    // A touch sends `ATTRIB`, which opens the path again; the inode is the same, so the watch has to stay.
+    OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_modified(SystemTime::now() + Duration::from_secs(5))
+        .unwrap();
+    assert_eq!(heard(&keys), Key::Events);
+    settle(&keys);
+
+    append(&path, "b");
+    assert_eq!(heard(&keys), Key::Events);
+}
+
+#[test]
 fn a_file_truncated_by_creating_it_again_is_heard() {
     let scratch = Scratch::new();
     let path = scratch.dir("d").join("notify.toml");
@@ -216,6 +239,7 @@ fn a_file_truncated_by_creating_it_again_is_heard() {
 fn a_fifo_does_not_hold_the_watch_thread_for_a_writer() {
     let scratch = Scratch::new();
     let fifo = scratch.dir("d").join("events.tsv");
+    // rustix has no `mknodat` on macOS, where this test matters most, so the program makes the FIFO.
     assert!(
         Command::new("mkfifo")
             .arg(&fifo)
@@ -455,12 +479,14 @@ fn no_byte_is_missed_when_writes_land_as_the_watch_is_armed() {
         go.wait();
         follower.arm_then_read(&watch, &path);
         while follower.text.len() < BYTES {
-            keys.recv_timeout(HEARD).unwrap_or_else(|_| {
-                panic!(
+            match keys.recv_timeout(HEARD) {
+                Ok(Heard::Fired(_)) => {}
+                Ok(Heard::Ended(err)) => panic!("round {round}: the watch ended: {err}"),
+                Err(_) => panic!(
                     "round {round}: a wake was lost, {} of {BYTES} bytes read",
                     follower.text.len()
-                )
-            });
+                ),
+            }
             follower.read();
         }
         writer.join().unwrap();
@@ -494,12 +520,14 @@ fn arming_another_watch_loses_no_wake_of_one_already_armed() {
         watch.file(&options, Key::Options).unwrap();
     }
     while follower.text.len() < BYTES {
-        keys.recv_timeout(HEARD).unwrap_or_else(|_| {
-            panic!(
+        match keys.recv_timeout(HEARD) {
+            Ok(Heard::Fired(_)) => {}
+            Ok(Heard::Ended(err)) => panic!("the watch ended: {err}"),
+            Err(_) => panic!(
                 "a wake was lost, {} of {BYTES} bytes read",
                 follower.text.len()
-            )
-        });
+            ),
+        }
         follower.read();
     }
     writer.join().unwrap();
@@ -566,4 +594,134 @@ fn a_wait_that_fails_is_the_last_thing_the_sink_hears_and_then_the_thread_ends()
         Err(RecvTimeoutError::Disconnected) => {}
         other => panic!("the thread was meant to end after Ended, and the sink got {other:?}"),
     }
+}
+
+/// A backend whose first `file` arms and whose later ones, the re-arms, fail with `refusal`.
+struct Refuses {
+    waits: VecDeque<io::Result<Fired>>,
+    armed: bool,
+    refusal: fn() -> io::Error,
+}
+
+impl Poller for Refuses {
+    fn dir(&mut self, _path: &Path, _key: Key) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn file(&mut self, _path: &Path, _key: Key) -> io::Result<()> {
+        if std::mem::replace(&mut self.armed, true) {
+            return Err((self.refusal)());
+        }
+        Ok(())
+    }
+
+    fn wait(&mut self) -> io::Result<Fired> {
+        self.waits
+            .pop_front()
+            .unwrap_or_else(|| Err(io::Error::other("the script is over")))
+    }
+}
+
+/// Runs the loop over a backend that arms `Key::Events` once and then reports it stale, with the wait results given. Returns what the sink hears.
+fn run_refusing(
+    refusal: fn() -> io::Error,
+    waits: Vec<io::Result<Fired>>,
+) -> (
+    Receiver<Heard>,
+    thread::JoinHandle<()>,
+    mpsc::Sender<super::Command>,
+) {
+    let backend = Refuses {
+        waits: waits.into(),
+        armed: false,
+        refusal,
+    };
+    let (commands, inbox) = mpsc::channel();
+    let (reply, _answer) = mpsc::channel();
+    commands
+        .send(super::Command {
+            kind: super::Kind::File,
+            path: PathBuf::from("events.tsv"),
+            key: Key::Events,
+            reply,
+        })
+        .unwrap();
+    let (sink, keys) = mpsc::channel();
+    let thread = thread::spawn(move || run(backend, &inbox, &sink));
+    // The sender stays alive: a closed inbox ends the thread before it waits.
+    (keys, thread, commands)
+}
+
+fn stale(key: Key) -> io::Result<Fired> {
+    Ok(Fired {
+        keys: vec![key],
+        rearm: vec![key],
+    })
+}
+
+#[test]
+fn a_re_arm_that_fails_for_want_of_a_descriptor_ends_the_watch_with_the_error() {
+    let (keys, thread, _commands) = run_refusing(
+        || io::Error::from_raw_os_error(rustix::io::Errno::MFILE.raw_os_error()),
+        vec![stale(Key::Events)],
+    );
+
+    match keys.recv_timeout(HEARD) {
+        Ok(Heard::Ended(err)) => {
+            assert_eq!(
+                err.raw_os_error(),
+                Some(rustix::io::Errno::MFILE.raw_os_error())
+            );
+        }
+        other => {
+            panic!("a refused re-arm was meant to reach the sink as Ended, and it got {other:?}")
+        }
+    }
+    thread.join().unwrap();
+    match keys.recv_timeout(QUIET) {
+        Err(RecvTimeoutError::Disconnected) => {}
+        other => panic!("the thread was meant to end after Ended, and the sink got {other:?}"),
+    }
+}
+
+#[test]
+fn a_re_arm_that_finds_the_file_gone_is_no_ending() {
+    let (keys, thread, _commands) = run_refusing(
+        || io::Error::from(ErrorKind::NotFound),
+        vec![
+            stale(Key::Events),
+            Ok(Fired {
+                keys: vec![Key::Options],
+                ..Fired::default()
+            }),
+        ],
+    );
+
+    assert_eq!(heard(&keys), Key::Events);
+    assert_eq!(heard(&keys), Key::Options);
+    // What ends it now is the script running out, and not the missing file.
+    match keys.recv_timeout(HEARD) {
+        Ok(Heard::Ended(err)) => assert_eq!(err.to_string(), "the script is over"),
+        other => panic!("the script was meant to end the thread, and the sink got {other:?}"),
+    }
+    thread.join().unwrap();
+}
+
+/// kqueue refuses a vnode watch on a pipe, which `/dev/fd/N` opens. The crate keeps the refused entry and re-submits it with every later `watch`, so without a rollback no other key can be armed.
+#[cfg(target_os = "macos")]
+#[test]
+fn a_watch_the_kernel_refuses_does_not_stop_the_arming_of_the_next() {
+    use std::os::fd::AsRawFd;
+
+    let scratch = Scratch::new();
+    let (pipe, _writer) = rustix::pipe::pipe().unwrap();
+    let (watch, _keys) = start();
+
+    let refused = watch.file(
+        Path::new(&format!("/dev/fd/{}", pipe.as_raw_fd())),
+        Key::Events,
+    );
+    assert!(refused.is_err(), "the kernel was meant to refuse a pipe");
+
+    watch.dir(&scratch.dir("d"), Key::Options).unwrap();
 }

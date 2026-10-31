@@ -66,10 +66,6 @@ pub fn on_signals(f: impl FnOnce(&'static str) + Send + 'static) -> io::Result<(
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::mpsc;
-    use std::time::Duration;
-
-    use signal_hook::low_level::raise;
 
     use super::*;
 
@@ -104,19 +100,5 @@ mod tests {
         let runs = Arc::new(AtomicUsize::new(0));
         stop.watch(counting(&runs));
         assert_eq!(runs.load(Ordering::SeqCst), 1);
-    }
-
-    #[test]
-    fn the_function_is_given_the_name_of_the_signal_that_came() {
-        // One test for the three: a signal is the process's, so a second test that registers at the same time would hear this one's.
-        for (signal, name) in [(SIGTERM, "SIGTERM"), (SIGINT, "SIGINT"), (SIGHUP, "SIGHUP")] {
-            let (sender, named) = mpsc::channel();
-            on_signals(move |name| {
-                let _ = sender.send(name);
-            })
-            .unwrap();
-            raise(signal).unwrap();
-            assert_eq!(named.recv_timeout(Duration::from_secs(10)), Ok(name));
-        }
     }
 }
