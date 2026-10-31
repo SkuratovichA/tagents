@@ -88,23 +88,28 @@ fn emit(out: &Output) -> ExitCode {
     ExitCode::from(out.code)
 }
 
-/// Replace this process with the node program at `relative` below the root, given `args`. Only returns when that could not be done, after saying why.
+/// Replace this process with the node program at `relative` below the root, given `args`. Only returns when that could not be done, after saying why; a stderr that went away does not change the exit code.
 fn exec_node(relative: &str, args: &[OsString]) -> ExitCode {
     match node::exec(relative, args) {
-        node::ExecFailure::Missing(why) => {
-            eprintln!(
-                "tagents-core: cannot find {relative}: {why}; this binary has to stay in <root>/target/<profile>/ of a root where it is built"
-            );
-            ExitCode::from(sessions::exit::USAGE)
-        }
-        node::ExecFailure::Run { node, err } => {
-            eprintln!("tagents-core: cannot run {}: {err}", node.to_string_lossy());
-            ExitCode::from(if err.kind() == std::io::ErrorKind::NotFound {
+        node::ExecFailure::Missing(why) => emit(&Output {
+            stdout: String::new(),
+            stderr: format!(
+                "tagents-core: cannot find {relative}: {why}; this binary has to stay in <root>/target/<profile>/ of a root where it is built\n"
+            ),
+            code: sessions::exit::USAGE,
+        }),
+        node::ExecFailure::Run { node, err } => emit(&Output {
+            stdout: String::new(),
+            stderr: format!(
+                "tagents-core: cannot run {}: {err}\n",
+                node.to_string_lossy()
+            ),
+            code: if err.kind() == std::io::ErrorKind::NotFound {
                 sessions::exit::NOT_FOUND
             } else {
                 sessions::exit::CANNOT_EXECUTE
-            })
-        }
+            },
+        }),
     }
 }
 

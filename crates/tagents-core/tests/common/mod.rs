@@ -12,6 +12,7 @@ pub const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
 use std::{
     fs,
+    io::{self, PipeWriter},
     path::{Path, PathBuf},
 };
 
@@ -26,4 +27,11 @@ pub fn scratch(name: &str) -> PathBuf {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+/// The write end of a pipe whose read end is gone: a child given it as stderr gets EPIPE on every write.
+pub fn closed_pipe() -> PipeWriter {
+    let (reader, writer) = io::pipe().unwrap();
+    drop(reader);
+    writer
 }
