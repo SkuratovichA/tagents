@@ -569,6 +569,37 @@ fn a_service_with_no_config_dir_says_reload_is_off_before_started() {
     assert_eq!(running.exit().code(), Some(0));
 }
 
+// The defaults pick the macOS backend, which the other systems do not have: there the service leaves at once.
+#[cfg(target_os = "macos")]
+#[test]
+fn an_invalid_options_file_keeps_the_service_running_on_the_defaults_until_sigterm() {
+    let fake = Fake::new("service-invalid-options");
+    fake.options("events = 7\n");
+    let mut running = fake.spawn();
+    assert!(running.says("started pid "), "{}", running.log());
+    let lines = running.lines();
+    let at = |text: &str| {
+        lines
+            .iter()
+            .position(|line| line.starts_with(text))
+            .unwrap()
+    };
+    assert!(
+        at("options: ") < at("started pid "),
+        "the problem is logged before started:\n{}",
+        running.log()
+    );
+    assert!(lines[at("started pid ")].ends_with("(invalid)"));
+    assert!(
+        running.child.try_wait().unwrap().is_none(),
+        "the service did not leave"
+    );
+    assert!(fake.lock().exists());
+    running.signal(Signal::TERM);
+    assert_eq!(running.exit().code(), Some(0), "{}", running.log());
+    assert!(!fake.lock().exists());
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn on_linux_the_auto_backend_leaves_with_its_reason() {
