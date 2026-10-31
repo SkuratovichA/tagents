@@ -25,7 +25,7 @@ use crate::notify::log::Log;
 use crate::notify::notifier::{ClickAction, Notice, Notifier};
 use crate::notify::options::{CacheExpiring, Click, Events, Options, Toggles};
 use crate::notify::phrases::Phrases;
-use crate::notify::screen::{Screen, ScreenAnswer, tmux_screen};
+use crate::notify::screen::{Screen, ScreenAnswer, is_digits, tmux_screen};
 use crate::notify::state::{AgentStateRow, RowState, labels_by_session, read_labels};
 
 #[cfg(test)]
@@ -181,7 +181,7 @@ fn click_for(e: &AgentEvent, mode: Click, tagents: &str, env: &[(String, String)
 
 /// `eventFromRow`: the state row carries what an event would, enough to compose the notice and to click through to the right pane. Its `at` is epoch seconds, while an event's is milliseconds (the hook writes seconds and the parser multiplies).
 fn event_from_row(row: &AgentStateRow, labels: &HashMap<String, String>) -> AgentEvent {
-    let is_pane = !row.key.is_empty() && row.key.bytes().all(|b| b.is_ascii_digit());
+    let is_pane = is_digits(&row.key);
     AgentEvent {
         at: row.at * 1000.0,
         event: if row.state == RowState::Blocked {
