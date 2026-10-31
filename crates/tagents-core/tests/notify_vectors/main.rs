@@ -1,5 +1,7 @@
 //! Checks the Rust notify modules case by case against what the node functions they port wrote into `tests/fixtures/notify-vectors.json` (`tests/rust-notify-vectors.mts`). One module per section of the file.
 
+#[path = "../common/mod.rs"]
+mod common;
 mod errno;
 mod feed;
 mod options;
