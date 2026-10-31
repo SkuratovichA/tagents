@@ -1,7 +1,7 @@
 # configuration Specification
 
 ## Purpose
-The main tagents config file, `config.toml`: where it lives, how it is read, the per-machine overlay files laid over it, the keys that other capabilities read, and `tagents --config` and `tagents --check`, which say how the file is read and what is wrong with it.
+The main tagents config file, `config.toml`: where it lives, how it is read, the per-machine overlay files laid over it, the keys that other capabilities read, the JSON Schema that describes it, and `tagents --config` and `tagents --check`, which say how the file is read and what is wrong with it.
 
 ## Requirements
 

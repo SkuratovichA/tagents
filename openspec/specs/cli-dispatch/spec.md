@@ -84,8 +84,8 @@ The script SHALL use the `tagents-core` found on `PATH` first, because that is t
 - **THEN** the verb is handed to the built core
 
 #### Scenario: No Rust binary
-- **WHEN** there is no `target/release/tagents-core` beside the script
-- **THEN** the verb is handled exactly as it was before the Rust binary existed
+- **WHEN** there is no `target/release/tagents-core` beside the script and a built core sits beside it
+- **THEN** the verb is handed to the built core
 
 ### Requirement: Without tagents-core the verb says where it went
 When there is no `tagents-core` on `PATH`, no executable Rust binary and no built file beside the script, a forwarded verb SHALL print one line on stderr, `tagents: no tagents-core on PATH and none at <path to packages/core/dist/cli/main.js>, so "<verb>" goes nowhere`, and exit 2, the code of a usage error.

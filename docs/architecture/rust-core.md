@@ -182,4 +182,4 @@ The three rows of the server add 10 crates (23 names in the build of `tagents-co
 
 ## What is not decided yet
 
-How plugins (JavaScript) are hosted once more of the CLI is Rust, and which verbs move next, are open. The change that introduced the front door, `openspec/changes/rust-core/`, lays out the slices and the three options for the plugin host. Signing or notarising the archives is not done (see the last paragraph of "How the installer fetches it"), and a Windows build does not exist.
+How plugins (JavaScript) are hosted once more of the CLI is Rust, and which verbs move next, are open. The change that introduced the front door, `openspec/changes/archive/2026-10-31-rust-core/`, lays out the slices and the three options for the plugin host. Signing or notarising the archives is not done (see the last paragraph of "How the installer fetches it"), and a Windows build does not exist.

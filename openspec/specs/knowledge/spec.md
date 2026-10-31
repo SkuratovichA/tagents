@@ -139,7 +139,7 @@ The folder of documents SHALL be chosen, in order of precedence, from the `--dir
 
 #### Scenario: Nobody said where
 - **WHEN** no flag, variable or config key names a folder
-- **THEN** the command exits 1 and stderr explains that `TAGENTS_KNOWLEDGE_DIR`, `--dir` or the `knowledge.dir` key of the config must be set, names the config file and shows the lines to add to it, as a `[knowledge]` table for a TOML config and as a `knowledge:` map for a YAML one
+- **THEN** the command exits 1 and stderr explains that `TAGENTS_KNOWLEDGE_DIR`, `--dir` or the `knowledge.dir` key of the config must be set, names the config file and shows the lines to add to it, as a `[knowledge]` table
 
 #### Scenario: The chosen folder does not exist
 - **WHEN** the chosen path does not exist

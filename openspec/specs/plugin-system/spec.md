@@ -161,14 +161,6 @@ The key SHALL be `--name` when given, otherwise the package name with its scope 
 - **WHEN** a plugin is added to a config full of comments
 - **THEN** the file differs only by the appended entry
 
-#### Scenario: A second entry
-- **WHEN** a plugin is added to a map that already has one
-- **THEN** the new entry lands after the last one, indented like it
-
-#### Scenario: An empty map
-- **WHEN** the file has `plugins:` with nothing under it, or `plugins: {}`
-- **THEN** that line becomes a block holding the new entry
-
 #### Scenario: A config that does not parse
 - **WHEN** the config has a syntax error
 - **THEN** `plugin add` exits 1 and the file is byte for byte unchanged
@@ -219,7 +211,7 @@ The key SHALL be `--name` when given, otherwise the package name with its scope 
 - **THEN** the exit code is 2 and the usage, which lists `plugin add <package-or-path>`, is printed
 
 ### Requirement: A configured plugin's verbs run as tagents-core verbs
-`tagents-core <plugin> <command> [args]` SHALL run the named command of a configured plugin, where `<plugin>` is the plugin's config key or the name its definition gives itself. The core verbs `session`, `sessions`, `plugin`, `config`, `doctor` and `help` SHALL be matched first and always win, so a plugin that takes one of those names is unreachable as a verb while still loading. The command's returned number SHALL be the process exit code.
+`tagents-core <plugin> <command> [args]` SHALL run the named command of a configured plugin, where `<plugin>` is the plugin's config key or the name its definition gives itself. The core verbs `session`, `sessions`, `plugin`, `doctor` and `help` SHALL be matched first and always win, so a plugin that takes one of those names is unreachable as a verb while still loading. The command's returned number SHALL be the process exit code.
 
 #### Scenario: By key and by own name
 - **WHEN** a plugin is listed under `demo` and its definition is named `fixture`
@@ -375,17 +367,9 @@ A plugin's options SHALL be read from `<configDir>/plugins/<name>.toml`, and che
 - **WHEN** the options file does not exist
 - **THEN** the result is the schema's defaults and `found` is false
 
-#### Scenario: Broken YAML
+#### Scenario: A YAML options file
 - **WHEN** only `<name>.yaml` exists, valid or not
 - **THEN** it is not looked at and the result is the schema's defaults with `found` false
-
-#### Scenario: Broken TOML
-- **WHEN** `<name>.toml` exists and is not valid TOML
-- **THEN** there is one problem and it names the file
-
-#### Scenario: Schema mismatch
-- **WHEN** two fields do not fit the schema
-- **THEN** there are two problem lines, each `<path>: <message>`
 
 #### Scenario: A valid file
 - **WHEN** `<name>.toml` is valid and fits the schema
@@ -451,6 +435,10 @@ A plugin's options file that cannot be read or parsed SHALL give one problem nam
 #### Scenario: Broken TOML
 - **WHEN** the file is not valid TOML
 - **THEN** there is one problem and it names the file
+
+#### Scenario: Schema mismatch
+- **WHEN** two fields do not fit the schema
+- **THEN** there are two problem lines, each `<path>: <message>`
 
 ### Requirement: A missing or empty plugin options file
 A missing plugin options file SHALL give the schema's defaults and report that it was not found, naming the `.toml` path; an empty file the defaults, found; a valid file the parsed value.

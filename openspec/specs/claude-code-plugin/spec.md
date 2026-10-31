@@ -436,12 +436,12 @@ When `$TAGENTS_HOME/target/release/tagents-core` is an executable file at the ti
 - **WHEN** a file that is executable but cannot run, because its interpreter is missing, sits at `target/release/tagents-core` when the installer runs
 - **THEN** the installed wrapper names it and runs it, and the failure to run it is an error and never a fallback to the node CLI
 
-### Requirement: Without a usable Rust binary the wrapper is the old one
-When `$TAGENTS_HOME/target/release/tagents-core` is not an executable file at the time of the install, whether it does not exist, lacks the executable bit or is a directory, the `tagents-core` wrapper SHALL be byte for byte the one written when no Rust binary existed.
+### Requirement: Without a usable Rust binary the wrapper is the plain one
+When `$TAGENTS_HOME/target/release/tagents-core` is not an executable file at the time of the install, whether it does not exist, lacks the executable bit or is a directory, the `tagents-core` wrapper SHALL be byte for byte the plain wrapper, which runs the node CLI and names no Rust binary.
 
 #### Scenario: No Rust binary
 - **WHEN** the installer runs and `$TAGENTS_HOME/target/release/tagents-core` does not exist
-- **THEN** every wrapper it writes is byte for byte what the installer wrote before the Rust binary existed
+- **THEN** every wrapper it writes is the plain one, which runs the node CLI and names no Rust binary
 
 #### Scenario: A file without the executable bit
 - **WHEN** a file without the executable bit sits at `$TAGENTS_HOME/target/release/tagents-core` when the installer runs
