@@ -1,12 +1,13 @@
 name: rust
 
-# The Rust workspace and everything its tests compare it with: the shared CLI spec and its generated `contract.json` (which the MCP tests read), the node CLI that stays the reference, and the parity suite. The `rust` job runs on Linux and on macOS; the `release-path` job, on Linux, holds the version gate and the two shell suites of the release path (the packaging script and the installer's fetch), and `tests/release.sh` reads `release.yml` and `rust.yml`, so both are listed; the other shell suites for `tagents` are not run here, so those files are not listed.
+# The Rust workspace and everything its tests compare it with: the shell file `lib/tagents/names.sh` that three Rust tests run, the shared CLI spec and its generated `contract.json` (which the MCP tests read), the node CLI that stays the reference, and the parity suite. The `rust` job runs on Linux and on macOS; the `release-path` job, on Linux, holds the version gate and the two shell suites of the release path (the packaging script and the installer's fetch), and `tests/release.sh` reads `release.yml` and `rust.yml`, so both are listed; the other shell suites for `tagents` are not run here, so those files are not listed.
 on:
   push:
     paths:
       - Cargo.toml
       - Cargo.lock
       - rust-toolchain.toml
+      - lib/tagents/names.sh
       - contract.json
       - crates/**
       - spec/**
@@ -35,6 +36,7 @@ on:
       - Cargo.toml
       - Cargo.lock
       - rust-toolchain.toml
+      - lib/tagents/names.sh
       - contract.json
       - crates/**
       - spec/**

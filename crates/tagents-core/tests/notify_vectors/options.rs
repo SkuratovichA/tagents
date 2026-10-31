@@ -115,6 +115,10 @@ fn sorted(mut lines: Vec<String>) -> Vec<String> {
 fn judge(case: &Value) -> Option<String> {
     let setup = case["setup"].as_str().unwrap();
     if setup == "unreadable" && rustix::process::geteuid().is_root() {
+        eprintln!(
+            "skipped: {}: root can read a file whose mode is 0",
+            case["name"].as_str().unwrap()
+        );
         return None;
     }
     let scratch = common::scratch("notify-options-vectors");

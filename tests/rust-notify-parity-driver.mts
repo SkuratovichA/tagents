@@ -380,7 +380,7 @@ function tmuxCalls(rec: string): string[] {
   return lines.map((line, at) => `tmux ${at + 1} ${line}`);
 }
 
-const lined = (prefix: string, lines: Lines): string[] => [...lines.all.map((line) => `${prefix}\t${line}`), ...(lines.pending === '' ? [] : [`${prefix}-unterminated\t${lines.pending}`])];
+const lined = (prefix: string, lines: Lines, map: (line: string) => string = (line) => line): string[] => [...lines.all.map((line) => `${prefix}\t${map(line)}`), ...(lines.pending === '' ? [] : [`${prefix}-unterminated\t${lines.pending}`])];
 
 async function run(scriptFile: string, root: string, daemon: readonly string[], other: readonly string[]): Promise<void> {
   const steps = readScript(scriptFile);
@@ -497,12 +497,19 @@ async function run(scriptFile: string, root: string, daemon: readonly string[], 
     if (!(await leave(main))) timeouts.push('end: the daemon did not leave on SIGTERM');
   }
 
+  // The holder of a lock a service names is said as the role of that process, like `describeLock` says it of the lock file: a pid that is not the one the script made holder is the number itself, which differs between the two sides and so fails the comparison.
+  const holder = (line: string): string =>
+    line.replace(/\(pid (\d+)\); exiting$/, (_all, pid: string) => {
+      const n = Number(pid);
+      const role = n === main?.child.pid ? 'daemon' : n === second?.child.pid ? 'second daemon' : n === process.pid ? 'driver' : pid;
+      return `(pid ${role}); exiting`;
+    });
   const out: string[] = [];
   if (main !== undefined) {
-    out.push(...lined('stderr', main.err), ...lined('stdout', main.out), `exit ${main.status ?? 'killed'}`);
+    out.push(...lined('stderr', main.err, holder), ...lined('stdout', main.out), `exit ${main.status ?? 'killed'}`);
   }
   if (second !== undefined) {
-    out.push(...lined('second-stderr', second.err), ...lined('second-stdout', second.out), `second-exit ${second.status ?? 'killed'}`);
+    out.push(...lined('second-stderr', second.err, holder), ...lined('second-stdout', second.out), `second-exit ${second.status ?? 'killed'}`);
   }
   out.push(...helperCalls(rec), ...tmuxCalls(rec));
   let names: string[];
