@@ -1057,8 +1057,8 @@ click = \"goto\"")" "$(expect 'options reloaded')" "$(sentinel)")"
 must_count "other files: one reload" 'options reloaded' 1
 must_count "other files: no problem" 'options: ' 0
 # A daemon that starts with no options file, no plugins directory or no config directory runs on the defaults, whose backend is `auto`: the helper on macOS, and on every other system no backend at all, where the daemon leaves. So the scenarios that go on from there run on macOS only, the helper's calls telling what the notice carried, and the start itself is a scenario everywhere.
-not_found_at_start() {  # <label>: the started line says it, where there is one
-  if [ "$OS" = Darwin ]; then must "$1: the started line" 'notify.toml (not found)'; elif [ "$OS" = Linux ]; then must "$1: no backend on linux" 'no notification backend for linux yet; exiting'; fi
+not_found_at_start() {  # <label> [<what the log says on macOS>]: the log says it, where there is a log to say it
+  if [ "$OS" = Darwin ]; then must "$1: told" "${2:-notify.toml (not found)}"; elif [ "$OS" = Linux ]; then must "$1: no backend on linux" 'no notification backend for linux yet; exiting'; fi
 }
 NOFILE=1
 play "options file: not found at start" "$(steps "$(start settled)")"
@@ -1068,7 +1068,7 @@ play "options file: no plugins directory at start" "$(steps "$(start settled)")"
 not_found_at_start "options file: no plugins directory"
 NOCONFIG=1
 play "options file: no config directory at start" "$(steps "$(start settled)")"
-must "no config: told" 'options reload is off: TMP/run/config does not exist'
+not_found_at_start "options file: no config directory" 'options reload is off: TMP/run/config does not exist'
 GOTO='"argv":["/parity/bin/tagents","--goto","%99"]'
 NOPLUGINS=1
 play_mac "options file: a plugins directory that is made later" "$(steps "$(start)" "$(mkdir_ config/plugins)" "$(put $CFG "$MAC
