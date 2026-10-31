@@ -143,20 +143,12 @@ fn read_line(stdout: &str) -> Option<Result<HelperLine, String>> {
     }))
 }
 
-/// The name node gives a failed `spawn`, `spawn <file> <CODE>`; the codes whose numbers are the same on Linux and macOS are named, any other prints what Rust says.
+/// The name node gives a failed `spawn`, `spawn <file> <CODE>`; an error `node::ERRNOS` does not name prints what Rust says.
 fn spawn_message(err: &io::Error, file: &str) -> String {
-    let code = match err.raw_os_error() {
-        Some(2) => "ENOENT",
-        Some(7) => "E2BIG",
-        Some(8) => "ENOEXEC",
-        Some(12) => "ENOMEM",
-        Some(13) => "EACCES",
-        Some(20) => "ENOTDIR",
-        Some(24) => "EMFILE",
-        Some(26) => "ETXTBSY",
-        _ => return err.to_string(),
-    };
-    format!("spawn {file} {code}")
+    match node::errno(err) {
+        Some(errno) => format!("spawn {file} {}", errno.code),
+        None => err.to_string(),
+    }
 }
 
 fn run_helper(

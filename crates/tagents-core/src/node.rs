@@ -64,21 +64,81 @@ pub fn mtime_ms(meta: &fs::Metadata) -> i64 {
     js::round(meta.mtime() as f64 * 1000.0 + meta.mtime_nsec() as f64 / 1e6) as i64
 }
 
-/// The text of the `Error` node throws for a failed syscall: `EACCES: permission denied, open '/x'`.
-/// Only the errors whose number is the same on Linux and macOS are named; any other prints what Rust says.
+/// An error number with node's name and text for it, as `util.getSystemErrorMap()` gives them.
+pub struct Errno {
+    pub number: i32,
+    pub code: &'static str,
+    pub message: &'static str,
+}
+
+/// The errors the daemon names the way node does. Only those whose number is the same on Linux and macOS are listed; `tests/notify_vectors/errno.rs` compares every code and text with libuv's, which do not depend on the system.
+pub const ERRNOS: &[Errno] = &[
+    Errno {
+        number: 2,
+        code: "ENOENT",
+        message: "no such file or directory",
+    },
+    Errno {
+        number: 5,
+        code: "EIO",
+        message: "i/o error",
+    },
+    Errno {
+        number: 7,
+        code: "E2BIG",
+        message: "argument list too long",
+    },
+    Errno {
+        number: 8,
+        code: "ENOEXEC",
+        message: "exec format error",
+    },
+    Errno {
+        number: 12,
+        code: "ENOMEM",
+        message: "not enough memory",
+    },
+    Errno {
+        number: 13,
+        code: "EACCES",
+        message: "permission denied",
+    },
+    Errno {
+        number: 20,
+        code: "ENOTDIR",
+        message: "not a directory",
+    },
+    Errno {
+        number: 21,
+        code: "EISDIR",
+        message: "illegal operation on a directory",
+    },
+    Errno {
+        number: 24,
+        code: "EMFILE",
+        message: "too many open files",
+    },
+    Errno {
+        number: 26,
+        code: "ETXTBSY",
+        message: "text file is busy",
+    },
+];
+
+/// The table's entry for the error's number, `None` for an error without one or one the table does not name.
+pub fn errno(err: &io::Error) -> Option<&'static Errno> {
+    let number = err.raw_os_error()?;
+    ERRNOS.iter().find(|e| e.number == number)
+}
+
+/// The text of the `Error` node throws for a failed syscall: `EACCES: permission denied, open '/x'`. An error the table does not name prints what Rust says.
 pub fn io_message(err: &io::Error, syscall: &str, path: Option<&str>) -> String {
-    let (code, text) = match err.raw_os_error() {
-        Some(2) => ("ENOENT", "no such file or directory"),
-        Some(5) => ("EIO", "i/o error"),
-        Some(13) => ("EACCES", "permission denied"),
-        Some(20) => ("ENOTDIR", "not a directory"),
-        Some(21) => ("EISDIR", "illegal operation on a directory"),
-        Some(24) => ("EMFILE", "too many open files"),
-        _ => return err.to_string(),
+    let Some(Errno { code, message, .. }) = errno(err) else {
+        return err.to_string();
     };
     match path {
-        Some(path) => format!("{code}: {text}, {syscall} '{path}'"),
-        None => format!("{code}: {text}, {syscall}"),
+        Some(path) => format!("{code}: {message}, {syscall} '{path}'"),
+        None => format!("{code}: {message}, {syscall}"),
     }
 }
 
