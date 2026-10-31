@@ -48,7 +48,7 @@ function rig(o: RigOptions = {}) {
   const home = tmpDir('notify-cmd-home');
   if (o.options !== undefined) {
     fs.mkdirSync(path.join(config, 'plugins'));
-    fs.writeFileSync(path.join(config, 'plugins', 'notify.yaml'), o.options);
+    fs.writeFileSync(path.join(config, 'plugins', 'notify.toml'), o.options);
   }
   const mainJs = path.join(home, 'main.js');
   if (o.mainJs !== null) fs.writeFileSync(o.mainJs ?? mainJs, '');
@@ -126,13 +126,13 @@ test('install refuses without a build, and with the none backend', async () => {
   const unbuilt = rig({ mainJs: null, platform: {} });
   assert.equal(await unbuilt.run('install'), 1);
   assert.match(unbuilt.err(), /run pnpm build first/);
-  const none = rig({ options: 'backend: none\n', platform: 'real' });
+  const none = rig({ options: 'backend = "none"\n', platform: 'real' });
   assert.equal(await none.run('install'), 1);
   assert.match(none.err(), /backend is none/);
 });
 
 test('test --kind question posts through the log backend and says shown', async () => {
-  const r = rig({ os: 'linux', options: 'backend: log\n', platform: 'real' });
+  const r = rig({ os: 'linux', options: 'backend = "log"\n', platform: 'real' });
   assert.equal(await r.run('test', '--kind', 'question'), 0, r.err());
   assert.equal(r.out(), 'shown\n');
   const line = r.errs.find((l) => l.includes('post tagents-s-test question'));
@@ -143,7 +143,7 @@ test('test --kind question posts through the log backend and says shown', async 
 
 test('test with a pane takes the event from that pane\'s state row', async () => {
   const row = '1700000000\tdone\tsess-77\t/work/ticket\t\t\n';
-  const withPane = rig({ os: 'linux', options: 'backend: log\n', platform: 'real', exec: async () => result({ code: 1 }), env: { TMUX_PANE: '%12' } });
+  const withPane = rig({ os: 'linux', options: 'backend = "log"\n', platform: 'real', exec: async () => result({ code: 1 }), env: { TMUX_PANE: '%12' } });
   fs.writeFileSync(path.join(withPane.state, '12.tsv'), row);
   assert.equal(await withPane.run('test'), 0, withPane.err());
   const line = withPane.errs.find((l) => l.includes('post tagents-12 turn_done'));
@@ -258,7 +258,7 @@ test('send says dropped with the reason and exits 1, and with the none backend s
   const dropped = rig({ os: 'linux', platform: { notifier } });
   assert.equal(await dropped.run('send', 'hello'), 1);
   assert.equal(dropped.out(), 'dropped: notifications are off\n');
-  const none = rig({ os: 'linux', options: 'backend: none\n', platform: 'real' });
+  const none = rig({ os: 'linux', options: 'backend = "none"\n', platform: 'real' });
   assert.equal(await none.run('send', 'hello'), 1);
   assert.match(none.out(), /^error: backend is none/);
 });
@@ -298,9 +298,9 @@ test('status exits 1 for a stopped service, a missing permission, a stream that 
   assert.equal(await broken.run('status'), 1);
   assert.match(broken.out(), /^permission: unknown: helper missing$/m);
 
-  const invalid = rig({ options: 'events: 7\n', platform: { permission: async () => 'authorized' } });
+  const invalid = rig({ options: 'events = 7\n', platform: { permission: async () => 'authorized' } });
   assert.equal(await invalid.run('status'), 1);
-  assert.match(invalid.out(), /^options: .*notify\.yaml invalid$/m);
+  assert.match(invalid.out(), /^options: .*notify\.toml invalid$/m);
   assert.match(invalid.out(), /^ {2}events/m, 'the problem is on a line of its own');
 });
 
@@ -330,7 +330,7 @@ test('install writes the run spec: node, the built entry, the dirs the service n
       LC_ALL: 'en_US.UTF-8',
       TMUX_TMPDIR: '',
       XDG_CONFIG_HOME: '/x/config',
-      TA_CONFIG: '/x/config.yaml',
+      TA_CONFIG: '/x/config.toml',
       TAGENTS_LOCALE: 'ru',
       TA_NOTIFY_APP: '/tmp/Fake.app',
     },
@@ -356,7 +356,7 @@ test('install writes the run spec: node, the built entry, the dirs the service n
       TA_STATE_DIR: r.state,
       TAGENTS_CONFIG_DIR: r.config,
       XDG_CONFIG_HOME: '/x/config',
-      TA_CONFIG: '/x/config.yaml',
+      TA_CONFIG: '/x/config.toml',
       TAGENTS_LOCALE: 'ru',
       TA_NOTIFY_APP: '/tmp/Fake.app',
       TA_NOTIFY_TAGENTS: tagentsScript({}),
@@ -418,7 +418,7 @@ test('uninstall without --purge keeps the app, and off darwin there is nothing t
 });
 
 test('uninstall still reaches the service when the backend is none', async () => {
-  const r = rig({ options: 'backend: none\n', platform: {} });
+  const r = rig({ options: 'backend = "none"\n', platform: {} });
   assert.equal(await r.run('uninstall'), 0);
   assert.equal(r.service.uninstalls, 1);
 });
@@ -468,7 +468,7 @@ function macosRig(o: MacosExecOptions & { readonly options?: string; readonly en
 const lines = (out: string): string[] => out.split('\n');
 
 test('the icon option, relative to the options file, reaches the build and its check, and install says which icon the app has', async () => {
-  const t = macosRig({ options: 'icon: mine.png\n' });
+  const t = macosRig({ options: 'icon = "mine.png"\n' });
   const png = path.join(t.config, 'plugins', 'mine.png');
   fs.writeFileSync(png, 'png');
   assert.equal(await t.run('install'), 0, t.err());
@@ -494,14 +494,14 @@ test('without the option the icon is notify-icon.png beside the app when there i
 test('a configured icon that is not a file is a problem line in status and in install, and the app is built without it', async () => {
   const problemOf = (config: string): string =>
     `icon ${path.join(config, 'plugins', 'gone.png')} does not exist; the app is built without an icon`;
-  const t = macosRig({ options: 'icon: gone.png\n' });
+  const t = macosRig({ options: 'icon = "gone.png"\n' });
   const problem = problemOf(t.config);
 
   assert.equal(await t.run('status'), 0, 'the notices still arrive, so the exit code is not about the icon');
   assert.ok(lines(t.out()).includes('icon: none'), t.out());
   assert.ok(lines(t.out()).includes(`  ${problem}`), t.out());
 
-  const installed = macosRig({ options: 'icon: gone.png\n' });
+  const installed = macosRig({ options: 'icon = "gone.png"\n' });
   assert.equal(await installed.run('install'), 0, installed.err());
   const installedProblem = problemOf(installed.config);
   assert.ok(installed.err().includes(installedProblem), installed.err());
@@ -576,7 +576,7 @@ test('test docks $TMUX_PANE even when no state row exists for that pane, with an
 });
 
 test('with click: focus the script is not used, so status does not call it missing', async () => {
-  const r = rig({ options: 'click: focus\n', env: { TA_NOTIFY_TAGENTS: '/nonexistent/tagents' } });
+  const r = rig({ options: 'click = "focus"\n', env: { TA_NOTIFY_TAGENTS: '/nonexistent/tagents' } });
   await r.run('status');
   assert.ok(lines(r.out()).includes('click: /nonexistent/tagents (not used: click is focus)'), r.out());
 });
@@ -603,7 +603,7 @@ test('status says whether the script a click runs is there, and install warns wh
   await notExecutable.run('status');
   assert.ok(lines(notExecutable.out()).includes(`click: ${script} (missing)`), 'present but not executable counts as missing');
 
-  const focus = rig({ options: 'click: focus\n', env: { TA_NOTIFY_TAGENTS: path.join(dir, 'gone', 'tagents') }, platform: { setup: async () => 'authorized' } });
+  const focus = rig({ options: 'click = "focus"\n', env: { TA_NOTIFY_TAGENTS: path.join(dir, 'gone', 'tagents') }, platform: { setup: async () => 'authorized' } });
   await focus.run('install');
   assert.ok(!focus.err().includes('docks nothing'), 'click: focus never runs the script');
 });
@@ -758,7 +758,7 @@ test('install does the build, the authorization, the service install, the settle
 });
 
 test('install builds the app without an icon the build refuses, and says which icon it was', async () => {
-  const t = macosRig({ options: 'icon: bad.png\n', failBuildWithIcon: true });
+  const t = macosRig({ options: 'icon = "bad.png"\n', failBuildWithIcon: true });
   const png = path.join(t.config, 'plugins', 'bad.png');
   fs.writeFileSync(png, 'not a picture');
   assert.equal(await t.run('install'), 0, t.err());

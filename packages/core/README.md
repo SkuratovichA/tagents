@@ -150,7 +150,6 @@ on stdout and nothing else; text verbs print what `sessions.mjs` printed.
 | `plugin add <package-or-path> [--name N]` | validate a package's manifest and write it into the config (`config.toml`) |
 | `plugin remove <name>` | take one entry back out |
 | `plugin new <name> [--dir D]` | scaffold a package that is already a plugin |
-| `config convert [FILE] [--write] [--all]` | the YAML config as TOML on stdout, checked against what the dashboard reads from the YAML; `--write` creates the `.toml` beside it and never overwrites or deletes anything, `--all` adds the `config.<host>.yaml` overlays |
 | `doctor` | node, state dir, config file, `claude` on PATH |
 | `<plugin> <command> [args]` | whatever that plugin's own verb prints — `plugin list` names them |
 
@@ -173,7 +172,6 @@ A plugin is a package that default-exports one `definePlugin({ … })` object an
 from = "../telegram-bots/orchestrator"   # a path, or a package name
 ```
 
-A `config.yaml` with the same `plugins:` map is read when there is no `config.toml`, and says so once per process; `tagents config convert` turns it into TOML.
 
 The host never scans `node_modules` — scanning is how a machine ends up running code nobody chose. `from` points at a package; the package says where its code is in its own `package.json`:
 
@@ -250,7 +248,7 @@ The agent hook appends one line per event to `events.tsv` in the state dir, but 
 
 `PluginContext.agents` is the feed: `agents.states()` reads the current state rows, and `agents.follow(onEvent)` streams the events and flips the switch on for as long as someone follows.
 
-A plugin's options live in a file of its own, `<configDir>/plugins/<name>.toml` (or the `<name>.yaml` that is there instead), the way neovim keeps the enable list apart from each plugin's settings: `loadPluginOptions(configDir, name, schema)` returns the schema's defaults when the file is missing, and one problem line per issue (the same `path: message` wording the verbs use for their arguments) when it does not parse or does not fit, so a caller can print them and stop instead of guessing.
+A plugin's options live in a file of its own, `<configDir>/plugins/<name>.toml`, the way neovim keeps the enable list apart from each plugin's settings: `loadPluginOptions(configDir, name, schema)` returns the schema's defaults when the file is missing, and one problem line per issue (the same `path: message` wording the verbs use for their arguments) when it does not parse or does not fit, so a caller can print them and stop instead of guessing.
 
 A relative `from` in the config is resolved against the config dir first, and, when that finds no `package.json`, against the config dir's real location.
 

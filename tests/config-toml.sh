@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# tests/config-toml.sh — config.toml: the awk reader, which file is read, the YAML fallback and what --check and the status bar say about it.
+# tests/config-toml.sh — config.toml: the awk reader, which file is read and what --check and the status bar say about it.
 #
 # No tmux, no fzf, no Claude. Everything goes through --config, --check, --counts and --profile-for, with fixtures written into a mktemp dir and found through $TA_CONFIG or $XDG_CONFIG_HOME, so nothing touches a real config.
 #
@@ -53,7 +53,7 @@ dumpo() { TA_CONFIG="$1" tg --config 2>/dev/null; }
 nlines() { printf '%s' "$1" | awk 'END { print NR }'; }
 
 # ---------------------------------------------------------------------------
-t "1. the reader: the subset flattens like the YAML reader's stream"
+t "1. the reader: the subset flattens to one path<TAB>value line per leaf"
 # ---------------------------------------------------------------------------
 
 cat >"$TMP/subset.toml" <<'EOF'
@@ -126,9 +126,9 @@ ok "every construct of the subset" "$want" "$(dump "$TMP/subset.toml")"
 sed 's/$/\r/' "$TMP/subset.toml" >"$TMP/subset-crlf.toml"
 ok "a CRLF file reads as its LF twin" "$want" "$(dump "$TMP/subset-crlf.toml")"
 
-# The shipped pair: the TOML example is the YAML example, leaf for leaf and byte for byte.
-ok "config.example.toml flattens exactly like the YAML example it replaces" \
-   "$(dump "$HERE/fixtures/config.example.yaml")" "$(dump "$HERE/../config.example.toml")"
+# The shipped example reads without one refusal, and its leaves are the ones the file documents.
+contains "config.example.toml reads: the account rules are there" "claude.rules.0.dir${TAB}~/git/personal" "$(dump "$HERE/../config.example.toml")"
+lacks    "...and no line of it is refused" "not a key = value line" "$(dump "$HERE/../config.example.toml")"
 
 # A table owns the plain keys under it; the empty ones still count.
 printf '[a]\n[a.b]\n[c]\n' >"$TMP/empties.toml"
@@ -180,7 +180,7 @@ contains "a bad header: refused" "badhead.toml:1: " "$out"
 lacks    "...and the keys that were meant for it are not given to another table" "config_dir${TAB}x" "$out"
 contains "...while the next table reads" "claude.profiles.b.config_dir${TAB}y" "$out"
 
-# The refusals reach --check like the YAML reader's do.
+# The refusals reach --check.
 out=$(TA_CONFIG="$TMP/refuse.toml" tg --check 2>/dev/null)
 contains "--check lists a refusal as file:line: why" "refuse.toml:2: " "$out"
 
@@ -258,48 +258,27 @@ ok "only config.toml: it is read" "notes.send${TAB}paste" "$(lookup "$TMP/only-t
 ok "...and a good TOML config has nothing to say" "" "$(lookup "$TMP/only-toml" --check 2>&1)"
 
 mk "$TMP/only-yaml"; printf 'notes:\n  send: submit\n' >"$TMP/only-yaml/tagents/config.yaml"
-ok "only config.yaml: read exactly as before" "notes.send${TAB}submit" "$(lookup "$TMP/only-yaml" --config 2>&1)"
-out=$(lookup "$TMP/only-yaml" --check 2>&1); rc=$?
-contains "...and --check says it is deprecated, naming the file" "only-yaml/tagents/config.yaml: YAML config is deprecated" "$out"
-contains "...and what to run" "tagents config convert" "$out"
-ok "...which is a problem: exit 1" 1 "$rc"
-ok "...one line for it" 1 "$(nlines "$out")"
+out=$(lookup "$TMP/only-yaml" --config 2>&1); rc=$?
+contains "only a config.yaml: it is not looked at, and the message names config.toml" "tagents: no config at $TMP/only-yaml/tagents/config.toml" "$out"
+ok "...exit 1" 1 "$rc"
+ok "...and --check is quiet, exit 0" "0" "$(lookup "$TMP/only-yaml" --check >/dev/null 2>&1; echo $?)"
 
 mk "$TMP/both"; printf '[notes]\nsend = "paste"\n' >"$TMP/both/tagents/config.toml"; printf 'notes:\n  send: submit\n' >"$TMP/both/tagents/config.yaml"
-ok "both files: the TOML one wins" "notes.send${TAB}paste" "$(lookup "$TMP/both" --config 2>/dev/null)"
-out=$(lookup "$TMP/both" --check 2>&1); rc=$?
-contains "...and --check names the TOML file" "both/tagents/config.toml: " "$out"
-contains "...and the YAML file it ignores, by name" "config.yaml is also there" "$out"
-contains "...saying which one is read" "config.toml is read" "$out"
-ok "...exit 1" 1 "$rc"
-lacks "...and the YAML file is not called deprecated: it is not being read" "YAML config is deprecated" "$out"
+ok "both files: the TOML one is read" "notes.send${TAB}paste" "$(lookup "$TMP/both" --config 2>/dev/null)"
+ok "...and --check says nothing about the other one" "" "$(lookup "$TMP/both" --check 2>&1)"
 
 mk "$TMP/none"
 out=$(lookup "$TMP/none" --config 2>&1 >/dev/null); rc=$?
 contains "no file: the message names config.toml, the format to write" "tagents: no config at $TMP/none/tagents/config.toml" "$out"
 ok "...and --check is quiet, exit 0" "0" "$(lookup "$TMP/none" --check >/dev/null 2>&1; echo $?)"
 
-# The same table packages/core/test/config-file.test.ts checks configFormat against: which names are TOML.
-fmt=$TMP/formats; mkdir -p "$fmt"
-while IFS="$TAB" read -r name want; do
-  [ -n "$name" ] || continue
-  mkdir -p "$fmt/$(dirname "$name")"; : >"$fmt/$name"
-  out=$(TA_CONFIG="$fmt/$name" tg --check 2>&1)
-  case $out in *"YAML config is deprecated"*) got=yaml ;; *) got=toml ;; esac
-  ok "$name is read as $want" "$want" "$got"
-done <"$HERE/fixtures/config-formats.tsv"
-
-# $TA_CONFIG: the extension picks the reader.
+# $TA_CONFIG names the file, whatever its extension: the content is read as TOML.
 cp "$TMP/only-toml/tagents/config.toml" "$TMP/named.toml"
-cp "$TMP/only-yaml/tagents/config.yaml" "$TMP/named.yaml"
-cp "$TMP/only-yaml/tagents/config.yaml" "$TMP/named.yml"
-cp "$TMP/only-yaml/tagents/config.yaml" "$TMP/named-no-extension"
-ok "TA_CONFIG ending in .toml is read as TOML" "notes.send${TAB}paste" "$(dump "$TMP/named.toml")"
-ok "...in .yaml as YAML" "notes.send${TAB}submit" "$(dump "$TMP/named.yaml")"
-ok "...in .yml as YAML" "notes.send${TAB}submit" "$(dump "$TMP/named.yml")"
-ok "...in anything else as YAML, as it always was" "notes.send${TAB}submit" "$(dump "$TMP/named-no-extension")"
+cp "$TMP/only-toml/tagents/config.toml" "$TMP/named-no-extension"
+ok "TA_CONFIG ending in .toml is read" "notes.send${TAB}paste" "$(dump "$TMP/named.toml")"
+ok "...and one with any other name is read the same way" "notes.send${TAB}paste" "$(dump "$TMP/named-no-extension")"
 printf 'notes:\n  send: submit\n' >"$TMP/looks-yaml.toml"
-contains "a .toml file holding YAML is refused as TOML, not guessed at" "looks-yaml.toml:1: " "$(dump "$TMP/looks-yaml.toml")"
+contains "a file holding YAML is refused as TOML, not guessed at" "looks-yaml.toml:1: " "$(dump "$TMP/looks-yaml.toml")"
 
 # The rules a TOML file declares are the rules the launcher follows.
 mkdir -p "$TMP/home/git/personal/x"
@@ -317,7 +296,7 @@ EOF
 ok "--profile-for follows a [[claude.rules]] table" "personal" "$(TA_CONFIG="$TMP/rules.toml" tg --profile-for "$TMP/home/git/personal/x" 2>/dev/null)"
 
 # ---------------------------------------------------------------------------
-t "4. the per-machine overlay, in either format"
+t "4. the per-machine overlay"
 # ---------------------------------------------------------------------------
 
 mk "$TMP/ov"
@@ -331,32 +310,20 @@ config_dir = "~/.claude-personal"
 send = "reference"
 EOF
 cat >"$TMP/ov/tagents/config.mbp.toml" <<'EOF'
-[claude.profiles.sasha]
-config_dir = "~/.claude-sasha"
+[claude.profiles.client]
+config_dir = "~/.claude-client"
 EOF
 ovl() { TA_HOST=$1 lookup "$TMP/ov" "${@:2}"; }
-ok "a TOML overlay replaces the subtree it names wholesale, and its lines come first" "claude.profiles.sasha.config_dir${TAB}~/.claude-sasha
+ok "a TOML overlay replaces the subtree it names wholesale, and its lines come first" "claude.profiles.client.config_dir${TAB}~/.claude-client
 claude.args${TAB}--base
 notes.send${TAB}reference" "$(ovl mbp --config 2>&1)"
-ok "another host: the base alone" 0 "$(ovl other --config 2>&1 | grep -c sasha)"
+ok "another host: the base alone" 0 "$(ovl other --config 2>&1 | grep -c client)"
 
-printf 'claude:\n  profiles:\n    nuzhin:\n      config_dir: ~/.claude-nuzhin\n' >"$TMP/ov/tagents/config.mac.yaml"
-ok "a YAML overlay on a TOML base: each file read by its own reader" "claude.profiles.nuzhin.config_dir${TAB}~/.claude-nuzhin" "$(ovl mac --config 2>&1 | head -1)"
-out=$(ovl mac --check 2>&1)
-contains "...and the overlay is named deprecated, not the base" "ov/tagents/config.mac.yaml: YAML config is deprecated" "$out"
-lacks    "...the TOML base is not" "config.toml: YAML config is deprecated" "$out"
+printf 'claude:\n  profiles:\n    yaml:\n      config_dir: ~/.claude-yaml\n' >"$TMP/ov/tagents/config.mac.yaml"
+ok "a config.mac.yaml beside the base is not an overlay" 0 "$(ovl mac --config 2>&1 | grep -c yaml)"
 
 printf '[claude.profiles.toml]\nconfig_dir = "~/.claude-toml"\n' >"$TMP/ov/tagents/config.mac.toml"
-ok "both overlays for one host: the TOML one wins" "claude.profiles.toml.config_dir${TAB}~/.claude-toml" "$(ovl mac --config 2>/dev/null | head -1)"
-out=$(ovl mac --check 2>&1)
-contains "...with a note naming both overlay files" "config.mac.toml: " "$out"
-contains "...and the YAML one it ignores" "config.mac.yaml is also there" "$out"
-
-# A base in YAML, its overlay in TOML.
-mk "$TMP/ov2"
-printf 'notes:\n  send: paste\n' >"$TMP/ov2/tagents/config.yaml"
-printf '[notes]\nsend = "submit"\n' >"$TMP/ov2/tagents/config.mbp.toml"
-ok "a TOML overlay on a YAML base" "notes.send${TAB}submit" "$(TA_HOST=mbp lookup "$TMP/ov2" --config 2>&1)"
+ok "a config.mac.toml is the overlay for that host" "claude.profiles.toml.config_dir${TAB}~/.claude-toml" "$(ovl mac --config 2>/dev/null | head -1)"
 
 # ---------------------------------------------------------------------------
 t "5. --check on a TOML config, and the status bar"
@@ -380,23 +347,9 @@ ok       "exit 1" 1 "$rc"
 
 mkdir -p "$TMP/logins"
 printf '[usage]\nworkdays = true\n' >"$TMP/good.toml"
-printf 'usage:\n  workdays: true\n' >"$TMP/good.yaml"
 counts() { rm -f "$TMP/state/.cfg-check"; env -u XDG_CONFIG_HOME TA_COUNTS_EVERY=0 HOME="$TMP/home" TA_STATE_DIR="$TMP/state" TA_HOST=nohost TA_CONFIG="$1" bash "$TA" --counts 2>/dev/null; }
 lacks    "the status bar shows nothing for a good TOML config" "cfg!" "$(counts "$TMP/good.toml")"
-contains "...and the YAML fallback is one problem in it" "cfg!1" "$(counts "$TMP/good.yaml")"
 contains "...like any other problem: a bad TOML value adds to it" "cfg!4" "$(counts "$TMP/bad.toml")"
-contains "...and a YAML config with a problem counts the deprecation too" "cfg!2" \
-         "$(printf 'usage:\n  workdays: sometimes\n' >"$TMP/bad.yaml"; counts "$TMP/bad.yaml")"
-
-# Writing config.toml beside a YAML config clears the marker at the next redraw: the stamp names the file it described.
-mk "$TMP/bar"; printf 'usage:\n  workdays: true\n' >"$TMP/bar/tagents/config.yaml"
-bar() { env -u TA_CONFIG TA_COUNTS_EVERY=0 XDG_CONFIG_HOME="$TMP/bar" HOME="$TMP/home" TA_STATE_DIR="$TMP/state" TA_HOST=nohost bash "$TA" --counts 2>/dev/null; }
-rm -f "$TMP/state/.cfg-check"
-contains "a YAML-only config: the marker" "cfg!1" "$(bar)"
-printf '[usage]\nworkdays = true\n' >"$TMP/bar/tagents/config.toml"
-contains "...with a TOML file beside it, the same two files are named in one problem" "cfg!1" "$(bar)"
-rm -f "$TMP/bar/tagents/config.yaml"
-lacks    "...and with the YAML gone the marker clears on the very next redraw" "cfg!" "$(bar)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

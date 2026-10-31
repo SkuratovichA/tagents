@@ -63,7 +63,7 @@ done
 export HOME="$HOMED"
 export TMUX="$ROOT/no-such-socket,1,0"
 export TA_STATE_DIR="$STATE"
-export TA_CONFIG="$ROOT/absent.yaml"
+export TA_CONFIG="$ROOT/absent.toml"
 export TA_COLS=120
 export TA_COUNTS_EVERY=0   # measure the uncached --counts; the cache has its own check below
 unset TA_HOST FZF_COLUMNS TMUX_PANE
@@ -94,9 +94,9 @@ add_subs() {  # <n>
   done
 }
 config_of() {  # <n keys> -> path
-  local f="$ROOT/config-$1.yaml" i
+  local f="$ROOT/config-$1.toml" i
   : >"$f"
-  for i in $(seq 1 "$1"); do printf 'key%s: value%s\n' "$i" "$i" >>"$f"; done
+  for i in $(seq 1 "$1"); do printf 'key%s = "value%s"\n' "$i" "$i" >>"$f"; done
   printf '%s' "$f"
 }
 
@@ -142,7 +142,7 @@ le "hostname is started once for the whole process (list and overlay share it)" 
 
 # ---------------------------------------------------------------------------
 t "the records still come out"
-export TA_CONFIG="$ROOT/absent.yaml"
+export TA_CONFIG="$ROOT/absent.toml"
 fresh; add_models 2; add_states 2
 out=$("$TA" --flat 2>&1)
 n=1
@@ -175,7 +175,7 @@ export TA_COUNTS_EVERY=0
 
 # ---------------------------------------------------------------------------
 t "a record that cannot be read does not take the ones after it down"
-export TA_CONFIG="$ROOT/absent.yaml"
+export TA_CONFIG="$ROOT/absent.toml"
 fresh; add_models 3; add_states 3; add_subs 3
 chmod 000 "$STATE/model/sid-2.tsv" "$STATE/s-sid-2.tsv" "$STATE/sub/102"
 out=$("$TA" --flat 2>&1)
@@ -184,19 +184,19 @@ row=$(printf '%s\n' "$out" | grep "^%s-sid-3$TAB" | head -1)
 has "record 3: row of the pane-less session" "%s-sid-3$TAB" "$row"
 has "record 3: model from model/" "opus3" "$row"
 ok "no awk error reaches the output" 0 "$(printf '%s\n' "$out" | grep -c "can't open")"
-export TA_CONFIG="$ROOT/absent.yaml"
+export TA_CONFIG="$ROOT/absent.toml"
 export TA_COUNTS_EVERY=0
 
 # ---------------------------------------------------------------------------
 t "--counts: an interval that is not a number falls back to the default, not to never"
-export TA_CONFIG="$ROOT/absent.yaml"
+export TA_CONFIG="$ROOT/absent.toml"
 fresh; add_states 2
 want=$(TA_COUNTS_EVERY=0 "$TA" --counts 2>/dev/null)
 rm -f "$STATE/.counts.ts" "$STATE/.counts.out"
 got=$(TA_COUNTS_EVERY=abc "$TA" --counts 2>/dev/null)
 ok "the counts are not empty" 1 "$([ -n "$want" ] && echo 1 || echo 0)"
 ok "TA_COUNTS_EVERY=abc still prints the counts" "$want" "$got"
-export TA_CONFIG="$ROOT/absent.yaml"
+export TA_CONFIG="$ROOT/absent.toml"
 export TA_COUNTS_EVERY=0
 
 # ---------------------------------------------------------------------------
@@ -253,7 +253,7 @@ ok "...and nothing is asked about seats" 0 "$(grep -c -E 'tagents_slot|tagents_d
 
 # ---------------------------------------------------------------------------
 t "--sync-names: awk starts do not grow with the state files"
-export TA_CONFIG="$ROOT/absent.yaml"
+export TA_CONFIG="$ROOT/absent.toml"
 fresh; add_states 2; a=$(starts awk --sync-names)
 fresh; add_states 6; b=$(starts awk --sync-names)
 ok "6 state files start as many awk as 2" "$a" "$b"
@@ -267,7 +267,7 @@ fresh; add_states 2
 settle --counts
 h=$(starts hostname --counts)
 ok "the cached run starts no hostname" 0 "$h"
-export TA_CONFIG="$ROOT/absent.yaml"
+export TA_CONFIG="$ROOT/absent.toml"
 export TA_COUNTS_EVERY=0
 
 # ---------------------------------------------------------------------------
@@ -297,7 +297,7 @@ add_live() {
     printf 'sid-%s\t%s\n' "$i" "$d" >>"$STATE/origin.tsv"
   done
 }
-export TA_CONFIG="$ROOT/absent.yaml"
+export TA_CONFIG="$ROOT/absent.toml"
 for mode in grouped flat; do
   fresh; add_live blocked:1 done:1 working:2 working:2 blocked:3 done:3 working:3
   if [ "$mode" = flat ]; then export TA_FLAT=1; else unset TA_FLAT; fi
@@ -345,7 +345,7 @@ for cf in "$ROOT/absent.toml" "$ROOT/cfgbad.toml"; do
   has "${cf##*/}: ...and it is not empty" "⚠1 " "$(cat "$ROOT/now.out")"
 done
 has "a config with a problem keeps its marker in front" "cfg!1 " "$(cat "$ROOT/now.out")"
-export TA_CONFIG="$ROOT/absent.yaml"
+export TA_CONFIG="$ROOT/absent.toml"
 
 # ---------------------------------------------------------------------------
 t "--counts: a cached run starts one program, date, and prints the cache as it is"
@@ -445,10 +445,10 @@ printf '#!/bin/sh\necho x >>"%s/hn.count"\nexit 1\n' "$CNT" >"$HNSHIM/hostname"
 chmod +x "$HNSHIM/hostname"
 fresh; add_states 2
 : >"$CNT/hn.count"
-TA_CONFIG="$ROOT/absent.yaml" PATH="$HNSHIM:$PATH" fn 'list; list' >/dev/null 2>&1
+TA_CONFIG="$ROOT/absent.toml" PATH="$HNSHIM:$PATH" fn 'list; list' >/dev/null 2>&1
 le "two lists in one process start hostname at most once" 1 "$(wc -l <"$CNT/hn.count" | tr -d ' ')"
 : >"$CNT/hn.count"
-TA_CONFIG="$ROOT/absent.yaml" PATH="$HNSHIM:$PATH" fn 'sync_window_names; sync_window_names' >/dev/null 2>&1
+TA_CONFIG="$ROOT/absent.toml" PATH="$HNSHIM:$PATH" fn 'sync_window_names; sync_window_names' >/dev/null 2>&1
 le "two names sweeps in one process start hostname at most once" 1 "$(wc -l <"$CNT/hn.count" | tr -d ' ')"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

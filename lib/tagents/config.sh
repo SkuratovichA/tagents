@@ -1,6 +1,6 @@
-# lib/tagents/config.sh — config.toml (and config.yaml, its fallback), flattened
+# lib/tagents/config.sh — config.toml, flattened
 #
-# Two deliberate-subset awk parsers (cfg_parse for YAML, cfg_parse_toml for TOML) that emit the same `path<TAB>value` stream, the once-per-process load with its per-hostname overlay, the accessors everything else is built on (cfg_get/cfg_children/cfg_list), the three path transforms that must not be confused (cfg_expand_dir textually, never realpath, because the keychain is keyed by the literal string; cfg_quote for the /bin/sh command; norm_dir for rule matching), --config, and --check: cfg_check collects what is wrong with the file into CFG_NOTES the way keys.sh collects KEY_NOTES — the parsers' refusals (carried in their stream and sifted out by cfg_sift), the format notes (a YAML config is deprecated, a config.toml shadowing a config.yaml), the values, accounts_check's profiles and rules, the key notes — for the dashboard header, the status bar and the verb. The section banner at the top of "what is wrong with the config" heads that part verbatim.
+# A deliberate-subset awk parser (cfg_parse_toml) that emits a `path<TAB>value` stream, the once-per-process load with its per-hostname overlay, the accessors everything else is built on (cfg_get/cfg_children/cfg_list), the three path transforms that must not be confused (cfg_expand_dir textually, never realpath, because the keychain is keyed by the literal string; cfg_quote for the /bin/sh command; norm_dir for rule matching), --config, and --check: cfg_check collects what is wrong with the file into CFG_NOTES the way keys.sh collects KEY_NOTES — the parser's refusals (carried in its stream and sifted out by cfg_sift), the values, accounts_check's profiles and rules, the key notes — for the dashboard header, the status bar and the verb. The section banner at the top of "what is wrong with the config" heads that part verbatim.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -9,23 +9,14 @@
 #
 # Everything here is inert without ~/.config/tagents/config.toml. No file means no profiles, which means agent_cmd falls back to exactly the strings this script has always used and nothing ever asks you anything.
 #
-# Each parser is one awk program over a deliberate subset of its format — tables, sequences, quoted scalars, comments — flattened to `path<TAB>value`, one line per leaf, in file order. yq is not installed anywhere this has to run, and a config that decides which LOGIN an agent gets is not worth a python start-up on every keypress. Sequence items (a YAML list, a TOML array, a TOML [[table]]) are `path.N`, so a rule is claude.rules.0.dir and the whole thing stays greppable by hand: that is what --config prints.
+# The parser is one awk program over a deliberate subset of TOML — tables, arrays, quoted scalars, comments — flattened to `path<TAB>value`, one line per leaf, in file order. A TOML reader is not installed anywhere this has to run, and a config that decides which LOGIN an agent gets is not worth a node or python start-up on every keypress. Sequence items (a TOML array, a TOML [[table]]) are `path.N`, so a rule is claude.rules.0.dir and the whole thing stays greppable by hand: that is what --config prints.
 #
-# WHICH FILE. cfg_resolve below. $TA_CONFIG names the file and its extension picks the reader. Without it the directory is searched: config.toml, else config.yaml (read as it always was, and reported as deprecated by --check and the status bar), else config.toml as the place a new one would go.
+# WHICH FILE. cfg_resolve below. $TA_CONFIG names the file, whatever it is called, and it is read as TOML. Without it the config is config.toml in $XDG_CONFIG_HOME/tagents (else ~/.config/tagents), whether it is there yet or not.
 # ---------------------------------------------------------------------------
-CFG_TWIN=''     # the config.yaml that a config.toml beside it hides, if any
 cfg_readable() { [ -f "$1" ] && [ -r "$1" ]; }
-cfg_resolve() {  # -> CONFIG_FILE, CFG_TWIN
-  local d
-  CFG_TWIN=''
+cfg_resolve() {  # -> CONFIG_FILE
   if [ -n "${TA_CONFIG:-}" ]; then CONFIG_FILE=$TA_CONFIG; return 0; fi
-  d=${XDG_CONFIG_HOME:-$HOME/.config}/tagents
-  if cfg_readable "$d/config.toml"; then
-    CONFIG_FILE=$d/config.toml
-    ! cfg_readable "$d/config.yaml" || CFG_TWIN=$d/config.yaml
-  elif cfg_readable "$d/config.yaml"; then CONFIG_FILE=$d/config.yaml
-  else CONFIG_FILE=$d/config.toml
-  fi
+  CONFIG_FILE=${XDG_CONFIG_HOME:-$HOME/.config}/tagents/config.toml
 }
 cfg_resolve
 CFG=""          # the flattened config, parsed at most once per process
@@ -48,186 +39,15 @@ CFG_STAMP="$STATE_DIR/.cfg-check"
 CFG_CHECK_EVERY=${TA_CFG_CHECK_EVERY:-60}
 CFG_PARSE_NOTES=''  # the lines the parser refused, kept on the way through cfg_load
 CFG_OVER_FILE=''    # the per-host overlay in effect, so a note can name the file a key is in
-CFG_OVER_TWIN=''    # ...and the config.<host>.yaml that a config.<host>.toml hides, if any
 CFG_OVL=''          # cfg_overlay_for's answer
 CFG_OVER_TOPS=' '   # ...and the a.b subtrees it replaced, space-delimited
 CFG_SIFTED=''       # cfg_sift's answer
 CFG_EXPANDED=''     # cfg_expand_dir_v's answer
 CFG_TOP=''          # cfg_top_of's answer
 
-cfg_parse() {  # [file name for warnings] stdin: yaml -> stdout: path<TAB>value, refusals as !<TAB>file:line: why
-  LC_ALL=C awk -v FNAME="${1:-$CONFIG_FILE}" '
-    # A refusal travels IN the stream, on a line no key can begin with: the
-    # stream is read out of a command substitution, and stderr is the one thing
-    # a substitution cannot capture — which is how these went unseen for as
-    # long as they did. cfg_sift takes them back out.
-    function warn(wn, wy) {
-      printf "!\t%s:%d: %s\n", FNAME, wn, wy
-    }
-    # A # only starts a comment outside quotes and at the start of a word, so
-    # `note: "a # b"` and `url: http://x#y` both survive intact.
-    function stripc(sc,   si, sh, sq, so, sp) {
-      sq = ""; so = ""; sp = " "
-      for (si = 1; si <= length(sc); si++) {
-        sh = substr(sc, si, 1)
-        if (sq == "") {
-          if (sh == "#" && (si == 1 || sp == " " || sp == "\t")) return so
-          # A quote opens a scalar only at the start of a word, the same rule
-          # the # above follows. Without it an apostrophe anywhere in a plain
-          # value opened a scalar that never closed, so the trailing comment was
-          # taken as part of the value — which for a config_dir is a path that
-          # does not exist and a login that silently is not the one asked for.
-          # (No apostrophe in this comment: the program is one quoted string.)
-          if ((sh == DQ || sh == SQ) &&
-              (si == 1 || sp == " " || sp == "\t" || sp == ":")) sq = sh
-        } else if (sq == DQ) {
-          if (sh == "\\" && si < length(sc)) {
-            so = so sh; si++; sh = substr(sc, si, 1); so = so sh; sp = sh; continue
-          }
-          if (sh == DQ) sq = ""
-        } else if (sh == SQ) sq = ""
-        so = so sh; sp = sh
-      }
-      return so
-    }
-    function unq(uv,   ui, uh, uo, un) {
-      if (length(uv) >= 2 && substr(uv, 1, 1) == DQ && substr(uv, length(uv), 1) == DQ) {
-        uv = substr(uv, 2, length(uv) - 2); uo = ""
-        for (ui = 1; ui <= length(uv); ui++) {
-          uh = substr(uv, ui, 1)
-          if (uh == "\\" && ui < length(uv)) {
-            un = substr(uv, ui + 1, 1)
-            if (un == DQ || un == "\\") { uo = uo un; ui++; continue }
-          }
-          uo = uo uh
-        }
-        return uo
-      }
-      if (length(uv) >= 2 && substr(uv, 1, 1) == SQ && substr(uv, length(uv), 1) == SQ)
-        return substr(uv, 2, length(uv) - 2)
-      return uv
-    }
-    # A key is a key only when the colon is followed by a space or ends the
-    # line; otherwise `- ~/x:y` would parse as a mapping. Env var names have to
-    # work as keys, hence the character class.
-    function keyof(ks,   kp, kk) {
-      kp = index(ks, ":")
-      if (kp < 2) return ""
-      if (kp < length(ks) && substr(ks, kp + 1, 1) != " ") return ""
-      kk = substr(ks, 1, kp - 1)
-      if (kk !~ /^[A-Za-z0-9_.-]+$/) return ""
-      return kk
-    }
-    function valof(vs,   vp) {
-      vp = substr(vs, index(vs, ":") + 1)
-      sub(/^ +/, "", vp)
-      return vp
-    }
-    # Refused rather than half-understood: a flow mapping read as a scalar, or a
-    # block scalar read as the character that introduces it, is a config that
-    # silently means something other than what it says.
-    function badval(bv, bn) {
-      if (bv ~ /^\{/ || bv ~ /^\[/) { warn(bn, "flow style is not supported"); return 1 }
-      if (bv ~ /^\|/ || bv ~ /^>/)  { warn(bn, "multi-line scalars are not supported"); return 1 }
-      if (bv ~ /^&/ || bv ~ /^\*/)  { warn(bn, "anchors are not supported"); return 1 }
-      return 0
-    }
-    function push(pp, pi, pk, pn) {
-      np++; cpath[np] = pp; cind[np] = pi; ckey[np] = pk; ckind[np] = pn; ccnt[np] = 0
-    }
-    # A `key:` on its own opens a container whose kind and indentation are not
-    # known until the NEXT line: it may be a mapping, a sequence at the same
-    # column or deeper, or nothing at all — in which case the key was a leaf with
-    # an empty value and is emitted as one here, on the way back out.
-    function resolve(ri, rd) {
-      while (np > 1 || cind[np] == -1) {
-        if (cind[np] == -1) {
-          if (ri > ckey[np] || (rd && ri == ckey[np])) {
-            cind[np] = ri; ckind[np] = rd ? "s" : "m"; ccnt[np] = 0
-            return
-          }
-          print cpath[np] "\t"
-          np--
-          continue
-        }
-        if (ri < cind[np]) { np--; continue }
-        # A key back at the sequence own column ends the sequence.
-        if (!rd && ckind[np] == "s" && ri == cind[np]) { np--; continue }
-        return
-      }
-    }
-    BEGIN {
-      # Built with %c: the whole program is one single-quoted shell string, so a
-      # literal apostrophe anywhere in it would end that string.
-      SQ = sprintf("%c", 39); DQ = sprintf("%c", 34)
-      np = 1; cpath[1] = ""; cind[1] = 0; ckey[1] = -1; ckind[1] = "m"; ccnt[1] = 0
-    }
-    {
-      ln = $0
-      # A CRLF file is not rejected, it is mis-parsed: the \r sits between the
-      # colon and the end of the line, so every `key:` fails keyof() while every
-      # `key: value` keeps the \r inside the value — a config_dir nothing can
-      # open, and no error anywhere to say why.
-      sub(/\r$/, "", ln)
-      # Only a tab in the INDENT is fatal; one inside a value is just a character.
-      if (ln ~ /^[ \t]*\t/) {
-        if (ln ~ /[^ \t]/) warn(NR, "tab indentation is not supported")
-        next
-      }
-      ln = stripc(ln)
-      sub(/[ \t]+$/, "", ln)
-      if (ln ~ /^ *$/) next
-      ind = match(ln, /[^ ]/) - 1
-      body = substr(ln, ind + 1)
-      isdash = (body ~ /^- / || body == "-")
-      resolve(ind, isdash)
-
-      if (isdash) {
-        if (ckind[np] != "s") { warn(NR, "unexpected sequence item"); next }
-        ipath = (cpath[np] == "") ? (ccnt[np] "") : (cpath[np] "." ccnt[np])
-        ccnt[np]++
-        rest = body
-        # Dash then ZERO or more spaces: with a `- ` required, a bare `-` on its
-        # own line could never become the empty rest the branch below is for, so
-        # the item parsed as the scalar string "-" and every key underneath it
-        # was warned away and lost. off is computed from the lengths either way,
-        # so `- dir: x` and `-   dir: x` still land on their own columns.
-        sub(/^- */, "", rest)
-        # A mapping item carries its further keys at the column after the dash.
-        off = ind + (length(body) - length(rest))
-        if (rest == "") { push(ipath, -1, ind, "m"); next }
-        ik = keyof(rest)
-        if (ik == "") {
-          if (!badval(rest, NR)) print ipath "\t" unq(rest)
-          next
-        }
-        push(ipath, off, -2, "m")
-        iv = valof(rest)
-        if (iv == "") push(ipath "." ik, -1, off, "m")
-        else if (!badval(iv, NR)) print ipath "." ik "\t" unq(iv)
-        next
-      }
-
-      if (ckind[np] == "s") { warn(NR, "unexpected mapping inside a sequence"); next }
-      k = keyof(body)
-      if (k == "") { warn(NR, "not a key: value line"); next }
-      kpath = (cpath[np] == "") ? k : (cpath[np] "." k)
-      v = valof(body)
-      if (v == "") { push(kpath, -1, ind, "m"); next }
-      if (badval(v, NR)) next
-      print kpath "\t" unq(v)
-    }
-    END {
-      while (np > 1) {
-        if (cind[np] == -1) print cpath[np] "\t"
-        np--
-      }
-    }'
-}
-
-# THE TOML READER: a deliberate subset of TOML 1.0, flattened to the same `path<TAB>value` stream cfg_parse makes, so nothing downstream knows which format a file was in. What it reads: comments, bare / "quoted" / 'literal' / dotted keys, [tables], [[arrays of tables]], strings (basic with the escapes \" and \\ only, and literal), decimal integers and simple decimal floats, true / false, and arrays and inline tables of those. Everything else is refused on its own line with file:line — multi-line strings, any other escape (a decoded newline or tab cannot live in a line-oriented stream), dates and times, hex / octal / binary / exponent / inf / nan, arrays of tables or of arrays, nested inline tables — exactly as cfg_parse refuses flow style: a value half-understood is a login that silently is not the one asked for. A refused table header skips the keys under it, because keys given to the wrong table are worse than keys dropped.
+# THE TOML READER: a deliberate subset of TOML 1.0, flattened to the `path<TAB>value` stream the rest of this file reads. What it reads: comments, bare / "quoted" / 'literal' / dotted keys, [tables], [[arrays of tables]], strings (basic with the escapes \" and \\ only, and literal), decimal integers and simple decimal floats, true / false, and arrays and inline tables of those. Everything else is refused on its own line with file:line — multi-line strings, any other escape (a decoded newline or tab cannot live in a line-oriented stream), dates and times, hex / octal / binary / exponent / inf / nan, arrays of tables or of arrays, nested inline tables — so that a value half-understood is a login that silently is not the one asked for. A refused table header skips the keys under it, because keys given to the wrong table are worse than keys dropped.
 #
-# A table with no key and no sub-table is emitted as `path<TAB>` (a profile that is only a name: `[claude.profiles.work]`), the way YAML's `work:` is. The program is one single-quoted shell string: no apostrophe anywhere in it, SQ and DQ are built with sprintf.
+# A table with no key and no sub-table is emitted as `path<TAB>` (a profile that is only a name: `[claude.profiles.work]`), The program is one single-quoted shell string: no apostrophe anywhere in it, SQ and DQ are built with sprintf.
 cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>value, refusals as !<TAB>file:line: why
   LC_ALL=C awk -v FNAME="${1:-$CONFIG_FILE}" '
     function warn(wn, wy) {
@@ -503,21 +323,13 @@ cfg_parse_toml() {  # [file name for warnings] stdin: toml -> stdout: path<TAB>v
     }'
 }
 
-# A file through the reader its extension names: .toml is TOML, anything else is YAML, which is what every file was before there was a TOML reader.
-cfg_read() {  # <file> -> the leaves, refusals as !<TAB>file:line: why
-  case $1 in
-    *.toml) cfg_parse_toml "$1" <"$1" ;;
-    *)      cfg_parse "$1" <"$1" ;;
-  esac
-}
-
 # Parsed once per process, however many lookups follow: every key press runs a fresh copy of this script, so the cost that matters is one awk, not one per cfg_get. A missing file is not an error anywhere but --config.
 cfg_load() {
   [ "$CFG_LOADED" = 1 ] && return 0
   CFG_LOADED=1
   # -f as well as -r: a directory is readable, and feeding one to awk gets a raw "i/o error occurred on /dev/stdin" on every single invocation.
   cfg_readable "$CONFIG_FILE" || return 1
-  CFG=$(cfg_read "$CONFIG_FILE")
+  CFG=$(cfg_parse_toml "$CONFIG_FILE" <"$CONFIG_FILE")
   cfg_sift "$CFG"; CFG=$CFG_SIFTED
   cfg_overlay
   return 0
@@ -526,8 +338,8 @@ cfg_load() {
 # EVERYTHING THE LOAD AND THE CHECK REMEMBER, PUT BACK TO WHAT A PROCESS STARTS WITH. Each of those memos is written for a process that lives for one run: the load is parsed once, cfg_check guards itself with CFG_CHECKED and adds to CFG_NPROBLEMS and CFG_NOTES rather than setting them, and the parse and overlay notes only ever grow. A refresher lives as long as its list, so when it reads the config again it clears them here first — otherwise the old load's refusals and overlay stay in, a problem count is never worked out again, and the next check adds to the last one's. usage_env's exports go too: it sets them only when there is something to set, so a rule removed from the config would otherwise stay in the environment of every tusage the refresher starts.
 cfg_reset() {
   CFG=''; CFG_LOADED=0
-  CFG_PARSE_NOTES=''; CFG_OVER_FILE=''; CFG_OVER_TOPS=' '; CFG_OVER_TWIN=''
-  # A config.toml written beside the config.yaml that was being read is a different file now, and so is one that was deleted.
+  CFG_PARSE_NOTES=''; CFG_OVER_FILE=''; CFG_OVER_TOPS=' '
+  # $TA_CONFIG may name another file now, and the config that was being read may have been deleted.
   cfg_resolve
   CFG_NOTES=''; CFG_NPROBLEMS=0; CFG_SUMMARY=''; CFG_CHECKED=0
   # resolve_keys is run by cfg_check and remembers its own verdict (keys.sh).
@@ -570,7 +382,7 @@ cfg_top_of() {  # <path> -> CFG_TOP
 # The same profile name pointing at a directory that does not exist on this
 # machine starts a logged-out Claude — silently, from a picker that looked fine.
 #
-# So config.<hostname>.toml (or .yaml) beside the config is laid over it, per machine and still in the repo, each file read by its own format. Granularity is the `a.b` subtree: every one the overlay mentions (claude.profiles, claude.rules, claude.default, notes.send, …) REPLACES the base subtree wholesale, the rest is inherited. Wholesale, not merged, because profiles and rules are tables: a union would keep the base laptop's ~/.claude-personal row in this machine's picker, which is the exact thing being fixed, and rule indices from two files would collide.
+# So config.<hostname>.toml beside the config is laid over it, per machine and still in the repo. Granularity is the `a.b` subtree: every one the overlay mentions (claude.profiles, claude.rules, claude.default, notes.send, …) REPLACES the base subtree wholesale, the rest is inherited. Wholesale, not merged, because profiles and rules are tables: a union would keep the base laptop's ~/.claude-personal row in this machine's picker, which is the exact thing being fixed, and rule indices from two files would collide.
 #
 # Overlay lines go FIRST: cfg_get takes the first match and cfg_children keeps
 # file order, so no lookup needs to know an overlay exists. TA_HOST stands in
@@ -587,17 +399,11 @@ host_once() {
   HOST_F=$(hostname 2>/dev/null)
   HOST_S=${HOST_F%%.*}
 }
-# The overlay for one host name: config.<host>.toml, else config.<host>.yaml, beside the config in use. CFG_OVL is the file found, or where the TOML one would go (the refresher watches that path for a file to appear); a config.<host>.yaml hidden by a config.<host>.toml is CFG_OVER_TWIN. Returns 1 when there is none.
-cfg_overlay_for() {  # <host> -> CFG_OVL, CFG_OVER_TWIN
+# The overlay for one host name: config.<host>.toml beside the config in use. CFG_OVL is the file, or where it would go (the refresher watches that path for a file to appear). Returns 1 when there is none.
+cfg_overlay_for() {  # <host> -> CFG_OVL
   local stem=${CONFIG_FILE%.toml}
-  stem=${stem%.yaml}; stem=${stem%.yml}
-  CFG_OVL=$stem.$1.toml; CFG_OVER_TWIN=''
-  if cfg_readable "$stem.$1.toml"; then
-    ! cfg_readable "$stem.$1.yaml" || CFG_OVER_TWIN=$stem.$1.yaml
-    return 0
-  fi
-  if cfg_readable "$stem.$1.yaml"; then CFG_OVL=$stem.$1.yaml; return 0; fi
-  return 1
+  CFG_OVL=$stem.$1.toml
+  cfg_readable "$CFG_OVL"
 }
 cfg_overlay() {
   local host over="" top k v
@@ -608,8 +414,8 @@ cfg_overlay() {
   done <<EOF
 $(cfg_hosts)
 EOF
-  [ -n "$over" ] || { CFG_OVER_TWIN=''; return 0; }
-  top=$(cfg_read "$over")
+  [ -n "$over" ] || return 0
+  top=$(cfg_parse_toml "$over" <"$over")
   cfg_sift "$top"; top=$CFG_SIFTED
   [ -n "$top" ] || return 0
   # Remembered for cfg_check: a note about a key has to name the file the key
@@ -762,8 +568,8 @@ config_cmd() {
 
 # One problem, in the shape every surface shows: the file it is in, the key,
 # what is wrong and what to do about it. The file is worked out per key because
-# the overlay owns some subtrees and the base the rest, and "config.yaml" for a
-# profile that lives in config.mbp.yaml sends the reader to the wrong file. No
+# the overlay owns some subtrees and the base the rest, and "config.toml" for a
+# profile that lives in config.mbp.toml sends the reader to the wrong file. No
 # key at all is a line the parser refused, which names its own file and line.
 cfg_note() {  # <key, or empty> <what is wrong — and what to do> [<the file it is about, when no key says>]
   local f=${3:-} p=''
@@ -785,7 +591,7 @@ cfg_note() {  # <key, or empty> <what is wrong — and what to do> [<the file it
 # status-bar tick. The profiles and the rules are accounts_check's, which knows
 # what a profile is; the file's own values are checked here.
 # WHAT THE STATUS BAR PAYS FOR THE CHECK, AND WHY IT DOES NOT PAY IT TWICE.
-# cfg_check parses the file and stats every profile directory: measured at ~50 ms on every tick of every attached client, spent almost always to conclude that nothing changed. So the count is remembered against the config's own identity — is any config*.toml or config*.yaml in that directory newer than the stamp — which is a glob and a file test. The config's mtime is the main key: a config you have just fixed clears the marker the next time the bar is recomputed (COUNTS_EVERY seconds at most) rather than when a timer gets round to it. An age ceiling sits behind it because a problem can be fixed WITHOUT touching the config — creating the login directory the profile names is the obvious one — and a marker that outlives its problem is its own lie.
+# cfg_check parses the file and stats every profile directory: measured at ~50 ms on every tick of every attached client, spent almost always to conclude that nothing changed. So the count is remembered against the config's own identity — is any config*.toml in that directory newer than the stamp — which is a glob and a file test. The config's mtime is the main key: a config you have just fixed clears the marker the next time the bar is recomputed (COUNTS_EVERY seconds at most) rather than when a timer gets round to it. An age ceiling sits behind it because a problem can be fixed WITHOUT touching the config — creating the login directory the profile names is the obvious one — and a marker that outlives its problem is its own lie.
 cfg_count_cached() {  # sets CFG_NPROBLEMS, cheaply, for the status bar
   local f n when now path ident stale=0
   # No file at all is no problem, and the stamp of a config that has been
@@ -795,10 +601,9 @@ cfg_count_cached() {  # sets CFG_NPROBLEMS, cheaply, for the status bar
     rm -f "$CFG_STAMP" 2>/dev/null
     return 0
   fi
-  # A config.yaml hidden by a config.toml is part of the verdict, and deleting it touches nothing newer than the stamp: it is named in the stamp instead.
-  ident=$CONFIG_FILE${CFG_TWIN:+ $CFG_TWIN}
+  ident=$CONFIG_FILE
   if [ -r "$CFG_STAMP" ]; then
-    for f in "${CONFIG_FILE%/*}"/config*.toml "${CONFIG_FILE%/*}"/config*.yaml; do
+    for f in "${CONFIG_FILE%/*}"/config*.toml; do
       [ -e "$f" ] || continue
       if [ "$f" -nt "$CFG_STAMP" ]; then stale=1; break; fi
     done
@@ -825,29 +630,11 @@ cfg_count_cached() {  # sets CFG_NPROBLEMS, cheaply, for the status bar
   return 0
 }
 
-# WHICH FORMAT THE FILES ARE IN. A YAML config still works and is read exactly as before; it is one problem per file so that it shows in --check, the header and the status bar until it is converted. A config.toml beside a config.yaml wins outright — the YAML file is not read, so it is not called deprecated, it is called ignored — and the same goes for an overlay pair.
-cfg_format_notes() {
-  local f=${CONFIG_FILE##*/}
-  case $CONFIG_FILE in
-    *.toml) [ -z "$CFG_TWIN" ] ||
-              cfg_note '' "${CFG_TWIN##*/} is also there — $f is read and ${CFG_TWIN##*/} is ignored; delete ${CFG_TWIN##*/} once $f is right" "$CONFIG_FILE" ;;
-    *) cfg_note '' "YAML config is deprecated — run: tagents config convert (it prints the TOML and changes nothing; --write saves it beside this file)" "$CONFIG_FILE" ;;
-  esac
-  [ -n "$CFG_OVER_FILE" ] || return 0
-  f=${CFG_OVER_FILE##*/}
-  case $CFG_OVER_FILE in
-    *.toml) [ -z "$CFG_OVER_TWIN" ] ||
-              cfg_note '' "${CFG_OVER_TWIN##*/} is also there — $f is read and ${CFG_OVER_TWIN##*/} is ignored; delete ${CFG_OVER_TWIN##*/} once $f is right" "$CFG_OVER_FILE" ;;
-    *) cfg_note '' "YAML config is deprecated — run: tagents config convert --all (it prints the TOML and changes nothing; --write saves it beside this file)" "$CFG_OVER_FILE" ;;
-  esac
-}
-
 cfg_check() {
   local k v i n
   [ "$CFG_CHECKED" = 1 ] && return 0
   CFG_CHECKED=1
   cfg_load || return 0
-  cfg_format_notes
   if [ -n "$CFG_PARSE_NOTES" ]; then
     while IFS= read -r v; do
       [ -n "$v" ] && cfg_note '' "$v"

@@ -24,15 +24,12 @@ const GOOD = path.join(PLUGINS, 'good');
 let tmp: string;
 let seq = 0;
 
-/** A fresh config dir per case, with `body` as its config.yaml when given. */
-function configDir(body?: string): string {
+/** A fresh, empty config dir per case. */
+function configDir(): string {
   const dir = path.join(tmp, `cfg-${++seq}`);
   fs.mkdirSync(dir, { recursive: true });
-  if (body !== undefined) fs.writeFileSync(path.join(dir, 'config.yaml'), body);
   return dir;
 }
-
-const configText = (dir: string): string => fs.readFileSync(path.join(dir, 'config.yaml'), 'utf8');
 
 /** A fresh config dir holding `body` as its config.toml. */
 function tomlDir(body: string): string {
@@ -158,100 +155,7 @@ test('the default key is the package name without its scope or plugin- prefix', 
   assert.equal(defaultPluginName('fixture-plugin'), 'fixture-plugin');
 });
 
-// ------------------------------------------------- the rest of the file ------
-
-const HAND_WRITTEN = `# tagents — which Claude account an agent is started on.
-claude:
-  args: --dangerously-skip-permissions   # a string, or a list of arguments
-  profiles:
-    personal:
-      config_dir: ~/.claude-personal     # aligned by hand, and it stays aligned
-    work:
-
-usage:
-  monthly_limit_usd: 850
-
-# a trailing note nobody may touch
-`;
-
-test('adding an entry changes the plugins map and nothing else, byte for byte', () => {
-  const dir = configDir(HAND_WRITTEN);
-  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
-
-  const after_ = configText(dir);
-  assert.equal(after_, `${HAND_WRITTEN}plugins:\n  demo:\n    from: ${GOOD}\n`);
-  assert.ok(after_.startsWith(HAND_WRITTEN), 'every byte that was there is still there, in order');
-});
-
-test('a second entry lands inside the existing map, at the map’s own indent', () => {
-  const dir = configDir(`plugins:\n    first:\n        from: /one\n\n# after the map\nusage:\n  x: 1\n`);
-  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'second'], inDir(dir)).code, 0);
-  assert.equal(
-    configText(dir),
-    `plugins:\n    first:\n        from: /one\n    second:\n        from: ${GOOD}\n\n# after the map\nusage:\n  x: 1\n`
-  );
-  assert.deepEqual(
-    readPluginList(path.join(dir, 'config.yaml')).map((p) => p.name),
-    ['first', 'second']
-  );
-});
-
-test('an empty plugins: map, in either spelling, becomes a block with the entry in it', () => {
-  for (const body of ['plugins:\nusage:\n  x: 1\n', 'plugins: {}\nusage:\n  x: 1\n']) {
-    const dir = configDir(body);
-    assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
-    assert.equal(configText(dir), `plugins:\n  demo:\n    from: ${GOOD}\nusage:\n  x: 1\n`);
-  }
-});
-
-test('a config that does not parse is refused, not rewritten', () => {
-  const broken = 'claude:\n  args: [unclosed\n';
-  const dir = configDir(broken);
-  const r = runCli(['plugin', 'add', GOOD], inDir(dir));
-  assert.equal(r.code, 1);
-  assert.equal(configText(dir), broken, 'a file we cannot read is a file we must not write');
-});
-
-// ----------------------------------------------------------------- remove ---
-
-test('remove takes the entry out and leaves the file as it found it', () => {
-  const dir = configDir(HAND_WRITTEN);
-  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
-
-  const r = runCli(['plugin', 'remove', 'demo'], inDir(dir));
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /^removed demo from /);
-  assert.equal(configText(dir), HAND_WRITTEN, 'the last entry takes the plugins: line with it');
-});
-
-test('removing one of several leaves the others, and their comments, alone', () => {
-  const dir = configDir(`plugins:\n  a:\n    from: /one\n  b:\n    from: /two\n\n# after the map\n`);
-  assert.equal(runCli(['plugin', 'remove', 'a'], inDir(dir)).code, 0);
-  assert.equal(configText(dir), `plugins:\n  b:\n    from: /two\n\n# after the map\n`);
-});
-
-test('removing something that is not listed is refused, and says where it looked', () => {
-  const dir = configDir(HAND_WRITTEN);
-  const r = runCli(['plugin', 'remove', 'nope'], inDir(dir));
-  assert.equal(r.code, 3);
-  assert.match(r.stderr, /nope is not listed in /);
-  assert.equal(configText(dir), HAND_WRITTEN);
-
-  const empty = configDir();
-  assert.equal(runCli(['plugin', 'remove', 'nope'], inDir(empty)).code, 3);
-  assert.equal(runCli(['plugin', 'remove'], inDir(empty)).code, 2);
-});
-
-test('the two edits are also a library, for anything that is not this CLI', () => {
-  const file = path.join(configDir('accounts:\n  personal: ~/.claude\n'), 'config.yaml');
-  assert.equal(addPluginEntry(file, 'x', '/pkg/x'), 'added');
-  assert.equal(addPluginEntry(file, 'x', '/pkg/x'), 'exists');
-  assert.equal(removePluginEntry(file, 'x'), 'removed');
-  assert.equal(removePluginEntry(file, 'x'), 'absent');
-  assert.equal(fs.readFileSync(file, 'utf8'), 'accounts:\n  personal: ~/.claude\n');
-});
-
-// ------------------------------------------ the same edits, in a TOML config ---
+// --------------------------------------------------- edits to the config file ---
 
 const HAND_WRITTEN_TOML = `#:schema https://example.test/config.schema.json
 # tagents — which Claude account an agent is started on.
@@ -271,7 +175,7 @@ test('with no config at all, plugin add creates config.toml', () => {
   const dir = configDir();
   assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
   assert.equal(tomlText(dir), `[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
-  assert.ok(!fs.existsSync(path.join(dir, 'config.yaml')), 'no YAML file is born');
+  assert.ok(!fs.existsSync(path.join(dir, 'config.yaml')), 'no other file is born');
 });
 
 test('adding to a TOML config appends one table and changes nothing before it, byte for byte', () => {
@@ -384,15 +288,6 @@ test('a plugin path or name with a lone surrogate in it is refused for a TOML co
     assert.throws(() => addPluginEntry(file, name, from), (e: unknown) => e instanceof Error && e.message.includes(file) && e.message.includes('lone surrogate'));
     assert.equal(fs.readFileSync(file, 'utf8'), '[usage]\nworkdays = true\n');
   }
-});
-
-test('with a config.yaml and no config.toml, plugin add keeps editing the YAML file', () => {
-  const dir = configDir('usage:\n  x: 1\n');
-  const r = runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir));
-  assert.equal(r.code, 0);
-  assert.equal(configText(dir), `usage:\n  x: 1\nplugins:\n  demo:\n    from: ${GOOD}\n`);
-  assert.ok(!fs.existsSync(path.join(dir, 'config.toml')));
-  assert.match(r.stderr, /config\.yaml is a YAML config, which is deprecated — run: tagents config convert/);
 });
 
 // -------------------------------------------------------------------- new ---

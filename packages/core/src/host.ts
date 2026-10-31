@@ -4,8 +4,6 @@
 //
 //   [plugins.tg-orchestrator]
 //   from = "../telegram-bots/orchestrator"   # a path, or a package name
-//
-// A config.yaml with the same `plugins:` map is read when there is no config.toml (see config-file.ts).
 
 // `from` points at a PACKAGE, and the package says where its code is in its own
 // package.json: { "tagents": { "entry": "./dist/plugin.js" } }. That indirection
@@ -17,11 +15,11 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
-import { configFormat, noticeFormat, parseConfigText, resolveConfigFile } from './config-file.ts';
+import { parseConfigText } from './config-file.ts';
 import { PLUGIN_API_VERSION, type PluginDef } from './plugin.ts';
 import { tryCatch } from './result.ts';
 
-/** The file a new config is written to; an existing config.yaml is found by configFile(). */
+/** The config's file name, in the config dir. */
 export const CONFIG_BASENAME = 'config.toml';
 
 /** ~/.config/tagents, or $TAGENTS_CONFIG_DIR. */
@@ -32,9 +30,9 @@ export function configDir(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(xdg && xdg.trim() ? xdg : path.join(os.homedir(), '.config'), 'tagents');
 }
 
-/** config.toml in the config dir, else config.yaml, else config.toml as the place for a new one. */
+/** config.toml in the config dir, whether it is there yet or not. */
 export function configFile(env: NodeJS.ProcessEnv = process.env): string {
-  return resolveConfigFile(configDir(env));
+  return path.join(configDir(env), CONFIG_BASENAME);
 }
 
 const EntrySchema = z.object({ from: z.string().min(1) });
@@ -73,11 +71,10 @@ export function readPluginList(file = configFile()): PluginListing[] {
   }
   let raw: unknown;
   try {
-    raw = parseConfigText(text, configFormat(file));
+    raw = parseConfigText(text);
   } catch (e) {
     throw new Error(`${file}: ${e instanceof Error ? e.message : String(e)}`);
   }
-  noticeFormat(file);
   const parsed = ConfigSchema.safeParse(raw);
   if (!parsed.success) return [];
   return Object.entries(parsed.data.plugins ?? {}).map(([name, e]) => ({ name, from: e.from }));

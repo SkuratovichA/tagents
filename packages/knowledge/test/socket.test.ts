@@ -110,7 +110,6 @@ const IGNORED: Record<string, string> = {
   PATH: 'finds `claude` for core\'s CLI and `git` for lint, neither of which a tool reaches',
   TAGENTS_LOCALE: 'the language of the CLI\'s own strings; tool text is English whatever it says',
   TA_STATE_DIR: 'the dashboard\'s state directory (agent-state.ts); no tool reads it',
-  TA_CONFIG: 'the file `tagents config convert` converts by default (core\'s cli/config.ts); no tool reaches it, and the knowledge folder is looked up through the config directory, which the key covers',
   TA_LABEL: 'a session variable only the CLI reads, as the caller of an event (usage.ts); the daemon never reads it, a tool\'s caller is the name its client gave in the handshake',
 };
 

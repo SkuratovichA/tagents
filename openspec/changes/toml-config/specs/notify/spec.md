@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Plugin options and defaults
-The options SHALL live in `<configDir>/plugins/notify.toml`, or in `notify.yaml` there when there is no `notify.toml`, with every key optional: `backend = "auto"` (one of `auto`, `macos`, `log`, `none`); `click = "dock"` (one of `dock`, `goto`, `focus`); `icon` unset.
+The options SHALL live in `<configDir>/plugins/notify.toml`, with every key optional: `backend = "auto"` (one of `auto`, `macos`, `log`, `none`); `click = "dock"` (one of `dock`, `goto`, `focus`); `icon` unset.
 
 #### Scenario: a partial file
 - **WHEN** the file says only `click = "goto"`
@@ -13,7 +13,7 @@ The options SHALL live in `<configDir>/plugins/notify.toml`, or in `notify.yaml`
 
 #### Scenario: a YAML file
 - **WHEN** only `notify.yaml` exists
-- **THEN** it is read with the same keys and defaults
+- **THEN** it is not looked at and the defaults hold
 
 ### Requirement: Where the options are watched
 The service SHALL watch the real path of the `plugins` directory, so a config directory that is a symlink (for example into a dotfiles repository) works. A `plugins` directory that appears after the service started is found. With no config directory at all the service runs and logs that options reload is off.
@@ -40,10 +40,10 @@ Each notification event SHALL have these settings when the file leaves them out:
 - **THEN** `events.cache_expiring` is `enabled: true, skip_visible: false, after: 50m, ttl: 60m` and `events.session_end` is `enabled: false, skip_visible: true`
 
 ### Requirement: Which options files are watched
-`notify.toml` and `notify.yaml` SHALL both be watched, so options that move from one to the other while the service runs are seen. Editing the target of an options file that is a symlink does not reload the options by itself, and replacing the link does.
+`notify.toml` SHALL be watched, so a change to it while the service runs is seen. Editing the target of an options file that is a symlink does not reload the options by itself, and replacing the link does.
 
-#### Scenario: the options move to TOML
-- **WHEN** `notify.toml` is written next to a `notify.yaml` while the service runs
+#### Scenario: the options file is written while the service runs
+- **WHEN** `notify.toml` is written, with a `notify.yaml` beside it or without one
 - **THEN** the next event uses the values of `notify.toml`
 
 #### Scenario: a symlinked options file

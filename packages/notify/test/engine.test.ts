@@ -249,7 +249,7 @@ test('the click env is PATH and HOME, plus the locale and the variables that pic
       TA_STATE_DIR: '/tmp/st',
       TAGENTS_CONFIG_DIR: '/tmp/cfg',
       XDG_CONFIG_HOME: '/tmp/xdg',
-      TA_CONFIG: '/tmp/cfg/config.yaml',
+      TA_CONFIG: '/tmp/cfg/config.toml',
       SECRET: 'no',
     },
   });
@@ -263,7 +263,7 @@ test('the click env is PATH and HOME, plus the locale and the variables that pic
     TA_STATE_DIR: '/tmp/st',
     TAGENTS_CONFIG_DIR: '/tmp/cfg',
     XDG_CONFIG_HOME: '/tmp/xdg',
-    TA_CONFIG: '/tmp/cfg/config.yaml',
+    TA_CONFIG: '/tmp/cfg/config.toml',
   });
   const empty = rig({ env: { ...BASE_ENV, LANG: '' } });
   await empty.engine.handle(empty.now());

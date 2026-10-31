@@ -47,19 +47,17 @@ cache_expiring = { enabled = true,  skip_visible = false, after = "50m", ttl = "
 session_end    = { enabled = false, skip_visible = true }
 ```
 
-A `notify.yaml` that is there instead is still read, with the same keys.
-
 Durations are `<n>s|m|h`, combined like `1h30m`, or a bare number of seconds, and `after` must be below `ttl`.
 
 `skip_visible`: when the agent's tmux pane is in some client's current window and that terminal is the frontmost app, the notice is dropped.
 
 `icon` is an absolute path, a `~/` path, or a path relative to the directory of the options file. Unset, the icon is `notify-icon.png` next to the helper app (`~/Library/Application Support/tagents/`, or next to `TA_NOTIFY_APP`) when that file exists, and the app has no icon of its own otherwise. The icon is part of the helper app, so run `tagents notify install` after changing it: `install` rebuilds an app that is stale and prints `icon: <path>` or `icon: none`, as `status` does. An `icon` that names no file is a problem line in both, and the app is built without it. An icon gives the helper its own bundle id, `io.github.skuratovicha.tagents-notify.i<first 8 hex of the icon's sha256>`, because macOS keeps an app's icon from its first permission request. After an icon change, macOS asks once more to allow notifications, and the new registration starts with the Persistent style from Info.plist. The old entry stays in System Settings → Notifications with the old icon, and can be switched off.
 
-An invalid file is logged once per problem and the engine runs on the defaults; `tagents notify status` prints the problems. The file is reloaded when it changes, so there is nothing to restart. What is watched is the real path of the `plugins` directory, filtered on the names `notify.toml` and `notify.yaml`: a config directory that is a symlink, such as `~/.config/tagents` pointing into a dotfiles repository, works in full. A `notify.toml` that is itself a symlink is seen only when the link is replaced, not when its target is edited.
+An invalid file is logged once per problem and the engine runs on the defaults; `tagents notify status` prints the problems. The file is reloaded when it changes, so there is nothing to restart. What is watched is the real path of the `plugins` directory, filtered on the name `notify.toml`: a config directory that is a symlink, such as `~/.config/tagents` pointing into a dotfiles repository, works in full. A `notify.toml` that is itself a symlink is seen only when the link is replaced, not when its target is edited.
 
 ## Clicking a notice
 
-`click: dock` runs `tagents --act open <pane> live <sid> <cwd>`, the same as Enter in the dashboard list. The `tagents` it runs is the first one on the PATH of the shell that ran `install` (the one your dashboard runs, a symlink stays the symlink), else the checkout's own, and `TA_NOTIFY_TAGENTS` overrides both: tagents re-points the global tmux focus hooks at whichever script ran, so a click running another one would move them away from the dashboard's. `click: goto` runs `tagents --goto <pane>`. `click: focus`, or a session with no pane, only raises the terminal.
+`click = "dock"` runs `tagents --act open <pane> live <sid> <cwd>`, the same as Enter in the dashboard list. The `tagents` it runs is the first one on the PATH of the shell that ran `install` (the one your dashboard runs, a symlink stays the symlink), else the checkout's own, and `TA_NOTIFY_TAGENTS` overrides both: tagents re-points the global tmux focus hooks at whichever script ran, so a click running another one would move them away from the dashboard's. `click: goto` runs `tagents --goto <pane>`. `click: focus`, or a session with no pane, only raises the terminal.
 
 ## Commands
 
@@ -68,7 +66,7 @@ An invalid file is logged once per problem and the engine runs on the defaults; 
 | `tagents notify run` | the engine in the foreground until SIGTERM, SIGINT or SIGHUP (a closed terminal); this is what the LaunchAgent runs. Exit 0 when it deliberately does not run (another service holds the lock, backend `none`, an unsupported OS) and when a signal stops it; exit 1 when it fails to start, which launchd retries at most every 5 minutes |
 | `tagents notify install` | on macOS: build the app if stale, ask for permission, write and bootstrap the LaunchAgent, wait up to 5 s for it to run and the stream to be on, print the status and the steps; exit 1, naming the cause, when the permission is not `authorized`, the options file is invalid, or the service is not running (and the pid that holds the lock in its place, if there is one) |
 | `tagents notify uninstall [--purge]` | boot the service out, delete the plist, switch the event stream off unless a `tagents notify run` in a terminal still holds the lock; `--purge` deletes the app too |
-| `tagents notify status` | platform, backend, app (up to date, stale or missing), icon, permission and alert style, the script a click runs (ok or missing; with `click: focus` it says the script is not used), LaunchAgent (installed, running, pid), stream on or off, the options file and its problems, the service's memory |
+| `tagents notify status` | platform, backend, app (up to date, stale or missing), icon, permission and alert style, the script a click runs (ok or missing; with `click = "focus"` it says the script is not used), LaunchAgent (installed, running, pid), stream on or off, the options file and its problems, the service's memory |
 | `tagents notify test [--kind <kind>]` | post one sample notice now through the platform notifier; a click docks `$TMUX_PANE` when it is set |
 | `tagents notify send [--title <text>] <message…>` | post a notice with this message now through the platform notifier, ignoring the per-kind switches and `skip_visible`; the title defaults to `tagents`, and a click docks `$TMUX_PANE` when it is set; a title over 256 characters or a message (its words joined by single spaces) over 2048 characters is refused with exit 2 and nothing is posted, and the limits count characters, not bytes |
 

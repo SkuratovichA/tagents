@@ -2,7 +2,7 @@
 //
 // The file is the OWNER'S. It carries comments explaining why a rule exists, the key order they chose, the spacing they aligned by hand, and (see config.example.toml) a sibling config.<hostname>.toml whose subtrees replace the ones here. A round trip through a stringifier keeps the meaning of all of that and still rewrites bytes it had no business touching: `args = x # why` loses the alignment somebody put there, and a TOML library has no comments to write back at all.
 //
-// So the parse is the format's own — it knows whether an entry already exists — and the EDIT is a splice of text. In a TOML config (the default) an entry is a `[plugins.NAME]` section appended at the end and cut out by its header lines; in a YAML config (the fallback) it is the byte range a yaml Document reports for the entry. Everything outside the splice comes back byte for byte, and the result is parsed again before it is written.
+// So the parse is the TOML parser's — it knows whether an entry already exists — and the EDIT is a splice of text: an entry is a `[plugins.NAME]` section appended at the end and cut out by its header lines. Everything outside the splice comes back byte for byte, and the result is parsed again before it is written.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -10,10 +10,9 @@ import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { createRequire } from 'node:module';
 import { parse as parseToml } from 'smol-toml';
-import { isMap, isNode, isScalar, parseDocument, type Document, type Pair, type YAMLMap } from 'yaml';
 import { z } from 'zod';
 import { writeAtomic } from './atomic.ts';
-import { configFormat, noticeFormat, tomlKey, tomlString } from './config-file.ts';
+import { tomlKey, tomlString } from './config-file.ts';
 import { PLUGIN_API_VERSION } from './plugin.ts';
 
 // ------------------------------------------------------------- the package ---
@@ -129,16 +128,14 @@ export function defaultPluginName(packageName: string): string {
 export type AddOutcome = 'added' | 'exists';
 export type RemoveOutcome = 'removed' | 'absent';
 
-/** Add `name` under `plugins`, in the format the file is in. */
+/** Add `name` under `plugins`. */
 export function addPluginEntry(file: string, name: string, from: string): AddOutcome {
-  noticeFormat(file);
-  return configFormat(file) === 'toml' ? addTomlEntry(file, name, from) : addYamlEntry(file, name, from);
+  return addTomlEntry(file, name, from);
 }
 
-/** Drop `name` from `plugins`, in the format the file is in. */
+/** Drop `name` from `plugins`. */
 export function removePluginEntry(file: string, name: string): RemoveOutcome {
-  noticeFormat(file);
-  return configFormat(file) === 'toml' ? removeTomlEntry(file, name) : removeYamlEntry(file, name);
+  return removeTomlEntry(file, name);
 }
 
 // ------------------------------------------------------------------- toml ----
@@ -254,13 +251,7 @@ function removeTomlEntry(file: string, name: string): RemoveOutcome {
   return 'removed';
 }
 
-// ------------------------------------------------------------------- yaml ----
-
-const keyText = (key: unknown): string | null =>
-  isScalar(key) && typeof key.value === 'string' ? key.value : null;
-
-const rangeOf = (node: unknown): readonly [number, number, number] | null =>
-  isNode(node) && node.range ? node.range : null;
+// ------------------------------------------------------------------- file ----
 
 function readText(file: string): string {
   try {
@@ -270,157 +261,7 @@ function readText(file: string): string {
   }
 }
 
-/** Parse, or refuse: a file we cannot read is a file we must not rewrite. */
-function parse(file: string, text: string): Document {
-  const doc = parseDocument(text);
-  const first = doc.errors[0];
-  if (first) throw new Error(`${file}: ${first.message}`);
-  return doc;
-}
-
-function pairOf(map: YAMLMap<unknown, unknown>, name: string): Pair<unknown, unknown> | null {
-  for (const item of map.items) if (keyText(item.key) === name) return item;
-  return null;
-}
-
-/** The index just past the newline that ends the line `at` sits on. */
-function lineEnd(text: string, at: number): number {
-  const nl = text.indexOf('\n', at);
-  return nl === -1 ? text.length : nl + 1;
-}
-
-/** The index of the first character of the line `at` sits on. */
-function lineStart(text: string, at: number): number {
-  return text.lastIndexOf('\n', Math.max(0, at - 1)) + 1;
-}
-
-const SPACE = new Set([' ', '\t', '\n', '\r']);
-
-/**
- * The end of the line the node really ENDS on. A block map's range runs past
- * its last newline (`from: y\n` ends at the index after the newline), so any
- * blank line behind it would otherwise be counted as part of the node — and an
- * entry inserted after one, or a removal that swallows the next key.
- */
-function blockEnd(text: string, from: number, to: number): number {
-  let i = Math.min(to, text.length);
-  while (i > from && SPACE.has(text[i - 1] ?? '')) i -= 1;
-  return lineEnd(text, i);
-}
-
-// A plain scalar unless the text would not survive as one. JSON's escaping is
-// YAML's double-quoted style for everything we can produce here.
-const PLAIN = /^[A-Za-z0-9_@~./+-][^#\n]*$/;
-
-function scalar(value: string): string {
-  const plain = PLAIN.test(value) && value.trim() === value && !value.includes(': ') && !value.endsWith(':');
-  return plain ? value : JSON.stringify(value);
-}
-
-const entryBlock = (name: string, from: string, indent: string): string =>
-  `${indent}${scalar(name)}:\n${indent}${indent}from: ${scalar(from)}\n`;
-
-/** The indent the file already uses under `plugins:`, or two spaces. */
-function indentOf(text: string, map: YAMLMap<unknown, unknown>): string {
-  const first = map.items[0];
-  const range = first ? rangeOf(first.key) : null;
-  if (!range) return '  ';
-  const column = range[0] - lineStart(text, range[0]);
-  return column > 0 ? ' '.repeat(column) : '  ';
-}
-
-/** Where one entry's own lines begin and end, trailing newline included. */
-function entryRange(text: string, pair: Pair<unknown, unknown>): { start: number; end: number } | null {
-  const key = rangeOf(pair.key);
-  if (!key) return null;
-  const start = lineStart(text, key[0]);
-  const value = rangeOf(pair.value);
-  return { start, end: blockEnd(text, start, value ? value[1] : key[1]) };
-}
-
 function save(file: string, text: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   writeAtomic(file, text);
-}
-
-/**
- * Add `name: { from }` under `plugins:`, leaving every other byte alone.
- *
- * Three shapes, because a config in the wild has all three: no `plugins:` key
- * (append one at the end), a map with entries in it (insert after the last),
- * and a `plugins:` that is empty or `{}` (rewrite that one line into a block).
- */
-function addYamlEntry(file: string, name: string, from: string): AddOutcome {
-  const text = readText(file);
-  const doc = parse(file, text);
-  const root = isMap(doc.contents) ? doc.contents : null;
-  const pair = root ? pairOf(root, 'plugins') : null;
-  const map = pair && isMap(pair.value) ? pair.value : null;
-
-  if (map && pairOf(map, name)) return 'exists';
-
-  let next: string;
-  if (!pair || !map || map.items.length === 0) {
-    const block = entryBlock(name, from, '  ');
-    if (!pair) {
-      // No plugins key at all. Append; a file that does not end in a newline
-      // gets one, which is the only byte this branch adds outside the block.
-      const head = text.length === 0 || text.endsWith('\n') ? text : `${text}\n`;
-      next = `${head}plugins:\n${block}`;
-    } else {
-      // `plugins:` with nothing under it, or `plugins: {}`. Replace that line.
-      const key = rangeOf(pair.key);
-      if (!key) throw new Error(`${file}: cannot locate the plugins key`);
-      const value = rangeOf(pair.value);
-      const start = lineStart(text, key[0]);
-      const end = blockEnd(text, start, value ? value[1] : key[1]);
-      next = `${text.slice(0, start)}plugins:\n${block}${text.slice(end)}`;
-    }
-  } else {
-    const last = map.items[map.items.length - 1];
-    const where = last ? entryRange(text, last) : null;
-    if (!where) throw new Error(`${file}: cannot locate the last plugins entry`);
-    next = `${text.slice(0, where.end)}${entryBlock(name, from, indentOf(text, map))}${text.slice(where.end)}`;
-  }
-
-  verify(file, next, name, from);
-  save(file, next);
-  return 'added';
-}
-
-/**
- * Drop one entry. When it was the last one the `plugins:` line goes with it,
- * so the file comes back to the shape it had before anything was added.
- */
-function removeYamlEntry(file: string, name: string): RemoveOutcome {
-  const text = readText(file);
-  if (!text) return 'absent';
-  const doc = parse(file, text);
-  const root = isMap(doc.contents) ? doc.contents : null;
-  const pair = root ? pairOf(root, 'plugins') : null;
-  const map = pair && isMap(pair.value) ? pair.value : null;
-  const entry = map ? pairOf(map, name) : null;
-  if (!pair || !map || !entry) return 'absent';
-
-  const where = entryRange(text, entry);
-  if (!where) throw new Error(`${file}: cannot locate the entry ${name}`);
-  let start = where.start;
-  if (map.items.length === 1) {
-    const key = rangeOf(pair.key);
-    if (key) start = lineStart(text, key[0]);
-  }
-  const next = `${text.slice(0, start)}${text.slice(where.end)}`;
-
-  const after = parseDocument(next);
-  if (after.hasIn(['plugins', name])) throw new Error(`${file}: ${name} survived the edit`);
-  save(file, next);
-  return 'removed';
-}
-
-/** Re-read what we are about to write. A splice bug must not reach the file. */
-function verify(file: string, text: string, name: string, from: string): void {
-  const doc = parseDocument(text);
-  const first = doc.errors[0];
-  if (first) throw new Error(`${file}: the edit would not parse (${first.message})`);
-  if (doc.getIn(['plugins', name, 'from']) !== from) throw new Error(`${file}: the edit did not take`);
 }

@@ -3,7 +3,7 @@
 #
 # Each notice is posted with `tagents notify test --kind <kind>` from a directory named storefront (the notice is titled after it), and the window that draws it is captured alone (screencapture -l), so nothing else on screen ends up in the picture. The window covers the whole screen and is transparent around the banner: the banner is cut out by its alpha, its shadow dropped, and the three are stacked.
 #
-# Needs: macOS, the notify plugin installed and allowed (`tagents notify status` says `permission: authorized`), Screen Recording allowed for the terminal (System Settings → Privacy & Security → Screen & System Audio Recording), and ImageMagick (`brew install imagemagick`). Focus and Do Not Disturb must be off, or the banners never show. The icon is whatever `icon:` in notify.yaml names on this machine.
+# Needs: macOS, the notify plugin installed and allowed (`tagents notify status` says `permission: authorized`), Screen Recording allowed for the terminal (System Settings → Privacy & Security → Screen & System Audio Recording), and ImageMagick (`brew install imagemagick`). Focus and Do Not Disturb must be off, or the banners never show. The icon is whatever `icon` in notify.toml names on this machine.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)

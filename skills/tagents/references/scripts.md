@@ -301,8 +301,7 @@ timeline marks it with a ↳. A child of an agent that is no longer on the list
 falls back to a row of its own, at the top level.
 
 CONFIG — WHICH ACCOUNT AN AGENT IS STARTED ON.
-~/.config/tagents/config.toml (or $TA_CONFIG; a config.yaml still works while
-there is no config.toml, and `tagents config convert` turns it into one). With
+~/.config/tagents/config.toml (or $TA_CONFIG). With
 no such file nothing below happens and every agent is started exactly as it
 always was: a plain `claude --dangerously-skip-permissions` with the
 environment inherited.

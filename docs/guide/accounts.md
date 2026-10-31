@@ -68,17 +68,6 @@ The file has more sections than the one above. Each one is covered on the page t
 
 The dashboard reads a deliberate subset of TOML: tables and arrays of tables, `key = value` lines with bare, quoted or dotted keys, comments, basic and literal strings, decimal numbers, booleans, and one-line arrays and inline tables of those. Multi-line strings, dates, hexadecimal numbers, an escape other than `\"` and `\\`, a table or key defined twice, and nested arrays are refused with a one-line warning naming the line, and the rest of the file is still read.
 
-### An old config.yaml
-
-A `config.yaml` is still read when there is no `config.toml`, with the same keys and the YAML subset it always had: mappings, sequences, `#` comments, and single- and double-quoted scalars, with tabs, flow style (`{}`, `[]`), block scalars (`|`, `>`) and anchors refused. It is deprecated: `tagents --check`, the dashboard header and the status bar count it as a problem until it is converted.
-
-```sh
-tagents config convert            # prints the TOML and changes nothing
-tagents config convert --write    # creates config.toml beside config.yaml
-```
-
-The conversion reads both files the way the dashboard does and offers nothing unless they read the same. `--write` never overwrites a `config.toml` and never touches the YAML; comments are not carried over, so copy the ones worth keeping by hand. While both files exist `config.toml` is read, `config.yaml` is ignored, and `tagents --check` says so until you delete it. `--all` converts the per-machine overlays below too.
-
 ## Choosing by hand
 
 `profile: ask`, `default: ask`, or **`ctrl-p`** on any row open a small picker over the profiles. `ctrl-p` ignores the rules entirely, which is the answer to "this one agent in a personal repo has to run on the work account".
@@ -89,7 +78,7 @@ The conversion reads both files the way the dashboard does and offers nothing un
 
 The file is shared through dotfiles, and the one thing in it that cannot be shared is the account table. On one laptop the default login is the employer's and `~/.claude-personal` is the second; on another the default is the personal account and the second is a client's. A profile pointing at a directory that does not exist on this machine starts a **logged-out** Claude, from a picker that looked perfectly fine.
 
-So `config.<hostname>.toml` beside `config.toml` is laid over it (a `config.<hostname>.yaml` is read too while there is no TOML twin, whichever format the base file is in).
+So `config.<hostname>.toml` beside `config.toml` is laid over it.
 
 - Every `a.b` subtree the overlay names (`claude.profiles`, `claude.rules`, `claude.default`, `notes.send`, …) replaces the base one wholesale. The rest is inherited.
 - It is wholesale rather than merged because profiles and rules are tables: a union would keep the other laptop's rows in this machine's picker, which is the exact thing being fixed.

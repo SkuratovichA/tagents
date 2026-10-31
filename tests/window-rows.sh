@@ -59,7 +59,7 @@ chmod +x "$BIN/claude" "$BIN/tusage" "$BIN/nvim" "$BIN/rec"
 
 export PATH="$BIN:$PATH"
 export TA_STATE_DIR="$WRSTATE"
-export TA_CONFIG=/nonexistent/config.yaml
+export TA_CONFIG=/nonexistent/config.toml
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 unset TMUX TMUX_PANE TA_MODE TA_FLAT TA_COLS TA_NEW_CMD TA_RESUME_CMD TA_HOME TA_SESSION TA_WIDTH CLAUDE_CONFIG_DIR CLAUDE_PID
 

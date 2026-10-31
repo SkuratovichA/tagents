@@ -111,7 +111,7 @@ chmod +x "$BIN/claude" "$BIN/$VCMD" "$BIN/nvim" "$BIN/tagents"
 export PATH="$BIN:$PATH"
 export TA_STATE_DIR="$STATE"
 export TA_SESSION=tatest-dash
-export TA_CONFIG=/nonexistent/config.yaml
+export TA_CONFIG=/nonexistent/config.toml
 export TN_ROOT="$ROOT"
 export NVIM_WRITE='hello\n\nworld\n'
 unset TMUX TMUX_PANE TA_MODE TA_FLAT TA_COLS TA_NEW_CMD TA_RESUME_CMD TA_HOME
@@ -133,7 +133,7 @@ sleep 0.5
 run() { env TMUX="$SOCK,0,0" bash "$TN" "$@"; }
 
 # A config of its own per mode: tnotes reads notes.send through `tagents
-# --config`, which is the only YAML reader in play.
+# --config`, which is the only config reader in play.
 run_cfg() { local c=$1; shift; env TMUX="$SOCK,0,0" TA_CONFIG="$c" bash "$TN" "$@"; }
 
 # Without NVIM_WRITE the stub leaves prompt.md exactly as it found it, which is
@@ -321,9 +321,9 @@ ok "under its own first line" "second draft" "$(git -C "$NOTES" log -1 --format=
 # ---------------------------------------------------------------------------
 t "8. notes.send decides what the draft does with the chat"
 # ---------------------------------------------------------------------------
-CFG_P="$ROOT/paste.yaml";  printf 'notes:\n  send: paste\n' >"$CFG_P"
-CFG_S="$ROOT/submit.yaml"; printf 'notes:\n  send: submit\n' >"$CFG_S"
-CFG_X="$ROOT/junk.yaml";   printf 'notes:\n  send: sideways\n' >"$CFG_X"
+CFG_P="$ROOT/paste.toml";  printf '[notes]\nsend = "paste"\n' >"$CFG_P"
+CFG_S="$ROOT/submit.toml"; printf '[notes]\nsend = "submit"\n' >"$CFG_S"
+CFG_X="$ROOT/junk.toml";   printf '[notes]\nsend = "sideways"\n' >"$CFG_X"
 
 MCHAT=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" \
           "exec claude >'$ROOT/pasted3.txt'" 2>/dev/null)
