@@ -34,11 +34,31 @@ It grew up in parallel to [herdr](https://herdr.dev), around the same idea, for 
 curl -fsSL https://raw.githubusercontent.com/SkuratovichA/tagents/main/install.sh | sh
 ```
 
-It puts one managed copy in `~/.local/share/tagents`, the commands in `~/.local/bin` and the Claude Code hooks in `~/.claude/hooks`. Run it again, or `tagents update`, to update. Needs `tmux`, `fzf`, `jq`, `git`, Node 22.18+ and `pnpm`.
+It puts one managed copy in `~/.local/share/tagents`, the commands in `~/.local/bin` and the Claude Code hooks in `~/.claude/hooks`. Run it again, or `tagents update`, to update. What it needs, and where it runs, is in [Compatibility](#compatibility) below.
 
 The install ends by running `tagents setup` (on a first install, and on an update that changes what it registers), which adds the state hook and the status line to `~/.claude/settings.json`, and to the `settings.json` of `$CLAUDE_CONFIG_DIR` and of each profile's `config_dir`. It only appends: your own hooks and settings stay as they are, a file it changes is backed up first, and a file that is not valid JSON is refused and left untouched. A status line of your own is kept, and the message says how to switch (`tagents setup --statusline`). `tagents setup --check` shows what it would add and writes nothing.
 
 The hook is how a chat tells tagents what it is doing; the status line is where the model column comes from. [Getting started](https://tagents.arstoien.com/docs/guide/getting-started) walks through both, and the Claude Code plugin.
+
+### Compatibility
+
+| | macOS | Linux |
+|---|---|---|
+| Prebuilt `tagents-core` | `aarch64-apple-darwin`, `x86_64-apple-darwin` | `x86_64-unknown-linux-musl` |
+| Any other system | the node CLI runs in place of the binary | the node CLI runs in place of the binary |
+| CI runs the Rust crates on | `macos-latest` | `ubuntu-latest` |
+
+| needs | version |
+|---|---|
+| Node | 22.18 or newer (`engines` of `package.json`); CI uses the 22.23.1 of `.node-version` |
+| bash | 3.2 or newer: 3.2 is what macOS ships, and the scripts are written for it |
+| tmux | no minimum is stated; measured on 3.7b only; the popup call is written to work on 3.4 as well |
+| fzf | no minimum is stated; developed on 0.74 |
+| `jq`, `awk`, `git`, `pnpm` | no minimum is stated; `packageManager` pins `pnpm` 9.15.4 |
+
+The installer checks the SHA-256 sum of a prebuilt binary. It falls back to the node CLI on a system with no prebuilt binary, and also when the checkout's workspace version has no release yet, so a copy that follows `main` can run the node CLI until that version is tagged.
+
+Only macOS has desktop notifications (`tagents notify install` refuses elsewhere), keep-awake for headless sessions, and the `--launchd` daily update. CI runs no dashboard suite on either system: the tmux suites run on a contributor's machine.
 
 ---
 
@@ -137,6 +157,8 @@ Gives every chat the `tagents` skill, so it knows the exact commands and flags o
 ## Learn more
 
 The [docs](https://tagents.arstoien.com/docs/) cover the rest: [the dashboard](https://tagents.arstoien.com/docs/guide/dashboard) · [notifications](https://tagents.arstoien.com/docs/guide/notifications) · [resurrect](https://tagents.arstoien.com/docs/guide/resurrect) · [closed sessions](https://tagents.arstoien.com/docs/guide/closed-sessions) · [accounts](https://tagents.arstoien.com/docs/guide/accounts) · [cost](https://tagents.arstoien.com/docs/guide/cost) · [notes](https://tagents.arstoien.com/docs/guide/notes) · [keys](https://tagents.arstoien.com/docs/guide/keys) · [architecture](https://tagents.arstoien.com/docs/architecture/overview) · [development](https://tagents.arstoien.com/docs/development)
+
+Before you contribute or report a problem: [CONTRIBUTING](CONTRIBUTING.md), [SECURITY](SECURITY.md) and the [CHANGELOG](CHANGELOG.md).
 
 ## License
 

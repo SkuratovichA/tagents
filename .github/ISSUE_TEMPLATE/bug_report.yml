@@ -1,0 +1,57 @@
+name: Bug report
+description: Something does not work the way the documentation or the specs say it does
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: A vulnerability does not belong in a public issue. Report it privately as described in the [security policy](https://github.com/SkuratovichA/tagents/security/policy).
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `tagents doctor`
+      description: Run `tagents doctor` and paste what it prints. Remove anything private, such as paths with your user name.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`tagents` has no `--version`. Give the commit of the managed copy, from `git -C ~/.local/share/tagents log -1 --format='%h %cs'`, or the commit of your clone."
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: For example macOS 15.1 on Apple Silicon, or Ubuntu 24.04 on x86_64.
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal, tmux and fzf
+      description: The terminal emulator, and the output of `tmux -V` and `fzf --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
