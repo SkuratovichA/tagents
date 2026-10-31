@@ -94,11 +94,6 @@ pub fn notice_json(notice: &Notice) -> String {
     Value::Object(object).to_string()
 }
 
-/// `JSON.stringify(text)` of a string.
-pub(crate) fn quote(text: &str) -> String {
-    Value::String(text.to_owned()).to_string()
-}
-
 /// What `runHelper` reads out of the line: the fields a caller of the daemon uses. The rest of the schema is checked and dropped.
 #[derive(Debug, PartialEq)]
 struct HelperLine {
@@ -214,8 +209,8 @@ fn run_binary(
         Some(Err(text)) => Err(text),
         None => Err(format!(
             "unreadable output from the notification helper: stdout {}, stderr {}",
-            quote(&js::take16(&finished.stdout, 200)),
-            quote(&js::take16(&finished.stderr, 200))
+            json::quote(&js::take16(&finished.stdout, 200)),
+            json::quote(&js::take16(&finished.stderr, 200))
         )),
     }
 }

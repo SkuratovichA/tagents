@@ -8,7 +8,7 @@ use std::{fs, io::Read, path::Path};
 
 use toml::de::{DeFloat, DeInteger, DeTable, DeValue};
 
-use crate::{js, node};
+use crate::{js, json, node};
 
 /// The directory of the options files, in the config directory.
 const PLUGIN_OPTIONS_DIR: &str = "plugins";
@@ -508,10 +508,7 @@ fn duration(
         return default;
     };
     let (parsed, json) = match value {
-        DeValue::String(text) => (
-            duration_of_text(text),
-            serde_json::Value::String(text.to_string()).to_string(),
-        ),
+        DeValue::String(text) => (duration_of_text(text), json::quote(text)),
         DeValue::Integer(int) => {
             let number = integer(int).unwrap_or(f64::NAN);
             (duration_of_number(number), js::number_text(number))

@@ -2,8 +2,9 @@
 
 use std::sync::Arc;
 
+use crate::json;
 use crate::node;
-use crate::notify::helper::{self, HelperNotifier};
+use crate::notify::helper::HelperNotifier;
 use crate::notify::log::Log;
 use crate::notify::notifier::{Notice, Notifier, PostResult};
 use crate::notify::options::Backend;
@@ -83,9 +84,9 @@ impl Notifier for LogNotifier {
             "post",
             &notice.id,
             notice.kind.as_str(),
-            &helper::quote(&notice.title),
-            &helper::quote(&notice.subtitle),
-            &helper::quote(&notice.body),
+            &json::quote(&notice.title),
+            &json::quote(&notice.subtitle),
+            &json::quote(&notice.body),
             &click,
             &pid,
             skip,
