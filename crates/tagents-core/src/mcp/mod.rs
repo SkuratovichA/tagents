@@ -94,7 +94,7 @@ fn serve(path: &OsString) -> Result<(), String> {
 
     // The client may also go away by a signal: the calls in flight are stopped first, then the process leaves.
     let ending = Arc::clone(&server);
-    ending::on_signals(move || ending.end_and_exit()).map_err(|e| e.to_string())?;
+    ending::on_signals(move |_| ending.end_and_exit()).map_err(|e| e.to_string())?;
 
     server.serve(io::stdin().lock());
     Ok(())

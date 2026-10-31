@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use signal_hook::consts::{SIGHUP, SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
+use signal_hook::low_level::signal_name;
 
 use crate::sync::locked;
 
@@ -47,15 +48,15 @@ impl Stop {
     }
 }
 
-/// Calls `f`, on a thread of its own, at the first SIGTERM, SIGINT or SIGHUP. A later signal is caught and ignored: the ending `f` starts is over within the grace of the calls it stops and a margin, and leaving before it ends would leave a program that ignores SIGTERM without its SIGKILL. An `Err` says which of the two things it needs, the signal registration and the thread, the system refused.
-pub fn on_signals(f: impl FnOnce() + Send + 'static) -> io::Result<()> {
+/// Calls `f`, on a thread of its own, at the first SIGTERM, SIGINT or SIGHUP, with the name of the signal as node spells it (`"SIGTERM"`), so that a caller can log which one ended it. A later signal is caught and ignored: the ending `f` starts is over within the grace of the calls it stops and a margin, and leaving before it ends would leave a program that ignores SIGTERM without its SIGKILL. An `Err` says which of the two things it needs, the signal registration and the thread, the system refused.
+pub fn on_signals(f: impl FnOnce(&'static str) + Send + 'static) -> io::Result<()> {
     let mut signals = Signals::new([SIGTERM, SIGINT, SIGHUP])
         .map_err(|e| io::Error::new(e.kind(), format!("cannot watch for signals: {e}")))?;
     std::thread::Builder::new()
         .name("tagents-signals".into())
         .spawn(move || {
-            if signals.forever().next().is_some() {
-                f();
+            if let Some(name) = signals.forever().find_map(signal_name) {
+                f(name);
             }
         })
         .map(drop)
@@ -65,6 +66,10 @@ pub fn on_signals(f: impl FnOnce() + Send + 'static) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use signal_hook::low_level::raise;
 
     use super::*;
 
@@ -99,5 +104,19 @@ mod tests {
         let runs = Arc::new(AtomicUsize::new(0));
         stop.watch(counting(&runs));
         assert_eq!(runs.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn the_function_is_given_the_name_of_the_signal_that_came() {
+        // One test for the three: a signal is the process's, so a second test that registers at the same time would hear this one's.
+        for (signal, name) in [(SIGTERM, "SIGTERM"), (SIGINT, "SIGINT"), (SIGHUP, "SIGHUP")] {
+            let (sender, named) = mpsc::channel();
+            on_signals(move |name| {
+                let _ = sender.send(name);
+            })
+            .unwrap();
+            raise(signal).unwrap();
+            assert_eq!(named.recv_timeout(Duration::from_secs(10)), Ok(name));
+        }
     }
 }
