@@ -21,7 +21,7 @@ target/release/tagents-core --version           # tagents-core 0.4.0: the worksp
 
 For a word it does not serve, the binary replaces itself with `node packages/core/dist/cli/main.js` of the checkout it sits in, with the same arguments, environment, working directory and stdio. There is no wrapper process left: the exit code, and a signal the call ends with, are the node CLI's own. The node is `$TAGENTS_NODE` when that is set (the wrappers `install.sh` writes set it to the node they pinned), and `node` on `PATH` otherwise.
 
-When it cannot find the node CLI it prints the path it looked at, says the binary has to stay in `<root>/target/<profile>/` next to a built `packages/core/dist/cli/main.js`, and exits 2. A binary copied anywhere else does not find the node CLI. When the node cannot be started it exits 127 if there is no such file and 126 if there is one that cannot run.
+When it cannot find the node CLI it prints `tagents-core: cannot find <relative>: <why>; this binary has to stay in <root>/target/<profile>/ of a root where it is built`, with the node CLI's path below the root and the reason it failed, and exits 2. A binary copied anywhere else does not find the node CLI. When the node cannot be started it exits 127 if there is no such file and 126 if there is one that cannot run.
 
 ## Which program a command goes to
 
