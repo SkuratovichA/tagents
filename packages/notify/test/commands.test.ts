@@ -13,12 +13,13 @@ import { createAgentFeed, createContext, eventsOn, runPluginBin, setEventsOn, tm
 import { SEND_MESSAGE_MAX, SEND_TITLE_MAX } from '../src/cli/spec.ts';
 import type { Exec, ExecResult } from '../src/exec.ts';
 import type { Platform, RunSpec, ServiceStatus } from '../src/notifier.ts';
-import { tagentsScript } from '../src/paths.ts';
+import { installedCommand, tagentsScript } from '../src/paths.ts';
 import { renderPlist } from '../src/platform/macos/launchd.ts';
 import { ALLOWING_NOTIFICATIONS, createNotifyPlugin } from '../src/plugin.ts';
 import { LOCK_FILE } from '../src/service.ts';
 import { recordingNotifier } from './fakes.ts';
 
+const INSTALL_SH = path.join(fileURLToPath(new URL('../../..', import.meta.url)), 'install.sh');
 const README = path.join(fileURLToPath(new URL('..', import.meta.url)), 'README.md');
 const result = (over: Partial<ExecResult> = {}): ExecResult => ({ code: 0, stdout: '', stderr: '', timedOut: false, ...over });
 
@@ -434,6 +435,54 @@ test('install recognises the wrapper of a TAGENTS_HOME that is a symlink: the wr
   assert.deepEqual(picked(await installFrom([w.dir], entry)), { program: w.file, args: ['run'] });
   const stale = wrapperDir(execLine(path.join(link, 'packages', 'gone', 'dist', 'main.js')));
   assert.deepEqual(picked(await installFrom([stale.dir], entry)), nodeSpec(entry), 'a link into a tree that is not this entry');
+});
+
+test('installedCommand recognises what write_wrapper in install.sh writes, with a binary named or not', () => {
+  // The function as install.sh has it, run by sh: nothing here retypes what the installer writes.
+  const fn = /^write_wrapper\(\) \{[\s\S]*?^\}/m.exec(fs.readFileSync(INSTALL_SH, 'utf8'))?.[0] ?? '';
+  assert.ok(fn.length > 0, 'write_wrapper was not found in install.sh');
+  const mainJs = checkoutMain();
+  const cases: readonly (readonly string[])[] = [
+    [],
+    ['/usr/bin/node', '/some/where/tagents-core', 'notify', 'run'],
+    ['', '/some/where/tagents-core', 'notify', 'run'],
+  ];
+  for (const extra of cases) {
+    const dir = tmpDir('notify-cmd-real-wrapper');
+    const dest = path.join(dir, 'tagents-notify');
+    const script = `MARK='managed by tagents install.sh'; warn() { :; }; ${fn}\nwrite_wrapper "$@"`;
+    execFileSync('sh', ['-c', script, 'sh', dest, mainJs, ...extra]);
+    assert.ok(fs.readFileSync(dest, 'utf8').includes(`"${mainJs}"`), fs.readFileSync(dest, 'utf8'));
+    assert.equal(installedCommand(dir, mainJs), dest, extra.join(' '));
+  }
+});
+
+test('installedCommand is absolute even when PATH names the directory relatively', () => {
+  const mainJs = checkoutMain();
+  const w = wrapperDir(execLine(mainJs));
+  const cwd = process.cwd();
+  process.chdir(w.dir);
+  try {
+    // The directory may be reached through a symlink (/tmp), so the answer is compared as the file it names.
+    const found = installedCommand('.', mainJs);
+    assert.ok(found !== null && path.isAbsolute(found), String(found));
+    assert.equal(fs.realpathSync(found), fs.realpathSync(w.file));
+  } finally {
+    process.chdir(cwd);
+  }
+});
+
+test('installedCommand with an undefined PATH is null, whatever the process PATH holds', () => {
+  const mainJs = checkoutMain();
+  const w = wrapperDir(execLine(mainJs));
+  const saved = process.env['PATH'];
+  process.env['PATH'] = w.dir;
+  try {
+    assert.equal(installedCommand(undefined, mainJs), null);
+  } finally {
+    if (saved === undefined) delete process.env['PATH'];
+    else process.env['PATH'] = saved;
+  }
 });
 
 test('install runs node itself when the tagents-notify found cannot be read', { skip: process.getuid?.() === 0 }, async () => {

@@ -461,9 +461,8 @@ test('a symlinked notify.toml: an edit of its target waits for the next event in
   };
 
   // The events of a directory arrive in the order they happened, so this reload proves that every earlier one, the creation of the link above included, has been read.
-  // The link is replaced once, so nothing more is written while this waits.
-  repoint(target);
-  await until('the first reload', () => reloads() === 1);
+  // A retry points at the same file, so a late event of it reads unchanged content and `apply` ignores it.
+  await until('the first reload', () => reloads() === 1, () => repoint(target));
 
   // The directory that is watched holds the link, not the target: this edit raises no event there, and nothing else happens in it.
   fs.writeFileSync(target, turnDoneOff);

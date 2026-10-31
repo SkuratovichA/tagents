@@ -362,6 +362,10 @@ mkdir -p "$(dirname "$RUST_BIN")"
 printf '#!/bin/sh\necho "rust node=${TAGENTS_NODE-unset} $*"\nexit 7\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
 out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
 ok "an install with a Rust binary exits 0" 0 "$rc"
+# The same, with a binary: the bytes that write_wrapper has always written for a wrapper that names one, spelled out so a stray space in the wrapper text cannot pass.
+native_wrapper_bytes() {  # <node> <native binary> <word or empty> <target>
+  printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nn="%s"\n[ -x "$n" ] || n=node\nr="%s"\n[ ! -f "$r" ] || [ ! -x "$r" ] || { TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" %s"$@"; }\nexec "$n" "%s" "$@"\n' "$1" "$2" "${3:+$3 }" "$4"
+}
 contains "the wrapper names the binary" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
 contains "and still names the node CLI as the way out" 'exec "$n" "'"$TAGENTS_HOME"'/packages/core/dist/cli/main.js" "$@"' "$(cat "$TAGENTS_BIN/tagents-core")"
 ok "the wrapper runs the binary, with the pinned node and every argument" "rust node=$TMP/node-c/node a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
@@ -371,6 +375,10 @@ contains "tagents-mcp names the same binary" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENT
 contains "...and hands it the word mcp before the arguments, with the pinned node" 'TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" mcp "$@"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
 contains "...and still names the node server as the way out" 'exec "$n" "'"$TAGENTS_HOME"'/packages/mcp/dist/main.js" "$@"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
 lacks "tagents-core hands its binary no word" 'exec "$r" mcp' "$(cat "$TAGENTS_BIN/tagents-core")"
+native_wrapper_bytes "$TMP/node-c/node" "$RUST_BIN" "" "$TAGENTS_HOME/packages/core/dist/cli/main.js" > "$TMP/expected-native-core"
+native_wrapper_bytes "$TMP/node-c/node" "$RUST_BIN" mcp "$TAGENTS_HOME/packages/mcp/dist/main.js" > "$TMP/expected-native-mcp"
+same_bytes "with a binary, tagents-core is byte for byte what write_wrapper has always written for it" "$TMP/expected-native-core" "$TAGENTS_BIN/tagents-core"
+same_bytes "and so is tagents-mcp" "$TMP/expected-native-mcp" "$TAGENTS_BIN/tagents-mcp"
 ok "tagents-mcp runs the binary with the word, then every argument" "rust node=$TMP/node-c/node mcp a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a b)"
 env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a >/dev/null; rc=$?
 ok "...and its exit code comes through untouched" 7 "$rc"
