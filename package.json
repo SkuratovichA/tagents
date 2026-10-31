@@ -19,6 +19,6 @@
     "prepare": "git rev-parse --git-dir > /dev/null 2>&1 && [ -z \"$(git config --get core.hooksPath)\" ] && git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
-    "@fission-ai/openspec": "1.14.3"
+    "@fission-ai/openspec": "1.15.0"
   }
 }
