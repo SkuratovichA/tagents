@@ -13,5 +13,7 @@ pub mod node;
 pub mod notify;
 pub mod sessions;
 mod sync;
+#[cfg(test)]
+mod testing;
 pub mod transcripts;
 pub mod watch;

@@ -8,7 +8,7 @@ use std::fs;
 use crate::{js, node};
 
 #[cfg(test)]
-pub(crate) mod tests;
+mod tests;
 
 /// What a row says its session is doing. `Subdone` is a subagent that finished; the rest is node's `SessionState`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

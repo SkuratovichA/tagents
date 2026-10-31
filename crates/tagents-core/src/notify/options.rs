@@ -660,10 +660,9 @@ mod tests {
     use std::fs;
     use std::os::unix::fs::{PermissionsExt, symlink};
     use std::path::PathBuf;
-    use std::process;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
+    use crate::testing::Scratch;
 
     const FILE: &str = "<file>";
 
@@ -682,21 +681,13 @@ mod tests {
         format!("[events.cache_expiring]\nafter = {after}\nttl = {ttl}\n")
     }
 
-    /// A directory of a test's own, removed when the test ends.
-    struct Scratch(PathBuf);
+    /// What these tests ask of a scratch directory besides its path.
+    trait OptionsDir {
+        fn plugins(&self) -> PathBuf;
+        fn file(&self) -> String;
+    }
 
-    impl Scratch {
-        fn new() -> Scratch {
-            static COUNT: AtomicUsize = AtomicUsize::new(0);
-            let dir = std::env::temp_dir().join(format!(
-                "tagents-options-{}-{}",
-                process::id(),
-                COUNT.fetch_add(1, Ordering::Relaxed)
-            ));
-            fs::create_dir_all(&dir).unwrap();
-            Scratch(dir)
-        }
-
+    impl OptionsDir for Scratch {
         fn plugins(&self) -> PathBuf {
             let dir = self.0.join("plugins");
             fs::create_dir_all(&dir).unwrap();
@@ -705,17 +696,6 @@ mod tests {
 
         fn file(&self) -> String {
             options_file(&self.0)
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            if let Ok(meta) = fs::metadata(self.0.join("plugins/notify.toml")) {
-                let mut mode = meta.permissions();
-                mode.set_mode(0o600);
-                fs::set_permissions(self.0.join("plugins/notify.toml"), mode).ok();
-            }
-            fs::remove_dir_all(&self.0).ok();
         }
     }
 
