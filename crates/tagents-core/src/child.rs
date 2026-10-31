@@ -664,18 +664,18 @@ mod tests {
 
     #[test]
     fn with_no_grace_a_program_that_exits_with_its_output_still_in_the_pipe_loses_none_of_it() {
-        // No grace and no drain: the only wait for the readers is `READER_WAIT`. The output is under the cap and over the pipe's buffer, so the program waited for the readers while it wrote. Calls side by side, so that the readers of one compete with the threads of the others, as the same test of `mcp` does.
+        // No grace and no drain: the only wait for the readers is `READER_WAIT`. The output is under the cap and over the pipe's buffer, so the program waited for the readers while it wrote. Calls side by side, so that the readers of one compete with the threads of the others, as the same test of `mcp` does: with `READER_WAIT` at zero, thirty-two lanes of twenty-five calls lost output in 20 runs of 20, and sixteen lanes of ten in 2 of 3.
         let everything = Policy {
             drain: ms(0),
             ..policy(None, ms(10_000), None)
         };
         thread::scope(|scope| {
-            for lane in 1..=16 {
+            for lane in 1..=32 {
                 let everything = &everything;
                 scope.spawn(move || {
-                    for call in 1..=10 {
+                    for call in 1..=25 {
                         let finished = sh(
-                            "head -c 100000 /dev/zero | tr '\\0' x",
+                            "head -c 200000 /dev/zero | tr '\\0' x",
                             everything,
                             &Stop::default(),
                         );
@@ -683,7 +683,7 @@ mod tests {
                         assert_eq!(finished.code, Some(0), "lane {lane} call {call}");
                         assert_eq!(
                             finished.stdout.len(),
-                            100_000,
+                            200_000,
                             "lane {lane} call {call} lost output"
                         );
                     }
