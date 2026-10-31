@@ -153,7 +153,7 @@ The `log` backend SHALL write each notice as one line `post <id> <kind> <title> 
 - **THEN** install prints a warning and carries on
 
 ### Requirement: What launchd runs
-The LaunchAgent SHALL live at `~/Library/LaunchAgents/io.github.skuratovicha.tagents-notify.plist` with that string as its label, whatever icon the helper app was built with, run `node dist/main.js run` at load, restart only after a failed exit (`KeepAlive` with `SuccessfulExit` false) and at least 300 seconds apart, and send both output streams to the log file.
+The LaunchAgent SHALL live at `~/Library/LaunchAgents/io.github.skuratovicha.tagents-notify.plist` with that string as its label, whatever icon the helper app was built with, run `tagents-notify run` through the installer's `tagents-notify` command when that command runs this checkout and `node dist/main.js run` otherwise, restart only after a failed exit (`KeepAlive` with `SuccessfulExit` false) and at least 300 seconds apart, and send both output streams to the log file.
 
 #### Scenario: the plist
 - **WHEN** install writes the agent
@@ -162,6 +162,18 @@ The LaunchAgent SHALL live at `~/Library/LaunchAgents/io.github.skuratovicha.tag
 #### Scenario: hostile characters
 - **WHEN** an environment value holds `&`, `<`, `>` or quotes
 - **THEN** the plist escapes them
+
+#### Scenario: the installer's command runs this checkout
+- **WHEN** `tagents-notify` is found on the `PATH` of the installing shell and the wrapper's text holds this checkout's `dist/main.js` as a whole double-quoted path, compared as files, so that a `TAGENTS_HOME` that is a symlink is recognised
+- **THEN** the plist's program is that wrapper and its one argument is `run`
+
+#### Scenario: no command, or another checkout's
+- **WHEN** no `tagents-notify` is found, or the one found cannot be read, or its quoted paths name another file than this checkout's `dist/main.js` (a longer path that starts with this one, or holds it, is another file)
+- **THEN** the plist's program is the node that runs install and its arguments are this checkout's `dist/main.js` and `run`
+
+#### Scenario: the binary disappears
+- **WHEN** the plist names the wrapper and the binary is removed by a later update
+- **THEN** the next start of the service runs the node program and the plist is not rewritten
 
 ### Requirement: The environment launchd gives the service
 Because launchd inherits nothing from the installing shell, the plist SHALL carry a `PATH` of the directory of the running node, the directory of tmux when found, and the system directories; `HOME`; `LANG` (default `en_US.UTF-8`); `TA_NOTIFY_TAGENTS`; and, when set in the installing shell, `LC_ALL`, `LC_CTYPE`, `TA_STATE_DIR`, `TAGENTS_CONFIG_DIR`, `XDG_CONFIG_HOME`, `TA_CONFIG`, `TMUX_TMPDIR`, `TAGENTS_LOCALE` and `TA_NOTIFY_APP`.
@@ -493,11 +505,15 @@ Off macOS `status` SHALL resolve the backend to `unsupported` and print `service
 - **THEN** the notice is written to the log and the verb prints `shown`
 
 ### Requirement: Resource use
-The service SHALL poll nothing. It holds one file watch on the state directory, one on the options directory, and at most two timers: the cache deadline's (only while a deadline is armed, sleeping at most 5 minutes) and the follower's re-follow timer (only while the follower is dead). Each notice costs one tmux invocation and one helper invocation.
+The service SHALL poll nothing. It holds one file watch on the events stream and one on the options directory, and at most three timed waits: the cache deadline's (only while a deadline is armed, at most 5 minutes), the follower's re-follow (only while the follower is dead) and the rotation grace (2 seconds after the events file rotates). The Rust service also watches the options file when it is a regular file. Each notice costs one tmux invocation and one helper invocation.
 
 #### Scenario: idle
 - **WHEN** no session is waiting and the follower is alive
-- **THEN** no timer is pending
+- **THEN** no timed wait is pending
+
+#### Scenario: the Rust service at rest
+- **WHEN** the Rust service is idle
+- **THEN** it has three threads (the engine, the watch, the signals), and a thread for a tmux, `ps` or helper call only while that call runs; the watch holds, on Linux, the inotify descriptor, the two of its wake pipe and the follower's own read descriptor of the events file (an inotify watch holds none), and on macOS the kqueue descriptor, the two of its wake pipe, the events file twice (the watch's and the follower's own read), the state directory (which the events file's watch holds with it), the options directory and the options file when that is a regular file
 
 ### Requirement: The job is filed under the app in Login Items
 The plist's `AssociatedBundleIdentifiers` SHALL name the bundle id the installed helper app has, read from the app at install time, so that Login Items files the job under the app; with no app, or when the id cannot be read, it SHALL name `io.github.skuratovicha.tagents-notify`.

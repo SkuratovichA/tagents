@@ -85,7 +85,7 @@ The `node` that runs the node CLI SHALL be `$TAGENTS_NODE` when that is set and 
 - **THEN** the node CLI runs on the `node` that `PATH` finds
 
 ### Requirement: When the node CLI cannot be run
-When a word has to go to the node CLI and `packages/core/dist/cli/main.js` does not exist in the checkout, the Rust binary SHALL print one line on stderr that names the path it looked at and says it has to stay in `<root>/target/<profile>/` next to a built `packages/core/dist/cli/main.js`, and exit 2. When the node program cannot be started, it SHALL print one line naming it and exit 127 if no such program exists and 126 if it exists and cannot be run.
+When a word has to go to the node CLI and `packages/core/dist/cli/main.js` does not exist in the checkout, the Rust binary SHALL print one line on stderr, `tagents-core: cannot find <relative path>: <why>; this binary has to stay in <root>/target/<profile>/ of a root where it is built`, which names the path it looked at, and exit 2. When the node program cannot be started, it SHALL print one line naming it and exit 127 if no such program exists and 126 if it exists and cannot be run.
 
 #### Scenario: Not built
 - **WHEN** a word that is not served runs from a checkout with no `packages/core/dist/cli/main.js`
