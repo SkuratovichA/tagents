@@ -355,13 +355,11 @@ fn an_exec_that_fails_with_stderr_a_closed_pipe_exits_1_and_is_not_killed_by_sig
     let mut fake = Fake::logging("service-exec-fails-closed-stderr");
     fake.break_follower();
     fake.node = fake.root.join("no-such-node");
-    let (reader, writer) = io::pipe().unwrap();
-    drop(reader);
     let mut child = start(
         fake.command()
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(writer),
+            .stderr(common::closed_pipe()),
     );
     let mut status = None;
     until(
@@ -419,7 +417,9 @@ impl Drop for Restore {
 #[test]
 fn a_failed_options_watch_does_not_hand_over() {
     if is_root() {
-        eprintln!(
+        // libtest captures `eprintln!` of a passing test; a write to the stderr handle is shown.
+        let _ = writeln!(
+            io::stderr(),
             "skipped: root can read a directory that has no read permission, so the options watch does not fail"
         );
         return;
@@ -527,13 +527,28 @@ fn an_unrelated_file_in_the_options_directory_logs_nothing_and_keeps_the_options
     let before = running.lines();
     fs::write(fake.plugins().join("unrelated.toml"), "").unwrap();
     fake.options("backend = \"log\"\nclick = \"goto\"\n");
-    // The wakes are read in the order they came: a change that must be answered, made after the two that must not be, shows by its own line that the first two were read and said nothing.
+    // The wakes come on one channel in the order they happened: a marker event the service must answer, written after the two that must not be, shows by its own notice that the first two were read.
+    fake.append_event("1760000000\tStop\t12\tsess-marker\t\t%12\t/tmp/x\t\t\t\t\t\t\n");
+    assert!(running.says("notice turn_done 12 "), "{}", running.log());
+    assert_eq!(
+        running.lines()[before.len()..]
+            .iter()
+            .filter(|line| line.starts_with("options"))
+            .count(),
+        0,
+        "an unrelated file and the same bytes written again say nothing: {}",
+        running.log()
+    );
     fake.options("backend = \"log\"\nclick = \"focus\"\n");
     assert!(running.says("options reloaded"), "{}", running.log());
     assert_eq!(
-        running.lines()[before.len()..],
-        ["options reloaded"],
-        "an unrelated file and the same bytes written again say nothing, and the change is one reload"
+        running
+            .lines()
+            .iter()
+            .filter(|line| *line == "options reloaded")
+            .count(),
+        1,
+        "the change is one reload"
     );
     running.signal(Signal::TERM);
     assert_eq!(running.exit().code(), Some(0));

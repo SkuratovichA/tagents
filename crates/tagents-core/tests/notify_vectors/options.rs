@@ -3,6 +3,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::Path;
 
@@ -115,7 +116,9 @@ fn sorted(mut lines: Vec<String>) -> Vec<String> {
 fn judge(case: &Value) -> Option<String> {
     let setup = case["setup"].as_str().unwrap();
     if setup == "unreadable" && rustix::process::geteuid().is_root() {
-        eprintln!(
+        // libtest captures `eprintln!` of a passing test; a write to the stderr handle is shown.
+        let _ = writeln!(
+            std::io::stderr(),
             "skipped: {}: root can read a file whose mode is 0",
             case["name"].as_str().unwrap()
         );

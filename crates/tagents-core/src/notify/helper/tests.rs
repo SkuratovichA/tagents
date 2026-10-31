@@ -9,7 +9,7 @@
 //! - status, delivered and authorize: not applicable: `helperStatus`, `helperDelivered` and `helperAuthorize` serve CLI verbs that stay node
 //! - authorize reports its own timeout in seconds: not applicable: `helperAuthorize` stays node; the seconds text of the daemon's calls is `a_timeout_names_the_seconds_and_kills_the_helper`
 //!
-//! Cases of the Rust copy that node's file does not have: the helper's input is `JSON.stringify` of the notice (`the_input_is_the_notice_with_node_keys_in_node_order`, `the_input_escapes_as_json_stringify_does`), the schema (`a_field_of_the_wrong_type_makes_the_line_unreadable`) the exit code is not read (`the_exit_code_is_not_read`) and the cut of the unreadable output that falls inside a surrogate pair (`a_cut_between_the_halves_of_a_pair_is_written_as_the_escape_of_the_high_half`).
+//! Cases of the Rust copy that node's file does not have: a helper that writes past the cap and exits (`a_helper_that_writes_past_the_cap_and_exits_gives_the_unreadable_output_line`) and one that never stops writing (`a_helper_that_never_stops_writing_is_timed_out_at_the_deadline`), the helper's input is `JSON.stringify` of the notice (`the_input_is_the_notice_with_node_keys_in_node_order`, `the_input_escapes_as_json_stringify_does`), the schema (`a_field_of_the_wrong_type_makes_the_line_unreadable`) the exit code is not read (`the_exit_code_is_not_read`) and the cut of the unreadable output that falls inside a surrogate pair (`a_cut_between_the_halves_of_a_pair_is_written_as_the_escape_of_the_high_half`).
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -180,6 +180,32 @@ fn unreadable_output_gives_stdout_and_stderr_cut_at_200_units() {
             .unwrap_err(),
         "unreadable output from the notification helper: stdout \"\", stderr \"\""
     );
+}
+
+/// Node's `execFile` closes the pipe at its 1 MiB `maxBuffer` and fails at once; here the output is kept up to the cap and the rest is drained, so a helper that writes past the cap and exits ends in the same unreadable-output line.
+#[test]
+fn a_helper_that_writes_past_the_cap_and_exits_gives_the_unreadable_output_line() {
+    let app = App::new("yes | head -c 2000000");
+    let _forking = forking();
+    let failed = HelperNotifier::new(&app.app()).post(&notice()).unwrap_err();
+    assert_eq!(
+        failed,
+        format!(
+            "unreadable output from the notification helper: stdout \"{}\", stderr \"\"",
+            "y\\n".repeat(100)
+        )
+    );
+}
+
+/// Node cuts a helper that never stops writing at the cap, at once; here it is drained until the deadline and then timed out.
+#[test]
+fn a_helper_that_never_stops_writing_is_timed_out_at_the_deadline() {
+    let app = App::new("exec yes");
+    let _forking = forking();
+    let began = Instant::now();
+    let failed = run_helper(&app.app(), &["post"], None, 500).unwrap_err();
+    assert_eq!(failed, "the notification helper timed out after 0.5 s");
+    assert!(began.elapsed() < Duration::from_secs(10));
 }
 
 /// The parity scenario `helper: emoji garbage, cut in half of a pair` (`tests/rust-notify-parity.sh`): node stringifies `stdout.slice(0, 200)`, a cut that can leave the high half of a pair, which `JSON.stringify` writes as an escape and never as U+FFFD.
