@@ -181,6 +181,35 @@ impl Spec {
     }
 }
 
+/// The messages file this crate was built with: `spec/cli/messages.json`, embedded.
+pub const BUNDLED_MESSAGES: &str = include_str!("../../../spec/cli/messages.json");
+
+/// The human strings of the CLI, one table of key to text per language. `packages/core/src/i18n/export.ts` writes the file from `en.ts` and `ru.ts` (`pnpm messages:gen`) and refuses a text that uses more of i18next than `{{name}}`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Messages {
+    pub en: BTreeMap<String, String>,
+    pub ru: BTreeMap<String, String>,
+}
+
+impl Messages {
+    /// Parse a messages file: both languages, every text a string, and no key in `ru` that `en` lacks (`en` is the table a missing key falls back to).
+    pub fn parse(text: &str) -> Result<Self, serde_json::Error> {
+        let messages: Self = serde_json::from_str(text)?;
+        if let Some(key) = messages.ru.keys().find(|k| !messages.en.contains_key(*k)) {
+            return Err(serde_json::Error::custom(format!(
+                "ru.{key} has no en.{key} to fall back to"
+            )));
+        }
+        Ok(messages)
+    }
+
+    /// The messages this crate was built with.
+    pub fn bundled() -> Result<Self, serde_json::Error> {
+        Self::parse(BUNDLED_MESSAGES)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -190,6 +219,34 @@ mod tests {
     use super::*;
 
     const SCHEMA: &str = include_str!("../../../spec/cli/cli-spec.schema.json");
+
+    #[test]
+    fn the_bundled_messages_load_and_russian_is_a_subset_of_english() {
+        let messages = Messages::bundled().expect("the bundled messages load");
+        assert!(messages.en.len() > messages.ru.len());
+        assert!(messages.ru.keys().all(|k| messages.en.contains_key(k)));
+        assert_eq!(
+            messages.en["pluginNone"],
+            "no plugins configured in {{file}}"
+        );
+    }
+
+    #[test]
+    fn messages_of_an_unknown_shape_are_refused() {
+        for (text, why) in [
+            ("{}", "no languages"),
+            (r#"{"en":{}}"#, "no ru"),
+            (r#"{"en":{},"ru":{},"de":{}}"#, "a language nobody speaks"),
+            (r#"{"en":{"a":1},"ru":{}}"#, "a text that is not a string"),
+            (r#"{"en":{"a":null},"ru":{}}"#, "a null text"),
+            (r#"{"en":{},"ru":{"a":"x"}}"#, "ru key without en"),
+            (r#"{"en":[],"ru":{}}"#, "a table that is a list"),
+            ("[]", "a list"),
+        ] {
+            assert!(Messages::parse(text).is_err(), "{why}: {text}");
+        }
+        assert!(Messages::parse(r#"{"en":{"a":"x"},"ru":{}}"#).is_ok());
+    }
 
     fn object(value: &Value) -> &serde_json::Map<String, Value> {
         value.as_object().expect("a JSON object")

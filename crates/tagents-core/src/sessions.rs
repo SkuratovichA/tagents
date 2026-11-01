@@ -44,7 +44,7 @@ pub struct Output {
 }
 
 impl Output {
-    fn out(text: String) -> Self {
+    pub(crate) fn out(text: String) -> Self {
         Self {
             stdout: text,
             stderr: String::new(),
@@ -52,7 +52,7 @@ impl Output {
         }
     }
 
-    fn fail(stderr: String) -> Self {
+    pub(crate) fn fail(stderr: String) -> Self {
         Self {
             stdout: String::new(),
             stderr,

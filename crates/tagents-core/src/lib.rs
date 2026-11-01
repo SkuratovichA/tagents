@@ -9,8 +9,10 @@ pub mod front_door;
 pub mod js;
 pub mod json;
 pub mod mcp;
+pub mod messages;
 pub mod node;
 pub mod notify;
+pub mod plugin;
 pub mod sessions;
 mod sync;
 #[cfg(test)]
