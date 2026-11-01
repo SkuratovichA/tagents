@@ -56,6 +56,7 @@ export const ru: Partial<Record<keyof typeof en, string>> = {
   doctorStateDir: 'состояние агентов {{dir}} ({{count}} запис(ь/и))',
   doctorConfig: 'конфиг {{file}}: {{status}}',
   doctorClaude: 'claude: {{status}}',
+  doctorNodeMissing: 'node: нет',
   present: 'есть',
   missing: 'нет',
 };
