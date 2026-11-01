@@ -1240,6 +1240,212 @@ filter_facts() {
 }
 
 # ---------------------------------------------------------------------------
+# tagents, when it is there
+# ---------------------------------------------------------------------------
+# A session is called what it was named in tagents, and an account what the
+# tagents config calls it. Both live in lib/tagents/, beside this file in a
+# checkout and nowhere else. Reading the index needs none of it, so without that
+# directory every name is an id, every account is a discovered one, and no
+# report fails for it. The modules are sourced in a subshell with its standard
+# error discarded: a module that prints, or a config the parser refuses, is not
+# tusage's output.
+
+# lib/tagents/ beside the real file, found by following the symlinks by hand
+# (macOS ships no readlink -f). The loop is the one in ./tagents, word for word,
+# and tests/tusage.sh compares the two. Sets TA_LIB; fails when the modules are
+# not there.
+tu_lib() {
+  local ta_real ta_link
+  ta_real=${BASH_SOURCE[0]}
+  while [ -L "$ta_real" ]; do
+    ta_link=$(readlink "$ta_real")
+    case $ta_link in
+      /*) ta_real=$ta_link ;;
+      *)  case $ta_real in
+            */*) ta_real=${ta_real%/*}/$ta_link ;;
+            *)   ta_real=$ta_link ;;
+          esac ;;
+    esac
+  done
+  case $ta_real in
+    */*) TA_LIB=${ta_real%/*}/lib/tagents ;;
+    *)   TA_LIB=lib/tagents ;;
+  esac
+  [ -r "$TA_LIB/core.sh" ] && [ -r "$TA_LIB/names.sh" ] && [ -r "$TA_LIB/state.sh" ]
+}
+
+# Run a function of this file with the names modules loaded. Its answer is on
+# standard output; nothing is printed and the status is 1 when the modules are
+# not found.
+with_names() {  # <function> [args…]
+  tu_lib || return 1
+  # shellcheck disable=SC1091  # the dashboard modules sit beside the script, found at run time
+  ( set +u
+    . "$TA_LIB/core.sh"; . "$TA_LIB/names.sh"; . "$TA_LIB/state.sh"
+    "$@" ) 2>/dev/null
+}
+
+name_files() { printf '%s\n%s\n' "$LABELS" "$TITLES"; }
+
+# stdin: sid<TAB>project slug, one session per line. Prints S<TAB>sid<TAB>name
+# for each that has a name, by the rule of the dashboard: the name typed for it
+# (the first line for its id in labels.tsv, where an empty name is no name),
+# else the title in the cache, else the title of its transcript. That one is
+# read at most once: title_of is the only writer of title.tsv, atomically, and
+# it re-reads a transcript that has no title only after the transcript grew.
+names_of_sessions() {
+  local sid slug haslabel hit hsz nm tr
+  set --
+  [ -e "$LABELS" ] && set -- "$LABELS"
+  [ -e "$TITLES" ] && set -- "$@" "$TITLES"
+  while IFS="$US" read -r sid slug haslabel hit hsz; do
+    nm=""
+    [ "$haslabel" = 1 ] && nm=$(label_of "$sid")
+    if [ -z "$nm" ]; then
+      case $hit in
+        ''|-) tr="$PROJECTS/$slug/$sid.jsonl"
+              [ -r "$tr" ] && nm=$(title_of "$sid" "$tr" "$hit" "$hsz") ;;
+        *)    nm=$hit ;;
+      esac
+    fi
+    [ -n "$nm" ] && printf 'S\t%s\t%s\n' "$sid" "$nm"
+  done < <(LC_ALL=C awk -F"$TAB" -v OFS="$US" -v lab="$LABELS" -v tit="$TITLES" '
+      FILENAME == lab { HL[$1] = 1; next }
+      FILENAME == tit { TH[$1] = $2; TZ[$1] = $3; next }
+      { print $1, $2, ($1 in HL) + 0, TH[$1], TZ[$1] }' "$@" -)
+}
+
+# S lines for the session rows of a node file: only the rows the table prints,
+# so a session cut by --top is never looked at.
+session_names() {  # <nodes file>
+  LC_ALL=C awk -F"$TAB" '$1 == "N" && $3 == "session" { print $4 "\t" $17 }' "$1" |
+    with_names names_of_sessions
+}
+
+# The accounts of the tagents config, for a terminal. The dashboard hands tusage
+# TU_ACCOUNTS and TU_ACCOUNT_RULES through usage_env; a hand-typed tusage asks
+# the same function, so it names the accounts the dashboard does. A TU_ACCOUNTS
+# set by hand wins and the config is not read; so does a TU_ACCOUNT_RULES. With
+# no config, or a config with no profiles, nothing is set and the discovery in
+# account_dirs stays.
+ensure_accounts() {
+  local got accts rules
+  [ -z "${TU_ACCOUNTS:-}" ] || return 0
+  tu_lib || return 0
+  # shellcheck disable=SC1091  # the dashboard modules sit beside the script, found at run time
+  got=$( ( set +u; unset TU_ACCOUNT_RULES
+           . "$TA_LIB/core.sh"; . "$TA_LIB/config.sh"; . "$TA_LIB/accounts.sh"; . "$TA_LIB/usage.sh"
+           usage_env
+           printf '%s\n%s\n' "${TU_ACCOUNTS:-}" "${TU_ACCOUNT_RULES:-}" ) 2>/dev/null )
+  { IFS= read -r accts; IFS= read -r rules; } <<<"$got"
+  [ -n "$accts" ] || return 0
+  export TU_ACCOUNTS=$accts
+  [ -z "${TU_ACCOUNT_RULES:-}" ] && [ -n "$rules" ] && export TU_ACCOUNT_RULES=$rules
+  return 0
+}
+
+# A session's name as the lookup has it: the typed one (the first line for its
+# id in labels.tsv; an empty one is none), else a title in the cache. Spliced
+# into the programs below, which pass the two files as -v lab and -v tit.
+# shellcheck disable=SC2016  # awk source, $1 and $2 are awk fields
+AWK_NAME='
+  FILENAME == lab { if (!($1 in HL)) { HL[$1] = 1; LN[$1] = $2 }; next }
+  FILENAME == tit { TN[$1] = $2; next }
+  function name(s,   t) {
+    t = (s in HL) ? LN[s] : ""
+    if (t == "") t = ((s in TN) && TN[s] != "-") ? TN[s] : ""
+    return t
+  }
+'
+
+# The sessions a text names by one rule, "sid<TAB>name" each, in index order.
+# The rules, in turn: id (the whole id, else the start of one) and name (the
+# whole name, else part of it, any case). The first step that matches anything
+# is the answer. --account keeps those accounts' sessions. No transcript is read.
+session_hits() {  # <text> id|name [labels file] [titles file]
+  local x=$1 rule=$2 lab=${3:-} tit=${4:-}
+  [ -s "$META" ] || return 0
+  set -- "$META"
+  [ -n "$lab" ] && [ -e "$lab" ] && set -- "$@" "$lab"
+  [ -n "$tit" ] && [ -e "$tit" ] && set -- "$@" "$tit"
+  { [ -z "$ACCTS" ] || account_map; } |
+  X=$x LC_ALL=C awk -F"$TAB" -v rule="$rule" -v accts="$ACCTS" -v meta="$META" -v lab="$lab" -v tit="$tit" \
+      "$AWK_NAME"'
+    BEGIN {
+      x = ENVIRON["X"]; lx = tolower(x)
+      na = split(accts, a, ","); for (i = 1; i <= na; i++) WANT[a[i]] = 1
+    }
+    FILENAME == meta { if (!($1 in SEEN)) { SEEN[$1] = 1; SID[++n] = $1 }; next }
+    { ACC[$1] = ($2 == "" ? "?" : $2) }
+    END {
+      for (i = 1; i <= n; i++) {
+        s = SID[i]
+        if (na && !(((s in ACC) ? ACC[s] : "?") in WANT)) continue
+        C[++m] = s
+      }
+      for (step = 1; step <= 2; step++) {
+        k = 0
+        for (i = 1; i <= m; i++) {
+          s = C[i]; nm = name(s)
+          if (rule == "id") hit = (step == 1) ? (s == x) : (index(s, x) == 1)
+          else hit = (nm != "") && ((step == 1) ? (tolower(nm) == lx) : (index(tolower(nm), lx) > 0))
+          if (hit) OUT[++k] = s
+        }
+        if (k) { for (j = 1; j <= k; j++) print OUT[j]; exit }
+      }
+    }' "$@" -
+}
+
+# Several sessions answer one text: say which, with what tells them apart.
+session_list() {  # <text> <hit ids, one per line> [labels file] [titles file]
+  local x=$1 hits=$2 lab=${3:-} tit=${4:-}
+  ensure_accounts
+  printf 'tusage: %s sessions match %s; give more of the id or the name, or narrow with --account:\n' \
+    "$(printf '%s\n' "$hits" | wc -l | tr -d ' ')" "$x" >&2
+  set --
+  [ -n "$lab" ] && [ -e "$lab" ] && set -- "$@" "$lab"
+  [ -n "$tit" ] && [ -e "$tit" ] && set -- "$@" "$tit"
+  { printf '%s\n' "$hits" | LC_ALL=C sort | sed 's/^/H\t/'; account_map | sed 's/^/A\t/'; } |
+  LC_ALL=C awk -F"$TAB" -v facts="$FACTS" -v lab="$lab" -v tit="$tit" -v tz="$(date +%z)" "$AWK_DAY$AWK_NAME"'
+    FILENAME == facts { if ($3 in HIT) { d = daykey($1 + 0); if (!(($3, d) in SEEN)) { SEEN[$3, d] = 1; DAYS[$3]++ } }; next }
+    $1 == "H" { HIT[$2] = 1; ORDER[++n] = $2; next }
+    $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
+    END {
+      for (i = 1; i <= n; i++) { s = ORDER[i]; nm = name(s)
+        printf "  %s  %s  %s  %d day%s\n", s, (nm == "" ? "-" : nm), ((s in ACC) ? ACC[s] : "?"), DAYS[s], (DAYS[s] == 1 ? "" : "s") }
+    }' - "$@" "$FACTS" >&2
+}
+
+# labels.tsv and title.tsv where the names modules keep them, as NAME_LAB and
+# NAME_TIT; both empty when the modules are not there.
+NAME_LAB=""; NAME_TIT=""; NAME_PATHS=""
+name_paths() {
+  local paths
+  [ -z "$NAME_PATHS" ] || return 0
+  NAME_PATHS=1
+  paths=$(with_names name_files) || return 0
+  { IFS= read -r NAME_LAB; IFS= read -r NAME_TIT; } <<<"$paths"
+}
+
+# --session's text becomes the full id, or the run ends: 1 when nothing has that
+# id or name, 3 when several do. An id-shaped text that names nothing is not an
+# error: the detail of a session with no usage is empty, and the dashboard asks
+# for ids that have aged out of the index.
+resolve_session() {
+  local hits
+  [ -s "$FACTS" ] || return 0
+  hits=$(session_hits "$SESSION" id)
+  [ -n "$hits" ] || { name_paths; hits=$(session_hits "$SESSION" name "$NAME_LAB" "$NAME_TIT"); }
+  case $hits in
+    '')      case $SESSION in
+               *[!0-9a-fA-F-]*) echo "tusage: no session called $SESSION" >&2; exit 1 ;;
+             esac ;;
+    *$'\n'*) name_paths; session_list "$SESSION" "$hits" "$NAME_LAB" "$NAME_TIT"; exit 3 ;;
+    *)       SESSION=$hits ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
 # --by: one aggregation pass, one render pass
 # ---------------------------------------------------------------------------
 # by_aggregate reads facts.tsv once and prints a stream of nodes; by_render
@@ -1445,6 +1651,7 @@ by_render() {  # <dimensions, comma list> <title>
     }
     $1 == "W" { FROM = $2; TO = $3; UNPL = $4 + 0; next }
     $1 == "K" { NK++; KACC[NK] = $2; next }
+    $1 == "S" { t = $3; gsub(/[\001-\037\177]/, "", t); if (t != "") NAME[$2] = t; next }
     {
       n++
       TY[n] = $1; DP[n] = $2 + 0; DM[n] = $3; KY[n] = $4
@@ -1457,7 +1664,7 @@ by_render() {  # <dimensions, comma list> <title>
       if (TY[i] == "T") return "total"
       if (TY[i] == "R")      t = "… " k " more"
       else if (d == "account") t = (k == "?") ? "? unplaced" : k
-      else if (d == "session") t = substr(k, 1, 8)
+      else if (d == "session") t = (k in NAME) ? NAME[k] "  " substr(k, 1, 8) : substr(k, 1, 8)
       else if (d == "week")  t = "wk " k
       else if (d == "model") t = short_model(k)
       else t = k
@@ -1525,7 +1732,11 @@ report_by() {  # <the --by list> <cut> <upto>
   if [ "$TSV" = 1 ]; then by_aggregate "$all" "$cut" "$upto" tsv; return; fi
   nodes=$(mktemp "${TMPDIR:-/tmp}/tusage.by.XXXXXX") || return 1
   by_aggregate "$all" "$cut" "$upto" table >"$nodes"; rc=$?
-  [ "$rc" = 0 ] && { by_render "$all" "by ${all//,/ > }" <"$nodes"; rc=$?; }
+  if [ "$rc" = 0 ]; then
+    { case ",$all," in *,session,*) session_names "$nodes" ;; esac; cat "$nodes"; } |
+      by_render "$all" "by ${all//,/ > }"
+    rc=$?
+  fi
   rm -f "$nodes"
   return "$rc"
 }
@@ -1645,11 +1856,8 @@ burn() {   # what the last 5h cost, for the tmux status bar
 }
 
 session_detail() {
-  local sid=$1 full slug
+  local sid=$1 slug
   [ -s "$FACTS" ] || return 1
-  # accept a short prefix; everything downstream needs the full id
-  full=$(LC_ALL=C awk -F"$TAB" -v k="$sid" 'index($1, k) == 1 { print $1; exit }' "$META" 2>/dev/null)
-  [ -n "$full" ] && sid=$full
   slug=$(LC_ALL=C awk -F"$TAB" -v k="$sid" '$1 == k { print $2; exit }' "$META" 2>/dev/null)
   printf '\033[1m%s\033[0m  %s\n' "$sid" "$(origin_dir "$sid" "$slug")"
   LC_ALL=C awk -F"$TAB" -v k="$sid" -v prices="$(prices_arg)" "$AWK_FMT$AWK_PRICE"'
@@ -1816,7 +2024,8 @@ while [ $# -gt 0 ]; do
     --force)    MET_FORCE=1; shift ;;
     --sessions) DIM=__sessions; shift ;;
     --daily)    DIM=__daily; shift ;;
-    --session)  want_value "$1" $#; SESSION=$2; [ -n "$DIM" ] || DIM=__detail; shift 2 ;;
+    --session)  want_value "$1" $#; [ -n "$2" ] || die_usage "--session needs an id or a name"
+                SESSION=$2; [ -n "$DIM" ] || DIM=__detail; shift 2 ;;
     --burn)     DIM=__burn; shift ;;
     --json)     DIM=__json; shift ;;
     # The meter runs AFTER the index work and outside its lock: it is a network
@@ -1869,6 +2078,9 @@ check_accounts() {
 case "$TOPN" in ''|*[!0-9]*) die_usage "--top wants a number of rows, not $TOPN" ;; esac
 [ -z "$SORT" ] || [ "$SORT" = cost ] || die_usage "--sort accepts only cost, not $SORT"
 case "$COLOR" in auto|always|never) ;; *) die_usage "--color accepts auto, always or never, not $COLOR" ;; esac
+if [ -n "$ACCTS" ]; then ensure_accounts
+else case "$DIM" in __by|__daily|__meter|__calibrate) ensure_accounts ;; esac
+fi
 check_accounts
 
 # The window. A table by week or month, or of one session, reaches back as far
@@ -1895,6 +2107,7 @@ fi
 
 [ "$DO_UPDATE" = 1 ] && update 0
 case "$DIM" in ""|__by|__sessions|__daily|__burn|__json) filter_facts ;; esac
+[ "$DIM" = __detail ] && resolve_session
 
 case "$DIM" in
   "")          summary ;;

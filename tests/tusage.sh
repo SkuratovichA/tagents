@@ -58,6 +58,9 @@ T1=$(( T2 - 172800 ))              # two days back: a different local day under 
 D1=$(dayof "$T1"); D2=$(dayof "$T2")
 
 export TU_STATE="$ROOT/usage" TU_PROJECTS="$ROOT/projects"
+# The names of sessions and the account names come from tagents' own state and
+# config. Pointed at nothing, so no test reads the real ones whatever it runs.
+export TA_STATE_DIR="$ROOT/ta-none" TA_CONFIG="$ROOT/no-such-config.toml"
 # THE METER IS OFF EXCEPT WHERE IT IS THE SUBJECT. --update fetches it now, and
 # a test suite must never ask the real keychain for a token or the real API for
 # a figure. Section 5c turns it back on for its own calls, with fakes on PATH.
@@ -253,13 +256,13 @@ before12=$(sum12)
 # sequences are the ones the popups render.
 PIN_DETAIL_WORK=$'\E[1ms-work\E[0m  ?\n\E[90m  who                            cost        $    reqs   cwrite    cread      out\E[0m\n  · main                        6.0M    $30.0       5        0        0     1.0M\n\E[90m  TOTAL                          6.0M    $30.0\E[0m\nx'
 PIN_DETAIL_RULE=$'\E[1ms-rule\E[0m  ?\n\E[90m  who                            cost        $    reqs   cwrite    cread      out\E[0m\n  · main                        3.5M    $2.50       2     100k     1.0M     500k\n\E[90m  TOTAL                          3.5M    $2.50\E[0m\n\n\E[90m  model                          cost        $\E[0m\n  claude-opus-5                  500k    $2.50\n  claude-gizmo-9                 3.0M       $0  \E[33m(no published rate)\E[0m\n\E[33m  1 request(s) ran on a model with no published rate �\200\224 $ is a floor\E[0m\nx'
-PIN_DETAIL_NONE=$'\E[1ms-nosuch\E[0m  ?\n  (no usage recorded in the retained window)\nx'
+PIN_DETAIL_NONE=$'\E[1mdeadbeef\E[0m  ?\n  (no usage recorded in the retained window)\nx'
 PIN_BURN=\#\[fg=#665c54\]5h\ #\[fg=#928374\]\$27.5\ x
 PIN_JSON=\,\{\"project\":\"j-slug\"\,\"session\":\"s-rule\"\,\"who\":\"main\"\,\"cost\":3500000\,\"requests\":2\}\,\{\"project\":\"p-slug\"\,\"session\":\"s-pers\"\,\"who\":\"main\"\,\"cost\":1250000\,\"requests\":1\}\,\{\"project\":\"w-slug\"\,\"session\":\"s-work\"\,\"who\":\"main\"\,\"cost\":6000000\,\"requests\":5\}\[\{\"project\":\"w-slug\"\,\"session\":\"s-dup\"\,\"who\":\"main\"\,\"cost\":100000\,\"requests\":1\}\]\}x
 
 ok "--session <id>: heading, rows, total"      "$PIN_DETAIL_WORK" "$(tu --session s-work; echo x)"
 ok "--session <id>: model table and the floor"  "$PIN_DETAIL_RULE" "$(tu --session s-rule; echo x)"
-ok "--session <id>: an id with no usage"        "$PIN_DETAIL_NONE" "$(tu --session s-nosuch; echo x)"
+ok "--session <id>: an id with no usage"        "$PIN_DETAIL_NONE" "$(tu --session deadbeef; echo x)"
 ok "--burn: one line, no newline"               "$PIN_BURN"        "$(tu --burn; echo x)"
 ok "--json: the same objects"                   "$PIN_JSON"        "$(tu --json --since 30d | tr '}' '\n' | LC_ALL=C sort | tr '\n' '}'; echo x)"
 
@@ -272,7 +275,7 @@ case $sess12 in *"Typed Name"*|*"Cached Title"*) bad=1 ;; *) bad=0 ;; esac
 ok "--sessions carries no name" 0 "$bad"
 ok "--daily: five fields on every row" "5" "$(tu --daily --since 30d | awk -F'\t' '{ print NF }' | sort -u)"
 ok "the pinned reports touched neither labels.tsv nor title.tsv" "$before12" "$(sum12)"
-unset TA_STATE_DIR
+export TA_STATE_DIR="$ROOT/ta-none"
 
 # ---------------------------------------------------------------------------
 t "5. a changed spec is a stale map"
@@ -810,18 +813,25 @@ for s in d8c3b615 0a6f7e92 7c3f4e55 8d4a5f66; do fxhist personal $s; done
 
 # One call of tusage on the fixture, with nothing of the real machine in reach.
 # The width is wide and colour is off unless a test says otherwise. FX_STATE
-# names another index and FX_PRICES another price table.
-fx() {
+# names another index and FX_PRICES another price table; FX_TA the tagents state
+# directory (names), FX_CONFIG the tagents config, FX_HOME the home, FX_ACCOUNTS
+# the TU_ACCOUNTS (empty is unset), FX_RULES the TU_ACCOUNT_RULES, FX_TU the
+# script to run and FX_SH the shell that runs it.
+fx_raw() {
   (
-    unset TU_PRICES TU_ACCOUNT_RULES NO_COLOR TU_KEEP_DAYS
+    unset TU_PRICES TU_ACCOUNT_RULES NO_COLOR TU_KEEP_DAYS TU_ACCOUNTS
     [ -z "${FX_PRICES:-}" ] || export TU_PRICES="$FX_PRICES"
-    HOME="$FXH" TZ=UTC TERM=xterm COLUMNS=140 \
+    [ -z "${FX_RULES:-}" ] || export TU_ACCOUNT_RULES="$FX_RULES"
+    export TU_ACCOUNTS="${FX_ACCOUNTS-work=$FX/acct/work;personal=$FX/acct/personal}"
+    HOME="${FX_HOME:-$FXH}" TZ=UTC TERM=xterm COLUMNS=140 \
     TU_STATE="${FX_STATE:-$FX/usage}" TU_PROJECTS="$FX/projects" TU_NO_METER=1 \
-    TU_ACCOUNTS="work=$FX/acct/work;personal=$FX/acct/personal" \
-    TA_STATE_DIR="$FX/ta" TA_CONFIG="$FX/no-such-config.toml" \
-    bash "$TU" --no-update "$@" 2>&1
+    TA_STATE_DIR="${FX_TA:-$FX/ta}" TA_CONFIG="${FX_CONFIG:-$FX/no-such-config.toml}" \
+    ${FX_SH:-bash} "${FX_TU:-$TU}" --no-update "$@"
   )
 }
+fx() { fx_raw "$@" 2>&1; }
+fxo() { fx_raw "$@" 2>/dev/null; }
+fxe() { fx_raw "$@" 2>&1 >/dev/null; }
 fxrc() { fx "$@" >/dev/null; echo $?; }
 W="--since 2026-10-26 --until 2026-11-01"
 
@@ -1304,6 +1314,199 @@ contains "the summary names both projects" "~/git/y" "$out"
 out=$(fx4 --account work)
 contains "the summary of one account keeps its project" "~/git/x" "$out"
 lacks "...and drops the other's" "~/git/y" "$out"
+
+# ---------------------------------------------------------------------------
+t "20. sessions are named: a typed name, a title, or the eight characters"
+# ---------------------------------------------------------------------------
+# The names are the dashboard's: labels.tsv holds what was typed, title.tsv the
+# titles read from transcripts. A scratch state directory holds both, so nothing
+# of the real machine is read and no other section sees these files.
+
+TA20="$ROOT/ta20"; mkdir -p "$TA20"
+printf '%s\t%s\n' \
+  "$(fxsid 3f9a1c20)" "refactor-billing" \
+  "$(fxsid d8c3b615)" "tagents-core" \
+  "$(fxsid d8c3b615)" "a second line is ignored" \
+  "$(fxsid 91ab44ee)" "" \
+  "$(fxsid 7c3f4e55)" "tagents-site" \
+  "$(fxsid 0a6f7e92)" "$(printf 'ev\033[31mil')" \
+  "%12" "a pane, not a session" >"$TA20/labels.tsv"
+printf '%s\t%s\t%s\n' \
+  "$(fxsid 91ab44ee)" "Fix the webapp login" 1234 \
+  "$(fxsid 3f9a1c20)" "Billing title" 900 >"$TA20/title.tsv"
+tjson() {  # <project dir> <title> <sid first 8>
+  printf '%s\n%s\n' '{"type":"user","message":{"content":"hello"}}' "{\"type\":\"ai-title\",\"aiTitle\":\"$2\"}" \
+    >"$FX/projects/$1/$(fxsid "$3").jsonl"
+}
+cp "$FX/usage/projects.tsv" "$ROOT/projects.keep"
+tjson -h-billing "Add invoice export" c04d7be1
+tjson -h-billing "Transcript title" 3f9a1c20
+tjson -h-tagents "Hidden title" d8c3b615
+tjson -h-probe "Probe title" 7b2c5d33
+touch "$FX/usage/projects.tsv"
+export FX_TA="$TA20"
+labels_sum=$(cksum <"$TA20/labels.tsv")
+
+names_of() {  # stdin: a --by session table; the label of each of its rows
+  sed -n '4,$p' | sed '/^total/,$d' | sed -E 's/  +[0-9]+  .*$//; s/ +$//'
+}
+
+out=$(fx --by session --top 3 $W)
+ok "a session cut by --top has its transcript left unread" 0 "$(grep -c "^$(fxsid 7b2c5d33)" "$TA20/title.tsv")"
+
+out=$(fx --by session --top 0 $W)
+rows=$(names_of <<<"$out")
+row() { printf '%s\n' "$rows" | grep -- "$1"; }
+ok "a typed name, then the eight characters of the id" "refactor-billing  3f9a1c20" "$(row 3f9a1c20)"
+ok "the first line for an id wins" "tagents-core  d8c3b615" "$(row d8c3b615)"
+ok "an empty name is no name: the cached title shows" "Fix the webapp login  91ab44ee" "$(row 91ab44ee)"
+ok "a title from the transcript when there is no name" "Add invoice export  c04d7be1" "$(row c04d7be1)"
+ok "no name and no title: the eight characters alone" "b72e90d4" "$(row b72e90d4)"
+ok "a title read from a transcript names its session" "Probe title  7b2c5d33" "$(row 7b2c5d33)"
+lacks "a typed name beats a cached title" "Billing title" "$out"
+lacks "...and a title in the transcript" "Transcript title" "$out"
+ok "a typed name leaves the transcript unread" 0 "$(grep -c "^$(fxsid d8c3b615)" "$TA20/title.tsv")"
+ok "a title read from a transcript is cached" "Add invoice export" \
+   "$(awk -F'\t' -v s="$(fxsid c04d7be1)" '$1 == s { print $2 }' "$TA20/title.tsv")"
+rm -f "$FX/projects/-h-billing/$(fxsid c04d7be1).jsonl"
+cp "$ROOT/projects.keep" "$FX/usage/projects.tsv"   # a changed project dir would have the map rebuilt from transcripts with no cwd
+ok "the next run reads the cache, not the transcript" "Add invoice export  c04d7be1" \
+   "$(fx --by session --top 0 $W | names_of | grep c04d7be1)"
+ok "a cached title is left as it was" "1" "$(grep -c 'Billing title' "$TA20/title.tsv")"
+ok "the writes leave no temporary file beside the cache" "labels.tsv title.tsv" "$(ls "$TA20" | tr '\n' ' ' | sed 's/ $//')"
+ok "tusage never writes labels.tsv" "$labels_sum" "$(cksum <"$TA20/labels.tsv")"
+
+ok "a name carrying an escape sequence prints without the escape" "ev[31mil  0a6f7e92" "$(row 0a6f7e92)"
+ok "...and the table holds no escape byte" 0 "$(printf '%s' "$out" | LC_ALL=C grep -c "$(printf '\033')")"
+contains "names reach the sessions of a nested table" "    refactor-billing  3f9a1c20" "$(fx --by account,project,session --top 0 $W)"
+lacks "a table of projects names no session" "refactor-billing" "$(fx --by project $W)"
+lacks "--tsv prints ids" "refactor-billing" "$(fx --by session --tsv $W)"
+lacks "--sessions prints ids" "refactor-billing" "$(fx --sessions --since 1000d)"
+lacks "--daily prints no names" "refactor-billing" "$(fx --daily --since 1000d)"
+
+# Without the modules the ids are all there is, and the report still runs.
+mkdir -p "$ROOT/nolib"; cp "$TU" "$ROOT/nolib/tusage"
+out=$(FX_TU="$ROOT/nolib/tusage" fx --by session --top 0 $W); rc=$?
+ok "with the modules unfindable the report exits 0" 0 "$rc"
+ok "...and prints the ids alone" 0 "$(names_of <<<"$out" | grep -vcE '^[0-9a-f]{8}$')"
+
+# The modules are found beside the real file, through any chain of symlinks.
+mkdir -p "$ROOT/ln"; ln -s "$TU" "$ROOT/ln/two"; ln -s two "$ROOT/ln/one"
+contains "run through two symlinks the names still resolve" "refactor-billing  3f9a1c20" \
+         "$(FX_TU="$ROOT/ln/one" fx --by session --top 0 $W)"
+
+# The walk is a copy of the one in ./tagents, and the two must not drift.
+walk() { awk -v a='  ta_real=${BASH_SOURCE[0]}' -v z='    *)   TA_LIB=lib/tagents ;;' '$0 == a { p = 1 } p { print } p && $0 == z { exit }' "$1"; }
+ok "the symlink walk is the text of the one in ./tagents" "$(walk "$HERE/../tagents")" "$(walk "$TU")"
+ok "...and it is a whole loop, not an empty match" 1 "$([ "$(walk "$TU" | wc -l | tr -d ' ')" -ge 14 ] && echo 1 || echo 0)"
+
+# ---------------------------------------------------------------------------
+t "20b. --session finds a session by its id, a prefix of it or its name"
+# ---------------------------------------------------------------------------
+
+SID3=$(fxsid 3f9a1c20)
+detail=$(fx --session "$SID3"); rc=$?
+ok "a full id prints the detail" 0 "$rc"
+contains "...headed by the full id" "$SID3" "$detail"
+ok "a unique prefix prints the same detail" "$detail" "$(fx --session 3f9a1c)"
+ok "a name, whole, prints the same" "$detail" "$(fx --session refactor-billing)"
+ok "...ignoring case" "$detail" "$(fx --session REFACTOR-Billing)"
+ok "a part of a name prints the same" "$detail" "$(fx --session factor-bil)"
+ok "a title in the cache is a name too" "$(fx --session "$(fxsid c04d7be1)")" "$(fx --session 'invoice export')"
+
+out=$(fxe --session tagents); rc=$?
+ok "two names holding the text exit 3" 3 "$rc"
+ok "...with nothing on standard output" "" "$(fxo --session tagents)"
+contains "...and the first candidate on standard error: id, name, account, days" \
+         "  $(fxsid d8c3b615)  tagents-core  personal  2 days" "$out"
+contains "...and the second" "  $(fxsid 7c3f4e55)  tagents-site  personal  2 days" "$out"
+out=$(fxe --session 7); rc=$?
+ok "a prefix of two ids exits 3" 3 "$rc"
+contains "...listing the session of one day" "  $(fxsid 7b2c5d33)  Probe title  ?  1 day" "$out"
+contains "...and the other" "  $(fxsid 7c3f4e55)  tagents-site  personal  2 days" "$out"
+
+out=$(fx --session nothing-like-it); rc=$?
+ok "a value that names nothing exits 1" 1 "$rc"
+ok "...and says so" "tusage: no session called nothing-like-it" "$out"
+out=$(fx --session deadbeef); rc=$?
+ok "an id-shaped value that names nothing keeps its empty detail and exits 0" 0 "$rc"
+contains "...the empty detail" "(no usage recorded in the retained window)" "$out"
+
+out=$(fx --session 7 --account personal); rc=$?
+ok "--account narrows a prefix to one session" 0 "$rc"
+contains "...the one of that account" "$(fxsid 7c3f4e55)" "$out"
+ok "--account narrows a name: the other account has no such session" 1 "$(fxrc --session refactor-billing --account personal)"
+ok "...and one that has it finds it" 0 "$(fxrc --session tagents-core --account personal)"
+ok "...two names of the other account are no match" 1 "$(fxrc --session tagents --account work)"
+unset FX_TA
+
+# ---------------------------------------------------------------------------
+t "21. account names in a terminal: the tagents config, then discovery"
+# ---------------------------------------------------------------------------
+# TU_ACCOUNTS is unset in these runs (FX_ACCOUNTS empty). The configs are files
+# of a scratch directory named by TA_CONFIG; the home has a default account and
+# one more, discovered the way a terminal with no config would find them.
+
+C21="$ROOT/cfg21"; mkdir -p "$C21"
+cat >"$C21/profiles.toml" <<EOF
+[claude.profiles.work]
+config_dir = "$FX/acct/work"
+
+[claude.profiles.personal]
+config_dir = "$FX/acct/personal"
+EOF
+{ cat "$C21/profiles.toml"; printf '\n[[claude.rules]]\ndir = "%s/scratch"\nprofile = "work"\n' "$FXH"; } >"$C21/rules.toml"
+printf '[usage]\nwatch = "work"\n' >"$C21/noprofiles.toml"
+printf '[[[ nope\nkey = = =\n"""unterminated\n' >"$C21/bad.toml"
+
+H21="$ROOT/home21"; mkdir -p "$H21/.claude" "$H21/.claude-extra"
+hist21() { printf '{"display":"x","pastedContents":{},"timestamp":1000,"project":"%s","sessionId":"%s"}\n' "$H21" "$(fxsid "$2")" >>"$1/history.jsonl"; }
+for s in 3f9a1c20 b72e90d4 c04d7be1 91ab44ee e5d1f0a7 5a1d2c33 6b2e3d44; do hist21 "$H21/.claude" $s; done
+for s in d8c3b615 0a6f7e92 7c3f4e55 8d4a5f66; do hist21 "$H21/.claude-extra" $s; done
+
+fxc() { FX_HOME="$H21" FX_ACCOUNTS= fx "$@"; }   # a terminal: no TU_ACCOUNTS
+keys() { cut -f1 | tr '\n' ' ' | sed 's/ $//'; }
+ctsv() { FX_HOME="$H21" FX_ACCOUNTS= fx --by "$@" --tsv; }
+
+ok "a config names the accounts" "work personal ?" "$(FX_CONFIG="$C21/profiles.toml" ctsv account $W | keys)"
+ok "...with the figures of the same accounts named by TU_ACCOUNTS" "$(tsv account $W)" "$(FX_CONFIG="$C21/profiles.toml" ctsv account $W)"
+ok "--account names one of them" "$(tsv session --account work $W)" "$(FX_CONFIG="$C21/profiles.toml" ctsv session --account work $W)"
+ok "...and one the config does not name is unknown" 2 "$(FX_CONFIG="$C21/profiles.toml" fxc --by account --account extra $W >/dev/null; echo $?)"
+ok "a rule of the config places a session by its directory" "work personal" "$(FX_CONFIG="$C21/rules.toml" ctsv account $W | keys)"
+ok "...and adds its requests to the account" 830 "$(FX_CONFIG="$C21/rules.toml" ctsv account $W | awk -F'\t' '$1 == "work" { print $2 }')"
+
+ok "no config: the default account and the one that keeps a history" "default extra ?" "$(FX_CONFIG="$ROOT/none.toml" ctsv account $W | keys)"
+ok "a config with no profiles: the same" "default extra ?" "$(FX_CONFIG="$C21/noprofiles.toml" ctsv account $W | keys)"
+ok "--account extra is known when the accounts are discovered" 0 "$(FX_CONFIG="$ROOT/none.toml" fxc --by account --account extra $W >/dev/null; echo $?)"
+
+ok "TU_ACCOUNTS set by hand wins over the config" "a ?" \
+   "$(FX_ACCOUNTS="a=$FX/acct/work" FX_HOME="$H21" FX_CONFIG="$C21/profiles.toml" fx --by account $W --tsv | keys)"
+ok "...and the rules of the config are not read either" 18 \
+   "$(FX_ACCOUNTS="work=$FX/acct/work;personal=$FX/acct/personal" FX_HOME="$H21" FX_CONFIG="$C21/rules.toml" fx --by account $W --tsv | awk -F'\t' '$1 == "?" { print $2 }')"
+ok "TU_ACCOUNT_RULES set by hand wins over the rules of the config" "336" \
+   "$(FX_RULES="$FXH/scratch=personal" FX_CONFIG="$C21/rules.toml" ctsv account $W | awk -F'\t' '$1 == "personal" { print $2 }')"
+
+# A broken config is the config's business: tusage prints nothing of it.
+ok "the parser does complain about the broken config" 1 \
+   "$([ -n "$(HOME="$FXH" TA_CONFIG="$C21/bad.toml" TA_STATE_DIR="$ROOT/ta-none" bash -c '. "$1/core.sh"; . "$1/config.sh"; . "$1/accounts.sh"; . "$1/usage.sh"; usage_env' _ "$HERE/../lib/tagents" 2>&1)" ] && echo 1 || echo 0)"
+ok "a malformed config adds nothing to standard error" "$(FX_CONFIG="$ROOT/none.toml" fxc --by account $W)" "$(FX_CONFIG="$C21/bad.toml" fxc --by account $W)"
+
+ok "with no lib/tagents beside the file the discovery stays" "default extra ?" \
+   "$(FX_TU="$ROOT/nolib/tusage" FX_CONFIG="$C21/profiles.toml" ctsv account $W | keys)"
+ok "a run through a symlink finds the config" "work personal ?" \
+   "$(FX_TU="$ROOT/ln/one" FX_CONFIG="$C21/profiles.toml" ctsv account $W | keys)"
+ok "--daily splits by the accounts of the config" "? personal work" \
+   "$(FX_CONFIG="$C21/profiles.toml" fxc --daily --since 1000d | cut -f2 | sort -u | tr '\n' ' ' | sed 's/ $//')"
+
+# Only the verbs that split by account look at the config, and never when
+# TU_ACCOUNTS says what the accounts are: the dashboard reads --sessions on every
+# refresh. bash -x prints the calls, so a call that was not made is a count of 0.
+traced() { FX_SH='bash -x' FX_HOME="$H21" FX_CONFIG="$C21/profiles.toml" "$@" | grep -c 'ensure_accounts$'; }
+ok "--by account looks at the config" 1 "$([ "$(FX_ACCOUNTS= traced fx --by account $W)" -ge 1 ] && echo 1 || echo 0)"
+ok "--sessions does not" 0 "$(FX_ACCOUNTS= traced fx --sessions --since 1000d)"
+ok "--burn does not" 0 "$(FX_ACCOUNTS= traced fx --burn)"
+ok "--json does not" 0 "$(FX_ACCOUNTS= traced fx --json --since 1000d)"
+ok "--session <id> does not" 0 "$(FX_ACCOUNTS= traced fx --session "$(fxsid 3f9a1c20)")"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
