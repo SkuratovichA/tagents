@@ -459,6 +459,34 @@ mod tests {
     }
 
     #[test]
+    fn a_config_behind_a_chain_of_33_links_is_node_s_and_nothing_is_written() {
+        let scratch = Scratch::new();
+        let dir = scratch.dir();
+        let real = format!("{dir}/real.toml");
+        fs::write(&real, "[plugins.old]\nfrom = \"pkg\"\n").unwrap();
+        for number in 1..33 {
+            symlink(format!("link{}", number + 1), format!("{dir}/link{number}")).unwrap();
+        }
+        symlink("real.toml", format!("{dir}/link33")).unwrap();
+        let file = config_in(&scratch);
+        symlink("link1", &file).unwrap();
+
+        // The kernel may follow 40 links, as on Linux, so the limit of `realpath` is what hands this over there.
+        assert_eq!(write_target(&file), Err(HandOver));
+        assert_eq!(add(&file, "new", "pkg"), Err(HandOver));
+        assert_eq!(remove(&file, "old"), Err(HandOver));
+        assert_eq!(
+            fs::read_to_string(&real).unwrap(),
+            "[plugins.old]\nfrom = \"pkg\"\n"
+        );
+        assert_eq!(
+            listing(dir).len(),
+            35,
+            "no temporary file or other file was made"
+        );
+    }
+
+    #[test]
     fn a_config_that_cannot_be_read_is_never_taken_for_an_empty_one() {
         let scratch = Scratch::new();
         // A directory in the config's place.

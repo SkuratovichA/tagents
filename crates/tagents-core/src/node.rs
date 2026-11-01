@@ -100,9 +100,10 @@ pub fn relative(from: &str, to: &str) -> String {
         .join("/")
 }
 
-/// `fs.realpathSync(path)`, the JavaScript one and not `realpathSync.native`: the symbolic links of an absolute `path` resolved a component at a time, every other component kept as written. `fs::canonicalize` writes a directory in the case the disk holds, so on a case-insensitive volume `plugin add Plain` would name another directory than node does for a package installed as `plain`. A link followed more than `MAX_LINKS` times is `ELOOP`; a component that is missing or cannot be read is the system's error.
+/// `fs.realpathSync(path)`, the JavaScript one and not `realpathSync.native`: the symbolic links of an absolute `path` resolved a component at a time, every other component kept as written. `fs::canonicalize` writes a directory in the case the disk holds, so on a case-insensitive volume `plugin add Plain` would name another directory than node does for a package installed as `plain`. A link followed more than `MAX_LINKS` times is `ELOOP`, and so is a path that holds that many links in all, a stricter rule than node's, which both callers turn into a hand-over; a component that is missing or cannot be read is the system's error.
 pub fn realpath(path: &str) -> io::Result<String> {
-    const MAX_LINKS: usize = 40;
+    // Node leaves the limit to the kernel, which answers ELOOP after 32 links on macOS and 40 on Linux; the smaller of the two, so that no chain is resolved here that node on macOS refuses.
+    const MAX_LINKS: usize = 32;
     // The next component is the last of the stack, so a link's target goes on top of what is left to walk.
     let components = |p: &str| -> Vec<String> {
         p.split('/')
@@ -431,6 +432,37 @@ mod tests {
         let looped = realpath(&format!("{root}/a")).unwrap_err();
         assert_eq!(
             looped.raw_os_error(),
+            Some(rustix::io::Errno::LOOP.raw_os_error())
+        );
+    }
+
+    /// A chain of `length` links, `link1` to `link<length>`, the last one pointing at `real`.
+    fn link_chain(root: &str, length: usize) {
+        use std::os::unix::fs::symlink;
+        for number in 1..length {
+            symlink(
+                format!("link{}", number + 1),
+                format!("{root}/link{number}"),
+            )
+            .unwrap();
+        }
+        symlink("real", format!("{root}/link{length}")).unwrap();
+    }
+
+    #[test]
+    fn realpath_resolves_a_chain_of_32_links_and_refuses_one_of_33_as_the_smallest_kernel_does() {
+        let (_scratch, root) = realpath_tree();
+        link_chain(&root, 32);
+        assert_eq!(
+            realpath(&format!("{root}/link1")).unwrap(),
+            format!("{root}/real")
+        );
+
+        let (_scratch, root) = realpath_tree();
+        link_chain(&root, 33);
+        let refused = realpath(&format!("{root}/link1")).unwrap_err();
+        assert_eq!(
+            refused.raw_os_error(),
             Some(rustix::io::Errno::LOOP.raw_os_error())
         );
     }
