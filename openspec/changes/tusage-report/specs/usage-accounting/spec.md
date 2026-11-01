@@ -89,7 +89,7 @@ Every row of a `--by` table SHALL show requests, input, output, cache write, cac
 
 #### Scenario: A row adds up
 - **WHEN** a row holds 100k input, 50k output, 200k cache write and 1M cache read tokens
-- **THEN** its total tokens are 1.35M
+- **THEN** its total tokens are 1,350,000, which the table prints as `1.4M`
 
 #### Scenario: An unrated model
 - **WHEN** a session ran one request on a model with no published rate

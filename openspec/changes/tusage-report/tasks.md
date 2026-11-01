@@ -34,7 +34,7 @@ Every shell suite runs as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" b
 - [x] 6.3 Pin the copy of the symlink walk against `tagents`: a test runs `tusage` through a symlink in another directory and names resolve, and a second compares the text of the walk with the one in `tagents`. Proof: `tests/tusage.sh`.
 - [x] 6.4 Write failing tests for the session lookup: full id, unique prefix, name whole and ignoring case, name as a part; an ambiguous prefix and an ambiguous name exit 3 and list id, name, account and days on standard error; no match exits 1; an unknown id-shaped value keeps its empty detail and exit 0; `--account` narrows the candidates. Then implement the lookup. Proof: `tests/tusage.sh`.
 - [x] 6.5 Write failing tests with `HOME` and `TA_CONFIG` pointing at a scratch directory and a scratch TOML file, never `~/.config/tagents`: a config with profiles `work` and `personal` names the accounts in `--by account` and `--account work` is accepted; a rule of the config places a session by its directory; no config file gives `default` and each `~/.claude-*` with a history; a config with no `claude.profiles` does the same; a set `TU_ACCOUNTS` makes a config naming other profiles have no effect; a set `TU_ACCOUNT_RULES` is kept; a malformed config adds nothing to standard error; with no `lib/tagents/` beside the real file the discovery stays; a run through a symlink finds the config. Proof: `tests/tusage.sh`.
-- [x] 6.6 When `TU_ACCOUNTS` is unset and the run is `--by`, `--daily`, the meter, the calibration or gives `--account` (never `--sessions`, `--burn`, `--json`, `--session <id>` or `--update`), source `core.sh`, `config.sh`, `accounts.sh` and `usage.sh` from the lib found by 6.2 inside one subshell with its standard error discarded, call `usage_env`, and export the two values it sets (keeping a `TU_ACCOUNT_RULES` that was already set); measure the cost of the call in task 10.2 and record it for the pull request. Proof: `tests/tusage.sh`, `tests/modules.sh`.
+- [x] 6.6 When `TU_ACCOUNTS` is unset and the run is `--by`, `--daily`, the summary, the meter, the calibration or gives `--account` (never `--sessions`, `--burn`, `--json`, `--session <id>` or `--update`), source `core.sh`, `config.sh`, `accounts.sh` and `usage.sh` from the lib found by 6.2 inside one subshell with its standard error discarded, call `usage_env`, and export the two values it sets (keeping a `TU_ACCOUNT_RULES` that was already set); measure the cost of the call in task 10.2 and record it for the pull request. Proof: `tests/tusage.sh`, `tests/modules.sh`.
 
 ## 7. One session by day
 
@@ -52,18 +52,18 @@ Every shell suite runs as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" b
 
 ## 10. Compatibility and speed
 
-- [ ] 10.1 Run `tests/ui.sh` and `tests/usage.sh` unchanged and keep them green; check `docs/demo/bin/tusage` against the new flags and change it only if a demo screen needs one. Proof: `tests/ui.sh`, `tests/usage.sh`.
-- [ ] 10.2 Measure `--sessions`, `--daily`, `--burn` and `--session <id>` before and after on a fixture of several hundred thousand fact rows, twenty runs each, and compare medians and process counts from a `bash -x` trace; record the numbers for the pull request. Proof: `tests/tusage.sh` for the process count, the numbers by hand.
-- [ ] 10.3 Run `shellcheck tusage lib/tagents/usage.sh` and compare the count with `origin/main`: no new finding. Proof: `shellcheck`.
+- [x] 10.1 Run `tests/ui.sh` and `tests/usage.sh` unchanged and keep them green; check `docs/demo/bin/tusage` against the new flags and change it only if a demo screen needs one. Proof: `tests/ui.sh`, `tests/usage.sh`.
+- [x] 10.2 Measure `--sessions`, `--daily`, `--burn` and `--session <id>` before and after on a fixture of several hundred thousand fact rows, twenty runs each, and compare medians and process counts from a `bash -x` trace; record the numbers for the pull request. Proof: `tests/tusage.sh` for the process count, the numbers by hand.
+- [x] 10.3 Run `shellcheck tusage lib/tagents/usage.sh` and compare the count with `origin/main`: no new finding. Proof: `shellcheck`.
 
 ## 11. Documents
 
-- [ ] 11.1 Describe the reports in `docs/guide/cost.md` (accounts, nesting, per-model rows, week and month, dates, names, one session by day, width and colour, `--tsv`) with the screens of the design, and add the `--account` flag to the usage section of `docs/guide/accounts.md`. Proof: `pnpm docs:build`.
-- [ ] 11.2 Update the `tusage` header comment, which is the `--help` text, in its existing layout, and run `pnpm plugin:gen` so `skills/tagents/references/scripts.md` carries it; commit the generated diff. Proof: `pnpm plugin:check`, `tests/tusage.sh` (the `--help` exit and the unknown-option exit).
-- [ ] 11.3 Add one line under `[Unreleased]` in `CHANGELOG.md`, with no pull request number. Proof: `pnpm docs:build`.
-- [ ] 11.4 Add a line to `LEARNING.md` for every mistake made and fixed on the way. Proof: review of `LEARNING.md`.
+- [x] 11.1 Describe the reports in `docs/guide/cost.md` (accounts, nesting, per-model rows, week and month, dates, names, one session by day, width and colour, `--tsv`) with the screens of the design, and add the `--account` flag to the usage section of `docs/guide/accounts.md`. Proof: `pnpm docs:build`.
+- [x] 11.2 Update the `tusage` header comment, which is the `--help` text, in its existing layout, and run `pnpm plugin:gen` so `skills/tagents/references/scripts.md` carries it; commit the generated diff. Proof: `pnpm plugin:check`, `tests/tusage.sh` (the `--help` exit and the unknown-option exit).
+- [x] 11.3 Add one line under `[Unreleased]` in `CHANGELOG.md`, with no pull request number. Proof: `pnpm docs:build`.
+- [x] 11.4 Add a line to `LEARNING.md` for every mistake made and fixed on the way. Proof: review of `LEARNING.md`.
 
 ## 12. Gates
 
 - [ ] 12.1 `tests/tusage.sh`, `tests/usage.sh`, `tests/ui.sh` and `tests/modules.sh`, each on a scratch tmux server, each exit 0. Proof: the four suites.
-- [ ] 12.2 `pnpm spec:check`, `pnpm exec openspec validate tusage-report --strict`, `pnpm plugin:check` and `pnpm docs:build`, each exit 0. Proof: those commands.
+- [x] 12.2 `pnpm spec:check`, `pnpm exec openspec validate tusage-report --strict`, `pnpm plugin:check` and `pnpm docs:build`, each exit 0. Proof: those commands.
