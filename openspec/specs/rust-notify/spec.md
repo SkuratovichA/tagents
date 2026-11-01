@@ -74,11 +74,15 @@ The service SHALL register SIGTERM, SIGINT and SIGHUP before it does anything el
 - **THEN** the service logs `backend none: nothing to post; exiting` or `no notification backend for <os> yet; exiting`, releases the lock and exits 0
 
 ### Requirement: The log is the node service's
-The service SHALL write to stderr the lines listed below, as `<ISO time with milliseconds> <the parts joined by a space>` and in the node service's words, `started pid <n> backend <name> options <file> (found|not found|invalid)` being the last line of a start. It SHALL write nothing to stdout and add only the lines of "A start that fails is handed to the node service", and an operating system's error text in a line SHALL be the text the node service writes for the same error.
+The service SHALL write to stderr the lines listed below, as `<ISO time with milliseconds> <the parts joined by a space>` and in the node service's words, `started pid <n> backend <name> options <file> (found|not found|invalid)` being the last line of a start. It SHALL write nothing to stdout and add only the lines of "A start that fails is handed to the node service", and an operating system's error text in a line SHALL follow the scenario "An operating system's error text".
 
 #### Scenario: The started line
 - **WHEN** the service starts with an options file that is valid, missing or invalid
 - **THEN** the line ends `(found)`, `(not found)` or `(invalid)` and comes after everything else of the start
+
+#### Scenario: An operating system's error text
+- **WHEN** a line carries the text of an operating system error, such as a failed lock release or a failed watch
+- **THEN** the text is the node service's for ENOENT, EIO, E2BIG, ENOEXEC, ENOMEM, EACCES, ENOTDIR, EISDIR, EMFILE and ETXTBSY, and the operating system's own description of the error for any other
 
 #### Scenario: A notice line
 - **WHEN** a `turn_done` notice for key `12` is posted and shown
