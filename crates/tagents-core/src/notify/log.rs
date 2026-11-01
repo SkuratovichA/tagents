@@ -1,4 +1,4 @@
-//! The daemon's log, the node service's: `<ISO time with milliseconds> <the parts joined by a space>` and a newline, on stderr, each line one write, nothing on stdout (`service.ts:410` writes `ctx.log(new Date().toISOString(), ...parts)` and `plugin-run.ts` appends the newline). The engine, the backends and the service write through `Log`, so a test records what they said and reads it as the parts the code gave.
+//! The daemon's log, the node service's: `<ISO time with milliseconds> <the parts joined by a space>` and a newline, on stderr, each line one write, nothing on stdout (`service.ts:409` writes `ctx.log(new Date().toISOString(), ...parts)` and `plugin-run.ts` appends the newline). The engine, the backends and the service write through `Log`, so a test records what they said and reads it as the parts the code gave.
 
 use std::io::Write;
 
