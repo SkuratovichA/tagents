@@ -475,14 +475,14 @@ test('a symlinked notify.toml: an edit of its target waits for the next event in
   assert.deepEqual(kinds(), ['turn_done', 'question'], 'the old values are in force: the Stop still posts');
 
   // A file of another name written in the directory is an event there: the file is read again, through the link.
-  await until('the second reload', () => reloads() === 3, () => fs.writeFileSync(path.join(optionsDir, 'unrelated.toml'), ''));
+  await until('the reload at a file of another name', () => reloads() === 3, () => fs.writeFileSync(path.join(optionsDir, 'unrelated.toml'), ''));
   await stopThenSentinel(r);
   assert.equal(reloads(), 3, 'one reload, however many events came');
   assert.deepEqual(kinds(), ['turn_done', 'question', 'question'], 'the new values apply: the second Stop posted nothing');
 
   // Replacing the link is a reload at once, and the new file's content differs from the last one's.
   // A retry points at the same file, so a late event of it reads unchanged content and `apply` ignores it.
-  await until('the third reload', () => reloads() === 4, () => repoint(last));
+  await until('the reload at the last link', () => reloads() === 4, () => repoint(last));
   await stopThenSentinel(r);
   assert.equal(reloads(), 4, 'one more reload');
   assert.deepEqual(kinds(), ['turn_done', 'question', 'question', 'turn_done', 'question'], 'the newest values apply: the Stop posts again');
