@@ -1252,7 +1252,7 @@
     }
   },
   "api": {
-    "@tagents/core": "sha256:181c05338ec423475dcc10c1232953d04c95e36061ddf818bdce3b7a12209cc5",
+    "@tagents/core": "sha256:5e4621b62e17b03f87e5688872f36481b0e1636e16ee203f74b9eb4acf37aa20",
     "@tagents/knowledge": "sha256:63465226fcb49e8f6a20867948332ff35da600f4a020fa9701ef88730f5c2d8a",
     "@tagents/notify": "sha256:9fd35c43c5dd7262667bfdd48944a46e39551f1e7441438455c7859a39f8fb7e",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"

@@ -45,12 +45,9 @@ const realPath = (file: string): string => {
 };
 
 /**
- * The installer's `tagents-notify` command when it runs this checkout, else null: the first `tagents-notify` on `pathVar`,
- * when its text holds `mainJs` as a whole double-quoted path, which is how `write_wrapper` in `install.sh` writes the program
- * it execs. Another checkout's command, a path that merely contains `mainJs` and a file that cannot be read are not it.
+ * The installer's `tagents-notify` command when it runs this checkout, else null: the first `tagents-notify` on `pathVar`, when its text holds `mainJs` as a whole double-quoted path, which is how `write_wrapper` in `install.sh` writes the program it execs. Another checkout's command, a path that merely contains `mainJs` and a file that cannot be read are not it.
  * It is absolute, because launchd starts the job in `/`, and null for an undefined `pathVar`, as `tagentsScript` does, so `process.env.PATH` is never read by default.
- * The paths are compared as files: the installer writes `$TAGENTS_HOME` as given, which may be a symlink, while `mainJs` is
- * where node resolved this module to.
+ * The paths are compared as files: the installer writes `$TAGENTS_HOME` as given, which may be a symlink, while `mainJs` is where node resolved this module to.
  */
 export function installedCommand(pathVar: string | undefined, mainJs: string): string | null {
   if (pathVar === undefined) return null;

@@ -444,9 +444,11 @@ test('a symlinked notify.toml: an edit of its target waits for the next event in
   const first = path.join(away, 'a.toml');
   const target = path.join(away, 'b.toml');
   const last = path.join(away, 'c.toml');
+  const armed = path.join(away, 'armed.toml');
   fs.writeFileSync(first, 'click = "goto"\n');
   fs.writeFileSync(target, 'click = "focus"\n');
   fs.writeFileSync(last, '[events.turn_done]\nenabled = true\n');
+  fs.writeFileSync(armed, 'click = "focus"\n[events.turn_done]\nenabled = false\n');
   fs.symlinkSync(first, link);
   await r.start();
   const reloads = (): number => r.logs.filter((l) => l.endsWith('options reloaded')).length;
@@ -460,27 +462,29 @@ test('a symlinked notify.toml: an edit of its target waits for the next event in
     fs.renameSync(fresh, link);
   };
 
-  // The events of a directory arrive in the order they happened, so this reload proves that every earlier one, the creation of the link above included, has been read.
-  // A retry points at the same file, so a late event of it reads unchanged content and `apply` ignores it.
-  await until('the first reload', () => reloads() === 1, () => repoint(target));
+  // The retries point at a file nothing edits, whose options differ from every other file's, so an event of one that arrives late reads unchanged options and `apply` ignores it.
+  await until('the watch is armed', () => reloads() === 1, () => repoint(armed));
+  // The watch is armed, so this write cannot be lost and needs no retry, and the events of a directory arrive in the order they happened: this reload comes after every retry above.
+  repoint(target);
+  await until('the link replaced once', () => reloads() === 2);
 
   // The directory that is watched holds the link, not the target: this edit raises no event there, and nothing else happens in it.
   fs.writeFileSync(target, turnDoneOff);
   await stopThenSentinel(r);
-  assert.equal(reloads(), 1, 'the edit of the target is not a reload');
+  assert.equal(reloads(), 2, 'the edit of the target is not a reload');
   assert.deepEqual(kinds(), ['turn_done', 'question'], 'the old values are in force: the Stop still posts');
 
   // A file of another name written in the directory is an event there: the file is read again, through the link.
-  await until('the second reload', () => reloads() === 2, () => fs.writeFileSync(path.join(optionsDir, 'unrelated.toml'), ''));
+  await until('the second reload', () => reloads() === 3, () => fs.writeFileSync(path.join(optionsDir, 'unrelated.toml'), ''));
   await stopThenSentinel(r);
-  assert.equal(reloads(), 2, 'one reload, however many events came');
+  assert.equal(reloads(), 3, 'one reload, however many events came');
   assert.deepEqual(kinds(), ['turn_done', 'question', 'question'], 'the new values apply: the second Stop posted nothing');
 
   // Replacing the link is a reload at once, and the new file's content differs from the last one's.
   // A retry points at the same file, so a late event of it reads unchanged content and `apply` ignores it.
-  await until('the third reload', () => reloads() === 3, () => repoint(last));
+  await until('the third reload', () => reloads() === 4, () => repoint(last));
   await stopThenSentinel(r);
-  assert.equal(reloads(), 3, 'one more reload');
+  assert.equal(reloads(), 4, 'one more reload');
   assert.deepEqual(kinds(), ['turn_done', 'question', 'question', 'turn_done', 'question'], 'the newest values apply: the Stop posts again');
 });
 

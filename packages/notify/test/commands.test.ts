@@ -444,6 +444,7 @@ test('installedCommand recognises what write_wrapper in install.sh writes, with 
   const mainJs = checkoutMain();
   const cases: readonly (readonly string[])[] = [
     [],
+    ['/usr/bin/node'],
     ['/usr/bin/node', '/some/where/tagents-core', 'notify', 'run'],
     ['', '/some/where/tagents-core', 'notify', 'run'],
   ];
