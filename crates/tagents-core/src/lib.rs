@@ -15,5 +15,6 @@ pub mod sessions;
 mod sync;
 #[cfg(test)]
 mod testing;
+pub mod toml_js;
 pub mod transcripts;
 pub mod watch;

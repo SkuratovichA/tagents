@@ -10,16 +10,15 @@ use std::{
     path::Path,
 };
 
-use toml::de::{DeFloat, DeInteger, DeTable, DeValue};
+use toml::de::{DeTable, DeValue};
 
-use crate::{js, json, node};
+use crate::{
+    js, json, node,
+    toml_js::{LOSSY_INTEGER, MAX_SAFE_INTEGER, float, integer, table_holds_lossy_integer},
+};
 
 /// The directory of the options files, in the config directory.
 const PLUGIN_OPTIONS_DIR: &str = "plugins";
-/// The largest integer a JavaScript number holds exactly, `Number.MAX_SAFE_INTEGER`.
-const MAX_SAFE_INTEGER: i128 = 9_007_199_254_740_991;
-/// The text node's TOML parser gives for an integer it cannot hold: it refuses it, and so does this reader.
-const LOSSY_INTEGER: &str = "integer value cannot be represented losslessly";
 /// What `after < ttl` failing says, at `events.cache_expiring.after`.
 const AFTER_BELOW_TTL: &str =
     "after must be below ttl: a notice about a cache that already expired helps nobody";
@@ -256,44 +255,6 @@ fn parse(text: &str, file: &str) -> Result<Options, Vec<String>> {
         Ok(options)
     } else {
         Err(issues)
-    }
-}
-
-/// An integer anywhere in the document that a JavaScript number cannot hold exactly: the node parser refuses the whole file for it, whatever key it is under.
-fn table_holds_lossy_integer(table: &DeTable<'_>) -> bool {
-    table
-        .values()
-        .any(|value| holds_lossy_integer(value.get_ref()))
-}
-
-fn holds_lossy_integer(value: &DeValue<'_>) -> bool {
-    match value {
-        DeValue::Integer(int) => integer(int).is_none(),
-        DeValue::Array(items) => items.iter().any(|item| holds_lossy_integer(item.get_ref())),
-        DeValue::Table(table) => table_holds_lossy_integer(table),
-        _ => false,
-    }
-}
-
-/// An integer as a JavaScript number, or `None` when it is not a safe integer (`Number.isSafeInteger`).
-fn integer(int: &DeInteger<'_>) -> Option<f64> {
-    let value = i128::from_str_radix(int.as_str(), int.radix()).ok()?;
-    (value.abs() <= MAX_SAFE_INTEGER).then_some(value as f64)
-}
-
-/// A float as `parseFloat` of its text gives it: an overflow is infinity, `nan` and `inf` are the special values.
-fn float(f: &DeFloat<'_>) -> f64 {
-    let text = f.as_str().replace('_', "");
-    match text.trim_start_matches(['+', '-']) {
-        "inf" => {
-            if text.starts_with('-') {
-                f64::NEG_INFINITY
-            } else {
-                f64::INFINITY
-            }
-        }
-        "nan" => f64::NAN,
-        _ => text.parse().unwrap_or(f64::NAN),
     }
 }
 
