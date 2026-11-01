@@ -4,9 +4,9 @@
 
 ## What is served in Rust today
 
-`tagents-core sessions` (`recent [N]`, `search <words…>`, `show <id-prefix>`, and the bare `sessions` that means `recent`) is a port of `packages/core/src/transcripts.ts`, `tagents-core mcp --contract <file>` is the plugin's MCP server, a port of `packages/mcp` ("The MCP server"), and `tagents-core notify run` is the notification daemon, a port of `packages/notify`'s service ("The notify daemon"). Every other word is the node CLI's: `session`, `plugin`, `doctor`, a plugin's own verbs, help and a word nobody knows. The node CLI itself does not know `mcp` (`unknown command: mcp`), so on a machine with no Rust binary the plugin's server is `packages/mcp/dist/main.js`, as before.
+`tagents-core sessions` (`recent [N]`, `search <words…>`, `show <id-prefix>`, and the bare `sessions` that means `recent`) is a port of `packages/core/src/transcripts.ts`, `tagents-core mcp --contract <file>` is the plugin's MCP server, a port of `packages/mcp` ("The MCP server"), `tagents-core notify run` is the notification daemon, a port of `packages/notify`'s service ("The notify daemon"), and `tagents-core plugin add <package-or-path> [--name <name>]` and `plugin remove <name>` edit the `plugins` tables of the config file, ports of `add` and `remove` in `packages/core/src/cli/plugin.ts` ("The plugin verbs"). Every other word is the node CLI's: `session`, the rest of `plugin` (`list`, `new`), `doctor`, a plugin's own verbs, help and a word nobody knows. The node CLI itself does not know `mcp` (`unknown command: mcp`), so on a machine with no Rust binary the plugin's server is `packages/mcp/dist/main.js`, as before.
 
-The decision is made by the first word, so a group of verbs belongs wholly to one program: `sessions rescent` is answered by Rust with the node CLI's usage line and exit code. `notify` is the one word that is not decided alone: the arm matches exactly the two words `["notify", "run"]` (`crates/tagents-core/src/front_door.rs:46` and `:143`), and every other argument list that starts with `notify` (`notify status`, `notify install`, `notify run extra`) goes to the node CLI, which hands it to the plugin host, so a verb of the plugin keeps the word.
+The decision is made by the first word, so a group of verbs belongs wholly to one program: `sessions rescent` is answered by Rust with the node CLI's usage line and exit code. Two words are not decided alone. `notify`: the arm matches exactly the two words `["notify", "run"]` (`crates/tagents-core/src/front_door.rs:60` and `:157`), and every other argument list that starts with `notify` (`notify status`, `notify install`, `notify run extra`) goes to the node CLI, which hands it to the plugin host, so a verb of the plugin keeps the word. `plugin`: its group (`GROUPS`, `front_door.rs:42`) is a function that may decline. It answers `plugin add` and `plugin remove` and returns `None` for every other call (`plugin list`, `plugin new`, a bare `plugin`, `plugin bogus`) and for any call of the two verbs that it cannot prove identical to node's ("The plugin verbs"), and the front door then replaces itself with the node CLI exactly as it does for a word it does not serve, before anything has been written. A group that reads paths is registered with `lossy_args: false` (`front_door.rs:37`), so a call with an argument that is not UTF-8 goes to node whole where the `sessions` group reads it with U+FFFD for each bad byte as `process.argv` does: a plugin path must not name another file than the one that was typed.
 
 The LaunchAgent runs `~/.local/bin/tagents-notify run` when that wrapper is on the `PATH` of the shell that ran `tagents notify install` and names this checkout's `packages/notify/dist/main.js`, and node on that file otherwise (`runSpecFor`, `packages/notify/src/plugin.ts:130-132`; `installedCommand`, `packages/notify/src/paths.ts:52`). The wrapper runs `tagents-core notify run` for the argument list `run` alone when the binary is installed and answers the checkout's version, and node for every other call or when the binary is gone or not executable by then (`write_wrapper` and `install_commands` in `install.sh`). So a machine with the prebuilt binary runs the Rust daemon under launchd, and a binary an update removed leaves node running at the next start, not a plist pointing at nothing.
 
@@ -18,7 +18,7 @@ The binary is `target/release/tagents-core`. A contributor builds it with `cargo
 target/release/tagents-core sessions recent 3   # answered in Rust
 target/release/tagents-core plugin list         # exec node packages/core/dist/cli/main.js plugin list
 target/release/tagents-core --spec              # the verbs this binary serves, as JSON
-target/release/tagents-core --version           # tagents-core 0.5.1: the workspace version it was built from
+target/release/tagents-core --version           # tagents-core 0.6.0: the workspace version it was built from
 ```
 
 For a word it does not serve, the binary replaces itself with `node packages/core/dist/cli/main.js` of the checkout it sits in, with the same arguments, environment, working directory and stdio. There is no wrapper process left: the exit code, and a signal the call ends with, are the node CLI's own. The node is `$TAGENTS_NODE` when that is set (the wrappers `install.sh` writes set it to the node they pinned), and `node` on `PATH` otherwise.
@@ -31,7 +31,9 @@ The verbs live in `spec/cli/tagents-core.json`, described by `spec/cli/cli-spec.
 
 Both loaders refuse the structural mistakes the schema forbids: a key the schema does not name, an empty `program` or `summary`, an empty `path`, an empty word in `path`, `positionals` or `required`, and a `null` where the schema says string or boolean. Both add the one rule a schema cannot state, that two commands never share a `path` (dispatch is by path, so the second would never run). The Rust loader is the stricter one: no input is known that it loads and the node loader refuses. It refuses three inputs the node loader accepts: an `exit` value written `1.0` (the number 1 to JavaScript, a non-integer to the `u8` the model holds), a key written twice in one object (`JSON.parse` keeps the last), and a lone surrogate escape in a string (`JSON.parse` accepts it); a unit test in `crates/tagents-spec/src/lib.rs` pins each. The path to the data file in `packages/core/src/cli/spec.ts` (`SPEC_FILE`) leads out of `packages/core`, so the package works from a checkout and from `$TAGENTS_HOME`, which is one, and would not work from a packed tarball (`files` is `dist`, which does not hold the data file). Nothing publishes or packs the package, and the repository installs from a clone; the package is not marked `private` because the plugin contract lists the public API of every package that is not.
 
-The one-line summary of a command stays in the language catalogue (`packages/core/src/i18n/`), keyed by the `summary` field, so there is one source of the text.
+The one-line summary of a command stays in the language catalogue (`packages/core/src/i18n/`), keyed by the `summary` field, so there is one source of the text. The texts a served verb prints (`added <name> → <from> to <file>`, `missing required option <option>`) are in that catalogue too and reach Rust through `spec/cli/messages.json`, a file generated from it ("The plugin verbs").
+
+`"impl": "rust"` on a verb of a group that may decline (`plugin add`, `plugin remove`) says that the binary tries the call first and answers the calls it can prove identical to node's. It hands the others to node, so for every argument list the two programs give the same bytes, files and exit code, and the parity suite marks each of its scenarios with the program that must answer.
 
 ## The MCP server
 
@@ -150,7 +152,7 @@ A caller that must not lose a write does three things. It arms the watch and onl
 
 | case | Rust test |
 |------|-----------|
-| no verb: exit 2 and the verbs listed | not applicable: Rust serves exactly the argument list `notify run` (`front_door.rs:143`), and any other `notify` word goes to the node CLI, which owns this case |
+| no verb: exit 2 and the verbs listed | not applicable: Rust serves exactly the argument list `notify run` (`front_door.rs:157`), and any other `notify` word goes to the node CLI, which owns this case |
 | a verb that does not exist: exit 2 | not applicable, for the same reason |
 | run with the lock held by a live process: exit 0 at once, lock untouched | `notify_service::a_lock_held_by_a_live_process_is_logged_and_left` |
 | run, then SIGTERM: exit 0, neither the lock nor `events.on` left | `notify_service::a_running_service_posts_a_notice_and_stops_on_sigterm` |
@@ -158,6 +160,43 @@ A caller that must not lose a write does three things. It arms the watch and onl
 | run with an invalid options file: keeps running on the defaults, exit 0 at SIGTERM (macOS only) | `notify_service::an_invalid_options_file_keeps_the_service_running_on_the_defaults_until_sigterm` |
 
 `options.test.ts`: the ten cases that read and validate options are mapped by name in the header of `options::tests` (`crates/tagents-core/src/notify/options.rs:675`), and the eleventh, that the package exports the schema beside the type derived from it, is not applicable: it is a module export of a TypeScript package. None of the eleven is about the service or the verb.
+
+## The plugin verbs
+
+`plugin add` and `plugin remove` are ports of `add` and `remove` in `packages/core/src/cli/plugin.ts` over the config writer of `packages/core/src/plugin-config.ts` (`crates/tagents-core/src/plugin.rs`, `plugin/config.rs`, `plugin/resolve.rs`). One rule decides the shape of the port: **the Rust verb prints only what it can prove node prints, and hands every other call to node before it writes anything** (`plugin::serve` returns `None`; the front door then execs node with the same arguments). Node's error texts are worded by the runtime (`util.parseArgs`, the TOML library, `fs`), so a port that reproduced them would be a second implementation that drifts with the node version. A call that node fails on is therefore node's to fail on, and the test that matters for it is that Rust did not write.
+
+The calls it answers:
+
+| call | stream and exit code | text (catalogue key) |
+|------|----------------------|----------------------|
+| `add` with no package | stderr, 2 | `missingOption` with `<package-or-path>` |
+| `add`, a name that is not `NAME` (`^[A-Za-z0-9][A-Za-z0-9._-]*$`) | stderr, 2 | `pluginBadName` |
+| `add`, nothing at the path | stderr, 1 | `pluginUnresolved` |
+| `add`, a package that is not a plugin, or whose entry is missing | stderr, 3 | `pluginBadManifest`, `pluginNoEntry` |
+| `add`, the key is listed | stderr, 3 | `pluginExists` |
+| `add` | stdout, 0 | `pluginAdded` |
+| `remove` with no name | stderr, 2 | `missingOption` with `<name>` |
+| `remove`, the key is not listed | stderr, 3 | `pluginNotListed` |
+| `remove` | stdout, 0 | `pluginRemoved` |
+
+The order is node's: the missing package, then the resolution, then the name, then the config. A bad name for a package that is not there is the package's error.
+
+The arguments have a grammar with no error case (`plugin::parse`, `plugin.rs:92`). A positional is an argument that does not start with `-`, or a lone `-`; `--` ends the options; `add` takes `--name V` when `V` does not start with `-` and `--name=V` for any `V`, and the last one wins; `remove` takes no option. Any other argument that starts with `-`, and a `--name` with nothing after it, goes to node, because `util.parseArgs` words its own errors. A second positional is ignored, as node ignores it.
+
+What goes to node, each before a write:
+
+- a verb the group does not serve (`list`, `new`, a bare `plugin`, a word nobody knows), and an argument outside the grammar;
+- a bare name the resolution cannot prove (below);
+- a config that is not UTF-8 (node reads it with U+FFFD and writes that back), one that does not parse, a `plugins` that is not a table, an edit that does not parse back to what was meant, a key `__proto__`, and any I/O error: a link that leads nowhere or in a loop, a directory where the file is, a file nobody may read, a directory nobody may write in. Only a missing file (`ENOENT`) reads as an empty config, in both programs (`read_text`, `plugin/config.rs:305`); every other failure to read it would otherwise have the edit replace what could not be read;
+- a package.json that is not UTF-8, and a working directory that is gone or not UTF-8.
+
+**The config is edited as text, and the parser only answers questions** (`plugin/config.rs`, the twin of `addPluginEntry` and `removePluginEntry`). The file is the owner's, with comments and spacing of their own. `add` appends `[plugins.KEY]` and `from = "…"` behind one blank line, re-parses the result and checks that `plugins.KEY.from` is what was meant; `remove` cuts the section and its subsections out by their header lines (a section runs from its header to the next header, less the comment lines just above that header, which belong to it; the blank lines that trail the section go with it, and at the end of the file so does the blank line `add` put before it), re-parses, and checks that everything else is deeply equal to what it was, numbers compared as JavaScript compares them (`NaN` is unequal to itself, an integer beyond 2^53 is a TOML error in node and a hand-over here). The write goes to `<target>.<pid>.tmp` and is renamed over the target after `mkdir -p`; a failed write or rename removes the temporary file and hands the call over (`save`, `config.rs:314`). The target is `file` itself, or the file a symbolic link at that path ends in, so a config kept in a dotfiles repository stays a link (`write_target`, `config.rs:295`). The new file has the mode `0666` less the umask, not the mode of the file it replaces, and nothing locks the file: two edits at once end with the last rename, as in node.
+
+**The package is found by the part of node's resolution that can be proved** (`plugin/resolve.rs`, the twin of `resolvePluginPackage`). A spec that starts with `.`, `~` or `/` is a directory and is resolved here in full: `~` is `os.homedir()`, the path is made absolute as `path.resolve` does, and the manifest is read, qualified (`name` a non-empty string if present, `tagents.apiVersion` the number 1, `tagents.entry` a non-empty string) and its entry checked to exist. Anything else is `require.resolve('<spec>/package.json')`, which has a long tail (`exports`, `NODE_PATH`, the global folders, `--require` hooks, self-reference), and it is resolved here only when a walk of the `node_modules` directories from the working directory finds the package and nothing makes node's answer differ. It hands over when `NODE_OPTIONS` or `NODE_PRESERVE_SYMLINKS` is set, when the spec is not an npm package name, when the nearest `package.json` above the working directory names the package and has `exports` (self-reference), when the package's own manifest has an `exports` that is not `null`, and when the walk finds nothing. The real path comes from `node::realpath` (`node.rs:104`), which follows JavaScript's `fs.realpathSync` and keeps the case the caller typed, where `fs::canonicalize` writes the case the disk has: on a case-insensitive volume `plugin add Plain` and the two would otherwise differ. Nothing reads more of the package than its package.json, and nothing imports it.
+
+**The texts have one source.** `spec/cli/messages.json` is generated from the catalogue (`packages/core/src/i18n/export.ts`, `pnpm messages:check` in `.github/workflows/ci.yml`), refuses a text with `$t(` or a placeholder that is not `{{word}}`, and holds `en` and `ru`; the 15 `summary*` keys that `ru` lacks fall back to `en`, as in node. The binary embeds it (`tagents_spec::Messages`, `crates/tagents-spec/src/lib.rs:185`) and `Texts::t` (`crates/tagents-core/src/messages.rs`) fills the placeholders the way i18next 26 does, including the quirk that matters: after each placeholder it replaces the first occurrence of that placeholder's text in the whole string, so a value that holds a later placeholder (`--name={{file}}`) takes that placeholder's value instead of keeping its own text. The locale is `TAGENTS_LOCALE`, read as `Locale::of` reads it for the notify daemon: `ru` only when it is exactly that.
+
+**What pins it.** `tests/rust-plugin-vectors.mts` writes `crates/tagents-core/tests/fixtures/plugin-vectors.json` from the node code (61 config documents, 532 config cases, 74 resolution cases over a package tree, 418 catalogue cases) and `crates/tagents-core/tests/plugin_vectors/` checks the Rust code against every case; the workflow regenerates the file and runs `git diff --exit-code` on it, so a node change that moves an output fails there until the copy follows. `tests/rust-plugin-parity.sh` ("The parity suite") runs the two programs over the same tree. The tripwires are the files the vectors and the suite share, `tests/rust-plugin-vectors/corpus.mts` (the documents) and `tree.mts` (the packages).
 
 ## Where the binary is looked for
 
@@ -191,8 +230,8 @@ A pull request that changes the workflow, the scripts or an input of the binary 
 
 ```sh
 git switch main && git pull --ff-only          # the commit that holds the bump
-sh .github/scripts/core-release.sh version     # 0.5.1
-git tag v0.5.1 && git push origin v0.5.1       # starts the release workflow
+sh .github/scripts/core-release.sh version     # 0.6.0
+git tag v0.6.0 && git push origin v0.6.0       # starts the release workflow
 ```
 
 **When `main` is ahead of the last release,** a managed copy that follows `main` holds a version with no release yet. Its installer finds nothing to download, says so, and the node CLI runs until the tag of that version is pushed; it never keeps the binary of an older version in the meantime. Nothing releases on a push to `main`: the person who merges the bump pushes the tag.
@@ -251,6 +290,17 @@ PARITY_SELF_TEST=1 bash tests/rust-notify-parity.sh                       # node
 
 It needs a built node daemon (`pnpm build`), `/bin/ps` (the node service reads its lock with it) and bash 3.2; exit code 0 is all passed, 1 a scenario or the first check failed, 2 a prerequisite is missing. The CI step "Parity of the notify daemon with the node one, byte for byte" (`.github/workflows/rust.yml`, after the server's) runs it without arguments.
 
+`tests/rust-plugin-parity.sh` does the same for `plugin add` and `plugin remove`, and compares more than the text. Each scenario runs twice, node on `packages/core/dist/cli/main.js` and the Rust binary (or `$TAGENTS_CORE_BIN`), each on its own copy of one pristine tree at the same path (the packages of `tests/rust-plugin-vectors/tree.mts`, a working directory inside it, and the corpus documents as config files written by `tests/rust-plugin-vectors/materialise.mts`), under `env -i` with a scratch `HOME`, config directory and locale and with no `pnpm` on `PATH` (node's last resort for a package it cannot find is `pnpm root -g`). It passes only when stdout, stderr, the exit code and the whole tree afterwards are the same: every path, its mode, its link target or the checksum of its bytes, so a leftover `.tmp` file, a symlink replaced by a regular file and a lost mode each fail it. Who answered is checked as well: the Rust side runs with `$TAGENTS_NODE` pointing at a shim that notes it was started, a scenario marked `rust` fails when the binary handed the call to node, one marked `node` fails when the binary answered it itself, and the corpus sweeps, whose answer depends on the document, are counted and held to a floor. Tripwires check node's run alone (its exit code and a text it must print), so a scenario that stopped provoking what it exists for fails.
+
+```sh
+pnpm install && pnpm build
+env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/rust-plugin-parity.sh
+PARITY_ONLY="symlink" bash tests/rust-plugin-parity.sh    # the scenarios whose label holds the text
+PARITY_SELF_TEST=1 bash tests/rust-plugin-parity.sh       # node on both sides: the suite and node's determinism, not the binary
+```
+
+It needs a built node CLI, a node that runs `.mts` files and bash 3.2, and uses no network, no real home and no tmux. The permission scenarios are skipped when it runs as root. The CI step "Parity of plugin add and plugin remove with the node ones, files and exit codes included" (`.github/workflows/rust.yml`, after the notify one) runs it without arguments.
+
 ## Where the two are known to differ
 
 These are the differences the port does not hide, and the suite does not cover them:
@@ -262,6 +312,12 @@ These are the differences the port does not hide, and the suite does not cover t
 - An I/O error is worded as node words it for the ten error numbers of `node::ERRNOS` (`ENOENT`, `EIO`, `E2BIG`, `ENOEXEC`, `ENOMEM`, `EACCES`, `ENOTDIR`, `EISDIR`, `EMFILE`, `ETXTBSY`, pinned by `the_errno_table_is_nodes`); any other error number prints Rust's description.
 - A directory entry whose name is not UTF-8 is not listed. Node lists it with U+FFFD in the name, and the next `stat` on that name fails there.
 - A modification time that `Date` cannot represent, and a `HOME` that is unset (the suite always sets it, empty at times), are not covered.
+
+The plugin verbs differ from `packages/core` in these ways, and the suite leaves them out:
+
+- A call that is handed over is run by node from the start, so a file that changes between the Rust verb's reads and node's is read twice. Nothing has been written by then.
+- `NODE_OPTIONS` and `NODE_PRESERVE_SYMLINKS` make the resolution of a bare name node's whole; a directory argument is still answered in Rust under them, because neither changes how a path is read.
+- A temporary file is `<target>.<pid>.tmp` in both programs, so a crash between the write and the rename leaves a file named with the pid of the program that crashed.
 
 The MCP server differs from `packages/mcp` in these ways. The suite leaves them out, or pins the Rust side alone:
 
