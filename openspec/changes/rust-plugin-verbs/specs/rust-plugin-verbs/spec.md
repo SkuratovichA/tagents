@@ -34,8 +34,12 @@
 - **WHEN** `plugin add` runs with no config file and no config directory
 - **THEN** the directory and the file are created and the file holds one section
 
+#### Scenario: A config that is a symbolic link
+- **WHEN** `config.toml` is a link to a file in another directory and `plugin add ./x` runs
+- **THEN** the link is unchanged and the file it points to holds the appended section
+
 ### Requirement: What Rust cannot prove identical goes to node untouched
-A config that is not valid UTF-8 or cannot be read for a reason but not existing, one the parser refuses or that holds an integer beyond ±(2^53−1), a `plugins` that is not a table, an edit that does not parse, a section that cannot be cut, a resolution outside the subset below, and arguments outside the grammar below SHALL be run by the node CLI with the same arguments and environment, with no file changed by Rust. An I/O error while writing SHALL undo what Rust wrote and hand the call to node.
+A config that is not valid UTF-8, exists but cannot be read, or is a symbolic link to nowhere or in a loop, one the parser refuses or with an integer beyond ±(2^53−1), a `plugins` that is no table, an edit that does not parse or a section that cannot be cut, a resolution outside the subset below, and arguments outside the grammar below SHALL go to the node CLI, with the same arguments and environment, before Rust writes. A failed write SHALL remove what Rust wrote and hand the call to node.
 
 #### Scenario: A config with a syntax error
 - **WHEN** `plugin add ./x` runs against a config that does not parse
@@ -44,6 +48,10 @@ A config that is not valid UTF-8 or cannot be read for a reason but not existing
 #### Scenario: An integer beyond 2^53
 - **WHEN** the config holds `big = 9007199254740993`
 - **THEN** the node CLI answers and the file is as it was
+
+#### Scenario: A config that cannot be read
+- **WHEN** `config.toml` is a directory
+- **THEN** the node CLI answers with the error of the read and exit code 1, and nothing is written
 
 #### Scenario: A write that fails
 - **WHEN** the config directory cannot be written
