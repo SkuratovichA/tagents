@@ -86,7 +86,11 @@ How parity of `knowledge_search` is proven, in three layers:
 
 A probe test lists `pragma compile_options` in both programs: an option that changes results (`SQLITE_DQS`, the FTS5 switches) is either equal or one line of "Where the two are known to differ".
 
-Concurrency: the two programs may open one index at once. The index is in the default journal mode and this change does not change it, because switching a database that another program holds open is the failure to avoid. The Rust connection sets a busy timeout, so Rust waits for node; node's connection does not wait, so node can answer `database is locked` when the Rust program holds a write. A write happens only when a file changed, in one short transaction, and the redundant write of the `meta` rows that node does on every open is skipped in Rust when the values are equal, so the window is milliseconds and rare. It is a documented risk (see Risks), not a blocker.
+Concurrency: the two programs may open one index at once. The index is in the default journal mode and this change does not change it, because switching a database that another program holds open is the failure to avoid. Both programs run `pragma busy_timeout = 5000` right after they open the index, so a program that finds the other holding a write waits for it and does not answer `database is locked`. The node opener `openDb` in `db.ts` gains the pragma in this change (it works on every SQLite node ships, where the `timeout` option of `DatabaseSync` does not), and the usage store already waits 250 ms in both. A write happens only when a file changed, in one short transaction, and the redundant write of the `meta` rows that node does on every open is skipped in Rust when the values are equal, so a lock is held for milliseconds. The value is an exported constant of `db.ts` that the vectors carry, so the Rust test fails when the two differ.
+
+Why 5000 ms: it is the lock wait of the daemon's own start (`ensure`), far longer than the transaction of one changed document and short enough that a call does not hang. A wait that ends is an error of that call alone, and the other program's write is never lost.
+
+Rejected: WAL for the index (the journal mode of a file another program holds open is the thing not to change, and WAL adds two files next to an index that a session may move); a retry loop in Rust and none in node (the two programs would wait differently for the same lock).
 
 Rejected: a private index for the Rust program (the machine would hold two indexes and two usage records that disagree, and every switch would rebuild); a shared schema file read at runtime (the schema is eight statements; the vectors carry node's text of it and `sqlite_master` of a file each program built is compared).
 
@@ -180,27 +184,43 @@ Rejected: replaying the handshake to a new daemon after a mid-session death (the
 
 ### How a session reaches the binary: the wrapper chooses, the launcher probes
 
-The installer's `write_wrapper` already names the native binary for an exact argument list of `tagents-notify` (`install.sh:76-102`) under the `--version` check of `tagents-mcp` (`install.sh:289-308`). `tagents-knowledge` joins that case with the word `knowledge` and the exact words `join`, `mcp` and `serve`: the wrapper runs `tagents-core knowledge <word>` when its arguments are exactly one of them, and the node program for everything else (`serve --idle 30`, `search`, `index`). The word list generalises the guard; with one word the generated text is byte for byte what the notify wrapper has (`tests/install.sh:386-392` pins that), and several words are a conjunction inside braces.
+The installer's `write_wrapper` already names the native binary for an exact argument list of `tagents-notify` (`install.sh:76-102`) under the `--version` check of `tagents-mcp` (`install.sh:289-308`). `tagents-knowledge` joins that case with the word `knowledge`. The wrapper runs `tagents-core knowledge <word>` for `serve` with any arguments (`serve`, `serve --idle 30`, `serve --foreground --socket P`) and for `join` or `mcp` as the only argument, and the node program for everything else (`mcp extra`, `search`, `index`). The `tagents-notify` wrapper is generated as before, byte for byte (`tests/install.sh:386-392` pins it).
+
+Why `serve` takes any arguments: a person or a script that starts the shared server with `--idle` must not end with a second daemon beside the one a session's `join` starts, and two argument lists reaching two programs would do that. No reason to keep them on node was found. The options of `serve` are parsed strictly by the binary and pinned by the table of argument lists that node generates (exit code and the option named), the one difference being the wording of `util.parseArgs`, which is a known difference already. `--socket P` and `--foreground` by hand run the Rust daemon, which is the point; a node daemon that is running is not touched. `mcp` and `join` stay exact: `mcp extra` is a spelling the plugin never uses and `join x` is the same usage error in both programs.
+
+The wrapper also owns the answer to the launcher's probe. Whatever the binary's state, a call whose only argument is `join` that does not reach the binary exits 69 and starts nothing, so a machine without the binary does not pay a node start for a question whose answer is no. 69 is `EX_UNAVAILABLE` of `sysexits.h` ("a service is unavailable"), and differs from 0, from the node CLI's 1, 2 and 4 (`packages/knowledge/src/cli/exit.ts:2`) and from the shell's 126 and 127.
 
 ```sh
 r="/home/u/.tagents/target/release/tagents-core"
-[ ! -f "$r" ] || [ ! -x "$r" ] || [ "$#" -ne 1 ] || { [ "$1" != join ] && [ "$1" != mcp ] && [ "$1" != serve ]; } || { TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" knowledge "$@"; }
+if [ -f "$r" ] && [ -x "$r" ]; then
+  if [ "${1-}" = serve ] || { [ "$#" -eq 1 ] && { [ "$1" = join ] || [ "$1" = mcp ]; }; }; then
+    TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" knowledge "$@"
+  fi
+fi
+[ "$#" -ne 1 ] || [ "$1" != join ] || exit 69
 exec "$n" "/home/u/.tagents/packages/knowledge/dist/cli/main.js" "$@"
 ```
 
-Why only exact lists: the wrapper is where a wrong guess costs, the plugin and the launcher call these three, and every other call stays on the oracle until its own change. A binary of another version is not named, because an older binary hands `knowledge` to the node core CLI, which does not know it.
+With no binary named (none at install time, another version, `TAGENTS_NO_NATIVE=1`, no release) the first block is absent and the last two lines remain. A binary that is gone by run time falls to the same two lines: `serve` and `mcp` run node, `join` exits 69.
 
-`packages/knowledge/bin/knowledge-mcp` probes before it commits, because `exec` cannot fall back:
+Why only these words: the wrapper is where a wrong guess costs, the plugin and the launcher call these three, and every other call stays on the oracle until its own change. A binary of another version is not named, because an older binary hands `knowledge` to the node core CLI, which does not know it.
+
+`packages/knowledge/bin/knowledge-mcp` probes before it commits, because `exec` cannot fall back, and says so when the native server was there and failed:
 
 ```sh
-if tagents-knowledge join </dev/null >/dev/null 2>&1; then exec tagents-knowledge join; fi
+tagents-knowledge join </dev/null >/dev/null 2>&1; rc=$?
+case $rc in
+  0) exec tagents-knowledge join ;;
+  69 | 2) ;;  # 69: the wrapper has no binary. 2: a wrapper from before this arrangement, whose node program does not know `join`
+  *) printf 'knowledge-mcp: tagents-knowledge join exited %s, using the node server (tagents-knowledge join </dev/null shows why)\n' "$rc" >&2 ;;
+esac
 sock=$(tagents-knowledge serve 2>/dev/null) && [ -S "$sock" ] && command -v nc >/dev/null 2>&1 && exec nc -U "$sock"
 exec tagents-knowledge mcp
 ```
 
-With the native `join`, stdin at EOF connects, finds or starts the daemon, shuts the write half and exits 0, so the probe answers by exit code and leaves a daemon running that the real `join` finds. With the node program `join` is an unknown command and exits 2, so the old arrangement runs unchanged, which costs one node start (about 0.11 s on 01.11.2026). `plugin.json` is unchanged. The arrangement is safe against skew in both directions: a new launcher over a node-only machine falls through; an old launcher over a machine with the binary calls `tagents-knowledge serve`, which the wrapper sends to the Rust `serve`, and joins that daemon through `nc`.
+With the native `join`, stdin at EOF connects, finds or starts the daemon, shuts the write half and exits 0, so the probe answers by exit code and leaves a daemon running that the real `join` finds. A node-only machine gets 69 from the wrapper at once and runs the old arrangement unchanged, silently; a wrapper from before this arrangement has node answer 2, also silently, at the price of one node start until the next `tagents update` rewrites it. Any other code means the native `join` was there and failed (a socket directory that cannot be made, a crash, a signal): the line goes to the session's stderr, which Claude Code keeps in the log of an MCP server, and the node arrangement runs. `plugin.json` is unchanged. The arrangement is safe against skew in both directions: a new launcher over a node-only machine falls through; an old launcher over a machine with the binary calls `tagents-knowledge serve`, which the wrapper sends to the Rust `serve`, and joins that daemon through `nc`.
 
-Rejected: a launcher that names the binary's path (it would skip the version check the wrapper owns); `tagents-knowledge join || fallback` without `exec` (the shell would stay as a parent, and an exit 1 after a death mid-session would start a second server for a client that has already begun a session); an option of `join` that only checks (an interface that exists to be probed, when running the verb on empty input already says whether it exists).
+Rejected: a launcher that names the binary's path (it would skip the version check the wrapper owns); `tagents-knowledge join || fallback` without `exec` (the shell would stay as a parent, and an exit 1 after a death mid-session would start a second server for a client that has already begun a session); an option of `join` that only checks (an interface that exists to be probed, when running the verb on empty input already says whether it exists); a probe that reads the wrapper's text or looks for the binary's path (the wrapper's rules for the version and the executable bit would exist twice).
 
 ### Which CLI verbs move
 
@@ -285,9 +305,9 @@ All are MIT or Apache-2.0 and the release workflow builds all three targets, so 
 
 Decision: three pull requests, each mergeable alone with the node arrangement intact.
 
-- (a) Task groups 1 to 6: the shared lifts, the document reader, the index, the search, the usage store, the vectors, the three dependencies and the `musl-tools` step. No verb calls any of it, so no behaviour changes and the node arrangement is untouched. It changes inputs of the binary and raises the workspace version one minor step above its merge base.
+- (a) Task groups 1 to 6: the shared lifts, the document reader, the index, the search, the usage store, the vectors, the three dependencies, the `musl-tools` step and the busy timeout of the node opener of the index (its own commit). No verb calls the Rust code, so the node arrangement is untouched; the one change to node is that its index waits for a lock. It changes inputs of the binary and raises the workspace version one minor step above its merge base.
 - (b) Groups 7 to 13: the generators, the widened loop, the argument checker, the tools, the socket and the daemon, `join`, the three verbs (the front-door arm and the contract entries are the last of the code, after everything they call, so no verb is forwarded to node while half built), the suite, CI and the documents. Nothing names the verbs yet, so the node arrangement is untouched. It raises the version one minor step above its merge base.
-- (c) Groups 14 to 17: the installer's word list, the launcher, the measurements, the `CHANGELOG.md` line and the archive. It changes no input of the binary, raises nothing, and names the verbs only for a binary of the checkout's version, so a machine with a binary of another version, no release or `TAGENTS_NO_NATIVE=1` keeps the node arrangement.
+- (c) Groups 14 to 17: the installer's words and the `join` answer of the wrapper, the launcher, the measurements, the `CHANGELOG.md` line and the archive. It changes no input of the binary, raises nothing, and names the verbs only for a binary of the checkout's version, so a machine with a binary of another version, no release or `TAGENTS_NO_NATIVE=1` keeps the node arrangement.
 
 Each pull request that changes an input runs `sh .github/scripts/core-release.sh gate origin/main` and follows what it prints: `Cargo.toml`, `Cargo.lock` and the version lines of `docs/architecture/rust-core.md`. When (a) merges first, (b) rebases and takes the next minor step above the new base. Tagging the version is not part of this change; the installer falls back to node for a version without a release.
 
@@ -300,18 +320,18 @@ Reason: the release path is built so that an install never runs a binary of anot
 - Binary size (about 1.76 MB on the probe) and a clean build that takes a third to half a minute longer.
 - `saphyr` against `yaml`: the known differences above are closed or listed, and anything the 41 cases did not find is found by the vectors' generated edge cases or not at all.
 - zod 4 and `util.parseArgs` words depend on the SDK and node versions: the vectors are regenerated in CI, so an upgrade of either shows as a diff.
-- A broken native binary makes the launcher's probe fail without a word and the node arrangement run: the session works and the cost is the node start. The log of the launcher is the session's stderr, which the probe discards by design; a binary that fails is found by `tagents-knowledge join </dev/null; echo $?`.
-- A machine without the binary pays about 0.11 s for the failed probe at the start of each session.
-- `serve --idle 30` through the wrapper reaches node, so two daemons by two argument lists exist when someone runs both; each exits when idle.
+- A native `join` that fails makes the session run the node arrangement: the session works and the cost is the node start. The launcher writes one line naming the exit code to the session's stderr, which Claude Code keeps in the log of an MCP server, and `tagents-knowledge join </dev/null; echo $?` shows the reason.
+- A machine without the binary pays a shell start for the probe, because the wrapper exits 69 without starting node. A wrapper written before this arrangement answers 2 through a node start until the next `tagents update` rewrites it.
+- The two silent codes of the probe (69 and 2) could hide a native `join` that exits with one of them. The native `join` exits 2 only for an argument, which the probe never gives, and 69 is never used by the binary.
 - `process_group(0)` leaves the daemon in the starter's session (see the lifecycle decision).
-- Locking across programs: node does not wait for a lock and can answer `database is locked` while Rust writes (see "One index file"). The window is a changed file's transaction.
+- Locking across programs: both wait 5000 ms for a lock, so a call fails with `database is locked` only when the other holder outlasts that, in either program (see "One index file").
 - `serverInfo.version`, the capabilities flag and the SDK's own details are matched in the handshake and listed where they differ.
 
 ## Migration Plan
 
 1. (a) merges: the binary carries the index, the search and the usage store, and no verb calls them.
 2. (b) merges: the binary carries the three verbs, and nothing names them. `tagents-core knowledge join` can be tried by hand, and the node arrangement is what every session runs.
-3. (c) merges and a version with a release is tagged by the person who tags: `tagents update` installs the binary and the wrapper's word list; a session then starts `join`, a node daemon that is running is left alone and exits when idle, and the index and the usage store carry over untouched.
+3. (c) merges and a version with a release is tagged by the person who tags: `tagents update` installs the binary and the wrapper's words; a session then starts `join`, a node daemon that is running is left alone and exits when idle, and the index and the usage store carry over untouched.
 4. Back: `TAGENTS_NO_NATIVE=1` and a re-run of the installer remove the prebuilt binary and the wrapper falls through to node; a session started next uses the node arrangement; a running Rust daemon exits when idle. Deleting `knowledge.sqlite` is never needed in either direction.
 5. A later change moves the read verbs and then retires `packages/knowledge`; neither is part of this one.
 

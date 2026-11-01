@@ -46,11 +46,15 @@ For the same documents, index and usage store, every result of the six tools SHA
 - **THEN** each program answers the version the node server answers, and only the server version differs
 
 ### Requirement: One index file for both programs
-The server SHALL read and write the index file of the `knowledge` capability in place: the same tables, tokenizer, match expression, ranking, snippet and rules for what to read again, so that either program answers identically from an index the other built or changed. Opening an index SHALL NOT change its journal mode, and SHALL NOT rebuild an index of the current schema.
+The server SHALL read and write the index file of the `knowledge` capability in place: the same tables, tokenizer, match expression, ranking, snippet and rules for what to read again, so that either program answers identically from an index the other built or changed. Opening an index SHALL NOT change its journal mode, SHALL NOT rebuild an index of the current schema, and SHALL wait for a lock the other program holds as long as the `knowledge` capability says.
 
 #### Scenario: Built by one, read by the other
 - **WHEN** the node program builds the index and the Rust program searches, and then the reverse
 - **THEN** the answers are the same and neither rebuilds the index
+
+#### Scenario: The other program is writing
+- **WHEN** the node program holds a write transaction on the index for 400 ms and the Rust program opens the index in that time
+- **THEN** it waits for the commit and answers, and the reverse holds too
 
 #### Scenario: Changed text, same text
 - **WHEN** a document is edited, and another is touched without a change to its text

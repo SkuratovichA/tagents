@@ -25,3 +25,12 @@ A client that sends rubbish (text that is not JSON, JSON that is not a request, 
 #### Scenario: Garbage, then a real client
 - **WHEN** a client sends rubbish and disconnects, and a session then connects
 - **THEN** the daemon pid is unchanged and the session lists the six tools
+
+## ADDED Requirements
+
+### Requirement: A locked index is waited for
+A program that opens the index SHALL wait up to 5000 ms for a lock that another connection holds, in either engine, before it fails with `database is locked`. The usage store keeps its wait of 250 ms. A wait that ends SHALL be the error of that call alone, and what the holder wrote SHALL not be lost.
+
+#### Scenario: A writer holds the index briefly
+- **WHEN** another process holds a write transaction on the index for 400 ms and a program opens the index in that time
+- **THEN** the open waits for the commit and succeeds, and the index holds what the other process wrote
