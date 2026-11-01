@@ -659,16 +659,50 @@ month_start() {
     date -d "$first" +%s 2>/dev/null
 }
 
-# `month` is spelt out because the suffix space is taken: *m already means
-# minutes, and silently re-reading "1m" as a month would change what every
-# existing caller asks for.
-since_secs() {
-  case "$1" in
-    month) printf '%s' "$(( $(date +%s) - $(month_start) ))" ;;
-    *h) printf '%s' "$(( ${1%h} * 3600 ))" ;;
-    *d) printf '%s' "$(( ${1%d} * 86400 ))" ;;
-    *m) printf '%s' "$(( ${1%m} * 60 ))" ;;
-    *)  printf '%s' "$1" ;;
+# A calendar day as an epoch: its local midnight, or the given time of day. BSD
+# date wants the format spelt out and GNU date parses the text, so each is
+# tried in that order; the round trip through the date rejects a day that does
+# not exist, which both would otherwise roll into the next month (2026-02-30).
+day_epoch() {
+  local d=$1 t=${2:-00:00:00} e back
+  case $d in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+    *) return 1 ;;
+  esac
+  e=$(date -j -f '%Y-%m-%d %H:%M:%S' "$d $t" +%s 2>/dev/null) ||
+    e=$(date -d "$d $t" +%s 2>/dev/null) || return 1
+  back=$(date -r "$e" +%Y-%m-%d 2>/dev/null) ||
+    back=$(date -d "@$e" +%Y-%m-%d 2>/dev/null) || return 1
+  [ "$back" = "$d" ] || return 1
+  printf '%s' "$e"
+}
+
+# The first instant of a window, as an epoch. `month` is spelt out because the
+# suffix space is taken: *m already means minutes, and silently re-reading "1m"
+# as a month would change what every existing caller asks for. A duration
+# reaches back from now, a date starts at its local midnight, and anything else
+# fails: the old reading evaluated an unknown word as shell arithmetic, so
+# `--since yesterday` quietly meant "now".
+since_cut() {
+  local v=$1 n=$1 unit=1
+  case $v in
+    month)             month_start; return ;;
+    ????-??-??)        day_epoch "$v"; return ;;
+    *[hdm])
+      n=${v%?}
+      case ${v: -1} in h) unit=3600 ;; d) unit=86400 ;; m) unit=60 ;; esac ;;
+  esac
+  case $n in ''|*[!0-9]*) return 1 ;; esac
+  printf '%s' "$(( $(date +%s) - 10#$n * unit ))"
+}
+
+# The last instant of a window. An all-digit value is an epoch, which is what
+# the dashboard sends; a date is the end of that day.
+until_cut() {
+  case $1 in
+    '')                return 1 ;;
+    *[!0-9]*)          day_epoch "$1" 23:59:59 ;;
+    *)                 printf '%s' "$1" ;;
   esac
 }
 
@@ -764,7 +798,7 @@ calibrate() {  # <account> <amount> [at]
     esac
   fi
   [ -n "${epoch:-}" ] || { echo "tusage: cannot read the time: $at" >&2; return 2; }
-  mtd=$(TU_NO_FACTOR=1 daily month "$epoch" |
+  mtd=$(TU_NO_FACTOR=1 daily "$(since_cut month)" "$epoch" |
           LC_ALL=C awk -F"$TAB" -v a="$acct" '$2 == a { s += $3 } END { printf "%.4f", s + 0 }')
   if ! LC_ALL=C awk -v m="$mtd" 'BEGIN { exit !(m + 0 > 0) }'; then
     echo "tusage: nothing indexed for $acct this month up to that instant — nothing to calibrate" >&2
@@ -1153,8 +1187,7 @@ AWK_DAY='
 '
 
 report_by() {
-  local dim=$1 since=$2 cut
-  cut=$(( $(date +%s) - $(since_secs "$since") ))
+  local dim=$1 cut=$2
   [ -s "$FACTS" ] || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
 
   { slug_map | sed 's/^/P\t/'; cat "$FACTS"; } |
@@ -1226,11 +1259,11 @@ report_by() {
 sessions() {
   [ -s "$FACTS" ] || return 0
   local now; now=$(date +%s)
-  LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v cut="$(( now - $(since_secs "${1:-7d}") ))" \
+  LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v cut="${1:-0}" -v upto="${2:-0}" \
       -v h1="$(( now - 3600 ))" -v h5="$(( now - 18000 ))" \
       -v prices="$(prices_arg)" "$AWK_PRICE"'
     function cost(i,c5,c1,cr,o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
-    $1 + 0 >= cut {
+    $1 + 0 >= cut && (upto == 0 || $1 + 0 <= upto) {
       s = $3; c = cost($9,$10,$11,$12,$13)
       d = usd($7, $1 + 0, $9,$10,$11,$12,$13)
       # An unpriced row that spent nothing is not a hole in the bill: Claude Code
@@ -1268,10 +1301,9 @@ sessions() {
 # default, because a wrong login is worse than a visible hole.
 daily() {
   [ -s "$FACTS" ] || return 0
-  local cut upto; cut=$(( $(date +%s) - $(since_secs "${1:-7d}") ))
   # --until cuts the far end, so a window can be closed at both ends: the meter
   # calibration in tagents needs the month AS OF the instant the meter was read.
-  upto=${2:-0}; case "$upto" in ''|*[!0-9]*) upto=0 ;; esac
+  local cut=${1:-0} upto=${2:-0}
   { account_map | sed 's/^/A\t/'; cat "$FACTS"; } |
   LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v cut="$cut" -v upto="$upto" -v tz="$(date +%z)" \
       -v prices="$(prices_arg)" -v factors="$(factor_arg)" "$AWK_PRICE$AWK_DAY"'
@@ -1435,7 +1467,7 @@ summary() {
     }'
   echo
   printf '\033[1mheaviest sessions (7 d)\033[0m\n'
-  sessions 7d | sort -t"$TAB" -k2,2nr | head -8 |
+  sessions "$(since_cut 7d)" | sort -t"$TAB" -k2,2nr | head -8 |
   while IFS="$TAB" read -r sid c reqs ctx last slug subc nsub c5h; do
     printf '  \033[90m%-9.9s\033[0m %9s %6s req  ctx %5.0fk  sub %7s  \033[90m%s\033[0m\n' \
       "$sid" \
@@ -1448,9 +1480,9 @@ summary() {
 
 json() {
   [ -s "$FACTS" ] || { echo '{"error":"no data"}'; return 1; }
-  LC_ALL=C awk -F"$TAB" -v cut="$(( $(date +%s) - $(since_secs "${1:-7d}") ))" '
+  LC_ALL=C awk -F"$TAB" -v cut="${1:-0}" -v upto="${2:-0}" '
     function cost(i,c5,c1,cr,o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
-    $1 + 0 >= cut { C[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += cost($9,$10,$11,$12,$13)
+    $1 + 0 >= cut && (upto == 0 || $1 + 0 <= upto) { C[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += cost($9,$10,$11,$12,$13)
                     R[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += $8 }
     END { printf "["; first = 1
       for (k in C) { split(k, a, SUBSEP)
@@ -1461,13 +1493,32 @@ json() {
 
 # ---------------------------------------------------------------------------
 
-SINCE=7d; UNTIL=""; DIM=""; DO_UPDATE=1; CAL_ACCT=""; CAL_AMT=""; CAL_AT=""
+# One DIM holds the report that runs. The session, the dimensions and the
+# filters are held apart from it, so the order of the flags decides nothing:
+# `--session X --by day` and `--by day --session X` are the same report.
+SINCE=""; UNTIL=""; DIM=""; DO_UPDATE=1; CAL_ACCT=""; CAL_AMT=""; CAL_AT=""
 MET_REFRESH=0; MET_FORCE=0
+BYLIST=""; SESSION=""; ACCTS=""; PROJS=""; BREAKDOWN=0; TOPN=12; SORT=""
+COLOR=auto; COMPACT=0; TSV=0
+US=$'\037'
+DIMENSIONS="account project session day week month hour agent model workflow"
+
+die_usage() { echo "tusage: $*" >&2; exit 2; }
+want_value() { [ "$2" -ge 2 ] || die_usage "$1 needs a value"; }
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --by)       DIM=${2:-project}; shift 2 ;;
-    --since)    SINCE=${2:-7d}; shift 2 ;;
-    --until)    UNTIL=${2:-}; shift 2 ;;
+    --by)       want_value "$1" $#; BYLIST=$2; DIM=__by; shift 2 ;;
+    --since)    want_value "$1" $#; SINCE=$2; SINCE_SET=1; shift 2 ;;
+    --until)    want_value "$1" $#; UNTIL=$2; UNTIL_SET=1; shift 2 ;;
+    --account)  want_value "$1" $#; ACCTS="${ACCTS:+$ACCTS,}$2"; shift 2 ;;
+    --project)  want_value "$1" $#; PROJS="${PROJS:+$PROJS$US}$2"; shift 2 ;;
+    --breakdown) BREAKDOWN=1; shift ;;
+    --top)      want_value "$1" $#; TOPN=$2; shift 2 ;;
+    --sort)     want_value "$1" $#; SORT=$2; shift 2 ;;
+    --color)    want_value "$1" $#; COLOR=$2; shift 2 ;;
+    --compact)  COMPACT=1; shift ;;
+    --tsv)      TSV=1; shift ;;
     --calibrate) DIM=__calibrate; CAL_ACCT=${2:-}; CAL_AMT=${3:-}; shift 3 ;;
     --at)       CAL_AT=${2:-}; shift 2 ;;
     --meter)    DIM=__meter; shift ;;
@@ -1475,7 +1526,7 @@ while [ $# -gt 0 ]; do
     --force)    MET_FORCE=1; shift ;;
     --sessions) DIM=__sessions; shift ;;
     --daily)    DIM=__daily; shift ;;
-    --session)  DIM=__detail; SID=${2:-}; shift 2 ;;
+    --session)  want_value "$1" $#; SESSION=$2; [ -n "$DIM" ] || DIM=__detail; shift 2 ;;
     --burn)     DIM=__burn; shift ;;
     --json)     DIM=__json; shift ;;
     # The meter runs AFTER the index work and outside its lock: it is a network
@@ -1486,22 +1537,84 @@ while [ $# -gt 0 ]; do
     # Print to the first non-comment line, never a hardcoded range: the header
     # grows, the range does not, and the help silently loses its tail.
     -h|--help)  LC_ALL=C awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
-    *)          echo "tusage: unknown option $1" >&2; exit 2 ;;
+    *)          die_usage "unknown option $1" ;;
   esac
 done
+
+# Every value is checked before the index is touched: a typo prints a plain
+# message and exits 2, where the old reading fell through to a plausible table
+# of the wrong thing.
+DIMS=()
+check_by() {
+  local d seen=" "
+  [ -n "$BYLIST" ] || die_usage "--by needs at least one dimension"
+  case ",$BYLIST," in *,,*) die_usage "empty dimension in --by $BYLIST" ;; esac
+  IFS=, read -r -a DIMS <<<"$BYLIST"
+  for d in "${DIMS[@]}"; do
+    case " $DIMENSIONS " in
+      *" $d "*) ;;
+      *) printf 'tusage: unknown dimension %s\nvalid: %s\n' "$d" "${DIMENSIONS// /, }" >&2; exit 2 ;;
+    esac
+    case "$seen" in *" $d "*) die_usage "dimension $d given twice" ;; esac
+    seen="$seen$d "
+  done
+  [ "${#DIMS[@]}" -le 3 ] || die_usage "--by takes at most three dimensions, not ${#DIMS[@]}"
+}
+
+check_accounts() {
+  local a known
+  [ -n "$ACCTS" ] || return 0
+  known=$(account_dirs | LC_ALL=C cut -f1)
+  IFS=, read -r -a want <<<"$ACCTS"
+  for a in "${want[@]}"; do
+    [ "$a" = "?" ] && continue
+    printf '%s\n' "$known" | grep -Fxq -- "$a" && continue
+    printf 'tusage: unknown account %s\nknown accounts: %s\n' "$a" \
+      "$(printf '%s\n' "$known" | paste -sd, - | sed 's/,/, /g'), ?" >&2
+    exit 2
+  done
+}
+
+[ "$DIM" = __by ] && check_by
+case "$TOPN" in ''|*[!0-9]*) die_usage "--top wants a number of rows, not $TOPN" ;; esac
+[ -z "$SORT" ] || [ "$SORT" = cost ] || die_usage "--sort accepts only cost, not $SORT"
+case "$COLOR" in auto|always|never) ;; *) die_usage "--color accepts auto, always or never, not $COLOR" ;; esac
+check_accounts
+
+# The window. A table by week or month, or of one session, reaches back as far
+# as the index does unless --since says otherwise: seven days is one row of a
+# week table, and the days of a session are not all in the last week.
+wide_window() {
+  [ "$DIM" = __detail ] && return 1
+  [ -n "$SESSION" ] && return 0
+  [ "$DIM" = __by ] || return 1
+  case ",$BYLIST," in *,week,*|*,month,*) return 0 ;; esac
+  return 1
+}
+if [ "${SINCE_SET:-0}" = 1 ]; then
+  CUT=$(since_cut "$SINCE") || die_usage "bad --since value $SINCE"
+elif wide_window; then
+  CUT=0
+else
+  CUT=$(since_cut 7d)
+fi
+UPTO=0
+if [ "${UNTIL_SET:-0}" = 1 ]; then
+  UPTO=$(until_cut "$UNTIL") || die_usage "bad --until value $UNTIL"
+fi
 
 [ "$DO_UPDATE" = 1 ] && update 0
 
 case "$DIM" in
   "")          summary ;;
-  __sessions)  sessions "$SINCE" ;;
-  __daily)     daily "$SINCE" "$UNTIL" ;;
+  __sessions)  sessions "$CUT" "$UPTO" ;;
+  __daily)     daily "$CUT" "$UPTO" ;;
   __calibrate) calibrate "$CAL_ACCT" "$CAL_AMT" "$CAL_AT" ;;
   __meter)     if [ "$MET_FORCE" = 1 ]; then meter_refresh --force
                elif [ "$MET_REFRESH" = 1 ]; then meter_refresh; fi
                meter_show ;;
-  __detail)    session_detail "${SID:-}" ;;
+  __detail)    session_detail "$SESSION" ;;
   __burn)      burn ;;
-  __json)      json "$SINCE" ;;
-  *)           report_by "$DIM" "$SINCE" ;;
+  __json)      json "$CUT" "$UPTO" ;;
+  __by)        report_by "${DIMS[0]}" "$CUT" ;;
 esac

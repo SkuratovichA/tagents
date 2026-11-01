@@ -747,5 +747,161 @@ SID=$SID_LK
 export TU_STATE="$SAVE_STATE" TU_PROJECTS="$SAVE_PROJ"
 export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
 
+
+# ---------------------------------------------------------------------------
+t "13. a fixture for the report options: twelve sessions in two accounts"
+# ---------------------------------------------------------------------------
+# Fixed dates and TZ=UTC, so a window given as dates reads the same on any day
+# and in any zone. Sunday 2026-11-01 is the last day. Every figure expected
+# below is computed from the PRICES table by hand: opus-5 is 5/25, sonnet-5 is
+# 2/10, haiku-4-5 is 1/5; a 5m cache write is 1.25x and a read 0.1x the input
+# rate. The figures of a row are input, output, cache write and cache read.
+
+FX="$ROOT/fx"; FXH="$FX/home"
+mkdir -p "$FX/usage" "$FX/projects" "$FX/ta" "$FX/acct/work" "$FX/acct/personal" "$FXH"
+for s in billing webapp tagents site probe; do mkdir -p "$FX/projects/-h-$s"; done
+ep() { date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%d %H:%M:%S' "$1" +%s; }
+fxsid() { printf '%s-6d4e-4b0a-9c75-1e2f8a7b5d90' "$1"; }
+
+# day, project, session, model, requests, input, output, cache write, cache read
+while read -r day proj sid8 model reqs in out cw cr; do
+  ts=$(( $(ep "$day 12:00:00") / 300 * 300 ))
+  printf '%s\t-h-%s\t%s\t-\t-\t-\tclaude-%s\t%s\t%s\t%s\t0\t%s\t%s\t100000\t100000\n' \
+    "$ts" "$proj" "$(fxsid "$sid8")" "$model" "$reqs" "$in" "$cw" "$cr" "$out"
+done >"$FX/usage/facts.tsv" <<'ROWS'
+2026-10-06 billing 5a1d2c33 opus-5 150 330000 101000 2000000 24000000
+2026-10-08 billing 5a1d2c33 opus-5 90 190000 60000 1100000 13000000
+2026-10-14 webapp 6b2e3d44 sonnet-5 80 140000 50000 700000 8500000
+2026-10-13 tagents 7c3f4e55 opus-5 130 280000 90000 1500000 18000000
+2026-10-20 tagents 7c3f4e55 opus-5 160 350000 110000 1900000 22000000
+2026-10-22 tagents 8d4a5f66 sonnet-5 40 70000 25000 300000 3500000
+2026-10-27 site 0a6f7e92 sonnet-5 70 130000 49000 640000 7400000
+2026-10-28 site 0a6f7e92 sonnet-5 33 60000 20000 280000 3300000
+2026-10-28 webapp 91ab44ee sonnet-5 54 90000 31000 420000 5200000
+2026-10-29 billing 3f9a1c20 opus-5 142 310000 96000 1900000 21400000
+2026-10-29 billing 3f9a1c20 sonnet-5 38 120000 41000 410000 3100000
+2026-10-30 webapp 91ab44ee opus-5 77 160000 58000 900000 11600000
+2026-10-30 billing b72e90d4 sonnet-5 96 150000 52000 780000 9900000
+2026-10-31 billing 3f9a1c20 opus-5 210 440000 150000 2600000 33000000
+2026-10-31 webapp e5d1f0a7 haiku-4-5 22 40000 12000 150000 1100000
+2026-10-31 tagents d8c3b615 opus-5 120 260000 88000 1400000 17200000
+2026-11-01 billing 3f9a1c20 opus-5 88 200000 70000 1100000 14800000
+2026-11-01 billing 3f9a1c20 sonnet-5 24 90000 30000 260000 2000000
+2026-11-01 billing c04d7be1 opus-5 61 130000 44000 690000 8100000
+2026-11-01 tagents d8c3b615 opus-5 95 210000 74000 1200000 15000000
+2026-11-01 probe 7b2c5d33 haiku-4-5 18 30000 9000 90000 700000
+ROWS
+
+# sessions.tsv: sid, slug, first, last, model, taken from the facts rows
+LC_ALL=C awk -F'\t' -v OFS='\t' '
+  { if (!($3 in F) || $1 < F[$3]) F[$3] = $1
+    if ($1 > L[$3]) L[$3] = $1
+    S[$3] = $2; M[$3] = $7 }
+  END { for (s in F) print s, S[s], F[s], L[s], M[s] }' "$FX/usage/facts.tsv" >"$FX/usage/sessions.tsv"
+
+for s in billing:work/billing-api webapp:work/web-app tagents:personal/tagents site:personal/site probe:../scratch/probe; do
+  printf -- '-h-%s\t%s/git/%s\n' "${s%%:*}" "$FXH" "${s#*:}"
+done >"$FX/usage/projects.tsv"
+sed -i.bak "s#git/\.\./scratch#scratch#" "$FX/usage/projects.tsv"; rm -f "$FX/usage/projects.tsv.bak"
+
+fxhist() { printf '{"display":"x","pastedContents":{},"timestamp":1000,"project":"%s","sessionId":"%s"}\n' "$FXH" "$(fxsid "$2")" >>"$FX/acct/$1/history.jsonl"; }
+for s in 3f9a1c20 b72e90d4 c04d7be1 91ab44ee e5d1f0a7 5a1d2c33 6b2e3d44; do fxhist work $s; done
+for s in d8c3b615 0a6f7e92 7c3f4e55 8d4a5f66; do fxhist personal $s; done
+
+# One call of tusage on the fixture, with nothing of the real machine in reach.
+# The width is wide and colour is off unless a test says otherwise.
+fx() {
+  env -u TU_ACCOUNT_RULES -u NO_COLOR -u TU_PRICES -u TU_KEEP_DAYS \
+    HOME="$FXH" TZ=UTC TERM=xterm COLUMNS=140 \
+    TU_STATE="$FX/usage" TU_PROJECTS="$FX/projects" TU_NO_METER=1 \
+    TU_ACCOUNTS="work=$FX/acct/work;personal=$FX/acct/personal" \
+    TA_STATE_DIR="$FX/ta" TA_CONFIG="$FX/no-such-config.toml" \
+    bash "$TU" --no-update "$@" 2>&1
+}
+fxrc() { fx "$@" >/dev/null; echo $?; }
+W="--since 2026-10-26 --until 2026-11-01"
+
+ok "the fixture indexes twelve sessions" 12 "$(cut -f1 "$FX/usage/sessions.tsv" | sort -u | wc -l | tr -d ' ')"
+ok "the fixture prices a day by hand: 2026-10-29 is 28.82 dollars in work" "2026-10-29${TAB}work${TAB}28.8200${TAB}180${TAB}0" \
+   "$(fx --daily --since 1000d | grep '^2026-10-29')"
+
+# ---------------------------------------------------------------------------
+t "14. the command line: values that are not understood stop the run"
+# ---------------------------------------------------------------------------
+
+dims="account, project, session, day, week, month, hour, agent, model, workflow"
+out=$(fx --by colour); rc=$?
+ok "an unknown dimension exits 2" 2 "$rc"
+contains "...and is named" "tusage: unknown dimension colour" "$out"
+contains "...with the valid ones listed" "$dims" "$out"
+out=$(fx --by day,day); rc=$?
+ok "a repeated dimension exits 2" 2 "$rc"
+contains "...and is named" "tusage: dimension day given twice" "$out"
+out=$(fx --by account,project,session,model); rc=$?
+ok "a fourth dimension exits 2" 2 "$rc"
+contains "...and the message says three is the most" "at most three" "$out"
+ok "--by with an empty list exits 2"  2 "$(fxrc --by '')"
+ok "--by with an empty element exits 2" 2 "$(fxrc --by day,)"
+ok "--top that is not a number exits 2" 2 "$(fxrc --by day --top many)"
+ok "--top that is negative exits 2"     2 "$(fxrc --by day --top -1)"
+out=$(fx --by day --sort size); rc=$?
+ok "--sort other than cost exits 2" 2 "$rc"
+contains "...and names the value that is accepted" "cost" "$out"
+out=$(fx --by day --color purple); rc=$?
+ok "--color other than auto, always, never exits 2" 2 "$rc"
+contains "...and names the values" "always" "$out"
+ok "--top 0 is accepted"  0 "$(fxrc --by day --top 0 $W)"
+ok "--color never is accepted" 0 "$(fxrc --by day --color never $W)"
+out=$(fx --by day --account nobody); rc=$?
+ok "an unknown account exits 2" 2 "$rc"
+contains "...and is named" "tusage: unknown account nobody" "$out"
+contains "...with the known names listed" "work" "$out"
+contains "...all of them" "personal" "$out"
+ok "--account ? is accepted" 0 "$(fxrc --by day --account '?' $W)"
+ok "--account with a comma list is accepted" 0 "$(fxrc --by day --account work,personal $W)"
+ok "an unknown option still exits 2" 2 "$(fxrc --by day --nonsense)"
+# These used to loop for ever: `shift 2` fails with one word left, so the
+# same option was read again, and again.
+for o in --by --since --until --account --project --top --sort --color --session; do
+  out=$(fx "$o"); rc=$?
+  ok "$o with no value exits 2" 2 "$rc"
+  contains "...and says it needs one" "tusage: $o needs a value" "$out"
+done
+
+# ---------------------------------------------------------------------------
+t "15. dates in the window"
+# ---------------------------------------------------------------------------
+
+want=$(printf '2026-10-28\tpersonal\t1.6800\t33\t0\n2026-10-28\twork\t2.5800\t54\t0\n2026-10-29\twork\t28.8200\t180\t0')
+ok "--daily with two dates: both days, whole" "$want" "$(fx --daily --since 2026-10-28 --until 2026-10-29)"
+ok "--until is the end of its day, not its start" "$(printf '2026-10-28\tpersonal\t1.6800\t33\t0\n2026-10-28\twork\t2.5800\t54\t0')" \
+   "$(fx --daily --since 2026-10-28 --until 2026-10-28)"
+ok "an all-digit --until is still an epoch" "$(printf '2026-10-28\tpersonal\t1.6800\t33\t0\n2026-10-28\twork\t2.5800\t54\t0')" \
+   "$(fx --daily --since 2026-10-28 --until "$(ep '2026-10-28 23:59:59')")"
+ok "--since is local midnight: a row at noon of that day is in" "1" \
+   "$(fx --daily --since 2026-11-01 --until 2026-11-01 | grep -c 'personal')"
+out=$(fx --sessions --since 2026-10-29 --until 2026-10-29)
+ok "--sessions takes dates: one session that day" 1 "$(printf '%s\n' "$out" | grep -c .)"
+contains "...the session of that day" "$(fxsid 3f9a1c20)" "$out"
+out=$(fx --json --since 2026-10-30 --until 2026-10-30)
+contains "--json takes dates: the two sessions of that day" "$(fxsid 91ab44ee)" "$out"
+contains "...both" "$(fxsid b72e90d4)" "$out"
+case $out in *"$(fxsid 3f9a1c20)"*) bad=1 ;; *) bad=0 ;; esac
+ok "...and no other" 0 "$bad"
+out=$(fx --daily --since 2026-02-30); rc=$?
+ok "a date that does not exist exits 2" 2 "$rc"
+contains "...and the message names the value" "tusage: bad --since value 2026-02-30" "$out"
+out=$(fx --by day --since 2026-13-01); rc=$?
+ok "a month that does not exist exits 2" 2 "$rc"
+contains "...named" "tusage: bad --since value 2026-13-01" "$out"
+out=$(fx --daily --until 2026-10-32); rc=$?
+ok "--until likewise exits 2" 2 "$rc"
+contains "...and says --until" "tusage: bad --until value 2026-10-32" "$out"
+out=$(fx --daily --since yesterday); rc=$?
+ok "a word that is not a duration exits 2" 2 "$rc"
+contains "...named" "tusage: bad --since value yesterday" "$out"
+ok "--since 5h, 3d, 30m and month still parse" "0 0 0 0" \
+   "$(fxrc --daily --since 5h) $(fxrc --daily --since 3d) $(fxrc --daily --since 30m) $(fxrc --daily --since month)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
