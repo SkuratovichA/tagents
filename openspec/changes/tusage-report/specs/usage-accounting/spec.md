@@ -141,6 +141,25 @@ In a `--by` table a session no account claims SHALL be the account `? unplaced`,
 - **WHEN** one session is listed in no history and no rule covers its directory
 - **THEN** `tusage --by account` has a row `? unplaced` and the closing line counts one session
 
+### Requirement: Account names in a terminal
+When `TU_ACCOUNTS` is unset, `tusage` SHALL take the accounts from the tagents config, so a report typed in a terminal names them as the dashboard does. With no config, or a config that names no accounts, it SHALL discover the default account and every `~/.claude-*` directory that keeps a history. `TU_ACCOUNTS` set by hand SHALL win and the config SHALL NOT be read. `TU_ACCOUNT_RULES` set by hand SHALL win over the rules of the config.
+
+#### Scenario: A config names the accounts
+- **WHEN** `TA_CONFIG` names a config with profiles `work` and `personal`, `TU_ACCOUNTS` is unset and `tusage --by account` runs
+- **THEN** the rows are `work` and `personal`, and no account is named after a `~/.claude-*` directory or as `default`
+
+#### Scenario: No config
+- **WHEN** no config file exists and `~/.claude-extra` holds a `history.jsonl`
+- **THEN** `tusage --by account` names the accounts `default` and `extra`
+
+#### Scenario: A config with no profiles
+- **WHEN** the config has no `claude.profiles` table
+- **THEN** the accounts are the discovered ones, exactly as with no config
+
+#### Scenario: TU_ACCOUNTS wins
+- **WHEN** `TU_ACCOUNTS` is `a=/path/a` and a config with profiles `work` and `personal` exists
+- **THEN** the only account is `a`
+
 ### Requirement: The project filter
 `--project <text>` SHALL keep only the rows whose project path contains the text, ignoring case, and may be repeated, a row matching any of them. It SHALL apply to the reports `--account` applies to, and with both only the rows that match both stay.
 
