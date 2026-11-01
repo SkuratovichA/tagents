@@ -4,6 +4,7 @@
 export { tryCatch } from './result.ts';
 export { writeAtomic } from './atomic.ts';
 export { isAlive } from './pid.ts';
+export { errnoCode } from './errno.ts';
 export { findOnPath, isExecutableFile } from './path-lookup.ts';
 export { realClock, type TurnClock } from './turn-scope.ts';
 

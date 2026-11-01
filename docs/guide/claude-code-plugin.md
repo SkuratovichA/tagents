@@ -51,7 +51,7 @@ The server gives a session a tool for each verb of the contract that is meant fo
 - Nothing a call starts outlives the call. If you cancel it, if it has not ended after five minutes, or if the session closes, the program and everything it started in its process group are stopped; a process that starts a session of its own, as a daemon does, is not. The output of a call is cut at 256 KiB with a line that says so.
 - The server runs in the prebuilt Rust binary (`tagents-core mcp`) when the installer has put one on the machine, and in a node process (`packages/mcp`) otherwise; the tools, the arguments and the limits are the same in both, and the plugin registers the same command either way.
 - The plugin adds no permission. Claude Code asks before each tool runs; the tools say what they start in the first words of their description, and read-only tools are marked as such.
-- `tagents-mcp`, `tagents-notify` and `tagents-core` have to be on `$PATH`; `install.sh` writes all of them, and `tagents-mcp` chooses between the binary and node each time a session starts it.
+- `tagents-mcp`, `tagents-notify` and `tagents-core` have to be on `$PATH`; `install.sh` writes all of them, and `tagents-mcp` chooses between the binary and node each time a session starts it. `tagents-notify` chooses the same way for the one call `tagents-notify run`, which is the notification service the LaunchAgent starts ([which program runs it](./notifications#which-program-runs-the-service)); `tagents-notify send`, which the `notify_send` tool runs, and every other call are the node program's.
 
 ## What it does not do
 

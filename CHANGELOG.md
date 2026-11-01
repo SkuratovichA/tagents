@@ -11,10 +11,15 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 - `tagents setup` registers the state hook and the status line in `settings.json`, and the installer runs it ([#36](https://github.com/SkuratovichA/tagents/pull/36)).
 - `tagents-core mcp`, the plugin's MCP server, runs in the prebuilt Rust binary when the installer has put one on the machine ([#38](https://github.com/SkuratovichA/tagents/pull/38)).
 - The site's icons and link preview draw the pixel sprite of its hero ([#41](https://github.com/SkuratovichA/tagents/pull/41)).
+- The notification service runs in the prebuilt Rust binary under the LaunchAgent when the installer has put one on the machine, and node stays the fallback ([#49](https://github.com/SkuratovichA/tagents/pull/49)).
 
 ### Removed
 
 - YAML config files are no longer read, and the `config convert` verb is gone with them: `config.toml`, `config.<host>.toml` and `plugins/<name>.toml` are the only config files, so a machine that has only `config.yaml` has no configuration until it is converted by hand ([#37](https://github.com/SkuratovichA/tagents/pull/37)).
+
+### Fixed
+
+- An edit of the file a symlinked `plugins/notify.toml` points at takes effect at the next event in the options directory every time, where on macOS it sometimes took effect at once, and the node and Rust services follow the same rule ([#49](https://github.com/SkuratovichA/tagents/pull/49)).
 
 ## [0.1.0] - 2026-10-29
 

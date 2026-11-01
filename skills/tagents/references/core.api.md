@@ -246,6 +246,9 @@ export function drained(check: () => boolean | Promise<boolean>, input?: {
 // @public
 export type Effect = 'read' | 'write' | 'spawn' | 'destructive' | 'serve';
 
+// @public
+export function errnoCode(e: unknown): string | undefined;
+
 // @public (undocumented)
 export interface EventFollower {
     close(): void;

@@ -2,11 +2,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { after, before, test } from 'node:test';
+import { after, before, mock, test } from 'node:test';
 import { configFile, loadPlugins, readPluginList } from '../src/host.ts';
 import { parseConfigFile, parseConfigText, tomlKey } from '../src/config-file.ts';
 import { tmpDir } from '../src/testkit.ts';
-import { FIXTURES } from './helpers.ts';
+import { FIXTURES, HERE } from './helpers.ts';
 
 let tmp: string;
 let n = 0;
@@ -23,6 +23,7 @@ const dirWith = (files: Record<string, string>): string => {
   return dir;
 };
 
+const REPO = path.resolve(HERE, '..', '..', '..');
 const GOOD = path.join(FIXTURES, 'plugin', 'good');
 
 // smol-toml hands back objects with no prototype, which is the safe shape for a table called __proto__; a deep comparison against a literal wants plain ones.
@@ -81,4 +82,74 @@ test('tomlKey leaves a bare key as it is, quotes any other through the string wr
   assert.equal(tomlKey('a b'), '"a b"');
   assert.equal(tomlKey('a"b'), '"a\\"b"');
   assert.equal(tomlKey('a\tb'), null);
+});
+
+/** `fs.readFileSync` failing with `codes` in turn, then reading for real. Returns the number of reads made. */
+function failingReads(codes: readonly string[]): { calls: () => number } {
+  const real = fs.readFileSync;
+  let n = 0;
+  mock.method(fs, 'readFileSync', ((file: fs.PathOrFileDescriptor, enc: BufferEncoding) => {
+    const code = codes[n++];
+    if (code !== undefined) throw Object.assign(new Error(`${code} #${n}`), { code });
+    return real(file, enc);
+  }) as typeof fs.readFileSync);
+  return { calls: () => n };
+}
+
+test('a read that fails with EINVAL twice, then succeeds, is the file', () => {
+  const dir = dirWith({ 'a.toml': 'x = 1\n' });
+  const reads = failingReads(['EINVAL', 'EINVAL']);
+  try {
+    assert.deepEqual({ ...(parseConfigFile(path.join(dir, 'a.toml')) as object) }, { x: 1 });
+    assert.equal(reads.calls(), 3);
+  } finally {
+    mock.restoreAll();
+  }
+});
+
+test('a read that fails with EINVAL three times throws the third, after three tries in all', () => {
+  const dir = dirWith({ 'a.toml': 'x = 1\n' });
+  const reads = failingReads(['EINVAL', 'EINVAL', 'EINVAL', 'EINVAL']);
+  try {
+    assert.throws(() => parseConfigFile(path.join(dir, 'a.toml')), { code: 'EINVAL', message: 'EINVAL #3' });
+    assert.equal(reads.calls(), 3);
+  } finally {
+    mock.restoreAll();
+  }
+});
+
+test('an EINVAL followed by another error throws that error, after two tries', () => {
+  const dir = dirWith({ 'a.toml': 'x = 1\n' });
+  const reads = failingReads(['EINVAL', 'EACCES']);
+  try {
+    assert.throws(() => parseConfigFile(path.join(dir, 'a.toml')), { code: 'EACCES', message: 'EACCES #2' });
+    assert.equal(reads.calls(), 2);
+  } finally {
+    mock.restoreAll();
+  }
+});
+
+test('the node read and the Rust daemon\'s read make the same number of tries at an EINVAL', () => {
+  const tries = (file: string, re: RegExp): number => {
+    const m = re.exec(fs.readFileSync(path.join(REPO, file), 'utf8'));
+    assert.ok(m?.[1] !== undefined, `${file}: no match for ${re}`);
+    return Number(m[1]);
+  };
+  assert.equal(
+    tries('packages/core/src/config-file.ts', /^const READ_TRIES = (\d+);/m),
+    tries('crates/tagents-core/src/notify/options.rs', /^const OPEN_TRIES: u32 = (\d+);/m),
+  );
+});
+
+test('a read that fails with ENOENT or EACCES is not tried again', () => {
+  const dir = dirWith({ 'a.toml': 'x = 1\n' });
+  for (const code of ['ENOENT', 'EACCES']) {
+    const reads = failingReads([code, code, code]);
+    try {
+      assert.throws(() => parseConfigFile(path.join(dir, 'a.toml')), { code });
+      assert.equal(reads.calls(), 1, code);
+    } finally {
+      mock.restoreAll();
+    }
+  }
 });

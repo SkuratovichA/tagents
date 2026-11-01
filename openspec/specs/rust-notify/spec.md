@@ -1,4 +1,9 @@
-## ADDED Requirements
+# rust-notify Specification
+
+## Purpose
+The notification service as a verb of the Rust binary: `tagents-core notify run` follows the same events, posts the same notices, writes the same log lines and holds the same lock as the node service in `packages/notify`, which stays as the fallback and as the reference that the differential suite compares it with byte for byte; how it reads and watches the options file, how a failed start hands over to node, and where the two services knowingly differ.
+
+## Requirements
 
 ### Requirement: The service is the verb notify run of tagents-core
 `tagents-core notify run` SHALL run the notification service in the foreground until a signal or a deliberate exit, as a verb of the data file with `effect: serve`, so it is not a tool. Any other argument list that starts with `notify` (`notify status`, `notify install`, `notify run extra`) SHALL go to the node CLI, as every word the binary does not serve does.
@@ -69,11 +74,15 @@ The service SHALL register SIGTERM, SIGINT and SIGHUP before it does anything el
 - **THEN** the service logs `backend none: nothing to post; exiting` or `no notification backend for <os> yet; exiting`, releases the lock and exits 0
 
 ### Requirement: The log is the node service's
-The service SHALL write to stderr the lines listed below, as `<ISO time with milliseconds> <the parts joined by a space>` and in the node service's words, `started pid <n> backend <name> options <file> (found|not found|invalid)` being the last line of a start. It SHALL write nothing to stdout and add only the lines of "A start that fails is handed to the node service", and an operating system's text in a line SHALL come from `node::io_message` (`crates/tagents-core/src/node.rs`).
+The service SHALL write to stderr the lines listed below, as `<ISO time with milliseconds> <the parts joined by a space>` and in the node service's words, `started pid <n> backend <name> options <file> (found|not found|invalid)` being the last line of a start. It SHALL write nothing to stdout and add only the lines of "A start that fails is handed to the node service", and an operating system's error text in a line SHALL follow the scenario "An operating system's error text".
 
 #### Scenario: The started line
 - **WHEN** the service starts with an options file that is valid, missing or invalid
 - **THEN** the line ends `(found)`, `(not found)` or `(invalid)` and comes after everything else of the start
+
+#### Scenario: An operating system's error text
+- **WHEN** a line carries the text of an operating system error, such as a failed lock release or a failed watch
+- **THEN** the text is the node service's for ENOENT, EIO, E2BIG, ENOEXEC, ENOMEM, EACCES, ENOTDIR, EISDIR, EMFILE and ETXTBSY, and for any other the operating system's description of the error followed by ` (os error <n>)`
 
 #### Scenario: A notice line
 - **WHEN** a `turn_done` notice for key `12` is posted and shown
@@ -146,11 +155,16 @@ The service SHALL learn of a change to the events file and to the options direct
 - **THEN** the read that follows the arming handles it
 
 ### Requirement: The watch does not follow a symlink
-An options file that is a symlink SHALL be noticed when the link is replaced, and an edit of its target SHALL NOT by itself cause a reload: it takes effect at the next reload. The options directory SHALL be watched by its real path, so a config directory that is a symlink into a dotfiles repository works.
+An options file that is a symlink SHALL be noticed when the link is replaced, and an edit of its target SHALL NOT by itself cause a reload: it takes effect at the next event of any name in the options directory, because both daemons read the file again at every event there and ignore a read that changed nothing. The options directory SHALL be watched by its real path, so a config directory that is a symlink into a dotfiles repository works.
 
 #### Scenario: A linked options file is edited
 - **WHEN** `notify.toml` is a symlink to a file in another directory, that file is edited, and nothing else happens in the options directory
 - **THEN** the service does not reload
+- **AND** the old values stay in force
+
+#### Scenario: A linked options file is edited, then a file of another name is written
+- **WHEN** `notify.toml` is a symlink to a file in another directory, that file is edited, and then a file of another name is written in the options directory
+- **THEN** the service reloads once and the new values apply
 
 #### Scenario: The link is replaced
 - **WHEN** the link is replaced by another that points to a file with other values
@@ -176,7 +190,7 @@ An event in the options directory SHALL make the service read the options file a
 - **THEN** the service logs `options reloaded`
 
 ### Requirement: The options file is read as TOML
-`<config dir>/plugins/notify.toml` SHALL be read with the `toml` crate and checked against the schema of the `notify` requirements "Plugin options and defaults", "Invalid options" and "Durations": the same keys, lists and defaults. A duration is a whole number of seconds, as a TOML number or a string of ASCII digits, or a string `<n>h<n>m<n>s` of ASCII digits with each part optional, the total a safe integer; dates, booleans, arrays, tables and non-finite floats are not durations.
+`<config dir>/plugins/notify.toml` SHALL be read as TOML and checked against the schema of the `notify` requirements "Plugin options and defaults", "Invalid options" and "Durations": the same keys, lists and defaults. A duration is a whole number of seconds, as a TOML number or a string of ASCII digits, or a string `<n>h<n>m<n>s` of ASCII digits with each part optional, the total a safe integer; dates, booleans, arrays, tables and non-finite floats are not durations.
 
 #### Scenario: A partial file
 - **WHEN** the file says only `click = "goto"`
@@ -199,8 +213,8 @@ An event in the options directory SHALL make the service read the options file a
 - **THEN** the one problem is `options: <file>: <the text node prints for the failed read>`, such as `EISDIR: illegal operation on a directory, read`, the defaults hold and the `started` line ends `(invalid)`
 
 #### Scenario: An open that fails while a rename replaces the symlink
-- **WHEN** the open of `plugins/notify.toml` fails with EINVAL because a rename is replacing a symlink on the path (macOS)
-- **THEN** the open is tried again, three tries in all, and an EINVAL on the third try is reported as "A file that cannot be read" says
+- **WHEN** the read of `plugins/notify.toml` fails with EINVAL because a rename is replacing a symlink on the path (macOS)
+- **THEN** the read is tried again, three tries in all, and an EINVAL on the third try is reported as "A file that cannot be read" says
 
 #### Scenario: A file without read permission
 - **WHEN** `plugins/notify.toml` has mode 000 at start

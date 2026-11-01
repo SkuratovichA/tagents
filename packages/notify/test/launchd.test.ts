@@ -50,6 +50,16 @@ test('renderPlist pins the exit-code contract: restart only after a failure, 5 m
   assert.ok(new RegExp(`<key>StandardErrorPath</key>\\s*${log}`).test(x));
 });
 
+test('renderPlist writes whatever program it is given, then each argument, as ProgramArguments: a wrapper with run, or node with the entry and run', () => {
+  const programArguments = (x: string): string[] => {
+    const block = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(x)?.[1] ?? '';
+    return [...block.matchAll(/<string>([^<]*)<\/string>/g)].map((m) => m[1] ?? '');
+  };
+  const viaCommand = run({ program: '/h/.local/bin/tagents-notify', args: ['run'] });
+  assert.deepEqual(programArguments(renderPlist(viaCommand)), ['/h/.local/bin/tagents-notify', 'run']);
+  assert.deepEqual(programArguments(renderPlist(run())), ['/usr/local/bin/node', '/pkg/dist/main.js', 'run']);
+});
+
 test('renderPlist passes plutil -lint, with hostile characters', { skip: process.platform !== 'darwin' }, () => {
   const dir = tmpDir('launchd-plist');
   const f = path.join(dir, 'x.plist');

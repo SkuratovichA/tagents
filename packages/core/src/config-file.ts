@@ -5,6 +5,7 @@
 // The bash dashboard reads the same file in lib/tagents/config.sh (cfg_parse_toml); tests/config-toml.sh pins the bash side, and test/config-schema.test.ts keeps the schema, the keys the dashboard reads and the zod schemas of the TypeScript readers from drifting apart.
 import fs from 'node:fs';
 import { parse as parseToml } from 'smol-toml';
+import { errnoCode } from './errno.ts';
 
 /** Is there a regular file at `file`? A directory of that name is not a config. */
 export function isFile(file: string): boolean {
@@ -34,7 +35,21 @@ export function parseConfigText(text: string): unknown {
   return parseToml(text);
 }
 
+// macOS fails an open with EINVAL when the path crosses a symlink that a rename is replacing at that moment; three tries close the window. The Rust daemon's read has the same rule (OPEN_TRIES in crates/tagents-core/src/notify/options.rs).
+const READ_TRIES = 3;
+
+/** `fs.readFileSync(file, 'utf8')`, tried again while it fails with EINVAL, `READ_TRIES` tries in all; the last error is thrown. */
+function readText(file: string): string {
+  for (let tried = 1; ; tried++) {
+    try {
+      return fs.readFileSync(file, 'utf8');
+    } catch (e) {
+      if (errnoCode(e) !== 'EINVAL' || tried >= READ_TRIES) throw e;
+    }
+  }
+}
+
 /** Read and parse one TOML file. Throws when it cannot be read or does not parse. */
 export function parseConfigFile(file: string): unknown {
-  return parseConfigText(fs.readFileSync(file, 'utf8'));
+  return parseConfigText(readText(file));
 }

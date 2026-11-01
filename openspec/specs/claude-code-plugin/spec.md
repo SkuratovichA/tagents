@@ -411,15 +411,19 @@ With no executable binary at install time the installer SHALL write the `tagents
 - **THEN** `tagents-mcp` is the node wrapper and `tagents-mcp a b` runs `packages/mcp/dist/main.js` (`tests/install.sh` section 13)
 
 ### Requirement: A machine with no release keeps the node server
-`TAGENTS_NO_NATIVE=1`, a failed or refused fetch and a version without a release SHALL leave the `tagents-mcp` wrapper as the node wrapper, so no machine is without a server.
+A failed or refused fetch, a version without a release and `TAGENTS_NO_NATIVE=1` SHALL leave the `tagents-mcp` wrapper as the node wrapper, so no machine is without a server. `TAGENTS_NO_NATIVE=1` SHALL remove only a prebuilt binary, the one the installer fetched with its release marker: a binary built on the machine is left in place.
 
 #### Scenario: No release for the version
 - **WHEN** the installer runs on a copy whose version has no release
 - **THEN** the old binary is removed and `tagents-mcp` runs the node server (`tests/install.sh` section 14)
 
 #### Scenario: Native disabled
-- **WHEN** the installer runs with `TAGENTS_NO_NATIVE=1` over an installed binary
+- **WHEN** the installer runs with `TAGENTS_NO_NATIVE=1` over an installed prebuilt binary
 - **THEN** the binary is removed and `tagents-mcp` runs the node server (`tests/install.sh` section 14)
+
+#### Scenario: Native disabled over a binary built on the machine
+- **WHEN** the installer runs with `TAGENTS_NO_NATIVE=1` over a binary built on the machine, with no release marker
+- **THEN** the binary is not removed and the wrapper is written as it would be without the variable (`tests/install.sh` section 14, "a binary built by hand is not ours")
 
 ### Requirement: The tagents-core wrapper runs a Rust binary built before the install
 When `$TAGENTS_HOME/target/release/tagents-core` is an executable file at the time of the install, the `tagents-core` wrapper SHALL run it, with the node it pinned passed on as `TAGENTS_NODE`, for as long as it is an executable file, and the node CLI otherwise. Both files belong to the managed copy, so the wrapper runs nothing outside it, and the installer never builds that binary.
@@ -450,3 +454,44 @@ When `$TAGENTS_HOME/target/release/tagents-core` is not an executable file at th
 #### Scenario: A directory where the Rust binary would be
 - **WHEN** a directory sits at `$TAGENTS_HOME/target/release/tagents-core` when the installer runs
 - **THEN** the plain wrapper is written, which runs the node CLI and names no Rust binary
+
+### Requirement: The tagents-notify command runs the native service for run when the binary is installed
+When `$TAGENTS_HOME/target/release/tagents-core` is an executable file of the checkout's version at install time, the `tagents-notify` wrapper SHALL run it as `tagents-core notify run` when its arguments are exactly `run`, and in every other case, or when the binary is gone or not executable at run time, SHALL run the node program with the wrapper's arguments. The pinned node SHALL be handed over as for `tagents-core`.
+
+#### Scenario: The binary is installed
+- **WHEN** the binary is installed and `tagents-notify run` runs
+- **THEN** the binary receives `notify run` (`tests/install.sh`)
+
+#### Scenario: Any other arguments
+- **WHEN** `tagents-notify status`, `tagents-notify run extra` or `tagents-notify` runs over an installed binary
+- **THEN** the node program receives the arguments whole (`tests/install.sh`)
+
+#### Scenario: The binary vanishes after the install
+- **WHEN** the file is removed or loses its executable bit
+- **THEN** the same wrapper runs the node program for `run` as well (`tests/install.sh`)
+
+#### Scenario: A binary of another version
+- **WHEN** the binary in the tree says a version other than the checkout's, or cannot say
+- **THEN** the wrapper is written without it and `tagents-notify run` runs the node program (`tests/install.sh`)
+
+### Requirement: The tagents-notify wrapper without a binary is the node wrapper
+With no executable binary of the checkout's version at install time the installer SHALL write the `tagents-notify` wrapper with no line that names a binary, so that its one command is the `exec` of the node program with the wrapper's arguments, and every verb of `tagents-notify` other than `run` SHALL reach the node program in both cases.
+
+#### Scenario: No binary
+- **WHEN** the installer runs on a machine without the binary
+- **THEN** `tagents-notify` is the node wrapper and `tagents-notify run` runs `packages/notify/dist/main.js` (`tests/install.sh`)
+
+### Requirement: A machine with no release keeps the node service
+A failed or refused fetch, a version without a release and `TAGENTS_NO_NATIVE=1` SHALL leave the `tagents-notify` wrapper as the node wrapper, so no machine is without a service and a LaunchAgent that names the wrapper starts the node service. `TAGENTS_NO_NATIVE=1` SHALL remove only a prebuilt binary, the one the installer fetched with its release marker: a binary built on the machine is left in place.
+
+#### Scenario: No release for the version
+- **WHEN** the installer runs on a copy whose version has no release
+- **THEN** the old binary is removed and `tagents-notify run` runs the node program (`tests/install.sh`)
+
+#### Scenario: Native disabled
+- **WHEN** the installer runs with `TAGENTS_NO_NATIVE=1` over an installed prebuilt binary
+- **THEN** the binary is removed and `tagents-notify run` runs the node program (`tests/install.sh` section 14)
+
+#### Scenario: Native disabled over a binary built on the machine
+- **WHEN** the installer runs with `TAGENTS_NO_NATIVE=1` over a binary built on the machine, with no release marker
+- **THEN** the binary is not removed and the wrapper is written as it would be without the variable (`tests/install.sh` section 14, "a binary built by hand is not ours")

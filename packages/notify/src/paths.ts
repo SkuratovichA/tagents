@@ -35,6 +35,36 @@ export function tagentsScript(env: NodeJS.ProcessEnv = process.env): string {
   return onPath ?? path.join(PACKAGE_DIR, '..', '..', 'tagents');
 }
 
+/** `file` as the file system names it (symlinks resolved), or as given when it does not resolve. */
+const realPath = (file: string): string => {
+  try {
+    return fs.realpathSync(file);
+  } catch {
+    return file;
+  }
+};
+
+/**
+ * The installer's `tagents-notify` command when it runs this checkout, else null: the first `tagents-notify` on `pathVar`, when its text holds `mainJs` as a whole double-quoted path, which is how `write_wrapper` in `install.sh` writes the program it execs. Another checkout's command, a path that merely contains `mainJs` and a file that cannot be read are not it.
+ * It is absolute, because launchd starts the job in `/`, and null for an undefined `pathVar`, as `tagentsScript` does, so `process.env.PATH` is never read by default.
+ * The paths are compared as files: the installer writes `$TAGENTS_HOME` as given, which may be a symlink, while `mainJs` is where node resolved this module to.
+ */
+export function installedCommand(pathVar: string | undefined, mainJs: string): string | null {
+  if (pathVar === undefined) return null;
+  const found = findOnPath('tagents-notify', pathVar);
+  if (found === null) return null;
+  const command = path.resolve(found);
+  let text: string;
+  try {
+    text = fs.readFileSync(command, 'utf8');
+  } catch {
+    return null;
+  }
+  const mine = realPath(mainJs);
+  const names = [...text.matchAll(/"(\/[^"\n]*)"/g)].some((m) => m[1] !== undefined && realPath(m[1]) === mine);
+  return names ? command : null;
+}
+
 /** The helper app: `TA_NOTIFY_APP` when set, else the per-user Application Support copy. */
 export function appPath(env: NodeJS.ProcessEnv = process.env, home: string = os.homedir()): string {
   const o = env['TA_NOTIFY_APP'];
