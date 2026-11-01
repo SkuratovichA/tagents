@@ -18,11 +18,12 @@ const DEFAULT_RECENT: f64 = 15.0;
 const LISTING_PROMPT_UNITS: usize = 150;
 const SHOW_UNITS: usize = 1500;
 
-/// The exit codes the front door uses. `OK`, `ERROR` and `USAGE` are the ones `spec/cli/tagents-core.json` names, and a test pins them to it; the last two are the shell's own for a program that could not be started.
+/// The exit codes the front door uses. `OK`, `ERROR`, `USAGE` and `REFUSED` are the ones `spec/cli/tagents-core.json` names, and a test pins them to it; the last two are the shell's own for a program that could not be started.
 pub mod exit {
     pub const OK: u8 = 0;
     pub const ERROR: u8 = 1;
     pub const USAGE: u8 = 2;
+    pub const REFUSED: u8 = 3;
     pub const CANNOT_EXECUTE: u8 = 126;
     pub const NOT_FOUND: u8 = 127;
 }

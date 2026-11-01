@@ -210,18 +210,19 @@ fn version_flag_prints_the_crate_version_and_nothing_else() {
 }
 
 #[test]
-fn a_group_is_served_by_one_program_wholly() {
-    // Dispatch is by the first word, so `sessions bogus` is Rust's to answer. That is only true to the data file while every `sessions …` verb is marked rust.
+fn a_group_shared_with_node_declines_by_the_second_word() {
+    // Dispatch is by the first word, so `sessions bogus` is Rust's to answer, and that is only true to the data file while every `sessions …` verb is marked rust. A word with verbs of both programs is a group that declines: the node verbs under it have a second word to decline by.
     let out = run(Command::new(BIN).env_clear().arg("--spec"));
     let served = Spec::parse(&stdout_text(&out)).unwrap();
     let words: BTreeSet<&str> = served.commands.iter().map(|c| c.path[0].as_str()).collect();
     assert!(!words.is_empty());
     for command in &data_file().commands {
-        if words.contains(command.path[0].as_str()) {
-            assert_eq!(
-                command.implementation,
-                Implementation::Rust,
-                "{:?}",
+        if words.contains(command.path[0].as_str())
+            && command.implementation == Implementation::Node
+        {
+            assert!(
+                command.path.len() >= 2,
+                "{:?} is served by node under a word the binary answers wholly",
                 command.path
             );
         }
@@ -234,6 +235,7 @@ fn exit_codes_in_the_code_are_the_ones_the_data_file_names() {
     assert_eq!(exit["ok"], tagents_core::sessions::exit::OK);
     assert_eq!(exit["error"], tagents_core::sessions::exit::ERROR);
     assert_eq!(exit["usage"], tagents_core::sessions::exit::USAGE);
+    assert_eq!(exit["refused"], tagents_core::sessions::exit::REFUSED);
 }
 
 // ------------------------------------------------------------------- the fall back ---
@@ -422,6 +424,31 @@ fn a_verb_the_front_door_serves_is_not_forwarded() {
             !checkout.argv.exists(),
             "{:?} reached the node CLI",
             command.path
+        );
+    }
+}
+
+#[test]
+fn the_plugin_calls_node_keeps_reach_it_with_their_arguments() {
+    // `plugin add` and `plugin remove` are served here and `plugin list` is not: the group has to hand the rest of its first word to node, a bare `plugin` and an unknown verb included, each with every argument as it was typed.
+    let checkout = Checkout::new("plugin-declines");
+    for args in [
+        &["plugin"][..],
+        &["plugin", "list"],
+        &["plugin", "list", "--json"],
+        &["plugin", "list", "extra"],
+        &["plugin", "bogus"],
+        &["plugin", "bogus", "--name", "x"],
+    ] {
+        let _ = fs::remove_file(&checkout.argv);
+        let out = run(checkout.command().args(args).current_dir(&checkout.root));
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        let recorded = checkout.recorded();
+        let expected: Vec<String> = args.iter().map(|a| format!("arg={a}")).collect();
+        assert_eq!(
+            recorded[3..],
+            [vec![format!("arg={}", checkout.cli())], expected].concat()[..],
+            "{args:?}"
         );
     }
 }

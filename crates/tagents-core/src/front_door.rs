@@ -2,6 +2,7 @@
 //!
 //! A verb the data file marks `impl: "rust"` is served here; every other word (an unported verb, help, `doctor`, a plugin's verb, a word nobody knows) is handed to the node CLI with the same arguments, environment and stdio, and the exit code is the node CLI's own, because the process is replaced, not waited for.
 //! The dispatch is by the first word, so a group of verbs is served wholly by one program: `sessions` and its misspellings behave as they always did, in either implementation.
+//! A group may decline: `Group::run` answers `None` for a call it cannot prove identical to node's (a verb that stays with node, an unknown verb, an argument outside what the group parses), and `None` is the same hand-over as a word nobody serves, made before the group has written anything.
 
 use std::{
     ffi::{OsStr, OsString},
@@ -31,13 +32,17 @@ const VERSION_LINE: &str = concat!("tagents-core ", env!("CARGO_PKG_VERSION"), "
 struct Group {
     word: &'static str,
     verbs: &'static [&'static [&'static str]],
-    run: fn(&[String], &Context) -> Output,
+    /// `true` reads an argument that is not UTF-8 with U+FFFD for each bad byte, as the node CLI's `process.argv` does. `false` hands such a call to node whole, because a group that works on paths must not look at a file other than the one that was typed.
+    lossy_args: bool,
+    /// `None` hands the call to the node CLI. It is returned before anything is written.
+    run: fn(&[String], &Context) -> Option<Output>,
 }
 
 const GROUPS: &[Group] = &[Group {
     word: "sessions",
     verbs: sessions::VERBS,
-    run: sessions::run,
+    lossy_args: true,
+    run: |argv, cx| Some(sessions::run(argv, cx)),
 }];
 
 /// The first word of the verb that serves a protocol on stdin and stdout until the client is gone: it streams, so it cannot be a `Group` (whose `run` answers with the whole of its output at once), and it has its own arm in `run`.
@@ -143,15 +148,18 @@ pub fn run(args: Vec<OsString>) -> ExitCode {
     if args.iter().eq(NOTIFY_RUN) {
         return service::run();
     }
-    let group = first.and_then(|first| GROUPS.iter().find(|g| g.word == first));
-    match group {
-        Some(group) => {
+    let served = first
+        .and_then(|first| GROUPS.iter().find(|g| g.word == first))
+        .filter(|group| group.lossy_args || args.iter().all(|a| a.to_str().is_some()))
+        .and_then(|group| {
             let rest: Vec<String> = args[1..]
                 .iter()
                 .map(|a| a.to_string_lossy().into_owned())
                 .collect();
-            emit(&(group.run)(&rest, &context()))
-        }
+            (group.run)(&rest, &context())
+        });
+    match served {
+        Some(out) => emit(&out),
         None => exec_node(NODE_CLI, &args),
     }
 }
