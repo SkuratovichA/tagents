@@ -13,6 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   PLUGIN_OPTIONS_DIR,
+  errnoCode,
   isAlive,
   loadPluginOptions,
   type OptionsResult,
@@ -76,8 +77,6 @@ export function psProcessStart(exec: Exec = execText): ProcessStart {
     }
   };
 }
-
-const codeOf = (err: unknown): string | undefined => (err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined);
 
 export type LockResult = { readonly taken: true } | { readonly taken: false; readonly holder: number };
 
@@ -146,7 +145,7 @@ function createLock(file: string, self: LockHolder): boolean {
     fs.linkSync(tmp, file);
     return true;
   } catch (err) {
-    if (codeOf(err) === 'EEXIST') return false;
+    if (errnoCode(err) === 'EEXIST') return false;
     throw err;
   } finally {
     fs.rmSync(tmp, { force: true });

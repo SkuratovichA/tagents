@@ -1,3 +1,5 @@
+import { errnoCode } from './errno.ts';
+
 // Is that process still there?
 //
 // `kill(pid, 0)` sends no signal, it only asks the kernel. EPERM means the
@@ -9,6 +11,6 @@ export function isAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (e) {
-    return (e as NodeJS.ErrnoException).code === 'EPERM';
+    return errnoCode(e) === 'EPERM';
   }
 }
