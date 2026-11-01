@@ -222,6 +222,8 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **libtest captures `eprintln!` but not `writeln!(io::stderr(), …)`** — a skip line written with `eprintln!` never showed in the run's output. Write a line the run must show with `writeln!(io::stderr(), …)` (31.10.2026)
 - **macOS `open` gives EINVAL while a rename replaces a symlink on the path** — a reader woken by a directory event can meet it; try the open again, three tries in all (31.10.2026)
 - **A task list that registers a verb group in `GROUPS` before flipping the flags makes every verb live at once** — wire each verb into `run` and flip its `impl` flag last, then run parity (01.11.2026)
+- **A figure that sounds measured was not** — the design of the knowledge server gave a cost in binary size and build time before any build had run. Write a number only after the command that produced it, and name the command beside it; before that write "not measured" (01.11.2026)
+- **A design reason has to be checked, not recalled** — the design said the daemon needs `setsid` to survive its starter's group, and the claim was repeated for two drafts. The check is `ps -o pid,pgid,sess` on a detached child, and `process_group(0)` was enough. Run the one command that shows the claim before it goes into the design (01.11.2026)
 
 ## Other
 
