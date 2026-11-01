@@ -28,6 +28,8 @@ import { DocError, listFiles, readDoc, stemOf, type KnowledgeDoc } from './doc.t
 
 export const SCHEMA_VERSION = 2;
 export const TOKENIZER = 'unicode61 remove_diacritics 2';
+/** How long a connection waits for a lock another connection holds before it fails with `database is locked`. The index is shared with the Rust server, which waits as long: without it a write of either program would fail the call of the other. */
+export const INDEX_BUSY_TIMEOUT_MS = 5000;
 
 export type Row = Record<string, SQLOutputValue>;
 
@@ -104,6 +106,7 @@ export function openFile(file: string): DatabaseSync {
 /** Open (creating it if need be) and bring the schema up to date. */
 export function openDb(file: string): DatabaseSync {
   const db = openFile(file);
+  db.exec(`pragma busy_timeout = ${INDEX_BUSY_TIMEOUT_MS}`); // a PRAGMA, because it works on every SQLite Node ships and the `timeout` option of the constructor does not
   db.exec('pragma foreign_keys = on');
   const version = schemaVersion(db);
   // No migration path while the schema is one version old: the index is a

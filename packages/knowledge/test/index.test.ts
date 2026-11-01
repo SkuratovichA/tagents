@@ -1,10 +1,11 @@
 // The index: what it costs to keep in step with the folder.
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
-import { SCHEMA_VERSION, docCount, openDb, reindex } from '../src/db.ts';
+import { SCHEMA_VERSION, docCount, int, openDb, reindex } from '../src/db.ts';
 import { resolveUsageDb } from '../src/paths.ts';
 import { listDocs, search } from '../src/search.ts';
 import { getEvent, hitEvents, recordReads } from '../src/usage.ts';
@@ -197,6 +198,47 @@ test('the usage store lies outside the index: a full rebuild, a deleted index an
     assert.equal(docCount(db), 0, 'an index of another schema version is dropped');
     db.close();
     assert.equal(stored(), 2, 'a schema change');
+  } finally {
+    removeDir(root);
+  }
+});
+
+/** A second process that holds a write transaction on `file` for `ms` and says when it holds it: a connection of this process cannot stand in, because SQLite waits on the thread that waits. */
+function holdWriteLock(file: string, ms: number): Promise<{ released: Promise<void> }> {
+  const script = `
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(process.argv[1]);
+    db.exec('begin immediate');
+    db.exec("insert or replace into meta (key, value) values ('held', 'yes')");
+    process.stdout.write('held\\n');
+    setTimeout(() => { db.exec('commit'); db.close(); }, Number(process.argv[2]));
+  `;
+  const child = spawn(process.execPath, ['-e', script, file, String(ms)], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const released = new Promise<void>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('exit', (code) => (code === 0 ? resolve() : reject(new Error(`the holder exited ${code}`))));
+  });
+  return new Promise((resolve, reject) => {
+    child.stdout.once('data', () => resolve({ released }));
+    child.once('error', reject);
+  });
+}
+
+test('opening the index waits for a write another process holds, and does not fail with a lock error', async () => {
+  const root = tmpDir('busy');
+  try {
+    const file = path.join(root, 'index.sqlite');
+    openDb(file).close();
+    const { released } = await holdWriteLock(file, 400);
+    const started = Date.now();
+    const db = openDb(file); // its first write needs the lock the holder has
+    try {
+      assert.ok(Date.now() - started >= 100, 'the open returned before the holder let go');
+      assert.equal(int(db.prepare("select count(*) as n from meta where key = 'held'").get() ?? {}, 'n'), 1);
+    } finally {
+      db.close();
+    }
+    await released;
   } finally {
     removeDir(root);
   }
