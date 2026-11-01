@@ -142,9 +142,29 @@ pub fn realpath(path: &str) -> io::Result<String> {
     })
 }
 
-/// `stat.mtime.getTime()`: node computes `sec * 1e3 + nsec / 1e6` as a float and `Date` takes `Math.round` of it.
+/// `sec * 1e3 + nsec / 1e6`, the double node's `Stats` computes for `mtimeMs`.
+fn mtime_double(sec: i64, nsec: i64) -> f64 {
+    sec as f64 * 1000.0 + nsec as f64 / 1e6
+}
+
+/// `Math.round` of the `mtimeMs` double for a time of seconds and nanoseconds: what `stat.mtime.getTime()` is, since `Date` rounds it.
+pub fn mtime_ms_of(sec: i64, nsec: i64) -> i64 {
+    js::round(mtime_double(sec, nsec)) as i64
+}
+
+/// `Math.floor` of the `mtimeMs` double: what `Math.floor(stat.mtimeMs)` is, as the knowledge index stores it.
+pub fn mtime_ms_floor_of(sec: i64, nsec: i64) -> i64 {
+    mtime_double(sec, nsec).floor() as i64
+}
+
+/// `stat.mtime.getTime()`.
 pub fn mtime_ms(meta: &fs::Metadata) -> i64 {
-    js::round(meta.mtime() as f64 * 1000.0 + meta.mtime_nsec() as f64 / 1e6) as i64
+    mtime_ms_of(meta.mtime(), meta.mtime_nsec())
+}
+
+/// `Math.floor(stat.mtimeMs)`.
+pub fn mtime_ms_floor(meta: &fs::Metadata) -> i64 {
+    mtime_ms_floor_of(meta.mtime(), meta.mtime_nsec())
 }
 
 /// An error number with node's name and text for it, as `util.getSystemErrorMap()` gives them.
@@ -552,5 +572,34 @@ mod tests {
             format!("{} is not a file", dir.join("packages/other.js").display())
         );
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn knowledge_vectors() -> serde_json::Value {
+        let file = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/knowledge-vectors.json"
+        );
+        serde_json::from_str(&fs::read_to_string(file).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn the_modification_time_is_rounded_or_floored_as_node_does() {
+        let mtime = &knowledge_vectors()["engine"]["mtime"];
+        for pair in mtime["pairs"].as_array().unwrap() {
+            let (sec, nsec) = (
+                pair["sec"].as_i64().unwrap(),
+                pair["nsec"].as_i64().unwrap(),
+            );
+            assert_eq!(
+                mtime_ms_of(sec, nsec),
+                pair["round"].as_i64().unwrap(),
+                "round {sec} {nsec}"
+            );
+            assert_eq!(
+                mtime_ms_floor_of(sec, nsec),
+                pair["floor"].as_i64().unwrap(),
+                "floor {sec} {nsec}"
+            );
+        }
     }
 }
