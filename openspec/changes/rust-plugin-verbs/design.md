@@ -20,14 +20,16 @@ The facts below were measured on the node CLI built from this tree (`node packag
 struct Group {
     word: &'static str,
     verbs: &'static [&'static [&'static str]],
+    /// `true` reads an argument that is not UTF-8 with U+FFFD for each bad byte, as node's `process.argv` does; `false` hands such a call to node whole, because a group that works on paths must not look at a file other than the one that was typed.
+    lossy_args: bool,
     /// `None` hands the call to the node CLI. It is returned before any file is written.
     run: fn(&[String], &Context) -> Option<Output>,
 }
 
 const GROUPS: &[Group] = &[
-    Group { word: "sessions", verbs: sessions::VERBS, run: sessions::run },
-    Group { word: "plugin", verbs: plugin::VERBS, run: plugin::run },   // add, remove, new
-    Group { word: "doctor", verbs: doctor::VERBS, run: doctor::run },
+    Group { word: "sessions", verbs: sessions::VERBS, lossy_args: true,  run: sessions::run },
+    Group { word: "plugin",   verbs: plugin::VERBS,   lossy_args: false, run: plugin::run },   // add, remove, new
+    Group { word: "doctor",   verbs: doctor::VERBS,   lossy_args: true,  run: doctor::run },
 ];
 ```
 
@@ -80,7 +82,7 @@ The cost is that the unusual cases start node. The benefit is that no text, erro
 
 A directory argument (it starts with `.` or `~`, or is absolute) is resolved completely in Rust: `~` and `~/…` through `node::homedir`, then `path.resolve(cwd, …)`, which is a lexical normalisation (`node::resolve` is added to `node.rs` beside `join`). A read or parse failure of its `package.json` is `pluginUnresolved` (exit 1, naming `<dir>/package.json`), a manifest that fails the schema is `pluginBadManifest` and a missing entry file is `pluginNoEntry` (exit 3). The manifest is read with `json::parse` and checked as `ManifestSchema` checks it: `name` a non-empty string if present, `tagents.apiVersion` the number 1 (`1.0` counts), `tagents.entry` a non-empty string, `exports` and the rest ignored.
 
-A bare name is resolved in Rust only when all of these hold, and is node's otherwise. The name follows the npm grammar (`name` or `@scope/name`, characters `A-Za-z0-9._~-`, first character not `.` or `_`). Neither `NODE_OPTIONS` nor `NODE_PRESERVE_SYMLINKS` is set (a `--require` hook or the symlink flag changes resolution). The nearest `package.json` at or above the working directory is not a package of that name that has `exports` (self-reference resolves before `node_modules`). Walking from the working directory up, skipping ancestors named `node_modules`, the first `node_modules/<name>/package.json` that is a regular file is found, and its content is JSON without an `exports` key (a JSON `null` counts as none). The directory is its real path (`fs::canonicalize`), the key defaults from the manifest's `name` or the directory's base name, and `from` is the name as typed.
+A bare name is resolved in Rust only when all of these hold, and is node's otherwise. The name follows the npm grammar (`name` or `@scope/name`, characters `A-Za-z0-9._~-`, first character not `.` or `_`). Neither `NODE_OPTIONS` nor `NODE_PRESERVE_SYMLINKS` is set (a `--require` hook or the symlink flag changes resolution). The nearest `package.json` at or above the working directory is not a package of that name that has `exports` (self-reference resolves before `node_modules`). Walking from the working directory up, skipping ancestors named `node_modules`, the first `node_modules/<name>/package.json` that is a regular file is found, and its content is JSON without an `exports` key (a JSON `null` counts as none). The directory is its real path (`node::realpath`, JavaScript's `fs.realpathSync` with the case kept as typed, because on a case-insensitive volume `fs::canonicalize` returns the case the disk has and `plugin add Plain` would then name another directory than node does), the key defaults from the manifest's `name` or the directory's base name, and `from` is the name as typed.
 
 Not found by that walk is node's: node goes on to `NODE_PATH`, `~/.node_modules`, `~/.node_libraries` and `pnpm root -g`, and words the error. A package that has `exports` is node's even when it exports `./package.json`. The corpus of group 1 and the parity suite run node's own `createRequire` on a fixture tree and compare, so a missed rule is a failing case.
 
@@ -104,7 +106,7 @@ Exit codes are the ones in `spec/cli/tagents-core.json` (`exit`), which `tagents
 
 Options considered. (A) One template file read by both (chosen). (B) Five files under a directory and a list of them in each language: two lists. (C) The files as strings inside a JSON data file: every quote of the TypeScript source is escaped and the template cannot be reviewed. (D) `plugin new` stays with node: it is the one verb of the five that needs no parser, so it is the cheapest to serve.
 
-The characterisation test comes first: before the TypeScript that builds the files is deleted, a test writes the scaffold for several `(name, dir, core)` triples (a quote and a backslash in the directory, a directory whose relative specifier starts with `.`, an empty relative path) and pins the bytes; the template must reproduce them. `relativeSpecifier` keeps its quirk (a relative path that starts with `.`, such as `.hidden/x`, gets no `./`), and `node::relative` is the `path.relative` twin that Rust needs. The core directory is `<root>/packages/core` with `<root>` from `node::root()`; when that fails the call is node's.
+The characterisation test comes first: before the TypeScript that builds the files is deleted, a test writes the scaffold for several `(name, dir, core)` triples (a quote and a backslash in the directory, a directory whose relative specifier starts with `.`, an empty relative path) and pins the bytes; the template must reproduce them. `relativeSpecifier` keeps its quirk (a relative path that starts with `.`, such as `.hidden/x`, gets no `./`), and `node::relative` is the `path.relative` twin that Rust needs: `plugin/scaffold.rs` calls it to make `{{dir}}`, the specifier `relativeSpecifier` makes from the target to `packages/core`, quirk included. The core directory is `<root>/packages/core` with `<root>` from `node::root()`; when that fails the call is node's.
 
 ### D9. `doctor` runs one `node -p`
 
@@ -153,7 +155,7 @@ A symbolic `config.toml` keeps its link. People keep their configs in a dotfiles
 
 Only a missing config reads as empty. `readText` returns `''` for `ENOENT` (`errnoCode` of `errno.ts`) and rethrows every other error, so a config that cannot be read fails the verb with the error's own text through the catch of `main()` (stderr, exit 1) and nothing is written. The text is not given a file name of its own wording: an `EACCES` or `ENOTDIR` text carries the path, and an `EISDIR` text does not, and the design keeps the system's words rather than invent a prefix. A missing config under `remove` is still `pluginNotListed` with exit 3, and an empty file still means `absent`. The host's reading of the config for `plugin list` and for the plugin commands is a different reader (`parseConfigFile`, `readPluginList`) and keeps its rule that an unreadable file means no plugins.
 
-Rust mirrors both. It asks `symlink_metadata` and `canonicalize` in the same order and writes `<target>.<pid>.tmp` beside the target; a missing path is not a link; a read error but `NotFound`, and a link that cannot be resolved, are handed to node before any write, so Rust never words the system's errors and the two programs say the same thing because it is node that says it. The parity suite covers the link that is kept, the link to nowhere, the loop, a link to a directory, a config that is a directory and a config the user cannot read.
+Rust mirrors both. It asks `symlink_metadata` and `node::realpath` (D5) in the same order and writes `<target>.<pid>.tmp` beside the target; a missing path is not a link; a read error but `NotFound`, and a link that cannot be resolved, are handed to node before any write, so Rust never words the system's errors and the two programs say the same thing because it is node that says it. The parity suite covers the link that is kept, the link to nowhere, the loop, a link to a directory, a config that is a directory and a config the user cannot read.
 
 Options considered. (A) Fix node, then mirror (chosen): one behaviour, one oracle. (B) Mirror node's defects and pin them in the parity suite: the port would spread the data loss to the binary people run most. (C) Fix only Rust: the two programs would differ on the same call, which is what the parity suite exists to forbid. (D) Make `writeAtomic` follow links: it changes a function other packages call, for a need only the config edit has.
 
