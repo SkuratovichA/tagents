@@ -62,9 +62,13 @@ create virtual table if not exists chunks_fts using fts5(
 );
 "#;
 
-/// What a failed SQLite call says, as the node program would show it.
-fn sql(err: rusqlite::Error) -> String {
-    err.to_string()
+/// What a failed SQLite call says, as the node program would show it: SQLite's own message, without the statement and the offset that rusqlite adds to a refused statement.
+pub(super) fn sql(err: rusqlite::Error) -> String {
+    match err {
+        rusqlite::Error::SqliteFailure(_, Some(message))
+        | rusqlite::Error::SqlInputError { msg: message, .. } => message,
+        other => other.to_string(),
+    }
 }
 
 /// Open a SQLite file, making its directory if need be, for reading and writing as `node:sqlite` opens one. The index and the usage store both start here.
@@ -78,7 +82,14 @@ pub fn open_file(file: &str) -> Result<Connection, String> {
     let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
         | OpenFlags::SQLITE_OPEN_CREATE
         | OpenFlags::SQLITE_OPEN_NO_MUTEX;
-    Connection::open_with_flags(file, flags).map_err(sql)
+    // rusqlite names the file after the message of a failed open; SQLite does not.
+    Connection::open_with_flags(file, flags).map_err(|e| {
+        let message = sql(e);
+        match message.strip_suffix(&format!(": {file}")) {
+            Some(bare) => bare.to_string(),
+            None => message,
+        }
+    })
 }
 
 /// Open (creating it if need be) and bring the schema up to date.

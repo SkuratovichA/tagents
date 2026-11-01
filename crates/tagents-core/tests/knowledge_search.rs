@@ -4,47 +4,18 @@
 
 mod common;
 
-use std::{
-    fs,
-    time::{Duration, SystemTime},
-};
-
-use rusqlite::Connection;
 use serde_json::{Value, json};
 use tagents_core::{
     js,
-    knowledge::{
-        index::{open_db, reindex},
-        search::{
-            DocSummary, Filters, Hit, fts_query, get_doc, get_section, list_docs, parse_address,
-            search,
-        },
+    knowledge::search::{
+        DocSummary, Filters, Hit, fts_query, get_doc, get_section, list_docs, parse_address, search,
     },
 };
 
-use common::{knowledge::vectors, scratch};
+use common::knowledge::{index_of, vectors};
 
 /// The fixed clock of the vectors: 2026-10-31T12:00:00Z.
 const NOW: i64 = 1_793_448_000_000;
-
-/// A folder of the vector's files with the times they were written at, and an index over it.
-fn index_of(name: &str, files: &Value) -> (Connection, String) {
-    let dir = scratch(name);
-    let folder = dir.join("folder");
-    fs::create_dir(&folder).unwrap();
-    for file in files.as_array().unwrap() {
-        let path = folder.join(file["name"].as_str().unwrap());
-        fs::write(&path, file["text"].as_str().unwrap()).unwrap();
-        let handle = fs::File::options().write(true).open(&path).unwrap();
-        let mtime =
-            SystemTime::UNIX_EPOCH + Duration::from_secs(file["mtimeSec"].as_u64().unwrap());
-        handle.set_modified(mtime).unwrap();
-    }
-    let folder = folder.to_str().unwrap().to_string();
-    let mut db = open_db(dir.join("index.sqlite").to_str().unwrap()).unwrap();
-    reindex(&mut db, &folder, false).unwrap();
-    (db, folder)
-}
 
 /// A number as JavaScript prints it, which is how the vectors hold it.
 fn number(n: f64) -> Value {

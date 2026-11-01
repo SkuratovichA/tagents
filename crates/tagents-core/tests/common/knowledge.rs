@@ -1,8 +1,16 @@
 //! The knowledge vectors every knowledge test reads: what the node knowledge package gives for each input, written by `tests/rust-knowledge-vectors.mts`.
 
-use std::sync::OnceLock;
+use std::{
+    fs,
+    sync::OnceLock,
+    time::{Duration, SystemTime},
+};
 
+use rusqlite::Connection;
 use serde_json::Value;
+use tagents_core::knowledge::index::{open_db, reindex};
+
+use super::scratch;
 
 /// The parsed `knowledge-vectors.json`, read once per test binary.
 pub fn vectors() -> &'static Value {
@@ -25,4 +33,23 @@ pub fn same_message(got: &str, want: &str) -> bool {
         return got.starts_with(YAML_ERROR);
     }
     got == want
+}
+
+/// A folder of the vector's files with the times they were written at, and an index over it.
+pub fn index_of(name: &str, files: &Value) -> (Connection, String) {
+    let dir = scratch(name);
+    let folder = dir.join("folder");
+    fs::create_dir(&folder).unwrap();
+    for file in files.as_array().unwrap() {
+        let path = folder.join(file["name"].as_str().unwrap());
+        fs::write(&path, file["text"].as_str().unwrap()).unwrap();
+        let handle = fs::File::options().write(true).open(&path).unwrap();
+        let mtime =
+            SystemTime::UNIX_EPOCH + Duration::from_secs(file["mtimeSec"].as_u64().unwrap());
+        handle.set_modified(mtime).unwrap();
+    }
+    let folder = folder.to_str().unwrap().to_string();
+    let mut db = open_db(dir.join("index.sqlite").to_str().unwrap()).unwrap();
+    reindex(&mut db, &folder, false).unwrap();
+    (db, folder)
 }

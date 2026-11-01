@@ -4,3 +4,4 @@ pub mod doc;
 pub mod front_matter;
 pub mod index;
 pub mod search;
+pub mod usage;
