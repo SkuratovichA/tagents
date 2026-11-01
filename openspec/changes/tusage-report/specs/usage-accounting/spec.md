@@ -22,6 +22,10 @@
 - **WHEN** both `work` and `personal` have usage in the last seven days
 - **THEN** the summary has a block that lists each account with its dollars and share
 
+#### Scenario: A model with no rate
+- **WHEN** a request in the last 24 hours ran on a model with no published rate
+- **THEN** the dollars of each window that holds it end in `*`, and a note says the figure is a floor
+
 ### Requirement: One session in detail
 `tusage --session <session>` SHALL find the session as the session lookup says and print the main session and each subagent or workflow agent on its own row with its cost units, dollars, requests and tokens, then a total. When the session used more than one model, or any request was unpriced, it SHALL add a per-model table with its own dollars, mark each unrated model, and warn that the dollar figure is a floor.
 

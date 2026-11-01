@@ -48,7 +48,7 @@ Every shell suite runs as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" b
 
 ## 9. The summary
 
-- [ ] 9.1 Write failing tests: dollars beside the 5 h, 24 h and 7 d lines, a by-account block only when more than one account has usage in the week, the heaviest sessions by name and eight id characters with the directory kept, `--account` narrowing it, and the no-index and empty-week behaviour unchanged. Then implement. Proof: `tests/tusage.sh`.
+- [x] 9.1 Write failing tests: dollars beside the 5 h, 24 h and 7 d lines, a by-account block only when more than one account has usage in the week, the heaviest sessions by name and eight id characters with the directory kept, `--account` narrowing it, and the no-index and empty-week behaviour unchanged. Then implement. Proof: `tests/tusage.sh`.
 
 ## 10. Compatibility and speed
 

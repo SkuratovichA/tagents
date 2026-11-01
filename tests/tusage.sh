@@ -1715,5 +1715,111 @@ NARROW
   ok "with no COLUMNS the width of the terminal is used" "$(FX_COLUMNS=70 fx --by account,project --color never $W)" "$out"
 fi
 
+# ---------------------------------------------------------------------------
+t "25. the summary: dollars, the accounts, named sessions"
+# ---------------------------------------------------------------------------
+# The summary reads the clock, so its rows are placed by their age: half an hour
+# (inside five hours), twenty hours (inside 24), five days (inside seven) and
+# ten days (outside). Dollars by hand: opus-5 is 5/25 and sonnet-5 2/10 per
+# million, haiku-4-5 1/5. work: 1M in and 100k out on opus is 7.50, then 2M in
+# on opus is 10.00. personal: 1M in and 400k out on sonnet is 6.00. The session
+# no account claims: 1M in on haiku is 1.00.
+
+F5="$ROOT/fx5"; mkdir -p "$F5/usage"
+now5=$(( $(date +%s) / 300 * 300 ))
+f5row() {  # <age in seconds> <project> <sid first 8> <model> <requests> <input> <output> <context>
+  printf '%s\t-h-%s\t%s\t-\t-\t-\tclaude-%s\t%s\t%s\t0\t0\t0\t%s\t%s\t%s\n' \
+    "$(( now5 - $1 ))" "$2" "$(fxsid "$3")" "$4" "$5" "$6" "$7" "$8" "$8"
+}
+{ f5row 1800   x 3f9a1c20 opus-5    5 1000000 100000 612000
+  f5row 72000  y d8c3b615 sonnet-5  7 1000000 400000 388000
+  f5row 432000 x 3f9a1c20 opus-5   11 2000000 0      612000
+  f5row 432000 z 7b2c5d33 haiku-4-5 3 1000000 0      50000
+  f5row 864000 x 3f9a1c20 opus-5   13 10000000 0     612000
+} >"$F5/usage/facts.tsv"
+printf -- '-h-x\t%s/git/work/billing-api\n-h-y\t%s/git/personal/tagents\n-h-z\t%s/scratch/probe\n' "$FXH" "$FXH" "$FXH" >"$F5/usage/projects.tsv"
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "$FXH/git/work/billing-api" "$(fxsid d8c3b615)" "$FXH/git/personal/tagents" \
+  "$(fxsid 7b2c5d33)" "$FXH/scratch/probe" >"$F5/usage/origin.tsv"
+TA25="$ROOT/ta25"; mkdir -p "$TA25"
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "refactor-billing" >"$TA25/labels.tsv"
+fx5() { FX_STATE="$F5/usage" FX_TA="$TA25" fx "$@" | sed "s/${ESC}\\[[0-9;]*m//g"; }
+squash() { awk '{ $1 = $1; print }'; }  # one space between the words of a line
+
+out=$(fx5)
+ok "the five hours: cost units, dollars and requests" "1.5M \$7.50 5" "$(printf '%s\n' "$out" | awk '/^last 5 h/ { print $4, $5, $6 }')"
+ok "the 24 hours" "4.5M \$13.5 12" "$(printf '%s\n' "$out" | awk '/^last 24 h/ { print $4, $5, $6 }')"
+ok "the seven days: the ten-day-old row is not in it" "7.5M \$24.5 26" "$(printf '%s\n' "$out" | awk '/^last 7 d/ { print $4, $5, $6 }')"
+ok "the five hours keep the peak context" "peak ctx 612k" "$(printf '%s\n' "$out" | awk '/^last 5 h/ { print $8, $9, $10 }')"
+ok "the seven days by account: dollars and share, the dearest first, the unplaced one named" \
+   "work \$17.5 71.4%
+personal \$6.00 24.5%
+? unplaced \$1.00 4.1%" \
+   "$(printf '%s\n' "$out" | awk '/^by account/ { f = 1; next } f && /^$/ { exit } f' | squash)"
+lineof() { printf '%s\n' "$out" | grep -n "^$1" | head -1 | cut -d: -f1; }
+ok "...between the windows and where it goes" 1 \
+   "$([ "$(lineof 'last 7 d')" -lt "$(lineof 'by account')" ] && [ "$(lineof 'by account')" -lt "$(lineof 'where it goes')" ] && echo 1 || echo 0)"
+
+out=$(fx5 --account work)
+lacks "one account has no account block" "by account" "$out"
+ok "--account work narrows the windows" "\$17.5 16" "$(printf '%s\n' "$out" | awk '/^last 7 d/ { print $5, $6 }')"
+out=$(fx5 --account personal)
+ok "--account personal narrows them too" "\$6.00 7" "$(printf '%s\n' "$out" | awk '/^last 7 d/ { print $5, $6 }')"
+ok "--account ? is the sessions no account claims" "\$1.00 3" "$(fx5 --account '?' | awk '/^last 7 d/ { print $5, $6 }')"
+ok "two accounts named is two accounts in the block" "work|personal" \
+   "$(fx5 --account work,personal | awk '/^by account/ { f = 1; next } f && /^$/ { exit } f { printf "%s%s", (n++ ? "|" : ""), $1 }')"
+
+# An account whose only usage is older than seven days is not in the week.
+F5B="$ROOT/fx5b"; mkdir -p "$F5B/usage"
+{ f5row 1800 x 3f9a1c20 opus-5 5 1000000 100000 612000
+  f5row 864000 y d8c3b615 sonnet-5 7 1000000 400000 388000
+} >"$F5B/usage/facts.tsv"
+cp "$F5/usage/projects.tsv" "$F5B/usage/projects.tsv"
+out=$(FX_STATE="$F5B/usage" FX_TA="$TA25" fx)
+lacks "an account with no usage in the week is no second account" "by account" "$out"
+
+# A request on a model with no rate is a floor, and the summary says so.
+F5C="$ROOT/fx5c"; mkdir -p "$F5C/usage"
+{ f5row 1800 x 3f9a1c20 opus-5 5 1000000 100000 612000
+  f5row 72000 y d8c3b615 mystery-9 2 1000000 0 100
+} >"$F5C/usage/facts.tsv"
+cp "$F5/usage/projects.tsv" "$F5C/usage/projects.tsv"
+out=$(FX_STATE="$F5C/usage" FX_TA="$TA25" fx | sed "s/${ESC}\\[[0-9;]*m//g")
+ok "a window with an unrated request marks its dollars" "\$7.50 5|\$7.50* 7" \
+   "$(printf '%s\n' "$out" | awk '/^last 5 h/ { a = $5 " " $6 } /^last 24 h/ { b = $5 " " $6 } END { print a "|" b }')"
+contains "...and says the figure is a floor" "* marks dollars that are a floor" "$out"
+lacks "a summary with every model rated has no such note" "marks dollars that are a floor" "$(fx5)"
+
+# The heaviest sessions: the name, then eight characters of the id.
+ok "a named session shows its name and eight characters of its id, a plain one its id alone" \
+   "refactor-billing 3f9a1c20 3.5M 16 req ctx 612k sub 0 ~/git/work/billing-api
+d8c3b615 3.0M 7 req ctx 388k sub 0 ~/git/personal/tagents
+7b2c5d33 1.0M 3 req ctx 50k sub 0 ~/scratch/probe" \
+   "$(fx5 | sed '1,/^heaviest sessions/d' | squash)"
+lacks "an id is cut at eight characters" "d8c3b615-" "$(fx5)"
+idcol() {  # <id>: the column, in characters, where the id starts on each line that holds it
+  LC_ALL=C awk -v id="$1" 'index($0, id) { p = substr($0, 1, index($0, id) - 1); n = 0
+    for (i = 1; i <= length(p); i++) { c = substr(p, i, 1); if (c < "\200" || c > "\277") n++ }; print n }'
+}
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "refactor-billing" "$(fxsid 7b2c5d33)" "Счёт для клиента" >"$TA25/labels.tsv"
+rows=$(fx5 | sed '1,/^heaviest sessions/d')
+ok "the ids of the heaviest sessions start in one column, names in Cyrillic included" "1" \
+   "$({ printf '%s\n' "$rows" | idcol 3f9a1c20; printf '%s\n' "$rows" | idcol d8c3b615; printf '%s\n' "$rows" | idcol 7b2c5d33; } | sort -u | wc -l | tr -d ' ')"
+contains "a Cyrillic name is whole" "Счёт для клиента  7b2c5d33" "$rows"
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "$(printf 'a%.0s' $(seq 1 60))" >"$TA25/labels.tsv"
+ok "a name longer than 28 characters is cut with an ellipsis" "$(printf 'a%.0s' $(seq 1 27))…" \
+   "$(fx5 | sed '1,/^heaviest sessions/d' | sed -n 1p | squash | cut -d' ' -f1)"
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "refactor-billing" >"$TA25/labels.tsv"
+
+# What stays as it is.
+ok "no index at all still exits 1 with the old words" "tusage: no data yet — run 'tusage --rebuild'|1" \
+   "$(FX_STATE="$ROOT/fx5-none" fx 2>&1 | tr -d '\n')|$(FX_STATE="$ROOT/fx5-none" fxrc)"
+F5D="$ROOT/fx5d"; mkdir -p "$F5D/usage"
+f5row 864000 x 3f9a1c20 opus-5 5 1000000 100000 612000 >"$F5D/usage/facts.tsv"
+cp "$F5/usage/projects.tsv" "$F5D/usage/projects.tsv"
+out=$(FX_STATE="$F5D/usage" FX_TA="$TA25" fx | sed "s/${ESC}\\[[0-9;]*m//g")
+contains "an empty week still says so" "nothing in the last 7 days" "$out"
+lacks "...and has no account block" "by account" "$out"
+ok "...and a dollar figure of nothing" "\$0 0" "$(printf '%s\n' "$out" | awk '/^last 7 d/ { print $5, $6 }')"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

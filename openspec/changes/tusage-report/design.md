@@ -124,7 +124,7 @@ The name stage runs only on the session rows that survive the cut, and avoids on
 
 ### 13. The summary
 
-**Decision.** The summary keeps its sections and its cost units. It adds dollars beside the three windows, a block of the seven days by account (printed when more than one account has usage), and shows the heaviest sessions by name and eight characters of id, next to the directory it already prints. `--account` narrows it.
+**Decision.** The summary keeps its sections and its cost units. It adds dollars beside the three windows, a block of the seven days by account (printed when more than one account has usage), and shows the heaviest sessions by name and eight characters of id, next to the directory it already prints with the home as a tilde. A window that holds a request on a model with no rate ends its dollars in `*`, under the note `--by` prints; the by-account block counts an account that spent something in the seven days, and a name longer than 28 characters ends in `…`. `--account` narrows it.
 
 **Reason.** The summary is the first thing a person runs, and the question "which account" belongs on it. Its layout stays so that nothing a person has learned moves.
 

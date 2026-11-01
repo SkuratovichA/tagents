@@ -211,6 +211,8 @@ AWK_PRICE='
     if ((k in PUNTIL) && ts <= PUNTIL[k]) { pin = PIN0[k]; pout = POUT0[k]; pcr = 0.1 * pin }
     return (i * pin + 1.25 * c5 * pin + 2.0 * c1 * pin + pcr * cr + o * pout) / 1000000
   }
+  # What a "*" beside dollars means, in every report that prints one.
+  function floor_note() { return "* marks dollars that are a floor: a request ran on a model with no published rate and counts as $0." }
   function money(d) {
     if (d < 0)     return "?"
     if (d >= 100)  return sprintf("$%.0f", d)
@@ -1794,7 +1796,7 @@ by_render() {  # <dimensions, comma list> <title>
         out(s, TY[i] == "T" || (TY[i] == "N" && DP[i] < nd) ? B : (TY[i] == "R" ? D : ""))
       }
       nl = 0
-      if (FLOOR) NOTE[++nl] = "* marks dollars that are a floor: a request ran on a model with no published rate and counts as $0."
+      if (FLOOR) NOTE[++nl] = floor_note()
       if (UNPL > 0) NOTE[++nl] = UNPL " session" (UNPL == 1 ? " belongs" : "s belong") " to no account: TU_ACCOUNT_RULES places a session by the directory it started in."
       nfa = 0
       for (i = 1; i <= NK; i++) if (KACC[i] in FAC) FA[++nfa] = KACC[i]
@@ -1975,19 +1977,25 @@ session_detail() {
 }
 
 summary() {
-  local now; now=$(date +%s)
+  local now top names; now=$(date +%s)
   have_index || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
-  { slug_map | sed 's/^/P\t/'; cat "$FACTS"; } |
-  LC_ALL=C awk -F"$TAB" -v now="$now" -v home="$HOME" "$AWK_FMT$AWK_TEXT"'
+  { slug_map | sed 's/^/P\t/'; account_map | sed 's/^/A\t/'; cat "$FACTS"; } |
+  LC_ALL=C awk -F"$TAB" -v now="$now" -v home="$HOME" -v prices="$(prices_arg)" \
+      "$AWK_FMT$AWK_PRICE$AWK_TEXT$AWK_TILDE"'
     BEGIN { R = "\033[0m"; DIM = "\033[90m"; B = "\033[1m" }
-    function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
     $1 == "P" { pdir[$2] = $3; next }
+    $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
     {
       c = cost($9,$10,$11,$12,$13); age = now - ($1 + 0)
-      if (age <= 18000) { W5 += c; W5R += $8; if ($14 + 0 > W5X) W5X = $14 + 0 }
-      if (age <= 86400) { D1 += c; D1R += $8 }
-      if (age <= 604800) { D7 += c; D7R += $8
+      # A request on an unrated model is a hole in the bill only when it spent
+      # something: the zero-token "<synthetic>" placeholder is not one.
+      d = usd($7, $1 + 0, $9, $10, $11, $12, $13); u = 0; spent = ($9 + $10 + $11 + $12 + $13 > 0)
+      if (d < 0) { d = 0; u = spent }
+      if (age <= 18000) { W5 += c; W5R += $8; W5D += d; W5U += u; if ($14 + 0 > W5X) W5X = $14 + 0 }
+      if (age <= 86400) { D1 += c; D1R += $8; D1D += d; D1U += u }
+      if (age <= 604800) { D7 += c; D7R += $8; D7D += d; D7U += u
         P[$2] += c
+        if (spent) { a = ($3 in ACC) ? ACC[$3] : "?"; AD[a] += d; AU[a] += u; if (!(a in AN)) { AN[a] = 1; NACC++ } }
         if ($4 == "-") MAIN += c
         else { SUBC += c
                SA[$6 ~ /^wf:/ ? "workflow agent" : $5 ($6 == "bg" ? " (bg)" : "")] += c
@@ -1997,11 +2005,34 @@ summary() {
         TREQ += $8
       }
     }
+    # A dollar cell: right-aligned, with a "*" after it when a request in the
+    # window had no rate, so the digits of every line stay under each other.
+    function dollars(x, u) { return sprintf("%8s%s", money(x), u > 0 ? "*" : " ") }
+    # The account that comes first: the dearer one, the name when they tie.
+    function acct_before(x, y,   ux, uy) {
+      ux = int(AD[x] * 1000000 + 0.5); uy = int(AD[y] * 1000000 + 0.5)
+      if (ux != uy) return ux > uy
+      return x < y
+    }
     END {
       printf "%s cost = input-token equivalents: in + 1.25*cw5m + 2*cw1h + 0.1*cread + 5*out%s\n\n", DIM, R
-      printf "%slast 5 h%s   %s%10s%s   %5d requests   %speak ctx %.0fk%s\n", B, R, B, human(W5), R, W5R, DIM, W5X/1000, R
-      printf "%slast 24 h%s  %s%10s%s   %5d requests\n", B, R, B, human(D1), R, D1R
-      printf "%slast 7 d%s   %s%10s%s   %5d requests\n\n", B, R, B, human(D7), R, D7R
+      printf "%slast 5 h%s   %s%10s%s  %s  %5d requests   %speak ctx %.0fk%s\n", B, R, B, human(W5), R, dollars(W5D, W5U), W5R, DIM, W5X/1000, R
+      printf "%slast 24 h%s  %s%10s%s  %s  %5d requests\n", B, R, B, human(D1), R, dollars(D1D, D1U), D1R
+      printf "%slast 7 d%s   %s%10s%s  %s  %5d requests\n", B, R, B, human(D7), R, dollars(D7D, D7U), D7R
+      if (W5U + D1U + D7U > 0) printf "%s%s%s\n", DIM, floor_note(), R
+      printf "\n"
+
+      if (NACC > 1) {
+        printf "%sby account (7 d)%s\n", B, R
+        k = 0; for (a in AN) AK[++k] = a
+        for (i = 1; i <= k; i++) for (j = i + 1; j <= k; j++)
+          if (acct_before(AK[j], AK[i])) { t = AK[i]; AK[i] = AK[j]; AK[j] = t }
+        for (i = 1; i <= k; i++) { a = AK[i]
+          nm = (a == "?") ? "? unplaced" : a
+          if (uclen(nm) > 42) nm = utrunc(nm, 41) "…"
+          printf "  %s %9s%s %5.1f%%\n", upad(nm, 42), money(AD[a]), (AU[a] > 0 ? "*" : " "), (D7D > 0 ? 100 * AD[a] / D7D : 0) }
+        printf "\n"
+      }
 
       printf "%swhere it goes (7 d)%s\n", B, R
       wcw = 1.25*CW5 + 2.0*CW1; wcr = 0.1*CR; wou = 5*OU; wt = INP + wcw + wcr + wou
@@ -2045,15 +2076,24 @@ summary() {
     }'
   echo
   printf '\033[1mheaviest sessions (7 d)\033[0m\n'
-  sessions "$(since_cut 7d)" | sort -t"$TAB" -k2,2nr | head -8 |
-  while IFS="$TAB" read -r sid c reqs ctx last slug subc nsub c5h; do
-    printf '  \033[90m%-9.9s\033[0m %9s %6s req  ctx %5.0fk  sub %7s  \033[90m%s\033[0m\n' \
-      "$sid" \
-      "$(LC_ALL=C awk -v v="$c" 'BEGIN{ if (v>=1e6) printf "%.1fM", v/1e6; else if (v>=1e3) printf "%.0fk", v/1e3; else printf "%d", v }')" \
-      "$reqs" "$(( ctx / 1000 ))" \
-      "$(LC_ALL=C awk -v v="$subc" 'BEGIN{ if (v>=1e6) printf "%.1fM", v/1e6; else if (v>=1e3) printf "%.0fk", v/1e3; else printf "%d", v }')" \
-      "$(origin_dir "$sid" "$slug")"
-  done
+  top=$(sessions "$(since_cut 7d)" | sort -t"$TAB" -k2,2nr | head -8)
+  [ -n "$top" ] || return 0
+  names=$(printf '%s\n' "$top" | LC_ALL=C awk -F"$TAB" '{ print $1 "\t" $6 }' | with_names names_of_sessions)
+  { printf '%s\n' "$names"
+    while IFS="$TAB" read -r sid c reqs ctx _ slug subc _; do
+      printf 'R\t%s\t%s\t%s\t%s\t%s\t%s\n' "$sid" "$c" "$reqs" "$ctx" "$subc" "$(origin_dir "$sid" "$slug")"
+    done <<<"$top"
+  } | LC_ALL=C awk -F"$TAB" -v home="$HOME" "$AWK_FMT$AWK_TEXT$AWK_TILDE"'
+    $1 == "S" { NM[$2] = $3; next }
+    $1 == "R" { n++; ID[n] = $2; CS[n] = $3; RQ[n] = $4; CX[n] = $5; SB[n] = $6; DR[n] = $7
+                nm = ($2 in NM) ? NM[$2] : ""
+                if (uclen(nm) > 28) nm = utrunc(nm, 27) "…"
+                NMS[n] = nm; if (uclen(nm) > w) w = uclen(nm) }
+    END {
+      for (i = 1; i <= n; i++)
+        printf "  %s%s\033[90m%-8.8s\033[0m %9s %6s req  ctx %5.0fk  sub %7s  \033[90m%s\033[0m\n",
+               upad(NMS[i], w), (w > 0 ? "  " : ""), ID[i], human(CS[i]), RQ[i], int(CX[i] / 1000), human(SB[i]), tilde(DR[i])
+    }'
 }
 
 json() {
@@ -2169,7 +2209,7 @@ case "$COLOR" in
   auto)   [ "$OUT_TTY" = 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != dumb ] && COLOR_ON=1 ;;
 esac
 if [ -n "$ACCTS" ]; then ensure_accounts
-else case "$DIM" in __by|__daily|__meter|__calibrate) ensure_accounts ;; esac
+else case "$DIM" in ""|__by|__daily|__meter|__calibrate) ensure_accounts ;; esac
 fi
 check_accounts
 
