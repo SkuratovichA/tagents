@@ -26,7 +26,7 @@ The tasks serve `plugin add`, `plugin remove`, `plugin new` and `doctor` from th
 
 - [x] 4.1 `packages/core/src/i18n/export.ts` writes `spec/cli/messages.json` from the two resources and refuses a text that uses more of i18next than `{{name}}`; the root `package.json` gets `messages:gen` and `messages:check` (`pnpm messages:gen`, then `pnpm messages:check` exits 0, and exits non-zero after an edit of `en.ts`)
 - [x] 4.2 The keys `doctorNodeMissing` in `en.ts` and `ru.ts` (`node: missing`, `node: нет`), with a comment that only the Rust `doctor` prints it, and the test of the catalogues that both languages have the same keys passes (`pnpm --filter @tagents/core test`)
-- [x] 4.3 `crates/tagents-spec` parses `messages.json` and refuses an unknown shape; the interpolation (`{{name}}` once, left to right, no rescan of a value) and the locale choice through `notify::phrases::Locale::of` are one function, tested against the vectors of 2.2 (`cargo test -p tagents-spec`, `cargo test -p tagents-core --test plugin_vectors`)
+- [x] 4.3 `crates/tagents-spec` parses `messages.json` and refuses an unknown shape; the interpolation (`{{name}}` once, left to right, no rescan of a value) and the locale choice through `messages::Locale::of` are one function, tested against the vectors of 2.2 (`cargo test -p tagents-spec`, `cargo test -p tagents-core --test plugin_vectors`)
 
 ## 5. The config splice
 
@@ -79,7 +79,7 @@ Where (a) differs from the wording above, each in one line:
 
 ## 10. doctor
 
-- [ ] 10.1 `crates/tagents-core/src/doctor.rs`: `VERBS`, one `node -p` through `child::run` with a deadline, `notify::state::{state_dir, read_agent_state}`, `notify::options::config_dir`, `node::find_on_path`, the four lines, `doctorNodeMissing` when node cannot be started or answers anything but the array, exit 0, arguments ignored; the module is not yet in `GROUPS` (`cargo test -p tagents-core doctor::`)
+- [ ] 10.1 `crates/tagents-core/src/doctor.rs`: `VERBS`, one `node -p` through `child::run` with a deadline, `notify::state::{state_dir, read_agent_state}`, `host::config_dir`, `node::find_on_path`, the four lines, `doctorNodeMissing` when node cannot be started or answers anything but the array, exit 0, arguments ignored; the module is not yet in `GROUPS` (`cargo test -p tagents-core doctor::`)
 - [ ] 10.2 Unit tests for a state directory with a valid record, a broken one and a file that is not a record, for the config present and missing, for `claude` on and off `PATH`, and for `$TAGENTS_NODE` naming a missing file, which prints `node: missing` and the other three lines (`cargo test -p tagents-core doctor::`)
 - [ ] 10.3 `doctor` in `GROUPS` and `"impl": "rust"` for `["doctor"]`, in the same commit as the change of the forwarded word of `crates/tagents-core/tests/front_door.rs` from `doctor` to `session list`, one constant for the whole file, and of the module comment of `front_door.rs`, which stops naming `doctor` as a forwarded word; `pnpm plugin:gen` and `pnpm plugin:check` show no diff, `--spec` lists it (`cargo test -p tagents-core --test front_door`)
 - [ ] 10.4 The parity scenarios of design D10 for `doctor` (`bash tests/rust-plugin-parity.sh`, exit 0)

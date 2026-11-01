@@ -1,23 +1,7 @@
-//! The words of a notice in each locale (`packages/notify/src/phrases.ts`). The locale is `TAGENTS_LOCALE` as `isLocale` and `DEFAULT_LOCALE` of `packages/core/src/i18n/index.ts` read it: exactly `en` or `ru`, English for anything else; this is the one Rust copy of that rule, pinned by the `words` vectors.
+//! The words of a notice in each locale (`packages/notify/src/phrases.ts`). The locale is `TAGENTS_LOCALE` as `isLocale` and `DEFAULT_LOCALE` of `packages/core/src/i18n/index.ts` read it: exactly `en` or `ru`, English for anything else; the one Rust copy of that rule is `messages::Locale`, pinned by the `words` vectors, and this module re-exports it.
 
 use crate::js;
-
-/// A language the notices speak.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Locale {
-    En,
-    Ru,
-}
-
-impl Locale {
-    /// The locale a `TAGENTS_LOCALE` value names: only the exact text `en` or `ru`, else English (the unset variable included).
-    pub fn of(value: Option<&str>) -> Locale {
-        match value {
-            Some("ru") => Locale::Ru,
-            _ => Locale::En,
-        }
-    }
-}
+pub use crate::messages::Locale;
 
 /// Every string a person reads in a banner, for one locale.
 #[derive(Debug, PartialEq, Eq)]

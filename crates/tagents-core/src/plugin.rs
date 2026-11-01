@@ -11,9 +11,9 @@ use config::{Added, Removed};
 use resolve::Failure;
 
 use crate::{
-    messages::Texts,
+    host::config_dir,
+    messages::{Locale, Texts},
     node,
-    notify::{options::config_dir, phrases::Locale},
     sessions::{Output, exit},
 };
 

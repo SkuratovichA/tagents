@@ -4,7 +4,22 @@
 
 use tagents_spec::Messages;
 
-use crate::notify::phrases::Locale;
+/// A language the CLI speaks. The locale is `TAGENTS_LOCALE` as `isLocale` and `DEFAULT_LOCALE` of `packages/core/src/i18n/index.ts` read it: exactly `en` or `ru`, English for anything else. This is the one Rust copy of that rule, pinned by the `words` and `messages` vectors, and `notify::phrases` re-exports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Locale {
+    En,
+    Ru,
+}
+
+impl Locale {
+    /// The locale a `TAGENTS_LOCALE` value names: only the exact text `en` or `ru`, else English (the unset variable included).
+    pub fn of(value: Option<&str>) -> Locale {
+        match value {
+            Some("ru") => Locale::Ru,
+            _ => Locale::En,
+        }
+    }
+}
 
 /// The catalogue read for one language.
 #[derive(Debug)]

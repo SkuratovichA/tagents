@@ -3,7 +3,10 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use serde_json::Value;
-use tagents_core::{js, messages::Texts, notify::phrases::Locale};
+use tagents_core::{
+    js,
+    messages::{Locale, Texts},
+};
 
 use super::section;
 
