@@ -695,7 +695,7 @@ since_cut() {
       case ${v: -1} in h) unit=3600 ;; d) unit=86400 ;; m) unit=60 ;; esac ;;
   esac
   case $n in ''|*[!0-9]*) return 1 ;; esac
-  printf '%s' "$(( $(date +%s) - 10#$n * unit ))"
+  printf '%s' "$(( ${NOW:-$(date +%s)} - 10#$n * unit ))"
 }
 
 # The last instant of a window. An all-digit value is an epoch, which is what
@@ -1847,7 +1847,7 @@ report_by() {  # <the --by list> <cut> <upto>
 # the dollar figures are a floor, not the whole bill.
 sessions() {
   [ -s "$FACTS" ] || return 0
-  local now; now=$(date +%s)
+  local now; now=${NOW:-$(date +%s)}
   LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v cut="${1:-0}" -v upto="${2:-0}" \
       -v h1="$(( now - 3600 ))" -v h5="$(( now - 18000 ))" \
       -v prices="$(prices_arg)" "$AWK_PRICE"'
@@ -2114,7 +2114,7 @@ json() {
 # One DIM holds the report that runs. The session, the dimensions and the
 # filters are held apart from it, so the order of the flags decides nothing:
 # `--session X --by day` and `--by day --session X` are the same report.
-SINCE=""; UNTIL=""; DIM=""; DO_UPDATE=1; CAL_ACCT=""; CAL_AMT=""; CAL_AT=""
+NOW=""; SINCE=""; UNTIL=""; DIM=""; DO_UPDATE=1; CAL_ACCT=""; CAL_AMT=""; CAL_AT=""
 MET_REFRESH=0; MET_FORCE=0
 BYLIST=""; SESSION=""; ACCTS=""; PROJS=""; BREAKDOWN=0; TOPN=12; SORT=""
 COLOR=auto; COMPACT=0; TSV=0
@@ -2223,9 +2223,12 @@ wide_window() {
   case ",$BYLIST," in *,week,*|*,month,*) return 0 ;; esac
   return 1
 }
+# The reports with a window read the clock once, for the window and for the rows
+# that count the last hour and five; the others have no window to cut.
+case "$DIM" in __sessions|__daily|__json|__by) NOW=$(date +%s) ;; esac
 if [ "${SINCE_SET:-0}" = 1 ]; then
   CUT=$(since_cut "$SINCE") || die_usage "bad --since value $SINCE"
-elif wide_window; then
+elif wide_window || [ -z "$NOW" ]; then
   CUT=0
 else
   CUT=$(since_cut 7d)

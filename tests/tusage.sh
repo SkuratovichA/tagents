@@ -1511,15 +1511,25 @@ ok "a run through a symlink finds the config" "work personal ?" \
 ok "--daily splits by the accounts of the config" "? personal work" \
    "$(FX_CONFIG="$C21/profiles.toml" fxc --daily --since 1000d | cut -f2 | sort -u | tr '\n' ' ' | sed 's/ $//')"
 
-# Only the verbs that split by account look at the config, and never when
+# Only the reports that split by account look at the config, and never when
 # TU_ACCOUNTS says what the accounts are: the dashboard reads --sessions on every
 # refresh. bash -x prints the calls, so a call that was not made is a count of 0.
 traced() { FX_SH='bash -x' FX_HOME="$H21" FX_CONFIG="$C21/profiles.toml" "$@" | grep -c 'ensure_accounts$'; }
 ok "--by account looks at the config" 1 "$([ "$(FX_ACCOUNTS= traced fx --by account $W)" -ge 1 ] && echo 1 || echo 0)"
+ok "the summary does too: it has a block by account" 1 "$([ "$(FX_ACCOUNTS= traced fx)" -ge 1 ] && echo 1 || echo 0)"
 ok "--sessions does not" 0 "$(FX_ACCOUNTS= traced fx --sessions --since 1000d)"
 ok "--burn does not" 0 "$(FX_ACCOUNTS= traced fx --burn)"
 ok "--json does not" 0 "$(FX_ACCOUNTS= traced fx --json --since 1000d)"
 ok "--session <id> does not" 0 "$(FX_ACCOUNTS= traced fx --session "$(fxsid 3f9a1c20)")"
+
+# The dashboard calls these four on every refresh, so each reads the clock as few
+# times as the work needs: a report with a window reads it once for the window and
+# for the rows that count the last hour and five, and one with no window reads it
+# for nothing else.
+datecalls() { FX_SH='bash -x' "$@" | grep -c 'date +%s$'; }
+ok "--sessions reads the clock once" 1 "$(datecalls fx --sessions --since 1000d)"
+ok "--burn reads it once, for its own five hours" 1 "$(datecalls fx --burn)"
+ok "--session <id> reads it not at all" 0 "$(datecalls fx --session "$(fxsid 3f9a1c20)")"
 
 # ---------------------------------------------------------------------------
 t "22. one session by day"
