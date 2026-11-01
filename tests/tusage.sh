@@ -809,14 +809,18 @@ for s in 3f9a1c20 b72e90d4 c04d7be1 91ab44ee e5d1f0a7 5a1d2c33 6b2e3d44; do fxhi
 for s in d8c3b615 0a6f7e92 7c3f4e55 8d4a5f66; do fxhist personal $s; done
 
 # One call of tusage on the fixture, with nothing of the real machine in reach.
-# The width is wide and colour is off unless a test says otherwise.
+# The width is wide and colour is off unless a test says otherwise. FX_STATE
+# names another index and FX_PRICES another price table.
 fx() {
-  env -u TU_ACCOUNT_RULES -u NO_COLOR -u TU_PRICES -u TU_KEEP_DAYS \
+  (
+    unset TU_PRICES TU_ACCOUNT_RULES NO_COLOR TU_KEEP_DAYS
+    [ -z "${FX_PRICES:-}" ] || export TU_PRICES="$FX_PRICES"
     HOME="$FXH" TZ=UTC TERM=xterm COLUMNS=140 \
-    TU_STATE="$FX/usage" TU_PROJECTS="$FX/projects" TU_NO_METER=1 \
+    TU_STATE="${FX_STATE:-$FX/usage}" TU_PROJECTS="$FX/projects" TU_NO_METER=1 \
     TU_ACCOUNTS="work=$FX/acct/work;personal=$FX/acct/personal" \
     TA_STATE_DIR="$FX/ta" TA_CONFIG="$FX/no-such-config.toml" \
     bash "$TU" --no-update "$@" 2>&1
+  )
 }
 fxrc() { fx "$@" >/dev/null; echo $?; }
 W="--since 2026-10-26 --until 2026-11-01"
@@ -902,6 +906,349 @@ ok "a word that is not a duration exits 2" 2 "$rc"
 contains "...named" "tusage: bad --since value yesterday" "$out"
 ok "--since 5h, 3d, 30m and month still parse" "0 0 0 0" \
    "$(fxrc --daily --since 5h) $(fxrc --daily --since 3d) $(fxrc --daily --since 30m) $(fxrc --daily --since month)"
+
+
+
+# ---------------------------------------------------------------------------
+t "16. the breakdown: exact figures, read through --tsv"
+# ---------------------------------------------------------------------------
+# The expected rows below come from a second program, written apart from the
+# awk of tusage, that prices the same twenty-one rows from the PRICES table.
+# A row is the keys of its dimensions, then requests, input, output, cache
+# write, cache read, dollars to six decimals, unpriced requests, the first and
+# the last day and the number of days.
+
+X_ACCT=$(cat <<'EOT'
+work	812	1730000	584000	9210000	110200000	117.590000	0	2026-10-28	2026-11-01	5
+personal	318	660000	231000	3520000	42900000	44.260000	0	2026-10-27	2026-11-01	4
+?	18	30000	9000	90000	700000	0.257500	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_ACCT_PROJ=$(cat <<'EOT'
+work	~/git/work/billing-api	659	1440000	483000	7740000	92300000	100.937500	0	2026-10-29	2026-11-01	4
+work	~/git/work/web-app	153	290000	101000	1470000	17900000	16.652500	0	2026-10-28	2026-10-31	3
+personal	~/git/personal/tagents	215	470000	162000	2600000	32200000	38.750000	0	2026-10-31	2026-11-01	2
+personal	~/git/personal/site	103	190000	69000	920000	10700000	5.510000	0	2026-10-27	2026-10-28	2
+?	~/scratch/probe	18	30000	9000	90000	700000	0.257500	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_ACCT_PROJ_SESS=$(cat <<'EOT'
+work	~/git/work/billing-api	3f9a1c20-6d4e-4b0a-9c75-1e2f8a7b5d90	502	1160000	387000	6270000	74300000	86.075000	0	2026-10-29	2026-11-01	3
+work	~/git/work/billing-api	c04d7be1-6d4e-4b0a-9c75-1e2f8a7b5d90	61	130000	44000	690000	8100000	10.112500	0	2026-11-01	2026-11-01	1
+work	~/git/work/billing-api	b72e90d4-6d4e-4b0a-9c75-1e2f8a7b5d90	96	150000	52000	780000	9900000	4.750000	0	2026-10-30	2026-10-30	1
+work	~/git/work/web-app	91ab44ee-6d4e-4b0a-9c75-1e2f8a7b5d90	131	250000	89000	1320000	16800000	16.255000	0	2026-10-28	2026-10-30	2
+work	~/git/work/web-app	e5d1f0a7-6d4e-4b0a-9c75-1e2f8a7b5d90	22	40000	12000	150000	1100000	0.397500	0	2026-10-31	2026-10-31	1
+personal	~/git/personal/tagents	d8c3b615-6d4e-4b0a-9c75-1e2f8a7b5d90	215	470000	162000	2600000	32200000	38.750000	0	2026-10-31	2026-11-01	2
+personal	~/git/personal/site	0a6f7e92-6d4e-4b0a-9c75-1e2f8a7b5d90	103	190000	69000	920000	10700000	5.510000	0	2026-10-27	2026-10-28	2
+?	~/scratch/probe	7b2c5d33-6d4e-4b0a-9c75-1e2f8a7b5d90	18	30000	9000	90000	700000	0.257500	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_SESS=$(cat <<'EOT'
+3f9a1c20-6d4e-4b0a-9c75-1e2f8a7b5d90	502	1160000	387000	6270000	74300000	86.075000	0	2026-10-29	2026-11-01	3
+d8c3b615-6d4e-4b0a-9c75-1e2f8a7b5d90	215	470000	162000	2600000	32200000	38.750000	0	2026-10-31	2026-11-01	2
+91ab44ee-6d4e-4b0a-9c75-1e2f8a7b5d90	131	250000	89000	1320000	16800000	16.255000	0	2026-10-28	2026-10-30	2
+c04d7be1-6d4e-4b0a-9c75-1e2f8a7b5d90	61	130000	44000	690000	8100000	10.112500	0	2026-11-01	2026-11-01	1
+0a6f7e92-6d4e-4b0a-9c75-1e2f8a7b5d90	103	190000	69000	920000	10700000	5.510000	0	2026-10-27	2026-10-28	2
+b72e90d4-6d4e-4b0a-9c75-1e2f8a7b5d90	96	150000	52000	780000	9900000	4.750000	0	2026-10-30	2026-10-30	1
+e5d1f0a7-6d4e-4b0a-9c75-1e2f8a7b5d90	22	40000	12000	150000	1100000	0.397500	0	2026-10-31	2026-10-31	1
+7b2c5d33-6d4e-4b0a-9c75-1e2f8a7b5d90	18	30000	9000	90000	700000	0.257500	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_DAY=$(cat <<'EOT'
+2026-10-27	70	130000	49000	640000	7400000	3.830000	0	2026-10-27	2026-10-27	1
+2026-10-28	87	150000	51000	700000	8500000	4.260000	0	2026-10-28	2026-10-28	1
+2026-10-29	180	430000	137000	2310000	24500000	28.820000	0	2026-10-29	2026-10-29	1
+2026-10-30	173	310000	110000	1680000	21500000	18.425000	0	2026-10-30	2026-10-30	1
+2026-10-31	352	740000	250000	4150000	51300000	59.947500	0	2026-10-31	2026-10-31	1
+2026-11-01	286	660000	227000	3340000	40600000	46.825000	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_WEEK=$(cat <<'EOT'
+2026-10-05	240	520000	161000	3100000	37000000	44.500000	0	2026-10-06	2026-10-08	2
+2026-10-12	210	420000	140000	2200000	26500000	26.255000	0	2026-10-13	2026-10-14	2
+2026-10-19	200	420000	135000	2200000	25500000	29.215000	0	2026-10-20	2026-10-22	2
+2026-10-26	1148	2420000	824000	12820000	153800000	162.107500	0	2026-10-27	2026-11-01	6
+EOT
+)
+
+X_MONTH=$(cat <<'EOT'
+2026-10	1512	3120000	1033000	16980000	202200000	215.252500	0	2026-10-06	2026-10-31	11
+2026-11	286	660000	227000	3340000	40600000	46.825000	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_MODEL=$(cat <<'EOT'
+claude-opus-5	793	1710000	580000	9790000	121100000	144.787500	0	2026-10-29	2026-11-01	4
+claude-sonnet-5	315	640000	223000	2790000	30900000	16.665000	0	2026-10-27	2026-11-01	5
+claude-haiku-4-5	40	70000	21000	240000	1800000	0.655000	0	2026-10-31	2026-11-01	2
+EOT
+)
+
+X_PROJ_BREAK=$(cat <<'EOT'
+~/git/work/billing-api	claude-opus-5	501	1080000	360000	6290000	77300000	92.362500	0	2026-10-29	2026-11-01	3
+~/git/work/billing-api	claude-sonnet-5	158	360000	123000	1450000	15000000	8.575000	0	2026-10-29	2026-11-01	3
+~/git/personal/tagents	claude-opus-5	215	470000	162000	2600000	32200000	38.750000	0	2026-10-31	2026-11-01	2
+~/git/work/web-app	claude-opus-5	77	160000	58000	900000	11600000	13.675000	0	2026-10-30	2026-10-30	1
+~/git/work/web-app	claude-sonnet-5	54	90000	31000	420000	5200000	2.580000	0	2026-10-28	2026-10-28	1
+~/git/work/web-app	claude-haiku-4-5	22	40000	12000	150000	1100000	0.397500	0	2026-10-31	2026-10-31	1
+~/git/personal/site	claude-sonnet-5	103	190000	69000	920000	10700000	5.510000	0	2026-10-27	2026-10-28	2
+~/scratch/probe	claude-haiku-4-5	18	30000	9000	90000	700000	0.257500	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_ALL_WEEK=$(cat <<'EOT'
+2026-10-05	240	520000	161000	3100000	37000000	44.500000	0	2026-10-06	2026-10-08	2
+2026-10-12	210	420000	140000	2200000	26500000	26.255000	0	2026-10-13	2026-10-14	2
+2026-10-19	200	420000	135000	2200000	25500000	29.215000	0	2026-10-20	2026-10-22	2
+2026-10-26	1148	2420000	824000	12820000	153800000	162.107500	0	2026-10-27	2026-11-01	6
+EOT
+)
+
+X_ALL_MONTH=$(cat <<'EOT'
+2026-10	1512	3120000	1033000	16980000	202200000	215.252500	0	2026-10-06	2026-10-31	11
+2026-11	286	660000	227000	3340000	40600000	46.825000	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+T_ACCT_PROJ=$(cat <<'EOT'
+usage  2026-10-26 .. 2026-11-01  by account > project
+
+                           reqs   input  output  cwrite   cread   total         $   share  days  span          models
+work                        812    1.7M    584k    9.2M  110.2M  121.7M      $118   72.5%     5  10-28..11-01  opus-5,sonnet-5 +1
+  ~/git/work/billing-api    659    1.4M    483k    7.7M   92.3M  102.0M      $101   62.3%     4  10-29..11-01  opus-5,sonnet-5
+  ~/git/work/web-app        153    290k    101k    1.5M   17.9M   19.8M     $16.7   10.3%     3  10-28..10-31  opus-5,sonnet-5 +1
+personal                    318    660k    231k    3.5M   42.9M   47.3M     $44.3   27.3%     4  10-27..11-01  opus-5,sonnet-5
+  ~/git/personal/tagents    215    470k    162k    2.6M   32.2M   35.4M     $38.8   23.9%     2  10-31..11-01  opus-5
+  ~/git/personal/site       103    190k     69k    920k   10.7M   11.9M     $5.51    3.4%     2  10-27..10-28  sonnet-5
+? unplaced                   18     30k      9k     90k    700k    829k     $0.26    0.2%     1  11-01         haiku-4-5
+  ~/scratch/probe            18     30k      9k     90k    700k    829k     $0.26    0.2%     1  11-01         haiku-4-5
+total                      1148    2.4M    824k   12.8M  153.8M  169.9M      $162  100.0%     6  10-27..11-01  opus-5,sonnet-5 +1
+EOT
+)
+
+T_WEEK_ACCT=$(cat <<'EOT'
+usage  2026-10-05 .. 2026-11-01  by week > account
+
+                reqs   input  output  cwrite   cread   total         $   share  models
+wk 2026-10-05    240    520k    161k    3.1M   37.0M   40.8M     $44.5   17.0%  opus-5
+  work           240    520k    161k    3.1M   37.0M   40.8M     $44.5   17.0%  opus-5
+wk 2026-10-12    210    420k    140k    2.2M   26.5M   29.3M     $26.3   10.0%  opus-5,sonnet-5
+  personal       130    280k     90k    1.5M   18.0M   19.9M     $22.0    8.4%  opus-5
+  work            80    140k     50k    700k    8.5M    9.4M     $4.23    1.6%  sonnet-5
+wk 2026-10-19    200    420k    135k    2.2M   25.5M   28.3M     $29.2   11.1%  opus-5,sonnet-5
+  personal       200    420k    135k    2.2M   25.5M   28.3M     $29.2   11.1%  opus-5,sonnet-5
+wk 2026-10-26   1148    2.4M    824k   12.8M  153.8M  169.9M      $162   61.9%  opus-5,sonnet-5 +1
+  work           812    1.7M    584k    9.2M  110.2M  121.7M      $118   44.9%  opus-5,sonnet-5 +1
+  personal       318    660k    231k    3.5M   42.9M   47.3M     $44.3   16.9%  opus-5,sonnet-5
+  ? unplaced      18     30k      9k     90k    700k    829k     $0.26    0.1%  haiku-4-5
+total           1798    3.8M    1.3M   20.3M  242.8M  268.2M      $262  100.0%  opus-5,sonnet-5 +1
+EOT
+)
+
+T_PROJ_BREAK=$(cat <<'EOT'
+usage  2026-10-26 .. 2026-11-01  by project > model
+
+                         reqs   input  output  cwrite   cread   total         $   share  days  span
+~/git/work/billing-api    659    1.4M    483k    7.7M   92.3M  102.0M      $101   62.3%     4  10-29..11-01
+  opus-5                  501    1.1M    360k    6.3M   77.3M   85.0M     $92.4   57.0%     3  10-29..11-01
+  sonnet-5                158    360k    123k    1.4M   15.0M   16.9M     $8.57    5.3%     3  10-29..11-01
+~/git/personal/tagents    215    470k    162k    2.6M   32.2M   35.4M     $38.8   23.9%     2  10-31..11-01
+  opus-5                  215    470k    162k    2.6M   32.2M   35.4M     $38.8   23.9%     2  10-31..11-01
+~/git/work/web-app        153    290k    101k    1.5M   17.9M   19.8M     $16.7   10.3%     3  10-28..10-31
+  opus-5                   77    160k     58k    900k   11.6M   12.7M     $13.7    8.4%     1  10-30
+  sonnet-5                 54     90k     31k    420k    5.2M    5.7M     $2.58    1.6%     1  10-28
+  haiku-4-5                22     40k     12k    150k    1.1M    1.3M     $0.40    0.2%     1  10-31
+~/git/personal/site       103    190k     69k    920k   10.7M   11.9M     $5.51    3.4%     2  10-27..10-28
+  sonnet-5                103    190k     69k    920k   10.7M   11.9M     $5.51    3.4%     2  10-27..10-28
+~/scratch/probe            18     30k      9k     90k    700k    829k     $0.26    0.2%     1  11-01
+  haiku-4-5                18     30k      9k     90k    700k    829k     $0.26    0.2%     1  11-01
+total                    1148    2.4M    824k   12.8M  153.8M  169.9M      $162  100.0%     6  10-27..11-01
+EOT
+)
+
+T_SESS_TOP3=$(cat <<'EOT'
+usage  2026-10-26 .. 2026-11-01  by session
+
+           reqs   input  output  cwrite   cread   total         $   share  days  span          models
+3f9a1c20    502    1.2M    387k    6.3M   74.3M   82.1M     $86.1   53.1%     3  10-29..11-01  opus-5,sonnet-5
+d8c3b615    215    470k    162k    2.6M   32.2M   35.4M     $38.8   23.9%     2  10-31..11-01  opus-5
+91ab44ee    131    250k     89k    1.3M   16.8M   18.5M     $16.3   10.0%     2  10-28..10-30  opus-5,sonnet-5
+… 5 more    300    540k    186k    2.6M   30.5M   33.9M     $21.0   13.0%     5  10-27..11-01  sonnet-5,opus-5 +1
+total      1148    2.4M    824k   12.8M  153.8M  169.9M      $162  100.0%     6  10-27..11-01  opus-5,sonnet-5 +1
+EOT
+)
+
+tsv() { fx --by "$@" --tsv; }
+
+ok "--by account: three accounts, the dearest first, the unplaced one as ?" "$X_ACCT" "$(tsv account $W)"
+ok "--by account,project: two keys, then ten figures" "$X_ACCT_PROJ" "$(tsv account,project $W)"
+ok "...12 tab-separated fields on every row" "12" "$(tsv account,project $W | awk -F'\t' '{ print NF }' | sort -u)"
+ok "--by account,project,session: three levels, a session as its full id" "$X_ACCT_PROJ_SESS" "$(tsv account,project,session $W)"
+ok "--by session: the dearest session first" "$X_SESS" "$(tsv session $W)"
+ok "--by model" "$X_MODEL" "$(tsv model $W)"
+ok "--tsv prints no header and no colour" "0" "$(tsv account $W | grep -c -e $'\033' -e '^account')"
+
+# A group is the sum of the rows beneath it, at every level.
+sumrows() {  # <number of key fields> : the figures of the rows read on stdin, summed by their first key
+  awk -F'\t' -v k="$1" '{ for (i = k + 1; i <= k + 5; i++) S[$1, i] += $i; S[$1, 99] += $(k + 6); K[$1] = 1 }
+    END { for (a in K) { printf "%s", a; for (i = k + 1; i <= k + 5; i++) printf "\t%.0f", S[a, i]; printf "\t%.6f\n", S[a, 99] } }' | sort
+}
+top1=$(tsv account $W | awk -F'\t' '{ printf "%s", $1; for (i = 2; i <= 6; i++) printf "\t%.0f", $i; printf "\t%.6f\n", $7 }' | sort)
+ok "...there are three accounts to sum" "3" "$(printf '%s\n' "$top1" | /usr/bin/grep -c .)"
+ok "an account is the sum of its projects" "$top1" "$(tsv account,project $W | sumrows 2)"
+ok "...and of its sessions, three levels down" "$top1" "$(tsv account,project,session $W | sumrows 3)"
+proj1=$(tsv account,project $W | awk -F'\t' '{ printf "%s\t%s", $1, $2; for (i = 3; i <= 7; i++) printf "\t%.0f", $i; printf "\t%.6f\n", $8 }' | sort)
+ok "a project is the sum of its sessions" "$proj1" \
+   "$(tsv account,project,session $W | awk -F'\t' '{ k = $1 "\t" $2; for (i = 4; i <= 8; i++) S[k, i] += $i; S[k, 9] += $9; K[k] = 1 }
+      END { for (a in K) { printf "%s", a; for (i = 4; i <= 8; i++) printf "\t%.0f", S[a, i]; printf "\t%.6f\n", S[a, 9] } }' | sort)"
+
+# Time runs oldest first, and a week starts on Monday.
+ok "--by day: oldest first" "$X_DAY" "$(tsv day $W)"
+ok "--by week: Mondays, oldest first" "$X_WEEK" "$(tsv week --since 2026-10-05 --until 2026-11-01)"
+ok "--by month splits at the month" "$X_MONTH" "$(tsv month --since 2026-10-01 --until 2026-11-01)"
+ok "Sunday 2026-11-01 is in the week of Monday 2026-10-26" "2026-10-26" \
+   "$(tsv week --since 2026-11-01 --until 2026-11-01 | cut -f1)"
+ok "--by hour: the hour of the bucket, in the local zone" "2026-10-29 12:00" \
+   "$(tsv hour --since 2026-10-29 --until 2026-10-29 | cut -f1)"
+ok "a week table with no --since reaches back to the start of the index" "$X_ALL_WEEK" "$(tsv week)"
+ok "a month table with no --since reaches back to the start of the index" "$X_ALL_MONTH" "$(tsv month)"
+ok "...but a day table with none keeps to seven days" "0" "$(tsv day | grep -c '^2026-10-0')"
+
+# A second index: the cases the twelve sessions do not have.
+F2="$ROOT/fx2"; mkdir -p "$F2/usage" "$F2/projects/-h-x"
+ts2=$(( $(ep '2026-10-20 12:00:00') / 300 * 300 ))
+fx2() { FX_STATE="$F2/usage" fx "$@"; }
+row2() {  # <session> <agent id> <agent type> <kind> <model> <reqs> <in> <cw5> <cw1h> <cr> <out>
+  printf '%s\t-h-x\t%s-1111-2222-3333-444444444444\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t100\t100\n' \
+    "$ts2" "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}"
+}
+{ row2 aaaaaaaa - - - claude-opus-5 10 1000000 1000000 1000000 0 0
+  row2 bbbbbbbb - - - claude-mystery-1 4 1000 0 0 0 1000
+  row2 cccccccc - - - '<synthetic>' 1 0 0 0 0 0
+  row2 aaaaaaaa ag1 general-purpose wf:review claude-sonnet-5 3 1000000 0 0 0 0
+  row2 aaaaaaaa ag2 Explore bg claude-sonnet-5 2 1000000 0 0 0 0
+} >"$F2/usage/facts.tsv"
+printf -- '-h-x\t%s/git/x\n' "$FXH" >"$F2/usage/projects.tsv"
+W2="--since 2026-10-20 --until 2026-10-20"
+tsv2() { fx2 --by "$@" --tsv; }
+
+D2="2026-10-20${TAB}2026-10-20"
+# 5-minute and 1-hour cache writes are one column. Opus at 5 dollars in: 1M
+# input is 5, 1M 5-minute writes 6.25 and 1M 1-hour writes 10.
+ok "--by model: cache write is the 5- and the 1-hour writes together, each priced at its own rate" \
+   "$(printf 'claude-opus-5\t10\t1000000\t0\t2000000\t0\t21.250000\t0\t%s\t1' "$D2")" \
+   "$(tsv2 model $W2 | grep -F 'claude-opus-5')"
+ok "a model with no rate counts its requests as unpriced and costs nothing" \
+   "$(printf 'claude-mystery-1\t4\t1000\t1000\t0\t0\t0.000000\t4\t%s\t1' "$D2")" \
+   "$(tsv2 model $W2 | grep -F 'claude-mystery-1')"
+ok "the zero-token placeholder is not a hole in the bill" \
+   "$(printf '<synthetic>\t1\t0\t0\t0\t0\t0.000000\t0\t%s\t1' "$D2")" \
+   "$(tsv2 model $W2 | grep -F '<synthetic>')"
+ok "the rows are by dollars, and a tie is by key" \
+   "claude-opus-5 claude-sonnet-5 <synthetic> claude-mystery-1" \
+   "$(tsv2 model $W2 | cut -f1 | tr '\n' ' ' | sed 's/ $//')"
+ok "--by agent: the main session, a workflow agent and a named subagent" \
+   "$(printf '· main session\n⑂ Explore (bg)\n⑂ workflow agent')" \
+   "$(tsv2 agent $W2 | cut -f1 | LC_ALL=C sort)"
+ok "--by workflow covers only the workflow agents" \
+   "$(printf 'wf:review\t3\t1000000\t0\t0\t0\t2.000000\t0\t%s\t1' "$D2")" \
+   "$(tsv2 workflow $W2)"
+ok "a window with nothing in it says so and exits 1" "no data in this window|1" \
+   "$(fx --by day --since 2030-01-01 --until 2030-01-02 | tr '\n' ' ' | sed 's/ $//')|$(fxrc --by day --since 2030-01-01 --until 2030-01-02)"
+ok "a missing index says so and exits 1" "tusage: no data yet|1" \
+   "$(FX_STATE="$ROOT/none/usage" fx --by day | cut -c1-19)|$(FX_STATE="$ROOT/none/usage" fxrc --by day)"
+
+# ---------------------------------------------------------------------------
+t "17. per-model rows, the top rows and the order of the rows"
+# ---------------------------------------------------------------------------
+
+ok "--breakdown adds the model as one more key" "$X_PROJ_BREAK" "$(tsv project --breakdown $W)"
+ok "...and the models of a project add up to the project" \
+   "$(tsv project $W | awk -F'\t' '{ printf "%s\t%.6f\n", $1, $7 }' | sort)" \
+   "$(tsv project --breakdown $W | awk -F'\t' '{ S[$1] += $8 } END { for (p in S) printf "%s\t%.6f\n", p, S[p] }' | sort)"
+ok "--breakdown changes nothing when model is already a dimension" "$(tsv project,model $W)" "$(tsv project,model --breakdown $W)"
+ok "...nor does it count towards the three dimensions" "0" "$(fxrc --by account,project,session --breakdown $W)"
+ok "the table of --breakdown has the models indented under their project" "$T_PROJ_BREAK" "$(fx --by project --breakdown --color never $W)"
+
+ok "--top 3 keeps the three dearest and sums the rest into one row" "$T_SESS_TOP3" "$(fx --by session --top 3 --color never $W)"
+ok "--top 0 shows every row" "0" "$(fx --by session --top 0 $W | grep -c 'more')"
+ok "...and a table that is shorter than the limit has no remainder row" "0" "$(fx --by session --top 8 $W | grep -c 'more')"
+ok "--tsv ignores --top" "$X_SESS" "$(tsv session --top 3 $W)"
+ok "--top cuts under each parent, not the table as a whole" "2" "$(fx --by account,project --top 1 $W | grep -c 'more')"
+ok "time dimensions are never cut" "6" "$(fx --by day --top 2 $W | grep -c '^2026-')"
+ok "the models of a breakdown are never cut" "6" "$(fx --by project --breakdown --top 3 --color never $W | grep -c -e opus -e sonnet -e haiku)"
+ok "--sort cost puts a time dimension in dollar order" "$(printf '%s\n' "$X_DAY" | sort -t"$TAB" -k7,7nr)" "$(tsv day --sort cost $W)"
+
+# Fourteen sessions with distinct dollars: the default is twelve rows and a rest.
+F3="$ROOT/fx3"; mkdir -p "$F3/usage" "$F3/projects/-h-x"
+i=1; while [ $i -le 14 ]; do
+  printf '%s\t-h-x\t%08d-1111-2222-3333-444444444444\t-\t-\t-\tclaude-sonnet-5\t1\t%d\t0\t0\t0\t0\t100\t100\n' "$ts2" "$i" "$((i * 1000000))"
+  i=$((i + 1))
+done >"$F3/usage/facts.tsv"
+printf -- '-h-x\t%s/git/x\n' "$FXH" >"$F3/usage/projects.tsv"
+fx3() { FX_STATE="$F3/usage" fx "$@"; }
+out=$(fx3 --by session --since 2026-10-20 --until 2026-10-20)
+ok "the default is twelve rows" "12" "$(printf '%s\n' "$out" | grep -c '^000000')"
+contains "...and a row that sums the two it left out" "… 2 more" "$out"
+ok "--top 0 on fourteen sessions shows fourteen" "14" "$(fx3 --by session --top 0 --since 2026-10-20 --until 2026-10-20 | grep -c '^000000')"
+
+# ---------------------------------------------------------------------------
+t "18. the table: its figures, its closing lines"
+# ---------------------------------------------------------------------------
+lacks() {  # <name> <needle> <haystack>
+  case "$3" in
+    *"$2"*) fail=$((fail + 1)); printf '  FAIL %s\n       expected NOT to contain: %s\n       actual: %s\n' "$1" "$2" "$3" ;;
+    *) pass=$((pass + 1)); printf '  ok   %s\n' "$1" ;;
+  esac
+}
+
+table() { sed '/^total/q'; }  # the table, without the lines that close it
+ok "account and project at 140 columns, to the character" "$T_ACCT_PROJ" "$(fx --by account,project --color never $W | table)"
+ok "week and account: no days or span beside a time dimension, and the weeks run oldest first" "$T_WEEK_ACCT" \
+   "$(fx --by week,account --color never --since 2026-10-05 --until 2026-11-01 | table)"
+
+out=$(fx --by account --color never $W)
+contains "a table with no time dimension has days and span" "span" "$(printf '%s\n' "$out" | sed -n 3p)"
+contains "...and the models of the row, when no row is a model" "models" "$(printf '%s\n' "$out" | sed -n 3p)"
+out=$(fx --by day --color never $W)
+lacks "a table by day has no days column" " days" "$(printf '%s\n' "$out" | sed -n 3p)"
+lacks "...and no span" "span" "$(printf '%s\n' "$out" | sed -n 3p)"
+lacks "a table whose rows are models has no models column" "models" "$(fx --by model --color never $W | sed -n 3p)"
+contains "the title names the window by its first and last day and the dimensions" \
+  "usage  2026-10-26 .. 2026-11-01  by account > project" "$(fx --by account,project $W | sed -n 1p)"
+contains "a breakdown adds the model to the title" "by project > model" "$(fx --by project --breakdown $W | sed -n 1p)"
+
+out=$(fx --by account --color never $W)
+contains "an unplaced session is the account ? unplaced" "? unplaced" "$out"
+contains "...and the closing line counts it and says what places it" \
+  "1 session belongs to no account: TU_ACCOUNT_RULES places a session by the directory it started in." "$out"
+lacks "...but a table with no account dimension has no such line" "belongs to no account" "$(fx --by project $W)"
+
+# A factor stored for work, under a price table the test sets: list price is
+# said at the end when the account is a row, and only then.
+FX_PRICES=$'claude-opus-5 5 25\nclaude-sonnet-5 2 10\nclaude-haiku-4-5 1 5\n'
+fpr=$(printf '%s' "$FX_PRICES" | tr -s ' \n' ' ' | cksum | tr -d ' ')
+printf 'work\t0.8\t1\t1\t%s\n' "$fpr" >"$FX/usage/factor.tsv"
+contains "a stored factor: the closing line says the dollars are at list price and names --daily" \
+  "Dollars are at list price. A meter factor is stored for work: tusage --daily scales its dollars by it." \
+  "$(fx --by account --color never $W)"
+lacks "...and it does not scale the dollars of the table" "\$94" "$(fx --by account --color never $W)"
+lacks "a table with no account dimension does not mention the factor" "meter factor" "$(fx --by project $W)"
+printf 'personal\t0.9\t1\t1\t%s\nwork\t0.8\t1\t1\t%s\n' "$fpr" "$fpr" >"$FX/usage/factor.tsv"
+contains "two accounts with a factor are both named" "stored for work and personal" \
+  "$(fx --by account --color never $W | tr '\n' ' ')"
+rm -f "$FX/usage/factor.tsv"; unset FX_PRICES
+lacks "no stored factor, no line about one" "meter factor" "$(fx --by account $W)"
+
+out=$(fx2 --by model --color never $W2)
+contains "a model with no rate: its dollars end in *" '$0*' "$out"
+contains "...and the table says the figure is a floor" "a floor" "$out"
+lacks "a table with every model rated has no such line" "a floor" "$(fx --by account $W)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

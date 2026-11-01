@@ -1152,6 +1152,12 @@ AWK_FMT='
   # A share of nothing is 0%, not a division by zero: a week with no usage, or a
   # window of nothing but zero-token placeholder requests, is a total of 0.
   function pct(v, of) { return (of > 0) ? 100*v/of : 0 }
+  # claude-opus-5 and claude-haiku-4-5-20251001 read as opus-5 and haiku-4-5.
+  function short_model(m) {
+    sub(/^claude-/, "", m)
+    if (m ~ /-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$/) m = substr(m, 1, length(m) - 9)
+    return m
+  }
   function bar(v, mx, w,   n, s, i) {
     n = (mx > 0) ? int(v / mx * w + 0.5) : 0
     s = ""; for (i = 0; i < w; i++) s = s (i < n ? "█" : "·")
@@ -1186,54 +1192,305 @@ AWK_DAY='
   }
 '
 
-report_by() {
-  local dim=$1 cut=$2
-  [ -s "$FACTS" ] || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
+# Text measured in characters: macOS awk counts bytes, so a "⑂", a "…" or a
+# Cyrillic letter would eat two or three of the columns a pad meant to fill.
+AWK_TEXT='
+  function uclen(s,   i, n, c) { n = 0
+    for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
+      if (c >= "\200" && c <= "\277") continue; n++ }
+    return n }
+  function upad(s, w,   n) { n = uclen(s); return (w > n) ? s sprintf("%" (w-n) "s", "") : s }
+'
 
-  { slug_map | sed 's/^/P\t/'; cat "$FACTS"; } |
-  LC_ALL=C awk -F"$TAB" -v cut="$cut" -v dim="$dim" -v tz="$(date +%z)" -v home="$HOME" \
-      "$AWK_FMT$AWK_DAY"'
-    BEGIN { R = "\033[0m"; DIM = "\033[90m"; B = "\033[1m" }
-    function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
-    $1 == "P" { pdir[$2] = $3; next }
-    $1 + 0 < cut { next }
-    {
-      proj = ($2 in pdir) ? tilde(pdir[$2]) : $2
-      if      (dim == "day")      k = daystr(daykey($1))
-      else if (dim == "hour")     k = daystr(daykey($1)) sprintf(" %02d:00", hourkey($1) % 24)
-      else if (dim == "project")  k = proj
-      else if (dim == "session")  k = substr($3, 1, 8) "  " proj
-      else if (dim == "model")    k = $7
-      else if (dim == "workflow") { if ($6 !~ /^wf:/) next; k = $6 "  " proj }
-      else if (dim == "agent") {
-        if ($4 == "-")           k = "· main session"
-        else if ($6 ~ /^wf:/)    k = "⑂ workflow agent"
-        else                     k = "⑂ " $5 ($6 == "bg" ? " (bg)" : "")
+# ---------------------------------------------------------------------------
+# --by: one aggregation pass, one render pass
+# ---------------------------------------------------------------------------
+# by_aggregate reads facts.tsv once and prints a stream of nodes; by_render
+# turns the stream into a table. --tsv stops after the first pass, so a script
+# and the tests read exact numbers instead of a padded table.
+#
+# The stream, one tab-separated line each:
+#   W  first day  last day  sessions that belong to no account
+#   K  an account that is a row of the table, in the order of its rows
+#   N  depth  dimension  key  reqs  in  out  cwrite  cread  usd  unpriced  first  last  days  models  more models  slug
+#   R  as N, for the "… n more" row: its key is the count of rows it sums
+#   T  as N, for the total: depth 0
+# Depth is 1 for the first dimension. Rows come depth first, children after
+# their parent, each parent's children in the order the table prints them.
+by_aggregate() {  # <dimensions, comma list> <cut> <upto> table|tsv
+  local dims=$1 cut=$2 upto=$3 mode=$4 withacct=0
+  case ",$dims," in *,account,*) withacct=1 ;; esac
+  { slug_map | sed 's/^/P\t/'
+    [ "$withacct" = 1 ] && { account_map | sed 's/^/A\t/'; }
+    cat "$FACTS"; } |
+  LC_ALL=C awk -F"$TAB" -v dims="$dims" -v cut="$cut" -v upto="$upto" -v mode="$mode" \
+      -v topn="$TOPN" -v sortcost="$([ "$SORT" = cost ] && echo 1 || echo 0)" \
+      -v now="$(date +%s)" -v tz="$(date +%z)" -v home="$HOME" \
+      -v prices="$(prices_arg)" "$AWK_FMT$AWK_DAY$AWK_PRICE"'
+    BEGIN {
+      nd = split(dims, DIM, ",")
+      for (i = 1; i <= nd; i++) {
+        if (DIM[i] == "workflow") WFONLY = 1
+        TIMED[i] = (DIM[i] == "day" || DIM[i] == "week" || DIM[i] == "month" || DIM[i] == "hour")
+        NOCUT[i] = TIMED[i] || DIM[i] == "model"
       }
-      else                        k = proj
-      if (!(k in seen)) { seen[k] = 1; order[++n] = k }
-      REQ[k] += $8; IN[k] += $9; C5[k] += $10; C1[k] += $11; CR[k] += $12; OUT[k] += $13
-      if ($14 + 0 > CX[k]) CX[k] = $14 + 0
-      C[k] = cost(IN[k], C5[k], C1[k], CR[k], OUT[k])
-      if (C[k] > mx) mx = C[k]
-      TOT += cost($9, $10, $11, $12, $13); TREQ += $8
+      ROOT = "0"
+    }
+    function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home) + 1) : p }
+    # The key of the current row for one dimension. A week is its Monday: day
+    # number 0 was a Thursday, so (day + 3) mod 7 counts days since Monday.
+    function rowkey(name, dk,   a) {
+      if (name == "account") { a = ($3 in ACC) ? ACC[$3] : "?"; if (a == "?") UNPL[$3] = 1; return a }
+      if (name == "project") return ($2 in PD) ? PD[$2] : $2
+      if (name == "session") return $3
+      if (name == "day")     return daystr(dk)
+      if (name == "week")    return daystr(dk - (dk + 3) % 7)
+      if (name == "month")   return substr(daystr(dk), 1, 7)
+      if (name == "hour")    return daystr(dk) sprintf(" %02d:00", hourkey($1) % 24)
+      if (name == "model")   return $7
+      if (name == "workflow") return $6
+      if ($4 == "-")         return "· main session"
+      if ($6 ~ /^wf:/)       return "⑂ workflow agent"
+      return "⑂ " $5 ($6 == "bg" ? " (bg)" : "")
+    }
+    $1 == "P" { PD[$2] = tilde($3); next }
+    $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
+    $1 + 0 < cut { next }
+    upto > 0 && $1 + 0 > upto { next }
+    WFONLY && $6 !~ /^wf:/ { next }
+    {
+      d = usd($7, $1 + 0, $9, $10, $11, $12, $13)
+      u = 0
+      # A request on an unrated model is a hole in the bill only when it spent
+      # something: the zero-token "<synthetic>" placeholder is not one.
+      if (d < 0) { d = 0; if ($9 + $10 + $11 + $12 + $13 > 0) u = $8 + 0 }
+      dk = daykey($1)
+      if (!NC || dk < MINDK) MINDK = dk
+      id = ""
+      for (i = 1; i <= nd; i++) id = id rowkey(DIM[i], dk) SUBSEP
+      id = id short_model($7) SUBSEP dk
+      if (!(id in CQ)) NC++
+      CQ[id] += $8; CI[id] += $9; CO[id] += $13; CW[id] += $10 + $11; CR[id] += $12
+      CU[id] += d; CP[id] += u
+      if (!($3 in SLUGOF)) SLUGOF[$3] = $2
+    }
+    # Children of a node go out in the order a table prints them. Time runs
+    # oldest first unless --sort cost; everything else is dearest first, and a
+    # tie is broken by the key, so two runs print the same rows. Dollars are
+    # compared at the millionth, where the order of the additions has stopped
+    # mattering.
+    function before(x, y,   ux, uy) {
+      if (!SORTTIME) {
+        ux = int(NU[x] * 1000000 + 0.5); uy = int(NU[y] * 1000000 + 0.5)
+        if (ux != uy) return ux > uy
+      }
+      return ("" KEYOF[x]) < ("" KEYOF[y])
+    }
+    function msort(a, lo, hi, tmp,   mid, i, j, k) {
+      if (lo >= hi) return
+      mid = int((lo + hi) / 2)
+      msort(a, lo, mid, tmp); msort(a, mid + 1, hi, tmp)
+      i = lo; j = mid + 1; k = lo
+      while (i <= mid && j <= hi) { if (before(a[j], a[i])) tmp[k++] = a[j++]; else tmp[k++] = a[i++] }
+      while (i <= mid) tmp[k++] = a[i++]
+      while (j <= hi)  tmp[k++] = a[j++]
+      for (k = lo; k <= hi; k++) a[k] = tmp[k]
+    }
+    # The two dearest models of a node by dollars, in MORE how many are left out.
+    function modelstr(nid,   n, i, j, t) {
+      n = MN[nid]
+      for (i = 1; i <= n; i++) { MS[i] = MK[nid, i]; MV[i] = int(MU[nid, MS[i]] * 1000000 + 0.5) }
+      for (i = 2; i <= n; i++)
+        for (j = i; j > 1 && (MV[j] > MV[j-1] || (MV[j] == MV[j-1] && ("" MS[j]) < ("" MS[j-1]))); j--) {
+          t = MS[j]; MS[j] = MS[j-1]; MS[j-1] = t
+          t = MV[j]; MV[j] = MV[j-1]; MV[j-1] = t
+        }
+      MORE = (n > 2) ? n - 2 : 0
+      return (n >= 2) ? MS[1] "," MS[2] : MS[1]
+    }
+    function emit(type, nid, lvl, name, key,   m) {
+      m = modelstr(nid)
+      printf "%s\t%d\t%s\t%s\t%.0f\t%.0f\t%.0f\t%.0f\t%.0f\t%.6f\t%.0f\t%s\t%s\t%d\t%s\t%d\t%s\n",
+        type, lvl, name, key, NQ[nid], NI[nid], NO[nid], NW[nid], NX[nid], NU[nid], NP[nid],
+        daystr(FD[nid]), daystr(LD[nid]), ND[nid], m, MORE, (name == "session" ? SLUGOF[key] : "")
+    }
+    function emit_tsv(nid,   i) {
+      for (i = 1; i <= nd; i++) printf "%s\t", PK[i]
+      printf "%.0f\t%.0f\t%.0f\t%.0f\t%.0f\t%.6f\t%.0f\t%s\t%s\t%d\n",
+        NQ[nid], NI[nid], NO[nid], NW[nid], NX[nid], NU[nid], NP[nid], daystr(FD[nid]), daystr(LD[nid]), ND[nid]
+    }
+    # Adds node "from" to node "into": the rows a --top cut sums into one.
+    function fold(into, from,   j, dd, m) {
+      NQ[into] += NQ[from]; NI[into] += NI[from]; NO[into] += NO[from]; NW[into] += NW[from]
+      NX[into] += NX[from]; NU[into] += NU[from]; NP[into] += NP[from]
+      for (j = 1; j <= ND[from]; j++) {
+        dd = DL[from, j]
+        if (!((into, dd) in DAYAT)) { DAYAT[into, dd] = 1; ND[into]++; DL[into, ND[into]] = dd }
+      }
+      if (!(into in FD) || FD[from] < FD[into]) FD[into] = FD[from]
+      if (!(into in LD) || LD[from] > LD[into]) LD[into] = LD[from]
+      for (j = 1; j <= MN[from]; j++) {
+        m = MK[from, j]
+        if (!((into, m) in MU)) { MN[into]++; MK[into, MN[into]] = m }
+        MU[into, m] += MU[from, m]
+      }
+    }
+    function walk(par, lvl,   n, i, c, lim, r) {
+      n = NK[par]
+      for (i = 1; i <= n; i++) SRT[i] = KID[par, i]
+      SORTTIME = (TIMED[lvl] && !sortcost)
+      msort(SRT, 1, n, TMP)
+      for (i = 1; i <= n; i++) ORD[lvl, i] = SRT[i]
+      lim = n
+      if (mode == "table" && topn > 0 && !NOCUT[lvl] && n > topn) lim = topn
+      for (i = 1; i <= lim; i++) {
+        c = ORD[lvl, i]
+        PK[lvl] = KEYOF[c]
+        if (mode == "tsv") { if (lvl == nd) emit_tsv(c) }
+        else {
+          if (DIM[lvl] == "account" && KEYOF[c] != "?") print "K\t" KEYOF[c]
+          emit("N", c, lvl, DIM[lvl], KEYOF[c])
+        }
+        if (lvl < nd) walk(c, lvl + 1)
+      }
+      if (lim < n) {
+        r = "R" (++NREST)
+        for (i = lim + 1; i <= n; i++) fold(r, ORD[lvl, i])
+        emit("R", r, lvl, DIM[lvl], n - lim)
+      }
     }
     END {
-      if (n == 0) { print "no data in this window" > "/dev/stderr"; exit 1 }
-      printf "%s%-36s %8s %7s %8s %8s %8s %8s  %s%s\n", DIM, dim,
-             "cost", "reqs", "cwrite", "cread", "out", "maxctx", "share", R
-      # sort by cost, descending — the answer to "who ate it" should be line 1
-      for (i = 1; i <= n; i++) for (j = i + 1; j <= n; j++)
-        if (C[order[j]] > C[order[i]]) { t = order[i]; order[i] = order[j]; order[j] = t }
-      for (i = 1; i <= n; i++) {
-        k = order[i]
-        printf "%-36.36s %8s %7d %8s %8s %8s %7.0fk  %s%s%s %s%4.1f%%%s\n",
-               k, human(C[k]), REQ[k], human(C5[k] + C1[k]), human(CR[k]),
-               human(OUT[k]), CX[k]/1000,
-               DIM, bar(C[k], mx, 14), R, DIM, pct(C[k], TOT), R
+      if (!NC) { print "no data in this window" > "/dev/stderr"; exit 1 }
+      for (c in CQ) {
+        split(c, P, SUBSEP)
+        mdl = P[nd + 1]; dkc = P[nd + 2] + 0
+        nid = ROOT
+        for (d = 0; d <= nd; d++) {
+          if (d > 0) { par = nid; nid = par SUBSEP P[d] }
+          if (!(nid in SEEN)) {
+            SEEN[nid] = 1
+            if (d > 0) { NK[par]++; KID[par, NK[par]] = nid; KEYOF[nid] = P[d] }
+          }
+          NQ[nid] += CQ[c]; NI[nid] += CI[c]; NO[nid] += CO[c]; NW[nid] += CW[c]; NX[nid] += CR[c]
+          NU[nid] += CU[c]; NP[nid] += CP[c]
+          if (!((nid, dkc) in DAYAT)) { DAYAT[nid, dkc] = 1; ND[nid]++; DL[nid, ND[nid]] = dkc }
+          if (!(nid in FD) || dkc < FD[nid]) FD[nid] = dkc
+          if (!(nid in LD) || dkc > LD[nid]) LD[nid] = dkc
+          if (!((nid, mdl) in MU)) { MN[nid]++; MK[nid, MN[nid]] = mdl }
+          MU[nid, mdl] += CU[c]
+        }
       }
-      printf "%s%-36s %8s %7d%s\n", DIM, "TOTAL", human(TOT), TREQ, R
+      if (mode == "table") {
+        for (s in UNPL) nun++
+        printf "W\t%s\t%s\t%d\n", daystr(cut > 0 ? daykey(cut) : MINDK), daystr(upto > 0 ? daykey(upto) : daykey(now)), nun
+      }
+      walk(ROOT, 1)
+      if (mode == "table") emit("T", ROOT, 0, "", "total")
     }'
+}
+
+# The table. The nodes arrive on standard input; <title> is the dimensions as
+# the first line names them.
+by_render() {  # <dimensions, comma list> <title>
+  LC_ALL=C awk -F"$TAB" -v dims="$1" -v title="$2" -v factors="$(factor_arg)" \
+      "$AWK_FMT$AWK_PRICE$AWK_TEXT"'
+    BEGIN {
+      nd = split(dims, DIM, ",")
+      for (i = 1; i <= nd; i++) {
+        if (DIM[i] == "model") HASMODEL = 1
+        if (DIM[i] == "day" || DIM[i] == "week" || DIM[i] == "month" || DIM[i] == "hour") HASTIME = 1
+      }
+      nf = split(factors, fr, ";")
+      for (i = 1; i <= nf; i++) if (fr[i] != "") { split(fr[i], q, "="); FAC[q[1]] = 1 }
+      split("reqs input output cwrite cread total usd share days span models", CN, " ")
+      split("reqs input output cwrite cread total $ share days span models", CH, " ")
+      split("5 6 6 6 6 6 8 6 4 12 16", CW, " ")
+    }
+    $1 == "W" { FROM = $2; TO = $3; UNPL = $4 + 0; next }
+    $1 == "K" { NK++; KACC[NK] = $2; next }
+    {
+      n++
+      TY[n] = $1; DP[n] = $2 + 0; DM[n] = $3; KY[n] = $4
+      Q[n] = $5; IN[n] = $6; OU[n] = $7; CWR[n] = $8; CRD[n] = $9; U[n] = $10 + 0; UP[n] = $11 + 0
+      FD[n] = $12; LD[n] = $13; ND[n] = $14; MD[n] = $15; MO[n] = $16 + 0
+      if ($1 == "T") TOT = $10 + 0
+    }
+    function label(i,   d, k, t) {
+      d = DM[i]; k = KY[i]
+      if (TY[i] == "T") return "total"
+      if (TY[i] == "R")      t = "… " k " more"
+      else if (d == "account") t = (k == "?") ? "? unplaced" : k
+      else if (d == "session") t = substr(k, 1, 8)
+      else if (d == "week")  t = "wk " k
+      else if (d == "model") t = short_model(k)
+      else t = k
+      return substr("        ", 1, 2 * (DP[i] - 1)) t
+    }
+    function cell(c, i,   a, b) {
+      if (c == "reqs")   return sprintf("%d", Q[i])
+      if (c == "input")  return human(IN[i])
+      if (c == "output") return human(OU[i])
+      if (c == "cwrite") return human(CWR[i])
+      if (c == "cread")  return human(CRD[i])
+      if (c == "total")  return human(IN[i] + OU[i] + CWR[i] + CRD[i])
+      if (c == "usd")    return money(U[i]) (UP[i] > 0 ? "*" : "")
+      if (c == "share")  return sprintf("%.1f%%", pct(U[i], TOT))
+      if (c == "days")   return sprintf("%d", ND[i])
+      if (c == "span") { a = substr(FD[i], 6); b = substr(LD[i], 6); return (a == b) ? a : a ".." b }
+      return MD[i] (MO[i] > 0 ? " +" MO[i] : "")
+    }
+    function fit(s, c) { return (c == "span" || c == "models") ? sprintf("%-" W[c] "s", s) : sprintf("%" W[c] "s", s) }
+    function out(s) { sub(/ +$/, "", s); print s }
+    function and_list(a, m,   i, s) {
+      for (i = 1; i <= m; i++) s = s (i == 1 ? "" : (i == m ? " and " : ", ")) a[i]
+      return s
+    }
+    END {
+      if (!n) exit
+      nc = 0
+      for (j = 1; j <= 8; j++) COLS[++nc] = CN[j]
+      if (!HASTIME)  { COLS[++nc] = "days"; COLS[++nc] = "span" }
+      if (!HASMODEL) COLS[++nc] = "models"
+      for (j = 1; j <= 11; j++) { W[CN[j]] = CW[j]; for (k = 1; k <= 11; k++) if (CN[k] == CN[j]) H[CN[j]] = CH[k] }
+      labw = 5
+      for (i = 1; i <= n; i++) {
+        L[i] = label(i); if (uclen(L[i]) > labw) labw = uclen(L[i])
+        if (UP[i] > 0) FLOOR = 1
+        for (j = 1; j <= nc; j++) { t = cell(COLS[j], i); X[i, j] = t; if (length(t) > W[COLS[j]]) W[COLS[j]] = length(t) }
+      }
+      print "usage  " FROM " .. " TO "  " title
+      print ""
+      s = upad("", labw)
+      for (j = 1; j <= nc; j++) s = s "  " fit(H[COLS[j]], COLS[j])
+      out(s)
+      for (i = 1; i <= n; i++) {
+        s = upad(L[i], labw)
+        for (j = 1; j <= nc; j++) s = s "  " fit(X[i, j], COLS[j])
+        out(s)
+      }
+      nl = 0
+      if (FLOOR) NOTE[++nl] = "* marks dollars that are a floor: a request ran on a model with no published rate and counts as $0."
+      if (UNPL > 0) NOTE[++nl] = UNPL " session" (UNPL == 1 ? " belongs" : "s belong") " to no account: TU_ACCOUNT_RULES places a session by the directory it started in."
+      nfa = 0
+      for (i = 1; i <= NK; i++) if (KACC[i] in FAC) FA[++nfa] = KACC[i]
+      if (nfa == 1) NOTE[++nl] = "Dollars are at list price. A meter factor is stored for " FA[1] ": tusage --daily scales its dollars by it."
+      else if (nfa > 1) NOTE[++nl] = "Dollars are at list price. Meter factors are stored for " and_list(FA, nfa) ": tusage --daily scales their dollars by them."
+      if (nl) { print ""; for (i = 1; i <= nl; i++) print NOTE[i] }
+    }'
+}
+
+report_by() {  # <the --by list> <cut> <upto>
+  local dims=$1 cut=$2 upto=$3 all=$1 nodes rc
+  [ -s "$FACTS" ] || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
+  # --breakdown is one more dimension under the deepest one, unless the model
+  # is a dimension already.
+  case ",$dims," in *,model,*) ;; *) [ "$BREAKDOWN" = 1 ] && all="$dims,model" ;; esac
+  if [ "$TSV" = 1 ]; then by_aggregate "$all" "$cut" "$upto" tsv; return; fi
+  nodes=$(mktemp "${TMPDIR:-/tmp}/tusage.by.XXXXXX") || return 1
+  by_aggregate "$all" "$cut" "$upto" table >"$nodes"; rc=$?
+  [ "$rc" = 0 ] && { by_render "$all" "by ${all//,/ > }" <"$nodes"; rc=$?; }
+  rm -f "$nodes"
+  return "$rc"
 }
 
 # sid, cost, reqs, ctx, last_ts, slug, subagent_cost, live_subagents, cost_5h,
@@ -1394,15 +1651,9 @@ summary() {
   local now; now=$(date +%s)
   [ -s "$FACTS" ] || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
   { slug_map | sed 's/^/P\t/'; cat "$FACTS"; } |
-  LC_ALL=C awk -F"$TAB" -v now="$now" -v home="$HOME" "$AWK_FMT"'
+  LC_ALL=C awk -F"$TAB" -v now="$now" -v home="$HOME" "$AWK_FMT$AWK_TEXT"'
     BEGIN { R = "\033[0m"; DIM = "\033[90m"; B = "\033[1m" }
     function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
-    # pad by CHARACTERS: macOS awk counts bytes, so a "⑂" would eat three of them
-    function uclen(s,   i, n, c) { n = 0
-      for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
-        if (c >= "\200" && c <= "\277") continue; n++ }
-      return n }
-    function upad(s, w,   n) { n = uclen(s); return (w > n) ? s sprintf("%" (w-n) "s", "") : s }
     $1 == "P" { pdir[$2] = $3; next }
     {
       c = cost($9,$10,$11,$12,$13); age = now - ($1 + 0)
@@ -1616,5 +1867,5 @@ case "$DIM" in
   __detail)    session_detail "$SESSION" ;;
   __burn)      burn ;;
   __json)      json "$CUT" "$UPTO" ;;
-  __by)        report_by "${DIMS[0]}" "$CUT" ;;
+  __by)        report_by "$BYLIST" "$CUT" "$UPTO" ;;
 esac
