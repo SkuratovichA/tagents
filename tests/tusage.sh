@@ -816,17 +816,30 @@ for s in d8c3b615 0a6f7e92 7c3f4e55 8d4a5f66; do fxhist personal $s; done
 # names another index and FX_PRICES another price table; FX_TA the tagents state
 # directory (names), FX_CONFIG the tagents config, FX_HOME the home, FX_ACCOUNTS
 # the TU_ACCOUNTS (empty is unset), FX_RULES the TU_ACCOUNT_RULES, FX_TU the
-# script to run and FX_SH the shell that runs it.
+# script to run and FX_SH the shell that runs it, FX_COLUMNS the COLUMNS (empty
+# is none), FX_NO_COLOR the NO_COLOR (empty is set but empty) and FX_PTY, when
+# set, runs it under a pseudo-terminal.
+pty() {  # <command...>: standard output is a terminal, standard input is empty
+  { if [ "$PTY" = bsd ]; then script -q /dev/null "$@" </dev/null
+    else script -qc "$(printf '%q ' "$@")" /dev/null </dev/null; fi; } 2>/dev/null |
+    LC_ALL=C tr -d '\r' | LC_ALL=C sed $'1s/^\\^D\010\010//'
+}
+PTY=""
+if [ "$(script -q /dev/null bash -c 'test -t 1 && echo yes' </dev/null 2>/dev/null | tr -d '\r' | grep -c yes)" = 1 ]; then PTY=bsd
+elif [ "$(script -qc "bash -c 'test -t 1 && echo yes'" /dev/null </dev/null 2>/dev/null | tr -d '\r' | grep -c yes)" = 1 ]; then PTY=gnu
+fi
 fx_raw() {
   (
     unset TU_PRICES TU_ACCOUNT_RULES NO_COLOR TU_KEEP_DAYS TU_ACCOUNTS
+    [ -z "${FX_NO_COLOR+x}" ] || export NO_COLOR="$FX_NO_COLOR"
     [ -z "${FX_PRICES:-}" ] || export TU_PRICES="$FX_PRICES"
     [ -z "${FX_RULES:-}" ] || export TU_ACCOUNT_RULES="$FX_RULES"
     export TU_ACCOUNTS="${FX_ACCOUNTS-work=$FX/acct/work;personal=$FX/acct/personal}"
-    HOME="${FX_HOME:-$FXH}" TZ=UTC TERM=xterm COLUMNS=140 \
-    TU_STATE="${FX_STATE:-$FX/usage}" TU_PROJECTS="$FX/projects" TU_NO_METER=1 \
-    TA_STATE_DIR="${FX_TA:-$FX/ta}" TA_CONFIG="${FX_CONFIG:-$FX/no-such-config.toml}" \
-    ${FX_SH:-bash} "${FX_TU:-$TU}" --no-update "$@"
+    export HOME="${FX_HOME:-$FXH}" TZ=UTC TERM="${FX_TERM:-xterm}" COLUMNS="${FX_COLUMNS-140}" \
+      TU_STATE="${FX_STATE:-$FX/usage}" TU_PROJECTS="$FX/projects" TU_NO_METER=1 \
+      TA_STATE_DIR="${FX_TA:-$FX/ta}" TA_CONFIG="${FX_CONFIG:-$FX/no-such-config.toml}"
+    if [ -n "${FX_PTY:-}" ]; then pty ${FX_SH:-bash} "${FX_TU:-$TU}" --no-update "$@"
+    else ${FX_SH:-bash} "${FX_TU:-$TU}" --no-update "$@"; fi
   )
 }
 fx() { fx_raw "$@" 2>&1; }
@@ -1568,6 +1581,139 @@ ok "--account narrows the lookup of --by too" 1 "$(fxrc --session refactor-billi
 ok "a name that fits two sessions exits 3 with --by as it does without" 3 "$(fxrc --session tagents --by day)"
 ok "a value that names nothing exits 1 with --by" 1 "$(fxrc --session nothing-like-it --by day)"
 unset FX_TA
+
+# ---------------------------------------------------------------------------
+t "23. the table fits the terminal"
+# ---------------------------------------------------------------------------
+# The width is COLUMNS when that is a number, else the terminal's, else 120.
+# Columns go in a fixed order until the label has 24 characters; the label,
+# total, dollars and share stay. Lengths are counted in characters.
+
+maxlen() {  # the longest line of standard input, in characters
+  LC_ALL=C awk '{ n = 0; for (i = 1; i <= length($0); i++) { c = substr($0, i, 1); if (c < "\200" || c > "\277") n++ }
+                 if (n > m) m = n } END { print m + 0 }'
+}
+header() { grep -m1 ' share' | tr -s ' ' | sed 's/^ //'; }  # the column names of a table
+cols() { FX_COLUMNS=$1 fx --by "$2" --color never $W | header; }
+
+ok "80 columns: no line is longer than 80, the closing lines included" 1 \
+   "$([ "$(FX_COLUMNS=80 fx --by account --color never $W | maxlen)" -le 80 ] && echo 1 || echo 0)"
+T_AT80='usage  2026-10-26 .. 2026-11-01  by account
+
+             reqs  output   cread   total         $   share
+work          812    584k  110.2M  121.7M      $118   72.5%
+personal      318    231k   42.9M   47.3M     $44.3   27.3%
+? unplaced     18      9k    700k    829k     $0.26    0.2%
+total        1148    824k  153.8M  169.9M      $162  100.0%'
+ok "80 columns drop models, span, days, input and cwrite" "$T_AT80" "$(FX_COLUMNS=80 fx --by account --color never $W | table)"
+T_AT72='                           reqs  output   total         $   share
+work                        812    584k  121.7M      $118   72.5%
+  ~/git/work/billing-api    659    483k  102.0M      $101   62.3%
+  ~/git/work/web-app        153    101k   19.8M     $16.7   10.3%
+personal                    318    231k   47.3M     $44.3   27.3%
+  ~/git/personal/tagents    215    162k   35.4M     $38.8   23.9%
+  ~/git/personal/site       103     69k   11.9M     $5.51    3.4%
+? unplaced                   18      9k    829k     $0.26    0.2%
+  ~/scratch/probe            18      9k    829k     $0.26    0.2%
+total                      1148    824k  169.9M      $162  100.0%'
+ok "72 columns leave 24 for the labels by dropping cread as well" "$T_AT72" \
+   "$(FX_COLUMNS=72 fx --by account,project --color never $W | table | sed 1,2d)"
+T_COMPACT='                           total         $   share
+work                      121.7M      $118   72.5%
+  ~/git/work/billing-api  102.0M      $101   62.3%
+  ~/git/work/web-app       19.8M     $16.7   10.3%
+personal                   47.3M     $44.3   27.3%
+  ~/git/personal/tagents   35.4M     $38.8   23.9%
+  ~/git/personal/site      11.9M     $5.51    3.4%
+? unplaced                  829k     $0.26    0.2%
+  ~/scratch/probe           829k     $0.26    0.2%
+total                     169.9M      $162  100.0%'
+ok "--compact keeps the label, total, dollars and share" "$T_COMPACT" \
+   "$(fx --by account,project --compact --color never $W | table | sed 1,2d)"
+ok "--compact does the same at any width" "$T_COMPACT" \
+   "$(FX_COLUMNS=200 fx --by account,project --compact --color never $W | table | sed 1,2d)"
+
+ok "the columns of a table with room for them all" "reqs input output cwrite cread total \$ share days span models" "$(cols 200 account,project)"
+ok "120 columns: models go first" "reqs input output cwrite cread total \$ share days span" "$(cols 120 account,project)"
+ok "100: span goes next" "reqs input output cwrite cread total \$ share days" "$(cols 100 account,project)"
+ok "90: then days" "reqs input output cwrite cread total \$ share" "$(cols 90 account,project)"
+ok "80: then input and cwrite" "reqs output cread total \$ share" "$(cols 80 account,project)"
+ok "72: then cread" "reqs output total \$ share" "$(cols 72 account,project)"
+ok "60: then output" "reqs total \$ share" "$(cols 60 account,project)"
+ok "45: then reqs; the label, total, dollars and share are never dropped" "total \$ share" "$(cols 45 account,project)"
+ok "a width that is not a number is 120" "$(FX_COLUMNS=120 fx --by account,project --color never $W)" \
+   "$(FX_COLUMNS=wide fx --by account,project --color never $W)"
+ok "no COLUMNS and no terminal is 120 too" "$(FX_COLUMNS=120 fx --by account,project --color never $W)" \
+   "$(FX_COLUMNS= fx --by account,project --color never $W)"
+ok "a table by day has the days and span columns of no time dimension left out, at any width" "reqs input output cwrite cread total \$ share models" "$(cols 200 day)"
+
+# A label that does not fit ends in an ellipsis; a session keeps its id.
+export FX_TA="$TA20"
+out=$(FX_COLUMNS=60 fx --by session --top 0 --color never $W)
+ok "60 columns: no line of a session table is longer" 1 "$([ "$(printf '%s\n' "$out" | maxlen)" -le 60 ] && echo 1 || echo 0)"
+contains "a named session is cut in its name and keeps its eight characters" "Fix the webapp l…  91ab44ee" "$out"
+contains "a name that fits is whole" "refactor-billing  3f9a1c20" "$out"
+contains "a session with no name keeps all eight characters" "e5d1f0a7" "$out"
+out=$(FX_COLUMNS=40 fx --by project --color never $W)
+ok "40 columns: no line is longer, the title included" 1 "$([ "$(printf '%s\n' "$out" | maxlen)" -le 40 ] && echo 1 || echo 0)"
+contains "a directory is cut with an ellipsis" "~/git/persona…" "$out"
+unset FX_TA
+
+# The closing lines wrap at the width and lose no word.
+notes() { sed '1,/^total/d' | sed '/^$/d' | sed 's/^  //' | tr '\n' ' '; }
+ok "the closing lines wrapped at 80 hold the same words as at 140" "$(fx --by account --color never $W | notes)" \
+   "$(FX_COLUMNS=80 fx --by account --color never $W | notes)"
+ok "...and are cut into more lines" 1 "$([ "$(FX_COLUMNS=80 fx --by account --color never $W | sed '1,/^total/d' | grep -c .)" -gt "$(fx --by account --color never $W | sed '1,/^total/d' | grep -c .)" ] && echo 1 || echo 0)"
+
+# Names are measured in characters: Cyrillic is two bytes a letter.
+TA23="$ROOT/ta23"; mkdir -p "$TA23"
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "Счёт-фактура для клиента" "$(fxsid d8c3b615)" "ядро" >"$TA23/labels.tsv"
+out=$(FX_TA="$TA23" fx --by session --compact --top 0 --color never $W)
+contains "a Cyrillic name is shown" "Счёт-фактура для клиента  3f9a1c20" "$out"
+ok "...and every row has the same length in characters" 1 "$(printf '%s\n' "$out" | sed '1,2d' | sed '/^$/,$d' |
+   LC_ALL=C awk '{ n = 0; for (i = 1; i <= length($0); i++) { c = substr($0, i, 1); if (c < "\200" || c > "\277") n++ }; print n }' | sort -u | wc -l | tr -d ' ')"
+out=$(FX_TA="$TA23" FX_COLUMNS=50 fx --by session --top 0 --color never $W)
+contains "a Cyrillic name is cut by characters, and keeps its id" "Счёт-фактура …  3f9a1c20" "$out"
+ok "...so the output is still valid UTF-8" 0 "$(printf '%s\n' "$out" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; echo $?)"
+
+# ---------------------------------------------------------------------------
+t "24. colour only where it helps"
+# ---------------------------------------------------------------------------
+ESC=$(printf '\033')
+ok "a pipe has no escape sequence" 0 "$(fx --by account $W | grep -c "$ESC")"
+ok "--color never has none" 0 "$(fx --by account --color never $W | grep -c "$ESC")"
+ok "--color always has them" 1 "$([ "$(fx --by account --color always $W | grep -c "$ESC")" -gt 0 ] && echo 1 || echo 0)"
+ok "--color always wins over NO_COLOR" 1 "$([ "$(FX_NO_COLOR=1 fx --by account --color always $W | grep -c "$ESC")" -gt 0 ] && echo 1 || echo 0)"
+ok "--tsv has no colour, whatever --color says" 0 "$(fx --by account --tsv --color always $W | grep -c "$ESC")"
+ok "colour is only escape sequences: the table is the same without them" "$(fx --by account,project --color never $W)" \
+   "$(fx --by account,project --color always $W | sed "s/${ESC}\\[[0-9;]*m//g")"
+ok "...also for a session's heading and for --top rows" "$(fx --session refactor-billing --by day,model --color never; fx --by session --top 3 --color never $W)" \
+   "$({ fx --session refactor-billing --by day,model --color always; fx --by session --top 3 --color always $W; } | sed "s/${ESC}\\[[0-9;]*m//g")"
+out=$(fx --by account,project --color always $W)
+ok "a row with rows under it is bold" 1 "$(printf '%s\n' "$out" | grep -c "^${ESC}\[1mwork ")"
+ok "the total is bold" 1 "$(printf '%s\n' "$out" | grep -c "^${ESC}\[1mtotal ")"
+ok "a row with nothing under it is plain" 1 "$(printf '%s\n' "$out" | grep -c "^  ~/git/work/web-app ")"
+ok "the column names are dim" 1 "$(printf '%s\n' "$out" | grep -c "^${ESC}\[90m  *reqs")"
+ok "a row that sums the rest is dim" 1 "$(fx --by session --top 3 --color always $W | grep -c "^${ESC}\[90m… 5 more")"
+ok "--color bad exits 2" 2 "$(fxrc --by account --color purple)"
+
+if [ -z "$PTY" ]; then
+  printf '  skip the checks on a pseudo-terminal: no script that makes one\n'
+else
+  ptyn() { FX_PTY=1 "$@" | grep -c "$ESC"; }
+  ok "on a terminal, auto colours" 1 "$([ "$(ptyn fx --by account $W)" -gt 0 ] && echo 1 || echo 0)"
+  ok "...unless --color never" 0 "$(ptyn fx --by account --color never $W)"
+  ok "...or NO_COLOR is set" 0 "$(FX_NO_COLOR=1 ptyn fx --by account $W)"
+  ok "...but an empty NO_COLOR is not set" 1 "$([ "$(FX_NO_COLOR= ptyn fx --by account $W)" -gt 0 ] && echo 1 || echo 0)"
+  ok "...or TERM is dumb" 0 "$(FX_TERM=dumb ptyn fx --by account $W)"
+  ok "...and --color always still colours with NO_COLOR" 1 "$([ "$(FX_NO_COLOR=1 ptyn fx --by account --color always $W)" -gt 0 ] && echo 1 || echo 0)"
+  cat >"$ROOT/narrow.sh" <<NARROW
+stty cols 70
+exec bash "$TU" "\$@"
+NARROW
+  out=$(FX_PTY=1 FX_COLUMNS= FX_TU="$ROOT/narrow.sh" fx --by account,project --color never $W)
+  ok "with no COLUMNS the width of the terminal is used" "$(FX_COLUMNS=70 fx --by account,project --color never $W)" "$out"
+fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

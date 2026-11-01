@@ -1200,6 +1200,11 @@ AWK_TEXT='
       if (c >= "\200" && c <= "\277") continue; n++ }
     return n }
   function upad(s, w,   n) { n = uclen(s); return (w > n) ? s sprintf("%" (w-n) "s", "") : s }
+  function utrunc(s, n,   i, c, k, r) { k = 0; r = ""
+    for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
+      if (c < "\200" || c > "\277") { if (k == n) break; k++ }
+      r = r c }
+    return r }
 '
 
 # A directory as the tables show it: the home is a tilde. Needs -v home.
@@ -1652,12 +1657,24 @@ by_aggregate() {  # <dimensions, comma list> <cut> <upto> table|tsv
     }'
 }
 
+# How wide a table may be: COLUMNS when that is a number, else the terminal's
+# width when standard output is one, else 120.
+out_width() {
+  local w=""
+  case ${COLUMNS:-} in ''|*[!0-9]*|0) ;; *) w=$COLUMNS ;; esac
+  if [ -z "$w" ] && [ "$OUT_TTY" = 1 ]; then w=$(stty size </dev/tty 2>/dev/null); w=${w#* }; fi
+  case $w in ''|*[!0-9]*|0) w=120 ;; esac
+  echo "$w"
+}
+
 # The table. The nodes arrive on standard input; <title> is the dimensions as
 # the first line names them.
 by_render() {  # <dimensions, comma list> <title>
   LC_ALL=C awk -F"$TAB" -v dims="$1" -v title="$2" -v factors="$(factor_arg)" \
+      -v width="$(out_width)" -v compact="$COMPACT" -v color="$COLOR_ON" \
       "$AWK_FMT$AWK_PRICE$AWK_TEXT"'
     BEGIN {
+      B = "\033[1m"; D = "\033[90m"; R = "\033[0m"
       nd = split(dims, DIM, ",")
       for (i = 1; i <= nd; i++) {
         if (DIM[i] == "model") HASMODEL = 1
@@ -1706,37 +1723,75 @@ by_render() {  # <dimensions, comma list> <title>
       return MD[i] (MO[i] > 0 ? " +" MO[i] : "")
     }
     function fit(s, c) { return (c == "span" || c == "models") ? sprintf("%-" W[c] "s", s) : sprintf("%" W[c] "s", s) }
-    function out(s) { sub(/ +$/, "", s); print s }
+    # A line of the table in a style: colour wraps the padded line, so it never
+    # changes a width.
+    function out(s, style) { sub(/ +$/, "", s); print (color && style != "") ? style s R : s }
+    # The label of row i, cut to lim characters. A named session is cut in its
+    # name and keeps its eight id characters; an unnamed one is its id.
+    function fitlabel(i, lim,   t, ind, room) {
+      t = label(i)
+      if (uclen(t) <= lim || TY[i] != "N") return t
+      if (DM[i] == "session") {
+        if (!(KY[i] in NAME)) return t
+        ind = substr("        ", 1, 2 * (DP[i] - 1))
+        room = lim - length(ind) - 2 - 8 - 1
+        return ind utrunc(NAME[KY[i]], room > 0 ? room : 0) "…  " substr(KY[i], 1, 8)
+      }
+      return utrunc(t, lim - 1) "…"
+    }
+    function used(   j, u) { for (j = 1; j <= nc; j++) u += W[COLS[j]] + 2; return u }
+    function drop(c,   j, k) {
+      for (j = 1; j <= nc; j++) if (COLS[j] == c) { for (k = j; k < nc; k++) COLS[k] = COLS[k + 1]; nc--; return }
+    }
+    # A line that is longer than the table may be is broken at spaces, the lines
+    # after the first indented by two. One that fits is printed as it is.
+    function note(s,   m, w, line, wd) {
+      if (uclen(s) <= width) { print s; return }
+      m = split(s, wd, " "); line = ""
+      for (w = 1; w <= m; w++) {
+        if (line != "" && uclen(line) + 1 + uclen(wd[w]) > width) { print line; line = "  " wd[w] }
+        else line = (line == "") ? wd[w] : line " " wd[w]
+      }
+      if (line != "") print line
+    }
     function and_list(a, m,   i, s) {
       for (i = 1; i <= m; i++) s = s (i == 1 ? "" : (i == m ? " and " : ", ")) a[i]
       return s
     }
     END {
       if (!n) exit
+      for (j = 1; j <= 11; j++) { W[CN[j]] = CW[j]; H[CN[j]] = CH[j] }
       nc = 0
-      for (j = 1; j <= 8; j++) COLS[++nc] = CN[j]
-      if (!HASTIME)  { COLS[++nc] = "days"; COLS[++nc] = "span" }
-      if (!HASMODEL) COLS[++nc] = "models"
-      for (j = 1; j <= 11; j++) { W[CN[j]] = CW[j]; for (k = 1; k <= 11; k++) if (CN[k] == CN[j]) H[CN[j]] = CH[k] }
-      labw = 5
-      for (i = 1; i <= n; i++) {
-        L[i] = label(i); if (uclen(L[i]) > labw) labw = uclen(L[i])
-        if (UP[i] > 0) FLOOR = 1
-        for (j = 1; j <= nc; j++) { t = cell(COLS[j], i); X[i, j] = t; if (length(t) > W[COLS[j]]) W[COLS[j]] = length(t) }
+      if (compact) { COLS[++nc] = "total"; COLS[++nc] = "usd"; COLS[++nc] = "share" }
+      else {
+        for (j = 1; j <= 8; j++) COLS[++nc] = CN[j]
+        if (!HASTIME)  { COLS[++nc] = "days"; COLS[++nc] = "span" }
+        if (!HASMODEL) COLS[++nc] = "models"
       }
+      for (i = 1; i <= n; i++) {
+        if (UP[i] > 0) FLOOR = 1
+        for (j = 1; j <= nc; j++) { t = cell(COLS[j], i); X[i, COLS[j]] = t; if (length(t) > W[COLS[j]]) W[COLS[j]] = length(t) }
+      }
+      # Columns go in a fixed order until the label has room for 24 characters.
+      # The label, total, dollars and share stay, whatever the width.
+      nx = split("models span days input cwrite cread output reqs", DROPS, " ")
+      for (j = 1; j <= nx && width - used() < 24; j++) drop(DROPS[j])
+      lim = width - used(); if (lim < 5) lim = 5
+      labw = 5
+      for (i = 1; i <= n; i++) { L[i] = fitlabel(i, lim); if (uclen(L[i]) > labw) labw = uclen(L[i]) }
       if (HEAD) {
         gsub(/[\001-\037\177]/, "", HNAME); gsub(/[\001-\037\177]/, "", HDIR)
-        t = (HNAME == "") ? HID : HNAME "  " HID; print t
+        t = (HNAME == "") ? HID : HNAME "  " HID; out(t, B)
         print HACC "  ·  " HDIR "  ·  " TDAYS " day" (TDAYS == 1 ? "" : "s") ", " span(TFROM, TTO)
-      } else print "usage  " FROM " .. " TO "  " title
+      } else note("usage  " FROM " .. " TO "  " title)
       print ""
       s = upad("", labw)
       for (j = 1; j <= nc; j++) s = s "  " fit(H[COLS[j]], COLS[j])
-      out(s)
+      out(s, D)
       for (i = 1; i <= n; i++) {
         s = upad(L[i], labw)
-        for (j = 1; j <= nc; j++) s = s "  " fit(X[i, j], COLS[j])
-        out(s)
+        for (j = 1; j <= nc; j++) s = s "  " fit(X[i, COLS[j]], COLS[j])
+        out(s, TY[i] == "T" || (TY[i] == "N" && DP[i] < nd) ? B : (TY[i] == "R" ? D : ""))
       }
       nl = 0
       if (FLOOR) NOTE[++nl] = "* marks dollars that are a floor: a request ran on a model with no published rate and counts as $0."
@@ -1745,7 +1800,7 @@ by_render() {  # <dimensions, comma list> <title>
       for (i = 1; i <= NK; i++) if (KACC[i] in FAC) FA[++nfa] = KACC[i]
       if (nfa == 1) NOTE[++nl] = "Dollars are at list price. A meter factor is stored for " FA[1] ": tusage --daily scales its dollars by it."
       else if (nfa > 1) NOTE[++nl] = "Dollars are at list price. Meter factors are stored for " and_list(FA, nfa) ": tusage --daily scales their dollars by them."
-      if (nl) { print ""; for (i = 1; i <= nl; i++) print NOTE[i] }
+      if (nl) { print ""; for (i = 1; i <= nl; i++) note(NOTE[i]) }
     }'
 }
 
@@ -2023,6 +2078,7 @@ SINCE=""; UNTIL=""; DIM=""; DO_UPDATE=1; CAL_ACCT=""; CAL_AMT=""; CAL_AT=""
 MET_REFRESH=0; MET_FORCE=0
 BYLIST=""; SESSION=""; ACCTS=""; PROJS=""; BREAKDOWN=0; TOPN=12; SORT=""
 COLOR=auto; COMPACT=0; TSV=0
+OUT_TTY=0; [ -t 1 ] && OUT_TTY=1   # asked here: inside $( ) standard output is a pipe
 US=$'\037'
 DIMENSIONS="account project session day week month hour agent model workflow"
 
@@ -2105,6 +2161,13 @@ check_accounts() {
 case "$TOPN" in ''|*[!0-9]*) die_usage "--top wants a number of rows, not $TOPN" ;; esac
 [ -z "$SORT" ] || [ "$SORT" = cost ] || die_usage "--sort accepts only cost, not $SORT"
 case "$COLOR" in auto|always|never) ;; *) die_usage "--color accepts auto, always or never, not $COLOR" ;; esac
+# Colour: only on a terminal, with NO_COLOR unset or empty and TERM not dumb;
+# --color always is an explicit request and wins over NO_COLOR.
+COLOR_ON=0
+case "$COLOR" in
+  always) COLOR_ON=1 ;;
+  auto)   [ "$OUT_TTY" = 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != dumb ] && COLOR_ON=1 ;;
+esac
 if [ -n "$ACCTS" ]; then ensure_accounts
 else case "$DIM" in __by|__daily|__meter|__calibrate) ensure_accounts ;; esac
 fi

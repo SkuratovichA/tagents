@@ -42,9 +42,9 @@ Every shell suite runs as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" b
 
 ## 8. Layout and colour
 
-- [ ] 8.1 Write failing tests: `COLUMNS=80` keeps every line within 80 characters and keeps the dollars and share columns; the drop order of the columns at several widths; `--compact`; a label cut with `…` keeps the session's eight id characters; Cyrillic names pad by characters; the closing lines; `days` and `span` appear only without a time dimension and `models` only without model rows. Proof: `tests/tusage.sh`.
-- [ ] 8.2 Write failing tests for colour: no escape sequence in a pipe, `--color always` emits it, `--color never` removes it, `NO_COLOR` and `TERM=dumb` remove it under `auto`, and `always` wins over `NO_COLOR`; one check through a pseudo-terminal (`script`, in its BSD or GNU form) that `auto` colours a terminal, reported as skipped when `script` is absent. Proof: `tests/tusage.sh`.
-- [ ] 8.3 Write the render pass, move `uclen` and `upad` out of the summary into one shared awk block with a character-aware `utrunc`, and make every awk that uses them read the block. Proof: `tests/tusage.sh`, `tests/modules.sh`.
+- [x] 8.1 Write failing tests: `COLUMNS=80` keeps every line within 80 characters and keeps the dollars and share columns; the drop order of the columns at several widths; `--compact`; a label cut with `…` keeps the session's eight id characters; Cyrillic names pad by characters; the closing lines; `days` and `span` appear only without a time dimension and `models` only without model rows. Proof: `tests/tusage.sh`.
+- [x] 8.2 Write failing tests for colour: no escape sequence in a pipe, `--color always` emits it, `--color never` removes it, `NO_COLOR` and `TERM=dumb` remove it under `auto`, and `always` wins over `NO_COLOR`; one check through a pseudo-terminal (`script`, in its BSD or GNU form) that `auto` colours a terminal, reported as skipped when `script` is absent. Proof: `tests/tusage.sh`.
+- [x] 8.3 Write the render pass, move `uclen` and `upad` out of the summary into one shared awk block with a character-aware `utrunc`, and make every awk that uses them read the block. Proof: `tests/tusage.sh`, `tests/modules.sh`.
 
 ## 9. The summary
 
