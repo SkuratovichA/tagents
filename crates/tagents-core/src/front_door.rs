@@ -16,6 +16,7 @@ use tagents_spec::Spec;
 use crate::{
     mcp, node,
     notify::service,
+    plugin,
     sessions::{self, Output},
     transcripts::Context,
 };
@@ -38,12 +39,20 @@ struct Group {
     run: fn(&[String], &Context) -> Option<Output>,
 }
 
-const GROUPS: &[Group] = &[Group {
-    word: "sessions",
-    verbs: sessions::VERBS,
-    lossy_args: true,
-    run: |argv, cx| Some(sessions::run(argv, cx)),
-}];
+const GROUPS: &[Group] = &[
+    Group {
+        word: "sessions",
+        verbs: sessions::VERBS,
+        lossy_args: true,
+        run: |argv, cx| Some(sessions::run(argv, cx)),
+    },
+    Group {
+        word: "plugin",
+        verbs: plugin::VERBS,
+        lossy_args: false,
+        run: |argv, _| plugin::run(argv),
+    },
+];
 
 /// The first word of the verb that serves a protocol on stdin and stdout until the client is gone: it streams, so it cannot be a `Group` (whose `run` answers with the whole of its output at once), and it has its own arm in `run`.
 const MCP: &str = "mcp";

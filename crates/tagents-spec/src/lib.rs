@@ -369,6 +369,8 @@ mod tests {
                 "sessions recent",
                 "sessions search",
                 "sessions show",
+                "plugin add",
+                "plugin remove",
                 "mcp",
                 "notify run"
             ]

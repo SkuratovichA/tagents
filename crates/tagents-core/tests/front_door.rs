@@ -454,6 +454,34 @@ fn the_plugin_calls_node_keeps_reach_it_with_their_arguments() {
 }
 
 #[test]
+fn a_plugin_argument_that_is_not_utf8_is_forwarded_whole_not_decoded_lossily() {
+    // `plugin add` and `plugin remove` are served here, and a name or path that is not UTF-8 is node's to read: a lossy decoding would write a different key or `from` than node does. The group is registered with `lossy_args: false`, so the call must arrive at node unchanged, and before anything is written.
+    let checkout = Checkout::new("plugin-bytes");
+    for verb in ["add", "remove"] {
+        let _ = fs::remove_file(&checkout.argv);
+        let out = run(checkout
+            .command()
+            .env("TAGENTS_CONFIG_DIR", checkout.root.join("config"))
+            .current_dir(&checkout.root)
+            .arg("plugin")
+            .arg(verb)
+            .arg(OsStr::from_bytes(b"\xff\xfe")));
+        assert_eq!(out.status.code(), Some(0), "{verb}");
+        let recorded = fs::read(&checkout.argv).unwrap();
+        let expected = format!("arg=plugin\narg={verb}\narg=");
+        assert!(
+            recorded.ends_with(&[expected.as_bytes(), b"\xff\xfe\n"].concat()),
+            "{verb}: {:?}",
+            String::from_utf8_lossy(&recorded)
+        );
+        assert!(
+            !checkout.root.join("config").exists(),
+            "{verb} wrote before it handed over"
+        );
+    }
+}
+
+#[test]
 fn the_exit_is_the_node_clis_even_when_it_is_a_signal() {
     let checkout = Checkout::new("forward-signal");
     let out = run(checkout.command().env("KILL_SELF", "1").arg("doctor"));
