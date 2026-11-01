@@ -13,6 +13,7 @@ import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
 import { writeAtomic } from './atomic.ts';
 import { tomlKey, tomlString } from './config-file.ts';
+import { errnoCode } from './errno.ts';
 import { PLUGIN_API_VERSION } from './plugin.ts';
 
 // ------------------------------------------------------------- the package ---
@@ -255,11 +256,13 @@ function removeTomlEntry(file: string, name: string): RemoveOutcome {
 
 // ------------------------------------------------------------------- file ----
 
+/** The config's text; `''` when there is no config yet. Every other failure to read it (a directory, a refused permission, an I/O error) is thrown with the system's text, because an edit of a config that could not be read would replace it. */
 function readText(file: string): string {
   try {
     return fs.readFileSync(file, 'utf8');
-  } catch {
-    return '';
+  } catch (e) {
+    if (errnoCode(e) === 'ENOENT') return '';
+    throw e;
   }
 }
 

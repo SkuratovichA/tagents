@@ -365,6 +365,77 @@ test('a link that leads back to itself is an error with the system text', () => 
   }
 });
 
+// ------------------------------------------------- a config that cannot be read ---
+
+test('a config that is a directory fails add and remove with the error of the read, and nothing is written', () => {
+  const dir = configDir();
+  const config = path.join(dir, 'config.toml');
+  fs.mkdirSync(config);
+
+  for (const args of [ADD, REMOVE]) {
+    const r = runCli(args, inDir(dir));
+    assert.equal(r.code, 1, args.join(' '));
+    assert.equal(r.stderr, 'EISDIR: illegal operation on a directory, read\n');
+    assert.deepEqual(fs.readdirSync(dir), ['config.toml'], 'no temporary file');
+    assert.deepEqual(fs.readdirSync(config), [], 'the directory is as it was');
+  }
+});
+
+test('a config that is a link to a directory fails the same way and the link stays', () => {
+  const dir = configDir();
+  const elsewhere = path.join(tmp, `elsewhere-${++seq}`);
+  fs.mkdirSync(elsewhere);
+  const link = path.join(dir, 'config.toml');
+  fs.symlinkSync(elsewhere, link);
+
+  for (const args of [ADD, REMOVE]) {
+    const r = runCli(args, inDir(dir));
+    assert.equal(r.code, 1, args.join(' '));
+    assert.equal(r.stderr, 'EISDIR: illegal operation on a directory, read\n');
+  }
+  assert.equal(fs.readlinkSync(link), elsewhere);
+  assert.deepEqual(fs.readdirSync(elsewhere), []);
+  assert.deepEqual(fs.readdirSync(dir), ['config.toml']);
+});
+
+// A mode-000 file is read by root all the same, so the case is skipped there.
+test('a config the user may not read is not replaced', { skip: process.getuid?.() === 0 && 'root reads a mode-000 file' }, () => {
+  const dir = tomlDir(HAND_WRITTEN_TOML);
+  const file = path.join(dir, 'config.toml');
+  fs.chmodSync(file, 0o000);
+  try {
+    for (const args of [ADD, REMOVE]) {
+      const r = runCli(args, inDir(dir));
+      assert.equal(r.code, 1, args.join(' '));
+      assert.match(r.stderr, /^EACCES: permission denied, open '.*config\.toml'\n$/);
+    }
+  } finally {
+    fs.chmodSync(file, 0o644);
+  }
+  assert.equal(tomlText(dir), HAND_WRITTEN_TOML);
+  assert.deepEqual(fs.readdirSync(dir), ['config.toml']);
+});
+
+test('a config directory that is a file fails add and remove with the error of the read', () => {
+  const blocker = path.join(tmp, `blocker-${++seq}`);
+  fs.writeFileSync(blocker, 'a file where the config directory should be\n');
+
+  for (const args of [ADD, REMOVE]) {
+    const r = runCli(args, inDir(path.join(blocker, 'tagents')));
+    assert.equal(r.code, 1, args.join(' '));
+    assert.match(r.stderr, /^ENOTDIR: not a directory, /);
+  }
+  assert.equal(fs.readFileSync(blocker, 'utf8'), 'a file where the config directory should be\n');
+});
+
+test('a missing config is still an empty one: add creates it, remove refuses', () => {
+  const dir = configDir();
+  assert.equal(runCli(REMOVE, inDir(dir)).code, 3);
+  assert.deepEqual(fs.readdirSync(dir), [], 'remove writes nothing');
+  assert.equal(runCli(ADD, inDir(dir)).code, 0);
+  assert.equal(tomlText(dir), `[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
+});
+
 // -------------------------------------------------------------------- new ---
 
 test('plugin new scaffolds a package that plugin add then accepts', () => {
