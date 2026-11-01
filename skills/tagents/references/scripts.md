@@ -448,28 +448,55 @@ tusage — token accounting for Claude Code, read straight from the transcripts
 in ~/.claude/projects. Answers "where did my limit go", per project, per
 session, per subagent.
 
-  tusage                      summary: last 5h window, today, last 7 days
-  tusage --by day|project|session|agent|model|hour
-  tusage --since 5h|3d|month  window for --by (default 7d; month = since the 1st)
-  tusage --until <epoch>      close the --daily window at that instant too
+  tusage                      summary: last 5h window, today, last 7 days in
+                              cost units and dollars, by account when there are
+                              several, then the heaviest sessions by name
+  tusage --by <dims>          the spend as a table, nested by up to three of
+                              account, project, session, day, week, month,
+                              hour, agent, model, workflow (comma-separated)
+  tusage --by <dims> --breakdown
+                              one more level under the deepest: the model
+  tusage --since 5h|3d|month|YYYY-MM-DD
+                              window for --by (default 7d; month = since the 1st)
+  tusage --until <epoch>|YYYY-MM-DD
+                              close the window at that instant too
+  tusage --account <name>     only that account's sessions (repeatable)
+  tusage --project <text>     only projects whose directory holds the text
+                              (repeatable, any case)
+  tusage --top N              rows under each parent (default 12; 0 is all)
+  tusage --sort cost          a table by time lists its dearest rows first
+  tusage --compact            label, total, dollars and share only
+  tusage --tsv                the deepest rows, no header or colour, for a script
+  tusage --color auto|always|never
+                              colour on a terminal only, and never with NO_COLOR
   tusage --calibrate <account> <amount> [--at "YYYY-MM-DD HH:MM"|<epoch>]
                               price that account at a factor that makes the
                               month-to-date equal what its own meter showed
   tusage --meter [--refresh|--force]
                               what the account's own meter says it has spent
   tusage --sessions           machine-readable per-session totals (for tagents)
-  tusage --session <sid>      one session in detail
+  tusage --session <name|id|prefix>
+                              one session by main session and subagent; with
+                              --by, that session split by the dimensions
   tusage --burn               one-line status-bar string
   tusage --update             refresh the index and exit
   tusage --rebuild            throw the index away and rescan everything
   tusage --json               emit the current window as JSON
   tusage --daily              day<TAB>account<TAB>usd<TAB>reqs<TAB>unpriced
 
-ACCOUNTS. --daily splits the bill by login. TU_ACCOUNTS is "name=dir;name=dir"
-(an empty dir means ~/.claude); unset, it is the default config dir plus every
+ACCOUNTS. The summary, --by account, --account and --daily split the bill by
+login. TU_ACCOUNTS is "name=dir;name=dir" (an empty dir means ~/.claude); unset,
+a terminal takes the accounts of the tagents config, the ones the dashboard
+names, and with no config naming any it is the default config dir plus every
 ~/.claude-* that keeps a history. TU_ACCOUNT_RULES is "dir=name;dir=name" and
 places the sessions no history.jsonl lists — headless -p runs write none — by
 the directory they were launched in. Anything still unplaced prints as "?".
+
+NAMES. A session is shown by the name it has in tagents, the typed one else its
+title, and by the start of its id when it has neither. --session takes a name
+(the whole one, else part of it, any case), an id or the start of one. A text
+that names no session exits 1, one that names several lists them and exits 3,
+an empty one exits 2.
 
 THE DOLLARS ARE AN ESTIMATE, NOT A BILL: roughly 3% under Claude Code's own
 ledger on a large session and more on small ones, because retries, titles and
