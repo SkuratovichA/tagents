@@ -95,6 +95,12 @@ The first is not an identity on a Mac. With HostName never set it is whatever ma
 
 `tagents setup` registers the state hook and the status line in the `settings.json` of every `config_dir` you name. The installer runs it, so a profile that exists when you install needs nothing by hand; after you add a profile, run `tagents setup` yourself. The entries name the profile's own `hooks/` when `install.sh --hooks-dir <config_dir>/hooks` put the wrappers there, and `~/.claude/hooks` otherwise. That works because the hook reads the session's `CLAUDE_CONFIG_DIR` from its environment, not from where the script lives. A config dir without the entries runs no state hook and no status line, so agents started on it never appear in the dashboard at all and have no model column; [Getting started](./getting-started#tell-claude-code-about-it) has the details.
 
+## Account names in a terminal
+
+Wherever `tusage` splits by account it uses the profile names of this file. The dashboard hands it `TU_ACCOUNTS` and `TU_ACCOUNT_RULES`; run by hand with `TU_ACCOUNTS` unset, it asks the function the dashboard asks (`usage_env`), so `tusage --by account` says `work` and `personal` and not the suffix of a `~/.claude-*` directory. With no config, or one that names no profile, it discovers the default config dir and every `~/.claude-*` that keeps a history. A `TU_ACCOUNTS` set by hand wins, and the config is not read.
+
+`--account work` narrows any report to one account, and `--account work,personal` or a repeated flag to several. The name `?` is the sessions no profile and no rule claims. See [Cost](./cost#reports-in-a-terminal).
+
 ## Checking it
 
 `tagents --check` lists what is wrong with the config, one `file: key: problem — what to do` line each, and exits 1 while anything is. The dashboard header carries the count, and the status bar shows `cfg!N`.
