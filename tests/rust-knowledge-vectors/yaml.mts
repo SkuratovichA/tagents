@@ -53,7 +53,8 @@ const EXTRA: string[] = [
   'a: >\n\n  leading blank\n  text',
   'a: "line one\n  line two"\nb: \'x\n\n  y\'',
   'a: "\\t\\0\\a\\b\\e\\f\\v\\r\\N\\_\\L\\P\\ \\/\\\\\\"\\x41\\u0042\\U00000043"',
-  'a: "\\ud83d\\ude00"\nb: "\\ud83d"\nc: "\\U0001F600"',
+  'a: "\\ud83d\\ude00"',
+  'a: "\\U0001F600"',
   'a: "\\q"',
   "a: 'it''s'\nb: ''''\nc: ''",
   'a: x # not a comment\'s end\nb: "y # kept"\nc: z#kept',
@@ -178,6 +179,11 @@ function vectorOf(text: string): YamlVector {
   }
 }
 
+/** A string a JavaScript program holds can contain half of a surrogate pair; Rust and JSON text cannot, so no case has one. */
+function assertWellFormed(text: string): void {
+  if (!text.isWellFormed()) throw new Error(`a YAML case with a lone surrogate: ${JSON.stringify(text)}`);
+}
+
 export function yamlVectors(): YamlVector[] {
   // `yaml` writes a warning for an unresolved tag or a key written twice with a merge; the cases stay in the vectors and the generator's output stays clean.
   const emit = process.emitWarning;
@@ -185,7 +191,11 @@ export function yamlVectors(): YamlVector[] {
   const warn = console.warn;
   console.warn = () => undefined;
   try {
-    return [...FROM_FILE, ...EXTRA].map(vectorOf);
+    const sources = [...FROM_FILE, ...EXTRA];
+    sources.forEach(assertWellFormed);
+    const vectors = sources.map(vectorOf);
+    for (const v of vectors) if (v.ok !== undefined && !JSON.stringify(v.ok).includes('\\ud')) continue; else if (v.ok !== undefined) throw new Error(`a result with a lone surrogate for ${JSON.stringify(v.text)}`);
+    return vectors;
   } finally {
     process.emitWarning = emit;
     console.warn = warn;
