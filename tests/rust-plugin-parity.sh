@@ -167,7 +167,6 @@ sc "add a directory by absolute path" rust 0 "added plain-pkg" -- plugin add "$R
 sc "add a directory that is not there" rust 1 "nothing" -- plugin add ./nothing
 sc "add /" rust 1 "package.json" -- plugin add /
 sc "add a path above the root" rust 1 "package.json" -- plugin add "$(printf '../%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40)tmp-does-not-exist"
-sc "add a directory, in Russian" rust 0 "plain-pkg" -- plugin add ./pkgs/plain
 LOCALE=ru; sc "add a directory, in Russian (locale ru)" rust 0 "plain-pkg" -- plugin add ./pkgs/plain
 LOCALE=ru; sc "add a directory that is not there, in Russian" rust 1 - -- plugin add ./nothing
 LOCALE=fr; sc "add a directory, locale fr is English" rust 0 "added plain-pkg" -- plugin add ./pkgs/plain
@@ -198,7 +197,6 @@ sc "add --name that is empty" rust 2 - -- plugin add ./pkgs/plain --name=
 sc "add --name with a newline at the end" rust 2 - -- plugin add ./pkgs/plain --name "$(printf 'a\nb')"
 sc "add --name with a trailing newline" rust 2 - -- plugin add ./pkgs/plain $'--name=a\n'
 sc "add --name {{file}} is printed as typed" rust 2 - -- plugin add ./pkgs/plain '--name={{file}}'
-sc "add --name in Russian" rust 2 - -- plugin add ./pkgs/plain --name 'bad name'
 LOCALE=ru; sc "add a bad name, in Russian" rust 2 - -- plugin add ./pkgs/plain --name 'bad name'
 sc "add a name that is bad for a package that is not there is the package's error" rust 1 - -- plugin add ./nothing --name 'bad name'
 sc "add --name. . _ -" rust 0 "added a.b_c-d" -- plugin add ./pkgs/plain --name a.b_c-d
@@ -232,7 +230,7 @@ CWD=proj/a/b; sc "add a package whose name starts with an underscore" node - - -
 CWD=proj/a/b; sc "add a subpath of a package" node - - -- plugin add plain/package.json
 CWD=proj/a/b; sc "add a name in capitals (the disk's case is not the typed one on a case-insensitive volume)" any - - -- plugin add PLAIN
 CWD=proj/a/b; sc "add a package with no name in capitals" any - - -- plugin add NO-NAME-NM
-CWD=proj/a/b; sc "add a package, in Russian" rust 0 - -- plugin add plain
+CWD=proj/a/b; LOCALE=ru; sc "add a package, in Russian" rust 0 plain-in-nm -- plugin add plain
 CWD=selfref/a; sc "add the package the working directory is in, which has exports (self-reference)" node - - -- plugin add selfref
 CWD=selfnoexp/a; sc "add the package the working directory is in, with no exports" rust 0 "added selfnoexp-in-nm" -- plugin add selfnoexp
 
@@ -280,7 +278,6 @@ SETUP='mkdir -p cfg; printf "plugins = 3\n" > cfg/config.toml'; sc "remove: plug
 
 t "remove"
 sc "remove: no config" rust 3 "not listed" -- plugin remove x
-sc "remove: no config, in Russian" rust 3 - -- plugin remove x
 LOCALE=ru; sc "remove: no config (locale ru)" rust 3 - -- plugin remove x
 SETUP=$(text '[plugins.x]
 from = "/p"
