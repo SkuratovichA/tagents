@@ -69,6 +69,79 @@ pub fn join(base: &str, name: &str) -> String {
     }
 }
 
+/// `path.resolve(base, path)` for an absolute `base`: `path` itself when it is absolute, else below `base`; normalised, with no trailing slash but the root's.
+pub fn resolve(base: &str, path: &str) -> String {
+    let full = match path {
+        "" => base.to_owned(),
+        _ if path.starts_with('/') => path.to_owned(),
+        _ => format!("{base}/{path}"),
+    };
+    let normalised = join(&full, "");
+    match normalised.trim_end_matches('/') {
+        "" => "/".to_owned(),
+        trimmed => trimmed.to_owned(),
+    }
+}
+
+/// `path.relative(from, to)` for absolute paths: the segments of `to` below their common ancestor, each segment of `from` below it becoming `..`.
+pub fn relative(from: &str, to: &str) -> String {
+    let (from, to) = (resolve("/", from), resolve("/", to));
+    let segments = |p: &str| -> Vec<String> {
+        p.split('/')
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect()
+    };
+    let (from, to) = (segments(&from), segments(&to));
+    let common = from.iter().zip(&to).take_while(|(a, b)| a == b).count();
+    let ups = std::iter::repeat_n("..".to_owned(), from.len() - common);
+    ups.chain(to[common..].iter().cloned())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// `fs.realpathSync(path)`, the JavaScript one and not `realpathSync.native`: the symbolic links of an absolute `path` resolved a component at a time, every other component kept as written. `fs::canonicalize` writes a directory in the case the disk holds, so on a case-insensitive volume `plugin add Plain` would name another directory than node does for a package installed as `plain`. A link followed more than `MAX_LINKS` times is `ELOOP`, and so is a path that holds that many links in all, a stricter rule than node's, which both callers turn into a hand-over; a component that is missing or cannot be read is the system's error.
+pub fn realpath(path: &str) -> io::Result<String> {
+    // Node leaves the limit to the kernel, which answers ELOOP after 32 links on macOS and 40 on Linux; the smaller of the two, so that no chain is resolved here that node on macOS refuses.
+    const MAX_LINKS: usize = 32;
+    // The next component is the last of the stack, so a link's target goes on top of what is left to walk.
+    let components = |p: &str| -> Vec<String> {
+        p.split('/')
+            .filter(|s| !s.is_empty())
+            .rev()
+            .map(str::to_owned)
+            .collect()
+    };
+    let mut pending = components(&resolve("/", path));
+    let mut real = String::new();
+    let mut links = 0;
+    while let Some(part) = pending.pop() {
+        let here = format!("{real}/{part}");
+        if !fs::symlink_metadata(&here)?.file_type().is_symlink() {
+            real = here;
+            continue;
+        }
+        links += 1;
+        if links > MAX_LINKS {
+            return Err(io::Error::from_raw_os_error(
+                rustix::io::Errno::LOOP.raw_os_error(),
+            ));
+        }
+        let target = fs::read_link(&here)?;
+        let target = target
+            .to_str()
+            .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidData))?;
+        let parent = if real.is_empty() { "/" } else { &real };
+        pending.extend(components(&resolve(parent, target)));
+        real.clear();
+    }
+    Ok(if real.is_empty() {
+        "/".to_owned()
+    } else {
+        real
+    })
+}
+
 /// `stat.mtime.getTime()`: node computes `sec * 1e3 + nsec / 1e6` as a float and `Date` takes `Math.round` of it.
 pub fn mtime_ms(meta: &fs::Metadata) -> i64 {
     js::round(meta.mtime() as f64 * 1000.0 + meta.mtime_nsec() as f64 / 1e6) as i64
@@ -201,6 +274,13 @@ fn program_in(root: &Path, relative: &str) -> Result<PathBuf, String> {
     }
 }
 
+/// The node binary: what `$TAGENTS_NODE` names unless it is empty, else `node` on `PATH`.
+pub fn interpreter() -> OsString {
+    std::env::var_os(NODE_ENV)
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| OsString::from("node"))
+}
+
 /// Why `exec` could not replace the process. Nothing is printed: the caller words it and chooses the exit code.
 #[derive(Debug)]
 pub enum ExecFailure {
@@ -216,9 +296,7 @@ pub fn exec(relative: &str, args: &[OsString]) -> ExecFailure {
         Ok(program) => program,
         Err(why) => return ExecFailure::Missing(why),
     };
-    let node = std::env::var_os(NODE_ENV)
-        .filter(|n| !n.is_empty())
-        .unwrap_or_else(|| OsString::from("node"));
+    let node = interpreter();
     let err = Command::new(&node).arg(program).args(args).exec();
     // A handler that only sets a flag is the safe form of ignoring the signal; a failed registration leaves the default, which is all there was.
     let _ = signal_hook::flag::register(
@@ -267,6 +345,137 @@ mod tests {
         ] {
             assert_eq!(join(base, name), want, "{base:?} + {name:?}");
         }
+    }
+
+    #[test]
+    fn resolve_is_path_resolve_below_an_absolute_base() {
+        for (base, path, want) in [
+            ("/w/x", "a", "/w/x/a"),
+            ("/w/x", "./a/", "/w/x/a"),
+            ("/w/x", "../a", "/w/a"),
+            ("/w/x", "../../..", "/"),
+            ("/w/x", "../../../a", "/a"),
+            ("/w/x", "/a/./b/../c//", "/a/c"),
+            ("/w/x", "", "/w/x"),
+            ("/w/x/", ".", "/w/x"),
+            ("/", "a", "/a"),
+            ("/", "..", "/"),
+            ("/w", "a b/\u{e9}", "/w/a b/\u{e9}"),
+        ] {
+            assert_eq!(resolve(base, path), want, "{base:?} + {path:?}");
+        }
+    }
+
+    #[test]
+    fn relative_is_path_relative() {
+        for (from, to, want) in [
+            ("/a/b", "/a/b", ""),
+            ("/a/b", "/a/b/c/d", "c/d"),
+            ("/a/b/c", "/a/b", ".."),
+            ("/a/b/c", "/a/d", "../../d"),
+            ("/a/b", "/x/y", "../../x/y"),
+            ("/", "/a", "a"),
+            ("/a", "/", ".."),
+            ("/a/bc", "/a/b", "../b"),
+            ("/a/b", "/a/bc", "../bc"),
+            ("/a/b/", "/a//b/./c", "c"),
+            ("/a/b", "/a/.hidden/x", "../.hidden/x"),
+        ] {
+            assert_eq!(relative(from, to), want, "{from:?} -> {to:?}");
+        }
+    }
+
+    /// A scratch directory under its canonical name (the system's temp directory is itself reached through a link on macOS), with `real/dir/file` in it.
+    fn realpath_tree() -> (crate::testing::Scratch, String) {
+        let scratch = crate::testing::Scratch::new();
+        let root = fs::canonicalize(scratch.path()).unwrap();
+        fs::create_dir_all(root.join("real/dir")).unwrap();
+        fs::write(root.join("real/dir/file"), "").unwrap();
+        let root = root.to_str().unwrap().to_owned();
+        (scratch, root)
+    }
+
+    #[test]
+    fn realpath_follows_links_in_the_middle_and_at_the_end_of_a_path() {
+        use std::os::unix::fs::symlink;
+        let (_scratch, root) = realpath_tree();
+        // A chain, a link with a relative target that climbs, and a link to a directory with more path below it.
+        symlink("real", format!("{root}/one")).unwrap();
+        symlink("one/dir", format!("{root}/two")).unwrap();
+        symlink("../two/file", format!("{root}/real/up")).unwrap();
+        symlink(format!("{root}/real"), format!("{root}/absolute")).unwrap();
+        for (path, want) in [
+            (format!("{root}/real/dir/file"), "real/dir/file"),
+            (format!("{root}/one"), "real"),
+            (format!("{root}/two"), "real/dir"),
+            (format!("{root}/two/file"), "real/dir/file"),
+            (format!("{root}/real/up"), "real/dir/file"),
+            (format!("{root}/absolute/dir/./../dir"), "real/dir"),
+            (format!("{root}/real//dir/"), "real/dir"),
+        ] {
+            assert_eq!(realpath(&path).unwrap(), format!("{root}/{want}"), "{path}");
+        }
+        assert_eq!(realpath("/").unwrap(), "/");
+    }
+
+    #[test]
+    fn realpath_fails_as_the_system_does_for_a_missing_component_and_a_loop() {
+        use std::os::unix::fs::symlink;
+        let (_scratch, root) = realpath_tree();
+        symlink("nowhere", format!("{root}/dangling")).unwrap();
+        symlink("b", format!("{root}/a")).unwrap();
+        symlink("a", format!("{root}/b")).unwrap();
+        let missing = realpath(&format!("{root}/real/absent/file")).unwrap_err();
+        assert_eq!(missing.kind(), io::ErrorKind::NotFound);
+        let dangling = realpath(&format!("{root}/dangling")).unwrap_err();
+        assert_eq!(dangling.kind(), io::ErrorKind::NotFound);
+        let looped = realpath(&format!("{root}/a")).unwrap_err();
+        assert_eq!(
+            looped.raw_os_error(),
+            Some(rustix::io::Errno::LOOP.raw_os_error())
+        );
+    }
+
+    /// A chain of `length` links, `link1` to `link<length>`, the last one pointing at `real`.
+    fn link_chain(root: &str, length: usize) {
+        use std::os::unix::fs::symlink;
+        for number in 1..length {
+            symlink(
+                format!("link{}", number + 1),
+                format!("{root}/link{number}"),
+            )
+            .unwrap();
+        }
+        symlink("real", format!("{root}/link{length}")).unwrap();
+    }
+
+    #[test]
+    fn realpath_resolves_a_chain_of_32_links_and_refuses_one_of_33_as_the_smallest_kernel_does() {
+        let (_scratch, root) = realpath_tree();
+        link_chain(&root, 32);
+        assert_eq!(
+            realpath(&format!("{root}/link1")).unwrap(),
+            format!("{root}/real")
+        );
+
+        let (_scratch, root) = realpath_tree();
+        link_chain(&root, 33);
+        let refused = realpath(&format!("{root}/link1")).unwrap_err();
+        assert_eq!(
+            refused.raw_os_error(),
+            Some(rustix::io::Errno::LOOP.raw_os_error())
+        );
+    }
+
+    /// `fs::canonicalize` writes a directory in the case the disk holds and node's `fs.realpathSync` in the case it was given, which matters on a case-insensitive volume (macOS) and nowhere else.
+    #[test]
+    fn realpath_keeps_the_case_it_was_given() {
+        let (_scratch, root) = realpath_tree();
+        let given = format!("{root}/REAL/dir");
+        if fs::metadata(&given).is_err() {
+            return;
+        }
+        assert_eq!(realpath(&given).unwrap(), given);
     }
 
     /// A scratch directory holding `files` as (name, mode) pairs, each with a body that makes it a file.

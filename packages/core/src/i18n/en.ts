@@ -55,6 +55,8 @@ export const en = {
   doctorStateDir: 'agent state {{dir}} ({{count}} record(s))',
   doctorConfig: 'config {{file}}: {{status}}',
   doctorClaude: 'claude: {{status}}',
+  // Printed only by the Rust `doctor`, as line one when it cannot start node; this CLI cannot run without node, so it never says it.
+  doctorNodeMissing: 'node: missing',
   present: 'present',
   missing: 'missing',
   summarySessionOpen: 'prepares a headless Claude session for a directory and prints its SessionRef as JSON; no process starts until a prompt is sent to it',

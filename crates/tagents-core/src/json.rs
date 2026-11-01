@@ -5,7 +5,7 @@
 //! it refuses a number that overflows a float (`1e999`), where V8 reads Infinity;
 //! and it stops at 128 levels of nesting, where V8 goes on until memory runs out.
 //! A line one of those fails on is skipped by Rust and read by node, so the two programs would list different prompts.
-//! This parser takes exactly the grammar of ECMA-404 and keeps no number but its truthiness, which is all `isMeta` needs.
+//! This parser takes exactly the grammar of ECMA-404 and keeps a number as the float JavaScript would make of it, which is what `isMeta` (truthiness) and the plugin manifest check (`apiVersion` is 1) need.
 //! It keeps its own stack of open containers, so nesting costs heap, not call frames.
 //!
 //! `quote` is the other direction for one string: `JSON.stringify(text)`, which the daemon writes into the helper's input, into its log lines and into the text of a problem. `quote_prefix16` is `JSON.stringify(text.slice(0, n))`, whose cut can leave half of a surrogate pair that only an escape can write.
@@ -17,8 +17,8 @@ use crate::js;
 pub enum Value {
     Null,
     Bool(bool),
-    /// Whether the number is anything but zero: all that JavaScript truthiness asks of one.
-    Number(bool),
+    /// The number as JavaScript reads it: an overflow is infinity, and `1.0` and `1e0` are the number 1.
+    Number(f64),
     String(String),
     Array(Vec<Value>),
     /// In document order, so a key written twice is found last, as in an object.
@@ -45,7 +45,8 @@ impl Value {
     pub fn truthy(&self) -> bool {
         match self {
             Value::Null => false,
-            Value::Bool(b) | Value::Number(b) => *b,
+            Value::Bool(b) => *b,
+            Value::Number(n) => *n != 0.0,
             Value::String(s) => !s.is_empty(),
             Value::Array(_) | Value::Object(_) => true,
         }
@@ -243,7 +244,7 @@ impl Parser<'_> {
         }
         // The text is a valid JSON number here, which Rust's parser reads, to Infinity or to zero where it must.
         let value: f64 = self.text[start..self.i].parse().ok()?;
-        Some(Value::Number(value != 0.0))
+        Some(Value::Number(value))
     }
 
     fn digits(&mut self) {
@@ -356,7 +357,28 @@ mod tests {
                 .and_then(Value::as_str),
             Some("d")
         );
-        assert_eq!(doc.get("a"), Some(&Value::Number(true)));
+        assert_eq!(doc.get("a"), Some(&Value::Number(2.0)));
+    }
+
+    #[test]
+    fn a_number_is_the_float_javascript_makes_of_its_text() {
+        for (text, want) in [
+            ("1", 1.0),
+            ("1.0", 1.0),
+            ("1e0", 1.0),
+            ("10e-1", 1.0),
+            ("0.5e1", 5.0),
+            ("-2", -2.0),
+            ("1e999", f64::INFINITY),
+            ("-1e999", f64::NEG_INFINITY),
+            ("1e-999", 0.0),
+        ] {
+            assert_eq!(ok(text), Value::Number(want), "{text}");
+        }
+        let Value::Number(zero) = ok("-0") else {
+            panic!("-0 is a number");
+        };
+        assert!(zero == 0.0 && zero.is_sign_negative());
     }
 
     #[test]

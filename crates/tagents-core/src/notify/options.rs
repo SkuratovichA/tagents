@@ -10,16 +10,16 @@ use std::{
     path::Path,
 };
 
-use toml::de::{DeFloat, DeInteger, DeTable, DeValue};
+use toml::de::{DeTable, DeValue};
 
-use crate::{js, json, node};
+pub use crate::host::{config_dir, config_dir_from};
+use crate::{
+    js, json, node,
+    toml_js::{LOSSY_INTEGER, MAX_SAFE_INTEGER, float, integer, table_holds_lossy_integer},
+};
 
 /// The directory of the options files, in the config directory.
 const PLUGIN_OPTIONS_DIR: &str = "plugins";
-/// The largest integer a JavaScript number holds exactly, `Number.MAX_SAFE_INTEGER`.
-const MAX_SAFE_INTEGER: i128 = 9_007_199_254_740_991;
-/// The text node's TOML parser gives for an integer it cannot hold: it refuses it, and so does this reader.
-const LOSSY_INTEGER: &str = "integer value cannot be represented losslessly";
 /// What `after < ttl` failing says, at `events.cache_expiring.after`.
 const AFTER_BELOW_TTL: &str =
     "after must be below ttl: a notice about a cache that already expired helps nobody";
@@ -143,37 +143,6 @@ pub enum Loaded {
     Invalid(Vec<String>),
 }
 
-/// `configDir` of `packages/core/src/host.ts`: `$TAGENTS_CONFIG_DIR` unless blank, else `$XDG_CONFIG_HOME` unless blank, else `~/.config`, then `tagents`.
-pub fn config_dir() -> String {
-    let env = |name: &str| std::env::var_os(name).map(|v| v.to_string_lossy().into_owned());
-    config_dir_from(
-        env("TAGENTS_CONFIG_DIR").as_deref(),
-        env("XDG_CONFIG_HOME").as_deref(),
-        &node::homedir(),
-    )
-}
-
-/// `config_dir` with the two variables and the home directory given, `None` for an unset variable. A variable that is blank by `String.prototype.trim` (empty, or only JavaScript whitespace, U+FEFF included) is as good as unset, and `$TAGENTS_CONFIG_DIR` is used as written, not trimmed.
-pub fn config_dir_from(
-    tagents_config_dir: Option<&str>,
-    xdg_config_home: Option<&str>,
-    home: &str,
-) -> String {
-    if let Some(dir) = not_blank(tagents_config_dir) {
-        return dir.to_owned();
-    }
-    let base = match not_blank(xdg_config_home) {
-        Some(xdg) => xdg.to_owned(),
-        None => node::join(home, ".config"),
-    };
-    node::join(&base, "tagents")
-}
-
-/// An environment variable that is set and not blank: JavaScript's `value && value.trim()`.
-fn not_blank(value: Option<&str>) -> Option<&str> {
-    value.filter(|v| !js::trim(v).is_empty())
-}
-
 /// `pluginOptionsFile(configDir, 'notify')`: `<configDir>/plugins/notify.toml`, whether it is there or not. No file of another name is looked at.
 pub fn options_file(config_dir: &Path) -> String {
     node::join(
@@ -256,44 +225,6 @@ fn parse(text: &str, file: &str) -> Result<Options, Vec<String>> {
         Ok(options)
     } else {
         Err(issues)
-    }
-}
-
-/// An integer anywhere in the document that a JavaScript number cannot hold exactly: the node parser refuses the whole file for it, whatever key it is under.
-fn table_holds_lossy_integer(table: &DeTable<'_>) -> bool {
-    table
-        .values()
-        .any(|value| holds_lossy_integer(value.get_ref()))
-}
-
-fn holds_lossy_integer(value: &DeValue<'_>) -> bool {
-    match value {
-        DeValue::Integer(int) => integer(int).is_none(),
-        DeValue::Array(items) => items.iter().any(|item| holds_lossy_integer(item.get_ref())),
-        DeValue::Table(table) => table_holds_lossy_integer(table),
-        _ => false,
-    }
-}
-
-/// An integer as a JavaScript number, or `None` when it is not a safe integer (`Number.isSafeInteger`).
-fn integer(int: &DeInteger<'_>) -> Option<f64> {
-    let value = i128::from_str_radix(int.as_str(), int.radix()).ok()?;
-    (value.abs() <= MAX_SAFE_INTEGER).then_some(value as f64)
-}
-
-/// A float as `parseFloat` of its text gives it: an overflow is infinity, `nan` and `inf` are the special values.
-fn float(f: &DeFloat<'_>) -> f64 {
-    let text = f.as_str().replace('_', "");
-    match text.trim_start_matches(['+', '-']) {
-        "inf" => {
-            if text.starts_with('-') {
-                f64::NEG_INFINITY
-            } else {
-                f64::INFINITY
-            }
-        }
-        "nan" => f64::NAN,
-        _ => text.parse().unwrap_or(f64::NAN),
     }
 }
 
@@ -1329,27 +1260,5 @@ mod tests {
                 "Unrecognized key: \"icn\"".to_owned()
             ])
         );
-    }
-
-    #[test]
-    fn config_dir_follows_the_rules_of_host_ts() {
-        for (dir, xdg, want) in [
-            (Some("/c"), None, "/c"),
-            (Some(" /c "), None, " /c "),
-            (Some(""), None, "/h/.config/tagents"),
-            (Some("  \t"), None, "/h/.config/tagents"),
-            (Some("\u{feff}"), Some("/x"), "/x/tagents"),
-            (Some("\u{a0}\u{2028}"), None, "/h/.config/tagents"),
-            (Some("\u{200b}"), None, "\u{200b}"),
-            (None, Some("/x"), "/x/tagents"),
-            (None, Some("/x/../y/"), "/y/tagents"),
-            (None, Some(" "), "/h/.config/tagents"),
-            (None, Some(""), "/h/.config/tagents"),
-            (None, None, "/h/.config/tagents"),
-            (Some("/c"), Some("/x"), "/c"),
-            (Some(" "), Some("/x"), "/x/tagents"),
-        ] {
-            assert_eq!(config_dir_from(dir, xdg, "/h"), want, "{dir:?} {xdg:?}");
-        }
     }
 }

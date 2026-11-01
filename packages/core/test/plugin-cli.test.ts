@@ -290,6 +290,152 @@ test('a plugin path or name with a lone surrogate in it is refused for a TOML co
   }
 });
 
+// ------------------------------------------------ a config behind a symbolic link ---
+
+/** A dotfiles directory holding `body` as `tagents.toml`, and a config directory whose `config.toml` is a relative link to it. */
+function linkedDir(body: string): { dir: string; link: string; real: string } {
+  const dir = configDir();
+  const dotfiles = path.join(tmp, `dotfiles-${++seq}`);
+  fs.mkdirSync(dotfiles, { recursive: true });
+  const real = path.join(dotfiles, 'tagents.toml');
+  fs.writeFileSync(real, body);
+  const link = path.join(dir, 'config.toml');
+  fs.symlinkSync(path.relative(dir, real), link);
+  return { dir, link, real };
+}
+
+const ADD = ['plugin', 'add', GOOD, '--name', 'demo'];
+const REMOVE = ['plugin', 'remove', 'demo'];
+
+test('a config that is a symbolic link stays a link under add and remove, and the file it points to takes the edit', () => {
+  const { dir, link, real } = linkedDir(HAND_WRITTEN_TOML);
+  const target = fs.readlinkSync(link);
+
+  assert.equal(runCli(ADD, inDir(dir)).code, 0);
+  assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the link is still a link after add');
+  assert.equal(fs.readlinkSync(link), target);
+  assert.equal(fs.readFileSync(real, 'utf8'), `${HAND_WRITTEN_TOML}\n[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
+
+  assert.equal(runCli(REMOVE, inDir(dir)).code, 0);
+  assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the link is still a link after remove');
+  assert.equal(fs.readFileSync(real, 'utf8'), HAND_WRITTEN_TOML);
+  assert.deepEqual(fs.readdirSync(path.dirname(real)), ['tagents.toml'], 'no temporary file is left beside the target');
+  assert.deepEqual(fs.readdirSync(dir), ['config.toml'], 'and none beside the link');
+});
+
+test('a chain of links ends at the real file, which takes the edit', () => {
+  const { dir, link, real } = linkedDir('[usage]\nworkdays = true\n');
+  const middle = path.join(path.dirname(real), 'middle.toml');
+  fs.symlinkSync('tagents.toml', middle);
+  fs.rmSync(link);
+  fs.symlinkSync(path.relative(dir, middle), link);
+
+  assert.equal(runCli(ADD, inDir(dir)).code, 0);
+  assert.ok(fs.lstatSync(link).isSymbolicLink() && fs.lstatSync(middle).isSymbolicLink(), 'both links survive');
+  assert.equal(fs.readFileSync(real, 'utf8'), `[usage]\nworkdays = true\n\n[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
+});
+
+test('a link to nowhere is an error with the system text, and nothing is created at its end', () => {
+  const dir = configDir();
+  const missing = path.join(tmp, `nowhere-${seq}`, 'config.toml');
+  const link = path.join(dir, 'config.toml');
+  fs.symlinkSync(missing, link);
+
+  for (const args of [ADD, REMOVE]) {
+    const r = runCli(args, inDir(dir));
+    assert.equal(r.code, 1, args.join(' '));
+    assert.match(r.stderr, /^ENOENT: no such file or directory, /);
+    assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the link was not replaced');
+    assert.ok(!fs.existsSync(path.dirname(missing)), 'no directory was made for the target');
+    assert.deepEqual(fs.readdirSync(dir), ['config.toml'], 'no temporary file');
+  }
+});
+
+test('a link that leads back to itself is an error with the system text', () => {
+  const dir = configDir();
+  const link = path.join(dir, 'config.toml');
+  fs.symlinkSync('config.toml', link);
+
+  for (const args of [ADD, REMOVE]) {
+    const r = runCli(args, inDir(dir));
+    assert.equal(r.code, 1, args.join(' '));
+    assert.match(r.stderr, /^ELOOP: too many symbolic links encountered, /);
+    assert.equal(fs.readlinkSync(link), 'config.toml');
+    assert.deepEqual(fs.readdirSync(dir), ['config.toml']);
+  }
+});
+
+// ------------------------------------------------- a config that cannot be read ---
+
+test('a config that is a directory fails add and remove with the error of the read, and nothing is written', () => {
+  const dir = configDir();
+  const config = path.join(dir, 'config.toml');
+  fs.mkdirSync(config);
+
+  for (const args of [ADD, REMOVE]) {
+    const r = runCli(args, inDir(dir));
+    assert.equal(r.code, 1, args.join(' '));
+    assert.equal(r.stderr, 'EISDIR: illegal operation on a directory, read\n');
+    assert.deepEqual(fs.readdirSync(dir), ['config.toml'], 'no temporary file');
+    assert.deepEqual(fs.readdirSync(config), [], 'the directory is as it was');
+  }
+});
+
+test('a config that is a link to a directory fails the same way and the link stays', () => {
+  const dir = configDir();
+  const elsewhere = path.join(tmp, `elsewhere-${++seq}`);
+  fs.mkdirSync(elsewhere);
+  const link = path.join(dir, 'config.toml');
+  fs.symlinkSync(elsewhere, link);
+
+  for (const args of [ADD, REMOVE]) {
+    const r = runCli(args, inDir(dir));
+    assert.equal(r.code, 1, args.join(' '));
+    assert.equal(r.stderr, 'EISDIR: illegal operation on a directory, read\n');
+  }
+  assert.equal(fs.readlinkSync(link), elsewhere);
+  assert.deepEqual(fs.readdirSync(elsewhere), []);
+  assert.deepEqual(fs.readdirSync(dir), ['config.toml']);
+});
+
+// A mode-000 file is read by root all the same, so the case is skipped there.
+test('a config the user may not read is not replaced', { skip: process.getuid?.() === 0 && 'root reads a mode-000 file' }, () => {
+  const dir = tomlDir(HAND_WRITTEN_TOML);
+  const file = path.join(dir, 'config.toml');
+  fs.chmodSync(file, 0o000);
+  try {
+    for (const args of [ADD, REMOVE]) {
+      const r = runCli(args, inDir(dir));
+      assert.equal(r.code, 1, args.join(' '));
+      assert.match(r.stderr, /^EACCES: permission denied, open '.*config\.toml'\n$/);
+    }
+  } finally {
+    fs.chmodSync(file, 0o644);
+  }
+  assert.equal(tomlText(dir), HAND_WRITTEN_TOML);
+  assert.deepEqual(fs.readdirSync(dir), ['config.toml']);
+});
+
+test('a config directory that is a file fails add and remove with the error of the read', () => {
+  const blocker = path.join(tmp, `blocker-${++seq}`);
+  fs.writeFileSync(blocker, 'a file where the config directory should be\n');
+
+  for (const args of [ADD, REMOVE]) {
+    const r = runCli(args, inDir(path.join(blocker, 'tagents')));
+    assert.equal(r.code, 1, args.join(' '));
+    assert.match(r.stderr, /^ENOTDIR: not a directory, /);
+  }
+  assert.equal(fs.readFileSync(blocker, 'utf8'), 'a file where the config directory should be\n');
+});
+
+test('a missing config is still an empty one: add creates it, remove refuses', () => {
+  const dir = configDir();
+  assert.equal(runCli(REMOVE, inDir(dir)).code, 3);
+  assert.deepEqual(fs.readdirSync(dir), [], 'remove writes nothing');
+  assert.equal(runCli(ADD, inDir(dir)).code, 0);
+  assert.equal(tomlText(dir), `[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
+});
+
 // -------------------------------------------------------------------- new ---
 
 test('plugin new scaffolds a package that plugin add then accepts', () => {

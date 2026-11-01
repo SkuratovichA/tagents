@@ -27,6 +27,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: The plugin contract matches the code
         run: pnpm plugin:check
+      - name: The messages file of the Rust binary matches the catalogues
+        run: pnpm messages:check
       - name: The specs are valid OpenSpec
         env:
           DO_NOT_TRACK: '1'

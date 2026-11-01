@@ -702,6 +702,7 @@ export const resources: {
             readonly doctorStateDir: "agent state {{dir}} ({{count}} record(s))";
             readonly doctorConfig: "config {{file}}: {{status}}";
             readonly doctorClaude: "claude: {{status}}";
+            readonly doctorNodeMissing: "node: missing";
             readonly present: "present";
             readonly missing: "missing";
             readonly summarySessionOpen: "prepares a headless Claude session for a directory and prints its SessionRef as JSON; no process starts until a prompt is sent to it";
@@ -722,7 +723,7 @@ export const resources: {
         };
     };
     readonly ru: {
-        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "abortPaneAgent" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryDoctor" | "summaryMcp" | "summaryNotifyRun", string>>;
+        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "abortPaneAgent" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "doctorNodeMissing" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryDoctor" | "summaryMcp" | "summaryNotifyRun", string>>;
     };
 };
 

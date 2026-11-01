@@ -13,6 +13,8 @@
     "test": "pnpm -r test",
     "plugin:gen": "node packages/contract/src/main.ts",
     "plugin:check": "node packages/contract/src/main.ts --check",
+    "messages:gen": "node packages/core/src/i18n/export.ts",
+    "messages:check": "node packages/core/src/i18n/export.ts --check",
     "spec:check": "openspec validate --all --strict --no-interactive",
     "docs:dev": "pnpm dlx vitepress@1.6.4 dev docs",
     "docs:build": "pnpm dlx vitepress@1.6.4 build docs",

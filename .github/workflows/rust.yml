@@ -25,6 +25,9 @@ on:
       - tests/rust-parity-seed.mts
       - tests/rust-notify-vectors.mts
       - tests/rust-notify-vectors/**
+      - tests/rust-plugin-parity.sh
+      - tests/rust-plugin-vectors.mts
+      - tests/rust-plugin-vectors/**
       - .github/workflows/rust.yml
       - .github/workflows/release.yml
       - .github/scripts/core-release.sh
@@ -54,6 +57,9 @@ on:
       - tests/rust-parity-seed.mts
       - tests/rust-notify-vectors.mts
       - tests/rust-notify-vectors/**
+      - tests/rust-plugin-parity.sh
+      - tests/rust-plugin-vectors.mts
+      - tests/rust-plugin-vectors/**
       - .github/workflows/rust.yml
       - .github/workflows/release.yml
       - .github/scripts/core-release.sh
@@ -94,12 +100,18 @@ jobs:
         run: |
           node tests/rust-notify-vectors.mts
           git diff --exit-code crates/tagents-core/tests/fixtures/notify-vectors.json
+      - name: The plugin vectors node writes are the ones committed, so a change to the config writer, the package resolver or a message the Rust verbs copy fails here until the copy follows
+        run: |
+          node tests/rust-plugin-vectors.mts
+          git diff --exit-code crates/tagents-core/tests/fixtures/plugin-vectors.json
       - name: Parity with the node CLI, byte for byte
         run: bash tests/rust-parity.sh
       - name: Parity of the MCP server with the node one, byte for byte
         run: bash tests/rust-mcp-parity.sh
       - name: Parity of the notify daemon with the node one, byte for byte
         run: bash tests/rust-notify-parity.sh
+      - name: Parity of plugin add and plugin remove with the node ones, files and exit codes included
+        run: bash tests/rust-plugin-parity.sh
 
   # A change to what the tagents-core binary is built from must raise the workspace version (docs/architecture/rust-core.md, "How a release is made"). Every such input is in the paths above, so a pull request that breaks the rule always runs this job. The history is deep because the gate compares with the merge base.
   release-path:

@@ -184,15 +184,32 @@ test('the exit codes the contract prints are the ones the CLI exits with', () =>
   assert.deepEqual(coreCliContract().exit, EXIT);
 });
 
-test('every verb says which program serves it, and a verb word is served by one program', () => {
-  const byWord = new Map<string, Set<unknown>>();
-  for (const command of commandsOf(readDoc())) {
+/** The first words whose verbs are served by both programs although a `rust` path under them is a single word: the front door answers a first word by one program, and only a group that can decline (the second word decides) may be shared. */
+function splitOneWordVerbs(commands: Record<string, unknown>[]): string[] {
+  const byWord = new Map<string, { impls: Set<unknown>; rustOneWord: boolean }>();
+  for (const command of commands) {
     const { path: words, impl } = command;
     assert.ok(Array.isArray(words) && (impl === 'rust' || impl === 'node'), JSON.stringify(command));
     const word = String(words[0]);
-    byWord.set(word, (byWord.get(word) ?? new Set()).add(impl));
+    const seen = byWord.get(word) ?? { impls: new Set(), rustOneWord: false };
+    seen.impls.add(impl);
+    seen.rustOneWord ||= impl === 'rust' && words.length === 1;
+    byWord.set(word, seen);
   }
-  for (const [word, impls] of byWord) assert.equal(impls.size, 1, `${word}: the group is split between ${[...impls].join(' and ')}`);
+  return [...byWord].filter(([, seen]) => seen.impls.size > 1 && seen.rustOneWord).map(([word]) => word);
+}
+
+test('every verb says which program serves it, and a first word served by both programs has only rust paths of two words or more', () => {
+  assert.deepEqual(splitOneWordVerbs(commandsOf(readDoc())), []);
+});
+
+test('a one-word verb served by rust beside a node verb of the same first word is a split group; a two-word rust path is not', () => {
+  const commands = commandsOf(readDoc());
+  const word = (path: string[], impl: string): Record<string, unknown> => ({ path, impl });
+  assert.deepEqual(splitOneWordVerbs([...commands, word(['mcp', 'extra'], 'node')]), ['mcp']);
+  assert.deepEqual(splitOneWordVerbs([...commands, word(['doctor'], 'rust')]), ['doctor']);
+  assert.deepEqual(splitOneWordVerbs([...commands, word(['doctor', 'extra'], 'rust')]), []);
+  assert.deepEqual(splitOneWordVerbs([...commands, word(['plugin', 'extra'], 'rust')]), []);
 });
 
 test('the loader keeps impl out of what parseArgs and the contract see, and refuses a key it does not know', () => {
