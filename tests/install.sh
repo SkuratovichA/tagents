@@ -363,8 +363,9 @@ printf '#!/bin/sh\necho "rust node=${TAGENTS_NODE-unset} $*"\nexit 7\n' > "$RUST
 out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
 ok "an install with a Rust binary exits 0" 0 "$rc"
 # The same, with a binary: the bytes that write_wrapper has always written for a wrapper that names one, spelled out so a stray space in the wrapper text cannot pass.
-native_wrapper_bytes() {  # <node> <native binary> <word or empty> <target>
-  printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nn="%s"\n[ -x "$n" ] || n=node\nr="%s"\n[ ! -f "$r" ] || [ ! -x "$r" ] || { TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" %s"$@"; }\nexec "$n" "%s" "$@"\n' "$1" "$2" "${3:+$3 }" "$4"
+native_wrapper_bytes() {  # <node> <native binary> <word or empty> <target> <the one argument the binary is for, or empty>
+  guard=; [ -z "${5:-}" ] || guard="[ \"\$#\" -ne 1 ] || [ \"\$1\" != $5 ] || "
+  printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nn="%s"\n[ -x "$n" ] || n=node\nr="%s"\n[ ! -f "$r" ] || [ ! -x "$r" ] || %s{ TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" %s"$@"; }\nexec "$n" "%s" "$@"\n' "$1" "$2" "$guard" "${3:+$3 }" "$4"
 }
 contains "the wrapper names the binary" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
 contains "and still names the node CLI as the way out" 'exec "$n" "'"$TAGENTS_HOME"'/packages/core/dist/cli/main.js" "$@"' "$(cat "$TAGENTS_BIN/tagents-core")"
@@ -375,8 +376,8 @@ contains "tagents-mcp names the same binary" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENT
 contains "...and hands it the word mcp before the arguments, with the pinned node" 'TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" mcp "$@"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
 contains "...and still names the node server as the way out" 'exec "$n" "'"$TAGENTS_HOME"'/packages/mcp/dist/main.js" "$@"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
 lacks "tagents-core hands its binary no word" 'exec "$r" mcp' "$(cat "$TAGENTS_BIN/tagents-core")"
-native_wrapper_bytes "$TMP/node-c/node" "$RUST_BIN" "" "$TAGENTS_HOME/packages/core/dist/cli/main.js" > "$TMP/expected-native-core"
-native_wrapper_bytes "$TMP/node-c/node" "$RUST_BIN" mcp "$TAGENTS_HOME/packages/mcp/dist/main.js" > "$TMP/expected-native-mcp"
+native_wrapper_bytes "$TMP/node-c/node" "$RUST_BIN" "" "$TAGENTS_HOME/packages/core/dist/cli/main.js" "" > "$TMP/expected-native-core"
+native_wrapper_bytes "$TMP/node-c/node" "$RUST_BIN" mcp "$TAGENTS_HOME/packages/mcp/dist/main.js" "" > "$TMP/expected-native-mcp"
 same_bytes "with a binary, tagents-core is byte for byte what write_wrapper has always written for it" "$TMP/expected-native-core" "$TAGENTS_BIN/tagents-core"
 same_bytes "and so is tagents-mcp" "$TMP/expected-native-mcp" "$TAGENTS_BIN/tagents-mcp"
 ok "tagents-mcp runs the binary with the word, then every argument" "rust node=$TMP/node-c/node mcp a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a b)"
@@ -384,6 +385,8 @@ env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" a >/dev/null; rc=$?
 ok "...and its exit code comes through untouched" 7 "$rc"
 # tagents-notify runs the binary for the one call `run` and for no other, which is the whole of its test of the arguments.
 notify_path="$TAGENTS_HOME/packages/notify/dist/main.js"
+native_wrapper_bytes "$TMP/node-c/node" "$RUST_BIN" notify "$notify_path" run > "$TMP/expected-native-notify"
+same_bytes "with a binary, tagents-notify is byte for byte what write_wrapper writes for it" "$TMP/expected-native-notify" "$TAGENTS_BIN/tagents-notify"
 contains "tagents-notify names the same binary" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-notify")"
 contains "...and hands it the word notify for the one argument run, with the pinned node" '[ ! -f "$r" ] || [ ! -x "$r" ] || [ "$#" -ne 1 ] || [ "$1" != run ] || { TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" notify "$@"; }' "$(cat "$TAGENTS_BIN/tagents-notify")"
 contains "...and still names the node program as the way out" 'exec "$n" "'"$notify_path"'" "$@"' "$(cat "$TAGENTS_BIN/tagents-notify")"
@@ -736,6 +739,8 @@ ok "...and tagents-mcp runs it too" "handbuilt" "$(env PATH=/usr/bin:/bin "$TAGE
 ok "...and tagents-notify run runs it too" "handbuilt" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-notify" run)"
 out=$(TAGENTS_NO_NATIVE=1 run_native); rc=$?
 ok "TAGENTS_NO_NATIVE=1 leaves it alone as well" "handbuilt" "$("$RUST_BIN")"
+ok "...and tagents-core still runs it" "handbuilt" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core")"
+ok "...and tagents-notify run still runs it" "handbuilt" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-notify" run)"
 chmod 644 "$RUST_BIN"
 out=$(run_native); rc=$?
 ok "a hand-built file that is not executable is left alone too" yes "$(grep -q handbuilt "$RUST_BIN" && echo yes || echo no)"
