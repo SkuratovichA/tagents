@@ -464,7 +464,7 @@ test('a symlinked notify.toml: an edit of its target waits for the next event in
 
   // The retries point at a file nothing edits, whose options differ from every other file's, so an event of one that arrives late reads unchanged options and `apply` ignores it.
   await until('the watch is armed', () => reloads() === 1, () => repoint(armed));
-  // The watch is armed, so this write cannot be lost and needs no retry, and the events of a directory arrive in the order they happened: this reload comes after every retry above.
+  // The watch is armed, so this write cannot be lost and needs no retry. A retry above whose events come after this write reads the new link and is this reload, and then the events of this write can come after the edit below; that takes a batch of events slower than the 100 ms between retries, and a real watcher cannot rule it out.
   repoint(target);
   await until('the link replaced once', () => reloads() === 2);
 
