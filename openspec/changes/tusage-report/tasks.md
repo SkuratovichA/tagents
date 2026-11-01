@@ -24,8 +24,8 @@ Every shell suite runs as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" b
 
 ## 5. Accounts and projects
 
-- [ ] 5.1 Write failing tests: `--account` on `--by`, the summary, `--sessions` (14 fields), `--daily` (five fields), `--burn` and `--json`, with a comma list and a repeated flag; `?` selects unplaced sessions; `--by account` shows `? unplaced` and the closing line; `--project` with one and several values, and with `--account`. Proof: `tests/tusage.sh`.
-- [ ] 5.2 Add the account and project filters in front of the aggregation and the existing reports, joining sessions to accounts only when an account is asked for. Proof: `tests/tusage.sh`.
+- [x] 5.1 Write failing tests: `--account` on `--by`, the summary, `--sessions` (14 fields), `--daily` (five fields), `--burn` and `--json`, with a comma list and a repeated flag; `?` selects unplaced sessions; `--by account` shows `? unplaced` and the closing line; `--project` with one and several values, and with `--account`. Proof: `tests/tusage.sh`.
+- [x] 5.2 Add the account and project filters in front of the aggregation and the existing reports, joining sessions to accounts only when an account is asked for. Proof: `tests/tusage.sh`.
 
 ## 6. Names and account names
 

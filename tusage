@@ -1202,6 +1202,43 @@ AWK_TEXT='
   function upad(s, w,   n) { n = uclen(s); return (w > n) ? s sprintf("%" (w-n) "s", "") : s }
 '
 
+# --account and --project narrow every report by the same means: the rows that
+# stay are written to a file of their own, FACTS points at it, and the report
+# reads it as it reads the index. No report has a filter of its own, so none
+# can disagree about what a filter means, and a call with no filter reads the
+# index as it always did.
+FILTERED=""
+have_index() { [ -s "$FACTS" ] || [ -n "$FILTERED" ]; }  # an empty answer is not a missing index
+filter_facts() {
+  [ -n "$ACCTS$PROJS" ] || return 0
+  [ -s "$FACTS" ] || return 0
+  local withacct=0
+  [ -n "$ACCTS" ] && withacct=1
+  FILTERED=$(mktemp "${TMPDIR:-/tmp}/tusage.facts.XXXXXX") || return 1
+  trap 'rm -f "$FILTERED"' EXIT
+  { slug_map | sed 's/^/P\t/'
+    [ "$withacct" = 1 ] && { account_map | sed 's/^/A\t/'; }
+    cat "$FACTS"; } |
+  LC_ALL=C awk -F"$TAB" -v accts="$ACCTS" -v projs="$PROJS" -v home="$HOME" '
+    BEGIN {
+      na = split(accts, a, ","); for (i = 1; i <= na; i++) WANTA[a[i]] = 1
+      np = split(tolower(projs), WP, "\037")
+    }
+    function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home) + 1) : p }
+    $1 == "P" { PD[$2] = tilde($3); next }
+    $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
+    {
+      if (na) { x = ($3 in ACC) ? ACC[$3] : "?"; if (!(x in WANTA)) next }
+      if (np) {
+        p = tolower(($2 in PD) ? PD[$2] : $2); ok = 0
+        for (i = 1; i <= np; i++) if (index(p, WP[i])) { ok = 1; break }
+        if (!ok) next
+      }
+      print
+    }' >"$FILTERED"
+  FACTS=$FILTERED
+}
+
 # ---------------------------------------------------------------------------
 # --by: one aggregation pass, one render pass
 # ---------------------------------------------------------------------------
@@ -1481,7 +1518,7 @@ by_render() {  # <dimensions, comma list> <title>
 
 report_by() {  # <the --by list> <cut> <upto>
   local dims=$1 cut=$2 upto=$3 all=$1 nodes rc
-  [ -s "$FACTS" ] || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
+  have_index || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
   # --breakdown is one more dimension under the deepest one, unless the model
   # is a dimension already.
   case ",$dims," in *,model,*) ;; *) [ "$BREAKDOWN" = 1 ] && all="$dims,model" ;; esac
@@ -1649,7 +1686,7 @@ session_detail() {
 
 summary() {
   local now; now=$(date +%s)
-  [ -s "$FACTS" ] || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
+  have_index || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
   { slug_map | sed 's/^/P\t/'; cat "$FACTS"; } |
   LC_ALL=C awk -F"$TAB" -v now="$now" -v home="$HOME" "$AWK_FMT$AWK_TEXT"'
     BEGIN { R = "\033[0m"; DIM = "\033[90m"; B = "\033[1m" }
@@ -1730,7 +1767,7 @@ summary() {
 }
 
 json() {
-  [ -s "$FACTS" ] || { echo '{"error":"no data"}'; return 1; }
+  have_index || { echo '{"error":"no data"}'; return 1; }
   LC_ALL=C awk -F"$TAB" -v cut="${1:-0}" -v upto="${2:-0}" '
     function cost(i,c5,c1,cr,o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
     $1 + 0 >= cut && (upto == 0 || $1 + 0 <= upto) { C[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += cost($9,$10,$11,$12,$13)
@@ -1762,8 +1799,10 @@ while [ $# -gt 0 ]; do
     --by)       want_value "$1" $#; BYLIST=$2; DIM=__by; shift 2 ;;
     --since)    want_value "$1" $#; SINCE=$2; SINCE_SET=1; shift 2 ;;
     --until)    want_value "$1" $#; UNTIL=$2; UNTIL_SET=1; shift 2 ;;
-    --account)  want_value "$1" $#; ACCTS="${ACCTS:+$ACCTS,}$2"; shift 2 ;;
-    --project)  want_value "$1" $#; PROJS="${PROJS:+$PROJS$US}$2"; shift 2 ;;
+    --account)  want_value "$1" $#; [ -n "$2" ] || die_usage "--account needs a name"
+                ACCTS="${ACCTS:+$ACCTS,}$2"; shift 2 ;;
+    --project)  want_value "$1" $#; [ -n "$2" ] || die_usage "--project needs some text"
+                PROJS="${PROJS:+$PROJS$US}$2"; shift 2 ;;
     --breakdown) BREAKDOWN=1; shift ;;
     --top)      want_value "$1" $#; TOPN=$2; shift 2 ;;
     --sort)     want_value "$1" $#; SORT=$2; shift 2 ;;
@@ -1855,6 +1894,7 @@ if [ "${UNTIL_SET:-0}" = 1 ]; then
 fi
 
 [ "$DO_UPDATE" = 1 ] && update 0
+case "$DIM" in ""|__by|__sessions|__daily|__burn|__json) filter_facts ;; esac
 
 case "$DIM" in
   "")          summary ;;

@@ -1250,5 +1250,60 @@ contains "a model with no rate: its dollars end in *" '$0*' "$out"
 contains "...and the table says the figure is a floor" "a floor" "$out"
 lacks "a table with every model rated has no such line" "a floor" "$(fx --by account $W)"
 
+
+# ---------------------------------------------------------------------------
+t "19. --account and --project narrow every report"
+# ---------------------------------------------------------------------------
+ok "--by account --account work keeps the one account" "$(printf '%s\n' "$X_ACCT" | sed -n 1p)" "$(tsv account --account work $W)"
+ok "--account twice is a list" "$(printf '%s\n' "$X_ACCT" | sed -n 1,2p)" "$(tsv account --account work --account personal $W)"
+ok "...and a comma list is the same list" "$(printf '%s\n' "$X_ACCT" | sed -n 1,2p)" "$(tsv account --account work,personal $W)"
+ok "--account ? keeps the sessions no account claims" "$(printf '%s\n' "$X_ACCT" | sed -n 3p)" "$(tsv account --account '?' $W)"
+ok "a project table of one account is that account's projects, dearest first" \
+   "$(printf '%s\n' "$X_ACCT_PROJ" | awk -F'\t' '$1 == "work"' | cut -f2-)" "$(tsv project --account work $W)"
+
+ok "--sessions --account work keeps the sessions of work" \
+   "$(tsv account,project,session $W | awk -F'\t' '$1 == "work" { print $3 }' | sort)" \
+   "$(fx --sessions $W --account work | cut -f1 | sort)"
+ok "...with the 14 fields it has unfiltered" "14" "$(fx --sessions $W --account work | awk -F'\t' '{ print NF }' | sort -u)"
+ok "...and a row is the row it is unfiltered" "$(fx --sessions $W | /usr/bin/grep "^$(fxsid 3f9a1c20)")" \
+   "$(fx --sessions $W --account work | /usr/bin/grep "^$(fxsid 3f9a1c20)")"
+ok "--daily --account work has the five fields and only work" "5|work" \
+   "$(fx --daily $W --account work | awk -F'\t' '{ print NF }' | sort -u)|$(fx --daily $W --account work | cut -f2 | sort -u)"
+ok "...and a row is the row it is unfiltered" "$(fx --daily $W | awk -F'\t' '$2 == "work"')" "$(fx --daily $W --account work)"
+out=$(fx --json --since 1000d --account work)
+contains "--json --account work lists the sessions of work" "$(fxsid 3f9a1c20)" "$out"
+lacks "...and not those of personal" "$(fxsid d8c3b615)" "$out"
+
+ok "--project keeps the projects whose path contains the text, ignoring case" \
+   "$(printf '%s\n' "$X_SESS" | /usr/bin/grep -e "^$(fxsid 3f9a1c20)" -e "^$(fxsid c04d7be1)" -e "^$(fxsid b72e90d4)")" \
+   "$(tsv session --project BILLING $W)"
+ok "--project twice keeps a row that matches either" "4" "$(tsv session --project billing --project probe $W | wc -l | tr -d ' ')"
+ok "--project with --account keeps the rows that match both" \
+   "$(fxsid 91ab44ee) $(fxsid e5d1f0a7)" "$(tsv session --account work --project web $W | cut -f1 | tr '\n' ' ' | sed 's/ $//')"
+out=$(fx --by session --account personal --project billing $W); rc=$?
+ok "nothing left after the filters is an empty window, not a missing index" "no data in this window|1" "$out|$rc"
+ok "--project with no text exits 2" "2" "$(fxrc --by day --project '')"
+ok "--account with no name exits 2" "2" "$(fxrc --by day --account '')"
+
+# The summary and --burn read the clock, so they get rows of their own: one
+# work session and one personal session, spent half an hour ago.
+F4="$ROOT/fx4"; mkdir -p "$F4/usage" "$F4/projects/-h-x" "$F4/projects/-h-y"
+now4=$(( $(date +%s) / 300 * 300 - 1800 ))
+{ printf '%s\t-h-x\t%s\t-\t-\t-\tclaude-opus-5\t5\t1000000\t0\t0\t0\t0\t100\t100\n' "$now4" "$(fxsid 3f9a1c20)"
+  printf '%s\t-h-y\t%s\t-\t-\t-\tclaude-opus-5\t5\t1000000\t0\t0\t0\t0\t100\t100\n' "$now4" "$(fxsid d8c3b615)"
+} >"$F4/usage/facts.tsv"
+printf -- '-h-x\t%s/git/x\n-h-y\t%s/git/y\n' "$FXH" "$FXH" >"$F4/usage/projects.tsv"
+fx4() { FX_STATE="$F4/usage" fx "$@"; }
+both=$(fx4 --burn)
+contains "--burn adds both accounts" "5h " "$both"
+ok "--burn --account work,personal is the five hours of every account" "$(fx4 --burn)" "$(fx4 --burn --account work,personal)"
+ok "--burn --account personal is not what both spent" "1" "$([ "$(fx4 --burn --account personal)" != "$both" ] && echo 1 || echo 0)"
+ok "--burn for an account that spent nothing prints nothing" "" "$(fx4 --burn --account '?')"
+out=$(fx4)
+contains "the summary names both projects" "~/git/y" "$out"
+out=$(fx4 --account work)
+contains "the summary of one account keeps its project" "~/git/x" "$out"
+lacks "...and drops the other's" "~/git/y" "$out"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
