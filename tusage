@@ -1202,6 +1202,11 @@ AWK_TEXT='
   function upad(s, w,   n) { n = uclen(s); return (w > n) ? s sprintf("%" (w-n) "s", "") : s }
 '
 
+# A directory as the tables show it: the home is a tilde. Needs -v home.
+AWK_TILDE='
+  function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home) + 1) : p }
+'
+
 # --account and --project narrow every report by the same means: the rows that
 # stay are written to a file of their own, FACTS points at it, and the report
 # reads it as it reads the index. No report has a filter of its own, so none
@@ -1210,7 +1215,7 @@ AWK_TEXT='
 FILTERED=""
 have_index() { [ -s "$FACTS" ] || [ -n "$FILTERED" ]; }  # an empty answer is not a missing index
 filter_facts() {
-  [ -n "$ACCTS$PROJS" ] || return 0
+  [ -n "$ACCTS$PROJS$SESSION" ] || return 0
   [ -s "$FACTS" ] || return 0
   local withacct=0
   [ -n "$ACCTS" ] && withacct=1
@@ -1219,15 +1224,15 @@ filter_facts() {
   { slug_map | sed 's/^/P\t/'
     [ "$withacct" = 1 ] && { account_map | sed 's/^/A\t/'; }
     cat "$FACTS"; } |
-  LC_ALL=C awk -F"$TAB" -v accts="$ACCTS" -v projs="$PROJS" -v home="$HOME" '
+  LC_ALL=C awk -F"$TAB" -v accts="$ACCTS" -v projs="$PROJS" -v sess="$SESSION" -v home="$HOME" "$AWK_TILDE"'
     BEGIN {
       na = split(accts, a, ","); for (i = 1; i <= na; i++) WANTA[a[i]] = 1
       np = split(tolower(projs), WP, "\037")
     }
-    function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home) + 1) : p }
     $1 == "P" { PD[$2] = tilde($3); next }
     $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
     {
+      if (sess != "" && $3 != sess) next
       if (na) { x = ($3 in ACC) ? ACC[$3] : "?"; if (!(x in WANTA)) next }
       if (np) {
         p = tolower(($2 in PD) ? PD[$2] : $2); ok = 0
@@ -1445,6 +1450,22 @@ resolve_session() {
   esac
 }
 
+# The heading of a table of one session, as the H record by_render prints it:
+# the name the session has in the other tables (none when it has none), its full
+# id, its account and its project directory.
+session_head() {  # <full session id>
+  local sid=$1 slug acct dir nm
+  { slug_map | sed 's/^/P\t/'; account_map | sed 's/^/A\t/'; sed 's/^/S\t/' "$META"; } |
+  LC_ALL=C awk -F"$TAB" -v k="$sid" -v home="$HOME" "$AWK_TILDE"'
+    $1 == "P" { PD[$2] = tilde($3); next }
+    $1 == "A" { if ($2 == k) acct = $3; next }
+    $1 == "S" && $2 == k && slug == "" { slug = $3; next }
+    END { printf "%s\t%s\t%s\n", slug, (acct == "" ? "?" : acct), (slug in PD ? PD[slug] : slug) }' |
+  { IFS="$TAB" read -r slug acct dir
+    nm=$(printf '%s\t%s\n' "$sid" "$slug" | with_names names_of_sessions | LC_ALL=C cut -f3)
+    printf 'H\t%s\t%s\t%s\t%s\n' "$nm" "$sid" "$acct" "$dir"; }
+}
+
 # ---------------------------------------------------------------------------
 # --by: one aggregation pass, one render pass
 # ---------------------------------------------------------------------------
@@ -1469,7 +1490,7 @@ by_aggregate() {  # <dimensions, comma list> <cut> <upto> table|tsv
   LC_ALL=C awk -F"$TAB" -v dims="$dims" -v cut="$cut" -v upto="$upto" -v mode="$mode" \
       -v topn="$TOPN" -v sortcost="$([ "$SORT" = cost ] && echo 1 || echo 0)" \
       -v now="$(date +%s)" -v tz="$(date +%z)" -v home="$HOME" \
-      -v prices="$(prices_arg)" "$AWK_FMT$AWK_DAY$AWK_PRICE"'
+      -v prices="$(prices_arg)" "$AWK_FMT$AWK_DAY$AWK_PRICE$AWK_TILDE"'
     BEGIN {
       nd = split(dims, DIM, ",")
       for (i = 1; i <= nd; i++) {
@@ -1479,7 +1500,6 @@ by_aggregate() {  # <dimensions, comma list> <cut> <upto> table|tsv
       }
       ROOT = "0"
     }
-    function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home) + 1) : p }
     # The key of the current row for one dimension. A week is its Monday: day
     # number 0 was a Thursday, so (day + 3) mod 7 counts days since Monday.
     function rowkey(name, dk,   a) {
@@ -1652,13 +1672,15 @@ by_render() {  # <dimensions, comma list> <title>
     $1 == "W" { FROM = $2; TO = $3; UNPL = $4 + 0; next }
     $1 == "K" { NK++; KACC[NK] = $2; next }
     $1 == "S" { t = $3; gsub(/[\001-\037\177]/, "", t); if (t != "") NAME[$2] = t; next }
+    $1 == "H" { HEAD = 1; HNAME = $2; HID = $3; HACC = ($4 == "?") ? "? unplaced" : $4; HDIR = $5; next }
     {
       n++
       TY[n] = $1; DP[n] = $2 + 0; DM[n] = $3; KY[n] = $4
       Q[n] = $5; IN[n] = $6; OU[n] = $7; CWR[n] = $8; CRD[n] = $9; U[n] = $10 + 0; UP[n] = $11 + 0
       FD[n] = $12; LD[n] = $13; ND[n] = $14; MD[n] = $15; MO[n] = $16 + 0
-      if ($1 == "T") TOT = $10 + 0
+      if ($1 == "T") { TOT = $10 + 0; TDAYS = $14 + 0; TFROM = $12; TTO = $13 }
     }
+    function span(f, l,   a, b) { a = substr(f, 6); b = substr(l, 6); return (a == b) ? a : a ".." b }
     function label(i,   d, k, t) {
       d = DM[i]; k = KY[i]
       if (TY[i] == "T") return "total"
@@ -1670,7 +1692,7 @@ by_render() {  # <dimensions, comma list> <title>
       else t = k
       return substr("        ", 1, 2 * (DP[i] - 1)) t
     }
-    function cell(c, i,   a, b) {
+    function cell(c, i) {
       if (c == "reqs")   return sprintf("%d", Q[i])
       if (c == "input")  return human(IN[i])
       if (c == "output") return human(OU[i])
@@ -1680,7 +1702,7 @@ by_render() {  # <dimensions, comma list> <title>
       if (c == "usd")    return money(U[i]) (UP[i] > 0 ? "*" : "")
       if (c == "share")  return sprintf("%.1f%%", pct(U[i], TOT))
       if (c == "days")   return sprintf("%d", ND[i])
-      if (c == "span") { a = substr(FD[i], 6); b = substr(LD[i], 6); return (a == b) ? a : a ".." b }
+      if (c == "span") return span(FD[i], LD[i])
       return MD[i] (MO[i] > 0 ? " +" MO[i] : "")
     }
     function fit(s, c) { return (c == "span" || c == "models") ? sprintf("%-" W[c] "s", s) : sprintf("%" W[c] "s", s) }
@@ -1702,7 +1724,11 @@ by_render() {  # <dimensions, comma list> <title>
         if (UP[i] > 0) FLOOR = 1
         for (j = 1; j <= nc; j++) { t = cell(COLS[j], i); X[i, j] = t; if (length(t) > W[COLS[j]]) W[COLS[j]] = length(t) }
       }
-      print "usage  " FROM " .. " TO "  " title
+      if (HEAD) {
+        gsub(/[\001-\037\177]/, "", HNAME); gsub(/[\001-\037\177]/, "", HDIR)
+        t = (HNAME == "") ? HID : HNAME "  " HID; print t
+        print HACC "  ·  " HDIR "  ·  " TDAYS " day" (TDAYS == 1 ? "" : "s") ", " span(TFROM, TTO)
+      } else print "usage  " FROM " .. " TO "  " title
       print ""
       s = upad("", labw)
       for (j = 1; j <= nc; j++) s = s "  " fit(H[COLS[j]], COLS[j])
@@ -1733,7 +1759,8 @@ report_by() {  # <the --by list> <cut> <upto>
   nodes=$(mktemp "${TMPDIR:-/tmp}/tusage.by.XXXXXX") || return 1
   by_aggregate "$all" "$cut" "$upto" table >"$nodes"; rc=$?
   if [ "$rc" = 0 ]; then
-    { case ",$all," in *,session,*) session_names "$nodes" ;; esac; cat "$nodes"; } |
+    { [ -z "$SESSION" ] || session_head "$SESSION"
+      case ",$all," in *,session,*) session_names "$nodes" ;; esac; cat "$nodes"; } |
       by_render "$all" "by ${all//,/ > }"
     rc=$?
   fi
@@ -2106,8 +2133,8 @@ if [ "${UNTIL_SET:-0}" = 1 ]; then
 fi
 
 [ "$DO_UPDATE" = 1 ] && update 0
+[ -n "$SESSION" ] && resolve_session
 case "$DIM" in ""|__by|__sessions|__daily|__burn|__json) filter_facts ;; esac
-[ "$DIM" = __detail ] && resolve_session
 
 case "$DIM" in
   "")          summary ;;

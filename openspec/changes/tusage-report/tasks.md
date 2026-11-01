@@ -7,8 +7,8 @@ Every shell suite runs as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" b
 
 ## 2. The command line
 
-- [ ] 2.1 Write failing tests: `--by` with an unknown, repeated or fourth dimension exits 2 and the message lists the dimensions; `--session X --by day` gives the same table in either flag order; `--top`, `--sort`, `--color` and `--account` with a bad value exit 2; `--account nobody` lists the known accounts; an unknown option still exits 2. Proof: `tests/tusage.sh`.
-- [ ] 2.2 Parse the new options (`--by` list, `--account`, `--project`, `--breakdown`, `--top`, `--sort`, `--color`, `--compact`, `--tsv`), keep the session apart from the report so the order of the flags does not decide, and validate their values. Proof: `tests/tusage.sh`.
+- [x] 2.1 Write failing tests: `--by` with an unknown, repeated or fourth dimension exits 2 and the message lists the dimensions; `--session X --by day` gives the same table in either flag order; `--top`, `--sort`, `--color` and `--account` with a bad value exit 2; `--account nobody` lists the known accounts; an unknown option still exits 2. Proof: `tests/tusage.sh`.
+- [x] 2.2 Parse the new options (`--by` list, `--account`, `--project`, `--breakdown`, `--top`, `--sort`, `--color`, `--compact`, `--tsv`), keep the session apart from the report so the order of the flags does not decide, and validate their values. Proof: `tests/tusage.sh`.
 
 ## 3. Dates, weeks and months
 
@@ -38,7 +38,7 @@ Every shell suite runs as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" b
 
 ## 7. One session by day
 
-- [ ] 7.1 Write failing tests: `--session <name> --by day` and `--by day,model` on a three-day session print the heading (name, full id, account, directory), one row per day, the models beneath each day and a total equal to the sum; the window reaches back to the start of the index with no `--since`; a session picked by prefix gives the same table. Then implement. Proof: `tests/tusage.sh`.
+- [x] 7.1 Write failing tests: `--session <name> --by day` and `--by day,model` on a three-day session print the heading (name, full id, account, directory), one row per day, the models beneath each day and a total equal to the sum; the window reaches back to the start of the index with no `--since`; a session picked by prefix gives the same table. Then implement. Proof: `tests/tusage.sh`.
 
 ## 8. Layout and colour
 

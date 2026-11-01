@@ -1508,5 +1508,66 @@ ok "--burn does not" 0 "$(FX_ACCOUNTS= traced fx --burn)"
 ok "--json does not" 0 "$(FX_ACCOUNTS= traced fx --json --since 1000d)"
 ok "--session <id> does not" 0 "$(FX_ACCOUNTS= traced fx --session "$(fxsid 3f9a1c20)")"
 
+# ---------------------------------------------------------------------------
+t "22. one session by day"
+# ---------------------------------------------------------------------------
+# --session names the rows; --by names the table. Neither flag decides on its
+# own which report runs, so they mean the same in either order.
+
+export FX_TA="$TA20"
+SD_HEAD="refactor-billing  $SID3
+work  ·  ~/git/work/billing-api  ·  3 days, 10-29..11-01
+"
+SD_TABLE='             reqs   input  output  cwrite   cread   total         $   share
+2026-10-29    180    430k    137k    2.3M   24.5M   27.4M     $28.8   33.5%
+  opus-5      142    310k     96k    1.9M   21.4M   23.7M     $26.5   30.8%
+  sonnet-5     38    120k     41k    410k    3.1M    3.7M     $2.29    2.7%
+2026-10-31    210    440k    150k    2.6M   33.0M   36.2M     $38.7   45.0%
+  opus-5      210    440k    150k    2.6M   33.0M   36.2M     $38.7   45.0%
+2026-11-01    112    290k    100k    1.4M   16.8M   18.6M     $18.6   21.6%
+  opus-5       88    200k     70k    1.1M   14.8M   16.2M     $17.0   19.8%
+  sonnet-5     24     90k     30k    260k    2.0M    2.4M     $1.53    1.8%
+total         502    1.2M    387k    6.3M   74.3M   82.1M     $86.1  100.0%'
+out=$(fx --session refactor-billing --by day,model --color never); rc=$?
+ok "--session <name> --by day,model: the heading, then the table" "$SD_HEAD
+$SD_TABLE" "$out"
+ok "...and exits 0" 0 "$rc"
+ok "--by first and --session second print the same" "$out" "$(fx --by day,model --session refactor-billing --color never)"
+ok "a prefix of the id prints the same" "$out" "$(fx --session 3f9a1c --by day,model --color never)"
+ok "the whole id prints the same" "$out" "$(fx --session "$SID3" --by day,model --color never)"
+ok "a part of the name prints the same" "$out" "$(fx --session factor-bil --by day,model --color never)"
+
+out=$(fx --session refactor-billing --by day --color never)
+ok "--by day: one row per day and the total" "2026-10-29 2026-10-31 2026-11-01 total" \
+   "$(printf '%s\n' "$out" | LC_ALL=C awk '/^(2026|total)/ { print $1 }' | paste -sd' ' -)"
+ok "...with the heading above it" "$SD_HEAD" "$(printf '%s\n' "$out" | sed -n 1,2p)
+"
+ok "...and the days add up to the dollars of the table's total" "86.1" \
+   "$(fx --session refactor-billing --by day --tsv | LC_ALL=C awk -F'\t' '{ s += $7 } END { printf "%.1f", s }')"
+ok "--since narrows the window of a session: two days" "2026-10-31 2026-11-01 total" \
+   "$(fx --session refactor-billing --by day --since 2026-10-31 --color never | LC_ALL=C awk '/^(2026|total)/ { print $1 }' | paste -sd' ' -)"
+contains "...and the heading counts those days" "2 days, 10-31..11-01" "$(fx --session refactor-billing --by day --since 2026-10-31 --color never)"
+
+out=$(fx --session "$(fxsid e5d1f0a7)" --by day --color never)
+ok "a session with no name is headed by its id alone, and a one-day span is one date" "$(fxsid e5d1f0a7)
+work  ·  ~/git/work/web-app  ·  1 day, 10-31
+" "$(printf '%s\n' "$out" | sed -n 1,2p)
+"
+out=$(fx --session 7b2c5d33 --by day --color never)
+contains "a session no account claims is in no account" "? unplaced  ·  " "$out"
+out=$(fx --session 0a6f7e92 --by day --color never)
+lacks "no escape sequence of a name reaches the heading" "$(printf '\033')" "$out"
+
+ok "the session is a filter of --by session: one row" 1 "$(fx --session refactor-billing --by session --color never | grep -c '3f9a1c20 ')"
+ok "...and of --by account: its account alone" "work" "$(fx --session refactor-billing --by account --color never | LC_ALL=C awk 'NR > 3 && /^(work|personal)/ { print $1 }')"
+ok "a --tsv table has no heading: its lines are the three days" "3 3" \
+   "$(fx --session refactor-billing --by day --tsv | LC_ALL=C awk '/^2026-/ { d++ } END { print d, NR }')"
+ok "--session --sessions lists that session alone, 14 fields" "1 14" \
+   "$(fx --session refactor-billing --sessions --since 1000d | LC_ALL=C awk -F'\t' 'END { print NR, NF }')"
+ok "--account narrows the lookup of --by too" 1 "$(fxrc --session refactor-billing --by day --account personal)"
+ok "a name that fits two sessions exits 3 with --by as it does without" 3 "$(fxrc --session tagents --by day)"
+ok "a value that names nothing exits 1 with --by" 1 "$(fxrc --session nothing-like-it --by day)"
+unset FX_TA
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
