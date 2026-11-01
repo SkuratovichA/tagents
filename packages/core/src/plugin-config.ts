@@ -171,6 +171,7 @@ const fromOf = (entry: unknown): unknown =>
  * A section header at the end of the file is valid whatever precedes it, so nothing in the file has to be understood to place it — and a `plugins` that is written inline (`plugins = { … }`), where it is not valid, fails the parse that follows and is refused with the file untouched.
  */
 function addTomlEntry(file: string, name: string, from: string): AddOutcome {
+  const target = writeTarget(file);
   const text = readText(file);
   if (Object.hasOwn(parseTomlFile(file, text).plugins, name)) return 'exists';
 
@@ -179,7 +180,7 @@ function addTomlEntry(file: string, name: string, from: string): AddOutcome {
 
   const after = parseTomlFile(file, next, 'the edit would not parse: ');
   if (fromOf(after.plugins[name]) !== from) throw new Error(`${file}: the edit did not take`);
-  save(file, next);
+  save(target, next);
   return 'added';
 }
 
@@ -234,6 +235,7 @@ function cutSections(lines: string[], name: string): string[] {
 }
 
 function removeTomlEntry(file: string, name: string): RemoveOutcome {
+  const target = writeTarget(file);
   const text = readText(file);
   if (!text) return 'absent';
   const before = parseTomlFile(file, text);
@@ -247,7 +249,7 @@ function removeTomlEntry(file: string, name: string): RemoveOutcome {
   const rest = Object.fromEntries(Object.entries(before.plugins).filter(([key]) => key !== name));
   if (!isDeepStrictEqual({ ...before.doc, plugins: rest }, { ...after.doc, plugins: after.plugins }))
     throw new Error(`${file}: removing ${name} would change something else, so nothing was written`);
-  save(file, next);
+  save(target, next);
   return 'removed';
 }
 
@@ -259,6 +261,13 @@ function readText(file: string): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * The file an edit of `file` replaces: `file` itself, or the file a symbolic link at that path ends in. The owner may keep the config in a dotfiles repository behind a link, and a rename over the link would swap it for a regular file; a rename over its target leaves the link a link. A link to nowhere or in a loop throws the system's error, before anything is read or written.
+ */
+function writeTarget(file: string): string {
+  return fs.lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink() ? fs.realpathSync(file) : file;
 }
 
 function save(file: string, text: string): void {
