@@ -82,7 +82,7 @@ The service SHALL write to stderr the lines listed below, as `<ISO time with mil
 
 #### Scenario: An operating system's error text
 - **WHEN** a line carries the text of an operating system error, such as a failed lock release or a failed watch
-- **THEN** the text is the node service's for ENOENT, EIO, E2BIG, ENOEXEC, ENOMEM, EACCES, ENOTDIR, EISDIR, EMFILE and ETXTBSY, and the operating system's own description of the error for any other
+- **THEN** the text is the node service's for ENOENT, EIO, E2BIG, ENOEXEC, ENOMEM, EACCES, ENOTDIR, EISDIR, EMFILE and ETXTBSY, and for any other the operating system's description of the error followed by ` (os error <n>)`
 
 #### Scenario: A notice line
 - **WHEN** a `turn_done` notice for key `12` is posted and shown
