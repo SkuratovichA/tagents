@@ -233,6 +233,48 @@ ok "--sessions still has 14 fields" 14 \
 export TU_STATE="$SAVE_STATE"
 
 # ---------------------------------------------------------------------------
+t "4c. what the report options leave alone: the bytes the dashboard reads"
+# ---------------------------------------------------------------------------
+# --sessions, --daily, --burn, --session <id> and --json are read by other
+# programs (state.sh, usage.sh, list.sh, preview.sh, closed.sh), so their bytes
+# are pinned against the fixture at the top of this file. A name typed in
+# tagents and a cached title are present, and neither may reach these outputs
+# or be rewritten by them. (No transcript is added: a new directory under
+# $TU_PROJECTS would make slug_map regenerate the fixture's projects.tsv.)
+
+export TA_STATE_DIR="$ROOT/ta12"
+mkdir -p "$TA_STATE_DIR"
+printf 's-work\tTyped Name\ns-work\tSecond Line\n' >"$TA_STATE_DIR/labels.tsv"
+printf 's-pers\tCached Title\t100\n' >"$TA_STATE_DIR/title.tsv"
+sum12() { cksum "$TA_STATE_DIR/labels.tsv" "$TA_STATE_DIR/title.tsv" | tr '\n' ' '; ls "$TA_STATE_DIR" | tr '\n' ' '; }
+before12=$(sum12)
+
+# Captured from the script before this change, with printf %q, so the escape
+# sequences are the ones the popups render.
+PIN_DETAIL_WORK=$'\E[1ms-work\E[0m  ?\n\E[90m  who                            cost        $    reqs   cwrite    cread      out\E[0m\n  · main                        6.0M    $30.0       5        0        0     1.0M\n\E[90m  TOTAL                          6.0M    $30.0\E[0m\nx'
+PIN_DETAIL_RULE=$'\E[1ms-rule\E[0m  ?\n\E[90m  who                            cost        $    reqs   cwrite    cread      out\E[0m\n  · main                        3.5M    $2.50       2     100k     1.0M     500k\n\E[90m  TOTAL                          3.5M    $2.50\E[0m\n\n\E[90m  model                          cost        $\E[0m\n  claude-opus-5                  500k    $2.50\n  claude-gizmo-9                 3.0M       $0  \E[33m(no published rate)\E[0m\n\E[33m  1 request(s) ran on a model with no published rate �\200\224 $ is a floor\E[0m\nx'
+PIN_DETAIL_NONE=$'\E[1ms-nosuch\E[0m  ?\n  (no usage recorded in the retained window)\nx'
+PIN_BURN=\#\[fg=#665c54\]5h\ #\[fg=#928374\]\$27.5\ x
+PIN_JSON=\,\{\"project\":\"j-slug\"\,\"session\":\"s-rule\"\,\"who\":\"main\"\,\"cost\":3500000\,\"requests\":2\}\,\{\"project\":\"p-slug\"\,\"session\":\"s-pers\"\,\"who\":\"main\"\,\"cost\":1250000\,\"requests\":1\}\,\{\"project\":\"w-slug\"\,\"session\":\"s-work\"\,\"who\":\"main\"\,\"cost\":6000000\,\"requests\":5\}\[\{\"project\":\"w-slug\"\,\"session\":\"s-dup\"\,\"who\":\"main\"\,\"cost\":100000\,\"requests\":1\}\]\}x
+
+ok "--session <id>: heading, rows, total"      "$PIN_DETAIL_WORK" "$(tu --session s-work; echo x)"
+ok "--session <id>: model table and the floor"  "$PIN_DETAIL_RULE" "$(tu --session s-rule; echo x)"
+ok "--session <id>: an id with no usage"        "$PIN_DETAIL_NONE" "$(tu --session s-nosuch; echo x)"
+ok "--burn: one line, no newline"               "$PIN_BURN"        "$(tu --burn; echo x)"
+ok "--json: the same objects"                   "$PIN_JSON"        "$(tu --json --since 30d | tr '}' '\n' | LC_ALL=C sort | tr '\n' '}'; echo x)"
+
+sess12=$(tu --sessions --since 30d)
+ok "--sessions: 14 fields on every row" "14" "$(printf '%s\n' "$sess12" | awk -F'\t' '{ print NF }' | sort -u)"
+ok "--sessions: the first line of a session" \
+   "s-work${TAB}6000000${TAB}5${TAB}1000000${TAB}${T2}${TAB}w-slug${TAB}0${TAB}0${TAB}5000000${TAB}claude-opus-5${TAB}30.000000${TAB}25.000000${TAB}0.000000${TAB}0" \
+   "$(printf '%s\n' "$sess12" | grep '^s-work')"
+case $sess12 in *"Typed Name"*|*"Cached Title"*) bad=1 ;; *) bad=0 ;; esac
+ok "--sessions carries no name" 0 "$bad"
+ok "--daily: five fields on every row" "5" "$(tu --daily --since 30d | awk -F'\t' '{ print NF }' | sort -u)"
+ok "the pinned reports touched neither labels.tsv nor title.tsv" "$before12" "$(sum12)"
+unset TA_STATE_DIR
+
+# ---------------------------------------------------------------------------
 t "5. a changed spec is a stale map"
 # ---------------------------------------------------------------------------
 

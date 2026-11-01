@@ -2,8 +2,8 @@ Every shell suite runs as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" b
 
 ## 1. Pin what stays
 
-- [ ] 1.1 Add characterisation tests for the bytes of `tusage --session <id>` (heading, rows, total, model table, floor warning), `tusage --burn` and `tusage --json`, and re-pin the 14 fields and their order of `tusage --sessions` and the five fields of `--daily`; they pass on the unchanged script. Proof: `tests/tusage.sh`.
-- [ ] 1.2 Add a test that `--sessions`, `--daily`, `--burn` and `--session <id>` leave `labels.tsv` and `title.tsv` unread and unwritten and read no transcript, with a `labels.tsv`, a transcript title and a stored calibration factor present; it passes on the unchanged script. Proof: `tests/tusage.sh`.
+- [x] 1.1 Add characterisation tests for the bytes of `tusage --session <id>` (heading, rows, total, model table, floor warning), `tusage --burn` and `tusage --json`, and re-pin the 14 fields and their order of `tusage --sessions` and the five fields of `--daily`; they pass on the unchanged script. Proof: `tests/tusage.sh`.
+- [x] 1.2 Add a test that `--sessions`, `--daily`, `--burn` and `--session <id>` print no name and leave `labels.tsv` and `title.tsv` byte for byte as they were, with a `labels.tsv` and a cached title present; it passes on the unchanged script. Proof: `tests/tusage.sh`.
 
 ## 2. The command line
 
