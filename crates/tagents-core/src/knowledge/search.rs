@@ -5,6 +5,7 @@
 use rusqlite::{Connection, params_from_iter, types::Value};
 
 use super::doc::{is_stale, one_line, utc_date_of};
+use super::index;
 use crate::js;
 
 const HEADING_WEIGHT: &str = "10.0";
@@ -188,37 +189,36 @@ const SUMMARY_COLUMNS: &str =
     "id, title, path, type, description, status, stale_after, generated_at, tags";
 
 fn summary(db: &Connection, row: &rusqlite::Row, now_ms: i64) -> Result<DocSummary, String> {
-    let sql = |e: rusqlite::Error| e.to_string();
-    let id: String = row.get(0).map_err(sql)?;
-    let stale_after: Option<String> = row.get(6).map_err(sql)?;
-    let generated_at: Option<String> = row.get(7).map_err(sql)?;
-    let tags: String = row.get(8).map_err(sql)?;
+    let id: String = row.get(0).map_err(index::sql)?;
+    let stale_after: Option<String> = row.get(6).map_err(index::sql)?;
+    let generated_at: Option<String> = row.get(7).map_err(index::sql)?;
+    let tags: String = row.get(8).map_err(index::sql)?;
     let mut statement = db
         .prepare("select heading from chunks where doc_id = ? order by ord asc")
-        .map_err(sql)?;
+        .map_err(index::sql)?;
     let headings = statement
         .query_map([&id], |r| r.get::<_, String>(0))
-        .map_err(sql)?
+        .map_err(index::sql)?
         .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(sql)?
+        .map_err(index::sql)?
         .into_iter()
         .filter(|h| !h.is_empty())
         .collect();
     Ok(DocSummary {
         life: lifecycle(
-            row.get(3).map_err(sql)?,
-            row.get(4).map_err(sql)?,
-            row.get(5).map_err(sql)?,
+            row.get(3).map_err(index::sql)?,
+            row.get(4).map_err(index::sql)?,
+            row.get(5).map_err(index::sql)?,
             stale_after.as_deref(),
             now_ms,
         ),
-        title: row.get(1).map_err(sql)?,
+        title: row.get(1).map_err(index::sql)?,
         tags: tags_of(&tags)?,
         updated: generated_at
             .as_deref()
             .and_then(utc_date_of)
             .unwrap_or_else(|| "-".to_string()),
-        path: row.get(2).map_err(sql)?,
+        path: row.get(2).map_err(index::sql)?,
         headings,
         id,
     })
@@ -230,16 +230,15 @@ pub fn list_docs(
     filters: &Filters,
     now_ms: i64,
 ) -> Result<Vec<DocSummary>, String> {
-    let sql = |e: rusqlite::Error| e.to_string();
     let (filter, params) = filter_sql(filters);
     let mut statement = db
         .prepare(&format!("select {SUMMARY_COLUMNS} from docs where 1 = 1 {filter} order by (docs.status = 'deprecated') asc, docs.id asc"))
-        .map_err(sql)?;
+        .map_err(index::sql)?;
     let mut rows = statement
         .query(params_from_iter(params.iter()))
-        .map_err(sql)?;
+        .map_err(index::sql)?;
     let mut docs = Vec::new();
-    while let Some(row) = rows.next().map_err(sql)? {
+    while let Some(row) = rows.next().map_err(index::sql)? {
         docs.push(summary(db, row, now_ms)?);
     }
     Ok(docs)
@@ -247,12 +246,11 @@ pub fn list_docs(
 
 /// One document, or none.
 pub fn get_doc(db: &Connection, id: &str, now_ms: i64) -> Result<Option<DocSummary>, String> {
-    let sql = |e: rusqlite::Error| e.to_string();
     let mut statement = db
         .prepare(&format!("select {SUMMARY_COLUMNS} from docs where id = ?"))
-        .map_err(sql)?;
-    let mut rows = statement.query([id]).map_err(sql)?;
-    match rows.next().map_err(sql)? {
+        .map_err(index::sql)?;
+    let mut rows = statement.query([id]).map_err(index::sql)?;
+    match rows.next().map_err(index::sql)? {
         Some(row) => summary(db, row, now_ms).map(Some),
         None => Ok(None),
     }
@@ -268,11 +266,10 @@ pub struct Section {
 
 /// One `## ` section (heading empty is the preamble), or none. The heading is matched without case in JavaScript's way and not with `collate nocase`, which folds ASCII only, so `диски` finds `Диски`.
 pub fn get_section(db: &Connection, id: &str, heading: &str) -> Result<Option<Section>, String> {
-    let sql = |e: rusqlite::Error| e.to_string();
     let want = js::lower(js::trim(heading));
     let mut statement = db
         .prepare("select heading, ord, body from chunks where doc_id = ? order by ord asc")
-        .map_err(sql)?;
+        .map_err(index::sql)?;
     let rows = statement
         .query_map([id], |r| {
             Ok(Section {
@@ -282,9 +279,9 @@ pub fn get_section(db: &Connection, id: &str, heading: &str) -> Result<Option<Se
                 body: r.get(2)?,
             })
         })
-        .map_err(sql)?;
+        .map_err(index::sql)?;
     for row in rows {
-        let section = row.map_err(sql)?;
+        let section = row.map_err(index::sql)?;
         if js::lower(&section.heading) == want {
             return Ok(Some(section));
         }
