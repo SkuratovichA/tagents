@@ -764,7 +764,7 @@ if [ "$(uname)" = Darwin ]; then NAMELESS=7; else NAMELESS=34; fi
 STUB_SH="ulimit -c 0; kill -$NAMELESS \$\$; sleep 1; exit 5"; sc "prompt-exit-signal-with-no-name" rust 1 '"code": 0' -- session prompt "$(ref_spec)" go
 
 t "prompt: a caller that left SIGCHLD ignored"
-# Linux keeps an ignored SIGCHLD through exec, so the kernel reaps the child and waiting for it finds nothing unless the CLI gives the signal a handler. macOS sets it back to the default at exec.
+# Under a caller that left SIGCHLD ignored Linux reaps the child itself, and waiting for it finds nothing unless the CLI gives the signal a handler. macOS keeps the disposition through exec but still lets a parent wait, so there these scenarios have nothing to catch. The caller is perl, which is not a program to probe this with: at its own start it forces an inherited ignored SIGCHLD back to the default.
 IGNORING_SIGCHLD=(perl -e '$SIG{CHLD}="IGNORE"; exec @ARGV')
 UNDER=("${IGNORING_SIGCHLD[@]}"); STUB=$ANSWER; sc "prompt-sigchld-ignored" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
 UNDER=("${IGNORING_SIGCHLD[@]}"); STUB_SH='exit 3'; sc "prompt-sigchld-ignored-exit-code" rust 1 '"code": 3' -- session prompt "$(ref_spec)" go
