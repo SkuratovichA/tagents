@@ -242,7 +242,6 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **The `file:line` citations of a docs page go stale at every rebase and every edit of the file they point into** — `docs/architecture/rust-core.md` still named `front_door.rs:60` and `plugin.rs:92` after this branch had moved both. After a rebase, grep the page for `.rs:` and open each cited line; name a symbol where a number is not needed (02.11.2026)
 - **A test that waits as long as a deadline cannot tell the signal from the deadline** — the first doctor signal tests waited 10 s for the exit and passed with the signal ignored, because the probe's own 10 s deadline ended the wait. Bound the wait well below the deadline and run the mutant that ignores the signal (02.11.2026)
 - **Reading a cited line for plausibility does not check a citation** — the first pass over `docs/architecture/rust-core.md` opened each `file:line` and left eleven wrong, because a line that looks like it could belong to the sentence passes the eye. Pair each citation with the symbol named before it and fail when the cited line lacks it, and write the directory in front of a basename that two files share (`mod.rs`, `options.rs`, `config.rs`, `front_door.rs`) so the pair resolves to one file (02.11.2026)
-- **A stream that cannot be handed back to node after the spawn needs a deterministic oracle first** — decode a pipe as a stream and fix node before comparing with it (02.11.2026)
 
 ## Other
 

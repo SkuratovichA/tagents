@@ -218,7 +218,7 @@ The implementation starts from `main` with `rust-plugin-verbs` merged. One build
 - `.github/workflows/rust.yml`: both `paths:` lists and the parity and regeneration steps; the list entries are added after the last one present.
 - `docs/architecture/rust-core.md`: "What is served in Rust today", "Which program a command goes to", "The parity suite", "Where the two are known to differ", "What is not decided yet", the dependency table, and the lines that name the workspace version.
 - `Cargo.toml` and `Cargo.lock`: the version, raised again after each rebase.
-- `CHANGELOG.md` and `LEARNING.md`: each adds lines under the same headings.
+- `CHANGELOG.md`: each adds lines under the same headings.
 - `openspec`: `rust-plugin-verbs` left the two `core-front-door` requirements, "The Rust binary serves the verbs the file marks rust" and "Every other word reaches the node CLI untouched", as `openspec/specs/core-front-door/spec.md` holds them, and the MODIFIED requirements of this change restate that text (the example of a forwarded call that stays node's is `plugin list`, because `session prompt` is served after this change). `rust-knowledge` b may restate them too: whichever change archives second restates them from the text the first left.
 
 ## Reuse
