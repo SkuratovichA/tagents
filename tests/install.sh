@@ -604,6 +604,7 @@ set_version 0.1.2; use_release 0.1.2
 out=$(run_native); rc=$?
 ok "an update to a version with no release exits 0" 0 "$rc"
 contains "it says there is no release, with the URL it tried" "no prebuilt tagents-core 0.1.2 for $TRIPLE (file://$RELEASES/v0.1.2/tagents-core-0.1.2-$TRIPLE.tar.gz.sha256), using the node CLI" "$out"
+lacks "...and curl's own error is not printed for a file that is not there" "curl:" "$out"
 nothing_installed "the old binary of 0.1.1 is not kept"
 same_bytes "the wrapper is the plain node one" <(wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/core/dist/cli/main.js") "$TAGENTS_BIN/tagents-core"
 same_bytes "...and so is the tagents-mcp one" <(wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/mcp/dist/main.js") "$TAGENTS_BIN/tagents-mcp"
@@ -612,6 +613,22 @@ node_cli_answers "an install with no release"
 out=$(run_native --quiet); rc=$?
 ok "--quiet exits 0 too" 0 "$rc"
 lacks "and hides the line" "no prebuilt" "$out"
+
+# --- the other ways a download fails: a 404 is an expected release gap, anything else stays diagnosable ---
+mkdir -p "$TMP/curl404" "$TMP/curldns"
+printf '#!/bin/sh\necho "curl: (56) The requested URL returned error: 404" >&2\nexit 56\n' > "$TMP/curl404/curl"
+printf '#!/bin/sh\necho "curl: (6) Could not resolve host: github.com" >&2\nexit 6\n' > "$TMP/curldns/curl"
+chmod 755 "$TMP/curl404/curl" "$TMP/curldns/curl"
+set_version 0.1.3; use_release 0.1.3
+out=$(PATH="$TMP/curl404:$TMP/node-c:$PATH" run); rc=$?
+ok "an https 404 exits 0" 0 "$rc"
+lacks "...and curl's message is not printed" "curl:" "$out"
+contains "...the no prebuilt line stays" "no prebuilt tagents-core 0.1.3 for $TRIPLE (" "$out"
+ok "...and no download directory is left" "" "$(ls -A "$TAGENTS_HOME/target" 2>/dev/null | grep -v '^release$' | tr -d '\n')"
+out=$(PATH="$TMP/curldns:$TMP/node-c:$PATH" run); rc=$?
+ok "a download that cannot resolve the host exits 0" 0 "$rc"
+contains "...curl's message is shown" "curl: (6) Could not resolve host: github.com" "$out"
+contains "...and the no prebuilt line stays" "no prebuilt tagents-core 0.1.3 for $TRIPLE (" "$out"
 
 # --- a download that fails its checks installs nothing, and fails the run -----
 fresh_native 0.1.0; run_native >/dev/null

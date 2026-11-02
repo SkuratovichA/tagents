@@ -267,7 +267,9 @@ fetch_native() {
     FETCH_DIR=''; warn "cannot make a temporary directory in $TAGENTS_HOME/target, so the prebuilt tagents-core was not fetched"; NATIVE_FAILED=1; return 0
   fi
   for file in "$archive.sha256" "$archive"; do
-    if ! download "$base/$file" "$FETCH_DIR/$file"; then
+    if ! download "$base/$file" "$FETCH_DIR/$file" 2>"$FETCH_DIR/curl.err"; then
+      # A release that is not there is the expected case and the line below says it; any other failure (DNS, proxy, TLS) keeps curl's own message.
+      grep -Eq 'returned error: 404|^curl: \(37\)' "$FETCH_DIR/curl.err" || cat "$FETCH_DIR/curl.err" >&2
       say "no prebuilt tagents-core $version for $triple ($base/$file), using the node CLI"
       rm -rf "$FETCH_DIR"; FETCH_DIR=''
       return 0
