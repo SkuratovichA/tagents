@@ -88,7 +88,7 @@ pass=0; fail=0; skipped=0; rust_served=0; handed_over=0
 . "$HERE/lib/parity.sh"
 
 # --------------------------------------------------------------- scenario state ---
-# Set before a scenario, cleared after it by `reset`: the directory to run in (relative to the run), the locale, a setup run in the run's directory before the program (a shell command), the environment to add, the arguments, and the stream whose reader went away (stdout or stderr).
+# Set before a scenario, cleared after it by `reset`: the directory to run in (relative to the run), the locale, a setup run in the run's directory before the program (a shell command), the environment to add, the arguments, the stream whose reader went away (stdout or stderr), and whether what the stub left is out of the comparison.
 CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; KILL_RACES_STUB=; RAN=
 reset() { CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; KILL_RACES_STUB=; }
 
