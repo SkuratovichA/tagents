@@ -1344,6 +1344,19 @@ ok "a word that is only in the home directory's path keeps nothing" "no data in 
 out=$(fx --by session --project "$(basename "$ROOT")" $W); rc=$?
 ok "...nor does a word from the directories above the home" "no data in this window|1" "$out|$rc"
 ok "--project twice keeps a row that matches either" "4" "$(tsv session --project billing --project probe $W | wc -l | tr -d ' ')"
+# Unlike --account, --project takes a comma as a character of the text: one project's
+# path may hold one, and two texts are two flags.
+F19C="$ROOT/fx19c"; mkdir -p "$F19C/usage"
+now19c=$(( $(date +%s) / 300 * 300 - 1800 ))
+{ printf '%s\t-h-c\t%s\t-\t-\t-\tclaude-opus-5\t5\t1000000\t0\t0\t0\t0\t100\t100\n' "$now19c" "$(fxsid 3f9a1c20)"
+  printf '%s\t-h-d\t%s\t-\t-\t-\tclaude-opus-5\t5\t1000000\t0\t0\t0\t0\t100\t100\n' "$now19c" "$(fxsid d8c3b615)"
+} >"$F19C/usage/facts.tsv"
+printf -- '-h-c\t%s/git/a,b\n-h-d\t%s/git/ab\n' "$FXH" "$FXH" >"$F19C/usage/projects.tsv"
+fx19c() { FX_STATE="$F19C/usage" fx "$@"; }
+ok "a project whose path holds a comma is kept by a text with the comma" "~/git/a,b" "$(fx19c --by project --tsv --project 'a,b' --since 7d | cut -f1)"
+out=$(fx19c --by project --tsv --project 'a,ab' --since 7d); rc=$?
+ok "...and a comma does not split the text in two: a,ab is in neither path" "no data in this window|1" "$out|$rc"
+ok "...while two flags are two texts" "2" "$(fx19c --by project --tsv --project 'a,b' --project ab --since 7d | wc -l | tr -d ' ')"
 ok "--project with --account keeps the rows that match both" \
    "$(fxsid 91ab44ee) $(fxsid e5d1f0a7)" "$(tsv session --account work --project web $W | cut -f1 | tr '\n' ' ' | sed 's/ $//')"
 out=$(fx --by session --account personal --project billing $W); rc=$?
