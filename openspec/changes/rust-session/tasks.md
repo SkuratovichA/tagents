@@ -24,7 +24,7 @@ The tasks serve `session open`, `session list`, `session last`, `session prompt`
 
 - [ ] 4.1 `js.rs` gains the UTF-16 operations design D8 names (append, trim, collapse white space and cut at n units, turn into text or an escape), next to `len16`, `take16` and `split16`, with unit tests for a lone surrogate, two halves that join and a cut inside a pair, and the vectors of 2.1 (`cargo test -p tagents-core js::`, `cargo test -p tagents-core --test session_vectors`)
 - [ ] 4.2 `json.rs` gains `parse_exact` with `Value::Units` for a string that holds a lone surrogate, and `stringify(&Value, indent)` with `quote`, `js::number_text`, the escape for `Units`, JavaScript's key order and the two-space layout; `parse` and every caller of it are unchanged, and `mcp/run.rs` keeps its `JsPretty` and shares `quote` and `number_text` with `stringify` (`cargo test -p tagents-core json::`, `cargo test -p tagents-core --test session_vectors`, `cargo test -p tagents-core mcp::`)
-- [ ] 4.3 `transcripts::last_assistant_text` takes the parser as a parameter: `sessions show` keeps the lossy reading and its tests unchanged, `session last` reads exactly (`cargo test -p tagents-core transcripts::`, `cargo test -p tagents-core sessions::`)
+- [x] 4.3 `transcripts::last_assistant_text` takes the parser as a parameter: `sessions show` keeps the lossy reading and its tests unchanged, `session last` reads exactly (`cargo test -p tagents-core transcripts::`, `cargo test -p tagents-core sessions::`)
 
 ## 5. What the read verbs share
 
