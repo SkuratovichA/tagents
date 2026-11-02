@@ -97,6 +97,7 @@ impl<'a> Parsed<'a> {
 mod tests {
     use super::*;
     use crate::plugin::{ADD, NEW, REMOVE};
+    use crate::session::prompt::PROMPT;
     use crate::session::read::{LIST, OPEN};
     use tagents_spec::{OptionKind, Spec};
 
@@ -133,6 +134,7 @@ mod tests {
             ("session open", OPEN),
             ("session list", LIST),
             ("session last", NO_OPTIONS),
+            ("session prompt", PROMPT),
             ("plugin add", ADD),
             ("plugin remove", REMOVE),
             ("plugin new", NEW),

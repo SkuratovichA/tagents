@@ -46,7 +46,8 @@ BIN=$TMP/bin                # the only directory of PATH: node, the stub claude,
 MARK=$TMP/handed-over       # the shim writes it when the binary hands a call to node
 mkdir "$SHIM" "$BIN" || exit 2
 ln -s "$NODE" "$BIN/node"
-printf '#!/bin/sh\n: > "$PARITY_MARK"\nexec "$PARITY_REAL_NODE" "$@"\n' > "$SHIM/node"
+# The shell of the shim leaves its own variables in the environment, and node's child would record them: `env` takes them out, by its full path because a scenario can set any PATH.
+printf '#!/bin/sh\n: > "$PARITY_MARK"\nexec /usr/bin/env -u PWD -u SHLVL -u _ "$PARITY_REAL_NODE" "$@"\n' > "$SHIM/node"
 # The stub of caffeinate says how it was started and what its three streams are, stays until it is told to leave, and says so.
 cat > "$BIN/caffeinate" <<'CAFFEINATE'
 #!/bin/sh
@@ -163,7 +164,8 @@ run_it() {  # <tag> <program words...>
 # What a stub left in rec/, in the form two runs are compared in: how often it ran, the record with its volatile parts settled and no pid. The node directory this run must have is the real node's, or on the binary's side that of $TAGENTS_NODE, the shim, unless a scenario says otherwise.
 settle_record() {  # <tag>
   local tag=$1 node_dir=$NODE_DIR pid=
-  if [ "$tag" = rust ] && [ -z "$SELF_TEST" ]; then node_dir=${CHILD_NODE_DIR:-$SHIM}; fi
+  # The binary names the directory of $TAGENTS_NODE, the shim. A call it handed to node is started by the real node, which names its own.
+  if [ "$tag" = rust ] && [ -z "$SELF_TEST" ] && [ ! -e "$MARK" ]; then node_dir=${CHILD_NODE_DIR:-$SHIM}; fi
   if [ -f "$RUN/rec/count" ]; then wc -l < "$RUN/rec/count" | tr -d ' '; else ls -A "$RUN/rec" | wc -l | tr -d ' '; fi > "$TMP/started.$tag"
   if [ -f "$RUN/rec/argv.json" ]; then
     "$NODE" "$DRIVER" record "$RUN/rec/argv.json" "$node_dir" || { echo "rust-session-parity: cannot read the record of the stub" >&2; exit 2; }
@@ -397,7 +399,6 @@ sc "session" node 2 - -- session
 sc "session-unknown-verb" node 2 'unknown command: session bogus' -- session bogus
 sc "session-unknown-verb-empty" node 2 - -- session ""
 sc "session-help" node 2 - -- session --help
-sc "session-prompt" node 2 - -- session prompt
 sc "session-abort" node 2 - -- session abort
 sc "session-open-uppercase" node 2 - -- session OPEN --cwd "$RUN/work"
 
@@ -727,6 +728,7 @@ STUB="{\"rawWrites\":[$(line "$(text_event 'a\ud83dz')")],\"result\":{}}"; sc "p
 STUB="{\"rawWrites\":[$(line "$(text_event 'a\ud83dz')")],\"result\":{}}"; sc "prompt-lone-surrogate-in-the-outcome" rust 0 '"text": "a\ud83dz"' -- session prompt "$(ref_spec)" go
 STUB="{\"rawWrites\":[$(line "$(text_event '\ud83d')"),$(line "$(text_event '\ude00')")],\"result\":{}}"; sc "prompt-two-halves-join" rust 0 '"text": "😀"' -- session prompt "$(ref_spec)" go
 STUB="{\"rawWrites\":[$(line '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"N\ud83d","input":{"\ude00":"\ud83d"}}]}}')],\"result\":{}}"; sc "prompt-lone-surrogate-in-a-tool-input" rust 0 '"input":{"\ude00":"\ud83d"}' -- session prompt "$(ref_spec)" go --events
+STUB="{\"rawWrites\":[$(line '{"type":"result","is_error":false,"result":"r","\ud83d":{"\ude00":1,"\ud83e":2}}')],\"result\":null}"; sc "prompt-lone-surrogate-in-a-payload-key" rust 0 '"\ud83d":{"\ude00":1,"\ud83e":2}' -- session prompt "$(ref_spec)" go --events
 STUB="{\"rawWrites\":[$(line '{"type":"result","is_error":false,"result":"\ud83d","session_id":"s\ude00"}')]}"; sc "prompt-lone-surrogate-in-a-result" rust 0 '"result":"\ud83d"' -- session prompt "$(ref_spec)" go --events
 STUB="{\"rawWrites\":[$(line "$RESULT")],\"result\":{\"text\":\"second\",\"costUsd\":0.75}}"; sc "prompt-two-results" rust 0 '"costUsd": 0.75' -- session prompt "$(ref_spec)" go
 STUB="{\"rawWrites\":[$(line '{"type":"result","is_error":true,"result":"first"}')],\"result\":{\"text\":\"second\"}}"; sc "prompt-two-results-an-error-first" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
@@ -763,6 +765,8 @@ for limit in abc 0 -1 1_000 Infinity 1e400 ''; do
 done
 STUB=$ANSWER; sc "prompt-limit-too-large-for-a-clock" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go --timeout 1e300
 STUB_SH='printf "{\"type\":\"result\",\"is_error\":false,\"result\":\"r\"}\n"; sleep 3; exit 0'; sc "prompt-a-result-stops-the-limit" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go --timeout 1500
+# A child gets 60 seconds to leave after its result, so one that stays for 8 is no kill. The kill at 60 itself is `a_child_that_stays_60_seconds_after_its_result_is_killed_and_the_turn_succeeded` of `session::turn`: a scenario would hold the suite for two minutes.
+STUB_SH='printf "{\"type\":\"result\",\"is_error\":false,\"result\":\"r\"}\n"; sleep 8; exit 0'; sc "prompt-a-slow-child-is-not-killed-by-the-grace" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
 STUB_SH='printf "{\"type\":\"system\",\"session_id\":\"s-7\"}\n"; ( sleep 8 ) & exit 0'; sc "prompt-limit-through-the-drain" rust 4 '"sessionId": "s-7"' -- session prompt "$(ref_spec)" go --timeout 1000
 
 # ---------------------------------------------------- prompt: what cannot be started ---
