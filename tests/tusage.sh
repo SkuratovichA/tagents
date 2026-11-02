@@ -2072,13 +2072,14 @@ ok "...as the uclen of list.sh does" "$(lens "$UCLEN_LIST")" "$(lens "$UCLEN_TU"
 ok "...as the one of timeline.sh does" "$(lens "$UCLEN_TIME")" "$(lens "$UCLEN_TU")"
 ok "...as the one of dash.sh does" "$(lens "$UCLEN_DASH")" "$(lens "$UCLEN_TU")"
 
-# tilde: the home directory as a tilde, only up to a slash. Four copies, three of them
-# awk (here, list.sh, closed.sh) and tilde_of in core.sh, which is bash.
+# tilde: the home directory as a tilde, only up to a slash. Five copies, four of them
+# awk (here, list.sh, closed.sh, timeline.sh) and tilde_of in core.sh, which is bash.
 TILDE_TU=$(sed -n '/function tilde(/p' "$TU")
 TILDE_LIST=$(sed -n '/function tilde(/p' "$LIBT/list.sh")
 TILDE_CLOSED=$(sed -n '/function tilde(/p' "$LIBT/closed.sh")
+TILDE_TIME=$(sed -n '/function tilde(/p' "$LIBT/timeline.sh")
 TILDE_OF=$(sed -n '/^tilde_of() {/,/^}/p' "$LIBT/core.sh")
-ok "the four tilde were found" "1 1 1 1" "$([ -n "$TILDE_TU" ] && echo 1) $([ -n "$TILDE_LIST" ] && echo 1) $([ -n "$TILDE_CLOSED" ] && echo 1) $([ -n "$TILDE_OF" ] && echo 1)"
+ok "the five tilde were found" "1 1 1 1 1" "$([ -n "$TILDE_TU" ] && echo 1) $([ -n "$TILDE_LIST" ] && echo 1) $([ -n "$TILDE_CLOSED" ] && echo 1) $([ -n "$TILDE_TIME" ] && echo 1) $([ -n "$TILDE_OF" ] && echo 1)"
 TILDE_PATHS=(/Users/a /Users/a/ /Users/a/x /Users/ab/x "/Users/a b" /Users /x "" Users/a/x /Users/a/x/Users/a)
 tildes() {  # <awk function text> <home>: each path as the function shows it
   local p
@@ -2096,10 +2097,11 @@ TILDE_WANT='~|~/|~/x|/Users/ab/x|/Users/a b|/Users|/x||Users/a/x|~/x/Users/a|'
 ok "tilde shows /Users/a as ~, a path under it as ~/..., and /Users/ab/x as it is" "$TILDE_WANT" "$(tildes "$TILDE_TU" /Users/a)"
 ok "...as the tilde of list.sh does" "$TILDE_WANT" "$(tildes "$TILDE_LIST" /Users/a)"
 ok "...as the one of closed.sh does" "$TILDE_WANT" "$(tildes "$TILDE_CLOSED" /Users/a)"
+ok "...as the one of timeline.sh does" "$TILDE_WANT" "$(tildes "$TILDE_TIME" /Users/a)"
 ok "...as tilde_of of core.sh does" "$TILDE_WANT" "$(tildes_of /Users/a)"
 NOHOME_WANT='/Users/a|/Users/a/|/Users/a/x|/Users/ab/x|/Users/a b|/Users|/x||Users/a/x|/Users/a/x/Users/a|'
-ok "with no home nothing is shortened, here and in list.sh and closed.sh" "$NOHOME_WANT$NOHOME_WANT$NOHOME_WANT" \
-   "$(tildes "$TILDE_TU" '')$(tildes "$TILDE_LIST" '')$(tildes "$TILDE_CLOSED" '')"
+ok "with no home nothing is shortened, here and in list.sh, closed.sh and timeline.sh" "$NOHOME_WANT$NOHOME_WANT$NOHOME_WANT$NOHOME_WANT" \
+   "$(tildes "$TILDE_TU" '')$(tildes "$TILDE_LIST" '')$(tildes "$TILDE_CLOSED" '')$(tildes "$TILDE_TIME" '')"
 
 # ---------------------------------------------------------------------------
 t "29. the home directory is a prefix of a path only up to a slash"
