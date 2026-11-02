@@ -734,6 +734,55 @@ fn a_node_that_cannot_run_is_exit_127_or_126() {
 }
 
 #[test]
+fn a_session_call_for_node_with_no_node_gets_the_front_doors_error() {
+    let checkout = Checkout::new("session-no-node");
+    for args in [
+        &["session"][..],
+        &["session", "bogus"],
+        &["session", "open", "--bogus"],
+    ] {
+        let pinned = run(checkout
+            .command()
+            .env("TAGENTS_NODE", checkout.root.join("no-such-node"))
+            .args(args));
+        assert_eq!(pinned.status.code(), Some(127), "{args:?}");
+        assert_eq!(pinned.stdout, b"", "{args:?}");
+        let said = String::from_utf8_lossy(&pinned.stderr);
+        assert!(
+            said.starts_with("tagents-core: cannot run ") && said.contains("no-such-node"),
+            "{args:?}: {said}"
+        );
+
+        let on_path = run(checkout
+            .command()
+            .env_remove("TAGENTS_NODE")
+            .env("PATH", checkout.root.join("no-such-directory"))
+            .args(args));
+        assert_eq!(on_path.status.code(), Some(127), "{args:?}");
+        assert_eq!(on_path.stdout, b"", "{args:?}");
+        let said = String::from_utf8_lossy(&on_path.stderr);
+        assert!(
+            said.starts_with("tagents-core: cannot run node: "),
+            "{args:?}: {said}"
+        );
+    }
+}
+
+#[test]
+fn the_read_verbs_of_session_start_nothing_so_they_answer_with_no_node() {
+    let checkout = Checkout::new("session-read-no-node");
+    let listed = run(checkout
+        .command()
+        .env("TAGENTS_NODE", checkout.root.join("no-such-node"))
+        .env("HOME", checkout.root.join("home"))
+        .env("TA_STATE_DIR", checkout.root.join("state"))
+        .args(["session", "list"]));
+    assert_eq!(listed.status.code(), Some(0), "{listed:?}");
+    assert_eq!(listed.stdout, b"[]\n");
+    assert_eq!(listed.stderr, b"");
+}
+
+#[test]
 fn a_failed_exec_with_stderr_a_closed_pipe_exits_with_the_front_doors_code_not_a_panic() {
     // The line cannot be written; the exit is the same as when it can: 2 when the node CLI is missing, 127 when node cannot run.
     let checkout = Checkout::new("forward-failed-exec-closed-stderr");

@@ -66,12 +66,18 @@ pass=0; fail=0; skipped=0; rust_served=0; handed_over=0
 . "$HERE/lib/parity.sh"
 
 # --------------------------------------------------------------- scenario state ---
-# Set before a scenario, cleared after it by `reset`: the directory to run in (relative to the run), the locale, a setup run in the run's directory before the program (a shell command), the environment to add, and the arguments.
-CWD=; LOCALE=en; SETUP=; EXTRA=(); ARGS=()
-reset() { CWD=; LOCALE=en; SETUP=; EXTRA=(); ARGS=(); }
+# Set before a scenario, cleared after it by `reset`: the directory to run in (relative to the run), the locale, a setup run in the run's directory before the program (a shell command), the environment to add, the arguments, and the stream whose reader went away (stdout or stderr).
+CWD=; LOCALE=en; SETUP=; EXTRA=(); ARGS=(); CLOSED=
+reset() { CWD=; LOCALE=en; SETUP=; EXTRA=(); ARGS=(); CLOSED=; }
 
 # The only difference allowed between the two programs: the id of a new reference, as long as it is a version 4 UUID.
 norm() { sed -E 's/"id": "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"/"id": "UUID4"/'; }
+
+# The program under the environment of a run; ends in `exec`, so a subshell calls it.
+program() {
+  cd "$RUN/$CWD" && exec env -i "PATH=$BIN:/usr/bin:/bin" "HOME=$RUN/home" "TMPDIR=$RUN/tmp" "TA_STATE_DIR=$RUN/st" "TAGENTS_CONFIG_DIR=$RUN/cfg" "TAGENTS_LOCALE=$LOCALE" \
+    "TAGENTS_NODE=$SHIM/node" "PARITY_MARK=$MARK" "PARITY_REAL_NODE=$NODE" "PARITY_REC=$RUN/rec" "${EXTRA[@]}" "$@" "${ARGS[@]}" < /dev/null
+}
 
 side() {  # <tag> <program words...>
   local tag=$1; shift
@@ -79,9 +85,19 @@ side() {  # <tag> <program words...>
   cp -RPp "$TEMPLATE" "$RUN" || { echo "rust-session-parity: cannot copy the tree" >&2; exit 2; }
   if [ -n "$SETUP" ]; then ( cd "$RUN" && eval "$SETUP" ) || { echo "rust-session-parity: setup failed: $SETUP" >&2; exit 2; }; fi
   rm -f "$MARK"
-  ( cd "$RUN/$CWD" && exec env -i "PATH=$BIN:/usr/bin:/bin" "HOME=$RUN/home" "TMPDIR=$RUN/tmp" "TA_STATE_DIR=$RUN/st" "TAGENTS_CONFIG_DIR=$RUN/cfg" "TAGENTS_LOCALE=$LOCALE" \
-      "TAGENTS_NODE=$SHIM/node" "PARITY_MARK=$MARK" "PARITY_REAL_NODE=$NODE" "PARITY_REC=$RUN/rec" "${EXTRA[@]}" "$@" "${ARGS[@]}" < /dev/null ) 2> "$TMP/err.$tag" | norm > "$TMP/out.$tag"
-  echo "${PIPESTATUS[0]}" > "$TMP/code.$tag"
+  if [ -n "$CLOSED" ]; then
+    # A FIFO opened on both ends with its reading end closed again: nobody reads it, and no reader can still be on its way out.
+    rm -f "$TMP/fifo"; mkfifo "$TMP/fifo"; exec 3<> "$TMP/fifo" 4> "$TMP/fifo" 3<&-
+    if [ "$CLOSED" = stdout ]; then
+      ( program "$@" ) >&4 2> "$TMP/err.$tag"; echo $? > "$TMP/code.$tag"; : > "$TMP/out.$tag"
+    else
+      ( program "$@" ) 2>&4 | norm > "$TMP/out.$tag"; echo "${PIPESTATUS[0]}" > "$TMP/code.$tag"; : > "$TMP/err.$tag"
+    fi
+    exec 4>&-
+  else
+    ( program "$@" ) 2> "$TMP/err.$tag" | norm > "$TMP/out.$tag"
+    echo "${PIPESTATUS[0]}" > "$TMP/code.$tag"
+  fi
   if [ -e "$MARK" ]; then echo node > "$TMP/via.$tag"; else echo own > "$TMP/via.$tag"; fi
   ls -A "$RUN/rec" | wc -l | tr -d ' ' > "$TMP/started.$tag"
   snapshot | norm > "$TMP/tree.$tag"
@@ -172,6 +188,7 @@ sc "open-minimal" rust 0 "\"cwd\": \"$RUN/work\"" -- session open --cwd "$RUN/wo
 sc "open-inline-values" rust 0 '"model": "opus"' -- session open --cwd="$RUN/work" --model=opus --effort=high --label=a=b --system-prompt-file=/p/s.md --mcp-config=/p/m.json
 sc "open-inline-empty-value" rust 0 '"label": ""' -- session open --cwd "$RUN/work" --label=
 sc "open-empty-value" rust 0 '"model": ""' -- session open --cwd "$RUN/work" --model ""
+sc "open-inline-cwd-and-a-repeated-label" rust 0 '"label": "b"' -- session open --cwd=/x --label a --label=b
 sc "open-repeated-option-last-wins" rust 0 '"label": "b"' -- session open --cwd /a --cwd "$RUN/work" --label a --label=b
 sc "open-option-order" rust 0 '"effort": "low"' -- session open --effort low --skip-permissions --cwd "$RUN/work" --model m
 sc "open-skip-permissions-first" rust 0 '"skipPermissions": true' -- session open --skip-permissions --cwd "$RUN/work"
@@ -203,6 +220,9 @@ sc "open-empty-cwd" rust 2 'missing required option --cwd' -- session open --cwd
 sc "open-inline-empty-cwd" rust 2 'missing required option --cwd' -- session open --cwd=
 sc "open-account-flags-before-cwd-check" rust 2 'missing required option --cwd' -- session open --config-dir /a --no-config-dir
 LOCALE=ru; sc "open-missing-cwd-ru" rust 2 'не хватает обязательного параметра --cwd' -- session open
+EXTRA=("TAGENTS_LOCALE=de"); sc "open-missing-cwd-other-locale" rust 2 'missing required option --cwd' -- session open
+EXTRA=("TAGENTS_LOCALE="); sc "open-missing-cwd-empty-locale" rust 2 'missing required option --cwd' -- session open
+EXTRA=($'TAGENTS_LOCALE=\xff'); sc "open-missing-cwd-locale-is-not-utf8" rust 2 'missing required option --cwd' -- session open
 CWD=work; sc "open-relative-cwd" rust 0 "$RUN/work/x" -- session open --cwd ./x
 CWD=work; sc "open-relative-cwd-bare" rust 0 "$RUN/work/x" -- session open --cwd x
 CWD=work; sc "open-relative-cwd-parent" rust 0 "\"cwd\": \"$RUN\"" -- session open --cwd ..
@@ -296,6 +316,7 @@ SETUP=$STATES; sc "list-bad-state-before-label" rust 2 'unknown option --state x
 SETUP=$STATES; sc "list-bad-state-with-unicode" rust 2 'unknown option --state é😀' -- session list --state 'é😀'
 LOCALE=ru; SETUP=$STATES; sc "list-ru" rust 2 'неизвестный параметр --state a,b' -- session list --state a,b
 LOCALE=ru; SETUP=$STATES; sc "list-ru-ok" rust 0 'sid-working' -- session list --state working
+EXTRA=("TAGENTS_LOCALE=RU"); SETUP=$STATES; sc "list-bad-state-locale-is-exact" rust 2 'unknown option --state a,b' -- session list --state a,b
 
 t "list: the label"
 HIST="$(hist 1700000001 start sid-working %1 build "$RUN/work")$(hist 1700000002 turn sid-working %1 build "$RUN/work")$(hist 1700000003 start sid-done %2 review "$RUN/work")$(hist 1700000004 start sid-new %3 '' "$RUN/work")"
@@ -361,6 +382,9 @@ sc "list-an-argument-that-is-not-utf8" node - - -- session list --label $'\xff'
 EXTRA=("TA_STATE_DIR="); SETUP="mkdir -p home/.claude/agent-state; $(row 1 1700000100 working sid-1 /w '' d | sed 's#st/#home/.claude/agent-state/#')"; sc "list-empty-state-variable-means-the-default" rust 0 'sid-1' -- session list
 EXTRA=("TA_STATE_DIR=   "); SETUP="mkdir -p home/.claude/agent-state; $(row 1 1700000100 working sid-1 /w '' d | sed 's#st/#home/.claude/agent-state/#')"; sc "list-blank-state-variable-means-the-default" rust 0 'sid-1' -- session list
 EXTRA=("TA_STATE_DIR=st"); SETUP="$(row 1 1700000100 working sid-1 /w '' d)"; sc "list-relative-state-directory" rust 0 'sid-1' -- session list
+REPLACED=$'\xef\xbf\xbd'
+EXTRA=($'TA_STATE_DIR=st\xff'); SETUP="$(row 1 1700000100 working sid-1 /w '' d)mv st st$REPLACED"; sc "list-state-variable-is-not-utf8" rust 0 'sid-1' -- session list
+EXTRA=("HOME=$RUN/home"$'\xff' "TA_STATE_DIR="); SETUP="$(row 1 1700000100 working sid-1 /w '' d)mkdir -p home$REPLACED/.claude; mv st home$REPLACED/.claude/agent-state"; sc "list-home-is-not-utf8" rust 0 'sid-1' -- session list
 
 # ------------------------------------------------------------------- last ---
 t "last: the transcript of a reference"
@@ -462,6 +486,15 @@ sc "last-a-reference-with-a-lone-surrogate-in-the-transcript" node - - -- sessio
 sc "last-a-reference-with-a-nul" node - - -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w\u0000","skipPermissions":false}}'
 sc "last-a-reference-with-an-empty-bin" node - - -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":""}}'
 sc "last-a-reference-with-a-bad-env-name" node - - -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false,"env":{"A=B":"1"}}}'
+
+# ------------------------------------------------------- a reader that went away ---
+t "a reader that went away: the exit code and the other stream stay"
+CLOSED=stdout; sc "closed-stdout-open" rust 0 - -- session open --cwd "$RUN/work"
+CLOSED=stdout; SETUP=$STATES; sc "closed-stdout-list" rust 0 - -- session list
+CLOSED=stdout; sc "closed-stdout-last" rust 0 - -- session last "$(ref_transcript plain.jsonl)"
+CLOSED=stderr; sc "closed-stderr-open" rust 2 - -- session open
+CLOSED=stderr; sc "closed-stderr-list" rust 2 - -- session list --state a,b
+CLOSED=stderr; sc "closed-stderr-last" rust 1 - -- session last nobody
 
 printf '\nrust-session-parity: %d passed, %d failed, %d skipped' "$pass" "$fail" "$skipped"
 if [ -z "$SELF_TEST" ]; then
