@@ -14,10 +14,9 @@ pub fn config_file() -> String {
 
 /// `configDir` of `packages/core/src/host.ts`: `$TAGENTS_CONFIG_DIR` unless blank, else `$XDG_CONFIG_HOME` unless blank, else `~/.config`, then `tagents`.
 pub fn config_dir() -> String {
-    let env = |name: &str| std::env::var_os(name).map(|v| v.to_string_lossy().into_owned());
     config_dir_from(
-        env("TAGENTS_CONFIG_DIR").as_deref(),
-        env("XDG_CONFIG_HOME").as_deref(),
+        node::env_text("TAGENTS_CONFIG_DIR").as_deref(),
+        node::env_text("XDG_CONFIG_HOME").as_deref(),
         &node::homedir(),
     )
 }

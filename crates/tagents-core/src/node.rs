@@ -24,8 +24,8 @@ pub fn env_text(name: &str) -> Option<String> {
 
 /// `os.homedir()`: `$HOME` when it is set, empty or not, else the passwd entry.
 pub fn homedir() -> String {
-    match std::env::var_os("HOME") {
-        Some(home) => home.to_string_lossy().into_owned(),
+    match env_text("HOME") {
+        Some(home) => home,
         None => std::env::home_dir()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default(),

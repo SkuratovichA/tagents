@@ -93,7 +93,7 @@ fn now_ms() -> i64 {
 fn context() -> Context {
     Context {
         home: node::homedir(),
-        claude_homes: std::env::var_os("CLAUDE_HOMES").map(|v| v.to_string_lossy().into_owned()),
+        claude_homes: node::env_text("CLAUDE_HOMES"),
         now_ms: now_ms(),
     }
 }
