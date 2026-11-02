@@ -14,7 +14,7 @@ use resolve::Failure;
 use std::{fs, io, path::Path};
 
 use crate::{
-    host::config_dir,
+    host::config_file,
     messages::{Locale, Texts},
     node,
     sessions::{Output, exit},
@@ -26,9 +26,6 @@ pub const VERBS: &[&[&str]] = &[
     &["plugin", "remove"],
     &["plugin", "new"],
 ];
-
-/// The config file's name inside the config directory (`CONFIG_BASENAME` of `packages/core/src/host.ts`).
-const CONFIG_BASENAME: &str = "config.toml";
 
 /// A call this code will not answer: the node CLI answers it, with the same arguments, before anything has been written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,7 +63,7 @@ impl Setting {
             .ok()?;
         Some(Setting {
             cwd,
-            file: node::join(&config_dir(), CONFIG_BASENAME),
+            file: config_file(),
             locale: Locale::of(std::env::var("TAGENTS_LOCALE").ok().as_deref()),
             env: resolve::Env::current(),
             core_dir: node::root().ok().and_then(|root| {

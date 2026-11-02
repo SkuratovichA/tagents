@@ -1,8 +1,16 @@
-//! What the CLI reads of the host it runs on, as `packages/core/src/host.ts` does: where the configuration directory is.
+//! What the CLI reads of the host it runs on, as `packages/core/src/host.ts` does: where the configuration directory is, and the config file in it.
 //!
-//! The twin lives here and not in a feature (`notify` re-exports it) because every verb that reads the config needs the same answer.
+//! The twin lives here and not in a feature (`notify` re-exports the directory) because every verb that reads the config needs the same answer.
 
 use crate::{js, node};
+
+/// The config file's name inside the config directory (`CONFIG_BASENAME` of `packages/core/src/host.ts`).
+const CONFIG_BASENAME: &str = "config.toml";
+
+/// `configFile()` of `packages/core/src/host.ts`.
+pub fn config_file() -> String {
+    node::join(&config_dir(), CONFIG_BASENAME)
+}
 
 /// `configDir` of `packages/core/src/host.ts`: `$TAGENTS_CONFIG_DIR` unless blank, else `$XDG_CONFIG_HOME` unless blank, else `~/.config`, then `tagents`.
 pub fn config_dir() -> String {
