@@ -121,7 +121,7 @@ Under each parent `--by` SHALL show the twelve largest rows of a non-time dimens
 - **THEN** it prints all five days and no `… N more` row, since a day left out is a hole in the window
 
 ### Requirement: Dates in the window
-`--since` SHALL accept a duration (`30m`, `5h`, `3d`, or seconds, counted back from now), `month` or a date `YYYY-MM-DD`, and `--until` an epoch in seconds or a date. A date starts the `--since` window at its midnight and ends the `--until` window at the end of that day, both at today's UTC offset. A value that is none of those SHALL exit 2 with `tusage: bad --since value <value>`, or `--until` for that flag.
+`--since` SHALL accept a duration (`30m`, `5h`, `3d`, or seconds, counted back from now), `month` or a date `YYYY-MM-DD`, and `--until` an epoch in seconds or a date. A date starts the `--since` window at its midnight and ends the `--until` window at the end of that day, and `month` starts it at the midnight of the 1st of this month, all at today's UTC offset. A value that is none of those SHALL exit 2 with `tusage: bad --since value <value>`, or `--until` for that flag.
 
 #### Scenario: Two days
 - **WHEN** `tusage --by day --since 2026-10-28 --until 2026-10-29` runs
@@ -130,6 +130,10 @@ Under each parent `--by` SHALL show the twelve largest rows of a non-time dimens
 #### Scenario: The offset rows are bucketed by
 - **WHEN** a window names days in a zone whose offset changed since an earlier day of the window
 - **THEN** the window starts and ends at the midnights the rows are placed in a day by, today's UTC offset, so no row of a named day falls outside it
+
+#### Scenario: The start of the month
+- **WHEN** `tusage --by day --since month` runs in a zone whose offset changed since the 1st
+- **THEN** the window starts at the midnight of the 1st at today's UTC offset, so a row is in the month when its day, by that offset, is in it
 
 #### Scenario: A date that does not exist
 - **WHEN** `tusage --by day --since 2026-02-30` runs
@@ -188,7 +192,7 @@ When `TU_ACCOUNTS` is unset, `tusage` SHALL take the accounts from the tagents c
 - **THEN** no session is kept, although every full path holds `users`
 
 ### Requirement: Sessions are named
-A report that prints a session for a person SHALL name it by the name typed for it in tagents, the first line for its id in `labels.tsv` of the state directory, else by the title of its transcript, else by the first eight characters of its id, and SHALL print those eight characters after a name so the id can be copied. `--sessions`, `--json`, `--daily`, `--tsv` and the heading of `--session <id>` print ids.
+A report that prints a session for a person SHALL name it by the name typed for it in tagents, the first line for its id in `labels.tsv` of the state directory, else by the title of its transcript, else by the first eight characters of its id, and SHALL print those eight characters after a name so the id can be copied. Control characters, tabs included, are removed from a name. `--sessions`, `--json`, `--daily`, `--tsv` and the heading of `--session <id>` print ids.
 
 #### Scenario: A typed name
 - **WHEN** `labels.tsv` holds the name `refactor-billing` for a session and `tusage --by session` lists it
@@ -201,6 +205,10 @@ A report that prints a session for a person SHALL name it by the name typed for 
 #### Scenario: Neither
 - **WHEN** a session has no typed name and no title
 - **THEN** its row shows only `e5d1f0a7`
+
+#### Scenario: A control character in a name
+- **WHEN** a name holds an escape sequence, as `typed<ESC>[2Jlabel`, and `tusage --by session` lists the session
+- **THEN** the row reads `typed[2Jlabel`, and no control character reaches the terminal
 
 ### Requirement: The session lookup
 `--session <x>` SHALL find a session by its full id, else a unique id prefix, else a name, matched whole and ignoring case, else as part of a name, whatever characters the text holds. A name is a typed name or a title in the title cache. More than one match SHALL list each candidate's id, name, account and days on standard error and exit 3. No match SHALL exit 1 with `tusage: no session called <x>`, except a whole id (8-4-4-4-12 hexadecimal digits), which keeps its empty detail and exit 0.
@@ -240,7 +248,7 @@ A `--by` table with no time dimension SHALL add to every row `days`, the number 
 - **THEN** its row shows `3` days and the span `10-29..11-01`
 
 ### Requirement: The table fits the terminal
-A `--by` table SHALL be as wide as `COLUMNS` when that is a number, else the terminal when standard output is one, else 120. When its columns leave less than 24 characters for the label it SHALL drop `models`, `span`, `days`, `input`, `cache write`, `cache read`, `output` and `requests` in that order. `--compact` SHALL keep only the label, total tokens, dollars and share. A label that still does not fit ends in `…`, and a session keeps its eight id characters.
+A `--by` table SHALL be as wide as `COLUMNS` when that is a number, else the terminal when standard output is one and the tagents modules are beside `tusage`, else 120. When its columns leave less than 24 characters for the label it SHALL drop `models`, `span`, `days`, `input`, `cache write`, `cache read`, `output` and `requests` in that order. `--compact` SHALL keep only the label, total tokens, dollars and share. A label that does not fit ends in `…`; a session keeps its eight id characters.
 
 #### Scenario: Eighty columns
 - **WHEN** `COLUMNS=80 tusage --by account` runs
@@ -249,6 +257,10 @@ A `--by` table SHALL be as wide as `COLUMNS` when that is a number, else the ter
 #### Scenario: Compact
 - **WHEN** `tusage --by account --compact` runs
 - **THEN** each row has only its label, total tokens, dollars and share
+
+#### Scenario: No modules beside tusage
+- **WHEN** `tusage --by account` runs in a 70-column terminal with `COLUMNS` unset, from a copy with no tagents modules beside it
+- **THEN** the table is laid out for 120 columns
 
 ### Requirement: Colour only where it helps
 A `--by` table SHALL use colour only when standard output is a terminal, `NO_COLOR` is unset or empty and `TERM` is not `dumb`. `--color always` SHALL force it, even over `NO_COLOR`, and `--color never` SHALL remove it. A `--color` value other than `auto`, `always` or `never` SHALL exit 2. The summary and `--session <id>` keep the colour they have.

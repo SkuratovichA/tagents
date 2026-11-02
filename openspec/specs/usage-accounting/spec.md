@@ -158,7 +158,7 @@ A request on a model with no price SHALL be excluded from the dollars, not price
 
 #### Scenario: Units of --since
 - **WHEN** `--since` is given as `5h`, `3d`, `30m`, `month` or a number of seconds
-- **THEN** the window is that long back from now, and `month` means since local midnight on the 1st
+- **THEN** the window is that long back from now, and `month` means since midnight on the 1st of this month at today's UTC offset
 - **AND** `1m` is one minute, not one month
 
 ### Requirement: Sessions are attributed to accounts through a join
