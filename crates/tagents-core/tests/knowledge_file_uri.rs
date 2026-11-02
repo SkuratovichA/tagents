@@ -1,4 +1,4 @@
-//! A name that starts with `file:` opens as a URI in the node program (`node:sqlite` opens every database with the URI flag) and in this one (the bundled SQLite is built with `SQLITE_USE_URI`), so `file:rel.db` is the file `rel.db`. This test is a binary of its own because it changes the working directory of the process.
+//! A name that starts with `file:` opens as a URI in the node program (`node:sqlite` opens every database with the URI flag) and in this one (the bundled SQLite is built with `SQLITE_USE_URI`), so `file:rel.db` is the file `rel.db`. Neither program is handed such a name by a verb: `resolveDb` in `packages/knowledge/src/paths.ts` makes the path absolute with `path.resolve`, so `TAGENTS_KNOWLEDGE_DB=file:rel.db` creates a file named `file:rel.db` in the working directory, and the Rust verbs resolve the path the same way (task 9.4). This test is a binary of its own because it changes the working directory of the process.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
