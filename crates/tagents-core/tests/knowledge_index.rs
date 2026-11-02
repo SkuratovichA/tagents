@@ -56,7 +56,7 @@ const ONLY_HERE: &[(&str, &str)] = &[
     ),
     (
         "USE_URI",
-        "reads a file name that starts with `file:` as a URI; no index path does, and `open_file` does not ask for it",
+        "reads a name that starts with `file:` as a URI whatever flags the open asks for, and `open_file` asks for none; node opens every database with the URI flag, so the two read `file:rel.db` as `rel.db` alike (`tests/knowledge_file_uri.rs`)",
     ),
 ];
 

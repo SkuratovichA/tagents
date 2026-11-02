@@ -8105,6 +8105,47 @@
         "THREADSAFE=1"
       ]
     },
+    "fileUris": [
+      {
+        "name": "file:rel.db",
+        "outcome": "opened",
+        "left": [
+          "rel.db"
+        ]
+      },
+      {
+        "name": "file:./rel.db",
+        "outcome": "opened",
+        "left": [
+          "file:./",
+          "rel.db"
+        ]
+      },
+      {
+        "name": "file:sub/rel.db",
+        "outcome": "unable to open database file",
+        "left": [
+          "file:sub/"
+        ]
+      },
+      {
+        "name": "file:a%20b.db",
+        "outcome": "opened",
+        "left": [
+          "a b.db"
+        ]
+      },
+      {
+        "name": "file:rel.db?mode=memory&cache=shared",
+        "outcome": "opened",
+        "left": []
+      },
+      {
+        "name": "file:rel.db?mode=ro",
+        "outcome": "unable to open database file",
+        "left": []
+      }
+    ],
     "schemaVersions": {
       "cases": [
         {

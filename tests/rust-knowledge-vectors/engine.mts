@@ -68,6 +68,35 @@ export function schemaVectors(): unknown {
   };
 }
 
+// ---- names that start with `file:` -------------------------------------------------------------
+
+/** Names for the index file that SQLite reads as URIs: the plain one, one with a folder that is not there, a percent escape, an in-memory database and one that must exist. */
+const FILE_URIS = ['file:rel.db', 'file:./rel.db', 'file:sub/rel.db', 'file:a%20b.db', 'file:rel.db?mode=memory&cache=shared', 'file:rel.db?mode=ro'];
+
+/** Everything under `dir`, folders with a trailing slash, in name order. */
+function listing(dir: string, prefix = ''): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1)).flatMap((entry) => (entry.isDirectory() ? [`${prefix}${entry.name}/`, ...listing(path.join(dir, entry.name), `${prefix}${entry.name}/`)] : [`${prefix}${entry.name}`]));
+}
+
+/** What `openDb` does with each of the names, run in a folder of its own: how it ended and what it left there. node:sqlite opens every database with the URI flag, so `file:rel.db` is the file `rel.db` and not a file with a colon in its name. */
+function fileUriVectors(): unknown {
+  silenceSqliteWarning();
+  const here = process.cwd();
+  return FILE_URIS.map((name, i) => {
+    const dir = scratch(`file-uri-${i}`);
+    process.chdir(dir);
+    let outcome = 'opened';
+    try {
+      openDb(name).close();
+    } catch (e) {
+      outcome = e instanceof Error ? e.message : String(e);
+    } finally {
+      process.chdir(here);
+    }
+    return { name, outcome, left: listing(dir) };
+  });
+}
+
 // ---- schema versions -------------------------------------------------------------------------
 
 /** A file that carries `value` as its schema version and a row in `docs` that only a rebuild removes. The version is read the way node reads it: as a JavaScript number. */
@@ -303,6 +332,7 @@ function tokenizerVectors(): unknown {
 export function engineVectors(): unknown {
   return {
     schema: schemaVectors(),
+    fileUris: fileUriVectors(),
     schemaVersions: versionVectors(),
     reindex: reindexVectors(),
     mtime: mtimeVectors(),
