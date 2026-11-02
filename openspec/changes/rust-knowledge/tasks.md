@@ -1,6 +1,6 @@
 The tasks widen the MCP loop of `tagents-core` (`openspec/specs/rust-mcp/spec.md`) and the front door, and add the knowledge code beside them. Every shell suite runs as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/<suite>.sh`; the commands below name the suite only. Each group writes its tests first and watches them fail for the expected reason.
 
-The change ships in three pull requests, merged in this order, each leaving the node arrangement working. (a) Groups 1 to 6: the vectors, the dependencies, the document reader, the index, the search and the usage store, which no verb calls, and the busy timeout of the node opener of the index (tasks 4.5 and 4.6). (b) Groups 7 to 13: the generated files, the widened loop, the argument checker and the tools, the socket and the daemon, `join`, `serve` and `mcp`, the three verbs (the entries of `spec/cli/tagents-core.json` and the arm of `front_door.rs`, task 12.3, are the last task of the code, after everything they call), the differential suite and the architecture document; nothing names the verbs, so the node arrangement runs. (c) Groups 14 to 17: the installer's word list, the launcher, the measurements and the archive; it changes no input of the binary and names the verbs only for a binary of the checkout's version. (a) and (b) change inputs of the binary and each takes the next minor step of the workspace version above its merge base (tasks 6.7 and 13.8). The archive of this change comes with (c).
+The change ships in three pull requests, merged in this order, each leaving the node arrangement working. (a) Groups 1 to 6: the vectors, the dependencies, the document reader, the index, the search and the usage store, which no verb calls, and the busy timeout of the node opener of the index (tasks 4.5 and 4.6). (b) Groups 7 to 13: the generated files, the widened loop, the argument checker and the tools, the socket and the daemon, `join`, `serve` and `mcp`, the three verbs (the entries of `spec/cli/tagents-core.json` and the arm of `front_door.rs`, task 12.3, are the last task of the code, after everything they call), the differential suite and the architecture document; nothing names the verbs, so the node arrangement runs. (c) Groups 14 to 17: the installer's word list, the launcher, the measurements and the archive; it changes no input of the binary and names the verbs only for a binary of the checkout's version. (a) and (b) change inputs of the binary and each raises the workspace version above its merge base (tasks 6.7 and 13.8). The archive of this change comes with (c).
 
 ## 1. The vectors
 
@@ -11,13 +11,13 @@ Pull request (a).
 - [x] 1.3 Running the generator twice writes the same bytes, and the file carries the node and SDK versions that wrote it (`node tests/rust-knowledge-vectors.mts && git diff --exit-code crates/tagents-core/tests/fixtures/knowledge-vectors.json`)
 - [x] 1.4 `rust.yml` lists the generator, its directory and the knowledge package's sources in both `paths` lists, regenerates the file and fails on a diff, as for the notify vectors (`actionlint`)
 
-## 2. Dependencies, the musl step and the shared lifts
+## 2. Dependencies, the musl step and the shared code
 
 Pull request (a).
 
 - [x] 2.1 `rusqlite` (feature `bundled`), `saphyr` and `sha2` are declared in the workspace `Cargo.toml` with a comment each, and the dependency table of `docs/architecture/rust-core.md` gains their rows with the reason and the crates they add (the measured cost is task 16.2) (`cargo build -p tagents-core --locked`, `cargo tree -p tagents-core --depth 1`)
 - [ ] 2.2 `release.yml` installs `musl-tools` before the musl build (`actionlint`; the `release` workflow of the pull request builds the three targets, `gh run list --branch <branch>`)
-- [x] 2.3 Nothing is lifted into a new module: `config_dir`, `config_dir_from` and `not_blank` of `host.rs` and `Locale` of `messages.rs` are already shared with the notify service on `origin/main`, and the knowledge code of (b) uses them from there, so there is no `config.rs` and no `locale.rs` (`git diff origin/main --stat -- crates/tagents-core/src/lib.rs`, `cargo test -p tagents-core --lib notify`)
+- [x] 2.3 Nothing is lifted into a new module: `config_dir` and `config_dir_from` of `host.rs` and `Locale` of `messages.rs` are already public on `origin/main` and the knowledge code uses them from there, `not_blank` of `host.rs` is private and (b) makes it `pub(crate)` where it first needs it, so there is no `config.rs` and no `locale.rs` (`git diff origin/main --stat -- crates/tagents-core/src/lib.rs`, `cargo test -p tagents-core --lib notify`)
 - [x] 2.4 `node.rs` gains a floor variant of `mtime_ms` that uses the arithmetic of node's `Stats`, with a test against the vectors written first; `resolve` is the one `origin/main` has, and `tmpdir` (task 10.2) comes with its only caller in (b) (`cargo test -p tagents-core --lib node::`)
 - [x] 2.5 No `unsafe`, `unwrap` or `expect` is added outside `#[cfg(test)]` (`cargo clippy --workspace --all-targets --locked -- -D warnings`, `git diff origin/main -- crates | grep -n 'unsafe\|unwrap\|expect'` shows only test code)
 
@@ -59,7 +59,7 @@ Pull request (a).
 - [x] 6.4 Nothing in (a) is reachable from a verb: `knowledge` is a library module that `front_door.rs` does not name, and the node arrangement is what runs (`cargo build -p tagents-core --locked --release`, `target/release/tagents-core knowledge join` is handed to the node CLI)
 - [x] 6.5 `pnpm spec:check` accepts this change, and `pnpm exec openspec validate rust-knowledge --strict` does
 - [ ] 6.6 Everything of (a) passes on both systems (`cargo test --workspace --locked`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, the `rust` workflow on macOS and Linux)
-- [x] 6.7 The release gate: the version of `Cargo.toml`, `Cargo.lock` and the version lines of `docs/architecture/rust-core.md` take the next minor step above the merge base (`sh .github/scripts/core-release.sh gate origin/main`, exit 0)
+- [x] 6.7 The release gate: the version of `Cargo.toml`, `Cargo.lock` and the version lines of `docs/architecture/rust-core.md` take a higher version than the merge base's (`sh .github/scripts/core-release.sh gate origin/main`, exit 0)
 
 ## 7. The generated files
 
@@ -129,7 +129,7 @@ Pull request (b).
 - [ ] 13.5 Mutations of the Rust side each fail exactly one scenario and leave the suite green once restored: the weights swapped, the id tie-break left out, the modification time rounded, the hash over another text, the `meta` rows written when equal, the retention left out, a validation message reworded, the idle decision outside the lock, the pid file left behind (`PARITY_ONLY=<scenario> bash tests/rust-knowledge-parity.sh`, one failing line each)
 - [ ] 13.6 `docs/architecture/rust-core.md`: the server, the daemon, the SQLite decision with its measured cost, the parser policy, the dependency rows, the section on the MCP loop and the suite, and under "Where the two are known to differ" each difference of the design with its reason (`pnpm docs:build`)
 - [ ] 13.7 `rust.yml` lists the suite, its driver, the generator and `packages/knowledge/**` in `paths`, installs the node dependencies before the Rust steps and runs the suite after the existing parity steps on ubuntu-latest and macos-latest (`actionlint`; the `rust`, `ci` and `release` workflows succeed on the last head, `gh run list --branch <branch>`)
-- [ ] 13.8 The release gate: the workspace version takes the next minor step above the merge base (`sh .github/scripts/core-release.sh gate origin/main`, exit 0), and `pnpm spec:check` and `pnpm exec openspec validate rust-knowledge --strict` accept this change
+- [ ] 13.8 The release gate: the workspace version is higher than the merge base's (`sh .github/scripts/core-release.sh gate origin/main`, exit 0), and `pnpm spec:check` and `pnpm exec openspec validate rust-knowledge --strict` accept this change
 
 ## 14. The installer's words
 
