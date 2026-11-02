@@ -207,8 +207,8 @@ test('a one-word verb served by rust beside a node verb of the same first word i
   const commands = commandsOf(readDoc());
   const word = (path: string[], impl: string): Record<string, unknown> => ({ path, impl });
   assert.deepEqual(splitOneWordVerbs([...commands, word(['mcp', 'extra'], 'node')]), ['mcp']);
-  assert.deepEqual(splitOneWordVerbs([...commands, word(['doctor'], 'rust')]), ['doctor']);
-  assert.deepEqual(splitOneWordVerbs([...commands, word(['doctor', 'extra'], 'rust')]), []);
+  assert.deepEqual(splitOneWordVerbs([...commands, word(['session'], 'rust')]), ['session']);
+  assert.deepEqual(splitOneWordVerbs([...commands, word(['session', 'extra'], 'rust')]), []);
   assert.deepEqual(splitOneWordVerbs([...commands, word(['plugin', 'extra'], 'rust')]), []);
 });
 

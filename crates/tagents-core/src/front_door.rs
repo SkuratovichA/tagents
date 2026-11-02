@@ -1,6 +1,6 @@
 //! The `tagents-core` front door.
 //!
-//! A verb the data file marks `impl: "rust"` is served here; every other word (an unported verb, help, `doctor`, a plugin's verb, a word nobody knows) is handed to the node CLI with the same arguments, environment and stdio, and the exit code is the node CLI's own, because the process is replaced, not waited for.
+//! A verb the data file marks `impl: "rust"` is served here; every other word (an unported verb, help, a plugin's verb, a word nobody knows) is handed to the node CLI with the same arguments, environment and stdio, and the exit code is the node CLI's own, because the process is replaced, not waited for.
 //! The dispatch is by the first word, so a group of verbs is served wholly by one program: `sessions` and its misspellings behave as they always did, in either implementation.
 //! A group may decline: `Group::run` answers `None` for a call it cannot prove identical to node's (a verb that stays with node, an unknown verb, an argument outside what the group parses), and `None` is the same hand-over as a word nobody serves, made before the group has written anything.
 
@@ -14,7 +14,7 @@ use std::{
 use tagents_spec::Spec;
 
 use crate::{
-    mcp, node,
+    doctor, mcp, node,
     notify::service,
     plugin,
     sessions::{self, Output},
@@ -51,6 +51,13 @@ const GROUPS: &[Group] = &[
         verbs: plugin::VERBS,
         lossy_args: false,
         run: |argv, _| plugin::run(argv),
+    },
+    Group {
+        word: "doctor",
+        verbs: doctor::VERBS,
+        // It reads no argument, so a byte that is not UTF-8 changes nothing.
+        lossy_args: true,
+        run: |_, _| doctor::run(),
     },
 ];
 
