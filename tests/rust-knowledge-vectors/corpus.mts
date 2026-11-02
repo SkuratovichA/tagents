@@ -17,10 +17,16 @@ const doc = (front: string, body: string): string => `---\n${front}\n---\n${body
 
 const LONG = Array.from({ length: 60 }, (_, i) => `word${i}`).join(' ');
 
+const TIE_BODY = '## Probe\nzyxwv appears once in every copy\n';
+
 const SEARCH_FILES: CorpusFile[] = [
   { name: 'aaa-tie-one.md', text: doc('type: Note\ntitle: Tie one', '## Tied\nthe quick brown fox jumps over the lazy dog\n') },
   { name: 'aaa-tie-two.md', text: doc('type: Note\ntitle: Tie two', '## Tied\nthe quick brown fox jumps over the lazy dog\n') },
   { name: 'bbb-tie.md', text: doc('type: Runbook\ntitle: Tie three\ntags: [a]', '## Tied\nthe quick brown fox jumps over the lazy dog\n\n## Tied\nthe same heading again with a fox\n') },
+  // Three sections that rank alike. The order of the files is the order of the rows (`tb-mid-late.md` is listed before `tb-mid.md`, since `-` sorts before `.`), the order of the ids is the other way, and the deprecated twin has the smallest id: only the tie-break on the id and the deprecated key give the order the vector holds.
+  { name: 'tb-aa-twin.md', text: doc('type: Note\ntitle: Twin\nstatus: deprecated', TIE_BODY) },
+  { name: 'tb-mid-late.md', text: doc('type: Note\ntitle: Late', TIE_BODY) },
+  { name: 'tb-mid.md', text: doc('type: Note\ntitle: Mid', TIE_BODY) },
   { name: 'deploy-guide.md', text: doc('type: Runbook\ntitle: Deploy guide\ndescription: How to ship\ntags: [ops, a]', 'Preamble about deploy.\n\n## Deploy steps\nrun deploy.sh then verify the deploy\n\n## Rollback\nrollback is the reverse of a deploy\n') },
   { name: 'old-deploy.md', text: doc('type: Runbook\ntitle: Old deploy\nstatus: deprecated\ndescription: Superseded', '## Deploy\ndeploy deploy deploy deploy deploy everything with the deploy script\n') },
   { name: 'deploy-draft.md', text: doc('type: Note\ntitle: Deploy draft\nstatus: draft\ntags: [ops]', '## Notes\ndeploy draft notes\n') },
@@ -47,7 +53,7 @@ const SEARCH_QUERIES = [
   '"hello"', 'hello', 'bye', '"', '""', '*', '**', '-', '- x', 'x -y', '(fox)', 'fox OR dog', 'fox AND dog', 'fox NOT dog', 'NEAR(fox dog)',
   'heading:fox', 'body:fox', 'doc_id:aaa', '^fox', 'fox*dog', '*fox', 'fo*x', 'fox*', 'fox** ', '  fox  ', '\tfox\n', 'fox\u00A0dog', 'fox\u3000dog', 'fox\u2028dog',
   'section', 'sections', 'Section*', 'FOUR', '1', '0', ' ', 'a', 'é', 'x'.repeat(300), 'tied', 'Tied', 'tie one', 'unknownword', 'foxfoxfox',
-  'quick* brown* lazy*', 'the', 'the the the', 'staleness', 'legacy', 'limit', 'second', 'word30 needle word31', 'word0', 'word59*', '{}', '[x]', ':', ',', 'x:y', "it's", 'it"s', '\u0000', 'fox\u0000dog', '\uFEFFdeploy', 'D́eploy', 'deṕloy',
+  'zyxwv', 'zyxwv copy', 'quick* brown* lazy*', 'the', 'the the the', 'staleness', 'legacy', 'limit', 'second', 'word30 needle word31', 'word0', 'word59*', '{}', '[x]', ':', ',', 'x:y', "it's", 'it"s', '\u0000', 'fox\u0000dog', '\uFEFFdeploy', 'D́eploy', 'deṕloy',
 ];
 
 interface Filter {
