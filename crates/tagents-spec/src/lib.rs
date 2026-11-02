@@ -371,6 +371,8 @@ mod tests {
                 "sessions show",
                 "plugin add",
                 "plugin remove",
+                "plugin new",
+                "doctor",
                 "mcp",
                 "notify run"
             ]
