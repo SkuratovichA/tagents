@@ -126,7 +126,7 @@ total                                1148    2.4M    824k   12.8M  153.8M  169.9
 
 A session is its name in tagents, the one typed for it or else its title, then eight characters of its id. A session with no name is its eight characters. Reading a title out of a transcript writes it to the dashboard's cache (`title.tsv`) through the function the dashboard uses, so the next refresh has it.
 
-The columns are `reqs`, `input`, `output`, `cwrite`, `cread`, `total`, `$` and `share`, then `days` and `span` when no dimension is a time, then `models` when `model` is not a dimension. The width is `COLUMNS`, else the terminal's, else 120. A table that does not fit drops columns in a fixed order (`models`, `span`, `days`, `input`, `cwrite`, `cread`, `output`, `reqs`) until its labels have 24 characters; the label, `total`, `$` and `share` stay. A label that is still too long ends in `…`, and a session keeps its eight characters. `--compact` keeps only those four columns at any width.
+The columns are `reqs`, `input`, `output`, `cwrite`, `cread`, `total`, `$` and `share`, then `days` and `span` when no dimension is a time, then `models` when `model` is not a dimension. The width is `COLUMNS`, else the terminal's, else 120; the terminal is asked through the tagents modules, which an install always puts beside `tusage`, so a copy of `tusage` on its own is 120 wide. A table that does not fit drops columns in a fixed order (`models`, `span`, `days`, `input`, `cwrite`, `cread`, `output`, `reqs`) until its labels have 24 characters; the label, `total`, `$` and `share` stay. A label that is still too long ends in `…`, and a session keeps its eight characters. `--compact` keeps only those four columns at any width.
 
 ```text
 usage  2026-10-26 .. 2026-11-01  by project
@@ -150,7 +150,7 @@ total                   169.9M      $162  100.0%
 | `--tsv` | the deepest rows with no header, no colour and no rounding, for a script |
 | `--color auto\|always\|never` | colour only on a terminal and never with `NO_COLOR` set, unless this says otherwise |
 
-A day is cut at today's UTC offset: the rows of a day and the ends of a `--since` or `--until` date use the same offset, so a table by day begins and ends on the days the window names. Where the clocks change, a day from the other season starts an hour away from the local midnight of its time.
+A day is cut at today's UTC offset: the rows of a day and the ends of a `--since` or `--until` date use the same offset, so a table by day begins and ends on the days the window names, and `--since month` starts at the midnight of the 1st by it. Where the clocks change, a day from the other season starts an hour away from the local midnight of its time.
 
 ```text
 usage  2026-10-01 .. 2026-11-01  by week > account
