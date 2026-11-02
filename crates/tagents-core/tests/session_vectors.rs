@@ -31,13 +31,20 @@ fn section(name: &str) -> Value {
 }
 
 fn text<'a>(case: &'a Value, key: &str) -> &'a str {
-    case[key].as_str().unwrap_or_else(|| panic!("{key} of {case}"))
+    case[key]
+        .as_str()
+        .unwrap_or_else(|| panic!("{key} of {case}"))
 }
 
 #[test]
 fn no_section_is_left_unread() {
     let all = vectors();
-    let mut names: Vec<&str> = all.as_object().unwrap().keys().map(String::as_str).collect();
+    let mut names: Vec<&str> = all
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
     names.sort_unstable();
     let mut expected: Vec<&str> = READ_HERE.iter().chain(&READ_BY_THE_TURN).copied().collect();
     expected.sort_unstable();
@@ -102,7 +109,11 @@ fn a_reference_reads_as_node_reads_it_or_is_handed_over() {
     let (mut accepted, mut refused, mut handed) = (0, 0, 0);
     for case in cases {
         let document = text(case, "text");
-        match (reference::read(document), &case["parsed"], &case["handOver"]) {
+        match (
+            reference::read(document),
+            &case["parsed"],
+            &case["handOver"],
+        ) {
             (Read::Invalid, Value::Null, Value::Bool(false)) => refused += 1,
             (Read::HandOver, Value::String(_), Value::Bool(true)) => handed += 1,
             (Read::Ref(got), Value::String(want), Value::Bool(false)) => {
@@ -115,7 +126,10 @@ fn a_reference_reads_as_node_reads_it_or_is_handed_over() {
         }
     }
     // The corpus holds each answer, so a reader that gave one answer to everything fails.
-    assert!(accepted > 15 && refused > 15 && handed > 15, "{accepted} {refused} {handed}");
+    assert!(
+        accepted > 15 && refused > 15 && handed > 15,
+        "{accepted} {refused} {handed}"
+    );
 }
 
 #[test]
