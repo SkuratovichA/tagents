@@ -16,7 +16,7 @@ use tagents_spec::Spec;
 use crate::{
     doctor, mcp, node,
     notify::service,
-    plugin,
+    plugin, session,
     sessions::{self, Output},
     transcripts::Context,
 };
@@ -51,6 +51,13 @@ const GROUPS: &[Group] = &[
         verbs: plugin::VERBS,
         lossy_args: false,
         run: |argv, _| plugin::run(argv),
+    },
+    Group {
+        word: "session",
+        verbs: session::VERBS,
+        // A cwd or a reference is a path or an id that must not be read as another one.
+        lossy_args: false,
+        run: |argv, _| session::run(argv),
     },
     Group {
         word: "doctor",
@@ -98,14 +105,26 @@ fn context() -> Context {
     }
 }
 
-/// Write what was produced and ignore a reader that went away, as the node CLI does.
+/// Write all of `text` to `sink` and flush it, ignoring a reader that went away, as the node CLI does.
+fn best_effort(sink: &mut dyn Write, text: &str) {
+    let _ = sink.write_all(text.as_bytes());
+    let _ = sink.flush();
+}
+
+/// `text` on stdout, now; a verb that writes while it works calls this itself.
+pub(crate) fn emit_stdout(text: &str) {
+    best_effort(&mut std::io::stdout().lock(), text);
+}
+
+/// `text` on stderr, now.
+pub(crate) fn emit_stderr(text: &str) {
+    best_effort(&mut std::io::stderr().lock(), text);
+}
+
+/// Write what was produced: stdout, then stderr, and the exit code that goes with it.
 fn emit(out: &Output) -> ExitCode {
-    let mut stdout = std::io::stdout().lock();
-    let _ = stdout.write_all(out.stdout.as_bytes());
-    let _ = stdout.flush();
-    let mut stderr = std::io::stderr().lock();
-    let _ = stderr.write_all(out.stderr.as_bytes());
-    let _ = stderr.flush();
+    emit_stdout(&out.stdout);
+    emit_stderr(&out.stderr);
     ExitCode::from(out.code)
 }
 
@@ -177,5 +196,58 @@ pub fn run(args: Vec<OsString>) -> ExitCode {
     match served {
         Some(out) => emit(&out),
         None => exec_node(NODE_CLI, &args),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{self, Write};
+
+    use super::best_effort;
+
+    /// A reader that went away: every write and every flush fails, as a closed pipe's do.
+    struct Gone;
+
+    impl Write for Gone {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Err(io::ErrorKind::BrokenPipe.into())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Err(io::ErrorKind::BrokenPipe.into())
+        }
+    }
+
+    /// A sink that keeps what it was given and whether it was flushed.
+    #[derive(Default)]
+    struct Sink {
+        bytes: Vec<u8>,
+        flushed: bool,
+    }
+
+    impl Write for Sink {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.flushed = true;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_reader_that_went_away_is_ignored() {
+        // `emit_stdout` and `emit_stderr` are this over the two streams, so neither can fail or panic when its reader is gone.
+        best_effort(&mut Gone, "text");
+    }
+
+    #[test]
+    fn the_text_is_written_whole_and_flushed() {
+        let mut sink = Sink::default();
+        best_effort(&mut sink, "ünï\nline");
+        assert_eq!(sink.bytes, "ünï\nline".as_bytes());
+        assert!(sink.flushed);
     }
 }

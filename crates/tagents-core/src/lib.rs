@@ -17,6 +17,7 @@ pub mod messages;
 pub mod node;
 pub mod notify;
 pub mod plugin;
+pub mod session;
 pub mod sessions;
 mod sync;
 #[cfg(test)]
