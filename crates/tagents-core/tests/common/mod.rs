@@ -5,6 +5,7 @@
 // Every test crate that includes this module uses some of it.
 #![allow(dead_code, unused_imports)]
 
+pub mod knowledge;
 pub mod rig;
 
 /// The root of the checkout, where the contract, the fixtures and the node packages are.

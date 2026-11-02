@@ -15,6 +15,7 @@ import {
   parseDoc,
   parseOffsetDatetime,
   readDoc,
+  splitFrontmatter,
   utcDateOf,
   wikilinks,
 } from '../src/doc.ts';
@@ -85,6 +86,19 @@ test('the loader is tolerant: what OKF lets a consumer ignore never refuses a fi
   assert.equal(loaded.raw['owner'], 'platform');
   // A kind outside the old five is just a type now.
   assert.equal(parseDoc('/tmp/sample.md', doc({ kind: 'checklist' })).meta.type, 'Checklist');
+});
+
+test('a document with CRLF line endings reads as the same document with LF ones', () => {
+  const lf = (front: string): string => `---\n${front}\n---\n## One\nbody\n`;
+  const crlf = (front: string): string => `---\r\n${front.replaceAll('\n', '\r\n')}\r\n---\r\n## One\r\nbody\r\n`;
+  for (const front of ['type: Note\ntitle: Crlf', 'type: Note\ntitle: "Quoted"', 'type: Note\ntags: [a, b]', 'type: Note\ndescription: >-\n  folded\n  text', 'type: Note\nsources: [{resource: r}]']) {
+    const want = parseDoc('/tmp/sample.md', lf(front)).meta;
+    const got = parseDoc('/tmp/sample.md', crlf(front)).meta;
+    assert.deepEqual(got, want, front);
+  }
+  // The carriage return before the closing fence belongs to the line break, not to the last value.
+  assert.equal(splitFrontmatter('---\r\ntype: Note\r\n---\r\nbody\r\n')?.yaml, 'type: Note');
+  assert.equal(splitFrontmatter('---\r\n\r\n---\r\n')?.yaml, '');
 });
 
 test('legacy fields are mapped as the design says', () => {

@@ -13,6 +13,7 @@ on:
       - spec/**
       - packages/core/**
       - packages/mcp/**
+      - packages/knowledge/**
       - packages/notify/**
       - tests/rust-parity.sh
       - tests/rust-mcp-parity.sh
@@ -28,6 +29,8 @@ on:
       - tests/rust-plugin-parity.sh
       - tests/rust-plugin-vectors.mts
       - tests/rust-plugin-vectors/**
+      - tests/rust-knowledge-vectors.mts
+      - tests/rust-knowledge-vectors/**
       - .github/workflows/rust.yml
       - .github/workflows/release.yml
       - .github/scripts/core-release.sh
@@ -45,6 +48,7 @@ on:
       - spec/**
       - packages/core/**
       - packages/mcp/**
+      - packages/knowledge/**
       - packages/notify/**
       - tests/rust-parity.sh
       - tests/rust-mcp-parity.sh
@@ -60,6 +64,8 @@ on:
       - tests/rust-plugin-parity.sh
       - tests/rust-plugin-vectors.mts
       - tests/rust-plugin-vectors/**
+      - tests/rust-knowledge-vectors.mts
+      - tests/rust-knowledge-vectors/**
       - .github/workflows/rust.yml
       - .github/workflows/release.yml
       - .github/scripts/core-release.sh
@@ -104,6 +110,10 @@ jobs:
         run: |
           node tests/rust-plugin-vectors.mts
           git diff --exit-code crates/tagents-core/tests/fixtures/plugin-vectors.json
+      - name: The knowledge vectors node writes are the ones committed, so a change to the index, the search or the usage store fails here until the Rust copy follows
+        run: |
+          node tests/rust-knowledge-vectors.mts
+          git diff --exit-code crates/tagents-core/tests/fixtures/knowledge-vectors.json
       - name: Parity with the node CLI, byte for byte
         run: bash tests/rust-parity.sh
       - name: Parity of the MCP server with the node one, byte for byte

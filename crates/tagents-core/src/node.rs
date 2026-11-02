@@ -142,9 +142,29 @@ pub fn realpath(path: &str) -> io::Result<String> {
     })
 }
 
-/// `stat.mtime.getTime()`: node computes `sec * 1e3 + nsec / 1e6` as a float and `Date` takes `Math.round` of it.
+/// `sec * 1e3 + nsec / 1e6`, the double node's `Stats` computes for `mtimeMs`.
+fn mtime_double(sec: i64, nsec: i64) -> f64 {
+    sec as f64 * 1000.0 + nsec as f64 / 1e6
+}
+
+/// `Math.round` of the `mtimeMs` double for a time of seconds and nanoseconds: what `stat.mtime.getTime()` is, since `Date` rounds it.
+pub fn mtime_ms_of(sec: i64, nsec: i64) -> i64 {
+    js::round(mtime_double(sec, nsec)) as i64
+}
+
+/// `Math.floor` of the `mtimeMs` double: what `Math.floor(stat.mtimeMs)` is, as the knowledge index stores it.
+pub fn mtime_ms_floor_of(sec: i64, nsec: i64) -> i64 {
+    mtime_double(sec, nsec).floor() as i64
+}
+
+/// `stat.mtime.getTime()`.
 pub fn mtime_ms(meta: &fs::Metadata) -> i64 {
-    js::round(meta.mtime() as f64 * 1000.0 + meta.mtime_nsec() as f64 / 1e6) as i64
+    mtime_ms_of(meta.mtime(), meta.mtime_nsec())
+}
+
+/// `Math.floor(stat.mtimeMs)`.
+pub fn mtime_ms_floor(meta: &fs::Metadata) -> i64 {
+    mtime_ms_floor_of(meta.mtime(), meta.mtime_nsec())
 }
 
 /// An error number with node's name and text for it, as `util.getSystemErrorMap()` gives them.

@@ -185,6 +185,8 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **A mutation restored with `git checkout -- <file>` discards the uncommitted change under test** — save a copy of the file first, restore with `cp` and check with `cmp`; run each mutation as its own call, because four in one call passed the tool timeout and ran on with the file mutated (31.10.2026)
 - **`PARITY_ONLY` runs the built `packages/notify/dist/main.js`, not the sources** — after a node change run `pnpm build` first, or the scenario compares the old node daemon (31.10.2026)
 - **An idle measurement read later than planned has no stated duration** — write the start and the reading times into the raw output, so the report can say how long the processes were idle (31.10.2026)
+- **A test that passes through the public path cannot see an order or a guard that the writer already keeps** — the sections of one document tied on rank and came out right with or without `chunks.ord` in the search order, because a reindex stores them in that order, and a second open that rewrote the same schema version changed no row. Run the mutation, not only the test: pin the key with rows written by hand in the opposite order, and pin the guard by comparing the file before and after (02.11.2026)
+- **Reverting a mutation with `git checkout -- <file>` also drops an uncommitted edit in that file** — a mutation run over `node.rs` restored the file from the index and took the test removal made before it with it. Commit or stash the real edits first, or restore the saved original text (02.11.2026)
 
 ## Rust core and the MCP server
 
@@ -222,6 +224,8 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **libtest captures `eprintln!` but not `writeln!(io::stderr(), …)`** — a skip line written with `eprintln!` never showed in the run's output. Write a line the run must show with `writeln!(io::stderr(), …)` (31.10.2026)
 - **macOS `open` gives EINVAL while a rename replaces a symlink on the path** — a reader woken by a directory event can meet it; try the open again, three tries in all (31.10.2026)
 - **A task list that registers a verb group in `GROUPS` before flipping the flags makes every verb live at once** — wire each verb into `run` and flip its `impl` flag last, then run parity (01.11.2026)
+- **A figure that sounds measured was not** — the design of the knowledge server gave a cost in binary size and build time before any build had run. Write a number only after the command that produced it, and name the command beside it; before that write "not measured" (01.11.2026)
+- **A design reason has to be checked, not recalled** — the design said the daemon needs `setsid` to survive its starter's group, and the claim was repeated for two drafts. The check is `ps -o pid,pgid,sess` on a detached child, and `process_group(0)` was enough. Run the one command that shows the claim before it goes into the design (01.11.2026)
 
 ## Other
 

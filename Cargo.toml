@@ -4,7 +4,7 @@ members = ["crates/*"]
 default-members = ["crates/tagents-core"]
 
 [workspace.package]
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 rust-version = "1.99"
 license = "MIT"
@@ -26,6 +26,12 @@ signal-hook = "0.4"
 kqueue = "1.2"
 # toml reads `<configDir>/plugins/notify.toml` (notify::options) into its parse tree, `toml::de::DeTable`, which keeps each integer and float as the text the file wrote so the reader decides what the node service's parser would have made of it. `default-features = false` leaves out `serde` and the writer; `preserve_order` keeps the keys in the order of the file, which the problem lines depend on. It builds `toml_parser`, `toml_datetime`, `serde_spanned` and `winnow` besides `indexmap`, which `serde_json`'s `preserve_order` already brings; `Cargo.lock` also lists `toml_writer`, which these features do not build (`cargo tree --workspace --target all -e all -i toml_writer` prints nothing).
 toml = { version = "1", default-features = false, features = ["std", "parse", "preserve_order"] }
+# rusqlite with `bundled` compiles the C source of SQLite into the binary, FTS5 and the `unicode61` tokenizer included, so the index and the usage store of the knowledge server (knowledge::index, knowledge::usage) are the same SQLite on the three release targets and no system library is looked for. It builds `libsqlite3-sys` and the C source and, with `default-features = false`, none of rusqlite's optional features; it needs a C compiler, and `musl-tools` on the musl runner of release.yml.
+rusqlite = { version = "0.41", default-features = false, features = ["bundled"] }
+# saphyr reads the YAML 1.2 front matter of a knowledge document (knowledge::front_matter) as the `yaml` package does for the node index; `default-features = false` leaves out the decoder for other encodings, because a document is UTF-8 text already. A converter turns its tree into the values `doc.ts` receives.
+saphyr = { version = "0.3", default-features = false }
+# sha2 is the hash of a document (the first 32 hex digits of its SHA-256, which the index stores as `hash`); the tree has no hash.
+sha2 = "0.11"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

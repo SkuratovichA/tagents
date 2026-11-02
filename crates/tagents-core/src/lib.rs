@@ -9,6 +9,7 @@ pub mod front_door;
 pub mod host;
 pub mod js;
 pub mod json;
+pub mod knowledge;
 pub mod mcp;
 pub mod messages;
 pub mod node;

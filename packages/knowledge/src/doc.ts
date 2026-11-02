@@ -211,8 +211,10 @@ export function splitFrontmatter(text: string): { yaml: string; body: string } |
   const end = normalized.indexOf('\n---', 3);
   if (end === -1) return null;
   const after = normalized.indexOf('\n', end + 1);
+  // The `\r` of a CRLF break that ends the last line is cut with the `\n` it belongs to, or the YAML reads it as part of the last value.
+  const stop = normalized[end - 1] === '\r' ? end - 1 : end;
   return {
-    yaml: normalized.slice(normalized.indexOf('\n') + 1, end),
+    yaml: normalized.slice(normalized.indexOf('\n') + 1, stop),
     body: after === -1 ? '' : normalized.slice(after + 1),
   };
 }
