@@ -36,7 +36,7 @@ The name a person gave a session lives in `labels.tsv` in the state directory (`
 
 ### 2. Filters narrow, dimensions group, and `--session` is a filter
 
-**Decision.** `--account` (repeatable, or a comma list), `--project` (a case-insensitive substring of the displayed path, repeatable) and `--session` narrow rows before they are grouped. `--session <x>` with no other report option keeps printing the existing detail. With `--by`, in either order, it runs the same engine on that session's rows. The last-flag-wins use of one `DIM` variable for both purposes ends: the session is held apart from the report.
+**Decision.** `--account` (repeatable, or a comma list), `--project` (a case-insensitive substring of the displayed path or of the full one, repeatable and never split at a comma, since a path may hold one) and `--session` narrow rows before they are grouped. `--session <x>` with no other report option keeps printing the existing detail. With `--by`, in either order, it runs the same engine on that session's rows. The last-flag-wins use of one `DIM` variable for both purposes ends: the session is held apart from the report.
 
 **Reason.** One `DIM` variable holds both the report and the session, so `--session X --by day` silently prints whichever flag came last. Treating a session as a filter makes "one session by day" the same code path as every other table, and gives `--account work --session billing` a meaning.
 

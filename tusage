@@ -1268,14 +1268,16 @@ filter_facts() {
       na = split(accts, a, ","); for (i = 1; i <= na; i++) WANTA[a[i]] = 1
       np = split(tolower(projs), WP, "\037")
     }
-    $1 == "P" { PD[$2] = tilde($3); next }
+    $1 == "P" { PD[$2] = tolower(tilde($3)); RD[$2] = tolower($3); next }
     $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
     {
       if (sess != "" && $3 != sess) next
       if (na) { x = ($3 in ACC) ? ACC[$3] : "?"; if (!(x in WANTA)) next }
       if (np) {
-        p = tolower(($2 in PD) ? PD[$2] : $2); ok = 0
-        for (i = 1; i <= np; i++) if (index(p, WP[i])) { ok = 1; break }
+        # the path as the tables show it (~/git/x) or in full (/Users/me/git/x),
+        # which is what a shell hands over for ~/git/x
+        p = ($2 in PD) ? PD[$2] : tolower($2); r = ($2 in RD) ? RD[$2] : p; ok = 0
+        for (i = 1; i <= np; i++) if (index(p, WP[i]) || index(r, WP[i])) { ok = 1; break }
         if (!ok) next
       }
       print

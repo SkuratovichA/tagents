@@ -165,11 +165,15 @@ When `TU_ACCOUNTS` is unset, `tusage` SHALL take the accounts from the tagents c
 - **THEN** the only account is `a`
 
 ### Requirement: The project filter
-`--project <text>` SHALL keep only the rows whose project path contains the text, ignoring case, and may be repeated, a row matching any of them. It SHALL apply to the reports `--account` applies to, and with both only the rows that match both stay.
+`--project <text>` SHALL keep only the rows whose project path contains the text, ignoring case, and may be repeated, a row matching any of them. The path is matched as the tables show it (the home directory as `~`) and written out in full, so a text a shell has expanded matches too. A comma is part of the text. It SHALL apply to the reports `--account` applies to, and with both only the rows that match both stay.
 
 #### Scenario: A project and an account
 - **WHEN** `tusage --by session --account work --project billing` runs
 - **THEN** the sessions are the work account's sessions in projects whose path contains `billing`
+
+#### Scenario: A path a shell expanded
+- **WHEN** `tusage --by session --project /Users/me/git/work/billing-api` runs and `~/git/work/billing-api` is the directory of a project
+- **THEN** the sessions are those of that project, as with `--project '~/git/work/billing-api'`
 
 ### Requirement: Sessions are named
 A report that prints a session for a person SHALL name it by the name typed for it in tagents, the first line for its id in `labels.tsv` of the state directory, else by the title of its transcript, else by the first eight characters of its id, and SHALL print those eight characters after a name so the id can be copied. `--sessions`, `--json`, `--daily`, `--tsv` and the heading of `--session <id>` print ids.

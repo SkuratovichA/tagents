@@ -1324,6 +1324,10 @@ lacks "...and not those of personal" "$(fxsid d8c3b615)" "$out"
 ok "--project keeps the projects whose path contains the text, ignoring case" \
    "$(printf '%s\n' "$X_SESS" | /usr/bin/grep -e "^$(fxsid 3f9a1c20)" -e "^$(fxsid c04d7be1)" -e "^$(fxsid b72e90d4)")" \
    "$(tsv session --project BILLING $W)"
+ok "--project takes a path as the shell expands it, the home directory and all" \
+   "$(tsv session --project BILLING $W)" "$(tsv session --project "$FXH/git/work/billing-api" $W)"
+ok "...and the path as the tables show it, with the tilde" \
+   "$(tsv session --project BILLING $W)" "$(tsv session --project '~/git/work/billing-api' $W)"
 ok "--project twice keeps a row that matches either" "4" "$(tsv session --project billing --project probe $W | wc -l | tr -d ' ')"
 ok "--project with --account keeps the rows that match both" \
    "$(fxsid 91ab44ee) $(fxsid e5d1f0a7)" "$(tsv session --account work --project web $W | cut -f1 | tr '\n' ' ' | sed 's/ $//')"
