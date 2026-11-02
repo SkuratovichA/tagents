@@ -1,4 +1,9 @@
-## ADDED Requirements
+# rust-plugin-verbs Specification
+
+## Purpose
+The plugin verbs and `doctor` as verbs of the Rust binary: `tagents-core plugin add`, `plugin remove`, `plugin new` and `doctor` print the same texts, exit with the same codes and leave the same files as the node CLI in `packages/core`, which stays as the fallback and as the reference that the differential suite compares it with byte for byte; how the config is edited, how a package is found, where the texts come from, what is handed to node untouched, and what `doctor` does without node.
+
+## Requirements
 
 ### Requirement: Four verbs are answered by the Rust binary
 `tagents-core plugin add`, `plugin remove`, `plugin new` and `doctor` SHALL be answered by the Rust binary with the node CLI's texts, exit codes and file effects, in `en` and `ru`; `plugin list` and `plugin list --json` SHALL stay the node CLI's. The exit codes are the `exit` table of the data file: 2 for a missing argument or an unusable key, 1 when nothing resolves, 3 for a refusal.
@@ -114,7 +119,7 @@ Each text the verbs print SHALL be a key of `packages/core/src/i18n/en.ts` and `
 - **THEN** the exit code is 3 and the file is intact
 
 ### Requirement: doctor asks node once and survives its absence
-`doctor` SHALL ignore its arguments, print the node version and path, the agent state directory with its record count, the config file with `present` or `missing`, and the `claude` found on `PATH`, and exit 0. The version and path SHALL come from one `node -p` of the node that `$TAGENTS_NODE`, else `PATH`, names; when it cannot be started the first line SHALL be `node: missing` and the exit code 0.
+`doctor` SHALL ignore its arguments, print the node version and path, the agent state directory with its record count, the config file with `present` or `missing`, and the `claude` found on `PATH`, and exit 0. The version and path SHALL come from one `node -p` of the node that `$TAGENTS_NODE`, else `PATH`, names, answered within 10 seconds with an array of exactly two strings; otherwise the first line SHALL be `node: missing`, the other three lines SHALL be printed and the exit code SHALL be 0.
 
 #### Scenario: The four lines
 - **WHEN** `doctor` runs with a state directory holding a valid record, a broken one and a file that is not a record
@@ -123,6 +128,17 @@ Each text the verbs print SHALL be a key of `packages/core/src/i18n/en.ts` and `
 #### Scenario: No node
 - **WHEN** `$TAGENTS_NODE` names a file that does not exist
 - **THEN** the first line is `node: missing` and the other three lines are printed
+
+#### Scenario: A node that answers wrongly or too slowly
+- **WHEN** `$TAGENTS_NODE` names a program that exits 1, prints an array of three strings, or does not answer within 10 seconds
+- **THEN** the first line is `node: missing`, the other three lines are printed and the exit code is 0
+
+### Requirement: A signal during doctor's question stops node
+A SIGTERM, SIGINT or SIGHUP that comes while `doctor` waits for node SHALL stop that node and everything it started before `doctor` ends. `doctor` SHALL then print nothing and exit with 128 plus the number of the signal (143, 130 or 129).
+
+#### Scenario: SIGTERM while node is asked
+- **WHEN** `$TAGENTS_NODE` names a program that sleeps and SIGTERM is sent to `doctor`
+- **THEN** `doctor` exits 143 within 5 seconds, prints nothing, and the program is no longer running
 
 ### Requirement: The verbs are pinned to node byte for byte
 `tests/rust-plugin-parity.sh` SHALL run each scenario against node and against Rust on the same pristine scratch tree under `env -i` and pass it only when stdout, stderr, the exit code and every file of the tree, bytes and modes, are equal. A generated file of vectors SHALL pin each helper that exists twice, and CI SHALL regenerate it and fail on a difference.
