@@ -372,7 +372,7 @@ fn a_pass_waits_for_a_lock_another_connection_holds() {
 }
 
 #[test]
-fn the_modification_time_is_floored_as_node_floors_it() {
+fn the_modification_time_is_rounded_or_floored_as_node_does() {
     let dir = scratch("knowledge-index-mtime");
     let file = dir.join("f");
     fs::write(&file, "").unwrap();
@@ -383,9 +383,14 @@ fn the_modification_time_is_floored_as_node_floors_it() {
             pair["nsec"].as_i64().unwrap(),
         );
         assert_eq!(
+            pair["round"].as_i64().unwrap(),
+            node::mtime_ms_of(sec, nsec),
+            "round {sec} s {nsec} ns"
+        );
+        assert_eq!(
             pair["floor"].as_i64().unwrap(),
             node::mtime_ms_floor_of(sec, nsec),
-            "{sec} s {nsec} ns"
+            "floor {sec} s {nsec} ns"
         );
     }
     // A file whose time is set to whole milliseconds reads back as them.

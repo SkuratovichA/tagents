@@ -573,33 +573,4 @@ mod tests {
         );
         fs::remove_dir_all(&dir).unwrap();
     }
-
-    fn knowledge_vectors() -> serde_json::Value {
-        let file = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/knowledge-vectors.json"
-        );
-        serde_json::from_str(&fs::read_to_string(file).unwrap()).unwrap()
-    }
-
-    #[test]
-    fn the_modification_time_is_rounded_or_floored_as_node_does() {
-        let mtime = &knowledge_vectors()["engine"]["mtime"];
-        for pair in mtime["pairs"].as_array().unwrap() {
-            let (sec, nsec) = (
-                pair["sec"].as_i64().unwrap(),
-                pair["nsec"].as_i64().unwrap(),
-            );
-            assert_eq!(
-                mtime_ms_of(sec, nsec),
-                pair["round"].as_i64().unwrap(),
-                "round {sec} {nsec}"
-            );
-            assert_eq!(
-                mtime_ms_floor_of(sec, nsec),
-                pair["floor"].as_i64().unwrap(),
-                "floor {sec} {nsec}"
-            );
-        }
-    }
 }
