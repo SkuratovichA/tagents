@@ -2097,7 +2097,7 @@ lens() {  # <awk function text>: the length in characters of each text
     printf '%s|' "$(LC_ALL=C awk -v s="$s" "$1"' BEGIN { print uclen(s) }')"
   done
 }
-ok "uclen counts a Cyrillic letter, an ellipsis and a ballot-box sign once" "5|4|5|0|1|" "$(lens "$UCLEN_TU")"
+ok "uclen counts a Cyrillic letter, an ellipsis and an OCR fork (U+2442) once" "5|4|5|0|1|" "$(lens "$UCLEN_TU")"
 ok "...as the uclen of list.sh does" "$(lens "$UCLEN_LIST")" "$(lens "$UCLEN_TU")"
 ok "...as the one of timeline.sh does" "$(lens "$UCLEN_TIME")" "$(lens "$UCLEN_TU")"
 ok "...as the one of dash.sh does" "$(lens "$UCLEN_DASH")" "$(lens "$UCLEN_TU")"
