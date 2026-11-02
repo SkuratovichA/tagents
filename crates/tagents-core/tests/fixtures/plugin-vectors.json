@@ -9552,5 +9552,401 @@
         "text": "removed n from f"
       }
     ]
+  },
+  "scaffold": {
+    "cases": [
+      {
+        "label": "a sibling checkout",
+        "name": "demo",
+        "dir": "/work/demo",
+        "core": "/opt/tagents/packages/core",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-demo\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: demo\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:../../opt/tagents/packages/core\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// demo — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: 'demo',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('demo offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-demo\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /work/demo       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      },
+      {
+        "label": "a plugin next to the packages",
+        "name": "x",
+        "dir": "/repo/plugins/x",
+        "core": "/repo/packages/core",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-x\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: x\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:../../packages/core\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// x — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: 'x',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('x offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-x\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /repo/plugins/x       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      },
+      {
+        "label": "a quote and a backslash in both directories",
+        "name": "demo",
+        "dir": "/w/a\"b\\c",
+        "core": "/w/q\"r\\s/packages/core",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-demo\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: demo\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:../q\\\"r\\\\s/packages/core\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// demo — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: 'demo',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('demo offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-demo\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /w/a\"b\\c       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      },
+      {
+        "label": "a specifier that starts with a dot gets no ./",
+        "name": "demo",
+        "dir": "/work/demo",
+        "core": "/work/demo/.hidden/core",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-demo\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: demo\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:.hidden/core\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// demo — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: 'demo',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('demo offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-demo\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /work/demo       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      },
+      {
+        "label": "a specifier that starts with two dots gets no ./",
+        "name": "demo",
+        "dir": "/work/demo",
+        "core": "/work/demo/..odd",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-demo\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: demo\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:..odd\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// demo — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: 'demo',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('demo offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-demo\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /work/demo       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      },
+      {
+        "label": "an empty relative path",
+        "name": "demo",
+        "dir": "/work/demo",
+        "core": "/work/demo",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-demo\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: demo\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:.\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// demo — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: 'demo',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('demo offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-demo\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /work/demo       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      },
+      {
+        "label": "core below the plugin",
+        "name": "demo",
+        "dir": "/work/demo",
+        "core": "/work/demo/packages/core",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-demo\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: demo\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:./packages/core\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// demo — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: 'demo',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('demo offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-demo\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /work/demo       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      },
+      {
+        "label": "core is the root",
+        "name": "demo",
+        "dir": "/work/demo",
+        "core": "/",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-demo\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: demo\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:../..\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// demo — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: 'demo',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('demo offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-demo\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /work/demo       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      },
+      {
+        "label": "the plugin is the root",
+        "name": "demo",
+        "dir": "/",
+        "core": "/packages/core",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-demo\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: demo\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:./packages/core\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// demo — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: 'demo',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('demo offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-demo\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      },
+      {
+        "label": "a trailing slash on both",
+        "name": "demo",
+        "dir": "/work/demo/",
+        "core": "/work/packages/core/",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-demo\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: demo\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:../packages/core\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// demo — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: 'demo',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('demo offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-demo\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /work/demo/       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      },
+      {
+        "label": "a placeholder in a directory is printed as typed",
+        "name": "demo",
+        "dir": "/work/{{name}}/{{core}}",
+        "core": "/work/{{dir}}/packages/core",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-demo\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: demo\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:../../{{dir}}/packages/core\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// demo — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: 'demo',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('demo offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-demo\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /work/{{name}}/{{core}}       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      },
+      {
+        "label": "a filter in a directory is printed as typed",
+        "name": "demo",
+        "dir": "/work/{{core|json}}",
+        "core": "/work/{{name}}/core",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-demo\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: demo\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:../{{name}}/core\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// demo — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: 'demo',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('demo offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-demo\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /work/{{core|json}}       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      },
+      {
+        "label": "a space, a non-ASCII character and replacement patterns",
+        "name": "a.b-c_d",
+        "dir": "/work/é 😀 $& $1/x y",
+        "core": "/work/packages/core",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-a.b-c_d\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: a.b-c_d\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:../../packages/core\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// a.b-c_d — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: 'a.b-c_d',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('a.b-c_d offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-a.b-c_d\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /work/é 😀 $& $1/x y       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      },
+      {
+        "label": "a name that is one digit",
+        "name": "0",
+        "dir": "/work/0",
+        "core": "/work/packages/core",
+        "files": [
+          {
+            "path": "package.json",
+            "body": "{\n  \"name\": \"tagents-plugin-0\",\n  \"version\": \"0.1.0\",\n  \"description\": \"A tagents plugin: 0\",\n  \"type\": \"module\",\n  \"private\": true,\n  \"exports\": {\n    \".\": \"./src/plugin.ts\"\n  },\n  \"tagents\": {\n    \"apiVersion\": 1,\n    \"entry\": \"./src/plugin.ts\"\n  },\n  \"engines\": {\n    \"node\": \">=22.18\"\n  },\n  \"scripts\": {\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"node --test \\\"test/**/*.test.ts\\\"\"\n  },\n  \"dependencies\": {\n    \"@tagents/core\": \"link:../packages/core\",\n    \"zod\": \"^4.6\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"typescript\": \"5.9.3\"\n  }\n}\n"
+          },
+          {
+            "path": "tsconfig.json",
+            "body": "{\n  \"compilerOptions\": {\n    \"target\": \"es2023\",\n    \"module\": \"nodenext\",\n    \"moduleResolution\": \"nodenext\",\n    \"lib\": [\n      \"es2023\"\n    ],\n    \"types\": [\n      \"node\"\n    ],\n    \"strict\": true,\n    \"erasableSyntaxOnly\": true,\n    \"noUncheckedIndexedAccess\": true,\n    \"exactOptionalPropertyTypes\": true,\n    \"noImplicitOverride\": true,\n    \"noFallthroughCasesInSwitch\": true,\n    \"verbatimModuleSyntax\": true,\n    \"isolatedModules\": true,\n    \"allowImportingTsExtensions\": true,\n    \"noEmit\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\",\n    \"test\"\n  ]\n}\n"
+          },
+          {
+            "path": "src/plugin.ts",
+            "body": "// 0 — a tagents plugin.\n//\n// A plugin is DATA the host walks: a name, an api version, and the verbs,\n// services and MCP tools it offers. Nothing here may run at import time — the\n// host imports this file just to list what is in it.\nimport { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';\nimport { z } from 'zod';\n\nconst HelloArgs = z.object({ who: z.string().default('world') });\n\nconst hello: CliCommand<typeof HelloArgs> = {\n  name: 'hello',\n  describe: 'the example verb — replace it with the one this plugin is for',\n  args: HelloArgs,\n  run: async (a, ctx: PluginContext): Promise<number> => {\n    // ctx carries everything a plugin may touch: a session driver (a plugin\n    // never spawns `claude` itself), a translator, a log sink, the tagents\n    // config dir. Exit code 0 is success; see tagents-core for the rest.\n    ctx.log(`hello, ${a.who}`);\n    return 0;\n  },\n};\n\nexport default definePlugin({\n  name: '0',\n  apiVersion: 1,\n  commands: [hello],\n});\n"
+          },
+          {
+            "path": "test/plugin.test.ts",
+            "body": "// The verb, exercised the way the host would run it: a real PluginContext\n// from @tagents/core, and the exit code it answers with.\nimport assert from 'node:assert/strict';\nimport { test } from 'node:test';\nimport { createContext } from '@tagents/core';\nimport plugin from '../src/plugin.ts';\n\ntest('0 offers hello, and hello greets', async () => {\n  assert.equal(plugin.apiVersion, 1);\n  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');\n  assert.ok(hello, 'the hello verb is in the catalogue');\n\n  const said: string[] = [];\n  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });\n  const code = await hello.run(hello.args.parse({}), ctx);\n\n  assert.equal(code, 0);\n  assert.deepEqual(said, ['hello, world']);\n});\n"
+          },
+          {
+            "path": "README.md",
+            "body": "# tagents-plugin-0\n\nA [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`\nobject, and a `\"tagents\"` manifest in its package.json that says where that\nobject lives.\n\n```sh\npnpm install\npnpm typecheck\npnpm test\n```\n\n## Installing it\n\n```sh\ntagents plugin add /work/0       # writes it into ~/.config/tagents/config.toml\ntagents plugin list             # what it offers, as the host sees it\n```\n\n`plugin add` reads the manifest only — it never imports this code. The host\nimports `src/plugin.ts` when it loads the plugin, so nothing in it may run at\nimport time.\n\n## What to change\n\n* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep\n  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and\n  `locales` are extra i18next resources under your own namespace.\n* `package.json` — `@tagents/core` is linked to the checkout this scaffold came\n  from. Swap it for a version range before publishing.\n"
+          }
+        ]
+      }
+    ]
   }
 }
