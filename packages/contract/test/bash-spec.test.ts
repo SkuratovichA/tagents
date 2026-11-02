@@ -33,6 +33,7 @@ const NOT_TOOLS: Readonly<Record<string, string>> = {
   '--follow': 'run by tmux\'s own hooks',
   '--agent-cmd': 'a debugging aid for the launch path, which --new already runs',
   update: 'moves the installed copy of tagents itself',
+  '--version': 'one line that tells a person which copy runs, with nothing in it for a session to act on',
   '<verb>': 'forwards to tagents-core, whose verbs are tools already',
 };
 
