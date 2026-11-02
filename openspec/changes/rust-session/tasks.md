@@ -82,8 +82,8 @@ The tasks serve `session open`, `session list`, `session last`, `session prompt`
 - [x] 13.1 `"impl": "rust"` for `["session", "prompt"]` in `spec/cli/tagents-core.json`, the last task of the code of this pull request; `pnpm plugin:gen` and `pnpm plugin:check` show no diff, `--spec` lists it, and `cargo test -p tagents-core --test front_door` passes
 - [x] 13.2 `docs/architecture/rust-core.md`: `session prompt` in "What is served in Rust today", the supervisor, the hand-over classes of D2 and the lingering in a section "The session verbs", the stub and the scenarios in "The parity suite", "Where the two are known to differ" (the stall of more than 20 seconds that node discounts, the line at the drain that node's loop can lose), "What is not decided yet" (ending at the drain instead of lingering, the replacement for node's `PATH` entry), and the version lines the gate names
 - [x] 13.3 `CHANGELOG.md`: one line under `[Unreleased]` in "Added" saying that `tagents-core session prompt` runs in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback, with no `(#N)`
-- [ ] 13.4 The release gate: the workspace version raised one step above the merge base (`sh .github/scripts/core-release.sh gate origin/main` exits 0, `bash tests/release.sh` exits 0, `bash tests/install.sh` exits 0)
-- [ ] 13.5 The gates of 7.6, each exit 0
+- [x] 13.4 The release gate: the workspace version raised one step above the merge base (`sh .github/scripts/core-release.sh gate origin/main` exits 0, `bash tests/release.sh` exits 0, `bash tests/install.sh` exits 0)
+- [x] 13.5 The gates of 7.6, each exit 0
 
 ## 14. abort
 
