@@ -402,7 +402,7 @@ fn the_modification_time_is_rounded_or_floored_as_node_does() {
 }
 
 /// The code points the tokenizer sweep covers, as the generator names them (`SWEPT_RANGES` in `tests/rust-knowledge-vectors/engine.mts`).
-const SWEPT_RANGES: [(u32, u32); 3] = [(0, 0xffff), (0x10000, 0x2ffff), (0xe0000, 0xe01ff)];
+const SWEPT_RANGES: [(u32, u32); 3] = [(0, 0xffff), (0x10000, 0x3ffff), (0xe0000, 0xe01ff)];
 
 /// The terms of `x<c>x` for the code points of the vectors, read through `fts5vocab` as the generator reads them.
 #[test]

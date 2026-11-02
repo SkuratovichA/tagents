@@ -288,8 +288,8 @@ function mtimeVectors(): unknown {
 
 // ---- the tokenizer ---------------------------------------------------------------------------
 
-/** The code points the sweep covers, as inclusive ranges (the surrogates are left out of each): the Basic Multilingual Plane, the first two supplementary planes, and U+E0000 to U+E01FF, the tag characters and the first variation selectors of the plane that follows. */
-const SWEPT_RANGES: ReadonlyArray<readonly [number, number]> = [[0x0, 0xffff], [0x10000, 0x2ffff], [0xe0000, 0xe01ff]];
+/** The code points the sweep covers, as inclusive ranges (the surrogates are left out of each): the Basic Multilingual Plane, the supplementary planes 1 to 3 (the last holds the CJK extensions G, H and J), and U+E0000 to U+E01FF, the tag characters and the first variation selectors of plane 14. */
+const SWEPT_RANGES: ReadonlyArray<readonly [number, number]> = [[0x0, 0xffff], [0x10000, 0x3ffff], [0xe0000, 0xe01ff]];
 
 /** The terms the index's tokenizer gives `x<c>x` for each code point `c`, read through `fts5vocab`, in blocks of 256 code points. */
 function tokenizerVectors(): unknown {
@@ -300,7 +300,7 @@ function tokenizerVectors(): unknown {
   const probe = (cp: number): string => `x${String.fromCodePoint(cp)}x`;
   const points: number[] = [];
   for (const [first, last] of SWEPT_RANGES) for (let cp = first; cp <= last; cp++) if (cp < 0xd800 || cp > 0xdfff) points.push(cp);
-  const supplementary = [0x10000, 0x1000b, 0x10400, 0x1d400, 0x1d7ce, 0x1e900, 0x1f600, 0x20000, 0x2f800, 0xe0001, 0xe0100, 0xf0000, 0x10ffff];
+  const supplementary = [0xf0000, 0x10ffff];
   const all = [...points, ...supplementary];
   const insert = db.prepare('insert into t (rowid, body) values (?, ?)');
   db.exec('begin');

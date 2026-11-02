@@ -135,7 +135,7 @@ The binary SHALL contain a SQLite with full-text search and the tokenizer of the
 - **THEN** it indexes and searches
 
 #### Scenario: Tokenizer sweep
-- **WHEN** both programs tokenize every code point of the Basic Multilingual Plane, of U+10000 to U+2FFFF and of U+E0000 to U+E01FF with the index's tokenizer
+- **WHEN** both programs tokenize every code point of the Basic Multilingual Plane, of U+10000 to U+3FFFF and of U+E0000 to U+E01FF with the index's tokenizer
 - **THEN** the terms are equal, or each difference is listed
 
 ### Requirement: Equality is kept by generated files and a suite
