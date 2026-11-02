@@ -636,8 +636,8 @@ fn the_session_calls_node_keeps_reach_it_with_their_arguments() {
         &["session", "bogus"],
         &["session", "bogus", "--cwd", "x"],
         &["session", "open", "--bogus"],
-        &["session", "prompt"],
-        &["session", "prompt", "s-1", "two words", "--timeout", "5"],
+        &["session", "prompt", "--bogus"],
+        &["session", "prompt", "s-1", "two words", "--timeout"],
         &["session", "abort"],
         &["session", "abort", "s-1"],
     ] {
@@ -753,6 +753,8 @@ fn a_session_call_for_node_with_no_node_gets_the_front_doors_error() {
         &["session"][..],
         &["session", "bogus"],
         &["session", "open", "--bogus"],
+        // A child's `PATH` begins with the directory of node, so a turn is node's to run, and with no node nothing runs it.
+        &["session", "prompt", "s-1", "go"],
     ] {
         let pinned = run(checkout
             .command()
