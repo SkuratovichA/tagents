@@ -9,6 +9,7 @@ use serde_json::Value;
 use tagents_core::js;
 use tagents_core::json::{self, Value as Js};
 use tagents_core::session::command;
+use tagents_core::session::outcome::{self, Done, Evidence, Outcome};
 use tagents_core::session::reference::{self, Read};
 use tagents_core::session::stream;
 
@@ -136,11 +137,11 @@ fn a_reference_reads_as_node_reads_it_or_is_handed_over() {
 
 #[test]
 fn a_detail_is_clipped_as_clip_detail_clips_it() {
-    let outcome = section("outcome");
-    for case in outcome["clip"].as_array().unwrap() {
+    let clips = section("outcome");
+    for case in clips["clip"].as_array().unwrap() {
         let input = json::parse_exact(text(case, "text")).unwrap().value;
         let units = input.units().unwrap();
-        let clipped = js::slice16(&js::collapse_space16(&units), 300).to_vec();
+        let clipped = outcome::clip_detail(&units);
         assert_eq!(
             json::stringify(&Js::from_units(clipped), false),
             text(case, "clipped"),
@@ -286,4 +287,69 @@ fn the_environment_is_what_child_env_gives() {
         assert_eq!(got, want, "{} {}", text(case, "parent"), text(case, "spec"));
     }
     assert_eq!(text(&env, "localBin"), "<home>/.local/bin");
+}
+
+/// An outcome of the fixture as the turn builds it.
+fn outcome_of(value: &Value) -> Outcome {
+    let session_id = || {
+        value["sessionId"]
+            .as_str()
+            .map(|id| Js::String(id.to_owned()))
+    };
+    let done = || Done {
+        text: js::units(text(value, "text")),
+        session_id: session_id(),
+        tool_uses: value["toolUses"].as_u64().unwrap(),
+        cost_usd: value["costUsd"].as_f64(),
+        num_turns: value["numTurns"].as_f64(),
+        duration_ms: value["durationMs"].as_f64().unwrap_or(0.0),
+    };
+    let evidence = || Evidence {
+        session_id: session_id(),
+        tool_uses: value["toolUses"].as_u64().unwrap(),
+        detail: js::units(text(value, "detail")),
+        saw_text: value["sawText"].as_bool().unwrap(),
+        saw_result: value["sawResult"].as_bool().unwrap(),
+    };
+    let code = || {
+        value["code"]
+            .as_i64()
+            .map(|code| i32::try_from(code).unwrap())
+    };
+    match text(value, "kind") {
+        "ok" => Outcome::Ok(done()),
+        "killed-after-result" => Outcome::KilledAfterResult(done(), code()),
+        "timeout" => Outcome::Timeout(evidence(), value["limitMs"].as_f64().unwrap()),
+        "exited" => Outcome::Exited(
+            evidence(),
+            code(),
+            value["signal"].as_str().map(|name| match name {
+                "SIGKILL" => "SIGKILL",
+                other => panic!("no such signal in the fixture: {other}"),
+            }),
+        ),
+        "spawn-failed" => Outcome::SpawnFailed(text(value, "detail").to_owned()),
+        other => panic!("{other}"),
+    }
+}
+
+#[test]
+fn an_outcome_prints_and_its_error_line_reads_as_node_writes_them() {
+    let cases = section("outcome");
+    let cases = cases["error"].as_array().unwrap();
+    assert!(cases.len() >= 10);
+    for case in cases {
+        let printed = text(case, "outcome");
+        let value: Value = serde_json::from_str(printed).unwrap();
+        let outcome = outcome_of(&value);
+        assert_eq!(
+            outcome.error_line().as_deref(),
+            case["error"].as_str(),
+            "{printed}"
+        );
+        // The one case with no `durationMs` is a shape the type no longer allows.
+        if !value["durationMs"].is_null() || value.get("durationMs").is_none() {
+            assert_eq!(outcome.document(true), format!("{printed}\n"));
+        }
+    }
 }
