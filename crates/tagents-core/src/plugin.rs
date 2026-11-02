@@ -1,8 +1,8 @@
 //! `tagents-core plugin add`, `plugin remove` and `plugin new`: the verbs of the plugin group that this binary serves.
 //!
-//! Each verb answers only what it can prove identical to the node CLI and hands every other call to it (`None`, before anything is written): a verb that stays with node (`list`, bare `plugin`, a word nobody knows), an argument outside the grammar below, a package the resolution cannot prove, a config that cannot be edited, and any I/O error. The texts it does print are the catalogue's, in `spec/cli/messages.json`.
+//! Each verb answers only what it can prove identical to the node CLI and hands every other call to it (`None`, before anything is written): a verb that stays with node (`list`, bare `plugin`, a word nobody knows), an argument outside the grammar of `args`, a package the resolution cannot prove, a config that cannot be edited, and any I/O error. The texts it does print are the catalogue's, in `spec/cli/messages.json`.
 //!
-//! The grammar has no error case. A positional is an argument that does not start with `-` (a lone `-` included) and `--` ends the options; `add` takes `--name V` and `new` takes `--dir V` when `V` does not start with `-`, and `--name=V` and `--dir=V` for any `V`, the last one wins; `remove` takes no option. Any other argument that starts with `-` is node's to word, since `util.parseArgs` words its own errors.
+//! The options are read by the grammar of `args`: `add` takes `--name V` and `new` takes `--dir V`, `remove` takes no option, and an argument outside that grammar is node's to word, since `util.parseArgs` words its own errors.
 
 pub mod config;
 pub mod resolve;
@@ -14,6 +14,7 @@ use resolve::Failure;
 use std::{fs, io, path::Path};
 
 use crate::{
+    args::Grammar,
     host::config_file,
     messages::{Locale, Texts},
     node,
@@ -94,34 +95,25 @@ pub fn serve(argv: &[String], setting: &Setting) -> Option<Output> {
     }
 }
 
-/// The arguments of a verb read by the grammar above.
-#[derive(Debug, PartialEq, Eq)]
-struct Parsed<'a> {
-    positionals: Vec<&'a str>,
-    /// What the verb's one option was given.
-    value: Option<&'a str>,
-}
-
-/// `args` by the grammar; `None` for an argument it does not read. `flag` is the option the verb takes, as `--name` for `add` and `--dir` for `new`; `remove` takes none.
-fn parse<'a>(args: &'a [String], flag: Option<&str>) -> Option<Parsed<'a>> {
-    let mut parsed = Parsed {
-        positionals: Vec::new(),
-        value: None,
-    };
-    let mut rest = args.iter().map(String::as_str);
-    while let Some(arg) = rest.next() {
-        if arg == "--" {
-            parsed.positionals.extend(rest.by_ref());
-        } else if !arg.starts_with('-') || arg == "-" {
-            parsed.positionals.push(arg);
-        } else if flag == Some(arg) {
-            parsed.value = Some(rest.next().filter(|value| !value.starts_with('-'))?);
-        } else {
-            parsed.value = Some(arg.strip_prefix(flag?)?.strip_prefix('=')?);
-        }
-    }
-    Some(parsed)
-}
+/// The options of the three verbs.
+const ADD: Grammar = Grammar {
+    strings: &["name"],
+    flags: &[],
+    multiple: &[],
+    positionals: true,
+};
+const REMOVE: Grammar = Grammar {
+    strings: &[],
+    flags: &[],
+    multiple: &[],
+    positionals: true,
+};
+const NEW: Grammar = Grammar {
+    strings: &["dir"],
+    flags: &[],
+    multiple: &[],
+    positionals: true,
+};
 
 /// `NAME` of `cli/plugin.ts`: a config key and a directory name, so it is typeable and greppable.
 fn is_name(name: &str) -> bool {
@@ -140,7 +132,7 @@ fn failure(code: u8, line: String) -> Output {
 
 /// `add(argv)` of `cli/plugin.ts`.
 fn add(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
-    let parsed = parse(args, Some("--name"))?;
+    let parsed = ADD.parse(args)?;
     let Some(spec) = parsed.positionals.first() else {
         return Some(failure(
             exit::USAGE,
@@ -172,7 +164,7 @@ fn add(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
     };
 
     let name = parsed
-        .value
+        .value("name")
         .map_or_else(|| default_plugin_name(&package.package_name), str::to_owned);
     if !is_name(&name) {
         return Some(failure(
@@ -199,7 +191,7 @@ fn add(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
 
 /// `remove(argv)` of `cli/plugin.ts`.
 fn remove(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
-    let parsed = parse(args, None)?;
+    let parsed = REMOVE.parse(args)?;
     let Some(name) = parsed.positionals.first() else {
         return Some(failure(
             exit::USAGE,
@@ -305,7 +297,7 @@ fn create(
     texts: &Texts,
     put: &dyn Fn(&str, &str) -> io::Result<()>,
 ) -> Option<Output> {
-    let parsed = parse(args, Some("--dir"))?;
+    let parsed = NEW.parse(args)?;
     let Some(name) = parsed.positionals.first() else {
         return Some(failure(
             exit::USAGE,
@@ -318,7 +310,7 @@ fn create(
             texts.t("pluginBadName", &[("name", name)]),
         ));
     }
-    let dir = node::resolve(&setting.cwd, parsed.value.unwrap_or(name));
+    let dir = node::resolve(&setting.cwd, parsed.value("dir").unwrap_or(name));
     if holds_anything(&dir)? {
         return Some(failure(
             exit::REFUSED,
@@ -342,86 +334,6 @@ mod tests {
 
     fn words(args: &[&str]) -> Vec<String> {
         args.iter().map(|a| (*a).to_owned()).collect()
-    }
-
-    fn parsed<'a>(positionals: &[&'a str], value: Option<&'a str>) -> Option<Parsed<'a>> {
-        Some(Parsed {
-            positionals: positionals.to_vec(),
-            value,
-        })
-    }
-
-    #[test]
-    fn the_grammar_reads_positionals_and_its_one_option_and_nothing_else() {
-        const ADD: Option<&str> = Some("--name");
-        const NEW: Option<&str> = Some("--dir");
-        for (args, flag, want) in [
-            (&[][..], ADD, parsed(&[], None)),
-            (&["pkg"], ADD, parsed(&["pkg"], None)),
-            (&["pkg", "--name", "x"], ADD, parsed(&["pkg"], Some("x"))),
-            (&["--name", "x", "pkg"], ADD, parsed(&["pkg"], Some("x"))),
-            (&["--name=x", "pkg"], ADD, parsed(&["pkg"], Some("x"))),
-            (&["--name=", "pkg"], ADD, parsed(&["pkg"], Some(""))),
-            (&["--name=-x", "pkg"], ADD, parsed(&["pkg"], Some("-x"))),
-            (
-                &["--name", "a", "--name=b", "p"],
-                ADD,
-                parsed(&["p"], Some("b")),
-            ),
-            (
-                &["--name=a", "--name", "b", "p"],
-                ADD,
-                parsed(&["p"], Some("b")),
-            ),
-            (&["a", "b", "c"], ADD, parsed(&["a", "b", "c"], None)),
-            (&["-"], ADD, parsed(&["-"], None)),
-            (
-                &["--", "-x", "--name", "--"],
-                ADD,
-                parsed(&["-x", "--name", "--"], None),
-            ),
-            (
-                &["p", "--", "--name=x"],
-                ADD,
-                parsed(&["p", "--name=x"], None),
-            ),
-            (&["x", "y"], None, parsed(&["x", "y"], None)),
-            (&["--", "--name"], None, parsed(&["--name"], None)),
-            // `new` reads `--dir` the same way, and `--name` is not its option.
-            (&["x", "--dir", "d"], NEW, parsed(&["x"], Some("d"))),
-            (&["--dir=d", "x"], NEW, parsed(&["x"], Some("d"))),
-            (&["--dir=", "x"], NEW, parsed(&["x"], Some(""))),
-            (&["--dir=-d", "x"], NEW, parsed(&["x"], Some("-d"))),
-            (
-                &["--dir", "a", "--dir=b", "x"],
-                NEW,
-                parsed(&["x"], Some("b")),
-            ),
-            (&["x", "--", "--dir"], NEW, parsed(&["x", "--dir"], None)),
-            (&["--dir"], NEW, None),
-            (&["--dir", "-d"], NEW, None),
-            (&["--dir-x=d"], NEW, None),
-            (&["--directory=d"], NEW, None),
-            (&["--name", "x"], NEW, None),
-            (&["--dir", "d"], ADD, None),
-            // What node words itself.
-            (&["--name"], ADD, None),
-            (&["p", "--name"], ADD, None),
-            (&["--name", "-x"], ADD, None),
-            (&["--name", "-"], ADD, None),
-            (&["--name", "--other"], ADD, None),
-            (&["--nam", "x"], ADD, None),
-            (&["--name-x", "p"], ADD, None),
-            (&["--json"], ADD, None),
-            (&["-n", "x"], ADD, None),
-            (&["-abc"], ADD, None),
-            (&["--no-name", "p"], ADD, None),
-            (&["--name=x"], None, None),
-            (&["--name", "x"], None, None),
-            (&["-x"], None, None),
-        ] {
-            assert_eq!(parse(&words(args), flag), want, "{args:?} ({flag:?})");
-        }
     }
 
     #[test]
