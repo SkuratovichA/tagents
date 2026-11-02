@@ -86,7 +86,7 @@ Where (a) differs from the wording above, each in one line:
 
 ## 11. The suite, completed
 
-- [ ] 11.1 The forward loop of `tests/rust-parity.sh` keeps `plugin`, `plugin list`, `plugin list --json`, `plugin bogus`, `plugin new`, `doctor` and `doctor --x`; they compare node with a Rust answer or with the hand-over (`bash tests/rust-parity.sh`, exit 0)
+- [x] 11.1 The forward loop of `tests/rust-parity.sh` keeps `plugin`, `plugin list`, `plugin list --json`, `plugin bogus`, `plugin new`, `doctor` and `doctor --x`; they compare node with a Rust answer or with the hand-over (`bash tests/rust-parity.sh`, exit 0)
 - [ ] 11.2 Mutations of the Rust code each make the suite or the vectors fail: the template placeholder `{{core|json}}` unescaped, `relativeSpecifier`'s quirk fixed, the locale ignored, the state count counting a broken record, `node: missing` printed with exit 1, the undo of `plugin new` left out (one failing check each, listed in the pull request)
 
 ## 12. Documents and release
