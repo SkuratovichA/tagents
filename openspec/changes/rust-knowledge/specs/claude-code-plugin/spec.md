@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: The server entry falls back to a server of its own
-The script `packages/knowledge/bin/knowledge-mcp` SHALL join the session to the shared server of the `knowledge` capability. When `tagents-knowledge join` exits 0 on empty input it SHALL replace itself with `tagents-knowledge join`. After any other code it SHALL run `tagents-knowledge serve` and, when that prints an existing socket and `nc` is available, replace itself with `nc -U` on it, and else run `tagents-knowledge mcp`; after a code other than 69 and 2 it SHALL first write one line naming the code to its standard error.
+The script `packages/knowledge/bin/knowledge-mcp` SHALL join the session to the shared server of the `knowledge` capability. When `tagents-knowledge join` exits 0 on empty input it SHALL replace itself with `tagents-knowledge join`. After any other code it SHALL run `tagents-knowledge serve` and, when that prints an existing socket and `nc` is available, replace itself with `nc -U` on it, and else run `tagents-knowledge mcp`.
 
 #### Scenario: The native program is installed
 - **WHEN** `tagents-knowledge join` exits 0 on empty input
@@ -15,11 +15,14 @@ The script `packages/knowledge/bin/knowledge-mcp` SHALL join the session to the 
 - **WHEN** `join` exits 69 or 2 and `serve` fails or is an unknown verb, or there is no `nc`
 - **THEN** the session gets `tagents-knowledge mcp` with the same tools, and nothing is written to standard error
 
+## ADDED Requirements
+
+### Requirement: The server entry names the failure of the native program
+After `tagents-knowledge join` exits with a code other than 0, 69 and 2, the script `packages/knowledge/bin/knowledge-mcp` SHALL write one line naming the code to its standard error before it runs the server of the requirement above. After 0, 69 and 2 it SHALL write nothing.
+
 #### Scenario: The native program failed
 - **WHEN** `join` exits 1, 3 or 127
-- **THEN** exactly one line naming that code is written to standard error, and the session gets the server of the two scenarios above
-
-## ADDED Requirements
+- **THEN** exactly one line naming that code is written to standard error, and the session gets the shared server or `tagents-knowledge mcp` as above
 
 ### Requirement: The tagents-knowledge command runs the native server for join, mcp and serve when the binary is installed
 When `$TAGENTS_HOME/target/release/tagents-core` is an executable file of the checkout's version at install time, the `tagents-knowledge` wrapper SHALL run it as `tagents-core knowledge <word>` for `join` or `mcp` alone and for `serve` with any arguments. Every other call, and every call once the binary is gone or not executable, SHALL run the node program, except that `join` alone then exits 69 and starts nothing. The pinned node is handed over as for `tagents-core`.
