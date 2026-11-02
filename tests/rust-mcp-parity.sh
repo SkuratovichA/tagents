@@ -8,6 +8,8 @@
 # Differences that are known and listed in docs/architecture/rust-core.md are not scenarios: the parameter-validation errors, a lone surrogate in a program's JSON, the echo of a request string with a lone surrogate (`unknown tool <name>` and the `id` of a request: Rust writes U+FFFD, node the escape), a second signal during the ending, objects and requests nested deeper than 128 levels, and the wording of start-up failures (only their exit codes are compared). The answers of calls that an ending stopped (stdin closed, a signal) are not compared either: node races its exit against writing them, the Rust server always writes them, and `rust_answers` pins that.
 # Tripwires assert on the node transcript alone, so a scenario that stopped provoking what it exists for fails here instead of passing for nothing.
 #
+# The helpers the parity suites share are in tests/lib/parity.sh. `cleanup`, `file`, `gone`, `quiet`, `jstr`, `norm`, `first_difference`, `play`, `must` and `must_before` stay here because they differ from those of tests/rust-notify-parity.sh: `cleanup` reads the `*.pid` files of the work directory, `file`, `gone` and `quiet` write this driver's shape of a step, `jstr` leaves a newline, a tab and a carriage return as they are, `norm` takes out the server's version, `first_difference` names the key of the line, `play` starts the two servers itself and takes a contract, and `must` and `must_before` word their failures in their own way.
+#
 # PARITY_ONLY=<text> runs only the scenarios whose label holds the text, and PARITY_SHOW=<n> prints both transcripts of each, cut at n characters a line. Needs a built node server (pnpm build). Uses no real home, no tmux server, no network. bash 3.2.
 #   env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/rust-mcp-parity.sh
 
@@ -45,12 +47,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 pass=0; fail=0
-ok() { pass=$((pass + 1)); }
-bad() {  # <label> <detail...>
-  fail=$((fail + 1)); printf '  FAIL %s\n' "$1"; shift
-  [ $# -gt 0 ] && printf '       %s\n' "$@"
-}
-t() { printf '\n%s\n' "$1"; }
+. "$HERE/lib/parity.sh"
 
 # ----------------------------------------------------------------- stubs ---
 # `tagents-fake` is the program of the fixture contract. Any verb but `emit` prints its argv, one word to a line, which is how a call shows the command line it stood for. `emit <kind> ...` does what the kind says.
@@ -126,8 +123,7 @@ EMPTY=$TMP/empty.json
 printf '{"cli":{}}\n' > "$EMPTY"
 
 # -------------------------------------------------------------- scenarios ---
-# The steps of a script, as JSON the driver reads. Ids are plain numbers or strings written the way JSON writes them.
-steps() { local out= s; for s in "$@"; do out=${out:+$out,}$s; done; printf '[%s]' "$out"; }
+# The steps of a script (`steps` is in tests/lib/parity.sh). Ids are plain numbers or strings written the way JSON writes them.
 req() { printf '{"send":{"jsonrpc":"2.0","id":%s,"method":"%s"%s}}' "$1" "$2" "${3:+,\"params\":$3}"; }          # <id> <method> [params]
 notify() { printf '{"send":{"jsonrpc":"2.0","method":"%s"%s}}' "$1" "${2:+,\"params\":$2}"; }                    # <method> [params]
 # A call is followed by the wait for its answer, so that the order of the answers does not depend on how two threads race: node answers calls that need no process in the order they came, the Rust server in the order their threads end. ASYNC=1 leaves the wait out, for the scenarios about calls in flight.
@@ -244,11 +240,6 @@ rust_answers() {  # <label> <id>...
 ascii_only() {  # <label> <request text>
   [ -n "$RAN" ] || return 0
   if [ -z "$(printf '%s' "$2" | LC_ALL=C tr -d '\000-\177')" ]; then ok; else bad "tripwire $1: the request text holds a non-ASCII byte, so an escape in it was decoded" ""; fi
-}
-# The reverse: the string is not in it.
-must_not() {  # <label> <needle>
-  [ -n "$RAN" ] || return 0
-  if grep -qF -- "$2" "$TMP/transcript.node"; then bad "tripwire $1: node said what this scenario expects it not to say" "found: $2"; else ok; fi
 }
 
 # ------------------------------------------------------------ the checks ---

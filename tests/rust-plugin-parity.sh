@@ -8,6 +8,8 @@
 # `doctor` with a node that cannot be asked has no oracle for its first line, because node cannot run without node: `sc_nonode` compares the other three lines, stderr, the exit code and the tree with node's, and checks line one against the text the design gives it.
 # Tripwires assert on the node run alone: its exit code, and a text it must print, so a scenario that stopped provoking what it exists for fails here instead of passing for nothing.
 #
+# The helpers the parity suites share are in tests/lib/parity.sh. `reset`, `norm`, `side` and `sc` stay here because they differ from those of tests/rust-session-parity.sh: a scenario here can name its config directory (`CFGDIR`, which `reset` clears and `side` reads), `norm` takes out the process id of a temporary file and `side` applies it to stderr too, and `sc` counts what the sweep served.
+#
 # PARITY_SELF_TEST=1 runs node on both sides and skips the checks of who answered: it proves the suite and node's determinism, not the Rust binary. PARITY_ONLY=<text> runs only the scenarios whose label holds the text. TAGENTS_NODE names the node program.
 # Needs a built node CLI (pnpm build), a node that runs .mts files, and nothing else: no network, no real home, no tmux. bash 3.2.
 #   env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/rust-plugin-parity.sh
@@ -55,27 +57,14 @@ if [ -z "$SELF_TEST" ]; then
     || { echo "rust-plugin-parity: $RUST does not serve plugin add, plugin remove, plugin new and doctor (--spec)" >&2; exit 2; }
 fi
 
-# One `stat` format per platform: the path, the type and mode as `ls -l` writes them, and the link target.
-if stat -c %A / > /dev/null 2>&1; then STAT_FORMAT=(-c '%n %A %N'); else STAT_FORMAT=(-f '%N %Sp %Y'); fi
-IS_ROOT=0; [ "$(id -u)" -eq 0 ] && IS_ROOT=1
-
 pass=0; fail=0; skipped=0; rust_served=0; handed_over=0; sweep_served=0; sweep_total=0
-ok() { pass=$((pass + 1)); }
-bad() {  # <label> <detail...>
-  fail=$((fail + 1)); printf '  FAIL %s\n' "$1"; shift
-  [ $# -gt 0 ] && printf '       %s\n' "$@"
-}
-t() { printf '\n%s\n' "$1"; }
+. "$HERE/lib/parity.sh"
 
 # --------------------------------------------------------------- scenario state ---
 # Set before a scenario, cleared after it by `reset`: the directory to run in (relative to the run), the locale, a setup run in the run's directory before the program (a shell command), the environment to add, the config directory (relative to the run), and the arguments.
 CWD=; LOCALE=en; SETUP=; CFGDIR=cfg; EXTRA=(); ARGS=()
 reset() { CWD=; LOCALE=en; SETUP=; CFGDIR=cfg; EXTRA=(); ARGS=(); }
 
-# What the run left: every path with its mode and its checksum or link target.
-snapshot() {
-  ( cd "$RUN" && { find . -exec stat "${STAT_FORMAT[@]}" {} + 2> /dev/null ; find . -type f -exec cksum {} + 2> /dev/null; } | LC_ALL=C sort )
-}
 # The only difference allowed between the two programs: the process id in `<config>.<pid>.tmp`.
 norm() { sed -E 's/\.[0-9]+\.tmp/.PID.tmp/g'; }
 
@@ -138,12 +127,6 @@ sc() {
     esac
   fi
   reset
-}
-
-# A scenario that needs a user who is not root (a mode that keeps root out means nothing to root).
-sc_user() {  # <label> <the rest of sc's words>
-  if [ "$IS_ROOT" -eq 1 ]; then skipped=$((skipped + 1)); reset; return; fi
-  sc "$@"
 }
 
 # `doctor` when the node it asks cannot answer. Line one is the binary's own words, so it is checked against <line one>; the other three lines, stderr, the exit code and the tree are node's, as they are with a node that answers. <pinned> is $TAGENTS_NODE on the Rust side only. Not run in the self test, where node answers for both sides.

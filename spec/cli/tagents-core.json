@@ -20,7 +20,7 @@
       },
       "required": ["cwd"],
       "summary": "summarySessionOpen",
-      "impl": "node",
+      "impl": "rust",
       "effect": "read",
       "tool": false
     },
@@ -44,7 +44,7 @@
       "options": {},
       "required": [],
       "summary": "summarySessionLast",
-      "impl": "node",
+      "impl": "rust",
       "effect": "read"
     },
     {
@@ -56,7 +56,7 @@
       },
       "required": [],
       "summary": "summarySessionList",
-      "impl": "node",
+      "impl": "rust",
       "effect": "read"
     },
     {

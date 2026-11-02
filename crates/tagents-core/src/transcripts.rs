@@ -163,14 +163,24 @@ pub fn first_prompt(file: &str) -> Result<String, Failure> {
     Ok(String::new())
 }
 
-/// The last assistant text block inside the tail window. Empty when there is none.
+/// The last assistant text block inside the tail window. Empty when there is none. A lone surrogate half reads as U+FFFD, which is what stdout shows of it.
 pub fn last_assistant_text(file: &str) -> Result<String, Failure> {
-    let mut text = String::new();
+    // `json::parse` never makes a lone half, so the reply is always whole text.
+    let reply = last_assistant_reply(file, json::parse)?;
+    Ok(reply.as_str().unwrap_or_default().to_owned())
+}
+
+/// The last assistant text block inside the tail window, as the string `lastAssistantText` returns: a `Value::String`, empty when there is none, or a `Value::Units` when `parse` keeps a lone surrogate half (`json::parse_exact`).
+pub fn last_assistant_reply(
+    file: &str,
+    parse: impl Fn(&str) -> Option<json::Value>,
+) -> Result<json::Value, Failure> {
+    let mut reply = json::Value::String(String::new());
     for line in window(file, true, TAIL_WINDOW_BYTES)?.split('\n') {
         if !line.contains("\"assistant\"") {
             continue;
         }
-        let Some(record) = json::parse(line) else {
+        let Some(record) = parse(line) else {
             continue;
         };
         if record.get("type").and_then(json::Value::as_str) != Some("assistant") {
@@ -181,17 +191,24 @@ pub fn last_assistant_text(file: &str) -> Result<String, Failure> {
             continue;
         };
         for block in blocks {
-            let Some(block_text) = block.get("text").and_then(json::Value::as_str) else {
+            if block.get("type").and_then(json::Value::as_str) != Some("text") {
                 continue;
+            }
+            let trimmed = match block.get("text") {
+                Some(json::Value::String(text)) => Some(js::trim(text))
+                    .filter(|text| !text.is_empty())
+                    .map(|text| json::Value::String(text.to_owned())),
+                Some(json::Value::Units(units)) => {
+                    Some(json::Value::from_units(js::trim16(units).to_vec()))
+                }
+                _ => None,
             };
-            if block.get("type").and_then(json::Value::as_str) == Some("text")
-                && !js::trim(block_text).is_empty()
-            {
-                text = js::trim(block_text).to_owned();
+            if let Some(text) = trimmed {
+                reply = text;
             }
         }
     }
-    Ok(text)
+    Ok(reply)
 }
 
 /// Claude names a project dir after the absolute cwd with `/` replaced by `-`: `<home encoded>-git-work-x` is `~/git/work/x`.
@@ -252,4 +269,83 @@ pub fn find_by_prefix(cx: &Context, prefix: &str) -> Option<SessionRow> {
     collect(cx)
         .into_iter()
         .find(|row| row.id.starts_with(prefix))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::Scratch;
+
+    fn transcript(scratch: &Scratch, lines: &[&str]) -> String {
+        let file = scratch.path().join("t.jsonl");
+        fs::write(&file, lines.join("\n") + "\n").unwrap();
+        file.to_str().unwrap().to_owned()
+    }
+
+    fn reply(text: &str) -> String {
+        format!(
+            r#"{{"type":"assistant","message":{{"content":[{{"type":"text","text":"{text}"}}]}}}}"#
+        )
+    }
+
+    fn exact(line: &str) -> Option<json::Value> {
+        json::parse_exact(line).map(|exact| exact.value)
+    }
+
+    #[test]
+    fn the_reading_decides_what_a_lone_surrogate_in_the_reply_is() {
+        let scratch = Scratch::new();
+        let file = transcript(&scratch, &[&reply("  a\\ud83d  ")]);
+        assert_eq!(
+            last_assistant_reply(&file, json::parse),
+            Ok(json::Value::String("a\u{fffd}".into()))
+        );
+        assert_eq!(
+            last_assistant_reply(&file, exact),
+            Ok(json::Value::Units(vec![0x61, 0xd83d]))
+        );
+        assert_eq!(last_assistant_text(&file), Ok("a\u{fffd}".to_owned()));
+    }
+
+    #[test]
+    fn the_last_non_blank_text_is_the_reply_whatever_the_reading() {
+        let scratch = Scratch::new();
+        let file = transcript(
+            &scratch,
+            &[
+                &reply("first"),
+                r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"x"},{"type":"text","text":"  the \ud83d\ude00 pair  "},{"type":"text","text":"   "}]}}"#,
+                r#"{"type":"user","message":{"content":"hello"}}"#,
+                "not json \"assistant\"",
+            ],
+        );
+        for read in [json::parse as fn(&str) -> Option<json::Value>, exact] {
+            assert_eq!(
+                last_assistant_reply(&file, read),
+                Ok(json::Value::String("the 😀 pair".into()))
+            );
+        }
+    }
+
+    #[test]
+    fn no_text_is_the_empty_string_and_an_unreadable_file_is_the_failure_node_would_print() {
+        let scratch = Scratch::new();
+        let file = transcript(
+            &scratch,
+            &[r#"{"type":"user","message":{"content":"hello"}}"#],
+        );
+        for read in [json::parse as fn(&str) -> Option<json::Value>, exact] {
+            assert_eq!(
+                last_assistant_reply(&file, read),
+                Ok(json::Value::String(String::new()))
+            );
+        }
+        assert_eq!(last_assistant_text(&file), Ok(String::new()));
+        let missing = scratch.path().join("missing.jsonl");
+        let failure = last_assistant_reply(missing.to_str().unwrap(), exact).unwrap_err();
+        assert!(
+            failure.starts_with("ENOENT: no such file or directory, stat"),
+            "{failure}"
+        );
+    }
 }

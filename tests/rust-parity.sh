@@ -9,6 +9,7 @@
 # A few "tripwire" cases assert on the node output alone, so a seed that silently stopped provoking a divergence fails here instead of passing for nothing.
 # One case at the end is not a comparison: it packages the debug binary, serves it as a file:// release in a sandbox and runs the whole installer, which has to accept its `--version` line; it fails with a warning that says `for --version` when the version of the binary is not the one in Cargo.toml, because the suite builds a binary only when none exists.
 #
+# Its `ok`, `bad` and `t` are in tests/lib/parity.sh, with the other helpers the parity suites share.
 # Needs a built node CLI (pnpm build) and python3 (the seed sets exact mtimes). Uses no real home, no tmux, no network. bash 3.2.
 
 set -o pipefail
@@ -37,11 +38,7 @@ SEED="$TMP/seed"
 ADV="$SEED/adversarial"
 
 pass=0; fail=0
-ok() { pass=$((pass + 1)); }
-bad() {  # <label> <detail...>
-  fail=$((fail + 1)); printf '  FAIL %s\n' "$1"; shift
-  [ $# -gt 0 ] && printf '       %s\n' "$@"
-}
+. "$HERE/lib/parity.sh"
 
 # The environment of one run. Nothing of the caller's shell is inherited.
 ENVV=()
@@ -105,7 +102,6 @@ node_says() {  # <label> <home-name> <printf-escaped needle> <args...>
   if grep -qF -- "$needle" "$TMP/out.node" "$TMP/err.node"; then ok; else bad "tripwire $label: node did not print the string this case exists to provoke" "wanted: $needle_esc"; fi
 }
 
-t() { printf '\n%s\n' "$1"; }
 
 # ------------------------------------------------------------------ fixtures ---
 t "the checked-in fixtures: both programs, and the files themselves"

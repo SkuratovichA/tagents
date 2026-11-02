@@ -210,3 +210,31 @@ test('a result flushed during teardown still counts, and schedules no grace time
   assert.equal(o.kind, 'ok');
   assert.equal(turn.clock.pending, 0, 'the old finish() left a live grace timer here');
 });
+
+const assistantLine = (text: string): string =>
+  `${JSON.stringify({ type: 'assistant', session_id: 'sess-1', message: { content: [{ type: 'text', text }] } })}\n`;
+
+test('a character whose two bytes arrive in separate reads is one character', async () => {
+  // The line is cut between the two bytes of its last character, `я` (D1 8F), the way a pipe may cut it.
+  const bytes = Buffer.from(assistantLine('привет, я'));
+  const at = bytes.lastIndexOf(0xd1) + 1;
+  const rawWrites = [{ hex: bytes.subarray(0, at).toString('hex') }, { hex: bytes.subarray(at).toString('hex') }];
+  const o = await start(fake({ rawWrites, result: RESULT })).outcome;
+  assert.equal(o.kind === 'ok' ? o.text : null, 'привет, я');
+});
+
+test('the detail taken from stderr decodes a character split between two reads', async () => {
+  const rawWrites = [{ hex: 'd1', to: 'stderr' as const }, { hex: '8f', to: 'stderr' as const }];
+  const o = await start(fake({ result: null, exitCode: 1, rawWrites })).outcome;
+  assert.equal(o.kind === 'exited' ? o.detail : null, 'я');
+});
+
+test('a byte that is not UTF-8 reads as one U+FFFD, and so does a cut sequence that the pipe never completes', async () => {
+  const bytes = Buffer.from(assistantLine('aQb'));
+  bytes[bytes.indexOf('aQb') + 1] = 0xff;
+  const o = await start(fake({ rawWrites: [{ hex: bytes.toString('hex') }], result: RESULT })).outcome;
+  assert.equal(o.kind === 'ok' ? o.text : null, 'a\ufffdb');
+
+  const cut = await start(fake({ result: null, exitCode: 1, rawWrites: [{ hex: '6162d1', to: 'stderr' }] })).outcome;
+  assert.equal(cut.kind === 'exited' ? cut.detail : null, 'ab\ufffd');
+});

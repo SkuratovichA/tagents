@@ -231,6 +231,7 @@ fn row() -> AgentStateRow {
         transcript: String::new(),
         detail: String::new(),
         config_dir: None,
+        pid: None,
     }
 }
 

@@ -452,3 +452,52 @@ fn a_u_feff_alone_is_an_unset_state_dir_and_a_u_feff_at_both_ends_is_kept_as_wri
     let wrapped = format!("{bom}/x{bom}");
     assert_eq!(state_dir_in(Some(&wrapped), "/home/u"), wrapped);
 }
+
+const PID_ROW: &str = "1760000000\tworking\ts\t/c\t/t\td\tcfg";
+
+#[test]
+fn the_pid_column_is_a_number_that_is_whole_and_above_zero() {
+    for (column, want) in [
+        ("123", Some(123)),
+        ("1e3", Some(1000)),
+        (" 42 ", Some(42)),
+        ("0x10", Some(16)),
+        ("0b11", Some(3)),
+        ("+7", Some(7)),
+        ("7.0", Some(7)),
+        ("2147483648", Some(2_147_483_648)),
+        ("4294967295", Some(u32::MAX)),
+        ("", None),
+        ("0", None),
+        ("0.0", None),
+        ("-5", None),
+        ("1.5", None),
+        ("abc", None),
+        ("12abc", None),
+    ] {
+        let row = parse_state_line("s-x", &format!("{PID_ROW}\t{column}")).unwrap();
+        assert_eq!(row.pid, want, "{column:?}");
+    }
+}
+
+#[test]
+fn a_pid_a_u32_cannot_hold_is_no_pid_which_abort_answers_as_it_answers_a_dead_one() {
+    for column in ["4294967296", "1e300"] {
+        let row = parse_state_line("s-x", &format!("{PID_ROW}\t{column}")).unwrap();
+        assert_eq!(row.pid, None, "{column}");
+    }
+}
+
+#[test]
+fn a_row_has_a_pid_only_when_it_has_the_eighth_column() {
+    assert_eq!(parse_state_line("s-x", PID_ROW).unwrap().pid, None);
+    assert_eq!(
+        parse_state_line("s-x", "1760000000\tworking\ts\t/c\t/t\td")
+            .unwrap()
+            .pid,
+        None
+    );
+    let wide = parse_state_line("s-x", &format!("{PID_ROW}\t77\tlog\tlabel\tparent\tsid")).unwrap();
+    assert_eq!(wide.pid, Some(77));
+    assert_eq!(wide.config_dir.as_deref(), Some("cfg"));
+}

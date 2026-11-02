@@ -2,6 +2,7 @@
 //!
 //! `js`, `json`, `date` and `node` repeat the few behaviours of JavaScript and of node's `fs` and `path` that change the bytes the node CLI prints; each says which, and `tests/rust-parity.sh` compares the two programs on them.
 
+pub mod args;
 pub mod child;
 pub mod date;
 pub mod doctor;
@@ -16,6 +17,7 @@ pub mod messages;
 pub mod node;
 pub mod notify;
 pub mod plugin;
+pub mod session;
 pub mod sessions;
 mod sync;
 #[cfg(test)]

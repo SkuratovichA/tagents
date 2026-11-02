@@ -102,6 +102,51 @@ pub fn split16(s: &str, n: usize) -> (String, Option<u16>) {
     (out, None)
 }
 
+/// The UTF-16 code units of `s`, which is the string `s` as JavaScript holds it.
+pub fn units(s: &str) -> Vec<u16> {
+    s.encode_utf16().collect()
+}
+
+/// Whether one code unit is white space: a surrogate half is never a character, so it never is.
+fn is_space16(unit: u16) -> bool {
+    char::from_u32(u32::from(unit)).is_some_and(is_space)
+}
+
+/// `s.trim()` on code units.
+pub fn trim16(s: &[u16]) -> &[u16] {
+    let start = s.iter().position(|&u| !is_space16(u)).unwrap_or(s.len());
+    let end = s
+        .iter()
+        .rposition(|&u| !is_space16(u))
+        .map_or(start, |i| i + 1);
+    &s[start..end]
+}
+
+/// `s.replace(/\s+/g, ' ')` on code units.
+pub fn collapse_space16(s: &[u16]) -> Vec<u16> {
+    let mut out = Vec::with_capacity(s.len());
+    let mut in_run = false;
+    for &unit in s {
+        if !is_space16(unit) {
+            out.push(unit);
+        } else if !in_run {
+            out.push(u16::from(b' '));
+        }
+        in_run = is_space16(unit);
+    }
+    out
+}
+
+/// `s.slice(0, n)` on code units: a cut inside a surrogate pair leaves the high half alone.
+pub fn slice16(s: &[u16], n: usize) -> &[u16] {
+    &s[..n.min(s.len())]
+}
+
+/// What stdout shows of code units: a half that has no partner is U+FFFD, as it is when node writes the string.
+pub fn text16(s: &[u16]) -> String {
+    String::from_utf16_lossy(s)
+}
+
 /// `s.padEnd(n)`.
 pub fn pad_end(s: &str, n: usize) -> String {
     let mut out = s.to_owned();
@@ -316,6 +361,52 @@ mod tests {
         assert_eq!(split16("😀", 0), (String::new(), None));
         assert_eq!(pad_end("😀", 4), "😀  ");
         assert_eq!(pad_end("long", 2), "long");
+    }
+
+    #[test]
+    fn units_are_trimmed_collapsed_and_cut_as_javascript_does() {
+        // `serde_json` gives `u16` a second `PartialEq`, so a bare `[]` does not say what it is.
+        const NO_UNITS: [u16; 0] = [];
+        assert_eq!(trim16(&units("\u{feff} \u{3000}x\u{a0}\n")), units("x"));
+        assert_eq!(trim16(&units("\u{85}x")), units("\u{85}x"));
+        assert_eq!(trim16(&units("  ")), NO_UNITS);
+        assert_eq!(
+            collapse_space16(&units("a \n\t b\u{3000}\u{3000}c ")),
+            units("a b c ")
+        );
+        assert_eq!(collapse_space16(&[]), NO_UNITS);
+        assert_eq!(slice16(&units("a😀b"), 2), [0x61, 0xd83d]);
+        assert_eq!(slice16(&units("a😀b"), 3), units("a😀"));
+        assert_eq!(slice16(&units("abc"), 10), units("abc"));
+        assert_eq!(slice16(&units("abc"), 0), NO_UNITS);
+    }
+
+    #[test]
+    fn a_lone_half_is_not_white_space_and_survives_trim_and_collapse() {
+        const HIGH: u16 = 0xd83d;
+        const LOW: u16 = 0xde00;
+        assert_eq!(trim16(&[0x20, HIGH, 0x20]), [HIGH]);
+        assert_eq!(trim16(&[0x20, LOW, 0x20, HIGH, 0x20]), [LOW, 0x20, HIGH]);
+        assert_eq!(
+            collapse_space16(&[HIGH, 0x20, 0x20, LOW]),
+            [HIGH, 0x20, LOW]
+        );
+        assert_eq!(
+            collapse_space16(&[0x20, HIGH, 0x0a, 0x09]),
+            [0x20, HIGH, 0x20]
+        );
+    }
+
+    #[test]
+    fn two_halves_that_join_are_one_character_and_a_lone_half_shows_as_u_fffd() {
+        let (high, low) = ([0xd83d], [0xde00]);
+        assert_eq!(text16(&[high, low].concat()), "😀");
+        assert_eq!(text16(&[low, high].concat()), "\u{fffd}\u{fffd}");
+        assert_eq!(text16(&high), "\u{fffd}");
+        // A cut inside a pair, which `take16` does on a string and these do on units.
+        assert_eq!(text16(slice16(&units("a😀b"), 2)), take16("a😀b", 2));
+        assert_eq!(text16(slice16(&units("a😀b"), 3)), take16("a😀b", 3));
+        assert_eq!(text16(&units("Привет 😀")), "Привет 😀");
     }
 
     #[test]

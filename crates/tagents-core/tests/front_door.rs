@@ -30,8 +30,8 @@ use common::{
 
 const BIN: &str = env!("CARGO_BIN_EXE_tagents-core");
 const SPEC_FILE: &str = "spec/cli/tagents-core.json";
-/// The call the tests that are about forwarding make: a verb the node CLI keeps (`session`, which no group serves), so the file does not change when a verb moves to Rust.
-const FORWARDED: [&str; 2] = ["session", "list"];
+/// The call the tests that are about forwarding make: a verb the node CLI keeps and that no flag of a change in flight moves (`plugin list`), so the file does not change when a verb moves to Rust.
+const FORWARDED: [&str; 2] = ["plugin", "list"];
 const FIXTURES: &str = "packages/core/test/fixtures/sessions";
 
 fn repo(path: &str) -> PathBuf {
@@ -243,6 +243,7 @@ fn exit_codes_in_the_code_are_the_ones_the_data_file_names() {
     assert_eq!(exit["error"], tagents_core::sessions::exit::ERROR);
     assert_eq!(exit["usage"], tagents_core::sessions::exit::USAGE);
     assert_eq!(exit["refused"], tagents_core::sessions::exit::REFUSED);
+    assert_eq!(exit["timeout"], tagents_core::sessions::exit::TIMEOUT);
 }
 
 // ------------------------------------------------------------------- the fall back ---
@@ -303,6 +304,13 @@ impl Checkout {
     }
 }
 
+/// `command` with its stdout written to a pipe whose reader has gone and its stderr captured.
+fn run_with_stdout(command: &mut Command, stdout: std::io::PipeWriter) -> Output {
+    start(command.stdout(stdout).stderr(Stdio::piped()))
+        .wait_with_output()
+        .unwrap()
+}
+
 fn run_with_stdin(mut command: Command, stdin: &str) -> Output {
     let mut child = start(
         command
@@ -358,7 +366,7 @@ fn every_other_word_reaches_the_node_cli_with_argv_environment_and_stdin() {
     command
         .env("SENTINEL", "kept")
         .env("STUB_EXIT", "3")
-        .args(["session", "list", "--label", "two words", "", "--", "ünï"])
+        .args(["plugin", "list", "--label", "two words", "", "--", "ünï"])
         .current_dir(&checkout.root);
     let out = run_with_stdin(command, "from stdin");
     assert_eq!(
@@ -373,7 +381,7 @@ fn every_other_word_reaches_the_node_cli_with_argv_environment_and_stdin() {
             "env=kept".into(),
             "in=from stdin".into(),
             format!("arg={}", checkout.cli()),
-            "arg=session".into(),
+            "arg=plugin".into(),
             "arg=list".into(),
             "arg=--label".into(),
             "arg=two words".into(),
@@ -395,7 +403,7 @@ fn an_argument_that_is_not_utf8_is_forwarded_byte_for_byte() {
     assert_eq!(out.status.code(), Some(0));
     let recorded = fs::read(&checkout.argv).unwrap();
     assert!(
-        recorded.ends_with(b"arg=session\narg=list\narg=\xff\xfe\n"),
+        recorded.ends_with(b"arg=plugin\narg=list\narg=\xff\xfe\n"),
         "{:?}",
         String::from_utf8_lossy(&recorded)
     );
@@ -607,6 +615,75 @@ fn a_plugin_argument_that_is_not_utf8_is_forwarded_whole_not_decoded_lossily() {
 }
 
 #[test]
+fn the_session_calls_node_keeps_reach_it_with_their_arguments() {
+    // `session` is a group that serves some of its verbs and hands the rest to node: a bare `session`, an unknown verb, a verb node keeps (`prompt`, `abort`) and a served verb whose arguments the grammar does not read (`open --bogus`), each with every argument as it was typed and nothing written before.
+    let checkout = Checkout::new("session-declines");
+    for args in [
+        &["session"][..],
+        &["session", "bogus"],
+        &["session", "bogus", "--cwd", "x"],
+        &["session", "open", "--bogus"],
+        &["session", "prompt"],
+        &["session", "prompt", "s-1", "two words", "--timeout", "5"],
+        &["session", "abort"],
+        &["session", "abort", "s-1"],
+    ] {
+        let _ = fs::remove_file(&checkout.argv);
+        let out = run(checkout
+            .command()
+            .env("TA_STATE_DIR", checkout.root.join("state"))
+            .env("TAGENTS_CONFIG_DIR", checkout.root.join("config"))
+            .args(args)
+            .current_dir(&checkout.root));
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        let recorded = checkout.recorded();
+        let expected: Vec<String> = args.iter().map(|a| format!("arg={a}")).collect();
+        assert_eq!(
+            recorded[3..],
+            [vec![format!("arg={}", checkout.cli())], expected].concat()[..],
+            "{args:?}"
+        );
+        assert!(
+            !checkout.root.join("state").exists(),
+            "{args:?} wrote before it handed over"
+        );
+    }
+}
+
+#[test]
+fn a_session_argument_that_is_not_utf8_is_forwarded_whole_not_decoded_lossily() {
+    // A cwd or a reference that is not UTF-8 is node's to read: a lossy decoding would look at another directory or session than the one that was typed. The group is registered with `lossy_args: false`, so the call must arrive at node unchanged.
+    let checkout = Checkout::new("session-bytes");
+    for words in [&["open", "--cwd"][..], &["last"], &["list", "--label"]] {
+        let _ = fs::remove_file(&checkout.argv);
+        let out = run(checkout
+            .command()
+            .env("TA_STATE_DIR", checkout.root.join("state"))
+            .current_dir(&checkout.root)
+            .arg("session")
+            .args(words)
+            .arg(OsStr::from_bytes(b"\xff\xfe")));
+        assert_eq!(out.status.code(), Some(0), "{words:?}");
+        let recorded = fs::read(&checkout.argv).unwrap();
+        let typed: String = words.iter().map(|w| format!("arg={w}\n")).collect();
+        let expected = [
+            format!("arg=session\n{typed}arg=").as_bytes(),
+            b"\xff\xfe\n",
+        ]
+        .concat();
+        assert!(
+            recorded.ends_with(&expected),
+            "{words:?}: {:?}",
+            String::from_utf8_lossy(&recorded)
+        );
+        assert!(
+            !checkout.root.join("state").exists(),
+            "{words:?} wrote before it handed over"
+        );
+    }
+}
+
+#[test]
 fn the_exit_is_the_node_clis_even_when_it_is_a_signal() {
     let checkout = Checkout::new("forward-signal");
     let out = run(checkout.command().env("KILL_SELF", "1").args(FORWARDED));
@@ -657,6 +734,55 @@ fn a_node_that_cannot_run_is_exit_127_or_126() {
 }
 
 #[test]
+fn a_session_call_for_node_with_no_node_gets_the_front_doors_error() {
+    let checkout = Checkout::new("session-no-node");
+    for args in [
+        &["session"][..],
+        &["session", "bogus"],
+        &["session", "open", "--bogus"],
+    ] {
+        let pinned = run(checkout
+            .command()
+            .env("TAGENTS_NODE", checkout.root.join("no-such-node"))
+            .args(args));
+        assert_eq!(pinned.status.code(), Some(127), "{args:?}");
+        assert_eq!(pinned.stdout, b"", "{args:?}");
+        let said = String::from_utf8_lossy(&pinned.stderr);
+        assert!(
+            said.starts_with("tagents-core: cannot run ") && said.contains("no-such-node"),
+            "{args:?}: {said}"
+        );
+
+        let on_path = run(checkout
+            .command()
+            .env_remove("TAGENTS_NODE")
+            .env("PATH", checkout.root.join("no-such-directory"))
+            .args(args));
+        assert_eq!(on_path.status.code(), Some(127), "{args:?}");
+        assert_eq!(on_path.stdout, b"", "{args:?}");
+        let said = String::from_utf8_lossy(&on_path.stderr);
+        assert!(
+            said.starts_with("tagents-core: cannot run node: "),
+            "{args:?}: {said}"
+        );
+    }
+}
+
+#[test]
+fn the_read_verbs_of_session_start_nothing_so_they_answer_with_no_node() {
+    let checkout = Checkout::new("session-read-no-node");
+    let listed = run(checkout
+        .command()
+        .env("TAGENTS_NODE", checkout.root.join("no-such-node"))
+        .env("HOME", checkout.root.join("home"))
+        .env("TA_STATE_DIR", checkout.root.join("state"))
+        .args(["session", "list"]));
+    assert_eq!(listed.status.code(), Some(0), "{listed:?}");
+    assert_eq!(listed.stdout, b"[]\n");
+    assert_eq!(listed.stderr, b"");
+}
+
+#[test]
 fn a_failed_exec_with_stderr_a_closed_pipe_exits_with_the_front_doors_code_not_a_panic() {
     // The line cannot be written; the exit is the same as when it can: 2 when the node CLI is missing, 127 when node cannot run.
     let checkout = Checkout::new("forward-failed-exec-closed-stderr");
@@ -684,6 +810,26 @@ fn a_failed_exec_with_stderr_a_closed_pipe_exits_with_the_front_doors_code_not_a
     .wait()
     .unwrap();
     assert_eq!(cannot_run.code(), Some(127), "{cannot_run:?}");
+}
+
+#[test]
+fn a_reader_that_went_away_changes_neither_the_exit_code_nor_the_other_stream() {
+    // Both streams of a served call are best-effort writes: stdout closed under `--version` still ends 0 with nothing on stderr, and stderr closed under a refusal (`sessions search` with no words, exit 1, its usage on stderr) still ends 1.
+    let checkout = Checkout::new("served-closed-pipes");
+    let version = run_with_stdout(checkout.command().arg("--version"), closed_pipe());
+    assert_eq!(version.status.code(), Some(0), "{version:?}");
+    assert_eq!(version.stderr, b"");
+    let refused = start(
+        checkout
+            .command()
+            .args(["sessions", "search"])
+            .stdout(Stdio::piped())
+            .stderr(closed_pipe()),
+    )
+    .wait_with_output()
+    .unwrap();
+    assert_eq!(refused.status.code(), Some(1), "{refused:?}");
+    assert_eq!(refused.stdout, b"");
 }
 
 #[test]

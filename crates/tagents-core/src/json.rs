@@ -8,11 +8,17 @@
 //! This parser takes exactly the grammar of ECMA-404 and keeps a number as the float JavaScript would make of it, which is what `isMeta` (truthiness) and the plugin manifest check (`apiVersion` is 1) need.
 //! It keeps its own stack of open containers, so nesting costs heap, not call frames.
 //!
-//! `quote` is the other direction for one string: `JSON.stringify(text)`, which the daemon writes into the helper's input, into its log lines and into the text of a problem. `quote_prefix16` is `JSON.stringify(text.slice(0, n))`, whose cut can leave half of a surrogate pair that only an escape can write.
+//! `parse_exact` is the same reader for a program that prints what it read back as `JSON.stringify` does: it keeps a string that holds a lone surrogate half as the UTF-16 it is (`Value::Units`), where `parse` reads U+FFFD, which is what stdout would show.
+//! The one thing it does not keep is an object key with a lone half, which it reads as U+FFFD and reports in `Exact::lone_key`.
+//!
+//! `quote` is the other direction for one string: `JSON.stringify(text)`, which the daemon writes into the helper's input, into its log lines and into the text of a problem. `quote_units` is the same for UTF-16, which can hold a half that only an escape can write, and `quote_prefix16` is `JSON.stringify(text.slice(0, n))`, whose cut can leave one. `stringify` prints a whole value.
+
+use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 use crate::js;
 
-/// A parsed value. A lone surrogate escape reads as U+FFFD, which is how stdout would write it.
+/// A parsed value. `parse` reads a lone surrogate escape as U+FFFD, which is how stdout would write it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Null,
@@ -20,6 +26,8 @@ pub enum Value {
     /// The number as JavaScript reads it: an overflow is infinity, and `1.0` and `1e0` are the number 1.
     Number(f64),
     String(String),
+    /// A string that holds a surrogate half with no partner, which a `String` cannot. A string that is well-formed is always a `Value::String` (`from_units` and `parse_exact` see to it), so equal strings are equal values.
+    Units(Vec<u16>),
     Array(Vec<Value>),
     /// In document order, so a key written twice is found last, as in an object.
     Object(Vec<(String, Value)>),
@@ -34,10 +42,36 @@ impl Value {
         }
     }
 
+    /// The members of an object in the order JavaScript keeps them (a key written twice once, with its last value), or `None` for a value that is not an object.
+    pub fn entries(&self) -> Option<Vec<(&str, &Value)>> {
+        match self {
+            Value::Object(members) => Some(in_js_order(members)),
+            _ => None,
+        }
+    }
+
+    /// The text of a well-formed string; a string with a lone half has none.
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Value::String(s) => Some(s),
             _ => None,
+        }
+    }
+
+    /// The UTF-16 code units of a string, whole or not.
+    pub fn units(&self) -> Option<Vec<u16>> {
+        match self {
+            Value::String(s) => Some(js::units(s)),
+            Value::Units(units) => Some(units.clone()),
+            _ => None,
+        }
+    }
+
+    /// The string these code units make: text when they are well-formed, the units themselves when a half has no partner.
+    pub fn from_units(units: Vec<u16>) -> Value {
+        match String::from_utf16(&units) {
+            Ok(text) => Value::String(text),
+            Err(_) => Value::Units(units),
         }
     }
 
@@ -48,7 +82,7 @@ impl Value {
             Value::Bool(b) => *b,
             Value::Number(n) => *n != 0.0,
             Value::String(s) => !s.is_empty(),
-            Value::Array(_) | Value::Object(_) => true,
+            Value::Units(_) | Value::Array(_) | Value::Object(_) => true,
         }
     }
 }
@@ -84,34 +118,224 @@ pub fn quote(text: &str) -> String {
     serde_json::Value::String(text.to_owned()).to_string()
 }
 
-/// `JSON.stringify(text.slice(0, n))`, with `n` in UTF-16 units. A cut between the two halves of a surrogate pair leaves the high half alone, which `JSON.stringify` writes as the escape `\ud83d`, where text written raw would show U+FFFD.
-pub fn quote_prefix16(text: &str, n: usize) -> String {
-    let (head, lone) = js::split16(text, n);
-    let mut out = quote(&head);
-    if let Some(unit) = lone {
-        out.pop();
-        out.push_str(&format!("\\u{unit:04x}\""));
+/// `JSON.stringify` of a string given as UTF-16 code units: a half with no partner is the lowercase escape `\ud83d`, where text written raw would show U+FFFD, and the rest is what `quote` writes.
+pub fn quote_units(units: &[u16]) -> String {
+    let mut out = String::from('"');
+    let mut run = String::new();
+    for piece in char::decode_utf16(units.iter().copied()) {
+        match piece {
+            Ok(c) => run.push(c),
+            Err(lone) => {
+                push_quoted(&mut out, &run);
+                run.clear();
+                out.push_str(&format!("\\u{:04x}", lone.unpaired_surrogate()));
+            }
+        }
     }
+    push_quoted(&mut out, &run);
+    out.push('"');
     out
+}
+
+/// What stands between the quotes of `quote(text)`.
+fn push_quoted(out: &mut String, text: &str) {
+    let quoted = quote(text);
+    out.push_str(&quoted[1..quoted.len() - 1]);
+}
+
+/// `JSON.stringify(text.slice(0, n))`, with `n` in UTF-16 units. A cut between the two halves of a surrogate pair leaves the high half alone, which `quote_units` writes as an escape.
+pub fn quote_prefix16(text: &str, n: usize) -> String {
+    quote_units(&text.encode_utf16().take(n).collect::<Vec<u16>>())
 }
 
 /// `JSON.parse(text)`, or `None` where it would throw.
 pub fn parse(text: &str) -> Option<Value> {
-    Parser {
-        b: text.as_bytes(),
-        text,
-        i: 0,
+    Parser::new(text, false).document()
+}
+
+/// What `parse_exact` read: the value, and whether an object key in it held a lone surrogate half, which the value reads as U+FFFD.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Exact {
+    pub value: Value,
+    pub lone_key: bool,
+}
+
+/// `JSON.parse(text)` that keeps a string with a lone surrogate half as `Value::Units`, or `None` where it would throw. It accepts exactly the texts `parse` accepts.
+pub fn parse_exact(text: &str) -> Option<Exact> {
+    let mut parser = Parser::new(text, true);
+    let value = parser.document()?;
+    Some(Exact {
+        value,
+        lone_key: parser.lone_key,
+    })
+}
+
+/// A container being printed: the members still to come, the character that closes it, and whether one has been written.
+struct Level<'a> {
+    members: Box<dyn Iterator<Item = (Option<&'a str>, &'a Value)> + 'a>,
+    close: char,
+    written: bool,
+}
+
+/// `JSON.stringify(value)`, or `JSON.stringify(value, null, 2)` with `indent`.
+/// A number that is not finite is `null`, the keys of an object come in JavaScript's order, and a container is printed from a heap stack, so a value nested a hundred thousand deep costs heap and not call frames.
+pub fn stringify(value: &Value, indent: bool) -> String {
+    let mut out = String::new();
+    let mut open: Vec<Level> = Vec::new();
+    let mut pending = Some(value);
+    loop {
+        if let Some(value) = pending.take() {
+            open.extend(begin(value, &mut out));
+        }
+        let Some(level) = open.last_mut() else {
+            return out;
+        };
+        let Some((key, member)) = level.members.next() else {
+            let (close, written) = (level.close, level.written);
+            open.pop();
+            if indent && written {
+                newline(&mut out, open.len());
+            }
+            out.push(close);
+            continue;
+        };
+        if level.written {
+            out.push(',');
+        }
+        level.written = true;
+        if indent {
+            newline(&mut out, open.len());
+        }
+        if let Some(key) = key {
+            out.push_str(&quote(key));
+            out.push(':');
+            if indent {
+                out.push(' ');
+            }
+        }
+        pending = Some(member);
     }
-    .document()
+}
+
+fn newline(out: &mut String, depth: usize) {
+    out.push('\n');
+    out.extend(std::iter::repeat_n(' ', 2 * depth));
+}
+
+/// Writes a scalar, or the opening of a container and the level that goes with it.
+fn begin<'a>(value: &'a Value, out: &mut String) -> Option<Level<'a>> {
+    match value {
+        Value::Null => out.push_str("null"),
+        Value::Bool(b) => out.push_str(if *b { "true" } else { "false" }),
+        Value::Number(n) if n.is_finite() => out.push_str(&js::number_text(*n)),
+        Value::Number(_) => out.push_str("null"),
+        Value::String(text) => out.push_str(&quote(text)),
+        Value::Units(units) => out.push_str(&quote_units(units)),
+        Value::Array(items) => {
+            out.push('[');
+            return Some(Level {
+                members: Box::new(items.iter().map(|item| (None, item))),
+                close: ']',
+                written: false,
+            });
+        }
+        Value::Object(members) => {
+            out.push('{');
+            return Some(Level {
+                members: Box::new(in_js_order(members).into_iter().map(|(k, v)| (Some(k), v))),
+                close: '}',
+                written: false,
+            });
+        }
+    }
+    None
+}
+
+/// The members of an object in the order JavaScript keeps them: the keys that are array indices first and ascending, then the others as they came; a key written twice keeps the place of its first and the value of its last.
+fn in_js_order(members: &[(String, Value)]) -> Vec<(&str, &Value)> {
+    let mut slots: Vec<(&str, &Value)> = Vec::with_capacity(members.len());
+    let mut at: HashMap<&str, usize> = HashMap::new();
+    for (key, value) in members {
+        match at.entry(key) {
+            Entry::Occupied(slot) => slots[*slot.get()].1 = value,
+            Entry::Vacant(slot) => {
+                slot.insert(slots.len());
+                slots.push((key, value));
+            }
+        }
+    }
+    // The sort is stable, and every key that is not an index has the same sort key.
+    slots.sort_by_key(|(key, _)| array_index(key).map_or((1, 0), |index| (0, index)));
+    slots
+}
+
+/// The number a property key stands for when it is an array index: a canonical decimal integer from 0 to 2^32 - 2.
+fn array_index(key: &str) -> Option<u32> {
+    let canonical =
+        (key == "0" || !key.starts_with('0')) && key.bytes().all(|b| b.is_ascii_digit());
+    canonical
+        .then(|| key.parse().ok())
+        .flatten()
+        .filter(|&index| index != u32::MAX)
+}
+
+/// A string literal while it is read: characters, and code units from the first lone half on.
+enum Text {
+    Chars(String),
+    Units(Vec<u16>),
+}
+
+impl Text {
+    fn push_str(&mut self, s: &str) {
+        match self {
+            Text::Chars(chars) => chars.push_str(s),
+            Text::Units(units) => units.extend(s.encode_utf16()),
+        }
+    }
+
+    fn push(&mut self, c: char) {
+        self.push_str(c.encode_utf8(&mut [0; 4]));
+    }
+
+    /// A surrogate half that has no partner.
+    fn push_lone(&mut self, half: u16) {
+        if let Text::Chars(chars) = self {
+            *self = Text::Units(js::units(chars));
+        }
+        if let Text::Units(units) = self {
+            units.push(half);
+        }
+    }
+
+    fn into_value(self) -> Value {
+        match self {
+            Text::Chars(chars) => Value::String(chars),
+            Text::Units(units) => Value::Units(units),
+        }
+    }
 }
 
 struct Parser<'a> {
     b: &'a [u8],
     text: &'a str,
     i: usize,
+    /// Whether a lone surrogate half is kept (`parse_exact`) or read as U+FFFD (`parse`).
+    exact: bool,
+    /// Whether the key of an object held a lone half.
+    lone_key: bool,
 }
 
-impl Parser<'_> {
+impl<'a> Parser<'a> {
+    fn new(text: &'a str, exact: bool) -> Self {
+        Parser {
+            b: text.as_bytes(),
+            text,
+            i: 0,
+            exact,
+            lone_key: false,
+        }
+    }
+
     fn document(&mut self) -> Option<Value> {
         let mut stack: Vec<Open> = Vec::new();
         loop {
@@ -141,7 +365,7 @@ impl Parser<'_> {
                         continue;
                     }
                 }
-                b'"' => Value::String(self.string()?),
+                b'"' => self.string()?.into_value(),
                 b't' => self.literal("true", Value::Bool(true))?,
                 b'f' => self.literal("false", Value::Bool(false))?,
                 b'n' => self.literal("null", Value::Null)?,
@@ -198,12 +422,18 @@ impl Parser<'_> {
         }
     }
 
-    /// `"name" :`, with the cursor on the opening quote.
+    /// `"name" :`, with the cursor on the opening quote. A key is text: a lone half in it reads as U+FFFD, and `lone_key` says so.
     fn key(&mut self) -> Option<String> {
         if self.peek()? != b'"' {
             return None;
         }
-        let key = self.string()?;
+        let key = match self.string()? {
+            Text::Chars(text) => text,
+            Text::Units(units) => {
+                self.lone_key = true;
+                js::text16(&units)
+            }
+        };
         self.skip_space();
         (self.next()? == b':').then_some(key)
     }
@@ -259,10 +489,10 @@ impl Parser<'_> {
         self.i > before
     }
 
-    /// A string literal, with the cursor on the opening quote.
-    fn string(&mut self) -> Option<String> {
+    /// A string literal, with the cursor on the opening quote. It is `Text::Units` only when `exact` and a half has no partner.
+    fn string(&mut self) -> Option<Text> {
         self.i += 1;
-        let mut out = String::new();
+        let mut out = Text::Chars(String::new());
         loop {
             // Copy the run of plain characters in one go; the quote, the backslash and the control characters end it.
             let run = self.b[self.i..]
@@ -282,9 +512,16 @@ impl Parser<'_> {
                     b'r' => out.push('\r'),
                     b't' => out.push('\t'),
                     b'u' => {
-                        let (unit, len) = unicode_escape(self.b, self.i - 2)?;
+                        let at = self.i - 2;
+                        let (unit, len) = unicode_escape(self.b, at)?;
                         self.i += len - 2;
-                        out.push(unit.unwrap_or('\u{fffd}'));
+                        match unit {
+                            Some(c) => out.push(c),
+                            None if self.exact => {
+                                out.push_lone(u16::try_from(code_unit(self.b, at)?).ok()?);
+                            }
+                            None => out.push('\u{fffd}'),
+                        }
                     }
                     _ => return None,
                 },
@@ -322,6 +559,24 @@ mod tests {
 
     fn ok(text: &str) -> Value {
         parse(text).unwrap_or_else(|| panic!("{text:?} should parse"))
+    }
+
+    /// `Object.entries(JSON.parse('{"b":1,"2":2,"a":3,"1":4,"b":5}'))` is `[["1",4],["2",2],["b",5],["a",3]]`: indices first and ascending, a repeated key at its first place with its last value.
+    #[test]
+    fn entries_come_in_the_order_javascript_keeps() {
+        let value = ok(r#"{"b":1,"2":2,"a":3,"1":4,"b":5}"#);
+        let got: Vec<(&str, f64)> = value
+            .entries()
+            .unwrap()
+            .into_iter()
+            .map(|(key, member)| match member {
+                Value::Number(n) => (key, *n),
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(got, [("1", 4.0), ("2", 2.0), ("b", 5.0), ("a", 3.0)]);
+        assert!(ok("[1]").entries().is_none());
+        assert!(ok("null").entries().is_none());
     }
 
     /// The expected text is what `node -e 'JSON.stringify(...)'` printed for the same string (31.10.2026): a quote, a backslash, `\n`, `\t`, `\b`, `\f`, `\r`, U+001f and U+0000 as lowercase `\u00xx`, DEL, U+2028, U+2029 and a non-ASCII letter raw.
@@ -486,5 +741,175 @@ mod tests {
             .join()
             .expect("neither parsing nor dropping overflowed the stack");
         assert!(parsed);
+    }
+
+    #[test]
+    fn printing_a_deep_value_costs_heap_not_stack() {
+        let depth = 200_000;
+        let text = format!("{}1{}", "[{\"a\":".repeat(depth), "}]".repeat(depth));
+        let same = std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(move || {
+                let value = parse_exact(&text).expect("the document").value;
+                stringify(&value, false) == text
+            })
+            .expect("a thread")
+            .join()
+            .expect("neither printing nor dropping overflowed the stack");
+        assert!(same);
+    }
+
+    fn exact(text: &str) -> Value {
+        parse_exact(text)
+            .unwrap_or_else(|| panic!("{text:?} should parse"))
+            .value
+    }
+
+    #[test]
+    fn parse_exact_keeps_a_lone_surrogate_where_parse_reads_u_fffd() {
+        assert_eq!(
+            parse("\"a\\ud83d\""),
+            Some(Value::String("a\u{fffd}".into()))
+        );
+        assert_eq!(exact("\"a\\ud83d\""), Value::Units(vec![0x61, 0xd83d]));
+        assert_eq!(exact("\"\\ude00x\""), Value::Units(vec![0xde00, 0x78]));
+        // A pair is its character; a lone half in front of a pair is still a lone half; a low half and then a high one are not a pair.
+        assert_eq!(exact("\"\\ud83d\\ude00\""), Value::String("😀".into()));
+        assert_eq!(
+            exact("\"\\ud83d\\ud83d\\ude00\""),
+            Value::Units(vec![0xd83d, 0xd83d, 0xde00])
+        );
+        assert_eq!(
+            exact("\"\\ude00\\ud83d\""),
+            Value::Units(vec![0xde00, 0xd83d])
+        );
+        // The characters before the first lone half are kept as the units they are.
+        assert_eq!(
+            exact("\"é😀\\ud83d x\""),
+            Value::Units(vec![0xe9, 0xd83d, 0xde00, 0xd83d, 0x20, 0x78])
+        );
+    }
+
+    #[test]
+    fn parse_exact_reads_everything_else_as_parse_does() {
+        for text in [
+            "null",
+            "[1,\"a\",null,{\"k\":\"v\\u00e9\\ud83d\\ude00\"},[]]",
+            "{\"a\":1,\"b\":{\"c\":\"d\"},\"a\":2}",
+            " 1e999 ",
+            "\"\\u0000\\n\\/\"",
+        ] {
+            assert_eq!(Some(exact(text)), parse(text), "{text:?}");
+        }
+        for text in [
+            "",
+            "[1,]",
+            "\"\\ud83",
+            "\"\\ud83d",
+            "{\"a\":\"\\ud83d}",
+            "[1] 2",
+            "NaN",
+        ] {
+            assert!(parse_exact(text).is_none(), "{text:?}");
+            assert!(parse(text).is_none(), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn a_key_with_a_lone_surrogate_is_read_as_u_fffd_and_reported() {
+        let lone = parse_exact("{\"\\ud83d\":1,\"b\":2}").unwrap();
+        assert!(lone.lone_key);
+        assert_eq!(Some(lone.value), parse("{\"\\ud83d\":1,\"b\":2}"));
+        let nested = parse_exact("[{\"a\":{\"x\\ude00\":[]}}]").unwrap();
+        assert!(nested.lone_key);
+        // A lone half in a value is kept, and a key with a pair is not lone.
+        let value = parse_exact("{\"\\ud83d\\ude00\":\"\\ud83d\"}").unwrap();
+        assert!(!value.lone_key);
+        assert_eq!(value.value.get("😀"), Some(&Value::Units(vec![0xd83d])));
+        assert!(!parse_exact("[\"\\ud83d\", {\"k\": 1}]").unwrap().lone_key);
+    }
+
+    #[test]
+    fn units_make_a_string_only_when_they_are_well_formed() {
+        assert_eq!(
+            Value::from_units(vec![0x61, 0xd83d, 0xde00]),
+            Value::String("a😀".into())
+        );
+        assert_eq!(Value::from_units(vec![]), Value::String(String::new()));
+        assert_eq!(
+            Value::from_units(vec![0xde00, 0xd83d]),
+            Value::Units(vec![0xde00, 0xd83d])
+        );
+        assert_eq!(
+            Value::from_units(vec![0x61, 0xd83d]),
+            Value::Units(vec![0x61, 0xd83d])
+        );
+        assert_eq!(
+            Value::String("a😀".into()).units(),
+            Some(vec![0x61, 0xd83d, 0xde00])
+        );
+        assert_eq!(Value::Units(vec![0xd83d]).units(), Some(vec![0xd83d]));
+        assert_eq!(Value::Number(1.0).units(), None);
+        assert_eq!(Value::Units(vec![0xd83d]).as_str(), None);
+        assert!(Value::Units(vec![0xd83d]).truthy());
+    }
+
+    #[test]
+    fn quote_units_writes_a_lone_half_as_a_lowercase_escape() {
+        assert_eq!(quote_units(&[0x61, 0xd83d, 0x22]), "\"a\\ud83d\\\"\"");
+        assert_eq!(quote_units(&[0xde00]), "\"\\ude00\"");
+        assert_eq!(quote_units(&[0xd83d, 0xde00, 0x0a]), "\"😀\\n\"");
+        assert_eq!(quote_units(&[0xde00, 0xd83d, 0xde00]), "\"\\ude00😀\"");
+        assert_eq!(quote_units(&[]), "\"\"");
+    }
+
+    #[test]
+    fn stringify_prints_what_json_stringify_prints() {
+        for (document, compact) in [
+            ("null", "null"),
+            ("true", "true"),
+            ("1e21", "1e+21"),
+            ("-0", "0"),
+            ("1e999", "null"),
+            ("-1e999", "null"),
+            ("12345678901234567890", "12345678901234567000"),
+            ("0.1", "0.1"),
+            ("1e-7", "1e-7"),
+            ("\"a\\u0000\\u2028é\"", "\"a\\u0000\u{2028}é\""),
+            ("\"\\ud83d\"", "\"\\ud83d\""),
+            ("[]", "[]"),
+            ("{}", "{}"),
+            ("[1,[2,[]],{}]", "[1,[2,[]],{}]"),
+            // An integer key goes first and in order, the others as they came, and a key written twice keeps its first place and its last value.
+            (
+                "{\"b\":1,\"2\":2,\"a\":3,\"1\":4}",
+                "{\"1\":4,\"2\":2,\"b\":1,\"a\":3}",
+            ),
+            ("{\"a\":1,\"b\":2,\"a\":3}", "{\"a\":3,\"b\":2}"),
+            ("{\"10\":1,\"9\":2,\"1\":3}", "{\"1\":3,\"9\":2,\"10\":1}"),
+            (
+                "{\"4294967295\":1,\"4294967294\":2,\"01\":3,\"-1\":4,\"0\":5,\"1.5\":6}",
+                "{\"0\":5,\"4294967294\":2,\"4294967295\":1,\"01\":3,\"-1\":4,\"1.5\":6}",
+            ),
+            ("{\"__proto__\":1}", "{\"__proto__\":1}"),
+        ] {
+            assert_eq!(stringify(&exact(document), false), compact, "{document}");
+        }
+    }
+
+    #[test]
+    fn stringify_indents_by_two_spaces_and_keeps_empty_containers_on_one_line() {
+        let value = exact(r#"{"a":[1,{"b":[]}],"c":{},"d":"x"}"#);
+        assert_eq!(
+            stringify(&value, true),
+            "{\n  \"a\": [\n    1,\n    {\n      \"b\": []\n    }\n  ],\n  \"c\": {},\n  \"d\": \"x\"\n}"
+        );
+        assert_eq!(stringify(&exact("[]"), true), "[]");
+        assert_eq!(stringify(&exact("{}"), true), "{}");
+        assert_eq!(stringify(&exact("7"), true), "7");
+        assert_eq!(
+            stringify(&exact("[\"\\ude00\"]"), true),
+            "[\n  \"\\ude00\"\n]"
+        );
     }
 }

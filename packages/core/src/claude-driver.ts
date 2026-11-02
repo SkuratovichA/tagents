@@ -12,6 +12,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import type {
   PromptOptions,
   SessionDriver,
@@ -401,14 +402,20 @@ export class ClaudeHeadlessDriver implements SessionDriver {
         },
         input ? onReplay : undefined
       );
-      child.stdout?.on('data', (d: Buffer) => reader.push(d.toString()));
+      // A pipe is a stream of bytes, and a read may end inside a character: each pipe has a decoder that holds the bytes of an unfinished one until the rest arrives.
+      const outDecoder = new StringDecoder('utf8');
+      const errDecoder = new StringDecoder('utf8');
+      child.stdout?.on('data', (d: Buffer) => reader.push(outDecoder.write(d)));
       child.stderr?.on('data', (d: Buffer) => {
-        err += d.toString();
+        err += errDecoder.write(d);
       });
 
       const finish = (spawnError: string | null = null): void => {
         if (!scope.dispose()) return;
         this.running.delete(ref.id);
+        // A sequence the pipe never completed reads as U+FFFD now, as it would at the end of the pipe.
+        reader.push(outDecoder.end());
+        err += errDecoder.end();
         // May flush the result line itself, which moves the phase: read it after.
         reader.end();
         // Nothing is written from here on; an item pulled late is not delivered.
