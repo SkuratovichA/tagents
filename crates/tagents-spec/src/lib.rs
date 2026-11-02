@@ -366,6 +366,9 @@ mod tests {
         assert_eq!(
             rust,
             [
+                "session open",
+                "session last",
+                "session list",
                 "sessions recent",
                 "sessions search",
                 "sessions show",
