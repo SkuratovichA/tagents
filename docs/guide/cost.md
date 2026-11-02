@@ -206,7 +206,7 @@ work  ·  ~/git/work/billing-api  ·  3 days, 10-29..11-01
 total         502    1.2M    387k    6.3M   74.3M   82.1M     $86.1  100.0%
 ```
 
-A name that matches no session exits 1. A name or prefix that matches several lists them and exits 3, and an empty value exits 2.
+A name or prefix that matches no session exits 1, whatever characters it holds, so a session called `feed` is found by that name unless an id starts with `feed`. A whole id the index lacks prints the empty detail and exits 0. A name or prefix that matches several lists them and exits 3, and an empty value exits 2.
 
 ## Rates
 

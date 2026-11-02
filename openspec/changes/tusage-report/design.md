@@ -102,7 +102,7 @@ The name stage runs only on the session rows that survive the cut, and avoids on
 
 ### 10. Finding a session
 
-**Decision.** `--session <x>` takes the full id, else a unique id prefix, else a name matched whole and ignoring case, else as part of a name, over the typed names and the titles in the title cache, narrowed by `--account`. More than one match prints each candidate's id, name, account and days on standard error and exits 3. No match exits 1 with `tusage: no session called <x>`, except an id-shaped value (hexadecimal digits and dashes), which keeps its output, the heading and `(no usage recorded in the retained window)`, and exit 0. The heading of the plain `--session` detail, the id and the directory, stays as it is.
+**Decision.** `--session <x>` takes the full id, else a unique id prefix, else a name matched whole and ignoring case, else as part of a name, over the typed names and the titles in the title cache, narrowed by `--account`, whatever characters the text holds: a session can be called `feed` or `2026-11-02`. More than one match prints each candidate's id, name, account and days on standard error and exits 3. No match exits 1 with `tusage: no session called <x>`, except a whole id (8-4-4-4-12 hexadecimal digits, the shape the dashboard sends), which keeps its output, the heading and `(no usage recorded in the retained window)`, and exit 0. The heading of the plain `--session` detail, the id and the directory, stays as it is.
 
 **Reason.** The prefix of an id keeps working for scripts. An ambiguous prefix picks the first match silently, which is the wrong session on a collision, so it joins the ambiguous-name case. The exit codes are 0, 1 (not found), 2 (usage) and 3 (ambiguous) so a script can tell a typo from a collision.
 

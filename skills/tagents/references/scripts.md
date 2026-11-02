@@ -493,10 +493,11 @@ places the sessions no history.jsonl lists — headless -p runs write none — b
 the directory they were launched in. Anything still unplaced prints as "?".
 
 NAMES. A session is shown by the name it has in tagents, the typed one else its
-title, and by the start of its id when it has neither. --session takes a name
-(the whole one, else part of it, any case), an id or the start of one. A text
-that names no session exits 1, one that names several lists them and exits 3,
-an empty one exits 2.
+title, and by the start of its id when it has neither. --session takes an id,
+the start of one, or a name (the whole one, else part of it, any case), and an
+id wins over a name. A text that matches no session exits 1, one that matches
+several lists them and exits 3, an empty one exits 2. A whole id (8-4-4-4-12
+hex digits) the index lacks is no error: it prints the empty detail and exits 0.
 
 THE DOLLARS ARE AN ESTIMATE, NOT A BILL: roughly 3% under Claude Code's own
 ledger on a large session and more on small ones, because retries, titles and

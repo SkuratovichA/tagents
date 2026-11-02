@@ -203,7 +203,7 @@ A report that prints a session for a person SHALL name it by the name typed for 
 - **THEN** its row shows only `e5d1f0a7`
 
 ### Requirement: The session lookup
-`--session <x>` SHALL find a session by its full id, else by a unique id prefix, else by a name, matched whole and ignoring case, else as part of a name. A name is a typed name or a title already in the title cache. More than one match SHALL list each candidate's id, name, account and days on standard error and exit 3. No match SHALL exit 1 with `tusage: no session called <x>`, except an id-shaped value, which keeps its empty detail and exit 0.
+`--session <x>` SHALL find a session by its full id, else a unique id prefix, else a name, matched whole and ignoring case, else as part of a name, whatever characters the text holds. A name is a typed name or a title in the title cache. More than one match SHALL list each candidate's id, name, account and days on standard error and exit 3. No match SHALL exit 1 with `tusage: no session called <x>`, except a whole id (8-4-4-4-12 hexadecimal digits), which keeps its empty detail and exit 0.
 
 #### Scenario: Two sessions called tagents
 - **WHEN** `tusage --session tagents` runs and two sessions have names that contain it
@@ -212,6 +212,18 @@ A report that prints a session for a person SHALL name it by the name typed for 
 #### Scenario: No such session
 - **WHEN** `tusage --session nothing-like-it` runs
 - **THEN** it exits 1 with `tusage: no session called nothing-like-it`
+
+#### Scenario: A name made of hexadecimal digits
+- **WHEN** a session is named `feed`, no session id starts with `feed`, and `tusage --session feed` runs
+- **THEN** it prints that session's detail
+
+#### Scenario: The start of an id that nothing has
+- **WHEN** `tusage --session deadbeef` runs and no id starts with it and no name holds it
+- **THEN** it exits 1 with `tusage: no session called deadbeef`
+
+#### Scenario: An id that aged out of the index
+- **WHEN** `tusage --session <a whole id the index lacks>` runs
+- **THEN** it prints the heading and `(no usage recorded in the retained window)`, exits 0 and looks up no name
 
 ### Requirement: One session by day
 `tusage --session <session> --by <dimensions>` SHALL print the table of those dimensions for that session alone, under a heading with its name, full id, account and directory. With no `--since` the window SHALL reach back as far as the index does. `--by day` gives one row per day with the figures of every `--by` table, and `--by day,model` adds the models beneath each day.
@@ -257,7 +269,7 @@ A `--by` table SHALL use colour only when standard output is a terminal, `NO_COL
 - **THEN** each row has the account, the project and ten figures, 12 tab-separated fields
 
 ### Requirement: What the new options leave alone
-`--sessions`, `--daily`, `--burn`, `--json` and `tusage --session <id>` without a report option SHALL print the bytes and keep the field order they print without the new options, SHALL NOT resolve names (a `--session` text of hex digits and dashes is looked up as an id and never as a name), and SHALL join sessions to accounts only where they do or `--account` asks. A new figure for machines SHALL be a new flag or a field appended after the last one.
+`--sessions`, `--daily`, `--burn`, `--json` and `tusage --session <id>` without a report option SHALL print the bytes and keep the field order they print without the new options, SHALL NOT resolve names, and SHALL join sessions to accounts only where they do or `--account` asks. A new figure for machines SHALL be a new flag or a field appended after the last one.
 
 #### Scenario: Fourteen fields
 - **WHEN** `tusage --sessions` runs after `labels.tsv` and transcript titles exist
