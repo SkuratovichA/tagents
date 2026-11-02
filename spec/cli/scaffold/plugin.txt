@@ -1,0 +1,139 @@
+@@ package.json
+{
+  "name": "tagents-plugin-{{name}}",
+  "version": "0.1.0",
+  "description": "A tagents plugin: {{name}}",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/plugin.ts"
+  },
+  "tagents": {
+    "apiVersion": 1,
+    "entry": "./src/plugin.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@tagents/core": "link:{{core|json}}",
+    "zod": "^4.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "5.9.3"
+  }
+}
+@@ tsconfig.json
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": [
+      "es2023"
+    ],
+    "types": [
+      "node"
+    ],
+    "strict": true,
+    "erasableSyntaxOnly": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "src",
+    "test"
+  ]
+}
+@@ src/plugin.ts
+// {{name}} — a tagents plugin.
+//
+// A plugin is DATA the host walks: a name, an api version, and the verbs,
+// services and MCP tools it offers. Nothing here may run at import time — the
+// host imports this file just to list what is in it.
+import { definePlugin, type CliCommand, type PluginContext } from '@tagents/core';
+import { z } from 'zod';
+
+const HelloArgs = z.object({ who: z.string().default('world') });
+
+const hello: CliCommand<typeof HelloArgs> = {
+  name: 'hello',
+  describe: 'the example verb — replace it with the one this plugin is for',
+  args: HelloArgs,
+  run: async (a, ctx: PluginContext): Promise<number> => {
+    // ctx carries everything a plugin may touch: a session driver (a plugin
+    // never spawns `claude` itself), a translator, a log sink, the tagents
+    // config dir. Exit code 0 is success; see tagents-core for the rest.
+    ctx.log(`hello, ${a.who}`);
+    return 0;
+  },
+};
+
+export default definePlugin({
+  name: '{{name}}',
+  apiVersion: 1,
+  commands: [hello],
+});
+@@ test/plugin.test.ts
+// The verb, exercised the way the host would run it: a real PluginContext
+// from @tagents/core, and the exit code it answers with.
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { createContext } from '@tagents/core';
+import plugin from '../src/plugin.ts';
+
+test('{{name}} offers hello, and hello greets', async () => {
+  assert.equal(plugin.apiVersion, 1);
+  const hello = (plugin.commands ?? []).find((c) => c.name === 'hello');
+  assert.ok(hello, 'the hello verb is in the catalogue');
+
+  const said: string[] = [];
+  const ctx = createContext({ plugin, log: (...parts: string[]) => said.push(parts.join(' ')) });
+  const code = await hello.run(hello.args.parse({}), ctx);
+
+  assert.equal(code, 0);
+  assert.deepEqual(said, ['hello, world']);
+});
+@@ README.md
+# tagents-plugin-{{name}}
+
+A [tagents](https://github.com/) plugin: one package, one `definePlugin({ … })`
+object, and a `"tagents"` manifest in its package.json that says where that
+object lives.
+
+```sh
+pnpm install
+pnpm typecheck
+pnpm test
+```
+
+## Installing it
+
+```sh
+tagents plugin add {{dir}}       # writes it into ~/.config/tagents/config.toml
+tagents plugin list             # what it offers, as the host sees it
+```
+
+`plugin add` reads the manifest only — it never imports this code. The host
+imports `src/plugin.ts` when it loads the plugin, so nothing in it may run at
+import time.
+
+## What to change
+
+* `src/plugin.ts` — `commands` are CLI verbs, `services` are things that keep
+  running (each with `drain()` and `stop()`), `mcpTools` are MCP tools, and
+  `locales` are extra i18next resources under your own namespace.
+* `package.json` — `@tagents/core` is linked to the checkout this scaffold came
+  from. Swap it for a version range before publishing.

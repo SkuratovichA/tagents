@@ -3,6 +3,7 @@
 // `plugin new` writes the files `scaffoldFiles` builds, and the Rust binary writes the same bytes from the same template (spec/cli/scaffold/plugin.txt). This pins the bytes node writes for each triple of fixtures/scaffold/triples.ts, so that a change of the template or of the renderer fails here until the new bytes are chosen on purpose; tests/rust-plugin-vectors.mts records the same files for the Rust renderer.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import fs from 'node:fs';
 import { test } from 'node:test';
 import { scaffoldFiles } from '../src/cli/scaffold.ts';
 import { SCAFFOLD_TRIPLES } from './fixtures/scaffold/triples.ts';
@@ -64,4 +65,11 @@ test('the README names the directory as typed, and a value is never read for a p
   const readme = (dir: string): string => scaffoldFiles('demo', dir, '/work/packages/core')[4]?.body ?? '';
   assert.ok(readme('/work/{{name}}/$&').includes('tagents plugin add /work/{{name}}/$&       # writes it into'));
   assert.ok(readme('/work/demo').startsWith('# tagents-plugin-demo\n'));
+});
+
+test('the template starts with a file, and holds only the placeholders the renderer knows', () => {
+  const text = fs.readFileSync(new URL('../../../spec/cli/scaffold/plugin.txt', import.meta.url), 'utf8');
+  assert.ok(text.startsWith('@@ package.json\n'));
+  assert.ok(text.endsWith('\n'));
+  assert.deepEqual([...new Set(text.match(/\{\{[^}]*\}\}/g))].sort(), ['{{core|json}}', '{{dir}}', '{{name}}']);
 });
