@@ -1,6 +1,6 @@
 //! What the hook publishes next to the events file and the notify daemon reads back (`agent-state.ts` of `packages/core`): one row per pane or session in `<state dir>/<key>.tsv`, the history of starts in `history.tsv`, and the names the owner typed in `labels.tsv`. A reader here never fails: a missing directory or file is no rows and no labels, and a line that does not parse is skipped.
 //!
-//! The rows carry only the columns the daemon reads. The columns past the sixth are the account (kept apart from its absence: a row with six fields says nothing about the account, which is not an empty one), and the pid, log file, label and parent of a headless session, which only the node driver and the dashboard read, so they are not parsed here.
+//! The rows carry only the columns the daemon and the `session` verbs read. The columns past the sixth are the account (kept apart from its absence: a row with six fields says nothing about the account, which is not an empty one), the pid of a headless session (which `session abort` signals), and its log file, label and parent, which only the node driver and the dashboard read, so they are not parsed here.
 
 use std::collections::HashMap;
 use std::fs;
@@ -50,6 +50,8 @@ pub struct AgentStateRow {
     pub detail: String,
     /// `CLAUDE_CONFIG_DIR` of the session: empty for the default account, `None` for a row written before the column existed.
     pub config_dir: Option<String>,
+    /// The process of a headless session (column 8): a whole number above zero, as `Number()` reads the column. A number a `u32` cannot hold is no pid, which `session abort` answers as it answers a pid that is dead.
+    pub pid: Option<u32>,
 }
 
 /// `stateDir()`: `$TA_STATE_DIR` when it is set to something that is not white space, else `~/.claude/agent-state`.
@@ -99,7 +101,14 @@ pub fn parse_state_line(key: &str, line: &str) -> Option<AgentStateRow> {
         transcript: (*transcript).to_owned(),
         detail: (*detail).to_owned(),
         config_dir: rest.first().map(|dir| (*dir).to_owned()),
+        pid: rest.get(1).and_then(|column| pid_of(js::number(column))),
     })
+}
+
+/// `Number.isInteger(pid) && pid > 0`, for a pid that fits.
+fn pid_of(number: f64) -> Option<u32> {
+    (number.fract() == 0.0 && number > 0.0 && number <= f64::from(u32::MAX))
+        .then_some(number as u32)
 }
 
 /// A file read as `readFileSync(path, 'utf8')` does: whole, and a byte sequence that is not UTF-8 becomes U+FFFD.

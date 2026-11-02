@@ -172,6 +172,11 @@ pub fn mtime_ms_floor(meta: &fs::Metadata) -> i64 {
     mtime_ms_floor_of(meta.mtime(), meta.mtime_nsec())
 }
 
+/// `stat.mtimeMs`: the double itself, of which `mtime_ms` and `mtime_ms_floor` are the rounded and the floored.
+pub fn mtime_ms_exact(meta: &fs::Metadata) -> f64 {
+    mtime_double(meta.mtime(), meta.mtime_nsec())
+}
+
 /// An error number with node's name and text for it, as `util.getSystemErrorMap()` gives them.
 pub struct Errno {
     pub number: i32,
@@ -334,6 +339,38 @@ pub fn exec(relative: &str, args: &[OsString]) -> ExecFailure {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_exact_mtime_is_the_double_node_stats_give() {
+        // A file's seconds and nanoseconds, and the `mtimeMs` that `fs.statSync` of node printed for it.
+        for (sec, nsec, want) in [
+            (1_700_000_000, 123_456_000, "1700000000123.456"),
+            (1_700_000_001, 500_000_000, "1700000001500"),
+            (1_700_000_003, 0, "1700000003000"),
+            (1_700_000_009, 500_000_000, "1700000009500"),
+            (0, 500_000_000, "500"),
+            (1_234_567_890, 987_654_000, "1234567890987.654"),
+            (4_102_444_800, 123_000, "4102444800000.123"),
+        ] {
+            assert_eq!(js::number_text(mtime_double(sec, nsec)), want);
+        }
+    }
+
+    #[test]
+    fn the_exact_mtime_of_a_file_keeps_its_fraction_where_the_rounded_one_does_not() {
+        let scratch = crate::testing::Scratch::new();
+        let file = scratch.path().join("f");
+        let handle = fs::File::create(&file).unwrap();
+        handle
+            .set_modified(
+                std::time::UNIX_EPOCH + std::time::Duration::new(1_700_000_000, 123_456_000),
+            )
+            .unwrap();
+        let meta = fs::metadata(&file).unwrap();
+        assert_eq!(js::number_text(mtime_ms_exact(&meta)), "1700000000123.456");
+        assert_eq!(mtime_ms(&meta), 1_700_000_000_123);
+        assert_eq!(mtime_ms_floor(&meta), 1_700_000_000_123);
+    }
 
     #[test]
     fn basename_ignores_trailing_slashes() {
