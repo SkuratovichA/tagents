@@ -8,12 +8,13 @@ use std::{
     ffi::{OsStr, OsString},
     path::Path,
     process::Command,
+    sync::{Arc, OnceLock},
     time::Duration,
 };
 
 use crate::{
     child::{self, Policy},
-    ending::Stop,
+    ending::{self, Stop},
     host::config_file,
     json::{self, Value},
     messages::{Locale, Texts},
@@ -61,15 +62,43 @@ impl Setting {
 }
 
 /// `doctor` of this process. `None` hands the call to node.
+///
+/// A signal stops the question to node, which runs in a group of its own that the terminal's Ctrl-C does not reach, and ends the call as it ends node's: with nothing printed and the status a shell reports for a program that signal killed.
 pub fn run() -> Option<Output> {
-    serve(&Setting::current())
+    let stop = Stop::default();
+    let signalled = Arc::new(OnceLock::new());
+    let (trip, said) = (stop.clone(), Arc::clone(&signalled));
+    // Before anything starts, so that a signal during the question is heard.
+    ending::on_signals(move |name| {
+        let _ = said.set(name);
+        trip.stop();
+    })
+    .ok()?;
+    let output = serve(&Setting::current(), &stop);
+    match signalled.get() {
+        Some(name) => Some(Output {
+            stdout: String::new(),
+            stderr: String::new(),
+            code: killed_by(name),
+        }),
+        None => output,
+    }
 }
 
-/// `run` in a given setting.
-pub fn serve(setting: &Setting) -> Option<Output> {
+/// What a shell reports for a program that the signal `name` of `ending::on_signals` killed: 128 and its number.
+fn killed_by(name: &str) -> u8 {
+    match name {
+        "SIGHUP" => 128 + 1,
+        "SIGINT" => 128 + 2,
+        _ => 128 + 15,
+    }
+}
+
+/// `run` in a given setting, with `stop` to give up on node.
+pub fn serve(setting: &Setting, stop: &Stop) -> Option<Output> {
     // The bundled catalogue is checked by a test, so it loads; if it ever did not, node words the call.
     let texts = Texts::load(setting.locale).ok()?;
-    let node = match identity(&setting.node, setting.deadline) {
+    let node = match identity(&setting.node, setting.deadline, stop) {
         Some((version, path)) => texts.t("doctorNode", &[("version", &version), ("path", &path)]),
         None => texts.t("doctorNodeMissing", &[]),
     };
@@ -99,7 +128,7 @@ pub fn serve(setting: &Setting) -> Option<Output> {
 }
 
 /// The `process.version` and `process.execPath` of `node`, or `None` when it cannot be asked.
-fn identity(node: &OsStr, deadline: Duration) -> Option<(String, String)> {
+fn identity(node: &OsStr, deadline: Duration, stop: &Stop) -> Option<(String, String)> {
     let mut command = Command::new(node);
     command.args(["-p", IDENTITY]);
     let policy = Policy {
@@ -109,7 +138,7 @@ fn identity(node: &OsStr, deadline: Duration) -> Option<(String, String)> {
         drain: Duration::from_millis(250),
         cap: 64 * 1024,
     };
-    let finished = child::run(command, &policy, &Stop::default()).ok()?;
+    let finished = child::run(command, &policy, stop).ok()?;
     if finished.reason.is_some() || finished.code != Some(0) {
         return None;
     }
@@ -171,7 +200,7 @@ mod tests {
     /// What `serve` printed and the exit code; the spawn is under the fork gate because the stub was written under it.
     fn answer(setting: &Setting) -> (Vec<String>, u8) {
         let _forking = forking();
-        let out = serve(setting).unwrap();
+        let out = serve(setting, &Stop::default()).unwrap();
         assert_eq!(out.stderr, "", "doctor writes nothing to stderr");
         assert!(out.stdout.ends_with('\n'));
         (

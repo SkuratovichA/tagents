@@ -18,10 +18,15 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use rustix::process::{Pid, Signal, kill_process};
 use tagents_spec::{Implementation, Spec};
 
 mod common;
-use common::{REPO, closed_pipe, run, scratch, start, write_executable, writing};
+use common::{
+    REPO, closed_pipe,
+    rig::{Rig, until},
+    run, scratch, start, write_executable, writing,
+};
 
 const BIN: &str = env!("CARGO_BIN_EXE_tagents-core");
 const SPEC_FILE: &str = "spec/cli/tagents-core.json";
@@ -484,6 +489,68 @@ fn doctor_is_answered_by_the_binary_which_asks_node_once_and_ignores_its_argumen
             "{args:?}"
         );
     }
+}
+
+/// A signal that comes while `doctor` waits for node ends it with the status a shell reports for a program that signal killed (128 and the number), prints nothing, and stops node first: node runs in a group of its own, which the terminal's Ctrl-C does not reach, so a doctor that only died would leave it running.
+fn a_signal_during_the_wait_for_node_stops_node_and_ends_doctor(
+    name: &str,
+    signal: Signal,
+    code: i32,
+) {
+    let rig = Rig::new(name, r#"echo $$ > "$D/node.pid"; exec sleep 30"#);
+    let mut command = Command::new(BIN);
+    command
+        .env_clear()
+        .env("TAGENTS_NODE", rig.dir.join("tagents-fake"))
+        .env("TAGENTS_CONFIG_DIR", rig.dir.join("config"))
+        .env("TA_STATE_DIR", rig.dir.join("state"))
+        .env("PATH", rig.path())
+        .arg("doctor")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut doctor = start(&mut command);
+    // The pid is written once node runs, which is after doctor has been told to hear signals.
+    assert!(rig.started(1), "node was not asked");
+    kill_process(
+        Pid::from_raw(i32::try_from(doctor.id()).unwrap()).unwrap(),
+        signal,
+    )
+    .unwrap();
+    // Well inside the 10 seconds node is given to answer, so that the signal is what ended the wait and not the deadline.
+    let mut status = None;
+    assert!(
+        until(
+            || {
+                status = doctor.try_wait().unwrap();
+                status.is_some()
+            },
+            5_000
+        ),
+        "doctor did not end at the signal"
+    );
+    assert_eq!(status.unwrap().code(), Some(code));
+    assert!(rig.none_alive(), "node outlived doctor");
+    let out = doctor.wait_with_output().unwrap();
+    assert_eq!((out.stdout, out.stderr), (Vec::new(), Vec::new()));
+}
+
+#[test]
+fn sigterm_during_the_wait_for_node_stops_node_and_ends_doctor() {
+    a_signal_during_the_wait_for_node_stops_node_and_ends_doctor(
+        "doctor_sigterm",
+        Signal::TERM,
+        143,
+    );
+}
+
+#[test]
+fn sigint_during_the_wait_for_node_stops_node_and_ends_doctor() {
+    a_signal_during_the_wait_for_node_stops_node_and_ends_doctor("doctor_sigint", Signal::INT, 130);
+}
+
+#[test]
+fn sighup_during_the_wait_for_node_stops_node_and_ends_doctor() {
+    a_signal_during_the_wait_for_node_stops_node_and_ends_doctor("doctor_sighup", Signal::HUP, 129);
 }
 
 #[test]
