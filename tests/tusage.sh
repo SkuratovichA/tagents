@@ -1855,5 +1855,41 @@ contains "an empty week still says so" "nothing in the last 7 days" "$out"
 lacks "...and has no account block" "by account" "$out"
 ok "...and a dollar figure of nothing" "\$0 0" "$(printf '%s\n' "$out" | awk '/^last 7 d/ { print $5, $6 }')"
 
+
+# ---------------------------------------------------------------------------
+t "26. a name is text: no control character reaches the terminal"
+# ---------------------------------------------------------------------------
+# A name comes from three places (a typed label, the cached title, the title in the
+# transcript) and every one of them can hold an escape sequence. The summary, the
+# listing on standard error and a table all print it, so the name is scrubbed once,
+# where it is produced.
+
+F26="$ROOT/fx26"; mkdir -p "$F26/usage" "$FX/projects/-h-z"
+cp "$F5/usage/facts.tsv" "$F5/usage/projects.tsv" "$F5/usage/origin.tsv" "$F26/usage/"
+LC_ALL=C awk -F'\t' -v OFS='\t' '{ if (!($3 in F) || $1 < F[$3]) F[$3] = $1; if ($1 > L[$3]) L[$3] = $1; S[$3] = $2; M[$3] = $7 }
+  END { for (s in F) print s, S[s], F[s], L[s], M[s] }' "$F26/usage/facts.tsv" >"$F26/usage/sessions.tsv"
+EVIL=$(printf '\033[2J\033]0;x\007')
+TA26="$ROOT/ta26"; mkdir -p "$TA26"
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "typed${EVIL}label" >"$TA26/labels.tsv"
+printf '%s\t%s\t%s\n' "$(fxsid d8c3b615)" "cached${EVIL}title" 1 >"$TA26/title.tsv"
+printf '%s\n' '{"type":"ai-title","aiTitle":"from\u001b[2J\u001b]0;x\u0007transcript"}' >"$FX/projects/-h-z/$(fxsid 7b2c5d33).jsonl"
+touch "$F26/usage/projects.tsv"
+fx26() { FX_STATE="$F26/usage" FX_TA="$TA26" fx "$@" | sed "s/${ESC}\\[[0-9;]*m//g"; }
+ncntrl() { LC_ALL=C tr -d '\n' | LC_ALL=C tr -cd '\001-\037\177' | wc -c | tr -d ' '; }
+
+out=$(fx26)
+ok "the summary prints no control character from a typed, a cached or a transcript title" 0 "$(printf '%s\n' "$out" | ncntrl)"
+contains "...and the name is kept without them" "typed[2J]0;xlabel" "$out"
+contains "...in the cached title too" "cached[2J]0;xtitle" "$out"
+contains "...and in the title read from the transcript" "from[2J]0;xtranscript" "$out"
+
+out=$(fx26 --session '0;x')
+ok "an ambiguous --session lists the sessions on standard error and exits 3" 3 "$(FX_STATE="$F26/usage" FX_TA="$TA26" fxrc --session '0;x')"
+ok "...the list has no control character either" 0 "$(printf '%s\n' "$out" | ncntrl)"
+ok "...and three sessions are in it" 3 "$(printf '%s\n' "$out" | grep -c -- '-6d4e-4b0a')"
+
+out=$(fx26 --by session --top 0 --since 1000d)
+ok "a --by session table prints none" 0 "$(printf '%s\n' "$out" | ncntrl)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

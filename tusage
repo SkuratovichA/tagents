@@ -1347,6 +1347,7 @@ names_of_sessions() {
         *)    nm=$hit ;;
       esac
     fi
+    nm=${nm//[[:cntrl:]]/}   # a name is text: an escape sequence in a title never reaches a terminal
     [ -n "$nm" ] && printf 'S\t%s\t%s\n' "$sid" "$nm"
   done < <(LC_ALL=C awk -F"$TAB" -v OFS="$US" -v lab="$LABELS" -v tit="$TITLES" '
       FILENAME == lab { HL[$1] = 1; next }
@@ -1393,6 +1394,7 @@ AWK_NAME='
   function name(s,   t) {
     t = (s in HL) ? LN[s] : ""
     if (t == "") t = ((s in TN) && TN[s] != "-") ? TN[s] : ""
+    gsub(/[[:cntrl:]]/, "", t)   # a name is text: no escape sequence reaches a terminal
     return t
   }
 '
