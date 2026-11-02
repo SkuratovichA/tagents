@@ -44,14 +44,21 @@ fn command(invocation: &Invocation, file: &str) -> Command {
     command
 }
 
-/// One start, past an interrupted call.
-fn attempt(invocation: &Invocation, file: &str) -> io::Result<Child> {
+/// `command` started, past an interrupted call. In a test binary the fork gate is held for this and nothing longer.
+pub(crate) fn spawn_uninterrupted(command: &mut Command) -> io::Result<Child> {
     loop {
-        match command(invocation, file).spawn() {
+        #[cfg(test)]
+        let _spawning = crate::testing::gate::spawning();
+        match command.spawn() {
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
             started => return started,
         }
     }
+}
+
+/// One start of the child from `file`.
+fn attempt(invocation: &Invocation, file: &str) -> io::Result<Child> {
+    spawn_uninterrupted(&mut command(invocation, file))
 }
 
 /// `spawn`'s two ways of failing, and what is node's to word.
@@ -181,6 +188,8 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::Path;
+    use std::sync::mpsc;
+    use std::time::Duration;
 
     use rustix::process::{Pid, getpgid, getpgrp};
 
@@ -196,11 +205,6 @@ mod tests {
             env: BTreeMap::from([("PATH".to_owned(), path.to_owned())]),
             cwd: cwd.to_owned(),
         }
-    }
-
-    fn start_it(invocation: &Invocation) -> Start {
-        let _forking = gate::forking();
-        start(invocation)
     }
 
     fn text(path: &Path) -> String {
@@ -221,17 +225,42 @@ mod tests {
         }
     }
 
+    /// A writer of an executable holds the spawn off, and a child that lives on holds the writer off no longer.
+    #[test]
+    fn a_spawn_takes_the_fork_gate_and_gives_it_back_before_the_child_ends() {
+        let scratch = Scratch::new();
+        let bin = scratch.path().join("bin");
+        gate::write_executable(&bin.join("claude"), "#!/bin/sh\nexec sleep 30\n");
+        let given = invocation("claude", &format!("{}:/usr/bin:/bin", text(&bin)), "");
+        let writer = gate::writing();
+        let (send, started) = mpsc::channel();
+        let starter = std::thread::spawn(move || send.send(start(&given)).unwrap());
+        assert!(
+            started.recv_timeout(Duration::from_millis(200)).is_err(),
+            "the spawn did not wait for the writer"
+        );
+        drop(writer);
+        let start = started.recv().unwrap();
+        starter.join().unwrap();
+        let Start::Started(mut child) = start else {
+            panic!("not started: {start:?}")
+        };
+        drop(gate::writing());
+        child.kill().unwrap();
+        child.wait().unwrap();
+    }
+
     #[test]
     fn a_program_that_is_not_on_the_path_is_the_event_with_the_name_as_given() {
         let scratch = Scratch::new();
         let path = format!("{0}/a:{0}/b", scratch.path().display());
         assert_eq!(
-            failed(&start_it(&invocation("claude", &path, ""))),
+            failed(&start(&invocation("claude", &path, ""))),
             "spawn claude ENOENT"
         );
         let missing = text(&scratch.path().join("no-such-file"));
         assert_eq!(
-            failed(&start_it(&invocation(&missing, &path, ""))),
+            failed(&start(&invocation(&missing, &path, ""))),
             format!("spawn {missing} ENOENT")
         );
     }
@@ -243,7 +272,7 @@ mod tests {
         let path = text(&scratch.path().join("bin"));
         let cwd = text(&scratch.path().join("no-such-directory"));
         assert_eq!(
-            failed(&start_it(&invocation("claude", &path, &cwd))),
+            failed(&start(&invocation("claude", &path, &cwd))),
             "spawn claude ENOENT"
         );
     }
@@ -257,11 +286,11 @@ mod tests {
         gate::write_executable(&good.join("claude"), WITNESS);
         let only_plain = text(&plain);
         assert_eq!(
-            failed(&start_it(&invocation("claude", &only_plain, ""))),
+            failed(&start(&invocation("claude", &only_plain, ""))),
             "spawn claude EACCES"
         );
         let both = format!("{}:{}", text(&plain), text(&good));
-        let output = output_of(start_it(&invocation("claude", &both, "")));
+        let output = output_of(start(&invocation("claude", &both, "")));
         assert!(output.status.success());
     }
 
@@ -273,21 +302,17 @@ mod tests {
         gate::write_executable(&good.join("claude"), WITNESS);
         let only_dir = text(&dirs);
         assert_eq!(
-            failed(&start_it(&invocation("claude", &only_dir, ""))),
+            failed(&start(&invocation("claude", &only_dir, ""))),
             "spawn claude EACCES"
         );
         let denied_outranks_the_last = format!("{}:{}/none", text(&dirs), text(&good));
         assert_eq!(
-            failed(&start_it(&invocation(
-                "claude",
-                &denied_outranks_the_last,
-                ""
-            ))),
+            failed(&start(&invocation("claude", &denied_outranks_the_last, ""))),
             "spawn claude EACCES"
         );
         let both = format!("{}:{}", text(&dirs), text(&good));
         assert!(
-            output_of(start_it(&invocation("claude", &both, "")))
+            output_of(start(&invocation("claude", &both, "")))
                 .status
                 .success()
         );
@@ -299,7 +324,7 @@ mod tests {
         gate::write_executable(&scratch.path().join("bin/claude"), WITNESS);
         let file = scratch.path().join("a-file");
         fs::write(&file, "x").unwrap();
-        match start_it(&invocation(
+        match start(&invocation(
             "claude",
             &text(&scratch.path().join("bin")),
             &text(&file),
@@ -315,16 +340,12 @@ mod tests {
         let file = scratch.path().join("a-file");
         fs::write(&file, "x").unwrap();
         let (file, none) = (text(&file), text(&scratch.path().join("none")));
-        match start_it(&invocation("claude", &format!("{none}:{file}"), "")) {
+        match start(&invocation("claude", &format!("{none}:{file}"), "")) {
             Start::Thrown(message) => assert_eq!(message, "spawn ENOTDIR"),
             other => panic!("not what spawn throws: {other:?}"),
         }
         assert_eq!(
-            failed(&start_it(&invocation(
-                "claude",
-                &format!("{file}:{none}"),
-                ""
-            ))),
+            failed(&start(&invocation("claude", &format!("{file}:{none}"), ""))),
             "spawn claude ENOENT"
         );
     }
@@ -335,7 +356,7 @@ mod tests {
         let looping = scratch.path().join("loop");
         fs::create_dir_all(&looping).unwrap();
         std::os::unix::fs::symlink("claude", looping.join("claude")).unwrap();
-        let start = start_it(&invocation("claude", &text(&looping), ""));
+        let start = start(&invocation("claude", &text(&looping), ""));
         assert!(matches!(start, Start::HandOver), "{start:?}");
     }
 
@@ -366,7 +387,7 @@ mod tests {
             let file = bin.join("claude");
             let _ = fs::remove_file(&file);
             gate::write_executable(&file, content);
-            let start = start_it(&invocation("claude", &text(&bin), ""));
+            let start = start(&invocation("claude", &text(&bin), ""));
             assert!(matches!(start, Start::HandOver), "{content}: {start:?}");
         }
     }
@@ -385,7 +406,7 @@ mod tests {
         ] {
             gate::write_executable(&bin.join("claude"), content);
             let path = format!("{}:/usr/bin:/bin", text(&bin));
-            let output = output_of(start_it(&invocation("claude", &path, "")));
+            let output = output_of(start(&invocation("claude", &path, "")));
             assert!(output.status.success(), "{content}");
         }
         fs::remove_file(bin.join("claude")).unwrap();
@@ -396,12 +417,12 @@ mod tests {
         assert!(!kernel_may_refuse("/bin/echo"));
         gate::write_executable(&bin.join("claude"), "#!/no/such/program\n");
         assert_eq!(
-            failed(&start_it(&invocation("claude", &text(&bin), ""))),
+            failed(&start(&invocation("claude", &text(&bin), ""))),
             "spawn claude ENOENT"
         );
         fs::remove_file(bin.join("claude")).unwrap();
         gate::write_executable(&bin.join("claude"), "#!/etc/hosts/program\n");
-        match start_it(&invocation("claude", &text(&bin), "")) {
+        match start(&invocation("claude", &text(&bin), "")) {
             Start::Thrown(message) => assert_eq!(message, "spawn ENOTDIR"),
             other => panic!("not what spawn throws: {other:?}"),
         }
@@ -419,7 +440,7 @@ mod tests {
         let file = scratch.path().join("bin/claude");
         gate::write_executable(&file, "#!/bin/sh\n");
         fs::set_permissions(&file, fs::Permissions::from_mode(0o111)).unwrap();
-        let start = start_it(&invocation(
+        let start = start(&invocation(
             "claude",
             &text(&scratch.path().join("bin")),
             "",
@@ -438,7 +459,7 @@ mod tests {
             ("claude", ".:/usr/bin"),
             ("claude", "/no/such:rel"),
         ] {
-            let start = start_it(&invocation(program, path, ""));
+            let start = start(&invocation(program, path, ""));
             assert!(
                 matches!(start, Start::HandOver),
                 "{program} on {path}: {start:?}"
@@ -446,7 +467,7 @@ mod tests {
         }
         let good_first = format!("{}:.", text(&scratch.path().join("good")));
         assert!(
-            output_of(start_it(&invocation("claude", &good_first, "")))
+            output_of(start(&invocation("claude", &good_first, "")))
                 .status
                 .success()
         );
@@ -459,7 +480,7 @@ mod tests {
         let work = scratch.path().join("work");
         fs::create_dir_all(&work).unwrap();
         let path = format!("{}:/usr/bin:/bin", text(&scratch.path().join("bin")));
-        let output = output_of(start_it(&invocation("claude", &path, &text(&work))));
+        let output = output_of(start(&invocation("claude", &path, &text(&work))));
         let real = fs::canonicalize(&work).unwrap();
         assert_eq!(
             String::from_utf8(output.stdout).unwrap(),
@@ -476,7 +497,7 @@ mod tests {
         std::os::unix::fs::symlink("/bin/sh", bin.join("claude")).unwrap();
         let mut given = invocation("claude", &text(&bin), "");
         given.args = vec!["-c".to_owned(), "echo \"$0\"".to_owned()];
-        let output = output_of(start_it(&given));
+        let output = output_of(start(&given));
         assert_eq!(output.stdout, b"claude\n");
     }
 
@@ -489,7 +510,7 @@ mod tests {
         );
         let mut given = invocation("claude", &text(&scratch.path().join("bin")), "");
         given.env.insert("ONLY_THIS".to_owned(), "1".to_owned());
-        let stdout = String::from_utf8(output_of(start_it(&given)).stdout).unwrap();
+        let stdout = String::from_utf8(output_of(start(&given)).stdout).unwrap();
         // The names a shell adds by itself.
         let mut names: Vec<_> = stdout
             .lines()
@@ -505,7 +526,7 @@ mod tests {
         let scratch = Scratch::new();
         gate::write_executable(&scratch.path().join("bin/claude"), "#!/bin/sh\npwd -P\n");
         let path = format!("{}:/usr/bin:/bin", text(&scratch.path().join("bin")));
-        let output = output_of(start_it(&invocation("claude", &path, "")));
+        let output = output_of(start(&invocation("claude", &path, "")));
         let own = fs::canonicalize(std::env::current_dir().unwrap()).unwrap();
         assert_eq!(
             String::from_utf8(output.stdout).unwrap().trim_end(),
@@ -520,7 +541,7 @@ mod tests {
             &scratch.path().join("bin/claude"),
             "#!/bin/sh\nread nothing\n",
         );
-        let start = start_it(&invocation(
+        let start = start(&invocation(
             "claude",
             &text(&scratch.path().join("bin")),
             "",

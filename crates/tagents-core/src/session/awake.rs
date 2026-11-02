@@ -6,6 +6,7 @@ use std::process::{Child, Command, Stdio};
 use rustix::process::{Pid, Signal, kill_process};
 
 use crate::child::spawn_thread;
+use crate::session::spawn::spawn_uninterrupted;
 
 /// `keepAwakeWanted`: any value but `0`.
 fn wanted(value: Option<&OsStr>) -> bool {
@@ -28,7 +29,7 @@ pub fn hold(pid: u32) -> Option<Child> {
     if !wanted(std::env::var_os("TA_KEEP_AWAKE").as_deref()) {
         return None;
     }
-    command(pid).spawn().ok()
+    spawn_uninterrupted(&mut command(pid)).ok()
 }
 
 /// A SIGTERM, which is what `child.kill()` of node sends, and a thread that reaps it so the process does not stay behind for as long as the call lingers.
@@ -107,7 +108,6 @@ mod tests {
         let scratch = Scratch::new();
         let mut command = command(1);
         command.env("PATH", scratch.path());
-        let _forking = gate::forking();
-        assert!(command.spawn().is_err());
+        assert!(spawn_uninterrupted(&mut command).is_err());
     }
 }

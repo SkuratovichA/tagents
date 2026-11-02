@@ -232,10 +232,7 @@ mod tests {
             cwd: scratch.path().to_str().unwrap().to_owned(),
         };
         let watch = Watch::start().unwrap();
-        let start = {
-            let _forking = gate::forking();
-            spawn::start(&invocation)
-        };
+        let start = spawn::start(&invocation);
         let Start::Started(child) = start else {
             panic!("not started: {start:?}")
         };

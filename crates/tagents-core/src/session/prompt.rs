@@ -227,7 +227,6 @@ mod tests {
             Arc::new(Mutex::new(String::new())),
         );
         let (out_end, err_end) = (Arc::clone(&out), Arc::clone(&err));
-        let _forking = gate::forking();
         let output = answer(
             &parsed,
             &setting("/no/such/state"),
@@ -355,6 +354,28 @@ mod tests {
         ] {
             assert_eq!(limit_ms(Some(raw)), want, "{raw}");
         }
+    }
+
+    /// Another test writing an executable takes the write side of the fork gate, and a turn that held the read side over its wait would keep that test out for as long as the child lives.
+    #[test]
+    fn a_turn_holds_no_gate_while_it_waits_for_its_child() {
+        let scratch = Scratch::new();
+        gate::write_executable(
+            &scratch.path().join("bin/claude"),
+            "#!/bin/sh\n: > started\ni=0\nuntil [ -e go ]; do\n  i=$((i + 1))\n  [ \"$i\" -lt 1200 ] || exit 3\n  sleep 0.05\ndone\nprintf '{\"type\":\"result\",\"is_error\":false,\"result\":\"r\",\"session_id\":\"s\"}\\n'\n",
+        );
+        let cwd = scratch.path().to_str().unwrap().to_owned();
+        let path = format!("{}:/usr/bin:/bin", scratch.path().join("bin").display());
+        let turn =
+            std::thread::spawn(move || call(&[&reference(&cwd), "t"], &path).0.unwrap().code);
+        let given_up = Instant::now() + Duration::from_secs(30);
+        while !scratch.path().join("started").exists() {
+            assert!(Instant::now() < given_up, "the child did not start");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        drop(gate::writing());
+        std::fs::write(scratch.path().join("go"), "").unwrap();
+        assert_eq!(turn.join().unwrap(), exit::OK);
     }
 
     /// The writer sits in a write that does not come back: the caller is held up by nothing, and the wait with a limit says so.
