@@ -52,7 +52,7 @@ The hook is how a chat tells tagents what it is doing; the status line is where 
 |---|---|
 | Node | 22.18 or newer (`engines` of `package.json`); CI uses the 22.23.1 of `.node-version` |
 | bash | 3.2 or newer: 3.2 is what macOS ships, and the scripts are written for it |
-| tmux | no minimum is stated; measured on 3.7b only; the popup call is written to work on 3.4 as well |
+| tmux | no minimum is stated; 3.8 or newer keeps the cursor steady in the cockpit's viewport, and below that tmux hides it at every frame of an agent; measured on 3.7b and 3.8; the popup call is written to work on 3.4 as well |
 | fzf | no minimum is stated; developed on 0.74 |
 | `jq`, `awk`, `git`, `pnpm` | no minimum is stated; `packageManager` pins `pnpm` 9.15.4 |
 

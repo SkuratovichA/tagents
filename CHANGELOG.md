@@ -24,6 +24,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 ### Fixed
 
 - The installer no longer prints curl's `404` above its own `no prebuilt tagents-core` line; any other download failure still shows curl's message ([#54](https://github.com/SkuratovichA/tagents/pull/54)).
+- On tmux below 3.8 the cursor no longer jumps around the cockpit's viewport at every frame of an agent; tmux 3.8 or newer keeps it steady ([#55](https://github.com/SkuratovichA/tagents/pull/55)).
 - An edit of the file a symlinked `plugins/notify.toml` points at takes effect at the next event in the options directory every time, where on macOS it sometimes took effect at once, and the node and Rust services follow the same rule ([#49](https://github.com/SkuratovichA/tagents/pull/49)).
 - `plugin add` and `plugin remove` keep a symlinked `config.toml` a symlink and edit the file it points at, where they replaced the link with a regular file ([#50](https://github.com/SkuratovichA/tagents/pull/50)).
 - `plugin add` and `plugin remove` stop with the error when `config.toml` cannot be read for any reason but being absent, where they treated it as empty and wrote a config over what could not be read ([#50](https://github.com/SkuratovichA/tagents/pull/50)).
