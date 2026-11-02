@@ -993,8 +993,8 @@ meter_fetch() {  # <account> — one GET, one row, never more than one of either
   meter_put "$acct" "$used" "$lim" "$now" ok "$((now + ttl))" || return 1
 
   # The meter prices the month; the factor makes --daily and the sparkline agree
-  # with it, which is what calibrate() has always done — it is just no longer a
-  # human typing the reading. A refusal is a note on stderr, not a failure: the
+  # with it. calibrate() derives the factor from the meter's reading as it does
+  # from one a human types. A refusal is a note on stderr, not a failure: the
   # row is good even when the ratio it implies is not a price.
   calibrate "$acct" "$used" >/dev/null
   return 0
@@ -1256,7 +1256,7 @@ AWK_TILDE='
 # stay are written to a file of their own, FACTS points at it, and the report
 # reads it as it reads the index. No report has a filter of its own, so none
 # can disagree about what a filter means, and a call with no filter reads the
-# index as it always did.
+# index itself.
 FILTERED=""
 have_index() { [ -s "$FACTS" ] || [ -n "$FILTERED" ]; }  # an empty answer is not a missing index
 filter_facts() {
@@ -1874,14 +1874,14 @@ report_by() {  # <the --by list> <cut> <upto>
 # sid, cost, reqs, ctx, last_ts, slug, subagent_cost, live_subagents, cost_5h,
 #   model, usd, usd_5h, usd_subagent, unpriced
 # ctx is the context of the session's newest main-chain request (agent id "-"),
-# the number that says "this session is fat, compact it". It used to be the
-# largest context of the last hour, which answered a different question: "how
-# big did this chat get". After a /compact that kept showing the size from
-# before the compaction for up to an hour, and a subagent's own large context
-# could show as the session's. A session that has made no main-chain request in
-# the window reports 0. The newest request is the one of the newest bucket,
-# and of the later row when two rows share a bucket; a row from an index that
-# predates the lastctx column falls back to its maxctx (see fold_rows).
+# the number that says "this session is fat, compact it". It is not the largest
+# context of the last hour, which answers a different question: "how big did this
+# chat get". After a /compact that would keep showing the size from before the
+# compaction for up to an hour, and a subagent's own large context could show as
+# the session's. A session that has made no main-chain request in the window
+# reports 0. The newest request is the one of the newest bucket, and of the later
+# row when two rows share a bucket; a row from an index that predates the lastctx
+# column falls back to its maxctx (see fold_rows).
 #
 # `model` is the session's CURRENT model — the one the newest row was billed at,
 # which is what a status line should show. The dollar figures are emphatically
