@@ -49,6 +49,29 @@ t() { printf '\n%s\n' "$1"; }
 # Local day of an epoch, whichever date(1) is installed.
 dayof() { date -r "$1" +%Y-%m-%d 2>/dev/null || date -d "@$1" +%Y-%m-%d; }
 
+# THE CLOCK. Section 5b and the meter sections divide a reading by the month to
+# date, and the fixture keeps the work account's older row two days behind its
+# newest, so both rows are in one month only from the 4th of it. This script and
+# tusage therefore read a date(1) that starts no earlier than the 4th, and
+# TU_TEST_NOW="YYYY-MM-DD HH:MM:SS" starts it at any other instant. Time keeps
+# flowing from there, so ages and timeouts still elapse.
+REAL_DATE=$(command -v date)
+epoch_of() { date -j -f '%Y-%m-%d %H:%M:%S' "$1" +%s 2>/dev/null || date -d "$1" +%s; }
+START=$(date +%s); REAL_START=$START
+[ -z "${TU_TEST_NOW:-}" ] || START=$(epoch_of "$TU_TEST_NOW") || { echo "TU_TEST_NOW is not YYYY-MM-DD HH:MM:SS: $TU_TEST_NOW" >&2; exit 1; }
+DOM=$(dayof "$START" | cut -c9-10)
+[ "$((10#$DOM))" -ge 4 ] || START=$(( START + (4 - 10#$DOM) * 86400 ))
+mkdir -p "$ROOT/clock"
+cat >"$ROOT/clock/date" <<CLOCK
+#!/bin/bash
+for a in "\$@"; do case \$a in -j|-r|-d|-f|--date*) exec $REAL_DATE "\$@" ;; esac; done
+e=\$(( \$($REAL_DATE +%s) + $(( START - REAL_START )) ))
+$REAL_DATE -r "\$e" "\$@" 2>/dev/null || exec $REAL_DATE -d "@\$e" "\$@"
+CLOCK
+chmod +x "$ROOT/clock/date"
+export PATH="$ROOT/clock:$PATH"
+printf 'the clock starts at %s\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+
 NOW=$(date +%s)
 # Ten minutes back, not the bucket that holds now: a row in the current bucket
 # lands inside a one-minute window when the clock is near the bucket edge, and
@@ -295,6 +318,7 @@ t "5b. --calibrate prices an account at what its meter said"
 # ---------------------------------------------------------------------------
 # The fixture's work month is 5.00 + 27.50 = 32.50 at list; a meter that said
 # 16.25 means the account is billed at half of list.
+ok "the clock leaves both work rows in one month" "$(dayof "$T1" | cut -c1-7)" "$(dayof "$T2" | cut -c1-7)"
 out=$(tu --calibrate work 16.25 2>&1); rc=$?
 ok "it succeeds"                     0 "$rc"
 contains "...and says the factor"    "x0.5000" "$out"
