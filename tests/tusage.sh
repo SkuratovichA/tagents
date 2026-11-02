@@ -1989,9 +1989,9 @@ ok "--since a day and no --until runs to today, the 27th's row in" "128" \
 # ---------------------------------------------------------------------------
 t "28. what is copied from the dashboard stays what it was copied from"
 # ---------------------------------------------------------------------------
-# awk text cannot be sourced, and tusage runs with no lib/tagents beside it, so two
-# awk functions are copies. Each is run here, as it stands in its file, on the same
-# inputs as the original.
+# awk text cannot be sourced, and tusage runs with no lib/tagents beside it, so some
+# awk functions are copies (utrunc, uclen, tilde). Each is run here, as it stands in
+# its file, on the same inputs as the original.
 
 LIBT="$HERE/../lib/tagents"
 UTRUNC_FN=$(sed -n '/function utrunc(/,/return r }/p' "$TU")
@@ -2021,6 +2021,52 @@ shorts() {  # <awk function text> <function name>: the short form of each model 
 }
 ok "the model names a table here prints keep their dashes" "opus-5 haiku-4-5 opus-4-8 mystery-9 " "$(shorts "$SHORT_TU" short_model)"
 ok "...where the dashboard's column makes opus5 and haiku4.5" "opus5 haiku4.5 opus4.8 mystery9 " "$(shorts "$SHORT_LIST" shortmodel)"
+
+# uclen: the length of a text in characters. Four copies, one here.
+UCLEN_TU=$(sed -n '/function uclen(/,/return n }/p' "$TU")
+UCLEN_LIST=$(sed -n '/function uclen(/,/^    }$/p' "$LIBT/list.sh")
+UCLEN_TIME=$(sed -n '/function uclen(/,/^      }$/p' "$LIBT/timeline.sh")
+UCLEN_DASH=$(sed -n '/function uclen(/,/^    }$/p' "$LIBT/dash.sh")
+ok "the four uclen were found" "1 1 1 1" "$([ -n "$UCLEN_TU" ] && echo 1) $([ -n "$UCLEN_LIST" ] && echo 1) $([ -n "$UCLEN_TIME" ] && echo 1) $([ -n "$UCLEN_DASH" ] && echo 1)"
+lens() {  # <awk function text>: the length in characters of each text
+  local s
+  for s in plain "$(printf '\xd0\xa1\xd1\x87\xd1\x91\xd1\x82')" "$(printf 'a\xe2\x80\xa6b\xe2\x91\x82c')" "" x; do
+    printf '%s|' "$(LC_ALL=C awk -v s="$s" "$1"' BEGIN { print uclen(s) }')"
+  done
+}
+ok "uclen counts a Cyrillic letter, an ellipsis and a ballot-box sign once" "5|4|5|0|1|" "$(lens "$UCLEN_TU")"
+ok "...as the uclen of list.sh does" "$(lens "$UCLEN_LIST")" "$(lens "$UCLEN_TU")"
+ok "...as the one of timeline.sh does" "$(lens "$UCLEN_TIME")" "$(lens "$UCLEN_TU")"
+ok "...as the one of dash.sh does" "$(lens "$UCLEN_DASH")" "$(lens "$UCLEN_TU")"
+
+# tilde: the home directory as a tilde, only up to a slash. Four copies, three of them
+# awk (here, list.sh, closed.sh) and tilde_of in core.sh, which is bash.
+TILDE_TU=$(sed -n '/function tilde(/p' "$TU")
+TILDE_LIST=$(sed -n '/function tilde(/p' "$LIBT/list.sh")
+TILDE_CLOSED=$(sed -n '/function tilde(/p' "$LIBT/closed.sh")
+TILDE_OF=$(sed -n '/^tilde_of() {/,/^}/p' "$LIBT/core.sh")
+ok "the four tilde were found" "1 1 1 1" "$([ -n "$TILDE_TU" ] && echo 1) $([ -n "$TILDE_LIST" ] && echo 1) $([ -n "$TILDE_CLOSED" ] && echo 1) $([ -n "$TILDE_OF" ] && echo 1)"
+TILDE_PATHS=(/Users/a /Users/a/ /Users/a/x /Users/ab/x "/Users/a b" /Users /x "" Users/a/x /Users/a/x/Users/a)
+tildes() {  # <awk function text> <home>: each path as the function shows it
+  local p
+  for p in "${TILDE_PATHS[@]}"; do
+    printf '%s|' "$(LC_ALL=C awk -v home="$2" -v p="$p" "$1"' BEGIN { print tilde(p) }')"
+  done
+}
+tildes_of() {  # <home>: the same paths through tilde_of
+  local p
+  for p in "${TILDE_PATHS[@]}"; do
+    printf '%s|' "$(HOME=$1 bash -c "$TILDE_OF"'; tilde_of "$0"' "$p")"
+  done
+}
+TILDE_WANT='~|~/|~/x|/Users/ab/x|/Users/a b|/Users|/x||Users/a/x|~/x/Users/a|'
+ok "tilde shows /Users/a as ~, a path under it as ~/..., and /Users/ab/x as it is" "$TILDE_WANT" "$(tildes "$TILDE_TU" /Users/a)"
+ok "...as the tilde of list.sh does" "$TILDE_WANT" "$(tildes "$TILDE_LIST" /Users/a)"
+ok "...as the one of closed.sh does" "$TILDE_WANT" "$(tildes "$TILDE_CLOSED" /Users/a)"
+ok "...as tilde_of of core.sh does" "$TILDE_WANT" "$(tildes_of /Users/a)"
+NOHOME_WANT='/Users/a|/Users/a/|/Users/a/x|/Users/ab/x|/Users/a b|/Users|/x||Users/a/x|/Users/a/x/Users/a|'
+ok "with no home nothing is shortened, here and in list.sh and closed.sh" "$NOHOME_WANT$NOHOME_WANT$NOHOME_WANT" \
+   "$(tildes "$TILDE_TU" '')$(tildes "$TILDE_LIST" '')$(tildes "$TILDE_CLOSED" '')"
 
 # ---------------------------------------------------------------------------
 t "29. the home directory is a prefix of a path only up to a slash"
