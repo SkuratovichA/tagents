@@ -16,7 +16,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 - The notification service runs in the prebuilt Rust binary under the LaunchAgent when the installer has put one on the machine, and node stays the fallback ([#49](https://github.com/SkuratovichA/tagents/pull/49)).
 - `tagents-core plugin add` and `plugin remove` run in the prebuilt Rust binary when the installer has put one on the machine, and every call it cannot prove identical to node's goes to node ([#50](https://github.com/SkuratovichA/tagents/pull/50)).
 - `tagents-core plugin new` and `doctor` run in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback ([#53](https://github.com/SkuratovichA/tagents/pull/53)).
-- `tagents-core session open`, `session list` and `session last` run in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback.
+- `tagents-core session open`, `session list` and `session last` run in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback ([#58](https://github.com/SkuratovichA/tagents/pull/58)).
 
 ### Removed
 
@@ -30,7 +30,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 - `plugin add` and `plugin remove` keep a symlinked `config.toml` a symlink and edit the file it points at, where they replaced the link with a regular file ([#50](https://github.com/SkuratovichA/tagents/pull/50)).
 - `plugin add` and `plugin remove` stop with the error when `config.toml` cannot be read for any reason but being absent, where they treated it as empty and wrote a config over what could not be read ([#50](https://github.com/SkuratovichA/tagents/pull/50)).
 - A knowledge document with CRLF line endings keeps its last front-matter value as written, where the carriage return of the line break stayed on it: the title of such a file no longer ends with `\r` in the index and in the search results ([#51](https://github.com/SkuratovichA/tagents/pull/51)).
-- The output of the Claude child of a headless session is decoded as a stream, so a character whose bytes arrive in two reads is one character in the outcome's text and detail, where it was two replacement characters.
+- The output of the Claude child of a headless session is decoded as a stream, so a character whose bytes arrive in two reads is one character in the outcome's text and detail, where it was two replacement characters ([#58](https://github.com/SkuratovichA/tagents/pull/58)).
 
 ## [0.1.0] - 2026-10-29
 
