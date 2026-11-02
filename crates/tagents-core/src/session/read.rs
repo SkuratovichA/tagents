@@ -485,6 +485,9 @@ mod tests {
         );
         let by_json = last(&args(&[&reference_to("null", "\"sid\"")]), &setting, &texts).unwrap();
         assert_eq!(by_json.stdout, by_row.stdout);
+        // An empty transcript path in the reference is an answer, so the row of the session is not asked.
+        let empty = last(&args(&[&reference_to("\"\"", "\"sid\"")]), &setting, &texts).unwrap();
+        assert_eq!(empty.stdout, "null\n");
         let dir = serde_json::to_string(state.path().to_str().unwrap()).unwrap();
         let broken = last(&args(&[&reference_to(&dir, "null")]), &setting, &texts).unwrap();
         assert_eq!((broken.code, broken.stdout.as_str()), (1, ""));
