@@ -186,6 +186,7 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **`PARITY_ONLY` runs the built `packages/notify/dist/main.js`, not the sources** — after a node change run `pnpm build` first, or the scenario compares the old node daemon (31.10.2026)
 - **An idle measurement read later than planned has no stated duration** — write the start and the reading times into the raw output, so the report can say how long the processes were idle (31.10.2026)
 - **A test that passes through the public path cannot see an order or a guard that the writer already keeps** — the sections of one document tied on rank and came out right with or without `chunks.ord` in the search order, because a reindex stores them in that order, and a second open that rewrote the same schema version changed no row. Run the mutation, not only the test: pin the key with rows written by hand in the opposite order, and pin the guard by comparing the file before and after (02.11.2026)
+- **Reverting a mutation with `git checkout -- <file>` also drops an uncommitted edit in that file** — a mutation run over `node.rs` restored the file from the index and took the test removal made before it with it. Commit or stash the real edits first, or restore the saved original text (02.11.2026)
 
 ## Rust core and the MCP server
 
