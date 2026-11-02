@@ -319,9 +319,12 @@ export interface FakeScript {
     readonly countFile?: string;
     // (undocumented)
     readonly exitCode?: number;
+    readonly grandchildMs?: number;
     readonly hang?: boolean;
     readonly hangAfterResult?: boolean;
+    readonly killSelf?: NodeJS.Signals;
     readonly noise?: readonly string[];
+    readonly pidFile?: string;
     readonly plain?: boolean;
     readonly rawWrites?: readonly FakeRawWrite[];
     readonly result?: FakeResult | null;
