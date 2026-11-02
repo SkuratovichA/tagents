@@ -66,9 +66,9 @@ Where (a) differs from the wording above, each in one line:
 
 ## 8. The scaffold source
 
-- [ ] 8.1 The characterisation test of node's `scaffoldFiles` for the triples of 2.2, written first and passing against the current TypeScript (`pnpm --filter @tagents/core test`)
-- [ ] 8.2 `spec/cli/scaffold/plugin.txt` (sections `@@ <path>`, placeholders `{{name}}`, `{{dir}}` and `{{core|json}}`), and `scaffold.ts` reduced to reading it and rendering it, with the characterisation test unchanged and green; `relativeSpecifier` stays as it is, its quirk included (`pnpm --filter @tagents/core test`, `pnpm --filter @tagents/core typecheck`)
-- [ ] 8.3 `crates/tagents-core/src/plugin/scaffold.rs`: `include_str!` of the file, the renderer with `json::quote` for the filter, `<root>/packages/core` from `node::root()` (a hand-over when it fails), the value of `{{core|json}}` made as `relativeSpecifier` makes it, from `node::relative` (the one caller of that function), the vectors of 2.2 (`cargo test -p tagents-core plugin::scaffold`, `cargo test -p tagents-core --test plugin_vectors`)
+- [x] 8.1 The characterisation test of node's `scaffoldFiles` for the triples of 2.2, written first and passing against the current TypeScript (`pnpm --filter @tagents/core test`)
+- [x] 8.2 `spec/cli/scaffold/plugin.txt` (sections `@@ <path>`, placeholders `{{name}}`, `{{dir}}` and `{{core|json}}`), and `scaffold.ts` reduced to reading it and rendering it, with the characterisation test unchanged and green; `relativeSpecifier` stays as it is, its quirk included (`pnpm --filter @tagents/core test`, `pnpm --filter @tagents/core typecheck`)
+- [x] 8.3 `crates/tagents-core/src/plugin/scaffold.rs`: `include_str!` of the file, the renderer with `json::quote` for the filter, `<root>/packages/core` from `node::root()` (a hand-over when it fails), the value of `{{core|json}}` made as `relativeSpecifier` makes it, from `node::relative` (the one caller of that function), the vectors of 2.2 (`cargo test -p tagents-core plugin::scaffold`, `cargo test -p tagents-core --test plugin_vectors`)
 
 ## 9. plugin new
 

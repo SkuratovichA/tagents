@@ -6,6 +6,7 @@
 
 pub mod config;
 pub mod resolve;
+pub mod scaffold;
 
 use config::{Added, Removed};
 use resolve::Failure;
