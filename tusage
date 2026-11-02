@@ -812,7 +812,7 @@ factor_stale() {  # -> account names, space separated
 }
 
 calibrate() {  # <account> <amount> [at]
-  local acct=${1:-} amt=${2:-} at=${3:-} epoch mtd f tmp
+  local acct=${1:-} amt=${2:-} at=${3:-} epoch first mtd f tmp
   [ -n "$acct" ] && [ -n "$amt" ] || { echo "tusage: --calibrate <account> <amount> [--at when]" >&2; return 2; }
   case "$amt" in ''|*[!0-9.]*) echo "tusage: amount must be a number: $amt" >&2; return 2 ;; esac
   if [ -z "$at" ]; then epoch=$(date +%s)
@@ -824,10 +824,12 @@ calibrate() {  # <account> <amount> [at]
     esac
   fi
   [ -n "${epoch:-}" ] || { echo "tusage: cannot read the time: $at" >&2; return 2; }
-  mtd=$(TU_NO_FACTOR=1 daily "$(since_cut month)" "$epoch" |
+  # The month of the reading, up to the reading: a reading taken in an earlier month is divided by that month.
+  first=$(date -r "$epoch" +%Y-%m-01 2>/dev/null || date -d "@$epoch" +%Y-%m-01 2>/dev/null) || first=""
+  mtd=$(TU_NO_FACTOR=1 daily "$(day_epoch "$first")" "$epoch" |
           LC_ALL=C awk -F"$TAB" -v a="$acct" '$2 == a { s += $3 } END { printf "%.4f", s + 0 }')
   if ! LC_ALL=C awk -v m="$mtd" 'BEGIN { exit !(m + 0 > 0) }'; then
-    echo "tusage: nothing indexed for $acct this month up to that instant — nothing to calibrate" >&2
+    echo "tusage: nothing indexed for $acct in the month of that instant, up to it — nothing to calibrate" >&2
     return 1
   fi
   f=$(LC_ALL=C awk -v a="$amt" -v m="$mtd" 'BEGIN { printf "%.4f", a / m }')

@@ -1917,15 +1917,17 @@ t "27. a date window is cut where the rows are bucketed"
 # time (+0200) sit an hour off the local midnight: 22:30 UTC of the 19th is 00:30
 # on the 20th by the clock then, and the 19th by today's. Each row below says which.
 
-mkdir -p "$ROOT/clock-prague"
-PRAGUE_NOW=$(TZ=Europe/Prague epoch_of "2026-11-02 12:00:00")
-cat >"$ROOT/clock-prague/date" <<CLOCK
+pinclock() {  # <dir> <epoch>: a date(1) in <dir>, for the front of a PATH, whose clock starts at that instant
+  mkdir -p "$1"
+  cat >"$1/date" <<CLOCK
 #!/bin/bash
 for a in "\$@"; do case \$a in -j|-r|-d|-f|--date*) exec $REAL_DATE "\$@" ;; esac; done
-e=\$(( \$($REAL_DATE +%s) + $(( PRAGUE_NOW - $($REAL_DATE +%s) )) ))
+e=\$(( \$($REAL_DATE +%s) + $(( $2 - $($REAL_DATE +%s) )) ))
 $REAL_DATE -r "\$e" "\$@" 2>/dev/null || exec $REAL_DATE -d "@\$e" "\$@"
 CLOCK
-chmod +x "$ROOT/clock-prague/date"
+  chmod +x "$1/date"
+}
+pinclock "$ROOT/clock-prague" "$(TZ=Europe/Prague epoch_of "2026-11-02 12:00:00")"
 
 F27="$ROOT/fx27"; mkdir -p "$F27/usage"
 prow() {  # <UTC time of day, as YYYY-MM-DD HH:MM:SS> <requests>
@@ -2008,6 +2010,28 @@ ok "a directory that only starts like the home is not shortened; the home is ~; 
    "${FXH}b/git/x
 ~
 ~/under/it" "$(FX_STATE="$F29/usage" fxo --by project --tsv --since 7d | cut -f1 | LC_ALL=C sort)"
+
+# ---------------------------------------------------------------------------
+t "30. --calibrate --at divides by the month of that instant"
+# ---------------------------------------------------------------------------
+# A reading taken on 2026-10-31 is a reading of October. On a clock at 2026-11-04
+# the month to divide by is October up to that instant, not November.
+
+F30="$ROOT/fx30"; mkdir -p "$F30"; cp -R "$FX/usage" "$F30/usage"; rm -f "$F30/usage/factor.tsv"
+pinclock "$ROOT/clock-nov" "$(TZ=UTC epoch_of "2026-11-04 12:00:00")"
+cal30() { PATH="$ROOT/clock-nov:$PATH" FX_STATE="$F30/usage" fx "$@"; }
+AT30="2026-10-31 12:00"
+mtd30=$(cal30 --daily --since 2026-10-01 --until "$(TZ=UTC epoch_of "$AT30:00")" | awk -F"$TAB" '$2 == "work" { s += $3 } END { printf "%.4f", s }')
+amt30=$(awk -v m="$mtd30" 'BEGIN { printf "%d", m }')
+ok "the fixture has October spend in work before that instant" "1" "$([ "$(awk -v m="$mtd30" 'BEGIN { print (m >= 10) }')" = 1 ] && echo 1 || echo 0)"
+out=$(cal30 --calibrate work "$amt30" --at "$AT30"); rc=$?
+ok "a reading in the previous month succeeds" 0 "$rc"
+ok "...and divides by that month up to that instant" \
+   "$(awk -v a="$amt30" -v m="$mtd30" 'BEGIN { printf "tusage: work priced at x%.4f of list (meter $%s vs indexed $%.4f at 2026-10-31 12:00)", a / m, a, m }')" "$out"
+rm -f "$F30/usage/factor.tsv"
+out=$(cal30 --calibrate work 10 --at "2026-09-15 12:00"); rc=$?
+ok "a month with nothing indexed is refused" 1 "$rc"
+contains "...and says which month" "nothing indexed for work in the month of that instant, up to it" "$out"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
