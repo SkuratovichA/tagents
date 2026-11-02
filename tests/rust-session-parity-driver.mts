@@ -1,14 +1,18 @@
-// What tests/rust-session-parity.sh needs node for: the stub `claude` (the `fakeClaude` of packages/core/src/testkit.ts, a real executable that records what it was started with) and the tree both programs run on, whose transcripts have to be written byte for byte (a lone-surrogate escape, a window cut inside a character) and whose modification times have to be exact doubles.
+// What tests/rust-session-parity.sh needs node for: the stub `claude` (the `fakeClaude` of packages/core/src/testkit.ts, a real executable that records what it was started with), the tree both programs work on, the form a stub's record is compared in, and the clock of the scenarios that are about time.
 //
-// Run: node tests/rust-session-parity-driver.mts stub <dir> <script>   writes <dir>/claude; <script> is the JSON text of a FakeScript
-//      node tests/rust-session-parity-driver.mts tree <dir>            writes the tree of the scenarios into <dir>
+// Run: node tests/rust-session-parity-driver.mts stub <dir> <script> [<rec>]   writes <dir>/claude; <script> is the JSON text of a FakeScript, and <rec> the directory the stub records into
+//      node tests/rust-session-parity-driver.mts tree <dir>                    writes the tree of the scenarios into <dir>
+//      node tests/rust-session-parity-driver.mts record <file> <node-dir>      rewrites a stub's record so that two runs can be compared
+//      node tests/rust-session-parity-driver.mts stamp <file>                  copies stdin to stdout and writes when each line of it arrived into <file>
 import fs from 'node:fs';
 import path from 'node:path';
 import { fakeClaude, type FakeScript } from '../packages/core/src/testkit.ts';
 
-const [what, dir, script] = process.argv.slice(2);
-if (dir === undefined || (what !== 'stub' && what !== 'tree') || (what === 'stub' && script === undefined)) {
-  process.stderr.write('usage: rust-session-parity-driver.mts stub <dir> <script> | tree <dir>\n');
+const [what, dir, script, rec] = process.argv.slice(2);
+const wellFormed =
+  dir !== undefined && (what === 'tree' || what === 'stamp' || ((what === 'stub' || what === 'record') && script !== undefined));
+if (!wellFormed) {
+  process.stderr.write('usage: rust-session-parity-driver.mts stub <dir> <script> [<rec>] | tree <dir> | record <file> <node-dir> | stamp <file>\n');
   process.exit(2);
 }
 
@@ -62,9 +66,47 @@ function materialise(root: string): void {
   fs.mkdirSync(path.join(root, 'tr', 'a-directory.jsonl'));
 }
 
+/**
+ * A record of the stub in the form two runs are compared in. The order of the environment is not a promise of either program, so the names are sorted. The first entry of `PATH` is the directory of the node that serves the run, which differs between the two programs by construction: it reads `<node-dir>` only when it is the one this run must have, so a wrong directory stays and the comparison fails.
+ */
+function normaliseRecord(file: string, nodeDir: string): void {
+  const record = JSON.parse(fs.readFileSync(file, 'utf8')) as { argv: string[]; cwd: string; stdin: string; env: Record<string, string> };
+  const env = Object.fromEntries(Object.entries(record.env).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  const entries = (env['PATH'] ?? '').split(':');
+  if (entries[0] === nodeDir) env['PATH'] = ['<node-dir>', ...entries.slice(1)].join(':');
+  fs.writeFileSync(file, `${JSON.stringify({ argv: record.argv, cwd: record.cwd, stdin: record.stdin, env }, null, 1)}\n`);
+}
+
+/** Stdin to stdout, byte for byte, and to `file` one line per line that arrived: the time in milliseconds and the line. `open` and `end` are the times of the first and of the last moment. */
+function stamp(file: string): void {
+  const stamps = fs.openSync(file, 'w');
+  fs.writeSync(stamps, `${Date.now()} open\n`);
+  let pending = '';
+  process.stdin.on('data', (chunk: Buffer) => {
+    process.stdout.write(chunk);
+    pending += chunk.toString('latin1');
+    const lines = pending.split('\n');
+    pending = lines.pop() ?? '';
+    const now = Date.now();
+    for (const line of lines) fs.writeSync(stamps, Buffer.from(`${now} ${line}\n`, 'latin1'));
+  });
+  process.stdin.on('end', () => {
+    const now = Date.now();
+    if (pending) fs.writeSync(stamps, Buffer.from(`${now} ${pending}\n`, 'latin1'));
+    fs.writeSync(stamps, `${now} end\n`);
+    fs.closeSync(stamps);
+  });
+}
+
 if (what === 'stub') {
   fs.mkdirSync(dir, { recursive: true });
-  fakeClaude(JSON.parse(script ?? '{}') as FakeScript, dir);
+  const plan = JSON.parse(script ?? '{}') as FakeScript;
+  const recording = rec === undefined ? {} : { argvFile: path.join(rec, 'argv.json'), countFile: path.join(rec, 'count'), pidFile: path.join(rec, 'pid') };
+  fakeClaude({ ...plan, ...recording }, dir);
+} else if (what === 'record') {
+  normaliseRecord(dir, script ?? '');
+} else if (what === 'stamp') {
+  stamp(dir);
 } else {
   materialise(dir);
 }

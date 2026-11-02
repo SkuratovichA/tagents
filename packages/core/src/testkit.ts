@@ -58,7 +58,7 @@ export interface FakeScript {
   readonly stderr?: string;
   /** One line appended per invocation. */
   readonly countFile?: string;
-  /** argv and env of the invocation, as JSON. */
+  /** argv, env, the kind of stdin and the working directory of the invocation, as JSON. */
   readonly argvFile?: string;
   /** Split every line across two writes, to prove the reader reassembles them. */
   readonly chunked?: boolean;
@@ -113,7 +113,7 @@ const stdinKind = () => {
     return st.isFIFO() || st.isSocket() ? 'pipe' : st.isCharacterDevice() ? 'null' : 'other';
   } catch { return 'none'; }
 };
-if (plan.argvFile) fs.writeFileSync(plan.argvFile, JSON.stringify({ argv: process.argv.slice(2), env: process.env, stdin: stdinKind() }));
+if (plan.argvFile) fs.writeFileSync(plan.argvFile, JSON.stringify({ argv: process.argv.slice(2), env: process.env, stdin: stdinKind(), cwd: process.cwd() }));
 if (plan.countFile) fs.appendFileSync(plan.countFile, 'run\\n');
 const sid = plan.sessionId || 'sess-1';
 const say = (o) => {
