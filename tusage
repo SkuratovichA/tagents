@@ -1531,7 +1531,7 @@ by_aggregate() {  # <dimensions, comma list> <cut> <upto> table|tsv
     cat "$FACTS"; } |
   LC_ALL=C awk -F"$TAB" -v dims="$dims" -v cut="$cut" -v upto="$upto" -v mode="$mode" \
       -v topn="$TOPN" -v sortcost="$([ "$SORT" = cost ] && echo 1 || echo 0)" \
-      -v now="$(date +%s)" -v tz="$(date +%z)" -v home="$HOME" \
+      -v now="${NOW:-$(date +%s)}" -v tz="$(date +%z)" -v home="$HOME" \
       -v prices="$(prices_arg)" "$AWK_FMT$AWK_DAY$AWK_PRICE$AWK_TILDE"'
     BEGIN {
       nd = split(dims, DIM, ",")
@@ -2013,7 +2013,10 @@ session_detail() {
 }
 
 summary() {
-  local now top names; now=$(date +%s)
+  local now top names
+  # One reading of the clock: the windows count from it, and so does the cut of
+  # the heaviest sessions (since_cut and sessions read NOW).
+  NOW=$(date +%s); now=$NOW
   have_index || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
   { slug_map | sed 's/^/P\t/'; account_map | sed 's/^/A\t/'; cat "$FACTS"; } |
   LC_ALL=C awk -F"$TAB" -v now="$now" -v home="$HOME" -v prices="$(prices_arg)" \
@@ -2220,7 +2223,7 @@ check_by() {
 }
 
 check_accounts() {
-  local a known
+  local a known want
   [ -n "$ACCTS" ] || return 0
   known=$(account_dirs | LC_ALL=C cut -f1)
   IFS=, read -r -a want <<<"$ACCTS"

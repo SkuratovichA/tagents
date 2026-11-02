@@ -1560,6 +1560,8 @@ datecalls() { FX_SH='bash -x' "$@" | grep -c 'date +%s$'; }
 ok "--sessions reads the clock once" 1 "$(datecalls fx --sessions --since 1000d)"
 ok "--burn reads it once, for its own five hours" 1 "$(datecalls fx --burn)"
 ok "--session <id> reads it not at all" 0 "$(datecalls fx --session "$(fxsid 3f9a1c20)")"
+ok "--by reads the clock once, for its window and for its rows" 1 "$(datecalls fx --by day --since 1000d)"
+ok "the summary reads it once" 1 "$(datecalls fx)"
 
 # A text that could be an id and that no session has is an id that aged out of the
 # index, which the closed-session preview asks for: it prints the empty detail and
