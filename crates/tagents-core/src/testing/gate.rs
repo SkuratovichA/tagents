@@ -9,12 +9,15 @@ use std::{
     fs,
     os::unix::fs::PermissionsExt,
     path::Path,
-    process::{Child, Command, Output},
-    sync::{PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    process::{Child, Command, Output, Stdio},
+    sync::{Mutex, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
 /// A child forked by one test thread holds a copy of every descriptor its parent had open until it execs, so a file stays busy for writing after its writer has closed it, and exec of that file can fail with ETXTBSY ("Text file busy"). Writers of executables take the write side and every spawn the read side, so no fork overlaps a write: spawn through `run` or `start`, or under `forking()` when the spawn is inside the code under test, and write or copy an executable only under `writing()` (`write_executable`). A test that holds `forking()` must not call `writing()`: the write side waits for every reader, itself included.
 static FORK_GATE: RwLock<()> = RwLock::new(());
+
+/// One spawn at a time. macOS has no `pipe2`, so `Command` marks the pipes it makes close-on-exec only after making them, and a fork on another thread in that gap leaves them open in that thread's child for as long as it lives.
+static SPAWNING: Mutex<()> = Mutex::new(());
 
 pub fn forking() -> RwLockReadGuard<'static, ()> {
     FORK_GATE.read().unwrap_or_else(PoisonError::into_inner)
@@ -24,17 +27,24 @@ pub fn writing() -> RwLockWriteGuard<'static, ()> {
     FORK_GATE.write().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// `Command::output` under the gate: the guard is held until the child has exited.
+/// `Command::output` with the gate held for the spawn and not for the reads. A child that inherited the pipes keeps the reads open for as long as it lives, and the test that owns that child may be waiting at the gate, so a guard held over the reads can stop every test of the binary for good. As `output` has it when nothing else is asked for, stdin is null and stdout and stderr are captured; a command with other stdio goes through `start`.
 #[track_caller]
 pub fn run(command: &mut Command) -> Output {
-    let _forking = forking();
-    command.output().unwrap()
+    start(
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+    )
+    .wait_with_output()
+    .unwrap()
 }
 
 /// `Command::spawn` under the gate; the caller feeds or reaps the child after the guard is gone.
 #[track_caller]
 pub fn start(command: &mut Command) -> Child {
     let _forking = forking();
+    let _spawning = SPAWNING.lock().unwrap_or_else(PoisonError::into_inner);
     command.spawn().unwrap()
 }
 
