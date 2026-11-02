@@ -127,7 +127,7 @@ fn deadline_of(now: Instant, limit_ms: f64) -> Option<Instant> {
 }
 
 impl Turn {
-    /// A turn whose child was started at `now` and `wall_ms`, with the limit `--timeout` gave.
+    /// A turn whose clock was read at `now` and `wall_ms`, just before the spawn, with the limit `--timeout` gave.
     pub fn new(limit_ms: f64, events: bool, now: Instant, wall_ms: f64) -> Turn {
         Turn {
             reader: if events {

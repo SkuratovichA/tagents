@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{self, Sender};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::args::{Grammar, Parsed};
 use crate::child::spawn_thread;
@@ -12,13 +12,14 @@ use crate::front_door::{emit_stderr, emit_stdout};
 use crate::js;
 use crate::messages::Texts;
 use crate::node;
+use crate::notify::clock::{Clock, SystemClock};
 use crate::session::command::{self, Invocation};
 use crate::session::outcome::Outcome;
 use crate::session::read::{Setting, usage};
 use crate::session::reference::{self, Resolved};
 use crate::session::spawn::{self, Start};
 use crate::session::turn::supervisor::Watch;
-use crate::session::turn::{self, DEFAULT_TIMEOUT_MS, Turn, World};
+use crate::session::turn::{self, DEFAULT_TIMEOUT_MS, Turn};
 use crate::sessions::{Output, exit};
 
 pub(crate) const PROMPT: Grammar = Grammar {
@@ -153,12 +154,14 @@ fn answer(
     // What may fail without a word comes before the child: nothing has run, so node can still answer.
     let out = Stdout::start(stdout).ok()?;
     let watch = Watch::start().ok()?;
+    // Read before the spawn, as node reads `startedAt`: what the start of the child costs counts towards the limit and `durationMs`.
+    let (started, started_ms) = (Instant::now(), SystemClock.now_ms());
     match spawn::start(&invocation) {
         Start::Started(child) => {
             #[cfg(target_os = "macos")]
             let awake = crate::session::awake::hold(child.id());
             let mut world = watch.watch(child, |line: &str| out.write(format!("{line}\n")));
-            let mut turn = Turn::new(limit, events, world.now(), world.wall_ms());
+            let mut turn = Turn::new(limit, events, started, started_ms);
             let outcome = turn::run(&mut turn, &mut world);
             #[cfg(target_os = "macos")]
             if let Some(awake) = awake {
@@ -199,7 +202,6 @@ fn answer(
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
-    use std::time::Instant;
 
     use super::*;
     use crate::messages::Locale;
@@ -383,6 +385,34 @@ mod tests {
         drop(gate::writing());
         std::fs::write(scratch.path().join("go"), "").unwrap();
         assert_eq!(turn.join().unwrap(), exit::OK);
+    }
+
+    /// What the start of the child costs counts, as it does in node: here the fork gate makes that start slow. A machine that stalls can reach the spawn after the gate was given back, which says nothing, so there is more than one try; a clock read after the spawn gets there on none of them.
+    #[test]
+    fn the_clock_of_a_turn_is_read_before_the_spawn() {
+        const HELD: Duration = Duration::from_millis(400);
+        let scratch = Scratch::new();
+        gate::write_executable(
+            &scratch.path().join("bin/claude"),
+            "#!/bin/sh\nprintf '{\"type\":\"result\",\"is_error\":false,\"result\":\"r\",\"session_id\":\"s\"}\\n'\n",
+        );
+        let cwd = scratch.path().to_str().unwrap().to_owned();
+        let path = scratch.path().join("bin").to_str().unwrap().to_owned();
+        let mut seen = Vec::new();
+        for _ in 0..5 {
+            let (cwd, path) = (cwd.clone(), path.clone());
+            let writer = gate::writing();
+            let turn = std::thread::spawn(move || call(&[&reference(&cwd), "t"], &path).1);
+            std::thread::sleep(HELD);
+            drop(writer);
+            let document: serde_json::Value = serde_json::from_str(&turn.join().unwrap()).unwrap();
+            let duration = document["durationMs"].as_f64().unwrap();
+            if duration >= HELD.as_secs_f64() * 500.0 {
+                return;
+            }
+            seen.push(duration);
+        }
+        panic!("the start of the child did not count: durationMs {seen:?}");
     }
 
     /// The writer sits in a write that does not come back: the caller is held up by nothing, and the wait with a limit says so.
