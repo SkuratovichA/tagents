@@ -34,7 +34,7 @@ It grew up in parallel to [herdr](https://herdr.dev), around the same idea, for 
 curl -fsSL https://raw.githubusercontent.com/SkuratovichA/tagents/main/install.sh | sh
 ```
 
-It puts one managed copy in `~/.local/share/tagents`, the commands in `~/.local/bin` and the Claude Code hooks in `~/.claude/hooks`. Run it again, or `tagents update`, to update. What it needs, and where it runs, is in [Compatibility](#compatibility) below.
+It puts one managed copy in `~/.local/share/tagents`, the commands in `~/.local/bin` and the Claude Code hooks in `~/.claude/hooks`. Run it again, or `tagents update`, to update. `tagents --version` prints the version and the commit the copy is at. What it needs, and where it runs, is in [Compatibility](#compatibility) below.
 
 The install ends by running `tagents setup` (on a first install, and on an update that changes what it registers), which adds the state hook and the status line to `~/.claude/settings.json`, and to the `settings.json` of `$CLAUDE_CONFIG_DIR` and of each profile's `config_dir`. It only appends: your own hooks and settings stay as they are, a file it changes is backed up first, and a file that is not valid JSON is refused and left untouched. A status line of your own is kept, and the message says how to switch (`tagents setup --statusline`). `tagents setup --check` shows what it would add and writes nothing.
 

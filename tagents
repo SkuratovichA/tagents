@@ -113,6 +113,11 @@
 #                           which account those rules pick, without launching
 #                           anything. Prints a profile name or "ask"; exits 1
 #                           when no profiles are configured
+#   tagents --version, -V   one line: the workspace version of the checkout the
+#                           script lives in and its short commit, as in
+#                           "tagents 0.6.2 (ddc1ae1)". A part that cannot be read is
+#                           left out ("unknown" for the version); exits 0 and needs
+#                           no config, tmux or modules
 #   tagents --config        the config as tagents actually reads it, one
 #                           path<TAB>value line per leaf. This is the answer to
 #                           "why is my rule not firing"; --check is the answer
@@ -456,7 +461,9 @@ unset _src _srcdir
 #
 # --help is the one verb that needs no module of its own — it prints the
 # manual above out of $SELF — and it is the one a half-copied checkout should
-# still be able to answer, so nothing is loaded for it.
+# still be able to answer, so nothing is loaded for it. --version loads nothing
+# either but needs to know where the checkout is, so it takes the symlink walk
+# and stops before the modules.
 if [ "${1:-}" != -h ] && [ "${1:-}" != --help ]; then
   ta_real=${BASH_SOURCE[0]}
   while [ -L "$ta_real" ]; do
@@ -476,16 +483,18 @@ if [ "${1:-}" != -h ] && [ "${1:-}" != --help ]; then
 
   # Readability is what is checked, not the exit status of `.`: that status is
   # the module's own last line and says nothing about whether it was found.
-  for ta_mod in core config accounts usage state names columns list \
-                timeline preview actions refresh sidebar follow migrate setup rows closed \
-                resurrect launch keys cockpit dash; do
-    if [ ! -r "$TA_LIB/$ta_mod.sh" ]; then
-      echo "tagents: cannot load $TA_LIB/$ta_mod.sh" >&2
-      echo "tagents: this is the entry point of a checkout, not a file to copy alone" >&2
-      exit 1
-    fi
-    . "$TA_LIB/$ta_mod.sh"
-  done
+  if [ "${1:-}" != --version ] && [ "${1:-}" != -V ]; then
+    for ta_mod in core config accounts usage state names columns list \
+                  timeline preview actions refresh sidebar follow migrate setup rows closed \
+                  resurrect launch keys cockpit dash; do
+      if [ ! -r "$TA_LIB/$ta_mod.sh" ]; then
+        echo "tagents: cannot load $TA_LIB/$ta_mod.sh" >&2
+        echo "tagents: this is the entry point of a checkout, not a file to copy alone" >&2
+        exit 1
+      fi
+      . "$TA_LIB/$ta_mod.sh"
+    done
+  fi
   unset ta_real ta_link ta_mod
 fi
 
@@ -596,6 +605,11 @@ case "${1:-}" in
   # than a fixed line range: the block keeps growing and a stale range silently
   # cuts the help in half.
   -h|--help)      LC_ALL=C awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$SELF" ;;
+  # The workspace version (the parser the release gate uses) and the commit of the checkout this file is in; a part that cannot be read is left out and the exit code stays 0.
+  --version|-V)   ta_co=${TA_LIB%/lib/tagents}; [ "$ta_co" != "$TA_LIB" ] || ta_co=.
+                  ta_ver=$(sh "$ta_co/.github/scripts/core-release.sh" version "$ta_co/Cargo.toml" 2>/dev/null) || ta_ver=unknown
+                  ta_sha=$(git -C "$ta_co" rev-parse --short HEAD 2>/dev/null) || ta_sha=
+                  echo "tagents $ta_ver${ta_sha:+ ($ta_sha)}" ;;
   "")            cfg_load; dash ;;
   # The verbs the previous version handed to tmux: its focus hooks fire --poke
   # and --unpark, the kill bindings its README gave out fire --undock-pane and
