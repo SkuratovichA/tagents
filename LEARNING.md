@@ -238,6 +238,7 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **A task list that registers a verb group in `GROUPS` before flipping the flags makes every verb live at once** — wire each verb into `run` and flip its `impl` flag last, then run parity (01.11.2026)
 - **A figure that sounds measured was not** — the design of the knowledge server gave a cost in binary size and build time before any build had run. Write a number only after the command that produced it, and name the command beside it; before that write "not measured" (01.11.2026)
 - **A design reason has to be checked, not recalled** — the design said the daemon needs `setsid` to survive its starter's group, and the claim was repeated for two drafts. The check is `ps -o pid,pgid,sess` on a detached child, and `process_group(0)` was enough. Run the one command that shows the claim before it goes into the design (01.11.2026)
+- **Flipping `impl` in `spec/cli/tagents-core.json` moves a pin in `tagents-spec` that `cargo test -p tagents-core` does not run** — after a flip run `cargo test --workspace --locked`, where `the_bundled_spec_loads` lists the verbs marked rust (02.11.2026)
 
 ## Other
 
