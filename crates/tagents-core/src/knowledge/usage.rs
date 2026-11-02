@@ -8,6 +8,8 @@ use std::{collections::HashMap, fmt, path::Path, time::Duration};
 
 use rusqlite::{Connection, OpenFlags, TransactionBehavior, params};
 
+use crate::date::MS_PER_DAY;
+
 use super::{
     index::{open_file, sql},
     search::{Filters, Hit, list_docs},
@@ -19,7 +21,6 @@ pub const DEFAULT_SINCE_DAYS: i64 = 30;
 pub const DEFAULT_TOP: i64 = 20;
 pub const DEFAULT_MIN_GETS: i64 = 5;
 pub const DEFAULT_MIN_DAYS: i64 = 3;
-const DAY_MS: i64 = 86_400_000;
 
 /// The table, text for text as `usage.ts` holds it: SQLite stores the statement as written in `sqlite_master`, and the test compares those rows.
 const DDL: &str = r#"
@@ -85,7 +86,7 @@ pub fn append_events(
         .map_err(sql)?;
     tx.execute(
         "delete from usage_events where ts < ?1",
-        [now_ms - RETENTION_DAYS * DAY_MS],
+        [now_ms - RETENTION_DAYS * MS_PER_DAY],
     )
     .map_err(sql)?;
     {
@@ -283,7 +284,7 @@ fn window_start(options: &ReportOptions, now_ms: i64) -> i64 {
         options
             .since_days
             .unwrap_or(DEFAULT_SINCE_DAYS)
-            .saturating_mul(DAY_MS),
+            .saturating_mul(MS_PER_DAY),
     )
 }
 
