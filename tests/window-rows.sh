@@ -332,7 +332,7 @@ ok "R21 broken out into the session it is in" tatest-j3 "$(tm display -p -t "$PJ
 ok "R20 alone in a window of its own" 1 "$(npanes "$(wid "$PJB")")"
 ok "R20 the same process" "$pid_before" "$(tm display -p -t "$PJB" '#{pane_pid}')"
 ok "R20 no @tagents_joined" "" "$(tm show -pv -t "$PJB" @tagents_joined 2>/dev/null)"
-ok "R20 the window it left no longer holds it" no "$(tm list-panes -t "$JC" -F '#{pane_id}' | grep -q "$PJB" && echo yes || echo no)"
+ok "R20 the window it left no longer holds it" no "$(grep -q "$PJB" <<< "$(tm list-panes -t "$JC" -F '#{pane_id}')" && echo yes || echo no)"
 newsess tatest-j4; mkchat tatest-j4 jd; PJD=$LASTPANE; SJD=$LASTSID
 act beside "$PJD" working "$SJD" "$REPO"
 act undock "$PJD" working "$SJD" "$REPO"
