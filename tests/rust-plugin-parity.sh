@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# tests/rust-plugin-parity.sh — `tagents-core plugin add` and `plugin remove` leave what the node CLI leaves.
+# tests/rust-plugin-parity.sh — `tagents-core plugin add`, `plugin remove` and `plugin new` leave what the node CLI leaves.
 #
 # Every scenario runs twice, `node packages/core/dist/cli/main.js <args>` and `target/debug/tagents-core <args>` (or $TAGENTS_CORE_BIN), each on its own pristine copy of the same tree at the same path (so no transcript can tell the two apart by where it ran), under `env -i` with a scratch HOME, config directory and locale, and with no `pnpm` on PATH (node's last resort for a package it cannot find is `pnpm root -g`). It passes only when stdout, stderr, the exit code and the whole tree afterwards (every path, its mode, its link target or the checksum of its bytes) are the same. The only thing normalised is the process id in a temporary file's name.
 # The tree is the package tree of tests/rust-plugin-vectors/tree.mts, and the config documents are the corpus of tests/rust-plugin-vectors/corpus.mts, written by tests/rust-plugin-vectors/materialise.mts, so the cases here and the vectors of crates/tagents-core/tests/plugin_vectors/ are about the same inputs.
@@ -49,9 +49,9 @@ chmod +x "$SHIM/node"
 "$NODE" "$MATERIALISE" corpus "$CORPUS" || { echo "rust-plugin-parity: cannot write the corpus" >&2; exit 2; }
 
 if [ -z "$SELF_TEST" ]; then
-  # The first check, before any scenario: the binary says it serves the two verbs. A build with no `plugin` group would hand every scenario to node and pass them all.
-  "$RUST" --spec | "$NODE" -e 'const s = JSON.parse(require("fs").readFileSync(0, "utf8")); const has = (p) => s.commands.some((c) => c.path.join(" ") === p); process.exit(has("plugin add") && has("plugin remove") ? 0 : 1)' \
-    || { echo "rust-plugin-parity: $RUST does not serve plugin add and plugin remove (--spec)" >&2; exit 2; }
+  # The first check, before any scenario: the binary says it serves the three verbs. A build with no `plugin` group would hand every scenario to node and pass them all.
+  "$RUST" --spec | "$NODE" -e 'const s = JSON.parse(require("fs").readFileSync(0, "utf8")); const has = (p) => s.commands.some((c) => c.path.join(" ") === p); process.exit(has("plugin add") && has("plugin remove") && has("plugin new") ? 0 : 1)' \
+    || { echo "rust-plugin-parity: $RUST does not serve plugin add, plugin remove and plugin new (--spec)" >&2; exit 2; }
 fi
 
 # One `stat` format per platform: the path, the type and mode as `ls -l` writes them, and the link target.
@@ -350,6 +350,70 @@ for f in "$CORPUS"/*.toml; do
   SETUP=$(doc "$n"); sc "remove plain-pkg from $n" any - - -- plugin remove plain-pkg
 done
 
+# ------------------------------------------------------------------- new ---
+t "new: the directory and what is in it"
+CWD=proj; sc "new in the default directory" rust 0 "wrote $RUN/proj/demo" -- plugin new demo
+CWD=proj; LOCALE=ru; sc "new in the default directory, in Russian" rust 0 "создан $RUN/proj/demo" -- plugin new demo
+sc "new --dir" rust 0 "wrote $RUN/out/pl" -- plugin new demo --dir out/pl
+sc "new --dir=" rust 0 "wrote $RUN/out/pl" -- plugin new demo --dir=out/pl
+sc "new --dir before the name" rust 0 "wrote $RUN/out/pl" -- plugin new --dir out/pl demo
+CWD=proj/a/b; sc "new --dir above the working directory" rust 0 "wrote $RUN/out" -- plugin new demo --dir ../../../out
+sc "new --dir by absolute path" rust 0 "wrote $RUN/abs/pl" -- plugin new demo --dir "$RUN/abs/pl"
+sc "new --dir with .. inside" rust 0 "wrote $RUN/out/c" -- plugin new demo --dir out/a/../c
+sc "new --dir with a trailing slash" rust 0 "wrote $RUN/out" -- plugin new demo --dir out/
+sc "new --dir ~ is a directory called ~" rust 0 "wrote $RUN/~" -- plugin new demo --dir '~'
+sc "new --dir the last one wins" rust 0 "wrote $RUN/last" -- plugin new demo --dir first --dir=last
+sc "new -- ends the options" rust 0 "wrote $RUN/demo" -- plugin new -- demo
+sc "new a second name is ignored" rust 0 "wrote $RUN/one" -- plugin new one two
+sc "new a name with a dot, a dash and an underscore" rust 0 "wrote $RUN/a.b-c_d" -- plugin new a.b-c_d
+sc "new a name that is one digit" rust 0 "wrote $RUN/0" -- plugin new 0
+SETUP='mkdir -p empty'; sc "new into an empty directory" rust 0 "wrote $RUN/empty" -- plugin new demo --dir empty
+SETUP='mkdir -p empty'; CWD=empty; sc "new --dir . in an empty directory" rust 0 "wrote $RUN/empty" -- plugin new demo --dir .
+SETUP='mkdir -p empty'; CWD=empty; sc "new --dir= is the working directory" rust 0 "wrote $RUN/empty" -- plugin new demo --dir=
+SETUP='mkdir -p empty'; LOCALE=ru; sc "new into an empty directory, in Russian" rust 0 "создан" -- plugin new demo --dir empty
+SETUP='mkdir -p real; ln -s real link'; sc "new into a link to an empty directory" rust 0 "wrote $RUN/link" -- plugin new demo --dir link
+
+t "new: a directory that is in the way"
+SETUP='mkdir -p busy; echo mine > busy/f'; sc "new into a directory that holds a file" rust 3 "exists and is not empty" -- plugin new demo --dir busy
+SETUP='mkdir -p busy; echo mine > busy/.hidden'; sc "new into a directory that holds a hidden file" rust 3 "exists and is not empty" -- plugin new demo --dir busy
+SETUP='mkdir -p busy/sub'; sc "new into a directory that holds a directory" rust 3 "exists and is not empty" -- plugin new demo --dir busy
+SETUP='mkdir -p busy; echo mine > busy/package.json'; sc "new into a directory that holds a package.json" rust 3 "exists and is not empty" -- plugin new demo --dir busy
+sc "new --dir= in a working directory that holds files" rust 3 "exists and is not empty" -- plugin new demo --dir=
+SETUP='mkdir -p busy; echo mine > busy/f'; LOCALE=ru; sc "new into a directory that holds a file, in Russian" rust 3 "существует и не пуст" -- plugin new demo --dir busy
+SETUP='mkdir -p real; echo mine > real/f; ln -s real link'; sc "new into a link to a directory that holds a file" rust 3 "exists and is not empty" -- plugin new demo --dir link
+SETUP='echo mine > afile'; sc "new into a directory that is a file" node 1 "ENOTDIR" -- plugin new demo --dir afile
+SETUP='echo mine > afile'; sc "new below a file" node 1 - -- plugin new demo --dir afile/below
+SETUP='ln -s nowhere dangling'; sc "new into a link to nowhere" node - - -- plugin new demo --dir dangling
+
+t "new: a directory the user cannot write to"
+SETUP='mkdir -p ro; chmod 555 ro'; sc_user "new below a directory that is not writable" node 1 "EACCES" -- plugin new demo --dir ro/pl
+SETUP='mkdir -p ro; chmod 555 ro'; sc_user "new into an empty directory that is not writable" node 1 "EACCES" -- plugin new demo --dir ro
+SETUP='mkdir -p ro; chmod 000 ro'; sc_user "new into a directory that cannot be listed" node 1 "EACCES" -- plugin new demo --dir ro
+
+t "new: the name"
+sc "new with no name" rust 2 "missing required option <name>" -- plugin new
+sc "new --dir and no name" rust 2 "missing required option <name>" -- plugin new --dir out
+LOCALE=ru; sc "new with no name, in Russian" rust 2 - -- plugin new
+sc "new a name with a space" rust 2 "not a usable plugin name" -- plugin new 'bad name'
+sc "new a name that starts with a dot" rust 2 "not a usable plugin name" -- plugin new .x
+sc "new a name that starts with an underscore" rust 2 "not a usable plugin name" -- plugin new _x
+sc "new a name with a slash" rust 2 "not a usable plugin name" -- plugin new a/b
+sc "new a name that is empty" rust 2 "not a usable plugin name" -- plugin new ''
+sc "new a name that is a dash" rust 2 "not a usable plugin name" -- plugin new -- -x
+sc "new a name with a non-ASCII letter" rust 2 "not a usable plugin name" -- plugin new é
+sc "new a name with a newline at the end" rust 2 - -- plugin new "$(printf 'a\nb')"
+sc "new a name {{file}} is printed as typed" rust 2 "{{file}}" -- plugin new '{{file}}'
+LOCALE=ru; sc "new a bad name, in Russian" rust 2 - -- plugin new 'bad name'
+sc "new checks the name before the directory" rust 2 "not a usable plugin name" -- plugin new 'bad name' --dir afile
+
+t "new: what the directory's path carries into the files"
+for d in 'q"uote' 'back\slash' "it's" 'é😀' 'a b' '{{name}}' '{{dir}}' '$&' '$1' '{{core|json}}' "$(printf 'tab\there')" "$(printf 'new\nline')"; do
+  sc "new in a directory called $(printf '%s' "$d" | od -An -c | tr -s ' ' | head -c 28)" rust 0 "wrote" -- plugin new demo --dir "out/$d"
+done
+CWD=proj/a/b; sc "new links core by a path that goes up" rust 0 "wrote" -- plugin new demo --dir ../../../x/y/z
+sc "new links core from a directory below a dot directory" rust 0 "wrote" -- plugin new demo --dir .hidden/x
+sc "new into a path of dot segments" rust 0 "wrote" -- plugin new demo --dir ./a/./b/../c
+
 # --------------------------------------------------------------- hand-overs ---
 t "what stays with node, and what the grammar hands over"
 sc "plugin" node 2 - -- plugin
@@ -359,7 +423,6 @@ SETUP=$(text '[plugins.x]
 from = "/nowhere"
 '); sc "plugin list with a plugin that is not there" node 1 - -- plugin list
 sc "plugin bogus" node 2 - -- plugin bogus
-sc "plugin new with no name" node 2 - -- plugin new
 sc "plugin add --bogus" node 2 - -- plugin add --bogus ./pkgs/plain
 sc "plugin add --name with no value" node 2 - -- plugin add ./pkgs/plain --name
 sc "plugin add --name followed by an option" node 2 - -- plugin add ./pkgs/plain --name --x
