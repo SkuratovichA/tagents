@@ -4,15 +4,23 @@
 
 mod common;
 
+use rusqlite::params;
 use serde_json::{Value, json};
 use tagents_core::{
     js,
-    knowledge::search::{
-        DocSummary, Filters, Hit, fts_query, get_doc, get_section, list_docs, parse_address, search,
+    knowledge::{
+        index::open_db,
+        search::{
+            DocSummary, Filters, Hit, fts_query, get_doc, get_section, list_docs, parse_address,
+            search,
+        },
     },
 };
 
-use common::knowledge::{index_of, vectors};
+use common::{
+    knowledge::{index_of, vectors},
+    scratch,
+};
 
 /// The fixed clock of the vectors: 2026-10-31T12:00:00Z.
 const NOW: i64 = 1_793_448_000_000;
@@ -215,4 +223,31 @@ fn an_address_is_an_id_and_maybe_a_heading() {
     assert_eq!(("", Some("x")), parse_address("#x"));
     assert_eq!(("a", Some("")), parse_address("a#"));
     assert_eq!(("a", Some("b#c")), parse_address("a#b#c"));
+}
+
+/// Sections that rank alike come in the order of the document, not in the order the index stored them. The rows are written backwards, so that the storage order is the opposite of the document's: a reindex always writes in the document's order, which is why only rows written by hand can tell the key `chunks.ord` from none.
+#[test]
+fn sections_that_rank_alike_come_in_the_order_of_the_document() {
+    let dir = scratch("knowledge-search-ord-tie");
+    let db = open_db(dir.join("index.sqlite").to_str().unwrap()).unwrap();
+    db.execute("insert into docs (id, path, title, type, type_key, description, tags, status, mtime, hash) values ('note', 'note.md', 'Note', 'Note', 'note', '', '[]', 'stable', 1, 'h')", []).unwrap();
+    for (ord, heading) in [(2, "third"), (1, "second"), (0, "first")] {
+        db.execute(
+            "insert into chunks (doc_id, heading, ord, body) values ('note', ?1, ?2, 'zyxwv')",
+            params![heading, ord],
+        )
+        .unwrap();
+        db.execute(
+            "insert into chunks_fts (rowid, doc_id, heading, body) values (last_insert_rowid(), 'note', ?1, 'zyxwv')",
+            [heading],
+        )
+        .unwrap();
+    }
+    let hits = search(&db, &["zyxwv"], &Filters::default(), None, NOW);
+    let headings: Vec<&str> = hits.iter().map(|hit| hit.heading.as_str()).collect();
+    assert_eq!(vec!["first", "second", "third"], headings);
+    assert!(
+        hits.windows(2).all(|pair| pair[0].score == pair[1].score),
+        "the sections must tie for the order to come from the key: {hits:?}"
+    );
 }

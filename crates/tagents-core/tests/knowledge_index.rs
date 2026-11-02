@@ -133,6 +133,20 @@ fn an_index_that_exists_is_opened_as_it_is() {
     assert_eq!(1, doc_count(&db).unwrap());
 }
 
+/// A write lock on every open would make every reader wait for it, and the stored version is the only thing an open may write: the file of an index that is at the current version stays byte for byte as it was.
+#[test]
+fn opening_an_index_of_the_current_version_writes_nothing() {
+    let dir = scratch("knowledge-index-open-writes-nothing");
+    let file = dir.join("index.sqlite");
+    drop(open_db(file.to_str().unwrap()).unwrap());
+    let before = fs::read(&file).unwrap();
+    drop(open_db(file.to_str().unwrap()).unwrap());
+    assert!(
+        before == fs::read(&file).unwrap(),
+        "a second open changed the file"
+    );
+}
+
 #[test]
 fn a_file_of_another_schema_version_is_rebuilt_the_way_node_reads_the_version() {
     let cases = vectors()["engine"]["schemaVersions"]["cases"]
