@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 #
-# tests/rust-plugin-parity.sh — `tagents-core plugin add`, `plugin remove` and `plugin new` leave what the node CLI leaves.
+# tests/rust-plugin-parity.sh — `tagents-core plugin add`, `plugin remove`, `plugin new` and `doctor` leave what the node CLI leaves.
 #
 # Every scenario runs twice, `node packages/core/dist/cli/main.js <args>` and `target/debug/tagents-core <args>` (or $TAGENTS_CORE_BIN), each on its own pristine copy of the same tree at the same path (so no transcript can tell the two apart by where it ran), under `env -i` with a scratch HOME, config directory and locale, and with no `pnpm` on PATH (node's last resort for a package it cannot find is `pnpm root -g`). It passes only when stdout, stderr, the exit code and the whole tree afterwards (every path, its mode, its link target or the checksum of its bytes) are the same. The only thing normalised is the process id in a temporary file's name.
 # The tree is the package tree of tests/rust-plugin-vectors/tree.mts, and the config documents are the corpus of tests/rust-plugin-vectors/corpus.mts, written by tests/rust-plugin-vectors/materialise.mts, so the cases here and the vectors of crates/tagents-core/tests/plugin_vectors/ are about the same inputs.
-# Who answered is checked too. The Rust side runs with $TAGENTS_NODE pointing at a shim that notes it was started and then runs the real node: a scenario marked `rust` fails when the binary handed the call to node (a binary that forwarded everything would otherwise pass every comparison), one marked `node` fails when the binary answered it itself (the call is one the design hands over, and answering it would be a second implementation of node's error text), and one marked `any` is counted and not judged (the corpus sweeps, where whether Rust can prove an answer depends on the document). A floor on the count says the sweeps were not all handed over.
+# Who answered is checked too. The Rust side runs with $TAGENTS_NODE pointing at a shim that notes it was started and then runs the real node (except for `node -p`, the one question `doctor` asks node about itself, which is not a hand-over): a scenario marked `rust` fails when the binary handed the call to node (a binary that forwarded everything would otherwise pass every comparison), one marked `node` fails when the binary answered it itself (the call is one the design hands over, and answering it would be a second implementation of node's error text), and one marked `any` is counted and not judged (the corpus sweeps, where whether Rust can prove an answer depends on the document). A floor on the count says the sweeps were not all handed over.
+# `doctor` with a node that cannot be asked has no oracle for its first line, because node cannot run without node: `sc_nonode` compares the other three lines, stderr, the exit code and the tree with node's, and checks line one against the text the design gives it.
 # Tripwires assert on the node run alone: its exit code, and a text it must print, so a scenario that stopped provoking what it exists for fails here instead of passing for nothing.
 #
 # PARITY_SELF_TEST=1 runs node on both sides and skips the checks of who answered: it proves the suite and node's determinism, not the Rust binary. PARITY_ONLY=<text> runs only the scenarios whose label holds the text. TAGENTS_NODE names the node program.
@@ -43,15 +44,15 @@ BIN=$TMP/bin                # the only directory of PATH that holds node
 MARK=$TMP/handed-over       # the shim writes it when the binary hands a call to node
 mkdir "$SHIM" "$BIN" || exit 2
 ln -s "$NODE" "$BIN/node"
-printf '#!/bin/sh\n: > "$PARITY_MARK"\nexec "$PARITY_REAL_NODE" "$@"\n' > "$SHIM/node"
+printf '#!/bin/sh\ncase "$1" in -p) ;; *) : > "$PARITY_MARK" ;; esac\nexec "$PARITY_REAL_NODE" "$@"\n' > "$SHIM/node"
 chmod +x "$SHIM/node"
 "$NODE" "$MATERIALISE" tree "$TEMPLATE" || { echo "rust-plugin-parity: cannot write the package tree" >&2; exit 2; }
 "$NODE" "$MATERIALISE" corpus "$CORPUS" || { echo "rust-plugin-parity: cannot write the corpus" >&2; exit 2; }
 
 if [ -z "$SELF_TEST" ]; then
-  # The first check, before any scenario: the binary says it serves the three verbs. A build with no `plugin` group would hand every scenario to node and pass them all.
-  "$RUST" --spec | "$NODE" -e 'const s = JSON.parse(require("fs").readFileSync(0, "utf8")); const has = (p) => s.commands.some((c) => c.path.join(" ") === p); process.exit(has("plugin add") && has("plugin remove") && has("plugin new") ? 0 : 1)' \
-    || { echo "rust-plugin-parity: $RUST does not serve plugin add, plugin remove and plugin new (--spec)" >&2; exit 2; }
+  # The first check, before any scenario: the binary says it serves the four verbs. A build with no `plugin` group would hand every scenario to node and pass them all.
+  "$RUST" --spec | "$NODE" -e 'const s = JSON.parse(require("fs").readFileSync(0, "utf8")); const has = (p) => s.commands.some((c) => c.path.join(" ") === p); process.exit(has("plugin add") && has("plugin remove") && has("plugin new") && has("doctor") ? 0 : 1)' \
+    || { echo "rust-plugin-parity: $RUST does not serve plugin add, plugin remove, plugin new and doctor (--spec)" >&2; exit 2; }
 fi
 
 # One `stat` format per platform: the path, the type and mode as `ls -l` writes them, and the link target.
@@ -73,7 +74,7 @@ reset() { CWD=; LOCALE=en; SETUP=; CFGDIR=cfg; EXTRA=(); ARGS=(); }
 
 # What the run left: every path with its mode and its checksum or link target.
 snapshot() {
-  ( cd "$RUN" && { find . -exec stat "${STAT_FORMAT[@]}" {} + ; find . -type f -exec cksum {} + 2> /dev/null; } | LC_ALL=C sort )
+  ( cd "$RUN" && { find . -exec stat "${STAT_FORMAT[@]}" {} + 2> /dev/null ; find . -type f -exec cksum {} + 2> /dev/null; } | LC_ALL=C sort )
 }
 # The only difference allowed between the two programs: the process id in `<config>.<pid>.tmp`.
 norm() { sed -E 's/\.[0-9]+\.tmp/.PID.tmp/g'; }
@@ -143,6 +144,36 @@ sc() {
 sc_user() {  # <label> <the rest of sc's words>
   if [ "$IS_ROOT" -eq 1 ]; then skipped=$((skipped + 1)); reset; return; fi
   sc "$@"
+}
+
+# `doctor` when the node it asks cannot answer. Line one is the binary's own words, so it is checked against <line one>; the other three lines, stderr, the exit code and the tree are node's, as they are with a node that answers. <pinned> is $TAGENTS_NODE on the Rust side only. Not run in the self test, where node answers for both sides.
+sc_nonode() {  # <label> <pinned node> <line one> -- <the words after the program name>
+  local label=$1 pinned=$2 first=$3; shift 4
+  ARGS=("$@")
+  if [ -n "$ONLY" ] && [[ $label != *"$ONLY"* ]]; then reset; return; fi
+  if [ -n "$SELF_TEST" ]; then skipped=$((skipped + 1)); reset; return; fi
+  side node "$NODE" "$CORE_JS"
+  EXTRA+=("TAGENTS_NODE=$pinned")
+  side rust "$RUST"
+  tail -n +2 "$TMP/out.node" > "$TMP/rest.node"; tail -n +2 "$TMP/out.rust" > "$TMP/rest.rust"
+  local what=()
+  [ "$(head -n 1 "$TMP/out.rust")" = "$first" ] || what+=("line one")
+  cmp -s "$TMP/rest.node" "$TMP/rest.rust" || what+=("lines two to four")
+  cmp -s "$TMP/err.node" "$TMP/err.rust" || what+=(stderr)
+  cmp -s "$TMP/code.node" "$TMP/code.rust" || what+=("exit code")
+  cmp -s "$TMP/tree.node" "$TMP/tree.rust" || what+=(tree)
+  if [ ${#what[@]} -ne 0 ]; then
+    bad "$label: differs in ${what[*]}" \
+      "exit node=$(cat "$TMP/code.node") rust=$(cat "$TMP/code.rust")" \
+      "stdout node: $(head -c 300 "$TMP/out.node" | tr '\n' '|')" \
+      "stdout rust: $(head -c 300 "$TMP/out.rust" | tr '\n' '|')" \
+      "stderr rust: $(head -c 300 "$TMP/err.rust" | tr '\n' '|')"
+  else
+    ok
+  fi
+  if [ "$(cat "$TMP/code.node")" != 0 ]; then bad "tripwire $label: node exited $(cat "$TMP/code.node"), doctor exits 0"; fi
+  rust_served=$((rust_served + 1))
+  reset
 }
 
 # ------------------------------------------------------------------- setups ---
@@ -413,6 +444,122 @@ done
 CWD=proj/a/b; sc "new links core by a path that goes up" rust 0 "wrote" -- plugin new demo --dir ../../../x/y/z
 sc "new links core from a directory below a dot directory" rust 0 "wrote" -- plugin new demo --dir .hidden/x
 sc "new into a path of dot segments" rust 0 "wrote" -- plugin new demo --dir ./a/./b/../c
+
+# --------------------------------------------------------------------- doctor ---
+# `doctor` reads no argument, and everything it prints comes from the environment this suite sets: the node of $TAGENTS_NODE, $TA_STATE_DIR (else $HOME/.claude/agent-state), the config directory, $PATH.
+ROW='1700000000\tworking\tsid\t/w\t/w/t.jsonl\tReading\n'
+S_ST="mkdir st; printf '$ROW' > st/1.tsv"
+t "doctor: with nothing set up, in both languages, from another directory"
+sc "doctor with nothing set up" rust 0 "agent state" -- doctor
+CWD=home; sc "doctor from another directory" rust 0 "agent state" -- doctor
+LOCALE=ru; sc "doctor in Russian" rust 0 "состояние агентов" -- doctor
+LOCALE=RU; sc "doctor with a locale that is not exactly ru" rust 0 "agent state" -- doctor
+LOCALE=ru_RU; sc "doctor with the locale ru_RU" rust 0 "agent state" -- doctor
+LOCALE=; sc "doctor with an empty locale" rust 0 "agent state" -- doctor
+
+t "doctor: the arguments are not read"
+sc "doctor --x" rust 0 "agent state" -- doctor --x
+sc "doctor with two words" rust 0 "agent state" -- doctor a b
+sc "doctor --help" rust 0 "agent state" -- doctor --help
+sc "doctor -h" rust 0 "agent state" -- doctor -h
+sc "doctor --json" rust 0 "agent state" -- doctor --json
+sc "doctor with an empty argument" rust 0 "agent state" -- doctor ''
+sc "doctor --" rust 0 "agent state" -- doctor --
+sc "doctor with an argument that is not UTF-8" rust 0 "agent state" -- doctor $'\xff\xfe'
+sc "doctor and a plugin verb" rust 0 "agent state" -- doctor plugin new x
+
+t "doctor: the state records"
+SETUP=$S_ST; EXTRA=("TA_STATE_DIR=$RUN/st"); sc "doctor counts one record" rust 0 "(1 record(s))" -- doctor
+SETUP=$S_ST; EXTRA=("TA_STATE_DIR=$RUN/st"); LOCALE=ru; sc "doctor counts one record, in Russian" rust 0 "(1 запис" -- doctor
+SETUP="$S_ST; printf '$ROW' > st/s-ab.cd.tsv; printf '$ROW' > st/12.tsv"; EXTRA=("TA_STATE_DIR=$RUN/st"); sc "doctor counts three records" rust 0 "(3 record(s))" -- doctor
+SETUP="mkdir st; for n in 1 2 3 4 5 6 7 8 9 10 11 12; do printf '$ROW' > st/\$n.tsv; done"; EXTRA=("TA_STATE_DIR=$RUN/st"); sc "doctor counts twelve records" rust 0 "(12 record(s))" -- doctor
+SETUP="$S_ST; printf 'garbage\n' > st/2.tsv; printf '$ROW' > st/notes.txt; mkdir st/3.tsv; printf '$ROW' > st/a-b.tsv"
+EXTRA=("TA_STATE_DIR=$RUN/st"); sc "doctor counts only the record among a broken one, a file that is no record, a directory and a bad name" rust 0 "(1 record(s))" -- doctor
+for body in "$ROW" "${ROW}garbage\n" '1700000000\tworking\tsid\t/w\t/t\n' 'nan\tworking\tsid\t/w\t/t\td\n' 'Infinity\tworking\tsid\t/w\t/t\td\n' \
+  '1e3\tworking\tsid\t/w\t/t\td\n' ' 5 \tworking\tsid\t/w\t/t\td\n' '\tworking\tsid\t/w\t/t\td\n' '0x10\tworking\tsid\t/w\t/t\td\n' '1700000000\tsleeping\tsid\t/w\t/t\td\n' \
+  '1700000000\tgone\tsid\t/w\t/t\td\n' '1700000000\tsubdone\tsid\t/w\t/t\td\n' '1700000000\tnew\tsid\t/w\t/t\td\n' '1700000000\tblocked\tsid\t/w\t/t\td\n' '1700000000\tdone\tsid\t/w\t/t\td\n' \
+  '1700000000\tWorking\tsid\t/w\t/t\td\n' '1700000000\tworking\tsid\t/w\t/t\td\r\n' '1700000000\tworking\tsid\t/w\t/t\td\textra\tmore\n' '\n' '\n1700000000\tworking\tsid\t/w\t/t\td\n' '' '1700000000\tworking\tsid\t/w\t/t\td'; do
+  SETUP="mkdir st; printf '$body' > st/1.tsv"; EXTRA=("TA_STATE_DIR=$RUN/st"); sc "doctor with a record of $(printf '%s' "$body" | head -c 40 | od -An -c | tr -s ' ' | head -c 60)" rust 0 "agent state" -- doctor
+done
+for name in 1.tsv s-a.tsv s-a.b_c-d.tsv s-.tsv 's-é.tsv' 007.tsv -1.tsv 1.TSV 1.tsv.bak .tsv a.tsv 's-a b.tsv' 1.tsv. ' 1.tsv' 99999999999999999999.tsv; do
+  SETUP="mkdir st; printf '$ROW' > 'st/$name'"; EXTRA=("TA_STATE_DIR=$RUN/st"); sc "doctor with a record file called [$name]" rust 0 "agent state" -- doctor
+done
+SETUP="mkdir st; printf '$ROW' > rec; ln -s ../rec st/1.tsv"; EXTRA=("TA_STATE_DIR=$RUN/st"); sc "doctor with a record that is a link" rust 0 "(1 record(s))" -- doctor
+SETUP="mkdir st; ln -s ../nowhere st/1.tsv"; EXTRA=("TA_STATE_DIR=$RUN/st"); sc "doctor with a record that is a link to nothing" rust 0 "(0 record(s))" -- doctor
+SETUP="$S_ST; chmod 000 st/1.tsv"; EXTRA=("TA_STATE_DIR=$RUN/st"); sc_user "doctor with a record it cannot read" rust 0 "(0 record(s))" -- doctor
+SETUP="$S_ST; chmod 000 st"; EXTRA=("TA_STATE_DIR=$RUN/st"); sc_user "doctor with a state directory it cannot read" rust 0 "(0 record(s))" -- doctor
+SETUP="printf x > afile"; EXTRA=("TA_STATE_DIR=$RUN/afile"); sc "doctor with a state directory that is a file" rust 0 "(0 record(s))" -- doctor
+SETUP="$S_ST; ln -s st lnk"; EXTRA=("TA_STATE_DIR=$RUN/lnk"); sc "doctor with a state directory that is a link" rust 0 "(1 record(s))" -- doctor
+EXTRA=("TA_STATE_DIR=$RUN/nowhere"); sc "doctor with a state directory that is not there" rust 0 "(0 record(s))" -- doctor
+SETUP=$S_ST; EXTRA=("TA_STATE_DIR=st"); sc "doctor with a relative state directory" rust 0 "agent state st (1" -- doctor
+SETUP=$S_ST; EXTRA=("TA_STATE_DIR=st/"); sc "doctor with a state directory written with a slash" rust 0 "agent state st/ (1" -- doctor
+SETUP=$S_ST; EXTRA=("TA_STATE_DIR=$RUN//st/../st"); sc "doctor with a state directory that is not normalised" rust 0 "(1 record(s))" -- doctor
+SETUP="mkdir -p home/.claude/agent-state; printf '$ROW' > home/.claude/agent-state/1.tsv"; sc "doctor with the default state directory" rust 0 "(1 record(s))" -- doctor
+SETUP="mkdir -p home/.claude/agent-state; printf '$ROW' > home/.claude/agent-state/1.tsv"; EXTRA=("TA_STATE_DIR="); sc "doctor with an empty state directory variable" rust 0 "(1 record(s))" -- doctor
+SETUP="mkdir -p home/.claude/agent-state; printf '$ROW' > home/.claude/agent-state/1.tsv"; EXTRA=("TA_STATE_DIR= "); sc "doctor with a blank state directory variable" rust 0 "(1 record(s))" -- doctor
+SETUP="mkdir -p home/.claude/agent-state; printf '$ROW' > home/.claude/agent-state/1.tsv"; EXTRA=("HOME=$RUN/home/"); sc "doctor with a home written with a slash" rust 0 "(1 record(s))" -- doctor
+SETUP="mkdir -p .claude/agent-state; printf '$ROW' > .claude/agent-state/1.tsv"; EXTRA=("HOME="); sc "doctor with an empty home" rust 0 "agent state" -- doctor
+SETUP="mkdir -p home/.claude/agent-state; printf '$ROW' > home/.claude/agent-state/1.tsv"; EXTRA=("HOME=home"); sc "doctor with a relative home" rust 0 "agent state" -- doctor
+for d in '{{count}}' '{{dir}}' '{{x}}' '$t(missing)' '$&' "it's" 'a b' 'é😀' '{{count}} {{count}}'; do
+  SETUP="mkdir -p 'd/$d'; printf '$ROW' > 'd/$d/1.tsv'"; EXTRA=("TA_STATE_DIR=$RUN/d/$d"); sc "doctor with a state directory called $d" rust 0 "agent state" -- doctor
+done
+SETUP="mkdir -p 'd/{{count}}'; printf '$ROW' > 'd/{{count}}/1.tsv'"; EXTRA=("TA_STATE_DIR=$RUN/d/{{count}}"); LOCALE=ru; sc "doctor with a state directory called {{count}}, in Russian" rust 0 "агентов" -- doctor
+
+t "doctor: the config file"
+SETUP='mkdir -p cfg; : > cfg/config.toml'; sc "doctor with a config file" rust 0 ": present" -- doctor
+SETUP='mkdir -p cfg; : > cfg/config.toml'; LOCALE=ru; sc "doctor with a config file, in Russian" rust 0 ": есть" -- doctor
+sc "doctor with no config file" rust 0 ": missing" -- doctor
+LOCALE=ru; sc "doctor with no config file, in Russian" rust 0 ": нет" -- doctor
+SETUP='mkdir -p cfg/config.toml'; sc "doctor with a config file that is a directory" rust 0 ": present" -- doctor
+SETUP='mkdir -p cfg; : > real.toml; ln -s ../real.toml cfg/config.toml'; sc "doctor with a config file that is a link" rust 0 ": present" -- doctor
+SETUP='mkdir -p cfg; ln -s ../nowhere cfg/config.toml'; sc "doctor with a config file that is a link to nothing" rust 0 ": missing" -- doctor
+SETUP='mkdir -p cfg; : > cfg/config.toml; chmod 000 cfg/config.toml'; sc "doctor with a config file nobody can read" rust 0 ": present" -- doctor
+SETUP='mkdir -p cfg; : > cfg/config.toml; chmod 000 cfg'; sc_user "doctor with a config directory nobody can enter" rust 0 ": missing" -- doctor
+SETUP=$(text '[plugins.doctor]
+package = "x"
+'); sc "doctor with a plugin named doctor in the config" rust 0 ": present" -- doctor
+CFGDIR=cfg/sub/; SETUP='mkdir -p cfg/sub; : > cfg/sub/config.toml'; sc "doctor with a config directory written with a slash" rust 0 ": present" -- doctor
+CFGDIR=cfg/../cfg; SETUP='mkdir -p cfg; : > cfg/config.toml'; sc "doctor with a config directory that is not normalised" rust 0 ": present" -- doctor
+SETUP='mkdir -p xdg/tagents; : > xdg/tagents/config.toml'; EXTRA=("TAGENTS_CONFIG_DIR=" "XDG_CONFIG_HOME=$RUN/xdg"); sc "doctor with the config directory from XDG_CONFIG_HOME" rust 0 ": present" -- doctor
+SETUP='mkdir -p xdg/tagents; : > xdg/tagents/config.toml'; EXTRA=("TAGENTS_CONFIG_DIR= " "XDG_CONFIG_HOME=$RUN/xdg"); sc "doctor with a blank config directory variable" rust 0 ": present" -- doctor
+SETUP='mkdir -p home/.config/tagents; : > home/.config/tagents/config.toml'; EXTRA=("TAGENTS_CONFIG_DIR=" "XDG_CONFIG_HOME="); sc "doctor with the config directory from the home" rust 0 ": present" -- doctor
+SETUP='mkdir -p home/.config/tagents'; EXTRA=("TAGENTS_CONFIG_DIR=" "XDG_CONFIG_HOME=   "); sc "doctor with a blank XDG_CONFIG_HOME" rust 0 ": missing" -- doctor
+for d in '{{status}}' '{{file}}' '{{x}}' '$t(missing)' '$&' 'a b' 'é😀' '{{status}}{{status}}'; do
+  CFGDIR="c/$d"; SETUP="mkdir -p 'c/$d'; : > 'c/$d/config.toml'"; sc "doctor with a config directory called $d" rust 0 "config " -- doctor
+  CFGDIR="c/$d"; LOCALE=ru; sc "doctor with a missing config in a directory called $d, in Russian" rust 0 "конфиг " -- doctor
+done
+
+t "doctor: claude on PATH"
+CL='mkdir cl; printf "#!/bin/sh\n" > cl/claude; chmod +x cl/claude'
+SETUP=$CL; EXTRA=("PATH=$BIN:$RUN/cl:/usr/bin:/bin"); sc "doctor with claude on PATH" rust 0 "claude: $RUN/cl/claude" -- doctor
+SETUP=$CL; EXTRA=("PATH=$BIN:$RUN/cl:/usr/bin:/bin"); LOCALE=ru; sc "doctor with claude on PATH, in Russian" rust 0 "claude: $RUN/cl/claude" -- doctor
+sc "doctor with no claude on PATH" rust 0 "claude: missing" -- doctor
+LOCALE=ru; sc "doctor with no claude on PATH, in Russian" rust 0 "claude: нет" -- doctor
+SETUP='mkdir cl1 cl2; printf "#!/bin/sh\n" > cl1/claude; printf "#!/bin/sh\n" > cl2/claude; chmod +x cl2/claude'; EXTRA=("PATH=$BIN:$RUN/cl1:$RUN/cl2:/usr/bin:/bin"); sc "doctor skips a claude that is not executable" rust 0 "claude: $RUN/cl2/claude" -- doctor
+SETUP='mkdir cl1 cl2; printf "#!/bin/sh\n" > cl1/claude; chmod +x cl1/claude; printf "#!/bin/sh\n" > cl2/claude; chmod +x cl2/claude'; EXTRA=("PATH=$BIN:$RUN/cl2:$RUN/cl1:/usr/bin:/bin"); sc "doctor takes the first claude of two" rust 0 "claude: $RUN/cl2/claude" -- doctor
+SETUP='mkdir -p cl/claude'; EXTRA=("PATH=$BIN:$RUN/cl:/usr/bin:/bin"); sc "doctor skips a directory called claude" rust 0 "claude: missing" -- doctor
+SETUP='mkdir cl; printf "#!/bin/sh\n" > real; chmod +x real; ln -s ../real cl/claude'; EXTRA=("PATH=$BIN:$RUN/cl:/usr/bin:/bin"); sc "doctor with claude a link to an executable" rust 0 "claude: $RUN/cl/claude" -- doctor
+SETUP='mkdir cl; ln -s ../nowhere cl/claude'; EXTRA=("PATH=$BIN:$RUN/cl:/usr/bin:/bin"); sc "doctor with claude a link to nothing" rust 0 "claude: missing" -- doctor
+SETUP='mkdir cl; printf "#!/bin/sh\n" > cl/claude; chmod 111 cl/claude'; EXTRA=("PATH=$BIN:$RUN/cl:/usr/bin:/bin"); sc "doctor with claude that can only be executed" rust 0 "claude: $RUN/cl/claude" -- doctor
+SETUP='mkdir cl; printf "#!/bin/sh\n" > cl/claude; chmod +x cl/claude'; EXTRA=("PATH=$BIN:cl:/usr/bin:/bin"); sc "doctor with a relative entry on PATH" rust 0 "claude: cl/claude" -- doctor
+SETUP='mkdir cl; printf "#!/bin/sh\n" > cl/claude; chmod +x cl/claude'; EXTRA=("PATH=$BIN:./cl/../cl/:/usr/bin:/bin"); sc "doctor with an entry on PATH that is not normalised" rust 0 "claude: cl/claude" -- doctor
+SETUP=$CL; EXTRA=("PATH=::$BIN::$RUN/cl::/usr/bin:/bin:"); sc "doctor with empty entries on PATH" rust 0 "claude: $RUN/cl/claude" -- doctor
+SETUP=$CL; EXTRA=("PATH=$RUN/cl"); sc "doctor with a PATH of one entry" rust 0 "claude: $RUN/cl/claude" -- doctor
+SETUP=$CL; EXTRA=("PATH="); sc "doctor with an empty PATH" rust 0 "claude: missing" -- doctor
+SETUP='mkdir "cl {{status}} x"; printf "#!/bin/sh\n" > "cl {{status}} x/claude"; chmod +x "cl {{status}} x/claude"'; EXTRA=("PATH=$BIN:$RUN/cl {{status}} x:/usr/bin:/bin"); sc "doctor with claude in a directory called {{status}}" rust 0 "claude: " -- doctor
+SETUP='mkdir "cl é😀"; printf "#!/bin/sh\n" > "cl é😀/claude"; chmod +x "cl é😀/claude"'; EXTRA=("PATH=$BIN:$RUN/cl é😀:/usr/bin:/bin"); sc "doctor with claude in a directory with a name that is not ASCII" rust 0 "claude: " -- doctor
+
+t "doctor: a node that cannot be asked (no oracle for line one: node cannot run without node)"
+sc_nonode "doctor with a node that is not there" "$RUN/no-such-node" "node: missing" -- doctor
+LOCALE=ru; sc_nonode "doctor with a node that is not there, in Russian" "$RUN/no-such-node" "node: нет" -- doctor
+SETUP='printf "#!/bin/sh\n" > afile'; sc_nonode "doctor with a node that is not executable" "$RUN/afile" "node: missing" -- doctor
+SETUP='mkdir adir'; sc_nonode "doctor with a node that is a directory" "$RUN/adir" "node: missing" -- doctor
+SETUP='printf "#!/bin/sh\nexit 0\n" > stub; chmod +x stub'; sc_nonode "doctor with a node that prints nothing" "$RUN/stub" "node: missing" -- doctor
+SETUP='printf "#!/bin/sh\nexit 1\n" > stub; chmod +x stub'; sc_nonode "doctor with a node that fails" "$RUN/stub" "node: missing" -- doctor
+SETUP='printf "#!/bin/sh\necho \"[1,2]\"\n" > stub; chmod +x stub'; sc_nonode "doctor with a node that answers numbers" "$RUN/stub" "node: missing" -- doctor
+SETUP='printf "#!/bin/sh\necho not json\n" > stub; chmod +x stub'; sc_nonode "doctor with a node that answers what is not JSON" "$RUN/stub" "node: missing" -- doctor
+SETUP='printf "#!/bin/sh\nexec \"$NODE\" -e \"process.exit(7)\"\n" > stub; chmod +x stub'; sc_nonode "doctor with a node that exits 7" "$RUN/stub" "node: missing" -- doctor
+SETUP='mkdir empty'; EXTRA=("PATH=$RUN/empty"); sc_nonode "doctor with an empty pinned node and no node on PATH" "" "node: missing" -- doctor
 
 # --------------------------------------------------------------- hand-overs ---
 t "what stays with node, and what the grammar hands over"
