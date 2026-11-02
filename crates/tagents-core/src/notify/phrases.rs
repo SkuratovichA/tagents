@@ -89,7 +89,7 @@ pub fn phrases_for(locale: Locale) -> &'static Phrases {
 
 /// The table for `TAGENTS_LOCALE`, English when it is unset or not one we speak.
 pub fn current_phrases() -> &'static Phrases {
-    phrases_for(Locale::of(std::env::var("TAGENTS_LOCALE").ok().as_deref()))
+    phrases_for(Locale::current())
 }
 
 #[cfg(test)]

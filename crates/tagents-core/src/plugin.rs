@@ -64,7 +64,7 @@ impl Setting {
         Some(Setting {
             cwd,
             file: config_file(),
-            locale: Locale::of(std::env::var("TAGENTS_LOCALE").ok().as_deref()),
+            locale: Locale::current(),
             env: resolve::Env::current(),
             core_dir: node::root().ok().and_then(|root| {
                 root.join("packages/core")

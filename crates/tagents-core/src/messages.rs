@@ -19,6 +19,11 @@ impl Locale {
             _ => Locale::En,
         }
     }
+
+    /// The locale of this process: its `TAGENTS_LOCALE`, read by `of`.
+    pub fn current() -> Locale {
+        Locale::of(std::env::var("TAGENTS_LOCALE").ok().as_deref())
+    }
 }
 
 /// The catalogue read for one language.

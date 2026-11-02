@@ -50,12 +50,10 @@ impl Setting {
     /// The setting of this process.
     pub fn current() -> Setting {
         Setting {
-            locale: Locale::of(std::env::var("TAGENTS_LOCALE").ok().as_deref()),
+            locale: Locale::current(),
             state_dir: state_dir(),
             config_file: config_file(),
-            path: std::env::var_os("PATH")
-                .map(|path| path.to_string_lossy().into_owned())
-                .unwrap_or_default(),
+            path: node::env_text("PATH").unwrap_or_default(),
             node: node::interpreter(),
             deadline: DEADLINE,
         }
