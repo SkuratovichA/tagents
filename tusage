@@ -680,14 +680,6 @@ update() {
 #                8 reqs 9 in 10 cw5 11 cw1h 12 cr 13 out 14 maxctx 15 lastctx
 # (15 is absent from rows an older version wrote; see fold_rows)
 
-# Local 00:00 of the 1st of the current month. BSD date wants the format spelt
-# out, GNU date parses the bare date; try each in that order.
-month_start() {
-  local first; first=$(date +%Y-%m-01)
-  date -j -f '%Y-%m-%d %H:%M:%S' "$first 00:00:00" +%s 2>/dev/null ||
-    date -d "$first" +%s 2>/dev/null
-}
-
 # A calendar day as an epoch: its midnight, or the given time of day, at the UTC
 # offset daykey buckets rows with (today's, in the awk below), so the first and the
 # last row of a window are the days it names even across a change of the clocks.
@@ -720,7 +712,7 @@ day_epoch() {
 since_cut() {
   local v=$1 n=$1 unit=1
   case $v in
-    month)             month_start; return ;;
+    month)             day_epoch "$(date +%Y-%m-01)"; return ;;
     ????-??-??)        day_epoch "$v"; return ;;
     *[hdm])
       n=${v%?}
@@ -1186,7 +1178,11 @@ AWK_FMT='
   # A share of nothing is 0%, not a division by zero: a week with no usage, or a
   # window of nothing but zero-token placeholder requests, is a total of 0.
   function pct(v, of) { return (of > 0) ? 100*v/of : 0 }
-  # claude-opus-5 and claude-haiku-4-5-20251001 read as opus-5 and haiku-4-5.
+  # claude-opus-5 and claude-haiku-4-5-20251001 read as opus-5 and haiku-4-5. Not
+  # shortmodel of lib/tagents/list.sh, which makes opus5 and haiku4.5 for a column
+  # of a few characters: a table here has room for the whole name, and the
+  # documentation and the specs print opus-5. Section 28 of tests/tusage.sh pins
+  # what each makes of the same names.
   function short_model(m) {
     sub(/^claude-/, "", m)
     if (m ~ /-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$/) m = substr(m, 1, length(m) - 9)
@@ -1234,6 +1230,9 @@ AWK_TEXT='
       if (c >= "\200" && c <= "\277") continue; n++ }
     return n }
   function upad(s, w,   n) { n = uclen(s); return (w > n) ? s sprintf("%" (w-n) "s", "") : s }
+  # The first n characters of s: a copy of uclip in lib/tagents/list.sh and timeline.sh,
+  # which awk text cannot import and which this file must run without. Section 28 of
+  # tests/tusage.sh runs the two on the same inputs.
   function utrunc(s, n,   i, c, k, r) { k = 0; r = ""
     for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
       if (c < "\200" || c > "\277") { if (k == n) break; k++ }
@@ -1695,12 +1694,13 @@ by_aggregate() {  # <dimensions, comma list> <cut> <upto> table|tsv
     }'
 }
 
-# How wide a table may be: COLUMNS when that is a number, else the terminal's
-# width when standard output is one, else 120.
+# How wide a table may be: COLUMNS when that is a number, else the width of the
+# controlling terminal (tty_cols of lib/tagents/core.sh) when standard output is
+# one, else 120, which is also the answer when lib/tagents is not beside this file.
 out_width() {
   local w=""
   case ${COLUMNS:-} in ''|*[!0-9]*|0) ;; *) w=$COLUMNS ;; esac
-  if [ -z "$w" ] && [ "$OUT_TTY" = 1 ]; then w=$(stty size </dev/tty 2>/dev/null); w=${w#* }; fi
+  if [ -z "$w" ] && [ "$OUT_TTY" = 1 ]; then w=$(with_names tty_cols); fi
   case $w in ''|*[!0-9]*|0) w=120 ;; esac
   echo "$w"
 }

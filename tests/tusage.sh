@@ -1943,5 +1943,41 @@ ok "the first and the last row of a longer window are its first and last day" \
 ok "--since a day and no --until runs to today, the 27th's row in" "128" \
    "$(prague --by day --since 2026-10-27 --tsv | cut -f2)"
 
+# ---------------------------------------------------------------------------
+t "28. what is copied from the dashboard stays what it was copied from"
+# ---------------------------------------------------------------------------
+# awk text cannot be sourced, and tusage runs with no lib/tagents beside it, so two
+# awk functions are copies. Each is run here, as it stands in its file, on the same
+# inputs as the original.
+
+LIBT="$HERE/../lib/tagents"
+UTRUNC_FN=$(sed -n '/function utrunc(/,/return r }/p' "$TU")
+UCLIP_LIST=$(sed -n '/function uclip(/,/^    }$/p' "$LIBT/list.sh")
+UCLIP_TIME=$(sed -n '/function uclip(/,/^      }$/p' "$LIBT/timeline.sh")
+ok "the three functions were found" "1 1 1" "$([ -n "$UTRUNC_FN" ] && echo 1) $([ -n "$UCLIP_LIST" ] && echo 1) $([ -n "$UCLIP_TIME" ] && echo 1)"
+clipped() {  # <awk function text> <function name>: what it makes of each text at each width
+  local s n
+  for s in "plain" "Счёт для клиента" "a…b⑂c" "" "x"; do
+    for n in 0 1 3 7 16 40; do
+      printf '%s|' "$(LC_ALL=C awk -v s="$s" -v n="$n" "$1"' BEGIN { print '"$2"'(s, n) }')"
+    done
+    echo
+  done
+}
+ok "utrunc cuts a text as the uclip of list.sh does, a multibyte letter whole" "$(clipped "$UCLIP_LIST" uclip)" "$(clipped "$UTRUNC_FN" utrunc)"
+ok "...and as the uclip of timeline.sh does" "$(clipped "$UCLIP_TIME" uclip)" "$(clipped "$UTRUNC_FN" utrunc)"
+ok "...and the cut is the one by characters" "Счё|a…b" "$(LC_ALL=C awk "$UTRUNC_FN"' BEGIN { printf "%s|%s", utrunc("Счёт", 3), utrunc("a…b⑂c", 3) }')"
+
+SHORT_TU=$(sed -n '/function short_model(/,/^  }$/p' "$TU")
+SHORT_LIST=$(sed -n '/function shortmodel(/,/^    }$/p' "$LIBT/list.sh")
+shorts() {  # <awk function text> <function name>: the short form of each model name
+  local m
+  for m in claude-opus-5 claude-haiku-4-5-20251001 claude-opus-4-8 mystery-9; do
+    printf '%s ' "$(LC_ALL=C awk -v m="$m" "$1"' BEGIN { print '"$2"'(m) }')"
+  done
+}
+ok "the model names a table here prints keep their dashes" "opus-5 haiku-4-5 opus-4-8 mystery-9 " "$(shorts "$SHORT_TU" short_model)"
+ok "...where the dashboard's column makes opus5 and haiku4.5" "opus5 haiku4.5 opus4.8 mystery9 " "$(shorts "$SHORT_LIST" shortmodel)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
