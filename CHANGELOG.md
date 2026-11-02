@@ -8,7 +8,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 
 ### Added
 
-- `tusage` is a report in a terminal: `--by` tables of dollars nested by account, project, session, day, week, month, hour, agent, model and workflow, `--account` and `--project` filters, sessions shown by the name they have in tagents, one session by day with `--session <name> --by day,model`, tables that fit the terminal width, and a summary with dollars and the week by account.
+- `tusage` is a report in a terminal: `--by` tables of dollars nested by account, project, session, day, week, month, hour, agent, model and workflow, `--account` and `--project` filters, sessions shown by the name they have in tagents, one session by day with `--session <name> --by day,model`, tables that fit the terminal width, and a summary with dollars and the week by account ([#52](https://github.com/SkuratovichA/tagents/pull/52)).
 - `tagents setup` registers the state hook and the status line in `settings.json`, and the installer runs it ([#36](https://github.com/SkuratovichA/tagents/pull/36)).
 - `tagents-core mcp`, the plugin's MCP server, runs in the prebuilt Rust binary when the installer has put one on the machine ([#38](https://github.com/SkuratovichA/tagents/pull/38)).
 - The site's icons and link preview draw the pixel sprite of its hero ([#41](https://github.com/SkuratovichA/tagents/pull/41)).
