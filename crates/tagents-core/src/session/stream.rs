@@ -2,7 +2,7 @@
 //!
 //! It keeps no stdout: a tool's result can be megabytes, and only the result payload and the assistant's text stay. Lines are cut on the byte `0x0A` before they are decoded, so a character split between two reads is whole and invalid bytes read as U+FFFD.
 //!
-//! The strings are exact: `claude` is node, so a lone surrogate half can arrive as an escape, and node prints it back as that escape. Text is kept as UTF-16 units, so two halves from two blocks join. The one thing that is not kept is an object key with a lone half (`json::parse_exact`).
+//! The strings are exact: `claude` is node, so a lone surrogate half can arrive as an escape, and node prints it back as that escape. Text is kept as UTF-16 units, so two halves from two blocks join, and a key with a lone half stays whole (`json::parse_whole`), because `--events` prints a tool's input and a payload back.
 
 use crate::js;
 use crate::json::{self, Value};

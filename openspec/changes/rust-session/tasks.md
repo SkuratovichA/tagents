@@ -70,7 +70,7 @@ The tasks serve `session open`, `session list`, `session last`, `session prompt`
 ## 11. prompt
 
 - [x] 11.1 `session/prompt.rs`: the grammar of `prompt` through `args::Grammar` (`--timeout`, `--warn-before`, `--events`, two positionals), the checks of `main.ts` in their order (missing `<ref> <text>`, an empty text, `badRef`), `reference::resolve`, the argv and environment of 8.2, the supervisor of 10.4, `--events` lines written through `emit_stdout` when their line has been read, the outcome and the error line written before the process lingers, the exit code of 8.3; `--warn-before` read and unused (`cargo test -p tagents-core session::prompt`)
-- [ ] 11.2 `prompt` wired into `session::run`, which still returns `None` for `abort`; the suite of 9.2 passes against the live verb, in `en` and `ru` (`bash tests/rust-session-parity.sh`, exit 0)
+- [x] 11.2 `prompt` wired into `session::run`, which still returns `None` for `abort`; the suite of 9.2 passes against the live verb, in `en` and `ru` (`bash tests/rust-session-parity.sh`, exit 0)
 
 ## 12. A turn, compared with node
 
