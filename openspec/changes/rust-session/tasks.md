@@ -2,9 +2,9 @@ The tasks serve `session open`, `session list`, `session last`, `session prompt`
 
 ## 1. Node's decoder first
 
-- [ ] 1.1 `packages/core/src/testkit.ts` gains the `FakeScript` option `rawWrites` (pieces written to stdout verbatim and in separate writes), and a test in `packages/core/test/lifecycle.test.ts` written first and seen failing: a result whose text holds `я` with its two bytes in separate writes gives an outcome whose `text` holds `я` and no U+FFFD, the same for the `detail` taken from stderr, and a lone `0xFF` gives one U+FFFD (`pnpm --filter @tagents/core test`)
-- [ ] 1.2 `packages/core/src/claude-driver.ts` decodes each pipe with its own `StringDecoder` and flushes it when the pipe ends; the test of 1.1 passes, and the test and the fix are one commit `fix(core): ...` (`pnpm --filter @tagents/core test`, `pnpm --filter @tagents/core typecheck`)
-- [ ] 1.3 `CHANGELOG.md`: one line under `[Unreleased]` in "Fixed" saying that the Claude child's output is decoded as a stream, so a character whose bytes arrive in two reads is one character, with no `(#N)`
+- [x] 1.1 `packages/core/src/testkit.ts` gains the `FakeScript` option `rawWrites` (pieces written to stdout verbatim and in separate writes), and a test in `packages/core/test/lifecycle.test.ts` written first and seen failing: a result whose text holds `я` with its two bytes in separate writes gives an outcome whose `text` holds `я` and no U+FFFD, the same for the `detail` taken from stderr, and a lone `0xFF` gives one U+FFFD (`pnpm --filter @tagents/core test`)
+- [x] 1.2 `packages/core/src/claude-driver.ts` decodes each pipe with its own `StringDecoder` and flushes it when the pipe ends; the test of 1.1 passes, and the test and the fix are one commit `fix(core): ...` (`pnpm --filter @tagents/core test`, `pnpm --filter @tagents/core typecheck`)
+- [x] 1.3 `CHANGELOG.md`: one line under `[Unreleased]` in "Fixed" saying that the Claude child's output is decoded as a stream, so a character whose bytes arrive in two reads is one character, with no `(#N)`
 
 ## 2. The pins, written before the code
 

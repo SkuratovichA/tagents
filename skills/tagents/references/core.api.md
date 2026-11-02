@@ -323,6 +323,7 @@ export interface FakeScript {
     readonly hangAfterResult?: boolean;
     readonly noise?: readonly string[];
     readonly plain?: boolean;
+    readonly rawWrites?: readonly FakeRawWrite[];
     readonly result?: FakeResult | null;
     // (undocumented)
     readonly sessionId?: string;

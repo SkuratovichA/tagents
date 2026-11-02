@@ -29,6 +29,13 @@ export interface FakeResult {
   readonly durationMs?: number;
 }
 
+/** One write of bytes the script made up, hex digits as in `Buffer.from(hex, 'hex')`: it is written as it is, in a write of its own. */
+export interface FakeRawWrite {
+  readonly hex: string;
+  /** Where it goes: standard output unless this says otherwise. */
+  readonly to?: 'stdout' | 'stderr';
+}
+
 export interface FakeScript {
   readonly sessionId?: string;
   /** Lines that are not JSON at all: banners, warnings, a half-written line. */
@@ -55,6 +62,11 @@ export interface FakeScript {
   readonly argvFile?: string;
   /** Split every line across two writes, to prove the reader reassembles them. */
   readonly chunked?: boolean;
+  /**
+   * Bytes written verbatim after the script's own lines and before the result, each in a write of its own with a pause after it so that each is a read of its own: a character split between two writes, bytes that are not UTF-8, an escape the JSON printer would never write.
+   * `chunked` cuts by UTF-16 units and so never splits a character; this does.
+   */
+  readonly rawWrites?: readonly FakeRawWrite[];
   /**
    * Behave like `--input-format stream-json --replay-user-messages`: ignore
    * the argv prompt, read user lines from stdin, echo each one back, and answer
@@ -105,6 +117,13 @@ const say = (o) => {
   process.stdout.write(s.slice(cut));
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const RAW_PAUSE_MS = 50;
+const raw = async (pieces) => {
+  for (const piece of pieces) {
+    (piece.to === 'stderr' ? process.stderr : process.stdout).write(Buffer.from(piece.hex, 'hex'));
+    await sleep(RAW_PAUSE_MS);
+  }
+};
 const hang = () => setInterval(() => {}, 1000);
 const resultLine = (r) => {
   const payload = {
@@ -175,6 +194,7 @@ if (plan.stdin) {
   }
   if (plan.text) say({ type: 'assistant', session_id: sid, message: { content: [{ type: 'text', text: plan.text }] } });
   if (plan.sleepMs) await sleep(plan.sleepMs);
+  await raw(plan.rawWrites || []);
   if (plan.result !== null && plan.result !== undefined) say(resultLine(plan.result));
   if (plan.stderr) process.stderr.write(plan.stderr);
   if (plan.hangAfterResult || plan.hang) { hang(); return; }
