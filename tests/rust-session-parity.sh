@@ -89,8 +89,8 @@ pass=0; fail=0; skipped=0; rust_served=0; handed_over=0
 
 # --------------------------------------------------------------- scenario state ---
 # Set before a scenario, cleared after it by `reset`: the directory to run in (relative to the run), the locale, a setup run in the run's directory before the program (a shell command), the environment to add, the arguments, and the stream whose reader went away (stdout or stderr).
-CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; RAN=
-reset() { CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; }
+CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; KILL_RACES_STUB=; RAN=
+reset() { CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; KILL_RACES_STUB=; }
 
 # The only differences allowed between the two programs: the id of a new reference, as long as it is a version 4 UUID, and how long a turn took.
 norm() { LC_ALL=C sed -E 's/"id": "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"/"id": "UUID4"/; s/"durationMs":( ?)[0-9]+/"durationMs":\1N/'; }
@@ -171,6 +171,10 @@ stub_stopped() {  # <pid>
 # What a stub left in rec/, in the form two runs are compared in: how often it ran, the record with its volatile parts settled and no pid. The node directory this run must have is the real node's, or on the binary's side that of $TAGENTS_NODE, the shim, unless a scenario says otherwise.
 settle_record() {  # <tag>
   local tag=$1 node_dir=$NODE_DIR pid=
+  if [ -n "$KILL_RACES_STUB" ]; then
+    rm -rf "$RUN/rec"; mkdir "$RUN/rec"
+    return
+  fi
   # The binary names the directory of $TAGENTS_NODE, the shim. A call it handed to node is started by the real node, which names its own.
   if [ "$tag" = rust ] && [ -z "$SELF_TEST" ] && [ ! -e "$MARK" ]; then node_dir=${CHILD_NODE_DIR:-$SHIM}; fi
   if [ -f "$RUN/rec/count" ]; then wc -l < "$RUN/rec/count" | tr -d ' '; else ls -A "$RUN/rec" | wc -l | tr -d ' '; fi > "$TMP/started.$tag"
@@ -775,7 +779,8 @@ STUB='{"sessionId":"s-8","tools":["Bash"],"text":"partial","stderr":"on stderr\n
 for limit in 1e3 1000.5 .5e3 +1e3 0x400 0b1111101000 ' 1e3 '; do
   STUB_SH='exec sleep 30'; sc "prompt-limit-is-read-as-a-number-$limit" rust 4 '"kind": "timeout"' -- session prompt "$(ref_spec)" go --timeout "$limit"
 done
-STUB_SH='exec sleep 30'; STARTS=-; sc "prompt-limit-under-a-millisecond" rust 4 '"limitMs": 0.5' -- session prompt "$(ref_spec)" go --timeout 0.5
+# A kill this early lands before or after the first line of the stub, and on Linux node's comes later than the binary's (its timer is armed after the spawn, and never under 1 ms). What the two print is what is compared.
+STUB_SH='exec sleep 30'; STARTS=-; KILL_RACES_STUB=1; sc "prompt-limit-under-a-millisecond" rust 4 '"limitMs": 0.5' -- session prompt "$(ref_spec)" go --timeout 0.5
 for limit in abc 0 -1 1_000 Infinity 1e400 ''; do
   STUB=$ANSWER; sc "prompt-limit-falls-back-$limit" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go --timeout="$limit"
 done
