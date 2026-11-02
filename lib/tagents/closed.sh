@@ -219,7 +219,8 @@ ask_closed() {  # <port> [session] — the picker itself, normally the body of t
         if (d < 86400) return sprintf("%dh", int(d / 3600))
         return sprintf("%dd", int(d / 86400))
       }
-      function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home) + 1) : p }
+      # The home directory as a tilde. It is a prefix of a path only up to a slash, so /Users/ab/x is not under /Users/a, and no home shortens nothing. Copies, pinned to each other by section 28 of tests/tusage.sh: AWK_TILDE in tusage, tilde in list.sh and timeline.sh, tilde_of in core.sh (bash).
+      function tilde(p) { return (home != "" && (p == home || index(p, home "/") == 1)) ? "~" substr(p, length(home) + 1) : p }
       { r[NR] = $0; if (length($6) > w) w = length($6) }
       END {
         if (w > 34) w = 34

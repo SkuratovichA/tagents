@@ -103,7 +103,8 @@ list() {
     function base(p,   n, a) { n = split(p, a, "/"); return n ? a[n] : p }
     # keep the tail of a location: "…iana-cms_git:2.1" beats "git@github_com_A"
     function tailfit(s, w) { return (length(s) <= w) ? s : "…" substr(s, length(s)-w+2) }
-    function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
+    # The home directory as a tilde. It is a prefix of a path only up to a slash, so /Users/ab/x is not under /Users/a, and no home shortens nothing. Copies, pinned to each other by section 28 of tests/tusage.sh: AWK_TILDE in tusage, tilde in closed.sh and timeline.sh, tilde_of in core.sh (bash).
+    function tilde(p) { return (home != "" && (p == home || index(p, home "/") == 1)) ? "~" substr(p, length(home)+1) : p }
     function dirname(p) { return (p == home) ? "~" : base(p) }
     # A group key is s:<session> or w: (the trailing group of rows without a window). A session group shows the session path, the other none.
     function gname(g) { return (g == "w:") ? "no window" : substr(g, 3) }

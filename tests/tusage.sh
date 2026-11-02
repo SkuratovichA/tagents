@@ -49,6 +49,27 @@ t() { printf '\n%s\n' "$1"; }
 # Local day of an epoch, whichever date(1) is installed.
 dayof() { date -r "$1" +%Y-%m-%d 2>/dev/null || date -d "@$1" +%Y-%m-%d; }
 
+# THE CLOCK. Section 5b and the meter sections divide a reading by the month to date, and the fixture keeps the work account's older row two days behind its newest, so both rows are in one month only from the 4th of it. This script and tusage therefore read a date(1) that starts no earlier than the 4th, and TU_TEST_NOW="YYYY-MM-DD HH:MM:SS" starts it at any other instant. Time keeps flowing from there, so ages and timeouts still elapse.
+REAL_DATE=$(command -v date)
+epoch_of() { date -j -f '%Y-%m-%d %H:%M:%S' "$1" +%s 2>/dev/null || date -d "$1" +%s; }
+pinclock() {  # <dir> <epoch>: a date(1) in <dir>, for the front of a PATH, whose clock starts at that instant
+  mkdir -p "$1"
+  cat >"$1/date" <<CLOCK
+#!/bin/bash
+for a in "\$@"; do case \$a in -j|-r|-d|-f|--date*) exec $REAL_DATE "\$@" ;; esac; done
+e=\$(( \$($REAL_DATE +%s) + $(( $2 - $($REAL_DATE +%s) )) ))
+$REAL_DATE -r "\$e" "\$@" 2>/dev/null || exec $REAL_DATE -d "@\$e" "\$@"
+CLOCK
+  chmod +x "$1/date"
+}
+START=$(date +%s)
+[ -z "${TU_TEST_NOW:-}" ] || START=$(epoch_of "$TU_TEST_NOW") || { echo "TU_TEST_NOW is not YYYY-MM-DD HH:MM:SS: $TU_TEST_NOW" >&2; exit 1; }
+DOM=$(dayof "$START" | cut -c9-10)
+[ "$((10#$DOM))" -ge 4 ] || START=$(( START + (4 - 10#$DOM) * 86400 ))
+pinclock "$ROOT/clock" "$START"
+export PATH="$ROOT/clock:$PATH"
+printf 'the clock starts at %s\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+
 NOW=$(date +%s)
 # Ten minutes back, not the bucket that holds now: a row in the current bucket
 # lands inside a one-minute window when the clock is near the bucket edge, and
@@ -58,6 +79,8 @@ T1=$(( T2 - 172800 ))              # two days back: a different local day under 
 D1=$(dayof "$T1"); D2=$(dayof "$T2")
 
 export TU_STATE="$ROOT/usage" TU_PROJECTS="$ROOT/projects"
+# The names of sessions and the account names come from tagents' own state and config. Pointed at nothing, so no test reads the real ones whatever it runs.
+export TA_STATE_DIR="$ROOT/ta-none" TA_CONFIG="$ROOT/no-such-config.toml"
 # THE METER IS OFF EXCEPT WHERE IT IS THE SUBJECT. --update fetches it now, and
 # a test suite must never ask the real keychain for a token or the real API for
 # a figure. Section 5c turns it back on for its own calls, with fakes on PATH.
@@ -233,6 +256,43 @@ ok "--sessions still has 14 fields" 14 \
 export TU_STATE="$SAVE_STATE"
 
 # ---------------------------------------------------------------------------
+t "4c. what the report options leave alone: the bytes the dashboard reads"
+# ---------------------------------------------------------------------------
+# --sessions, --daily, --burn, --session <id> and --json are read by other programs (state.sh, usage.sh, list.sh, preview.sh, closed.sh), so their bytes are pinned against the fixture at the top of this file. A name typed in tagents and a cached title are present, and neither may reach these outputs or be rewritten by them. (No transcript is added: a new directory under $TU_PROJECTS would make slug_map regenerate the fixture's projects.tsv.)
+
+export TA_STATE_DIR="$ROOT/ta12"
+mkdir -p "$TA_STATE_DIR"
+printf 's-work\tTyped Name\ns-work\tSecond Line\n' >"$TA_STATE_DIR/labels.tsv"
+printf 's-pers\tCached Title\t100\n' >"$TA_STATE_DIR/title.tsv"
+sum12() { cksum "$TA_STATE_DIR/labels.tsv" "$TA_STATE_DIR/title.tsv" | tr '\n' ' '; ls "$TA_STATE_DIR" | tr '\n' ' '; }
+before12=$(sum12)
+
+# The bytes of the reports the dashboard reads, captured with printf %q so the escape sequences are the ones the popups render.
+PIN_DETAIL_WORK=$'\E[1ms-work\E[0m  ?\n\E[90m  who                            cost        $    reqs   cwrite    cread      out\E[0m\n  · main                        6.0M    $30.0       5        0        0     1.0M\n\E[90m  TOTAL                          6.0M    $30.0\E[0m\nx'
+PIN_DETAIL_RULE=$'\E[1ms-rule\E[0m  ?\n\E[90m  who                            cost        $    reqs   cwrite    cread      out\E[0m\n  · main                        3.5M    $2.50       2     100k     1.0M     500k\n\E[90m  TOTAL                          3.5M    $2.50\E[0m\n\n\E[90m  model                          cost        $\E[0m\n  claude-opus-5                  500k    $2.50\n  claude-gizmo-9                 3.0M       $0  \E[33m(no published rate)\E[0m\n\E[33m  1 request(s) ran on a model with no published rate �\200\224 $ is a floor\E[0m\nx'
+SID_AGED=deadbeef-6d4e-4b0a-9c75-1e2f8a7b5d90   # a whole id, which is what the dashboard asks for
+PIN_DETAIL_NONE=$'\E[1m'"$SID_AGED"$'\E[0m  ?\n  (no usage recorded in the retained window)\nx'
+PIN_BURN=\#\[fg=#665c54\]5h\ #\[fg=#928374\]\$27.5\ x
+PIN_JSON=\,\{\"project\":\"j-slug\"\,\"session\":\"s-rule\"\,\"who\":\"main\"\,\"cost\":3500000\,\"requests\":2\}\,\{\"project\":\"p-slug\"\,\"session\":\"s-pers\"\,\"who\":\"main\"\,\"cost\":1250000\,\"requests\":1\}\,\{\"project\":\"w-slug\"\,\"session\":\"s-work\"\,\"who\":\"main\"\,\"cost\":6000000\,\"requests\":5\}\[\{\"project\":\"w-slug\"\,\"session\":\"s-dup\"\,\"who\":\"main\"\,\"cost\":100000\,\"requests\":1\}\]\}x
+
+ok "--session <id>: heading, rows, total"      "$PIN_DETAIL_WORK" "$(tu --session s-work; echo x)"
+ok "--session <id>: model table and the floor"  "$PIN_DETAIL_RULE" "$(tu --session s-rule; echo x)"
+ok "--session <id>: an id with no usage"        "$PIN_DETAIL_NONE" "$(tu --session "$SID_AGED"; echo x)"
+ok "--burn: one line, no newline"               "$PIN_BURN"        "$(tu --burn; echo x)"
+ok "--json: the same objects"                   "$PIN_JSON"        "$(tu --json --since 30d | tr '}' '\n' | LC_ALL=C sort | tr '\n' '}'; echo x)"
+
+sess12=$(tu --sessions --since 30d)
+ok "--sessions: 14 fields on every row" "14" "$(printf '%s\n' "$sess12" | awk -F'\t' '{ print NF }' | sort -u)"
+ok "--sessions: the first line of a session" \
+   "s-work${TAB}6000000${TAB}5${TAB}1000000${TAB}${T2}${TAB}w-slug${TAB}0${TAB}0${TAB}5000000${TAB}claude-opus-5${TAB}30.000000${TAB}25.000000${TAB}0.000000${TAB}0" \
+   "$(printf '%s\n' "$sess12" | grep '^s-work')"
+case $sess12 in *"Typed Name"*|*"Cached Title"*) bad=1 ;; *) bad=0 ;; esac
+ok "--sessions carries no name" 0 "$bad"
+ok "--daily: five fields on every row" "5" "$(tu --daily --since 30d | awk -F'\t' '{ print NF }' | sort -u)"
+ok "the pinned reports touched neither labels.tsv nor title.tsv" "$before12" "$(sum12)"
+export TA_STATE_DIR="$ROOT/ta-none"
+
+# ---------------------------------------------------------------------------
 t "5. a changed spec is a stale map"
 # ---------------------------------------------------------------------------
 
@@ -250,6 +310,7 @@ t "5b. --calibrate prices an account at what its meter said"
 # ---------------------------------------------------------------------------
 # The fixture's work month is 5.00 + 27.50 = 32.50 at list; a meter that said
 # 16.25 means the account is billed at half of list.
+ok "the clock leaves both work rows in one month" "$(dayof "$T1" | cut -c1-7)" "$(dayof "$T2" | cut -c1-7)"
 out=$(tu --calibrate work 16.25 2>&1); rc=$?
 ok "it succeeds"                     0 "$rc"
 contains "...and says the factor"    "x0.5000" "$out"
@@ -704,6 +765,1338 @@ SID=$SID_LK
 
 export TU_STATE="$SAVE_STATE" TU_PROJECTS="$SAVE_PROJ"
 export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
+
+
+# ---------------------------------------------------------------------------
+t "13. a fixture for the report options: twelve sessions in two accounts"
+# ---------------------------------------------------------------------------
+# Fixed dates and TZ=UTC, so a window given as dates reads the same on any day and in any zone. Sunday 2026-11-01 is the last day. Every figure expected below is computed from the PRICES table by hand: opus-5 is 5/25, sonnet-5 is 2/10, haiku-4-5 is 1/5; a 5m cache write is 1.25x and a read 0.1x the input rate. The figures of a row are input, output, cache write and cache read.
+
+FX="$ROOT/fx"; FXH="$FX/home"
+mkdir -p "$FX/usage" "$FX/projects" "$FX/ta" "$FX/acct/work" "$FX/acct/personal" "$FXH"
+for s in billing webapp tagents site probe; do mkdir -p "$FX/projects/-h-$s"; done
+ep() { date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%Y-%m-%d %H:%M:%S' "$1" +%s; }
+fxsid() { printf '%s-6d4e-4b0a-9c75-1e2f8a7b5d90' "$1"; }
+
+# day, project, session, model, requests, input, output, cache write, cache read
+while read -r day proj sid8 model reqs in out cw cr; do
+  ts=$(( $(ep "$day 12:00:00") / 300 * 300 ))
+  printf '%s\t-h-%s\t%s\t-\t-\t-\tclaude-%s\t%s\t%s\t%s\t0\t%s\t%s\t100000\t100000\n' \
+    "$ts" "$proj" "$(fxsid "$sid8")" "$model" "$reqs" "$in" "$cw" "$cr" "$out"
+done >"$FX/usage/facts.tsv" <<'ROWS'
+2026-10-06 billing 5a1d2c33 opus-5 150 330000 101000 2000000 24000000
+2026-10-08 billing 5a1d2c33 opus-5 90 190000 60000 1100000 13000000
+2026-10-14 webapp 6b2e3d44 sonnet-5 80 140000 50000 700000 8500000
+2026-10-13 tagents 7c3f4e55 opus-5 130 280000 90000 1500000 18000000
+2026-10-20 tagents 7c3f4e55 opus-5 160 350000 110000 1900000 22000000
+2026-10-22 tagents 8d4a5f66 sonnet-5 40 70000 25000 300000 3500000
+2026-10-27 site 0a6f7e92 sonnet-5 70 130000 49000 640000 7400000
+2026-10-28 site 0a6f7e92 sonnet-5 33 60000 20000 280000 3300000
+2026-10-28 webapp 91ab44ee sonnet-5 54 90000 31000 420000 5200000
+2026-10-29 billing 3f9a1c20 opus-5 142 310000 96000 1900000 21400000
+2026-10-29 billing 3f9a1c20 sonnet-5 38 120000 41000 410000 3100000
+2026-10-30 webapp 91ab44ee opus-5 77 160000 58000 900000 11600000
+2026-10-30 billing b72e90d4 sonnet-5 96 150000 52000 780000 9900000
+2026-10-31 billing 3f9a1c20 opus-5 210 440000 150000 2600000 33000000
+2026-10-31 webapp e5d1f0a7 haiku-4-5 22 40000 12000 150000 1100000
+2026-10-31 tagents d8c3b615 opus-5 120 260000 88000 1400000 17200000
+2026-11-01 billing 3f9a1c20 opus-5 88 200000 70000 1100000 14800000
+2026-11-01 billing 3f9a1c20 sonnet-5 24 90000 30000 260000 2000000
+2026-11-01 billing c04d7be1 opus-5 61 130000 44000 690000 8100000
+2026-11-01 tagents d8c3b615 opus-5 95 210000 74000 1200000 15000000
+2026-11-01 probe 7b2c5d33 haiku-4-5 18 30000 9000 90000 700000
+ROWS
+
+# sessions.tsv: sid, slug, first, last, model, taken from the facts rows
+LC_ALL=C awk -F'\t' -v OFS='\t' '
+  { if (!($3 in F) || $1 < F[$3]) F[$3] = $1
+    if ($1 > L[$3]) L[$3] = $1
+    S[$3] = $2; M[$3] = $7 }
+  END { for (s in F) print s, S[s], F[s], L[s], M[s] }' "$FX/usage/facts.tsv" >"$FX/usage/sessions.tsv"
+
+for s in billing:work/billing-api webapp:work/web-app tagents:personal/tagents site:personal/site probe:../scratch/probe; do
+  printf -- '-h-%s\t%s/git/%s\n' "${s%%:*}" "$FXH" "${s#*:}"
+done >"$FX/usage/projects.tsv"
+sed -i.bak "s#git/\.\./scratch#scratch#" "$FX/usage/projects.tsv"; rm -f "$FX/usage/projects.tsv.bak"
+
+fxhist() { printf '{"display":"x","pastedContents":{},"timestamp":1000,"project":"%s","sessionId":"%s"}\n' "$FXH" "$(fxsid "$2")" >>"$FX/acct/$1/history.jsonl"; }
+for s in 3f9a1c20 b72e90d4 c04d7be1 91ab44ee e5d1f0a7 5a1d2c33 6b2e3d44; do fxhist work $s; done
+for s in d8c3b615 0a6f7e92 7c3f4e55 8d4a5f66; do fxhist personal $s; done
+
+# One call of tusage on the fixture, with nothing of the real machine in reach. The width is wide and colour is off unless a test says otherwise. FX_STATE names another index and FX_PRICES another price table; FX_TA the tagents state directory (names), FX_CONFIG the tagents config, FX_HOME the home, FX_ACCOUNTS the TU_ACCOUNTS (empty is unset), FX_RULES the TU_ACCOUNT_RULES, FX_TU the script to run and FX_SH the shell that runs it, FX_COLUMNS the COLUMNS (empty is none), FX_NO_COLOR the NO_COLOR (empty is set but empty) and FX_PTY, when set, runs it under a pseudo-terminal.
+pty() {  # <command...>: standard output is a terminal, standard input is empty
+  { if [ "$PTY" = bsd ]; then script -q /dev/null "$@" </dev/null
+    else script -qc "$(printf '%q ' "$@")" /dev/null </dev/null; fi; } 2>/dev/null |
+    LC_ALL=C tr -d '\r' | LC_ALL=C sed $'1s/^\\^D\010\010//'
+}
+PTY=""
+if [ "$(script -q /dev/null bash -c 'test -t 1 && echo yes' </dev/null 2>/dev/null | tr -d '\r' | grep -c yes)" = 1 ]; then PTY=bsd
+elif [ "$(script -qc "bash -c 'test -t 1 && echo yes'" /dev/null </dev/null 2>/dev/null | tr -d '\r' | grep -c yes)" = 1 ]; then PTY=gnu
+fi
+fx_raw() {
+  (
+    unset TU_PRICES TU_ACCOUNT_RULES NO_COLOR TU_KEEP_DAYS TU_ACCOUNTS
+    [ -z "${FX_NO_COLOR+x}" ] || export NO_COLOR="$FX_NO_COLOR"
+    [ -z "${FX_PRICES:-}" ] || export TU_PRICES="$FX_PRICES"
+    [ -z "${FX_RULES:-}" ] || export TU_ACCOUNT_RULES="$FX_RULES"
+    export TU_ACCOUNTS="${FX_ACCOUNTS-work=$FX/acct/work;personal=$FX/acct/personal}"
+    export HOME="${FX_HOME:-$FXH}" TZ="${FX_TZ:-UTC}" TERM="${FX_TERM:-xterm}" COLUMNS="${FX_COLUMNS-140}" \
+      TU_STATE="${FX_STATE:-$FX/usage}" TU_PROJECTS="$FX/projects" TU_NO_METER=1 \
+      TA_STATE_DIR="${FX_TA:-$FX/ta}" TA_CONFIG="${FX_CONFIG:-$FX/no-such-config.toml}"
+    if [ -n "${FX_PTY:-}" ]; then pty ${FX_SH:-bash} "${FX_TU:-$TU}" --no-update "$@"
+    else ${FX_SH:-bash} "${FX_TU:-$TU}" --no-update "$@"; fi
+  )
+}
+fx() { fx_raw "$@" 2>&1; }
+fxo() { fx_raw "$@" 2>/dev/null; }
+fxe() { fx_raw "$@" 2>&1 >/dev/null; }
+fxrc() { fx "$@" >/dev/null; echo $?; }
+W="--since 2026-10-26 --until 2026-11-01"
+
+ok "the fixture indexes twelve sessions" 12 "$(cut -f1 "$FX/usage/sessions.tsv" | sort -u | wc -l | tr -d ' ')"
+ok "the fixture prices a day by hand: 2026-10-29 is 28.82 dollars in work" "2026-10-29${TAB}work${TAB}28.8200${TAB}180${TAB}0" \
+   "$(fx --daily --since 1000d | grep '^2026-10-29')"
+
+# ---------------------------------------------------------------------------
+t "14. the command line: values that are not understood stop the run"
+# ---------------------------------------------------------------------------
+
+dims="account, project, session, day, week, month, hour, agent, model, workflow"
+out=$(fx --by colour); rc=$?
+ok "an unknown dimension exits 2" 2 "$rc"
+contains "...and is named" "tusage: unknown dimension colour" "$out"
+contains "...with the valid ones listed" "$dims" "$out"
+out=$(fx --by day,day); rc=$?
+ok "a repeated dimension exits 2" 2 "$rc"
+contains "...and is named" "tusage: dimension day given twice" "$out"
+out=$(fx --by account,project,session,model); rc=$?
+ok "a fourth dimension exits 2" 2 "$rc"
+contains "...and the message says three is the most" "at most three" "$out"
+ok "--by with an empty list exits 2"  2 "$(fxrc --by '')"
+ok "--by with an empty element exits 2" 2 "$(fxrc --by day,)"
+ok "--top that is not a number exits 2" 2 "$(fxrc --by day --top many)"
+ok "--top that is negative exits 2"     2 "$(fxrc --by day --top -1)"
+out=$(fx --by day --sort size); rc=$?
+ok "--sort other than cost exits 2" 2 "$rc"
+contains "...and names the value that is accepted" "cost" "$out"
+out=$(fx --by day --color purple); rc=$?
+ok "--color other than auto, always, never exits 2" 2 "$rc"
+contains "...and names the values" "always" "$out"
+ok "--top 0 is accepted"  0 "$(fxrc --by day --top 0 $W)"
+ok "--color never is accepted" 0 "$(fxrc --by day --color never $W)"
+out=$(fx --by day --account nobody); rc=$?
+ok "an unknown account exits 2" 2 "$rc"
+contains "...and is named" "tusage: unknown account nobody" "$out"
+contains "...with the known names listed" "work" "$out"
+contains "...all of them" "personal" "$out"
+ok "--account ? is accepted" 0 "$(fxrc --by day --account '?' $W)"
+ok "--account with a comma list is accepted" 0 "$(fxrc --by day --account work,personal $W)"
+ok "an unknown option exits 2" 2 "$(fxrc --by day --nonsense)"
+# A flag with no value exits 2: `shift 2` fails with one word left, and a parser that carries on reads the same option again and again.
+for o in --by --since --until --account --project --top --sort --color --session; do
+  out=$(fx "$o"); rc=$?
+  ok "$o with no value exits 2" 2 "$rc"
+  contains "...and says it needs one" "tusage: $o needs a value" "$out"
+done
+
+# ---------------------------------------------------------------------------
+t "15. dates in the window"
+# ---------------------------------------------------------------------------
+
+want=$(printf '2026-10-28\tpersonal\t1.6800\t33\t0\n2026-10-28\twork\t2.5800\t54\t0\n2026-10-29\twork\t28.8200\t180\t0')
+ok "--daily with two dates: both days, whole" "$want" "$(fx --daily --since 2026-10-28 --until 2026-10-29)"
+ok "--until is the end of its day, not its start" "$(printf '2026-10-28\tpersonal\t1.6800\t33\t0\n2026-10-28\twork\t2.5800\t54\t0')" \
+   "$(fx --daily --since 2026-10-28 --until 2026-10-28)"
+ok "an all-digit --until is an epoch" "$(printf '2026-10-28\tpersonal\t1.6800\t33\t0\n2026-10-28\twork\t2.5800\t54\t0')" \
+   "$(fx --daily --since 2026-10-28 --until "$(ep '2026-10-28 23:59:59')")"
+ok "--since is local midnight: a row at noon of that day is in" "1" \
+   "$(fx --daily --since 2026-11-01 --until 2026-11-01 | grep -c 'personal')"
+out=$(fx --sessions --since 2026-10-29 --until 2026-10-29)
+ok "--sessions takes dates: one session that day" 1 "$(printf '%s\n' "$out" | grep -c .)"
+contains "...the session of that day" "$(fxsid 3f9a1c20)" "$out"
+out=$(fx --json --since 2026-10-30 --until 2026-10-30)
+contains "--json takes dates: the two sessions of that day" "$(fxsid 91ab44ee)" "$out"
+contains "...both" "$(fxsid b72e90d4)" "$out"
+case $out in *"$(fxsid 3f9a1c20)"*) bad=1 ;; *) bad=0 ;; esac
+ok "...and no other" 0 "$bad"
+out=$(fx --daily --since 2026-02-30); rc=$?
+ok "a date that does not exist exits 2" 2 "$rc"
+contains "...and the message names the value" "tusage: bad --since value 2026-02-30" "$out"
+out=$(fx --by day --since 2026-13-01); rc=$?
+ok "a month that does not exist exits 2" 2 "$rc"
+contains "...named" "tusage: bad --since value 2026-13-01" "$out"
+out=$(fx --daily --until 2026-10-32); rc=$?
+ok "--until likewise exits 2" 2 "$rc"
+contains "...and says --until" "tusage: bad --until value 2026-10-32" "$out"
+ok "--until takes an epoch or a date, not a duration" "2|0" "$(fxrc --daily --until 5h)|$(fxrc --daily --until 9999999999)"
+out=$(fx --daily --since yesterday); rc=$?
+ok "a word that is not a duration exits 2" 2 "$rc"
+contains "...named" "tusage: bad --since value yesterday" "$out"
+ok "--since 5h, 3d, 30m and month parse" "0 0 0 0" \
+   "$(fxrc --daily --since 5h) $(fxrc --daily --since 3d) $(fxrc --daily --since 30m) $(fxrc --daily --since month)"
+
+
+
+# ---------------------------------------------------------------------------
+t "16. the breakdown: exact figures, read through --tsv"
+# ---------------------------------------------------------------------------
+# The expected rows below come from a second program, written apart from the awk of tusage, that prices the same twenty-one rows from the PRICES table. A row is the keys of its dimensions, then requests, input, output, cache write, cache read, dollars to six decimals, unpriced requests, the first and the last day and the number of days.
+
+X_ACCT=$(cat <<'EOT'
+work	812	1730000	584000	9210000	110200000	117.590000	0	2026-10-28	2026-11-01	5
+personal	318	660000	231000	3520000	42900000	44.260000	0	2026-10-27	2026-11-01	4
+?	18	30000	9000	90000	700000	0.257500	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_ACCT_PROJ=$(cat <<'EOT'
+work	~/git/work/billing-api	659	1440000	483000	7740000	92300000	100.937500	0	2026-10-29	2026-11-01	4
+work	~/git/work/web-app	153	290000	101000	1470000	17900000	16.652500	0	2026-10-28	2026-10-31	3
+personal	~/git/personal/tagents	215	470000	162000	2600000	32200000	38.750000	0	2026-10-31	2026-11-01	2
+personal	~/git/personal/site	103	190000	69000	920000	10700000	5.510000	0	2026-10-27	2026-10-28	2
+?	~/scratch/probe	18	30000	9000	90000	700000	0.257500	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_ACCT_PROJ_SESS=$(cat <<'EOT'
+work	~/git/work/billing-api	3f9a1c20-6d4e-4b0a-9c75-1e2f8a7b5d90	502	1160000	387000	6270000	74300000	86.075000	0	2026-10-29	2026-11-01	3
+work	~/git/work/billing-api	c04d7be1-6d4e-4b0a-9c75-1e2f8a7b5d90	61	130000	44000	690000	8100000	10.112500	0	2026-11-01	2026-11-01	1
+work	~/git/work/billing-api	b72e90d4-6d4e-4b0a-9c75-1e2f8a7b5d90	96	150000	52000	780000	9900000	4.750000	0	2026-10-30	2026-10-30	1
+work	~/git/work/web-app	91ab44ee-6d4e-4b0a-9c75-1e2f8a7b5d90	131	250000	89000	1320000	16800000	16.255000	0	2026-10-28	2026-10-30	2
+work	~/git/work/web-app	e5d1f0a7-6d4e-4b0a-9c75-1e2f8a7b5d90	22	40000	12000	150000	1100000	0.397500	0	2026-10-31	2026-10-31	1
+personal	~/git/personal/tagents	d8c3b615-6d4e-4b0a-9c75-1e2f8a7b5d90	215	470000	162000	2600000	32200000	38.750000	0	2026-10-31	2026-11-01	2
+personal	~/git/personal/site	0a6f7e92-6d4e-4b0a-9c75-1e2f8a7b5d90	103	190000	69000	920000	10700000	5.510000	0	2026-10-27	2026-10-28	2
+?	~/scratch/probe	7b2c5d33-6d4e-4b0a-9c75-1e2f8a7b5d90	18	30000	9000	90000	700000	0.257500	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_SESS=$(cat <<'EOT'
+3f9a1c20-6d4e-4b0a-9c75-1e2f8a7b5d90	502	1160000	387000	6270000	74300000	86.075000	0	2026-10-29	2026-11-01	3
+d8c3b615-6d4e-4b0a-9c75-1e2f8a7b5d90	215	470000	162000	2600000	32200000	38.750000	0	2026-10-31	2026-11-01	2
+91ab44ee-6d4e-4b0a-9c75-1e2f8a7b5d90	131	250000	89000	1320000	16800000	16.255000	0	2026-10-28	2026-10-30	2
+c04d7be1-6d4e-4b0a-9c75-1e2f8a7b5d90	61	130000	44000	690000	8100000	10.112500	0	2026-11-01	2026-11-01	1
+0a6f7e92-6d4e-4b0a-9c75-1e2f8a7b5d90	103	190000	69000	920000	10700000	5.510000	0	2026-10-27	2026-10-28	2
+b72e90d4-6d4e-4b0a-9c75-1e2f8a7b5d90	96	150000	52000	780000	9900000	4.750000	0	2026-10-30	2026-10-30	1
+e5d1f0a7-6d4e-4b0a-9c75-1e2f8a7b5d90	22	40000	12000	150000	1100000	0.397500	0	2026-10-31	2026-10-31	1
+7b2c5d33-6d4e-4b0a-9c75-1e2f8a7b5d90	18	30000	9000	90000	700000	0.257500	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_DAY=$(cat <<'EOT'
+2026-10-27	70	130000	49000	640000	7400000	3.830000	0	2026-10-27	2026-10-27	1
+2026-10-28	87	150000	51000	700000	8500000	4.260000	0	2026-10-28	2026-10-28	1
+2026-10-29	180	430000	137000	2310000	24500000	28.820000	0	2026-10-29	2026-10-29	1
+2026-10-30	173	310000	110000	1680000	21500000	18.425000	0	2026-10-30	2026-10-30	1
+2026-10-31	352	740000	250000	4150000	51300000	59.947500	0	2026-10-31	2026-10-31	1
+2026-11-01	286	660000	227000	3340000	40600000	46.825000	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_WEEK=$(cat <<'EOT'
+2026-10-05	240	520000	161000	3100000	37000000	44.500000	0	2026-10-06	2026-10-08	2
+2026-10-12	210	420000	140000	2200000	26500000	26.255000	0	2026-10-13	2026-10-14	2
+2026-10-19	200	420000	135000	2200000	25500000	29.215000	0	2026-10-20	2026-10-22	2
+2026-10-26	1148	2420000	824000	12820000	153800000	162.107500	0	2026-10-27	2026-11-01	6
+EOT
+)
+
+X_MONTH=$(cat <<'EOT'
+2026-10	1512	3120000	1033000	16980000	202200000	215.252500	0	2026-10-06	2026-10-31	11
+2026-11	286	660000	227000	3340000	40600000	46.825000	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_MODEL=$(cat <<'EOT'
+claude-opus-5	793	1710000	580000	9790000	121100000	144.787500	0	2026-10-29	2026-11-01	4
+claude-sonnet-5	315	640000	223000	2790000	30900000	16.665000	0	2026-10-27	2026-11-01	5
+claude-haiku-4-5	40	70000	21000	240000	1800000	0.655000	0	2026-10-31	2026-11-01	2
+EOT
+)
+
+X_PROJ_BREAK=$(cat <<'EOT'
+~/git/work/billing-api	claude-opus-5	501	1080000	360000	6290000	77300000	92.362500	0	2026-10-29	2026-11-01	3
+~/git/work/billing-api	claude-sonnet-5	158	360000	123000	1450000	15000000	8.575000	0	2026-10-29	2026-11-01	3
+~/git/personal/tagents	claude-opus-5	215	470000	162000	2600000	32200000	38.750000	0	2026-10-31	2026-11-01	2
+~/git/work/web-app	claude-opus-5	77	160000	58000	900000	11600000	13.675000	0	2026-10-30	2026-10-30	1
+~/git/work/web-app	claude-sonnet-5	54	90000	31000	420000	5200000	2.580000	0	2026-10-28	2026-10-28	1
+~/git/work/web-app	claude-haiku-4-5	22	40000	12000	150000	1100000	0.397500	0	2026-10-31	2026-10-31	1
+~/git/personal/site	claude-sonnet-5	103	190000	69000	920000	10700000	5.510000	0	2026-10-27	2026-10-28	2
+~/scratch/probe	claude-haiku-4-5	18	30000	9000	90000	700000	0.257500	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+X_ALL_WEEK=$(cat <<'EOT'
+2026-10-05	240	520000	161000	3100000	37000000	44.500000	0	2026-10-06	2026-10-08	2
+2026-10-12	210	420000	140000	2200000	26500000	26.255000	0	2026-10-13	2026-10-14	2
+2026-10-19	200	420000	135000	2200000	25500000	29.215000	0	2026-10-20	2026-10-22	2
+2026-10-26	1148	2420000	824000	12820000	153800000	162.107500	0	2026-10-27	2026-11-01	6
+EOT
+)
+
+X_ALL_MONTH=$(cat <<'EOT'
+2026-10	1512	3120000	1033000	16980000	202200000	215.252500	0	2026-10-06	2026-10-31	11
+2026-11	286	660000	227000	3340000	40600000	46.825000	0	2026-11-01	2026-11-01	1
+EOT
+)
+
+T_ACCT_PROJ=$(cat <<'EOT'
+usage  2026-10-26 .. 2026-11-01  by account > project
+
+                           reqs   input  output  cwrite   cread   total         $   share  days  span          models
+work                        812    1.7M    584k    9.2M  110.2M  121.7M      $118   72.5%     5  10-28..11-01  opus-5,sonnet-5 +1
+  ~/git/work/billing-api    659    1.4M    483k    7.7M   92.3M  102.0M      $101   62.3%     4  10-29..11-01  opus-5,sonnet-5
+  ~/git/work/web-app        153    290k    101k    1.5M   17.9M   19.8M     $16.7   10.3%     3  10-28..10-31  opus-5,sonnet-5 +1
+personal                    318    660k    231k    3.5M   42.9M   47.3M     $44.3   27.3%     4  10-27..11-01  opus-5,sonnet-5
+  ~/git/personal/tagents    215    470k    162k    2.6M   32.2M   35.4M     $38.8   23.9%     2  10-31..11-01  opus-5
+  ~/git/personal/site       103    190k     69k    920k   10.7M   11.9M     $5.51    3.4%     2  10-27..10-28  sonnet-5
+? unplaced                   18     30k      9k     90k    700k    829k     $0.26    0.2%     1  11-01         haiku-4-5
+  ~/scratch/probe            18     30k      9k     90k    700k    829k     $0.26    0.2%     1  11-01         haiku-4-5
+total                      1148    2.4M    824k   12.8M  153.8M  169.9M      $162  100.0%     6  10-27..11-01  opus-5,sonnet-5 +1
+EOT
+)
+
+T_WEEK_ACCT=$(cat <<'EOT'
+usage  2026-10-05 .. 2026-11-01  by week > account
+
+                reqs   input  output  cwrite   cread   total         $   share  models
+wk 2026-10-05    240    520k    161k    3.1M   37.0M   40.8M     $44.5   17.0%  opus-5
+  work           240    520k    161k    3.1M   37.0M   40.8M     $44.5   17.0%  opus-5
+wk 2026-10-12    210    420k    140k    2.2M   26.5M   29.3M     $26.3   10.0%  opus-5,sonnet-5
+  personal       130    280k     90k    1.5M   18.0M   19.9M     $22.0    8.4%  opus-5
+  work            80    140k     50k    700k    8.5M    9.4M     $4.23    1.6%  sonnet-5
+wk 2026-10-19    200    420k    135k    2.2M   25.5M   28.3M     $29.2   11.1%  opus-5,sonnet-5
+  personal       200    420k    135k    2.2M   25.5M   28.3M     $29.2   11.1%  opus-5,sonnet-5
+wk 2026-10-26   1148    2.4M    824k   12.8M  153.8M  169.9M      $162   61.9%  opus-5,sonnet-5 +1
+  work           812    1.7M    584k    9.2M  110.2M  121.7M      $118   44.9%  opus-5,sonnet-5 +1
+  personal       318    660k    231k    3.5M   42.9M   47.3M     $44.3   16.9%  opus-5,sonnet-5
+  ? unplaced      18     30k      9k     90k    700k    829k     $0.26    0.1%  haiku-4-5
+total           1798    3.8M    1.3M   20.3M  242.8M  268.2M      $262  100.0%  opus-5,sonnet-5 +1
+EOT
+)
+
+T_PROJ_BREAK=$(cat <<'EOT'
+usage  2026-10-26 .. 2026-11-01  by project > model
+
+                         reqs   input  output  cwrite   cread   total         $   share  days  span
+~/git/work/billing-api    659    1.4M    483k    7.7M   92.3M  102.0M      $101   62.3%     4  10-29..11-01
+  opus-5                  501    1.1M    360k    6.3M   77.3M   85.0M     $92.4   57.0%     3  10-29..11-01
+  sonnet-5                158    360k    123k    1.4M   15.0M   16.9M     $8.57    5.3%     3  10-29..11-01
+~/git/personal/tagents    215    470k    162k    2.6M   32.2M   35.4M     $38.8   23.9%     2  10-31..11-01
+  opus-5                  215    470k    162k    2.6M   32.2M   35.4M     $38.8   23.9%     2  10-31..11-01
+~/git/work/web-app        153    290k    101k    1.5M   17.9M   19.8M     $16.7   10.3%     3  10-28..10-31
+  opus-5                   77    160k     58k    900k   11.6M   12.7M     $13.7    8.4%     1  10-30
+  sonnet-5                 54     90k     31k    420k    5.2M    5.7M     $2.58    1.6%     1  10-28
+  haiku-4-5                22     40k     12k    150k    1.1M    1.3M     $0.40    0.2%     1  10-31
+~/git/personal/site       103    190k     69k    920k   10.7M   11.9M     $5.51    3.4%     2  10-27..10-28
+  sonnet-5                103    190k     69k    920k   10.7M   11.9M     $5.51    3.4%     2  10-27..10-28
+~/scratch/probe            18     30k      9k     90k    700k    829k     $0.26    0.2%     1  11-01
+  haiku-4-5                18     30k      9k     90k    700k    829k     $0.26    0.2%     1  11-01
+total                    1148    2.4M    824k   12.8M  153.8M  169.9M      $162  100.0%     6  10-27..11-01
+EOT
+)
+
+T_SESS_TOP3=$(cat <<'EOT'
+usage  2026-10-26 .. 2026-11-01  by session
+
+           reqs   input  output  cwrite   cread   total         $   share  days  span          models
+3f9a1c20    502    1.2M    387k    6.3M   74.3M   82.1M     $86.1   53.1%     3  10-29..11-01  opus-5,sonnet-5
+d8c3b615    215    470k    162k    2.6M   32.2M   35.4M     $38.8   23.9%     2  10-31..11-01  opus-5
+91ab44ee    131    250k     89k    1.3M   16.8M   18.5M     $16.3   10.0%     2  10-28..10-30  opus-5,sonnet-5
+… 5 more    300    540k    186k    2.6M   30.5M   33.9M     $21.0   13.0%     5  10-27..11-01  sonnet-5,opus-5 +1
+total      1148    2.4M    824k   12.8M  153.8M  169.9M      $162  100.0%     6  10-27..11-01  opus-5,sonnet-5 +1
+EOT
+)
+
+tsv() { fx --by "$@" --tsv; }
+
+ok "--by account: three accounts, the dearest first, the unplaced one as ?" "$X_ACCT" "$(tsv account $W)"
+ok "--by account,project: two keys, then ten figures" "$X_ACCT_PROJ" "$(tsv account,project $W)"
+ok "...12 tab-separated fields on every row" "12" "$(tsv account,project $W | awk -F'\t' '{ print NF }' | sort -u)"
+ok "--by account,project,session: three levels, a session as its full id" "$X_ACCT_PROJ_SESS" "$(tsv account,project,session $W)"
+ok "--by session: the dearest session first" "$X_SESS" "$(tsv session $W)"
+ok "--by model" "$X_MODEL" "$(tsv model $W)"
+ok "--tsv prints no header and no colour" "0" "$(tsv account $W | grep -c -e $'\033' -e '^account')"
+
+# A group is the sum of the rows beneath it, at every level.
+sumrows() {  # <number of key fields> : the figures of the rows read on stdin, summed by their first key
+  awk -F'\t' -v k="$1" '{ for (i = k + 1; i <= k + 5; i++) S[$1, i] += $i; S[$1, 99] += $(k + 6); K[$1] = 1 }
+    END { for (a in K) { printf "%s", a; for (i = k + 1; i <= k + 5; i++) printf "\t%.0f", S[a, i]; printf "\t%.6f\n", S[a, 99] } }' | sort
+}
+top1=$(tsv account $W | awk -F'\t' '{ printf "%s", $1; for (i = 2; i <= 6; i++) printf "\t%.0f", $i; printf "\t%.6f\n", $7 }' | sort)
+ok "...there are three accounts to sum" "3" "$(printf '%s\n' "$top1" | /usr/bin/grep -c .)"
+ok "an account is the sum of its projects" "$top1" "$(tsv account,project $W | sumrows 2)"
+ok "...and of its sessions, three levels down" "$top1" "$(tsv account,project,session $W | sumrows 3)"
+proj1=$(tsv account,project $W | awk -F'\t' '{ printf "%s\t%s", $1, $2; for (i = 3; i <= 7; i++) printf "\t%.0f", $i; printf "\t%.6f\n", $8 }' | sort)
+ok "a project is the sum of its sessions" "$proj1" \
+   "$(tsv account,project,session $W | awk -F'\t' '{ k = $1 "\t" $2; for (i = 4; i <= 8; i++) S[k, i] += $i; S[k, 9] += $9; K[k] = 1 }
+      END { for (a in K) { printf "%s", a; for (i = 4; i <= 8; i++) printf "\t%.0f", S[a, i]; printf "\t%.6f\n", S[a, 9] } }' | sort)"
+
+# Time runs oldest first, and a week starts on Monday.
+ok "--by day: oldest first" "$X_DAY" "$(tsv day $W)"
+ok "--by week: Mondays, oldest first" "$X_WEEK" "$(tsv week --since 2026-10-05 --until 2026-11-01)"
+ok "--by month splits at the month" "$X_MONTH" "$(tsv month --since 2026-10-01 --until 2026-11-01)"
+ok "Sunday 2026-11-01 is in the week of Monday 2026-10-26" "2026-10-26" \
+   "$(tsv week --since 2026-11-01 --until 2026-11-01 | cut -f1)"
+ok "--by hour: the hour of the bucket, in the local zone" "2026-10-29 12:00" \
+   "$(tsv hour --since 2026-10-29 --until 2026-10-29 | cut -f1)"
+ok "a week table with no --since reaches back to the start of the index" "$X_ALL_WEEK" "$(tsv week)"
+ok "a month table with no --since reaches back to the start of the index" "$X_ALL_MONTH" "$(tsv month)"
+ok "...but a day table with none keeps to seven days" "0" "$(tsv day | grep -c '^2026-10-0')"
+
+# A second index: the cases the twelve sessions do not have.
+F2="$ROOT/fx2"; mkdir -p "$F2/usage" "$F2/projects/-h-x"
+ts2=$(( $(ep '2026-10-20 12:00:00') / 300 * 300 ))
+fx2() { FX_STATE="$F2/usage" fx "$@"; }
+row2() {  # <session> <agent id> <agent type> <kind> <model> <reqs> <in> <cw5> <cw1h> <cr> <out>
+  printf '%s\t-h-x\t%s-1111-2222-3333-444444444444\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t100\t100\n' \
+    "$ts2" "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}"
+}
+{ row2 aaaaaaaa - - - claude-opus-5 10 1000000 1000000 1000000 0 0
+  row2 bbbbbbbb - - - claude-mystery-1 4 1000 0 0 0 1000
+  row2 cccccccc - - - '<synthetic>' 1 0 0 0 0 0
+  row2 aaaaaaaa ag1 general-purpose wf:review claude-sonnet-5 3 1000000 0 0 0 0
+  row2 aaaaaaaa ag2 Explore bg claude-sonnet-5 2 1000000 0 0 0 0
+} >"$F2/usage/facts.tsv"
+printf -- '-h-x\t%s/git/x\n' "$FXH" >"$F2/usage/projects.tsv"
+W2="--since 2026-10-20 --until 2026-10-20"
+tsv2() { fx2 --by "$@" --tsv; }
+
+D2="2026-10-20${TAB}2026-10-20"
+# 5-minute and 1-hour cache writes are one column. Opus at 5 dollars in: 1M input is 5, 1M 5-minute writes 6.25 and 1M 1-hour writes 10.
+ok "--by model: cache write is the 5- and the 1-hour writes together, each priced at its own rate" \
+   "$(printf 'claude-opus-5\t10\t1000000\t0\t2000000\t0\t21.250000\t0\t%s\t1' "$D2")" \
+   "$(tsv2 model $W2 | grep -F 'claude-opus-5')"
+ok "a model with no rate counts its requests as unpriced and costs nothing" \
+   "$(printf 'claude-mystery-1\t4\t1000\t1000\t0\t0\t0.000000\t4\t%s\t1' "$D2")" \
+   "$(tsv2 model $W2 | grep -F 'claude-mystery-1')"
+ok "the zero-token placeholder is not a hole in the bill" \
+   "$(printf '<synthetic>\t1\t0\t0\t0\t0\t0.000000\t0\t%s\t1' "$D2")" \
+   "$(tsv2 model $W2 | grep -F '<synthetic>')"
+ok "the rows are by dollars, and a tie is by key" \
+   "claude-opus-5 claude-sonnet-5 <synthetic> claude-mystery-1" \
+   "$(tsv2 model $W2 | cut -f1 | tr '\n' ' ' | sed 's/ $//')"
+ok "--by agent: the main session, a workflow agent and a named subagent" \
+   "$(printf '· main session\n⑂ Explore (bg)\n⑂ workflow agent')" \
+   "$(tsv2 agent $W2 | cut -f1 | LC_ALL=C sort)"
+ok "--by workflow covers only the workflow agents" \
+   "$(printf 'wf:review\t3\t1000000\t0\t0\t0\t2.000000\t0\t%s\t1' "$D2")" \
+   "$(tsv2 workflow $W2)"
+ok "a window with nothing in it says so and exits 1" "no data in this window|1" \
+   "$(fx --by day --since 2030-01-01 --until 2030-01-02 | tr '\n' ' ' | sed 's/ $//')|$(fxrc --by day --since 2030-01-01 --until 2030-01-02)"
+ok "a missing index says so and exits 1" "tusage: no data yet|1" \
+   "$(FX_STATE="$ROOT/none/usage" fx --by day | cut -c1-19)|$(FX_STATE="$ROOT/none/usage" fxrc --by day)"
+
+# ---------------------------------------------------------------------------
+t "17. per-model rows, the top rows and the order of the rows"
+# ---------------------------------------------------------------------------
+
+ok "--breakdown adds the model as one more key" "$X_PROJ_BREAK" "$(tsv project --breakdown $W)"
+ok "...and the models of a project add up to the project" \
+   "$(tsv project $W | awk -F'\t' '{ printf "%s\t%.6f\n", $1, $7 }' | sort)" \
+   "$(tsv project --breakdown $W | awk -F'\t' '{ S[$1] += $8 } END { for (p in S) printf "%s\t%.6f\n", p, S[p] }' | sort)"
+ok "--breakdown changes nothing when model is already a dimension" "$(tsv project,model $W)" "$(tsv project,model --breakdown $W)"
+ok "...nor does it count towards the three dimensions" "0" "$(fxrc --by account,project,session --breakdown $W)"
+ok "the table of --breakdown has the models indented under their project" "$T_PROJ_BREAK" "$(fx --by project --breakdown --color never $W)"
+
+ok "--top 3 keeps the three dearest and sums the rest into one row" "$T_SESS_TOP3" "$(fx --by session --top 3 --color never $W)"
+ok "--top 0 shows every row" "0" "$(fx --by session --top 0 $W | grep -c 'more')"
+ok "...and a table that is shorter than the limit has no remainder row" "0" "$(fx --by session --top 8 $W | grep -c 'more')"
+ok "--tsv ignores --top" "$X_SESS" "$(tsv session --top 3 $W)"
+ok "--top cuts under each parent, not the table as a whole" "2" "$(fx --by account,project --top 1 $W | grep -c 'more')"
+ok "time dimensions are never cut" "6" "$(fx --by day --top 2 $W | grep -c '^2026-')"
+ok "a model level is never cut either" "0" "$(fx --by model --top 1 --color never $W | grep -c 'more')"
+ok "the models of a breakdown are never cut" "6" "$(fx --by project --breakdown --top 3 --color never $W | grep -c -e opus -e sonnet -e haiku)"
+ok "--sort cost puts a time dimension in dollar order" "$(printf '%s\n' "$X_DAY" | sort -t"$TAB" -k7,7nr)" "$(tsv day --sort cost $W)"
+
+# Fourteen sessions with distinct dollars: the default is twelve rows and a rest.
+F3="$ROOT/fx3"; mkdir -p "$F3/usage" "$F3/projects/-h-x"
+i=1; while [ $i -le 14 ]; do
+  printf '%s\t-h-x\t%08d-1111-2222-3333-444444444444\t-\t-\t-\tclaude-sonnet-5\t1\t%d\t0\t0\t0\t0\t100\t100\n' "$ts2" "$i" "$((i * 1000000))"
+  i=$((i + 1))
+done >"$F3/usage/facts.tsv"
+printf -- '-h-x\t%s/git/x\n' "$FXH" >"$F3/usage/projects.tsv"
+fx3() { FX_STATE="$F3/usage" fx "$@"; }
+out=$(fx3 --by session --since 2026-10-20 --until 2026-10-20)
+ok "the default is twelve rows" "12" "$(printf '%s\n' "$out" | grep -c '^000000')"
+contains "...and a row that sums the two it left out" "… 2 more" "$out"
+ok "--top 0 on fourteen sessions shows fourteen" "14" "$(fx3 --by session --top 0 --since 2026-10-20 --until 2026-10-20 | grep -c '^000000')"
+
+# ---------------------------------------------------------------------------
+t "18. the table: its figures, its closing lines"
+# ---------------------------------------------------------------------------
+lacks() {  # <name> <needle> <haystack>
+  case "$3" in
+    *"$2"*) fail=$((fail + 1)); printf '  FAIL %s\n       expected NOT to contain: %s\n       actual: %s\n' "$1" "$2" "$3" ;;
+    *) pass=$((pass + 1)); printf '  ok   %s\n' "$1" ;;
+  esac
+}
+
+table() { sed '/^total/q'; }  # the table, without the lines that close it
+ok "account and project at 140 columns, to the character" "$T_ACCT_PROJ" "$(fx --by account,project --color never $W | table)"
+ok "week and account: no days or span beside a time dimension, and the weeks run oldest first" "$T_WEEK_ACCT" \
+   "$(fx --by week,account --color never --since 2026-10-05 --until 2026-11-01 | table)"
+
+out=$(fx --by account --color never $W)
+contains "a table with no time dimension has days and span" "span" "$(printf '%s\n' "$out" | sed -n 3p)"
+contains "...and the models of the row, when no row is a model" "models" "$(printf '%s\n' "$out" | sed -n 3p)"
+out=$(fx --by day --color never $W)
+lacks "a table by day has no days column" " days" "$(printf '%s\n' "$out" | sed -n 3p)"
+lacks "...and no span" "span" "$(printf '%s\n' "$out" | sed -n 3p)"
+lacks "a table whose rows are models has no models column" "models" "$(fx --by model --color never $W | sed -n 3p)"
+contains "the title names the window by its first and last day and the dimensions" \
+  "usage  2026-10-26 .. 2026-11-01  by account > project" "$(fx --by account,project $W | sed -n 1p)"
+contains "a breakdown adds the model to the title" "by project > model" "$(fx --by project --breakdown $W | sed -n 1p)"
+
+out=$(fx --by account --color never $W)
+contains "an unplaced session is the account ? unplaced" "? unplaced" "$out"
+contains "...and the closing line counts it and says what places it" \
+  "1 session belongs to no account: TU_ACCOUNT_RULES places a session by the directory it started in." "$out"
+lacks "...but a table with no account dimension has no such line" "belongs to no account" "$(fx --by project $W)"
+
+# A factor stored for work, under a price table the test sets: list price is said at the end when the account is a row, and only then.
+FX_PRICES=$'claude-opus-5 5 25\nclaude-sonnet-5 2 10\nclaude-haiku-4-5 1 5\n'
+fpr=$(printf '%s' "$FX_PRICES" | tr -s ' \n' ' ' | cksum | tr -d ' ')
+printf 'work\t0.8\t1\t1\t%s\n' "$fpr" >"$FX/usage/factor.tsv"
+contains "a stored factor: the closing line says the dollars are at list price and names --daily" \
+  "Dollars are at list price. A meter factor is stored for work: tusage --daily scales its dollars by it." \
+  "$(fx --by account --color never $W)"
+lacks "...and it does not scale the dollars of the table" "\$94" "$(fx --by account --color never $W)"
+lacks "a table with no account dimension does not mention the factor" "meter factor" "$(fx --by project $W)"
+printf 'personal\t0.9\t1\t1\t%s\nwork\t0.8\t1\t1\t%s\n' "$fpr" "$fpr" >"$FX/usage/factor.tsv"
+contains "two accounts with a factor are both named" "stored for work and personal" \
+  "$(fx --by account --color never $W | tr '\n' ' ')"
+rm -f "$FX/usage/factor.tsv"; unset FX_PRICES
+lacks "no stored factor, no line about one" "meter factor" "$(fx --by account $W)"
+
+out=$(fx2 --by model --color never $W2)
+contains "a model with no rate: its dollars end in *" '$0*' "$out"
+contains "...and the table says the figure is a floor" "a floor" "$out"
+lacks "a table with every model rated has no such line" "a floor" "$(fx --by account $W)"
+
+
+# ---------------------------------------------------------------------------
+t "19. --account and --project narrow every report"
+# ---------------------------------------------------------------------------
+ok "--by account --account work keeps the one account" "$(printf '%s\n' "$X_ACCT" | sed -n 1p)" "$(tsv account --account work $W)"
+ok "--account twice is a list" "$(printf '%s\n' "$X_ACCT" | sed -n 1,2p)" "$(tsv account --account work --account personal $W)"
+ok "...and a comma list is the same list" "$(printf '%s\n' "$X_ACCT" | sed -n 1,2p)" "$(tsv account --account work,personal $W)"
+ok "--account ? keeps the sessions no account claims" "$(printf '%s\n' "$X_ACCT" | sed -n 3p)" "$(tsv account --account '?' $W)"
+ok "a project table of one account is that account's projects, dearest first" \
+   "$(printf '%s\n' "$X_ACCT_PROJ" | awk -F'\t' '$1 == "work"' | cut -f2-)" "$(tsv project --account work $W)"
+
+ok "--sessions --account work keeps the sessions of work" \
+   "$(tsv account,project,session $W | awk -F'\t' '$1 == "work" { print $3 }' | sort)" \
+   "$(fx --sessions $W --account work | cut -f1 | sort)"
+ok "...with the 14 fields it has unfiltered" "14" "$(fx --sessions $W --account work | awk -F'\t' '{ print NF }' | sort -u)"
+ok "...and a row is the row it is unfiltered" "$(fx --sessions $W | /usr/bin/grep "^$(fxsid 3f9a1c20)")" \
+   "$(fx --sessions $W --account work | /usr/bin/grep "^$(fxsid 3f9a1c20)")"
+ok "--daily --account work has the five fields and only work" "5|work" \
+   "$(fx --daily $W --account work | awk -F'\t' '{ print NF }' | sort -u)|$(fx --daily $W --account work | cut -f2 | sort -u)"
+ok "...and a row is the row it is unfiltered" "$(fx --daily $W | awk -F'\t' '$2 == "work"')" "$(fx --daily $W --account work)"
+out=$(fx --json --since 1000d --account work)
+contains "--json --account work lists the sessions of work" "$(fxsid 3f9a1c20)" "$out"
+lacks "...and not those of personal" "$(fxsid d8c3b615)" "$out"
+
+ok "--project keeps the projects whose path contains the text, ignoring case" \
+   "$(printf '%s\n' "$X_SESS" | /usr/bin/grep -e "^$(fxsid 3f9a1c20)" -e "^$(fxsid c04d7be1)" -e "^$(fxsid b72e90d4)")" \
+   "$(tsv session --project BILLING $W)"
+ok "--project takes a path as the shell expands it, the home directory and all" \
+   "$(tsv session --project BILLING $W)" "$(tsv session --project "$FXH/git/work/billing-api" $W)"
+ok "...and the path as the tables show it, with the tilde" \
+   "$(tsv session --project BILLING $W)" "$(tsv session --project '~/git/work/billing-api' $W)"
+ok "...and a path that stops short of the end, written out in full, still matches" \
+   "$(tsv session --project '~/git/work' $W)" "$(tsv session --project "$FXH/git/work" $W)"
+# The full path is matched only for a text that is a path (it starts with a slash, as what a shell expands does). A word that is only in the home, the user name or a directory above it, is in every project's full path and in none of the tables'.
+out=$(fx --by session --project "${FXH##*/}" $W); rc=$?
+ok "a word that is only in the home directory's path keeps nothing" "no data in this window|1" "$out|$rc"
+out=$(fx --by session --project "$(basename "$ROOT")" $W); rc=$?
+ok "...nor does a word from the directories above the home" "no data in this window|1" "$out|$rc"
+ok "--project twice keeps a row that matches either" "4" "$(tsv session --project billing --project probe $W | wc -l | tr -d ' ')"
+# Unlike --account, --project takes a comma as a character of the text: one project's path may hold one, and two texts are two flags.
+F19C="$ROOT/fx19c"; mkdir -p "$F19C/usage"
+now19c=$(( $(date +%s) / 300 * 300 - 1800 ))
+{ printf '%s\t-h-c\t%s\t-\t-\t-\tclaude-opus-5\t5\t1000000\t0\t0\t0\t0\t100\t100\n' "$now19c" "$(fxsid 3f9a1c20)"
+  printf '%s\t-h-d\t%s\t-\t-\t-\tclaude-opus-5\t5\t1000000\t0\t0\t0\t0\t100\t100\n' "$now19c" "$(fxsid d8c3b615)"
+} >"$F19C/usage/facts.tsv"
+printf -- '-h-c\t%s/git/a,b\n-h-d\t%s/git/ab\n' "$FXH" "$FXH" >"$F19C/usage/projects.tsv"
+fx19c() { FX_STATE="$F19C/usage" fx "$@"; }
+ok "a project whose path holds a comma is kept by a text with the comma" "~/git/a,b" "$(fx19c --by project --tsv --project 'a,b' --since 7d | cut -f1)"
+out=$(fx19c --by project --tsv --project 'a,ab' --since 7d); rc=$?
+ok "...and a comma does not split the text in two: a,ab is in neither path" "no data in this window|1" "$out|$rc"
+ok "...while two flags are two texts" "2" "$(fx19c --by project --tsv --project 'a,b' --project ab --since 7d | wc -l | tr -d ' ')"
+ok "--project with --account keeps the rows that match both" \
+   "$(fxsid 91ab44ee) $(fxsid e5d1f0a7)" "$(tsv session --account work --project web $W | cut -f1 | tr '\n' ' ' | sed 's/ $//')"
+out=$(fx --by session --account personal --project billing $W); rc=$?
+ok "nothing left after the filters is an empty window, not a missing index" "no data in this window|1" "$out|$rc"
+ok "--project with no text exits 2" "2" "$(fxrc --by day --project '')"
+ok "--account with no name exits 2" "2" "$(fxrc --by day --account '')"
+
+# The summary and --burn read the clock, so they get rows of their own: one work session and one personal session, spent half an hour ago.
+F4="$ROOT/fx4"; mkdir -p "$F4/usage" "$F4/projects/-h-x" "$F4/projects/-h-y"
+now4=$(( $(date +%s) / 300 * 300 - 1800 ))
+{ printf '%s\t-h-x\t%s\t-\t-\t-\tclaude-opus-5\t5\t1000000\t0\t0\t0\t0\t100\t100\n' "$now4" "$(fxsid 3f9a1c20)"
+  printf '%s\t-h-y\t%s\t-\t-\t-\tclaude-opus-5\t5\t1000000\t0\t0\t0\t0\t100\t100\n' "$now4" "$(fxsid d8c3b615)"
+} >"$F4/usage/facts.tsv"
+printf -- '-h-x\t%s/git/x\n-h-y\t%s/git/y\n' "$FXH" "$FXH" >"$F4/usage/projects.tsv"
+fx4() { FX_STATE="$F4/usage" fx "$@"; }
+both=$(fx4 --burn)
+contains "--burn adds both accounts" "5h " "$both"
+ok "--burn --account work,personal is the five hours of every account" "$(fx4 --burn)" "$(fx4 --burn --account work,personal)"
+ok "--burn --account personal is not what both spent" "1" "$([ "$(fx4 --burn --account personal)" != "$both" ] && echo 1 || echo 0)"
+ok "--burn for an account that spent nothing prints nothing" "" "$(fx4 --burn --account '?')"
+out=$(fx4)
+contains "the summary names both projects" "~/git/y" "$out"
+out=$(fx4 --account work)
+contains "the summary of one account keeps its project" "~/git/x" "$out"
+lacks "...and drops the other's" "~/git/y" "$out"
+
+# ---------------------------------------------------------------------------
+t "20. sessions are named: a typed name, a title, or the eight characters"
+# ---------------------------------------------------------------------------
+# The names are the dashboard's: labels.tsv holds what was typed, title.tsv the titles read from transcripts. A scratch state directory holds both, so nothing of the real machine is read and no other section sees these files.
+
+TA20="$ROOT/ta20"; mkdir -p "$TA20"
+printf '%s\t%s\n' \
+  "$(fxsid 3f9a1c20)" "refactor-billing" \
+  "$(fxsid d8c3b615)" "tagents-core" \
+  "$(fxsid d8c3b615)" "a second line is ignored" \
+  "$(fxsid 91ab44ee)" "" \
+  "$(fxsid 7c3f4e55)" "tagents-site" \
+  "$(fxsid 0a6f7e92)" "$(printf 'ev\033[31mil')" \
+  "%12" "a pane, not a session" >"$TA20/labels.tsv"
+printf '%s\t%s\t%s\n' \
+  "$(fxsid 91ab44ee)" "Fix the webapp login" 1234 \
+  "$(fxsid 3f9a1c20)" "Billing title" 900 >"$TA20/title.tsv"
+tjson() {  # <project dir> <title> <sid first 8>
+  printf '%s\n%s\n' '{"type":"user","message":{"content":"hello"}}' "{\"type\":\"ai-title\",\"aiTitle\":\"$2\"}" \
+    >"$FX/projects/$1/$(fxsid "$3").jsonl"
+}
+cp "$FX/usage/projects.tsv" "$ROOT/projects.keep"
+tjson -h-billing "Add invoice export" c04d7be1
+tjson -h-billing "Transcript title" 3f9a1c20
+tjson -h-tagents "Hidden title" d8c3b615
+tjson -h-probe "Probe title" 7b2c5d33
+touch "$FX/usage/projects.tsv"
+export FX_TA="$TA20"
+labels_sum=$(cksum <"$TA20/labels.tsv")
+
+names_of() {  # stdin: a --by session table; the label of each of its rows
+  sed -n '4,$p' | sed '/^total/,$d' | sed -E 's/  +[0-9]+  .*$//; s/ +$//'
+}
+
+out=$(fx --by session --top 3 $W)
+ok "a session cut by --top has its transcript left unread" 0 "$(grep -c "^$(fxsid 7b2c5d33)" "$TA20/title.tsv")"
+
+out=$(fx --by session --top 0 $W)
+rows=$(names_of <<<"$out")
+row() { printf '%s\n' "$rows" | grep -- "$1"; }
+ok "a typed name, then the eight characters of the id" "refactor-billing  3f9a1c20" "$(row 3f9a1c20)"
+ok "the first line for an id wins" "tagents-core  d8c3b615" "$(row d8c3b615)"
+ok "an empty name is no name: the cached title shows" "Fix the webapp login  91ab44ee" "$(row 91ab44ee)"
+ok "a title from the transcript when there is no name" "Add invoice export  c04d7be1" "$(row c04d7be1)"
+ok "no name and no title: the eight characters alone" "b72e90d4" "$(row b72e90d4)"
+ok "a title read from a transcript names its session" "Probe title  7b2c5d33" "$(row 7b2c5d33)"
+lacks "a typed name beats a cached title" "Billing title" "$out"
+lacks "...and a title in the transcript" "Transcript title" "$out"
+ok "a typed name leaves the transcript unread" 0 "$(grep -c "^$(fxsid d8c3b615)" "$TA20/title.tsv")"
+ok "a title read from a transcript is cached" "Add invoice export" \
+   "$(awk -F'\t' -v s="$(fxsid c04d7be1)" '$1 == s { print $2 }' "$TA20/title.tsv")"
+rm -f "$FX/projects/-h-billing/$(fxsid c04d7be1).jsonl"
+cp "$ROOT/projects.keep" "$FX/usage/projects.tsv"   # a changed project dir would have the map rebuilt from transcripts with no cwd
+ok "the next run reads the cache, not the transcript" "Add invoice export  c04d7be1" \
+   "$(fx --by session --top 0 $W | names_of | grep c04d7be1)"
+ok "a cached title is left as it was" "1" "$(grep -c 'Billing title' "$TA20/title.tsv")"
+ok "the writes leave no temporary file beside the cache" "labels.tsv title.tsv" "$(ls "$TA20" | tr '\n' ' ' | sed 's/ $//')"
+ok "tusage never writes labels.tsv" "$labels_sum" "$(cksum <"$TA20/labels.tsv")"
+
+ok "a name carrying an escape sequence prints without the escape" "ev[31mil  0a6f7e92" "$(row 0a6f7e92)"
+ok "...and the table holds no escape byte" 0 "$(printf '%s' "$out" | LC_ALL=C grep -c "$(printf '\033')")"
+contains "names reach the sessions of a nested table" "    refactor-billing  3f9a1c20" "$(fx --by account,project,session --top 0 $W)"
+lacks "a table of projects names no session" "refactor-billing" "$(fx --by project $W)"
+lacks "--tsv prints ids" "refactor-billing" "$(fx --by session --tsv $W)"
+lacks "--sessions prints ids" "refactor-billing" "$(fx --sessions --since 1000d)"
+lacks "--daily prints no names" "refactor-billing" "$(fx --daily --since 1000d)"
+
+# Without the modules the ids are all there is, and the report still runs.
+mkdir -p "$ROOT/nolib"; cp "$TU" "$ROOT/nolib/tusage"
+out=$(FX_TU="$ROOT/nolib/tusage" fx --by session --top 0 $W); rc=$?
+ok "with the modules unfindable the report exits 0" 0 "$rc"
+ok "...and prints the ids alone" 0 "$(names_of <<<"$out" | grep -vcE '^[0-9a-f]{8}$')"
+
+# The modules are found beside the real file, through any chain of symlinks.
+mkdir -p "$ROOT/ln"; ln -s "$TU" "$ROOT/ln/two"; ln -s two "$ROOT/ln/one"
+contains "run through two symlinks the names resolve" "refactor-billing  3f9a1c20" \
+         "$(FX_TU="$ROOT/ln/one" fx --by session --top 0 $W)"
+
+# The walk is a copy of the one in ./tagents, and the two must not drift.
+walk() { awk -v a='  ta_real=${BASH_SOURCE[0]}' -v z='    *)   TA_LIB=lib/tagents ;;' '$0 == a { p = 1 } p { print } p && $0 == z { exit }' "$1"; }
+ok "the symlink walk is the text of the one in ./tagents" "$(walk "$HERE/../tagents")" "$(walk "$TU")"
+ok "...and it is a whole loop, not an empty match" 1 "$([ "$(walk "$TU" | wc -l | tr -d ' ')" -ge 14 ] && echo 1 || echo 0)"
+
+# ---------------------------------------------------------------------------
+t "20b. --session finds a session by its id, a prefix of it or its name"
+# ---------------------------------------------------------------------------
+
+SID3=$(fxsid 3f9a1c20)
+detail=$(fx --session "$SID3"); rc=$?
+ok "a full id prints the detail" 0 "$rc"
+contains "...headed by the full id" "$SID3" "$detail"
+ok "a unique prefix prints the same detail" "$detail" "$(fx --session 3f9a1c)"
+ok "a name, whole, prints the same" "$detail" "$(fx --session refactor-billing)"
+ok "...ignoring case" "$detail" "$(fx --session REFACTOR-Billing)"
+ok "a part of a name prints the same" "$detail" "$(fx --session factor-bil)"
+ok "a title in the cache is a name too" "$(fx --session "$(fxsid c04d7be1)")" "$(fx --session 'invoice export')"
+
+out=$(fxe --session tagents); rc=$?
+ok "two names holding the text exit 3" 3 "$rc"
+ok "...with nothing on standard output" "" "$(fxo --session tagents)"
+contains "...and the first candidate on standard error: id, name, account, days" \
+         "  $(fxsid d8c3b615)  tagents-core  personal  2 days" "$out"
+contains "...and the second" "  $(fxsid 7c3f4e55)  tagents-site  personal  2 days" "$out"
+out=$(fxe --session 7); rc=$?
+ok "a prefix of two ids exits 3" 3 "$rc"
+contains "...listing the session of one day" "  $(fxsid 7b2c5d33)  Probe title  ?  1 day" "$out"
+contains "...and the other" "  $(fxsid 7c3f4e55)  tagents-site  personal  2 days" "$out"
+
+out=$(fx --session nothing-like-it); rc=$?
+ok "a value that names nothing exits 1" 1 "$rc"
+ok "...and says so" "tusage: no session called nothing-like-it" "$out"
+out=$(fx --session "$(fxsid deadbeef)"); rc=$?
+ok "a whole id the index lacks keeps its empty detail and exits 0" 0 "$rc"
+contains "...the empty detail" "(no usage recorded in the retained window)" "$out"
+out=$(fx --session deadbeef); rc=$?
+ok "the start of an id that nothing has and no name holds exits 1" 1 "$rc"
+ok "...and says so" "tusage: no session called deadbeef" "$out"
+
+# A name can be hex digits and dashes and nothing else. A text is a name when no id starts with it, and an id wins when one does.
+ok "no session id starts with the hex-only names below" 0 \
+   "$(cut -f1 "$FX/usage/sessions.tsv" | grep -c -e '^feed' -e '^cafe' -e '^42' -e '^2026-11-02')"
+TA20B="$ROOT/ta20b"; mkdir -p "$TA20B"
+printf '%s\t%s\n' \
+  "$(fxsid d8c3b615)" "feed" \
+  "$(fxsid 7c3f4e55)" "cafe" \
+  "$(fxsid 91ab44ee)" "42" \
+  "$(fxsid c04d7be1)" "2026-11-02" \
+  "$(fxsid 7b2c5d33)" "d8c3" >"$TA20B/labels.tsv"
+for pair in feed:d8c3b615 cafe:7c3f4e55 42:91ab44ee 2026-11-02:c04d7be1; do
+  out=$(FX_TA="$TA20B" fx --session "${pair%%:*}"); rc=$?
+  ok "a session named ${pair%%:*} is found by that name" 0 "$rc"
+  contains "...and it is the one called so" "$(fxsid "${pair##*:}")" "$out"
+done
+out=$(FX_TA="$TA20B" fx --session d8c3); rc=$?
+ok "a text that is the start of an id and the name of another session finds the id" 0 "$rc"
+contains "...the session whose id it starts" "$(fxsid d8c3b615)" "$out"
+lacks "...and not the one called so" "$(fxsid 7b2c5d33)" "$out"
+
+out=$(fx --session 7 --account personal); rc=$?
+ok "--account narrows a prefix to one session" 0 "$rc"
+contains "...the one of that account" "$(fxsid 7c3f4e55)" "$out"
+ok "--account narrows a name: the other account has no such session" 1 "$(fxrc --session refactor-billing --account personal)"
+ok "...and one that has it finds it" 0 "$(fxrc --session tagents-core --account personal)"
+ok "...two names of the other account are no match" 1 "$(fxrc --session tagents --account work)"
+unset FX_TA
+
+# ---------------------------------------------------------------------------
+t "21. account names in a terminal: the tagents config, then discovery"
+# ---------------------------------------------------------------------------
+# TU_ACCOUNTS is unset in these runs (FX_ACCOUNTS empty). The configs are files of a scratch directory named by TA_CONFIG; the home has a default account and one more, discovered the way a terminal with no config would find them.
+
+C21="$ROOT/cfg21"; mkdir -p "$C21"
+cat >"$C21/profiles.toml" <<EOF
+[claude.profiles.work]
+config_dir = "$FX/acct/work"
+
+[claude.profiles.personal]
+config_dir = "$FX/acct/personal"
+EOF
+{ cat "$C21/profiles.toml"; printf '\n[[claude.rules]]\ndir = "%s/scratch"\nprofile = "work"\n' "$FXH"; } >"$C21/rules.toml"
+printf '[usage]\nwatch = "work"\n' >"$C21/noprofiles.toml"
+printf '[[[ nope\nkey = = =\n"""unterminated\n' >"$C21/bad.toml"
+
+H21="$ROOT/home21"; mkdir -p "$H21/.claude" "$H21/.claude-extra"
+hist21() { printf '{"display":"x","pastedContents":{},"timestamp":1000,"project":"%s","sessionId":"%s"}\n' "$H21" "$(fxsid "$2")" >>"$1/history.jsonl"; }
+for s in 3f9a1c20 b72e90d4 c04d7be1 91ab44ee e5d1f0a7 5a1d2c33 6b2e3d44; do hist21 "$H21/.claude" $s; done
+for s in d8c3b615 0a6f7e92 7c3f4e55 8d4a5f66; do hist21 "$H21/.claude-extra" $s; done
+
+fxc() { FX_HOME="$H21" FX_ACCOUNTS= fx "$@"; }   # a terminal: no TU_ACCOUNTS
+keys() { cut -f1 | tr '\n' ' ' | sed 's/ $//'; }
+ctsv() { FX_HOME="$H21" FX_ACCOUNTS= fx --by "$@" --tsv; }
+
+ok "a config names the accounts" "work personal ?" "$(FX_CONFIG="$C21/profiles.toml" ctsv account $W | keys)"
+ok "...with the figures of the same accounts named by TU_ACCOUNTS" "$(tsv account $W)" "$(FX_CONFIG="$C21/profiles.toml" ctsv account $W)"
+ok "--account names one of them" "$(tsv session --account work $W)" "$(FX_CONFIG="$C21/profiles.toml" ctsv session --account work $W)"
+ok "...and one the config does not name is unknown" 2 "$(FX_CONFIG="$C21/profiles.toml" fxc --by account --account extra $W >/dev/null; echo $?)"
+ok "a rule of the config places a session by its directory" "work personal" "$(FX_CONFIG="$C21/rules.toml" ctsv account $W | keys)"
+ok "...and adds its requests to the account" 830 "$(FX_CONFIG="$C21/rules.toml" ctsv account $W | awk -F'\t' '$1 == "work" { print $2 }')"
+
+ok "no config: the default account and the one that keeps a history" "default extra ?" "$(FX_CONFIG="$ROOT/none.toml" ctsv account $W | keys)"
+ok "a config with no profiles: the same" "default extra ?" "$(FX_CONFIG="$C21/noprofiles.toml" ctsv account $W | keys)"
+ok "--account extra is known when the accounts are discovered" 0 "$(FX_CONFIG="$ROOT/none.toml" fxc --by account --account extra $W >/dev/null; echo $?)"
+
+ok "TU_ACCOUNTS set by hand wins over the config" "a ?" \
+   "$(FX_ACCOUNTS="a=$FX/acct/work" FX_HOME="$H21" FX_CONFIG="$C21/profiles.toml" fx --by account $W --tsv | keys)"
+ok "...and the rules of the config are not read either" 18 \
+   "$(FX_ACCOUNTS="work=$FX/acct/work;personal=$FX/acct/personal" FX_HOME="$H21" FX_CONFIG="$C21/rules.toml" fx --by account $W --tsv | awk -F'\t' '$1 == "?" { print $2 }')"
+ok "TU_ACCOUNT_RULES set by hand wins over the rules of the config" "336" \
+   "$(FX_RULES="$FXH/scratch=personal" FX_CONFIG="$C21/rules.toml" ctsv account $W | awk -F'\t' '$1 == "personal" { print $2 }')"
+
+# A broken config is the config's business: tusage prints nothing of it.
+ok "the parser does complain about the broken config" 1 \
+   "$([ -n "$(HOME="$FXH" TA_CONFIG="$C21/bad.toml" TA_STATE_DIR="$ROOT/ta-none" bash -c '. "$1/core.sh"; . "$1/config.sh"; . "$1/accounts.sh"; . "$1/usage.sh"; usage_env' _ "$HERE/../lib/tagents" 2>&1)" ] && echo 1 || echo 0)"
+ok "a malformed config adds nothing to standard error" "$(FX_CONFIG="$ROOT/none.toml" fxc --by account $W)" "$(FX_CONFIG="$C21/bad.toml" fxc --by account $W)"
+
+ok "with no lib/tagents beside the file the discovery stays" "default extra ?" \
+   "$(FX_TU="$ROOT/nolib/tusage" FX_CONFIG="$C21/profiles.toml" ctsv account $W | keys)"
+ok "a run through a symlink finds the config" "work personal ?" \
+   "$(FX_TU="$ROOT/ln/one" FX_CONFIG="$C21/profiles.toml" ctsv account $W | keys)"
+ok "--daily splits by the accounts of the config" "? personal work" \
+   "$(FX_CONFIG="$C21/profiles.toml" fxc --daily --since 1000d | cut -f2 | sort -u | tr '\n' ' ' | sed 's/ $//')"
+
+# Only the reports that split by account look at the config, and never when TU_ACCOUNTS says what the accounts are: the dashboard reads --sessions on every refresh. bash -x prints the calls, so a call that was not made is a count of 0.
+traced() { FX_SH='bash -x' FX_HOME="$H21" FX_CONFIG="$C21/profiles.toml" "$@" | grep -c 'ensure_accounts$'; }
+ok "--by account looks at the config" 1 "$([ "$(FX_ACCOUNTS= traced fx --by account $W)" -ge 1 ] && echo 1 || echo 0)"
+ok "the summary does too: it has a block by account" 1 "$([ "$(FX_ACCOUNTS= traced fx)" -ge 1 ] && echo 1 || echo 0)"
+ok "--sessions does not" 0 "$(FX_ACCOUNTS= traced fx --sessions --since 1000d)"
+ok "--burn does not" 0 "$(FX_ACCOUNTS= traced fx --burn)"
+ok "--json does not" 0 "$(FX_ACCOUNTS= traced fx --json --since 1000d)"
+ok "--session <id> does not" 0 "$(FX_ACCOUNTS= traced fx --session "$(fxsid 3f9a1c20)")"
+
+# The dashboard calls these four on every refresh, so each reads the clock as few times as the work needs: a report with a window reads it once for the window and for the rows that count the last hour and five, and one with no window reads it for nothing else.
+datecalls() { FX_SH='bash -x' "$@" | grep -c 'date +%s$'; }
+ok "--sessions reads the clock once" 1 "$(datecalls fx --sessions --since 1000d)"
+ok "--burn reads it once, for its own five hours" 1 "$(datecalls fx --burn)"
+ok "--session <id> reads it not at all" 0 "$(datecalls fx --session "$(fxsid 3f9a1c20)")"
+ok "--by reads the clock once, for its window and for its rows" 1 "$(datecalls fx --by day --since 1000d)"
+ok "the summary reads it once" 1 "$(datecalls fx)"
+
+# A whole id that no session has is an id that aged out of the index, which the closed-session preview asks for: it prints the empty detail and looks up no name. Any other text that no id starts with is a name, whatever characters it is made of.
+namecalls() { FX_SH='bash -x' "$@" | grep -c 'name_paths$'; }
+ok "--session <an id the index lacks> looks up no name" 0 "$(namecalls fx --session "$(fxsid ffffffff)")"
+ok "...and it exits 0" 0 "$(fxrc --session "$(fxsid ffffffff)")"
+ok "the start of an id the index lacks is looked up as a name" 1 "$([ "$(namecalls fx --session ffffff)" -ge 1 ] && echo 1 || echo 0)"
+ok "...and exits 1" 1 "$(fxrc --session ffffff)"
+ok "--session <a name> looks it up" 1 "$([ "$(namecalls fx --session refactor-billing)" -ge 1 ] && echo 1 || echo 0)"
+
+# ---------------------------------------------------------------------------
+t "22. one session by day"
+# ---------------------------------------------------------------------------
+# --session names the rows; --by names the table. Neither flag decides on its own which report runs, so they mean the same in either order.
+
+export FX_TA="$TA20"
+SD_HEAD="refactor-billing  $SID3
+work  ·  ~/git/work/billing-api  ·  3 days, 10-29..11-01
+"
+SD_TABLE='             reqs   input  output  cwrite   cread   total         $   share
+2026-10-29    180    430k    137k    2.3M   24.5M   27.4M     $28.8   33.5%
+  opus-5      142    310k     96k    1.9M   21.4M   23.7M     $26.5   30.8%
+  sonnet-5     38    120k     41k    410k    3.1M    3.7M     $2.29    2.7%
+2026-10-31    210    440k    150k    2.6M   33.0M   36.2M     $38.7   45.0%
+  opus-5      210    440k    150k    2.6M   33.0M   36.2M     $38.7   45.0%
+2026-11-01    112    290k    100k    1.4M   16.8M   18.6M     $18.6   21.6%
+  opus-5       88    200k     70k    1.1M   14.8M   16.2M     $17.0   19.8%
+  sonnet-5     24     90k     30k    260k    2.0M    2.4M     $1.53    1.8%
+total         502    1.2M    387k    6.3M   74.3M   82.1M     $86.1  100.0%'
+out=$(fx --session refactor-billing --by day,model --color never); rc=$?
+ok "--session <name> --by day,model: the heading, then the table" "$SD_HEAD
+$SD_TABLE" "$out"
+ok "...and exits 0" 0 "$rc"
+ok "--by first and --session second print the same" "$out" "$(fx --by day,model --session refactor-billing --color never)"
+ok "a prefix of the id prints the same" "$out" "$(fx --session 3f9a1c --by day,model --color never)"
+ok "the whole id prints the same" "$out" "$(fx --session "$SID3" --by day,model --color never)"
+ok "a part of the name prints the same" "$out" "$(fx --session factor-bil --by day,model --color never)"
+
+out=$(fx --session refactor-billing --by day --color never)
+ok "--by day: one row per day and the total" "2026-10-29 2026-10-31 2026-11-01 total" \
+   "$(printf '%s\n' "$out" | LC_ALL=C awk '/^(2026|total)/ { print $1 }' | paste -sd' ' -)"
+ok "...with the heading above it" "$SD_HEAD" "$(printf '%s\n' "$out" | sed -n 1,2p)
+"
+ok "...and the days add up to the dollars of the table's total" "86.1" \
+   "$(fx --session refactor-billing --by day --tsv | LC_ALL=C awk -F'\t' '{ s += $7 } END { printf "%.1f", s }')"
+ok "--since narrows the window of a session: two days" "2026-10-31 2026-11-01 total" \
+   "$(fx --session refactor-billing --by day --since 2026-10-31 --color never | LC_ALL=C awk '/^(2026|total)/ { print $1 }' | paste -sd' ' -)"
+contains "...and the heading counts those days" "2 days, 10-31..11-01" "$(fx --session refactor-billing --by day --since 2026-10-31 --color never)"
+
+out=$(fx --session "$(fxsid e5d1f0a7)" --by day --color never)
+ok "a session with no name is headed by its id alone, and a one-day span is one date" "$(fxsid e5d1f0a7)
+work  ·  ~/git/work/web-app  ·  1 day, 10-31
+" "$(printf '%s\n' "$out" | sed -n 1,2p)
+"
+out=$(fx --session 7b2c5d33 --by day --color never)
+contains "a session no account claims is in no account" "? unplaced  ·  " "$out"
+out=$(fx --session 0a6f7e92 --by day --color never)
+lacks "no escape sequence of a name reaches the heading" "$(printf '\033')" "$out"
+
+ok "the session is a filter of --by session: one row" 1 "$(fx --session refactor-billing --by session --color never | grep -c '3f9a1c20 ')"
+ok "...and of --by account: its account alone" "work" "$(fx --session refactor-billing --by account --color never | LC_ALL=C awk 'NR > 3 && /^(work|personal)/ { print $1 }')"
+ok "a --tsv table has no heading: its lines are the three days" "3 3" \
+   "$(fx --session refactor-billing --by day --tsv | LC_ALL=C awk '/^2026-/ { d++ } END { print d, NR }')"
+ok "--session --sessions lists that session alone, 14 fields" "1 14" \
+   "$(fx --session refactor-billing --sessions --since 1000d | LC_ALL=C awk -F'\t' 'END { print NR, NF }')"
+ok "--account narrows the lookup of --by too" 1 "$(fxrc --session refactor-billing --by day --account personal)"
+ok "a name that fits two sessions exits 3 with --by as it does without" 3 "$(fxrc --session tagents --by day)"
+ok "a value that names nothing exits 1 with --by" 1 "$(fxrc --session nothing-like-it --by day)"
+unset FX_TA
+
+# ---------------------------------------------------------------------------
+t "23. the table fits the terminal"
+# ---------------------------------------------------------------------------
+# The width is COLUMNS when that is a number, else the terminal's, else 120. Columns go in a fixed order until the label has 24 characters; the label, total, dollars and share stay. Lengths are counted in characters.
+
+maxlen() {  # the longest line of standard input, in characters
+  LC_ALL=C awk '{ n = 0; for (i = 1; i <= length($0); i++) { c = substr($0, i, 1); if (c < "\200" || c > "\277") n++ }
+                 if (n > m) m = n } END { print m + 0 }'
+}
+header() { grep -m1 ' share' | tr -s ' ' | sed 's/^ //'; }  # the column names of a table
+cols() { FX_COLUMNS=$1 fx --by "$2" --color never $W | header; }
+
+ok "80 columns: no line is longer than 80, the closing lines included" 1 \
+   "$([ "$(FX_COLUMNS=80 fx --by account --color never $W | maxlen)" -le 80 ] && echo 1 || echo 0)"
+T_AT80='usage  2026-10-26 .. 2026-11-01  by account
+
+             reqs  output   cread   total         $   share
+work          812    584k  110.2M  121.7M      $118   72.5%
+personal      318    231k   42.9M   47.3M     $44.3   27.3%
+? unplaced     18      9k    700k    829k     $0.26    0.2%
+total        1148    824k  153.8M  169.9M      $162  100.0%'
+ok "80 columns drop models, span, days, input and cwrite" "$T_AT80" "$(FX_COLUMNS=80 fx --by account --color never $W | table)"
+T_AT72='                           reqs  output   total         $   share
+work                        812    584k  121.7M      $118   72.5%
+  ~/git/work/billing-api    659    483k  102.0M      $101   62.3%
+  ~/git/work/web-app        153    101k   19.8M     $16.7   10.3%
+personal                    318    231k   47.3M     $44.3   27.3%
+  ~/git/personal/tagents    215    162k   35.4M     $38.8   23.9%
+  ~/git/personal/site       103     69k   11.9M     $5.51    3.4%
+? unplaced                   18      9k    829k     $0.26    0.2%
+  ~/scratch/probe            18      9k    829k     $0.26    0.2%
+total                      1148    824k  169.9M      $162  100.0%'
+ok "72 columns leave 24 for the labels by dropping cread as well" "$T_AT72" \
+   "$(FX_COLUMNS=72 fx --by account,project --color never $W | table | sed 1,2d)"
+T_COMPACT='                           total         $   share
+work                      121.7M      $118   72.5%
+  ~/git/work/billing-api  102.0M      $101   62.3%
+  ~/git/work/web-app       19.8M     $16.7   10.3%
+personal                   47.3M     $44.3   27.3%
+  ~/git/personal/tagents   35.4M     $38.8   23.9%
+  ~/git/personal/site      11.9M     $5.51    3.4%
+? unplaced                  829k     $0.26    0.2%
+  ~/scratch/probe           829k     $0.26    0.2%
+total                     169.9M      $162  100.0%'
+ok "--compact keeps the label, total, dollars and share" "$T_COMPACT" \
+   "$(fx --by account,project --compact --color never $W | table | sed 1,2d)"
+ok "--compact does the same at any width" "$T_COMPACT" \
+   "$(FX_COLUMNS=200 fx --by account,project --compact --color never $W | table | sed 1,2d)"
+
+ok "the columns of a table with room for them all" "reqs input output cwrite cread total \$ share days span models" "$(cols 200 account,project)"
+ok "120 columns: models go first" "reqs input output cwrite cread total \$ share days span" "$(cols 120 account,project)"
+ok "100: span goes next" "reqs input output cwrite cread total \$ share days" "$(cols 100 account,project)"
+ok "90: then days" "reqs input output cwrite cread total \$ share" "$(cols 90 account,project)"
+ok "80: then input and cwrite" "reqs output cread total \$ share" "$(cols 80 account,project)"
+ok "72: then cread" "reqs output total \$ share" "$(cols 72 account,project)"
+ok "60: then output" "reqs total \$ share" "$(cols 60 account,project)"
+ok "45: then reqs; the label, total, dollars and share are never dropped" "total \$ share" "$(cols 45 account,project)"
+ok "a width that is not a number is 120" "$(FX_COLUMNS=120 fx --by account,project --color never $W)" \
+   "$(FX_COLUMNS=wide fx --by account,project --color never $W)"
+ok "no COLUMNS and no terminal is 120 too" "$(FX_COLUMNS=120 fx --by account,project --color never $W)" \
+   "$(FX_COLUMNS= fx --by account,project --color never $W)"
+ok "a table by day has the days and span columns of no time dimension left out, at any width" "reqs input output cwrite cread total \$ share models" "$(cols 200 day)"
+
+# A label that does not fit ends in an ellipsis; a session keeps its id.
+export FX_TA="$TA20"
+out=$(FX_COLUMNS=60 fx --by session --top 0 --color never $W)
+ok "60 columns: no line of a session table is longer" 1 "$([ "$(printf '%s\n' "$out" | maxlen)" -le 60 ] && echo 1 || echo 0)"
+contains "a named session is cut in its name and keeps its eight characters" "Fix the webapp l…  91ab44ee" "$out"
+contains "a name that fits is whole" "refactor-billing  3f9a1c20" "$out"
+contains "a session with no name keeps all eight characters" "e5d1f0a7" "$out"
+out=$(FX_COLUMNS=40 fx --by project --color never $W)
+ok "40 columns: no line is longer, the title included" 1 "$([ "$(printf '%s\n' "$out" | maxlen)" -le 40 ] && echo 1 || echo 0)"
+contains "a directory is cut with an ellipsis" "~/git/persona…" "$out"
+unset FX_TA
+
+# The closing lines wrap at the width and lose no word.
+notes() { sed '1,/^total/d' | sed '/^$/d' | sed 's/^  //' | tr '\n' ' '; }
+ok "the closing lines wrapped at 80 hold the same words as at 140" "$(fx --by account --color never $W | notes)" \
+   "$(FX_COLUMNS=80 fx --by account --color never $W | notes)"
+ok "...and are cut into more lines" 1 "$([ "$(FX_COLUMNS=80 fx --by account --color never $W | sed '1,/^total/d' | grep -c .)" -gt "$(fx --by account --color never $W | sed '1,/^total/d' | grep -c .)" ] && echo 1 || echo 0)"
+
+# Names are measured in characters: Cyrillic is two bytes a letter.
+TA23="$ROOT/ta23"; mkdir -p "$TA23"
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "Счёт-фактура для клиента" "$(fxsid d8c3b615)" "ядро" >"$TA23/labels.tsv"
+out=$(FX_TA="$TA23" fx --by session --compact --top 0 --color never $W)
+contains "a Cyrillic name is shown" "Счёт-фактура для клиента  3f9a1c20" "$out"
+ok "...and every row has the same length in characters" 1 "$(printf '%s\n' "$out" | sed '1,2d' | sed '/^$/,$d' |
+   LC_ALL=C awk '{ n = 0; for (i = 1; i <= length($0); i++) { c = substr($0, i, 1); if (c < "\200" || c > "\277") n++ }; print n }' | sort -u | wc -l | tr -d ' ')"
+out=$(FX_TA="$TA23" FX_COLUMNS=50 fx --by session --top 0 --color never $W)
+contains "a Cyrillic name is cut by characters, and keeps its id" "Счёт-фактура …  3f9a1c20" "$out"
+ok "...so the output is still valid UTF-8" 0 "$(printf '%s\n' "$out" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; echo $?)"
+
+# ---------------------------------------------------------------------------
+t "24. colour only where it helps"
+# ---------------------------------------------------------------------------
+ESC=$(printf '\033')
+ok "a pipe has no escape sequence" 0 "$(fx --by account $W | grep -c "$ESC")"
+ok "--color never has none" 0 "$(fx --by account --color never $W | grep -c "$ESC")"
+ok "--color always has them" 1 "$([ "$(fx --by account --color always $W | grep -c "$ESC")" -gt 0 ] && echo 1 || echo 0)"
+ok "--color always wins over NO_COLOR" 1 "$([ "$(FX_NO_COLOR=1 fx --by account --color always $W | grep -c "$ESC")" -gt 0 ] && echo 1 || echo 0)"
+ok "--tsv has no colour, whatever --color says" 0 "$(fx --by account --tsv --color always $W | grep -c "$ESC")"
+ok "colour is only escape sequences: the table is the same without them" "$(fx --by account,project --color never $W)" \
+   "$(fx --by account,project --color always $W | sed "s/${ESC}\\[[0-9;]*m//g")"
+ok "...also for a session's heading and for --top rows" "$(fx --session refactor-billing --by day,model --color never; fx --by session --top 3 --color never $W)" \
+   "$({ fx --session refactor-billing --by day,model --color always; fx --by session --top 3 --color always $W; } | sed "s/${ESC}\\[[0-9;]*m//g")"
+out=$(fx --by account,project --color always $W)
+ok "a row with rows under it is bold" 1 "$(printf '%s\n' "$out" | grep -c "^${ESC}\[1mwork ")"
+ok "the total is bold" 1 "$(printf '%s\n' "$out" | grep -c "^${ESC}\[1mtotal ")"
+ok "a row with nothing under it is plain" 1 "$(printf '%s\n' "$out" | grep -c "^  ~/git/work/web-app ")"
+ok "the column names are dim" 1 "$(printf '%s\n' "$out" | grep -c "^${ESC}\[90m  *reqs")"
+ok "a row that sums the rest is dim" 1 "$(fx --by session --top 3 --color always $W | grep -c "^${ESC}\[90m… 5 more")"
+ok "--color bad exits 2" 2 "$(fxrc --by account --color purple)"
+
+if [ -z "$PTY" ]; then
+  printf '  skip the checks on a pseudo-terminal: no script that makes one\n'
+else
+  ptyn() { FX_PTY=1 "$@" | grep -c "$ESC"; }
+  ok "on a terminal, auto colours" 1 "$([ "$(ptyn fx --by account $W)" -gt 0 ] && echo 1 || echo 0)"
+  ok "...unless --color never" 0 "$(ptyn fx --by account --color never $W)"
+  ok "...or NO_COLOR is set" 0 "$(FX_NO_COLOR=1 ptyn fx --by account $W)"
+  ok "...but an empty NO_COLOR is not set" 1 "$([ "$(FX_NO_COLOR= ptyn fx --by account $W)" -gt 0 ] && echo 1 || echo 0)"
+  ok "...or TERM is dumb" 0 "$(FX_TERM=dumb ptyn fx --by account $W)"
+  ok "...and --color always still colours with NO_COLOR" 1 "$([ "$(FX_NO_COLOR=1 ptyn fx --by account --color always $W)" -gt 0 ] && echo 1 || echo 0)"
+  cat >"$ROOT/narrow.sh" <<NARROW
+stty cols 70
+exec bash "$TU" "\$@"
+NARROW
+  out=$(FX_PTY=1 FX_COLUMNS= FX_TU="$ROOT/narrow.sh" fx --by account,project --color never $W)
+  ok "with no COLUMNS the width of the terminal is used" "$(FX_COLUMNS=70 fx --by account,project --color never $W)" "$out"
+  # The terminal is asked through lib/tagents; with no modules beside tusage it is not asked.
+  cat >"$ROOT/narrow-nolib.sh" <<NARROW
+stty cols 70
+exec bash "$ROOT/nolib/tusage" "\$@"
+NARROW
+  out=$(FX_PTY=1 FX_COLUMNS= FX_TU="$ROOT/narrow-nolib.sh" fx --by account,project --color never $W)
+  ok "...but with no modules beside tusage the width is 120, whatever the terminal" \
+     "$(FX_TU="$ROOT/nolib/tusage" FX_COLUMNS=120 fx --by account,project --color never $W)" "$out"
+  ok "...which is not the width the terminal would have given" 1 "$([ "$out" != "$(FX_COLUMNS=70 FX_TU="$ROOT/nolib/tusage" fx --by account,project --color never $W)" ] && echo 1 || echo 0)"
+fi
+
+# ---------------------------------------------------------------------------
+t "25. the summary: dollars, the accounts, named sessions"
+# ---------------------------------------------------------------------------
+# The summary reads the clock, so its rows are placed by their age: half an hour (inside five hours), twenty hours (inside 24), five days (inside seven) and ten days (outside). Dollars by hand: opus-5 is 5/25 and sonnet-5 2/10 per million, haiku-4-5 1/5. work: 1M in and 100k out on opus is 7.50, then 2M in on opus is 10.00. personal: 1M in and 400k out on sonnet is 6.00. The session no account claims: 1M in on haiku is 1.00.
+
+F5="$ROOT/fx5"; mkdir -p "$F5/usage"
+now5=$(( $(date +%s) / 300 * 300 ))
+f5row() {  # <age in seconds> <project> <sid first 8> <model> <requests> <input> <output> <context>
+  printf '%s\t-h-%s\t%s\t-\t-\t-\tclaude-%s\t%s\t%s\t0\t0\t0\t%s\t%s\t%s\n' \
+    "$(( now5 - $1 ))" "$2" "$(fxsid "$3")" "$4" "$5" "$6" "$7" "$8" "$8"
+}
+{ f5row 1800   x 3f9a1c20 opus-5    5 1000000 100000 612000
+  f5row 72000  y d8c3b615 sonnet-5  7 1000000 400000 388000
+  f5row 432000 x 3f9a1c20 opus-5   11 2000000 0      612000
+  f5row 432000 z 7b2c5d33 haiku-4-5 3 1000000 0      50000
+  f5row 864000 x 3f9a1c20 opus-5   13 10000000 0     612000
+} >"$F5/usage/facts.tsv"
+printf -- '-h-x\t%s/git/work/billing-api\n-h-y\t%s/git/personal/tagents\n-h-z\t%s/scratch/probe\n' "$FXH" "$FXH" "$FXH" >"$F5/usage/projects.tsv"
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "$FXH/git/work/billing-api" "$(fxsid d8c3b615)" "$FXH/git/personal/tagents" \
+  "$(fxsid 7b2c5d33)" "$FXH/scratch/probe" >"$F5/usage/origin.tsv"
+TA25="$ROOT/ta25"; mkdir -p "$TA25"
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "refactor-billing" >"$TA25/labels.tsv"
+fx5() { FX_STATE="$F5/usage" FX_TA="$TA25" fx "$@" | sed "s/${ESC}\\[[0-9;]*m//g"; }
+squash() { awk '{ $1 = $1; print }'; }  # one space between the words of a line
+
+out=$(fx5)
+ok "the five hours: cost units, dollars and requests" "1.5M \$7.50 5" "$(printf '%s\n' "$out" | awk '/^last 5 h/ { print $4, $5, $6 }')"
+ok "the 24 hours" "4.5M \$13.5 12" "$(printf '%s\n' "$out" | awk '/^last 24 h/ { print $4, $5, $6 }')"
+ok "the seven days: the ten-day-old row is not in it" "7.5M \$24.5 26" "$(printf '%s\n' "$out" | awk '/^last 7 d/ { print $4, $5, $6 }')"
+ok "the five hours keep the peak context" "peak ctx 612k" "$(printf '%s\n' "$out" | awk '/^last 5 h/ { print $8, $9, $10 }')"
+ok "the seven days by account: dollars and share, the dearest first, the unplaced one named" \
+   "work \$17.5 71.4%
+personal \$6.00 24.5%
+? unplaced \$1.00 4.1%" \
+   "$(printf '%s\n' "$out" | awk '/^by account/ { f = 1; next } f && /^$/ { exit } f' | squash)"
+lineof() { printf '%s\n' "$out" | grep -n "^$1" | head -1 | cut -d: -f1; }
+ok "...between the windows and where it goes" 1 \
+   "$([ "$(lineof 'last 7 d')" -lt "$(lineof 'by account')" ] && [ "$(lineof 'by account')" -lt "$(lineof 'where it goes')" ] && echo 1 || echo 0)"
+
+out=$(fx5 --account work)
+lacks "one account has no account block" "by account" "$out"
+ok "--account work narrows the windows" "\$17.5 16" "$(printf '%s\n' "$out" | awk '/^last 7 d/ { print $5, $6 }')"
+out=$(fx5 --account personal)
+ok "--account personal narrows them too" "\$6.00 7" "$(printf '%s\n' "$out" | awk '/^last 7 d/ { print $5, $6 }')"
+ok "--account ? is the sessions no account claims" "\$1.00 3" "$(fx5 --account '?' | awk '/^last 7 d/ { print $5, $6 }')"
+ok "two accounts named is two accounts in the block" "work|personal" \
+   "$(fx5 --account work,personal | awk '/^by account/ { f = 1; next } f && /^$/ { exit } f { printf "%s%s", (n++ ? "|" : ""), $1 }')"
+
+# An account whose only usage is older than seven days is not in the week.
+F5B="$ROOT/fx5b"; mkdir -p "$F5B/usage"
+{ f5row 1800 x 3f9a1c20 opus-5 5 1000000 100000 612000
+  f5row 864000 y d8c3b615 sonnet-5 7 1000000 400000 388000
+} >"$F5B/usage/facts.tsv"
+cp "$F5/usage/projects.tsv" "$F5B/usage/projects.tsv"
+out=$(FX_STATE="$F5B/usage" FX_TA="$TA25" fx)
+lacks "an account with no usage in the week is no second account" "by account" "$out"
+
+# A request on a model with no rate is a floor, and the summary says so.
+F5C="$ROOT/fx5c"; mkdir -p "$F5C/usage"
+{ f5row 1800 x 3f9a1c20 opus-5 5 1000000 100000 612000
+  f5row 72000 y d8c3b615 mystery-9 2 1000000 0 100
+} >"$F5C/usage/facts.tsv"
+cp "$F5/usage/projects.tsv" "$F5C/usage/projects.tsv"
+out=$(FX_STATE="$F5C/usage" FX_TA="$TA25" fx | sed "s/${ESC}\\[[0-9;]*m//g")
+ok "a window with an unrated request marks its dollars" "\$7.50 5|\$7.50* 7" \
+   "$(printf '%s\n' "$out" | awk '/^last 5 h/ { a = $5 " " $6 } /^last 24 h/ { b = $5 " " $6 } END { print a "|" b }')"
+contains "...and says the figure is a floor" "* marks dollars that are a floor" "$out"
+lacks "a summary with every model rated has no such note" "marks dollars that are a floor" "$(fx5)"
+
+# The heaviest sessions: the name, then eight characters of the id.
+ok "a named session shows its name and eight characters of its id, a plain one its id alone" \
+   "refactor-billing 3f9a1c20 3.5M 16 req ctx 612k sub 0 ~/git/work/billing-api
+d8c3b615 3.0M 7 req ctx 388k sub 0 ~/git/personal/tagents
+7b2c5d33 1.0M 3 req ctx 50k sub 0 ~/scratch/probe" \
+   "$(fx5 | sed '1,/^heaviest sessions/d' | squash)"
+lacks "an id is cut at eight characters" "d8c3b615-" "$(fx5)"
+idcol() {  # <id>: the column, in characters, where the id starts on each line that holds it
+  LC_ALL=C awk -v id="$1" 'index($0, id) { p = substr($0, 1, index($0, id) - 1); n = 0
+    for (i = 1; i <= length(p); i++) { c = substr(p, i, 1); if (c < "\200" || c > "\277") n++ }; print n }'
+}
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "refactor-billing" "$(fxsid 7b2c5d33)" "Счёт для клиента" >"$TA25/labels.tsv"
+rows=$(fx5 | sed '1,/^heaviest sessions/d')
+ok "the ids of the heaviest sessions start in one column, names in Cyrillic included" "1" \
+   "$({ printf '%s\n' "$rows" | idcol 3f9a1c20; printf '%s\n' "$rows" | idcol d8c3b615; printf '%s\n' "$rows" | idcol 7b2c5d33; } | sort -u | wc -l | tr -d ' ')"
+contains "a Cyrillic name is whole" "Счёт для клиента  7b2c5d33" "$rows"
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "$(printf 'a%.0s' $(seq 1 60))" >"$TA25/labels.tsv"
+ok "a name longer than 28 characters is cut with an ellipsis" "$(printf 'a%.0s' $(seq 1 27))…" \
+   "$(fx5 | sed '1,/^heaviest sessions/d' | sed -n 1p | squash | cut -d' ' -f1)"
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "refactor-billing" >"$TA25/labels.tsv"
+
+# What stays as it is.
+ok "no index at all exits 1 and says to rebuild" "tusage: no data yet — run 'tusage --rebuild'|1" \
+   "$(FX_STATE="$ROOT/fx5-none" fx 2>&1 | tr -d '\n')|$(FX_STATE="$ROOT/fx5-none" fxrc)"
+F5D="$ROOT/fx5d"; mkdir -p "$F5D/usage"
+f5row 864000 x 3f9a1c20 opus-5 5 1000000 100000 612000 >"$F5D/usage/facts.tsv"
+cp "$F5/usage/projects.tsv" "$F5D/usage/projects.tsv"
+out=$(FX_STATE="$F5D/usage" FX_TA="$TA25" fx | sed "s/${ESC}\\[[0-9;]*m//g")
+contains "an empty week says so" "nothing in the last 7 days" "$out"
+lacks "...and has no account block" "by account" "$out"
+ok "...and a dollar figure of nothing" "\$0 0" "$(printf '%s\n' "$out" | awk '/^last 7 d/ { print $5, $6 }')"
+
+
+# ---------------------------------------------------------------------------
+t "26. a name is text: no control character reaches the terminal"
+# ---------------------------------------------------------------------------
+# A name comes from three places (a typed label, the cached title, the title in the transcript) and every one of them can hold an escape sequence. The summary, the listing on standard error and a table all print it, so the name is scrubbed once, where it is produced. A tab is a control character too, but no reader hands one over: a label and a cached title are fields of a tab-separated file, and title_of turns a tab of a transcript title into a space. The fourth session below has one in its title, to see the name come out in one piece; the scrub itself is run on a tab at the end of this section.
+
+F26="$ROOT/fx26"; mkdir -p "$F26/usage" "$FX/projects/-h-z"
+cp "$F5/usage/facts.tsv" "$F5/usage/projects.tsv" "$F5/usage/origin.tsv" "$F26/usage/"
+f5row 432000 z 9c4e7a1b haiku-4-5 2 1000000 0 40000 >>"$F26/usage/facts.tsv"
+LC_ALL=C awk -F'\t' -v OFS='\t' '{ if (!($3 in F) || $1 < F[$3]) F[$3] = $1; if ($1 > L[$3]) L[$3] = $1; S[$3] = $2; M[$3] = $7 }
+  END { for (s in F) print s, S[s], F[s], L[s], M[s] }' "$F26/usage/facts.tsv" >"$F26/usage/sessions.tsv"
+EVIL=$(printf '\033[2J\033]0;x\007')
+TA26="$ROOT/ta26"; mkdir -p "$TA26"
+printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "typed${EVIL}label" >"$TA26/labels.tsv"
+printf '%s\t%s\t%s\n' "$(fxsid d8c3b615)" "cached${EVIL}title" 1 >"$TA26/title.tsv"
+printf '%s\n' '{"type":"ai-title","aiTitle":"from\u001b[2J\u001b]0;x\u0007transcript"}' >"$FX/projects/-h-z/$(fxsid 7b2c5d33).jsonl"
+printf '%s\n' '{"type":"ai-title","aiTitle":"tab\there"}' >"$FX/projects/-h-z/$(fxsid 9c4e7a1b).jsonl"
+touch "$F26/usage/projects.tsv"
+fx26() { FX_STATE="$F26/usage" FX_TA="$TA26" fx "$@" | sed "s/${ESC}\\[[0-9;]*m//g"; }
+ncntrl() { LC_ALL=C tr -d '\n' | LC_ALL=C tr -cd '\001-\037\177' | wc -c | tr -d ' '; }
+
+out=$(fx26)
+ok "the summary prints no control character from a typed, a cached or a transcript title" 0 "$(printf '%s\n' "$out" | ncntrl)"
+contains "...and the name is kept without them" "typed[2J]0;xlabel" "$out"
+contains "...in the cached title too" "cached[2J]0;xtitle" "$out"
+contains "...and in the title read from the transcript" "from[2J]0;xtranscript" "$out"
+ok "...and a tab in a title leaves the name in one piece" 1 "$(printf '%s\n' "$out" | grep -cE 'tab ?here')"
+
+out=$(fx26 --session '0;x')
+ok "an ambiguous --session lists the sessions on standard error and exits 3" 3 "$(FX_STATE="$F26/usage" FX_TA="$TA26" fxrc --session '0;x')"
+ok "...the list has no control character either" 0 "$(printf '%s\n' "$out" | ncntrl)"
+ok "...and three sessions are in it" 3 "$(printf '%s\n' "$out" | grep -c -- '-6d4e-4b0a')"
+
+out=$(fx26 --by session --top 0 --since 1000d)
+ok "a --by session table prints none" 0 "$(printf '%s\n' "$out" | ncntrl)"
+
+# The two places that scrub a name, each handed a name with a tab, an escape, a carriage return and a delete in it. names_of_sessions is run as it stands in tusage with the reader of a label stubbed; AWK_NAME is evaluated from its own text.
+NOISY=$(printf 'a\tb\001c\rd\033e\177f')
+NAMES_FN=$(sed -n '/^names_of_sessions() {/,/^}$/p' "$TU")
+AWK_NAME_SRC=$(sed -n "/^AWK_NAME='/,/^'\$/p" "$TU")
+ok "names_of_sessions and AWK_NAME were found" "1 1" "$([ -n "$NAMES_FN" ] && echo 1) $([ -n "$AWK_NAME_SRC" ] && echo 1)"
+scrubbed_by_names_of_sessions() (
+  eval "$NAMES_FN"
+  TAB=$(printf '\t'); US=$(printf '\037'); LABELS="$TA26/labels.tsv"; TITLES="$ROOT/no-such-titles"; PROJECTS="$ROOT/no-such-projects"
+  label_of() { printf '%s\n' "$NOISY"; }
+  printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "-h-x" | names_of_sessions | cut -f3
+)
+ok "names_of_sessions scrubs a tab and every other control character from a name" "abcdef" "$(scrubbed_by_names_of_sessions)"
+scrubbed_by_awk_name() (  # <label|title>: where the name is put
+  eval "$AWK_NAME_SRC"
+  LC_ALL=C awk -v lab=/dev/null -v tit=/dev/null -v noisy="$NOISY" -v where="$1" "$AWK_NAME"' BEGIN {
+    if (where == "label") { HL["s"] = 1; LN["s"] = noisy } else TN["s"] = noisy
+    print name("s"); exit }'
+)
+ok "AWK_NAME scrubs them from a typed name" "abcdef" "$(scrubbed_by_awk_name label)"
+ok "...and from a cached title" "abcdef" "$(scrubbed_by_awk_name title)"
+
+# ---------------------------------------------------------------------------
+t "27. a date window is cut where the rows are bucketed"
+# ---------------------------------------------------------------------------
+# A row is placed in a day at today's UTC offset, and so are the ends of a window that names days. Run in Prague on a clock pinned after the change to winter time of 2026-10-25 (today's offset is +0100), the rows of an earlier day of summer time (+0200) sit an hour off the local midnight: 22:30 UTC of the 19th is 00:30 on the 20th by the clock then, and the 19th by today's. Each row below says which.
+
+pinclock "$ROOT/clock-prague" "$(TZ=Europe/Prague epoch_of "2026-11-02 12:00:00")"
+
+F27="$ROOT/fx27"; mkdir -p "$F27/usage"
+prow() {  # <UTC time of day, as YYYY-MM-DD HH:MM:SS> <requests>
+  printf '%s\t-h-x\t%s\t-\t-\t-\tclaude-opus-5\t%s\t1000\t0\t0\t0\t0\t1000\t1000\n' \
+    "$(TZ=UTC epoch_of "$1")" "$(fxsid 3f9a1c20)" "$2"
+}
+{ prow "2026-10-19 22:30:00" 1     # the 19th by today's offset
+  prow "2026-10-19 23:30:00" 2     # the 20th
+  prow "2026-10-21 22:30:00" 4     # the 21st
+  prow "2026-10-21 23:30:00" 8     # the 22nd
+  prow "2026-10-24 22:30:00" 16    # the 24th
+  prow "2026-10-24 23:30:00" 32    # the 25th, the day the clocks went back
+  prow "2026-10-26 22:30:00" 64    # the 26th
+  prow "2026-10-26 23:30:00" 128   # the 27th
+} >"$F27/usage/facts.tsv"
+prague() { PATH="$ROOT/clock-prague:$PATH" FX_TZ=Europe/Prague FX_STATE="$F27/usage" fxo "$@"; }
+
+ok "the pinned clock is in winter time" "+0100" "$(PATH="$ROOT/clock-prague:$PATH" TZ=Europe/Prague date +%z)"
+ok "--since a day starts at the local midnight the rows are bucketed by: the 19th's row is out" \
+   "2026-10-20	2
+2026-10-21	4" "$(prague --by day --since 2026-10-20 --until 2026-10-21 --tsv | cut -f1,2)"
+ok "a window across the change of 2026-10-25 holds exactly the days it names" \
+   "2026-10-25	32
+2026-10-26	64" "$(prague --by day --since 2026-10-25 --until 2026-10-26 --tsv | cut -f1,2)"
+ok "the first and the last row of a longer window are its first and last day" \
+   "2026-10-20 2026-10-26" \
+   "$(prague --by day --since 2026-10-20 --until 2026-10-26 --tsv | cut -f1 | sed -n '1p;$p' | tr '\n' ' ' | sed 's/ $//')"
+ok "--since a day and no --until runs to today, the 27th's row in" "128" \
+   "$(prague --by day --since 2026-10-27 --tsv | cut -f2)"
+
+# --since month is the midnight of the 1st cut the same way. On the 27th of October (+0100) the 1st began at 23:00 UTC of 30 September by today's offset, an hour after the 22:00 UTC a +0200 midnight was, so of the two rows only the later one is in.
+pinclock "$ROOT/clock-prague-oct" "$(TZ=Europe/Prague epoch_of "2026-10-27 12:00:00")"
+F27M="$ROOT/fx27m"; mkdir -p "$F27M/usage"
+{ prow "2026-09-30 22:30:00" 1     # the 30th by today's offset
+  prow "2026-09-30 23:30:00" 2     # the 1st
+} >"$F27M/usage/facts.tsv"
+ok "--since month starts at the midnight of the 1st by today's offset: the row of the 30th is out" "2026-10-01	2" \
+   "$(PATH="$ROOT/clock-prague-oct:$PATH" FX_TZ=Europe/Prague FX_STATE="$F27M/usage" fxo --by day --since month --tsv | cut -f1,2)"
+
+# ---------------------------------------------------------------------------
+t "28. what is copied from the dashboard stays what it was copied from"
+# ---------------------------------------------------------------------------
+# awk text cannot be sourced, and tusage runs with no lib/tagents beside it, so some awk functions are copies (utrunc, uclen, tilde). Each is run here, as it stands in its file, on the same inputs as the original.
+
+LIBT="$HERE/../lib/tagents"
+UTRUNC_FN=$(sed -n '/function utrunc(/,/return r }/p' "$TU")
+UCLIP_LIST=$(sed -n '/function uclip(/,/^    }$/p' "$LIBT/list.sh")
+UCLIP_TIME=$(sed -n '/function uclip(/,/^      }$/p' "$LIBT/timeline.sh")
+ok "the three functions were found" "1 1 1" "$([ -n "$UTRUNC_FN" ] && echo 1) $([ -n "$UCLIP_LIST" ] && echo 1) $([ -n "$UCLIP_TIME" ] && echo 1)"
+clipped() {  # <awk function text> <function name>: what it makes of each text at each width
+  local s n
+  for s in "plain" "Счёт для клиента" "a…b⑂c" "" "x"; do
+    for n in 0 1 3 7 16 40; do
+      printf '%s|' "$(LC_ALL=C awk -v s="$s" -v n="$n" "$1"' BEGIN { print '"$2"'(s, n) }')"
+    done
+    echo
+  done
+}
+ok "utrunc cuts a text as the uclip of list.sh does, a multibyte letter whole" "$(clipped "$UCLIP_LIST" uclip)" "$(clipped "$UTRUNC_FN" utrunc)"
+ok "...and as the uclip of timeline.sh does" "$(clipped "$UCLIP_TIME" uclip)" "$(clipped "$UTRUNC_FN" utrunc)"
+ok "...and the cut is the one by characters" "Счё|a…b" "$(LC_ALL=C awk "$UTRUNC_FN"' BEGIN { printf "%s|%s", utrunc("Счёт", 3), utrunc("a…b⑂c", 3) }')"
+
+SHORT_TU=$(sed -n '/function short_model(/,/^  }$/p' "$TU")
+SHORT_LIST=$(sed -n '/function shortmodel(/,/^    }$/p' "$LIBT/list.sh")
+shorts() {  # <awk function text> <function name>: the short form of each model name
+  local m
+  for m in claude-opus-5 claude-haiku-4-5-20251001 claude-opus-4-8 mystery-9; do
+    printf '%s ' "$(LC_ALL=C awk -v m="$m" "$1"' BEGIN { print '"$2"'(m) }')"
+  done
+}
+ok "the model names a table here prints keep their dashes" "opus-5 haiku-4-5 opus-4-8 mystery-9 " "$(shorts "$SHORT_TU" short_model)"
+ok "...where the dashboard's column makes opus5 and haiku4.5" "opus5 haiku4.5 opus4.8 mystery9 " "$(shorts "$SHORT_LIST" shortmodel)"
+
+# uclen: the length of a text in characters. Four copies, one here.
+UCLEN_TU=$(sed -n '/function uclen(/,/return n }/p' "$TU")
+UCLEN_LIST=$(sed -n '/function uclen(/,/^    }$/p' "$LIBT/list.sh")
+UCLEN_TIME=$(sed -n '/function uclen(/,/^      }$/p' "$LIBT/timeline.sh")
+UCLEN_DASH=$(sed -n '/function uclen(/,/^    }$/p' "$LIBT/dash.sh")
+ok "the four uclen were found" "1 1 1 1" "$([ -n "$UCLEN_TU" ] && echo 1) $([ -n "$UCLEN_LIST" ] && echo 1) $([ -n "$UCLEN_TIME" ] && echo 1) $([ -n "$UCLEN_DASH" ] && echo 1)"
+lens() {  # <awk function text>: the length in characters of each text
+  local s
+  for s in plain "$(printf '\xd0\xa1\xd1\x87\xd1\x91\xd1\x82')" "$(printf 'a\xe2\x80\xa6b\xe2\x91\x82c')" "" x; do
+    printf '%s|' "$(LC_ALL=C awk -v s="$s" "$1"' BEGIN { print uclen(s) }')"
+  done
+}
+ok "uclen counts a Cyrillic letter, an ellipsis and an OCR fork (U+2442) once" "5|4|5|0|1|" "$(lens "$UCLEN_TU")"
+ok "...as the uclen of list.sh does" "$(lens "$UCLEN_LIST")" "$(lens "$UCLEN_TU")"
+ok "...as the one of timeline.sh does" "$(lens "$UCLEN_TIME")" "$(lens "$UCLEN_TU")"
+ok "...as the one of dash.sh does" "$(lens "$UCLEN_DASH")" "$(lens "$UCLEN_TU")"
+
+# tilde: the home directory as a tilde, only up to a slash. Five copies, four of them awk (here, list.sh, closed.sh, timeline.sh) and tilde_of in core.sh, which is bash.
+TILDE_TU=$(sed -n '/function tilde(/p' "$TU")
+TILDE_LIST=$(sed -n '/function tilde(/p' "$LIBT/list.sh")
+TILDE_CLOSED=$(sed -n '/function tilde(/p' "$LIBT/closed.sh")
+TILDE_TIME=$(sed -n '/function tilde(/p' "$LIBT/timeline.sh")
+TILDE_OF=$(sed -n '/^tilde_of() {/,/^}/p' "$LIBT/core.sh")
+ok "the five tilde were found" "1 1 1 1 1" "$([ -n "$TILDE_TU" ] && echo 1) $([ -n "$TILDE_LIST" ] && echo 1) $([ -n "$TILDE_CLOSED" ] && echo 1) $([ -n "$TILDE_TIME" ] && echo 1) $([ -n "$TILDE_OF" ] && echo 1)"
+TILDE_PATHS=(/Users/a /Users/a/ /Users/a/x /Users/ab/x "/Users/a b" /Users /x "" Users/a/x /Users/a/x/Users/a)
+tildes() {  # <awk function text> <home>: each path as the function shows it
+  local p
+  for p in "${TILDE_PATHS[@]}"; do
+    printf '%s|' "$(LC_ALL=C awk -v home="$2" -v p="$p" "$1"' BEGIN { print tilde(p) }')"
+  done
+}
+tildes_of() {  # <home>: the same paths through tilde_of
+  local p
+  for p in "${TILDE_PATHS[@]}"; do
+    printf '%s|' "$(HOME=$1 bash -c "$TILDE_OF"'; tilde_of "$0"' "$p")"
+  done
+}
+TILDE_WANT='~|~/|~/x|/Users/ab/x|/Users/a b|/Users|/x||Users/a/x|~/x/Users/a|'
+ok "tilde shows /Users/a as ~, a path under it as ~/..., and /Users/ab/x as it is" "$TILDE_WANT" "$(tildes "$TILDE_TU" /Users/a)"
+ok "...as the tilde of list.sh does" "$TILDE_WANT" "$(tildes "$TILDE_LIST" /Users/a)"
+ok "...as the one of closed.sh does" "$TILDE_WANT" "$(tildes "$TILDE_CLOSED" /Users/a)"
+ok "...as the one of timeline.sh does" "$TILDE_WANT" "$(tildes "$TILDE_TIME" /Users/a)"
+ok "...as tilde_of of core.sh does" "$TILDE_WANT" "$(tildes_of /Users/a)"
+NOHOME_WANT='/Users/a|/Users/a/|/Users/a/x|/Users/ab/x|/Users/a b|/Users|/x||Users/a/x|/Users/a/x/Users/a|'
+ok "with no home nothing is shortened, here and in list.sh, closed.sh and timeline.sh" "$NOHOME_WANT$NOHOME_WANT$NOHOME_WANT$NOHOME_WANT" \
+   "$(tildes "$TILDE_TU" '')$(tildes "$TILDE_LIST" '')$(tildes "$TILDE_CLOSED" '')$(tildes "$TILDE_TIME" '')"
+
+# ---------------------------------------------------------------------------
+t "29. the home directory is a prefix of a path only up to a slash"
+# ---------------------------------------------------------------------------
+# With HOME=/Users/a, the directory /Users/ab/x is nobody's home subdirectory and shows as it is, not as ~b/x. The home itself is ~ and a directory under it ~/x.
+
+F29="$ROOT/fx29"; mkdir -p "$F29/usage"
+{ f5row 1800 n 3f9a1c20 opus-5 5 1000000 100000 612000
+  f5row 1800 h d8c3b615 opus-5 5 1000000 100000 612000
+  f5row 1800 u 7b2c5d33 opus-5 5 1000000 100000 612000
+} >"$F29/usage/facts.tsv"
+printf -- '-h-n\t%sb/git/x\n-h-h\t%s\n-h-u\t%s/under/it\n' "$FXH" "$FXH" "$FXH" >"$F29/usage/projects.tsv"
+ok "a directory that only starts like the home is not shortened; the home is ~; a directory under it is ~/..." \
+   "${FXH}b/git/x
+~
+~/under/it" "$(FX_STATE="$F29/usage" fxo --by project --tsv --since 7d | cut -f1 | LC_ALL=C sort)"
+
+# ---------------------------------------------------------------------------
+t "30. --calibrate --at divides by the month of that instant"
+# ---------------------------------------------------------------------------
+# A reading taken on 2026-10-31 is a reading of October. On a clock at 2026-11-04 the month to divide by is October up to that instant, not November.
+
+F30="$ROOT/fx30"; mkdir -p "$F30"; cp -R "$FX/usage" "$F30/usage"; rm -f "$F30/usage/factor.tsv"
+pinclock "$ROOT/clock-nov" "$(TZ=UTC epoch_of "2026-11-04 12:00:00")"
+cal30() { PATH="$ROOT/clock-nov:$PATH" FX_STATE="$F30/usage" fx "$@"; }
+AT30="2026-10-31 12:00"
+mtd30=$(cal30 --daily --since 2026-10-01 --until "$(TZ=UTC epoch_of "$AT30:00")" | awk -F"$TAB" '$2 == "work" { s += $3 } END { printf "%.4f", s }')
+amt30=$(awk -v m="$mtd30" 'BEGIN { printf "%d", m }')
+ok "the fixture has October spend in work before that instant" "1" "$([ "$(awk -v m="$mtd30" 'BEGIN { print (m >= 10) }')" = 1 ] && echo 1 || echo 0)"
+out=$(cal30 --calibrate work "$amt30" --at "$AT30"); rc=$?
+ok "a reading in the previous month succeeds" 0 "$rc"
+ok "...and divides by that month up to that instant" \
+   "$(awk -v a="$amt30" -v m="$mtd30" 'BEGIN { printf "tusage: work priced at x%.4f of list (meter $%s vs indexed $%.4f at 2026-10-31 12:00)", a / m, a, m }')" "$out"
+rm -f "$F30/usage/factor.tsv"
+out=$(cal30 --calibrate work 10 --at "2026-09-15 12:00"); rc=$?
+ok "a month with nothing indexed is refused" 1 "$rc"
+contains "...and says which month" "nothing indexed for work in the month of that instant, up to it" "$out"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

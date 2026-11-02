@@ -55,6 +55,8 @@ timeline() {
   } | LC_ALL=C awk -F"$TAB" -v now="$now" -v hours="$hours" -v offsec="$offsec" \
           -v barw="$barw" -v home="$HOME" -v namew="$namew" -v cwdw="$cwdw" '
       function base(p,   n, a) { n = split(p, a, "/"); return n ? a[n] : p }
+      # The home directory as a tilde. It is a prefix of a path only up to a slash, so /Users/ab/x is not under /Users/a, and no home shortens nothing. Copies, pinned to each other by section 28 of tests/tusage.sh: AWK_TILDE in tusage, tilde in list.sh and closed.sh, tilde_of in core.sh (bash).
+      function tilde(p) { return (home != "" && (p == home || index(p, home "/") == 1)) ? "~" substr(p, length(home) + 1) : p }
       function hhmm(t,   lt) {
         lt = (t + offsec) % 86400; if (lt < 0) lt += 86400
         return sprintf("%02d:%02d", int(lt / 3600), int((lt % 3600) / 60))
@@ -150,8 +152,7 @@ timeline() {
           startlbl = (s in started) ? hhmm(first[s]) : "  ?  "
           durlbl   = (s in started) ? dur(fin - first[s]) : "?"
           endlbl = running ? "now  " : hhmm(fin)
-          cw = cwd[s] == "" ? "?" \
-               : (index(cwd[s], home) == 1 ? "~" substr(cwd[s], length(home) + 1) : cwd[s])
+          cw = cwd[s] == "" ? "?" : tilde(cwd[s])
           printf "%d\t%s%s%s  %s%s%s–%s%s  %s%5s%s  %s\n",
                  first[s],
                  (running ? GRN : ""), ufit(nm, namew), R,

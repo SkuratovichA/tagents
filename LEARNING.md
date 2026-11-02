@@ -50,7 +50,13 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **`ps | grep -c <name>` counts the shell that runs the check** — its command line holds the pattern. Write it with a bracket, `grep -c '[s]leep 30'`, so a "nothing is left running" check can read 0 (30.10.2026)
 - **APFS is case-insensitive** — `0a1b` and `0A1B` are one file, so two fixtures meant to differ overwrote each other. Name fixtures that must coexist by more than case (31.10.2026)
 - **`$VAR.log` with `VAR` unset creates `.log` in the cwd** — the log went to a hidden file in the cwd. Write `${VAR:?}.log` (31.10.2026)
-- **zsh does not split an unquoted multi-word `$t`** — the whole string became one command word. Use `${=t}` or an array (31.10.2026)
+- **zsh does not split an unquoted multi-word `$t`** — the whole string became one command word. Use `${=t}` or an array (02.11.2026, 31.10.2026)
+- **`NR` and `NF` are awk's own names** — a counter of table rows called `NR` was overwritten by the record counter. Name program variables `N_ROWS`, not awk's (01.11.2026)
+- **macOS `sed` has no `\|` and takes `\{` as an interval** — a pattern with either matched nothing and the test passed on an empty answer. Use `awk` or `grep -e a -e b` (01.11.2026)
+- **A bare `>` in an awk `printf` argument list is a redirect** — `printf "%s", x > 0 ? a : b` writes a file named `0 ? a : b`. Parenthesise the condition (01.11.2026)
+- **`$h:tusage` in zsh is a history modifier** — `$h:tusage` is `${h:t}usage`, so `git show` got the revision `ed6f78b^usage` and printed an error per commit. Write `${h}:tusage`, or run a loop that builds a revision and a path under `bash -c` (02.11.2026)
+- **`tests/tusage.sh` holds a byte that is not UTF-8** — a Python edit that read it as text stopped with a decode error. Read and write it as `latin-1` or as bytes (02.11.2026)
+- **A bare `cat > file` in a command waits on standard input** — the shell hung until the task was stopped. End it with a heredoc or `< /dev/null` (02.11.2026)
 
 ## tmux
 
@@ -131,7 +137,7 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **Mechanically joining wrapped prose damaged a bin and a delta spec** — gates passed. Test that the first line of every bin source is a bare `#!/usr/bin/env node`; after an archive in a scratch copy compare merged requirement names with main's; join prose by hand (29.10.2026)
 - **A scenario cannot leave a MODIFIED requirement** — the block replaces the whole requirement. Keep scenarios in it, write a new requirement for new ones, and run `pnpm spec:check` after each move (29.10.2026)
 - **`openspec archive` stops on a spec that loses its last requirement** — add `.openspec.yaml` with `schema:` and `retire_capabilities: true`, and run `validate --specs --strict` after the archive (22.10.2026)
-- **A requirement over 500 characters fails strict validation, also in MODIFIED blocks** — the change check does not measure modified ones, so `pnpm spec:check` fails after archive. Split into requirements with a scenario each while writing the delta (23.10.2026, 18.10.2026)
+- **A requirement over 500 characters fails strict validation, also in MODIFIED blocks** — the change check does not measure modified ones, so `pnpm spec:check` fails after archive. Split into requirements with a scenario each while writing the delta, and run `pnpm spec:check` after the last edit of a delta (02.11.2026, 23.10.2026, 18.10.2026)
 
 ## Plugin, contract and generated files
 
@@ -143,6 +149,7 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **API Extractor resolves `types` from the cwd given only a tsconfig path** — use `compiler.overrideTsconfig` with explicit `typeRoots` and run the test from two other cwds (12.10.2026)
 - **`tusage --help` creates its state directory and needs jq** — run scripts for their help text with a throwaway `HOME` and the caller's `PATH` (12.10.2026)
 - **A usage line whose description starts with a lowercase word is read as part of the verb path** — `cli-spec.test.ts` took `notify run   (the …` as more words. Start the description with a parenthesis or a capital (31.10.2026)
+- **Generated files committed before the commit that changes their source** — `scripts.md` and the `plugin.json` bump went into the commit before the one that rewrote the `tusage` header, so the rebase conflicted on `plugin.json` and the version moved a commit early. Run `pnpm plugin:gen` in the commit that changes the source and `pnpm plugin:check` at that commit (02.11.2026)
 
 ## Docs and the site
 
@@ -187,6 +194,11 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **An idle measurement read later than planned has no stated duration** — write the start and the reading times into the raw output, so the report can say how long the processes were idle (31.10.2026)
 - **A test that passes through the public path cannot see an order or a guard that the writer already keeps** — the sections of one document tied on rank and came out right with or without `chunks.ord` in the search order, because a reindex stores them in that order, and a second open that rewrote the same schema version changed no row. Run the mutation, not only the test: pin the key with rows written by hand in the opposite order, and pin the guard by comparing the file before and after (02.11.2026)
 - **Reverting a mutation with `git checkout -- <file>` also drops an uncommitted edit in that file** — a mutation run over `node.rs` restored the file from the index and took the test removal made before it with it. Commit or stash the real edits first, or restore the saved original text (02.11.2026)
+- **A test helper that reads the real machine reads names and accounts too** — point `TA_STATE_DIR` and `TA_CONFIG` of every helper at scratch files, or a table prints the names of the person's own sessions (01.11.2026)
+- **A helper that unsets an environment variable makes the test of that variable vacuous** — `fx` unset `NO_COLOR`, so the `NO_COLOR` checks passed on any code. Give the helper an explicit override and run the test both ways (01.11.2026)
+- **Compare two tables without the lines that close them** — the closing notes wrap at the width, so a table at 80 columns never equals the one at 140 (01.11.2026)
+- **Rows written into a fixture project directory after `projects.tsv` make `slug_map` rebuild it** — the project paths of the fixture became slugs. Write the directories first, then the map (01.11.2026)
+- **`epoch_of` in `tests/tusage.sh` needs `%H:%M:%S`** — `epoch_of "2026-10-31 12:00"` printed nothing, so the oracle of the calibration test was empty. Give it the seconds (02.11.2026)
 
 ## Rust core and the MCP server
 

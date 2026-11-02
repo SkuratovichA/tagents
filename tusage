@@ -4,28 +4,56 @@
 # in ~/.claude/projects. Answers "where did my limit go", per project, per
 # session, per subagent.
 #
-#   tusage                      summary: last 5h window, today, last 7 days
-#   tusage --by day|project|session|agent|model|hour
-#   tusage --since 5h|3d|month  window for --by (default 7d; month = since the 1st)
-#   tusage --until <epoch>      close the --daily window at that instant too
+#   tusage                      summary: last 5h window, today, last 7 days in
+#                               cost units and dollars, by account when there are
+#                               several, then the heaviest sessions by name
+#   tusage --by <dims>          the spend as a table, nested by up to three of
+#                               account, project, session, day, week, month,
+#                               hour, agent, model, workflow (comma-separated)
+#   tusage --by <dims> --breakdown
+#                               one more level under the deepest: the model
+#   tusage --since 5h|3d|month|YYYY-MM-DD
+#                               window for --by (default 7d; month = since the 1st)
+#   tusage --until <epoch>|YYYY-MM-DD
+#                               close the window at that instant too
+#   tusage --account <name>     only that account's sessions (repeatable)
+#   tusage --project <text>     only projects whose directory holds the text
+#                               (repeatable, any case)
+#   tusage --top N              rows under each parent (default 12; 0 is all)
+#   tusage --sort cost          a table by time lists its dearest rows first
+#   tusage --compact            label, total, dollars and share only
+#   tusage --tsv                the deepest rows, no header or colour, for a script
+#   tusage --color auto|always|never
+#                               colour on a terminal only, and never with NO_COLOR
 #   tusage --calibrate <account> <amount> [--at "YYYY-MM-DD HH:MM"|<epoch>]
 #                               price that account at a factor that makes the
 #                               month-to-date equal what its own meter showed
 #   tusage --meter [--refresh|--force]
 #                               what the account's own meter says it has spent
 #   tusage --sessions           machine-readable per-session totals (for tagents)
-#   tusage --session <sid>      one session in detail
+#   tusage --session <name|id|prefix>
+#                               one session by main session and subagent; with
+#                               --by, that session split by the dimensions
 #   tusage --burn               one-line status-bar string
 #   tusage --update             refresh the index and exit
 #   tusage --rebuild            throw the index away and rescan everything
 #   tusage --json               emit the current window as JSON
 #   tusage --daily              day<TAB>account<TAB>usd<TAB>reqs<TAB>unpriced
 #
-# ACCOUNTS. --daily splits the bill by login. TU_ACCOUNTS is "name=dir;name=dir"
-# (an empty dir means ~/.claude); unset, it is the default config dir plus every
+# ACCOUNTS. The summary, --by account, --account and --daily split the bill by
+# login. TU_ACCOUNTS is "name=dir;name=dir" (an empty dir means ~/.claude); unset,
+# a terminal takes the accounts of the tagents config, the ones the dashboard
+# names, and with no config naming any it is the default config dir plus every
 # ~/.claude-* that keeps a history. TU_ACCOUNT_RULES is "dir=name;dir=name" and
 # places the sessions no history.jsonl lists — headless -p runs write none — by
 # the directory they were launched in. Anything still unplaced prints as "?".
+#
+# NAMES. A session is shown by the name it has in tagents, the typed one else its
+# title, and by the start of its id when it has neither. --session takes an id,
+# the start of one, or a name (the whole one, else part of it, any case), and an
+# id wins over a name. A text that matches no session exits 1, one that matches
+# several lists them and exits 3, an empty one exits 2. A whole id (8-4-4-4-12
+# hex digits) the index lacks is no error: it prints the empty detail and exits 0.
 #
 # THE DOLLARS ARE AN ESTIMATE, NOT A BILL: roughly 3% under Claude Code's own
 # ledger on a large session and more on small ones, because retries, titles and
@@ -211,6 +239,8 @@ AWK_PRICE='
     if ((k in PUNTIL) && ts <= PUNTIL[k]) { pin = PIN0[k]; pout = POUT0[k]; pcr = 0.1 * pin }
     return (i * pin + 1.25 * c5 * pin + 2.0 * c1 * pin + pcr * cr + o * pout) / 1000000
   }
+  # What a "*" beside dollars means, in every report that prints one.
+  function floor_note() { return "* marks dollars that are a floor: a request ran on a model with no published rate and counts as $0." }
   function money(d) {
     if (d < 0)     return "?"
     if (d >= 100)  return sprintf("$%.0f", d)
@@ -651,24 +681,44 @@ update() {
 #                8 reqs 9 in 10 cw5 11 cw1h 12 cr 13 out 14 maxctx 15 lastctx
 # (15 is absent from rows an older version wrote; see fold_rows)
 
-# Local 00:00 of the 1st of the current month. BSD date wants the format spelt
-# out, GNU date parses the bare date; try each in that order.
-month_start() {
-  local first; first=$(date +%Y-%m-01)
-  date -j -f '%Y-%m-%d %H:%M:%S' "$first 00:00:00" +%s 2>/dev/null ||
-    date -d "$first" +%s 2>/dev/null
+# A calendar day as an epoch: its midnight, or the given time of day, at the UTC offset daykey buckets rows with (today's, in the awk below), so the first and the last row of a window are the days it names even across a change of the clocks. BSD date wants the format spelt out and GNU date parses the text, so each is tried in that order, in UTC; the round trip through the date rejects a day that does not exist, which both would otherwise roll into the next month (2026-02-30).
+day_epoch() {
+  local d=$1 t=${2:-00:00:00} e back z off
+  case $d in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+    *) return 1 ;;
+  esac
+  e=$(date -u -j -f '%Y-%m-%d %H:%M:%S' "$d $t" +%s 2>/dev/null) ||
+    e=$(date -u -d "$d $t" +%s 2>/dev/null) || return 1
+  back=$(date -u -r "$e" +%Y-%m-%d 2>/dev/null) ||
+    back=$(date -u -d "@$e" +%Y-%m-%d 2>/dev/null) || return 1
+  [ "$back" = "$d" ] || return 1
+  z=$(date +%z)
+  off=$(( 10#${z:1:2} * 3600 + 10#${z:3:2} * 60 ))
+  [ "${z:0:1}" = - ] && off=$(( -off ))
+  printf '%s' "$(( e - off ))"
 }
 
-# `month` is spelt out because the suffix space is taken: *m already means
-# minutes, and silently re-reading "1m" as a month would change what every
-# existing caller asks for.
-since_secs() {
-  case "$1" in
-    month) printf '%s' "$(( $(date +%s) - $(month_start) ))" ;;
-    *h) printf '%s' "$(( ${1%h} * 3600 ))" ;;
-    *d) printf '%s' "$(( ${1%d} * 86400 ))" ;;
-    *m) printf '%s' "$(( ${1%m} * 60 ))" ;;
-    *)  printf '%s' "$1" ;;
+# The first instant of a window, as an epoch. `month` is spelt out because the suffix space is taken: *m already means minutes, and silently re-reading "1m" as a month would change what every existing caller asks for. A duration reaches back from now, a date starts at its midnight, and anything else fails: an unknown word is an error, not shell arithmetic that would make `--since yesterday` mean "now".
+since_cut() {
+  local v=$1 n=$1 unit=1
+  case $v in
+    month)             day_epoch "$(date +%Y-%m-01)"; return ;;
+    ????-??-??)        day_epoch "$v"; return ;;
+    *[hdm])
+      n=${v%?}
+      case ${v: -1} in h) unit=3600 ;; d) unit=86400 ;; m) unit=60 ;; esac ;;
+  esac
+  case $n in ''|*[!0-9]*) return 1 ;; esac
+  printf '%s' "$(( ${NOW:-$(date +%s)} - 10#$n * unit ))"
+}
+
+# The last instant of a window. An all-digit value is an epoch, which is what the dashboard sends; a date is the end of that day.
+until_cut() {
+  case $1 in
+    '')                return 1 ;;
+    *[!0-9]*)          day_epoch "$1" 23:59:59 ;;
+    *)                 printf '%s' "$1" ;;
   esac
 }
 
@@ -752,7 +802,7 @@ factor_stale() {  # -> account names, space separated
 }
 
 calibrate() {  # <account> <amount> [at]
-  local acct=${1:-} amt=${2:-} at=${3:-} epoch mtd f tmp
+  local acct=${1:-} amt=${2:-} at=${3:-} epoch first mtd f tmp
   [ -n "$acct" ] && [ -n "$amt" ] || { echo "tusage: --calibrate <account> <amount> [--at when]" >&2; return 2; }
   case "$amt" in ''|*[!0-9.]*) echo "tusage: amount must be a number: $amt" >&2; return 2 ;; esac
   if [ -z "$at" ]; then epoch=$(date +%s)
@@ -764,10 +814,12 @@ calibrate() {  # <account> <amount> [at]
     esac
   fi
   [ -n "${epoch:-}" ] || { echo "tusage: cannot read the time: $at" >&2; return 2; }
-  mtd=$(TU_NO_FACTOR=1 daily month "$epoch" |
+  # The month of the reading, up to the reading: a reading taken in an earlier month is divided by that month.
+  first=$(date -r "$epoch" +%Y-%m-01 2>/dev/null || date -d "@$epoch" +%Y-%m-01 2>/dev/null) || first=""
+  mtd=$(TU_NO_FACTOR=1 daily "$(day_epoch "$first")" "$epoch" |
           LC_ALL=C awk -F"$TAB" -v a="$acct" '$2 == a { s += $3 } END { printf "%.4f", s + 0 }')
   if ! LC_ALL=C awk -v m="$mtd" 'BEGIN { exit !(m + 0 > 0) }'; then
-    echo "tusage: nothing indexed for $acct this month up to that instant — nothing to calibrate" >&2
+    echo "tusage: nothing indexed for $acct in the month of that instant, up to it — nothing to calibrate" >&2
     return 1
   fi
   f=$(LC_ALL=C awk -v a="$amt" -v m="$mtd" 'BEGIN { printf "%.4f", a / m }')
@@ -929,10 +981,7 @@ meter_fetch() {  # <account> — one GET, one row, never more than one of either
   if [ "$pct" -ge 90 ] && [ "$ttl" -gt 300 ]; then ttl=300; fi
   meter_put "$acct" "$used" "$lim" "$now" ok "$((now + ttl))" || return 1
 
-  # The meter prices the month; the factor makes --daily and the sparkline agree
-  # with it, which is what calibrate() has always done — it is just no longer a
-  # human typing the reading. A refusal is a note on stderr, not a failure: the
-  # row is good even when the ratio it implies is not a price.
+  # The meter prices the month; the factor makes --daily and the sparkline agree with it. calibrate() derives the factor from the meter's reading as it does from one a human types. A refusal is a note on stderr, not a failure: the row is good even when the ratio it implies is not a price.
   calibrate "$acct" "$used" >/dev/null
   return 0
 }
@@ -1118,6 +1167,12 @@ AWK_FMT='
   # A share of nothing is 0%, not a division by zero: a week with no usage, or a
   # window of nothing but zero-token placeholder requests, is a total of 0.
   function pct(v, of) { return (of > 0) ? 100*v/of : 0 }
+  # claude-opus-5 and claude-haiku-4-5-20251001 read as opus-5 and haiku-4-5. Not shortmodel of lib/tagents/list.sh, which makes opus5 and haiku4.5 for a column of a few characters: a table here has room for the whole name, and the documentation and the specs print opus-5. Section 28 of tests/tusage.sh pins what each makes of the same names.
+  function short_model(m) {
+    sub(/^claude-/, "", m)
+    if (m ~ /-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$/) m = substr(m, 1, length(m) - 9)
+    return m
+  }
   function bar(v, mx, w,   n, s, i) {
     n = (mx > 0) ? int(v / mx * w + 0.5) : 0
     s = ""; for (i = 0; i < w; i++) s = s (i < n ? "█" : "·")
@@ -1152,68 +1207,589 @@ AWK_DAY='
   }
 '
 
-report_by() {
-  local dim=$1 since=$2 cut
-  cut=$(( $(date +%s) - $(since_secs "$since") ))
-  [ -s "$FACTS" ] || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
+# Text measured in characters: macOS awk counts bytes, so a "⑂", a "…" or a Cyrillic letter would eat two or three of the columns a pad meant to fill. Copies of uclen, which awk text cannot import: lib/tagents/dash.sh, list.sh and timeline.sh. Section 28 of tests/tusage.sh runs the four on the same texts.
+AWK_TEXT='
+  function uclen(s,   i, n, c) { n = 0
+    for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
+      if (c >= "\200" && c <= "\277") continue; n++ }
+    return n }
+  function upad(s, w,   n) { n = uclen(s); return (w > n) ? s sprintf("%" (w-n) "s", "") : s }
+  # The first n characters of s: a copy of uclip in lib/tagents/list.sh and timeline.sh, which awk text cannot import and which this file must run without. Section 28 of tests/tusage.sh runs the two on the same inputs.
+  function utrunc(s, n,   i, c, k, r) { k = 0; r = ""
+    for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
+      if (c < "\200" || c > "\277") { if (k == n) break; k++ }
+      r = r c }
+    return r }
+'
 
-  { slug_map | sed 's/^/P\t/'; cat "$FACTS"; } |
-  LC_ALL=C awk -F"$TAB" -v cut="$cut" -v dim="$dim" -v tz="$(date +%z)" -v home="$HOME" \
-      "$AWK_FMT$AWK_DAY"'
-    BEGIN { R = "\033[0m"; DIM = "\033[90m"; B = "\033[1m" }
-    function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
-    $1 == "P" { pdir[$2] = $3; next }
-    $1 + 0 < cut { next }
+# A directory as the tables show it: the home is a tilde, and so is the start of a path under it, which is the home and then a slash (/Users/ab/x is not under /Users/a). Needs -v home. Copies, which awk text cannot import: tilde in lib/tagents/list.sh, closed.sh and timeline.sh, and tilde_of in lib/tagents/core.sh (bash). Section 28 of tests/tusage.sh runs them on the same paths.
+AWK_TILDE='
+  function tilde(p) { return (home != "" && (p == home || index(p, home "/") == 1)) ? "~" substr(p, length(home) + 1) : p }
+'
+
+# --account and --project narrow every report by the same means: the rows that stay are written to a file of their own, FACTS points at it, and the report reads it as it reads the index. No report has a filter of its own, so none can disagree about what a filter means, and a call with no filter reads the index itself.
+FILTERED=""
+have_index() { [ -s "$FACTS" ] || [ -n "$FILTERED" ]; }  # an empty answer is not a missing index
+filter_facts() {
+  [ -n "$ACCTS$PROJS$SESSION" ] || return 0
+  [ -s "$FACTS" ] || return 0
+  local withacct=0
+  [ -n "$ACCTS" ] && withacct=1
+  FILTERED=$(mktemp "${TMPDIR:-/tmp}/tusage.facts.XXXXXX") || return 1
+  trap 'rm -f "$FILTERED"' EXIT
+  { slug_map | sed 's/^/P\t/'
+    [ "$withacct" = 1 ] && { account_map | sed 's/^/A\t/'; }
+    cat "$FACTS"; } |
+  LC_ALL=C awk -F"$TAB" -v accts="$ACCTS" -v projs="$PROJS" -v sess="$SESSION" -v home="$HOME" "$AWK_TILDE"'
+    BEGIN {
+      na = split(accts, a, ","); for (i = 1; i <= na; i++) WANTA[a[i]] = 1
+      np = split(tolower(projs), WP, "\037")
+    }
+    $1 == "P" { PD[$2] = tolower(tilde($3)); RD[$2] = tolower($3); next }
+    $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
     {
-      proj = ($2 in pdir) ? tilde(pdir[$2]) : $2
-      if      (dim == "day")      k = daystr(daykey($1))
-      else if (dim == "hour")     k = daystr(daykey($1)) sprintf(" %02d:00", hourkey($1) % 24)
-      else if (dim == "project")  k = proj
-      else if (dim == "session")  k = substr($3, 1, 8) "  " proj
-      else if (dim == "model")    k = $7
-      else if (dim == "workflow") { if ($6 !~ /^wf:/) next; k = $6 "  " proj }
-      else if (dim == "agent") {
-        if ($4 == "-")           k = "· main session"
-        else if ($6 ~ /^wf:/)    k = "⑂ workflow agent"
-        else                     k = "⑂ " $5 ($6 == "bg" ? " (bg)" : "")
+      if (sess != "" && $3 != sess) next
+      if (na) { x = ($3 in ACC) ? ACC[$3] : "?"; if (!(x in WANTA)) next }
+      if (np) {
+        # the path as the tables show it (~/git/x); a text that starts with a slash is a path, which is what a shell hands over for ~/git/x, and it is matched in full (/Users/me/git/x) too. Any other text is not looked for in the home directory, which every full path holds.
+        p = ($2 in PD) ? PD[$2] : tolower($2); r = ($2 in RD) ? RD[$2] : p; ok = 0
+        for (i = 1; i <= np; i++) if (index(p, WP[i]) || (substr(WP[i], 1, 1) == "/" && index(r, WP[i]))) { ok = 1; break }
+        if (!ok) next
       }
-      else                        k = proj
-      if (!(k in seen)) { seen[k] = 1; order[++n] = k }
-      REQ[k] += $8; IN[k] += $9; C5[k] += $10; C1[k] += $11; CR[k] += $12; OUT[k] += $13
-      if ($14 + 0 > CX[k]) CX[k] = $14 + 0
-      C[k] = cost(IN[k], C5[k], C1[k], CR[k], OUT[k])
-      if (C[k] > mx) mx = C[k]
-      TOT += cost($9, $10, $11, $12, $13); TREQ += $8
+      print
+    }' >"$FILTERED"
+  FACTS=$FILTERED
+}
+
+# ---------------------------------------------------------------------------
+# tagents, when it is there
+# ---------------------------------------------------------------------------
+# A session is called what it was named in tagents, and an account what the tagents config calls it. Both live in lib/tagents/, beside this file in a checkout and nowhere else. Reading the index needs none of it, so without that directory every name is an id, every account is a discovered one, and no report fails for it. The modules are sourced in a subshell with its standard error discarded: a module that prints, or a config the parser refuses, is not tusage's output.
+
+# lib/tagents/ beside the real file, found by following the symlinks by hand (macOS ships no readlink -f). The loop is the one in ./tagents, word for word, and tests/tusage.sh compares the two. Sets TA_LIB; fails when the modules are not there.
+tu_lib() {
+  local ta_real ta_link
+  ta_real=${BASH_SOURCE[0]}
+  while [ -L "$ta_real" ]; do
+    ta_link=$(readlink "$ta_real")
+    case $ta_link in
+      /*) ta_real=$ta_link ;;
+      *)  case $ta_real in
+            */*) ta_real=${ta_real%/*}/$ta_link ;;
+            *)   ta_real=$ta_link ;;
+          esac ;;
+    esac
+  done
+  case $ta_real in
+    */*) TA_LIB=${ta_real%/*}/lib/tagents ;;
+    *)   TA_LIB=lib/tagents ;;
+  esac
+  [ -r "$TA_LIB/core.sh" ] && [ -r "$TA_LIB/names.sh" ] && [ -r "$TA_LIB/state.sh" ]
+}
+
+# Run a function of this file with the names modules loaded. Its answer is on standard output; nothing is printed and the status is 1 when the modules are not found.
+with_names() {  # <function> [args…]
+  tu_lib || return 1
+  # shellcheck disable=SC1091  # the dashboard modules sit beside the script, found at run time
+  ( set +u
+    . "$TA_LIB/core.sh"; . "$TA_LIB/names.sh"; . "$TA_LIB/state.sh"
+    "$@" ) 2>/dev/null
+}
+
+name_files() { printf '%s\n%s\n' "$LABELS" "$TITLES"; }
+
+# stdin: sid<TAB>project slug, one session per line. Prints S<TAB>sid<TAB>name for each that has a name, by the rule of the dashboard: the name typed for it (the first line for its id in labels.tsv, where an empty name is no name), else the title in the cache, else the title of its transcript. That one is read at most once: title_of is the only writer of title.tsv, atomically, and it re-reads a transcript that has no title only after the transcript grew.
+names_of_sessions() {
+  local sid slug haslabel hit hsz nm tr
+  set --
+  [ -e "$LABELS" ] && set -- "$LABELS"
+  [ -e "$TITLES" ] && set -- "$@" "$TITLES"
+  while IFS="$US" read -r sid slug haslabel hit hsz; do
+    nm=""
+    [ "$haslabel" = 1 ] && nm=$(label_of "$sid")
+    if [ -z "$nm" ]; then
+      case $hit in
+        ''|-) tr="$PROJECTS/$slug/$sid.jsonl"
+              [ -r "$tr" ] && nm=$(title_of "$sid" "$tr" "$hit" "$hsz") ;;
+        *)    nm=$hit ;;
+      esac
+    fi
+    nm=${nm//[[:cntrl:]]/}   # a name is text: an escape sequence in a title never reaches a terminal
+    [ -n "$nm" ] && printf 'S\t%s\t%s\n' "$sid" "$nm"
+  done < <(LC_ALL=C awk -F"$TAB" -v OFS="$US" -v lab="$LABELS" -v tit="$TITLES" '
+      FILENAME == lab { HL[$1] = 1; next }
+      FILENAME == tit { TH[$1] = $2; TZ[$1] = $3; next }
+      { print $1, $2, ($1 in HL) + 0, TH[$1], TZ[$1] }' "$@" -)
+}
+
+# S lines for the session rows of a node file: only the rows the table prints, so a session cut by --top is never looked at.
+session_names() {  # <nodes file>
+  LC_ALL=C awk -F"$TAB" '$1 == "N" && $3 == "session" { print $4 "\t" $17 }' "$1" |
+    with_names names_of_sessions
+}
+
+# The accounts of the tagents config, for a terminal. The dashboard hands tusage TU_ACCOUNTS and TU_ACCOUNT_RULES through usage_env; a hand-typed tusage asks the same function, so it names the accounts the dashboard does. A TU_ACCOUNTS set by hand wins and the config is not read; so does a TU_ACCOUNT_RULES. With no config, or a config with no profiles, nothing is set and the discovery in account_dirs stays.
+ensure_accounts() {
+  local got accts rules
+  [ -z "${TU_ACCOUNTS:-}" ] || return 0
+  tu_lib || return 0
+  # shellcheck disable=SC1091  # the dashboard modules sit beside the script, found at run time
+  got=$( ( set +u; unset TU_ACCOUNT_RULES
+           . "$TA_LIB/core.sh"; . "$TA_LIB/config.sh"; . "$TA_LIB/accounts.sh"; . "$TA_LIB/usage.sh"
+           usage_env
+           printf '%s\n%s\n' "${TU_ACCOUNTS:-}" "${TU_ACCOUNT_RULES:-}" ) 2>/dev/null )
+  { IFS= read -r accts; IFS= read -r rules; } <<<"$got"
+  [ -n "$accts" ] || return 0
+  export TU_ACCOUNTS=$accts
+  [ -z "${TU_ACCOUNT_RULES:-}" ] && [ -n "$rules" ] && export TU_ACCOUNT_RULES=$rules
+  return 0
+}
+
+# A session's name as the lookup has it: the typed one (the first line for its id in labels.tsv; an empty one is none), else a title in the cache. Spliced into the programs below, which pass the two files as -v lab and -v tit.
+# shellcheck disable=SC2016  # awk source, $1 and $2 are awk fields
+AWK_NAME='
+  FILENAME == lab { if (!($1 in HL)) { HL[$1] = 1; LN[$1] = $2 }; next }
+  FILENAME == tit { TN[$1] = $2; next }
+  function name(s,   t) {
+    t = (s in HL) ? LN[s] : ""
+    if (t == "") t = ((s in TN) && TN[s] != "-") ? TN[s] : ""
+    gsub(/[[:cntrl:]]/, "", t)   # a name is text: no escape sequence reaches a terminal
+    return t
+  }
+'
+
+# The sessions a text names by one rule, "sid<TAB>name" each, in index order. The rules, in turn: id (the whole id, else the start of one) and name (the whole name, else part of it, any case). The first step that matches anything is the answer. --account keeps those accounts' sessions. No transcript is read.
+session_hits() {  # <text> id|name [labels file] [titles file]
+  local x=$1 rule=$2 lab=${3:-} tit=${4:-}
+  [ -s "$META" ] || return 0
+  set -- "$META"
+  [ -n "$lab" ] && [ -e "$lab" ] && set -- "$@" "$lab"
+  [ -n "$tit" ] && [ -e "$tit" ] && set -- "$@" "$tit"
+  { [ -z "$ACCTS" ] || account_map; } |
+  X=$x LC_ALL=C awk -F"$TAB" -v rule="$rule" -v accts="$ACCTS" -v meta="$META" -v lab="$lab" -v tit="$tit" \
+      "$AWK_NAME"'
+    BEGIN {
+      x = ENVIRON["X"]; lx = tolower(x)
+      na = split(accts, a, ","); for (i = 1; i <= na; i++) WANT[a[i]] = 1
+    }
+    FILENAME == meta { if (!($1 in SEEN)) { SEEN[$1] = 1; SID[++n] = $1 }; next }
+    { ACC[$1] = ($2 == "" ? "?" : $2) }
+    END {
+      for (i = 1; i <= n; i++) {
+        s = SID[i]
+        if (na && !(((s in ACC) ? ACC[s] : "?") in WANT)) continue
+        C[++m] = s
+      }
+      for (step = 1; step <= 2; step++) {
+        k = 0
+        for (i = 1; i <= m; i++) {
+          s = C[i]; nm = name(s)
+          if (rule == "id") hit = (step == 1) ? (s == x) : (index(s, x) == 1)
+          else hit = (nm != "") && ((step == 1) ? (tolower(nm) == lx) : (index(tolower(nm), lx) > 0))
+          if (hit) OUT[++k] = s
+        }
+        if (k) { for (j = 1; j <= k; j++) print OUT[j]; exit }
+      }
+    }' "$@" -
+}
+
+# Several sessions answer one text: say which, with what tells them apart.
+session_list() {  # <text> <hit ids, one per line> [labels file] [titles file]
+  local x=$1 hits=$2 lab=${3:-} tit=${4:-}
+  ensure_accounts
+  printf 'tusage: %s sessions match %s; give more of the id or the name, or narrow with --account:\n' \
+    "$(printf '%s\n' "$hits" | wc -l | tr -d ' ')" "$x" >&2
+  set --
+  [ -n "$lab" ] && [ -e "$lab" ] && set -- "$@" "$lab"
+  [ -n "$tit" ] && [ -e "$tit" ] && set -- "$@" "$tit"
+  { printf '%s\n' "$hits" | LC_ALL=C sort | sed 's/^/H\t/'; account_map | sed 's/^/A\t/'; } |
+  LC_ALL=C awk -F"$TAB" -v facts="$FACTS" -v lab="$lab" -v tit="$tit" -v tz="$(date +%z)" "$AWK_DAY$AWK_NAME"'
+    FILENAME == facts { if ($3 in HIT) { d = daykey($1 + 0); if (!(($3, d) in SEEN)) { SEEN[$3, d] = 1; DAYS[$3]++ } }; next }
+    $1 == "H" { HIT[$2] = 1; ORDER[++n] = $2; next }
+    $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
+    END {
+      for (i = 1; i <= n; i++) { s = ORDER[i]; nm = name(s)
+        printf "  %s  %s  %s  %d day%s\n", s, (nm == "" ? "-" : nm), ((s in ACC) ? ACC[s] : "?"), DAYS[s], (DAYS[s] == 1 ? "" : "s") }
+    }' - "$@" "$FACTS" >&2
+}
+
+# labels.tsv and title.tsv where the names modules keep them, as NAME_LAB and NAME_TIT; both empty when the modules are not there.
+NAME_LAB=""; NAME_TIT=""; NAME_PATHS=""
+name_paths() {
+  local paths
+  [ -z "$NAME_PATHS" ] || return 0
+  NAME_PATHS=1
+  paths=$(with_names name_files) || return 0
+  { IFS= read -r NAME_LAB; IFS= read -r NAME_TIT; } <<<"$paths"
+}
+
+# --session's text becomes the full id, or the run ends: 1 when nothing has that id or name, 3 when several do. A text no id starts with is looked up as a name, whatever it is made of: a session can be called feed or 2026-11-02. The one exception is a whole id (8-4-4-4-12 hex digits, the shape the dashboard sends) that the index lacks: it is an id that has aged out of the index, not a name, so it is no error and the detail of a session with no usage is empty.
+resolve_session() {
+  local hits sidshape=0 re='^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$'
+  [ -s "$FACTS" ] || return 0
+  [[ $SESSION =~ $re ]] && sidshape=1
+  hits=$(session_hits "$SESSION" id)
+  [ -n "$hits" ] || [ "$sidshape" = 1 ] || { name_paths; hits=$(session_hits "$SESSION" name "$NAME_LAB" "$NAME_TIT"); }
+  case $hits in
+    '')      [ "$sidshape" = 1 ] || { echo "tusage: no session called $SESSION" >&2; exit 1; } ;;
+    *$'\n'*) name_paths; session_list "$SESSION" "$hits" "$NAME_LAB" "$NAME_TIT"; exit 3 ;;
+    *)       SESSION=$hits ;;
+  esac
+}
+
+# The heading of a table of one session, as the H record by_render prints it: the name the session has in the other tables (none when it has none), its full id, its account and its project directory.
+session_head() {  # <full session id>
+  local sid=$1 slug acct dir nm
+  { slug_map | sed 's/^/P\t/'; account_map | sed 's/^/A\t/'; sed 's/^/S\t/' "$META"; } |
+  LC_ALL=C awk -F"$TAB" -v k="$sid" -v home="$HOME" "$AWK_TILDE"'
+    $1 == "P" { PD[$2] = tilde($3); next }
+    $1 == "A" { if ($2 == k) acct = $3; next }
+    $1 == "S" && $2 == k && slug == "" { slug = $3; next }
+    END { printf "%s\t%s\t%s\n", slug, (acct == "" ? "?" : acct), (slug in PD ? PD[slug] : slug) }' |
+  { IFS="$TAB" read -r slug acct dir
+    nm=$(printf '%s\t%s\n' "$sid" "$slug" | with_names names_of_sessions | LC_ALL=C cut -f3)
+    printf 'H\t%s\t%s\t%s\t%s\n' "$nm" "$sid" "$acct" "$dir"; }
+}
+
+# ---------------------------------------------------------------------------
+# --by: one aggregation pass, one render pass
+# ---------------------------------------------------------------------------
+# by_aggregate reads facts.tsv once and prints a stream of nodes; by_render turns the stream into a table. --tsv stops after the first pass, so a script and the tests read exact numbers instead of a padded table.
+#
+# The stream, one tab-separated line each:
+#   W  first day  last day  sessions that belong to no account
+#   K  an account that is a row of the table, in the order of its rows
+#   N  depth  dimension  key  reqs  in  out  cwrite  cread  usd  unpriced  first  last  days  models  more models  slug
+#   R  as N, for the "… n more" row: its key is the count of rows it sums
+#   T  as N, for the total: depth 0
+# Depth is 1 for the first dimension. Rows come depth first, children after their parent, each parent's children in the order the table prints them.
+by_aggregate() {  # <dimensions, comma list> <cut> <upto> table|tsv
+  local dims=$1 cut=$2 upto=$3 mode=$4 withacct=0
+  case ",$dims," in *,account,*) withacct=1 ;; esac
+  { slug_map | sed 's/^/P\t/'
+    [ "$withacct" = 1 ] && { account_map | sed 's/^/A\t/'; }
+    cat "$FACTS"; } |
+  LC_ALL=C awk -F"$TAB" -v dims="$dims" -v cut="$cut" -v upto="$upto" -v mode="$mode" \
+      -v topn="$TOPN" -v sortcost="$([ "$SORT" = cost ] && echo 1 || echo 0)" \
+      -v now="${NOW:-$(date +%s)}" -v tz="$(date +%z)" -v home="$HOME" \
+      -v prices="$(prices_arg)" "$AWK_FMT$AWK_DAY$AWK_PRICE$AWK_TILDE"'
+    BEGIN {
+      nd = split(dims, DIM, ",")
+      for (i = 1; i <= nd; i++) {
+        if (DIM[i] == "workflow") WFONLY = 1
+        TIMED[i] = (DIM[i] == "day" || DIM[i] == "week" || DIM[i] == "month" || DIM[i] == "hour")
+        NOCUT[i] = TIMED[i] || DIM[i] == "model"
+      }
+      ROOT = "0"
+    }
+    # The key of the current row for one dimension. A week is its Monday: day number 0 was a Thursday, so (day + 3) mod 7 counts days since Monday.
+    function rowkey(name, dk,   a) {
+      if (name == "account") { a = ($3 in ACC) ? ACC[$3] : "?"; if (a == "?") UNPL[$3] = 1; return a }
+      if (name == "project") return ($2 in PD) ? PD[$2] : $2
+      if (name == "session") return $3
+      if (name == "day")     return daystr(dk)
+      if (name == "week")    return daystr(dk - (dk + 3) % 7)
+      if (name == "month")   return substr(daystr(dk), 1, 7)
+      if (name == "hour")    return daystr(dk) sprintf(" %02d:00", hourkey($1) % 24)
+      if (name == "model")   return $7
+      if (name == "workflow") return $6
+      if ($4 == "-")         return "· main session"
+      if ($6 ~ /^wf:/)       return "⑂ workflow agent"
+      return "⑂ " $5 ($6 == "bg" ? " (bg)" : "")
+    }
+    $1 == "P" { PD[$2] = tilde($3); next }
+    $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
+    $1 + 0 < cut { next }
+    upto > 0 && $1 + 0 > upto { next }
+    WFONLY && $6 !~ /^wf:/ { next }
+    {
+      d = usd($7, $1 + 0, $9, $10, $11, $12, $13)
+      u = 0
+      # A request on an unrated model is a hole in the bill only when it spent something: the zero-token "<synthetic>" placeholder is not one.
+      if (d < 0) { d = 0; if ($9 + $10 + $11 + $12 + $13 > 0) u = $8 + 0 }
+      dk = daykey($1)
+      if (!NC || dk < MINDK) MINDK = dk
+      id = ""
+      for (i = 1; i <= nd; i++) id = id rowkey(DIM[i], dk) SUBSEP
+      id = id short_model($7) SUBSEP dk
+      if (!(id in CQ)) NC++
+      CQ[id] += $8; CI[id] += $9; CO[id] += $13; CW[id] += $10 + $11; CR[id] += $12
+      CU[id] += d; CP[id] += u
+      if (!($3 in SLUGOF)) SLUGOF[$3] = $2
+    }
+    # Children of a node go out in the order a table prints them. Time runs oldest first unless --sort cost; everything else is dearest first, and a tie is broken by the key, so two runs print the same rows. Dollars are compared at the millionth, where the order of the additions has stopped mattering.
+    function before(x, y,   ux, uy) {
+      if (!SORTTIME) {
+        ux = int(NU[x] * 1000000 + 0.5); uy = int(NU[y] * 1000000 + 0.5)
+        if (ux != uy) return ux > uy
+      }
+      return ("" KEYOF[x]) < ("" KEYOF[y])
+    }
+    function msort(a, lo, hi, tmp,   mid, i, j, k) {
+      if (lo >= hi) return
+      mid = int((lo + hi) / 2)
+      msort(a, lo, mid, tmp); msort(a, mid + 1, hi, tmp)
+      i = lo; j = mid + 1; k = lo
+      while (i <= mid && j <= hi) { if (before(a[j], a[i])) tmp[k++] = a[j++]; else tmp[k++] = a[i++] }
+      while (i <= mid) tmp[k++] = a[i++]
+      while (j <= hi)  tmp[k++] = a[j++]
+      for (k = lo; k <= hi; k++) a[k] = tmp[k]
+    }
+    # The two dearest models of a node by dollars, in MORE how many are left out.
+    function modelstr(nid,   n, i, j, t) {
+      n = MN[nid]
+      for (i = 1; i <= n; i++) { MS[i] = MK[nid, i]; MV[i] = int(MU[nid, MS[i]] * 1000000 + 0.5) }
+      for (i = 2; i <= n; i++)
+        for (j = i; j > 1 && (MV[j] > MV[j-1] || (MV[j] == MV[j-1] && ("" MS[j]) < ("" MS[j-1]))); j--) {
+          t = MS[j]; MS[j] = MS[j-1]; MS[j-1] = t
+          t = MV[j]; MV[j] = MV[j-1]; MV[j-1] = t
+        }
+      MORE = (n > 2) ? n - 2 : 0
+      return (n >= 2) ? MS[1] "," MS[2] : MS[1]
+    }
+    function emit(type, nid, lvl, name, key,   m) {
+      m = modelstr(nid)
+      printf "%s\t%d\t%s\t%s\t%.0f\t%.0f\t%.0f\t%.0f\t%.0f\t%.6f\t%.0f\t%s\t%s\t%d\t%s\t%d\t%s\n",
+        type, lvl, name, key, NQ[nid], NI[nid], NO[nid], NW[nid], NX[nid], NU[nid], NP[nid],
+        daystr(FD[nid]), daystr(LD[nid]), ND[nid], m, MORE, (name == "session" ? SLUGOF[key] : "")
+    }
+    function emit_tsv(nid,   i) {
+      for (i = 1; i <= nd; i++) printf "%s\t", PK[i]
+      printf "%.0f\t%.0f\t%.0f\t%.0f\t%.0f\t%.6f\t%.0f\t%s\t%s\t%d\n",
+        NQ[nid], NI[nid], NO[nid], NW[nid], NX[nid], NU[nid], NP[nid], daystr(FD[nid]), daystr(LD[nid]), ND[nid]
+    }
+    # Adds node "from" to node "into": the rows a --top cut sums into one.
+    function fold(into, from,   j, dd, m) {
+      NQ[into] += NQ[from]; NI[into] += NI[from]; NO[into] += NO[from]; NW[into] += NW[from]
+      NX[into] += NX[from]; NU[into] += NU[from]; NP[into] += NP[from]
+      for (j = 1; j <= ND[from]; j++) {
+        dd = DL[from, j]
+        if (!((into, dd) in DAYAT)) { DAYAT[into, dd] = 1; ND[into]++; DL[into, ND[into]] = dd }
+      }
+      if (!(into in FD) || FD[from] < FD[into]) FD[into] = FD[from]
+      if (!(into in LD) || LD[from] > LD[into]) LD[into] = LD[from]
+      for (j = 1; j <= MN[from]; j++) {
+        m = MK[from, j]
+        if (!((into, m) in MU)) { MN[into]++; MK[into, MN[into]] = m }
+        MU[into, m] += MU[from, m]
+      }
+    }
+    function walk(par, lvl,   n, i, c, lim, r) {
+      n = NK[par]
+      for (i = 1; i <= n; i++) SRT[i] = KID[par, i]
+      SORTTIME = (TIMED[lvl] && !sortcost)
+      msort(SRT, 1, n, TMP)
+      for (i = 1; i <= n; i++) ORD[lvl, i] = SRT[i]
+      lim = n
+      if (mode == "table" && topn > 0 && !NOCUT[lvl] && n > topn) lim = topn
+      for (i = 1; i <= lim; i++) {
+        c = ORD[lvl, i]
+        PK[lvl] = KEYOF[c]
+        if (mode == "tsv") { if (lvl == nd) emit_tsv(c) }
+        else {
+          if (DIM[lvl] == "account" && KEYOF[c] != "?") print "K\t" KEYOF[c]
+          emit("N", c, lvl, DIM[lvl], KEYOF[c])
+        }
+        if (lvl < nd) walk(c, lvl + 1)
+      }
+      if (lim < n) {
+        r = "R" (++NREST)
+        for (i = lim + 1; i <= n; i++) fold(r, ORD[lvl, i])
+        emit("R", r, lvl, DIM[lvl], n - lim)
+      }
     }
     END {
-      if (n == 0) { print "no data in this window" > "/dev/stderr"; exit 1 }
-      printf "%s%-36s %8s %7s %8s %8s %8s %8s  %s%s\n", DIM, dim,
-             "cost", "reqs", "cwrite", "cread", "out", "maxctx", "share", R
-      # sort by cost, descending — the answer to "who ate it" should be line 1
-      for (i = 1; i <= n; i++) for (j = i + 1; j <= n; j++)
-        if (C[order[j]] > C[order[i]]) { t = order[i]; order[i] = order[j]; order[j] = t }
-      for (i = 1; i <= n; i++) {
-        k = order[i]
-        printf "%-36.36s %8s %7d %8s %8s %8s %7.0fk  %s%s%s %s%4.1f%%%s\n",
-               k, human(C[k]), REQ[k], human(C5[k] + C1[k]), human(CR[k]),
-               human(OUT[k]), CX[k]/1000,
-               DIM, bar(C[k], mx, 14), R, DIM, pct(C[k], TOT), R
+      if (!NC) { print "no data in this window" > "/dev/stderr"; exit 1 }
+      for (c in CQ) {
+        split(c, P, SUBSEP)
+        mdl = P[nd + 1]; dkc = P[nd + 2] + 0
+        nid = ROOT
+        for (d = 0; d <= nd; d++) {
+          if (d > 0) { par = nid; nid = par SUBSEP P[d] }
+          if (!(nid in SEEN)) {
+            SEEN[nid] = 1
+            if (d > 0) { NK[par]++; KID[par, NK[par]] = nid; KEYOF[nid] = P[d] }
+          }
+          NQ[nid] += CQ[c]; NI[nid] += CI[c]; NO[nid] += CO[c]; NW[nid] += CW[c]; NX[nid] += CR[c]
+          NU[nid] += CU[c]; NP[nid] += CP[c]
+          if (!((nid, dkc) in DAYAT)) { DAYAT[nid, dkc] = 1; ND[nid]++; DL[nid, ND[nid]] = dkc }
+          if (!(nid in FD) || dkc < FD[nid]) FD[nid] = dkc
+          if (!(nid in LD) || dkc > LD[nid]) LD[nid] = dkc
+          if (!((nid, mdl) in MU)) { MN[nid]++; MK[nid, MN[nid]] = mdl }
+          MU[nid, mdl] += CU[c]
+        }
       }
-      printf "%s%-36s %8s %7d%s\n", DIM, "TOTAL", human(TOT), TREQ, R
+      if (mode == "table") {
+        for (s in UNPL) nun++
+        printf "W\t%s\t%s\t%d\n", daystr(cut > 0 ? daykey(cut) : MINDK), daystr(upto > 0 ? daykey(upto) : daykey(now)), nun
+      }
+      walk(ROOT, 1)
+      if (mode == "table") emit("T", ROOT, 0, "", "total")
     }'
+}
+
+# How wide a table may be: COLUMNS when that is a number, else the width of the controlling terminal (tty_cols of lib/tagents/core.sh) when standard output is one, else 120, which is also the answer when lib/tagents is not beside this file.
+out_width() {
+  local w=""
+  case ${COLUMNS:-} in ''|*[!0-9]*|0) ;; *) w=$COLUMNS ;; esac
+  if [ -z "$w" ] && [ "$OUT_TTY" = 1 ]; then w=$(with_names tty_cols); fi
+  case $w in ''|*[!0-9]*|0) w=120 ;; esac
+  echo "$w"
+}
+
+# The table. The nodes arrive on standard input; <title> is the dimensions as the first line names them.
+by_render() {  # <dimensions, comma list> <title>
+  LC_ALL=C awk -F"$TAB" -v dims="$1" -v title="$2" -v factors="$(factor_arg)" \
+      -v width="$(out_width)" -v compact="$COMPACT" -v color="$COLOR_ON" \
+      "$AWK_FMT$AWK_PRICE$AWK_TEXT"'
+    BEGIN {
+      B = "\033[1m"; D = "\033[90m"; R = "\033[0m"
+      nd = split(dims, DIM, ",")
+      for (i = 1; i <= nd; i++) {
+        if (DIM[i] == "model") HASMODEL = 1
+        if (DIM[i] == "day" || DIM[i] == "week" || DIM[i] == "month" || DIM[i] == "hour") HASTIME = 1
+      }
+      nf = split(factors, fr, ";")
+      for (i = 1; i <= nf; i++) if (fr[i] != "") { split(fr[i], q, "="); FAC[q[1]] = 1 }
+      split("reqs input output cwrite cread total usd share days span models", CN, " ")
+      split("reqs input output cwrite cread total $ share days span models", CH, " ")
+      split("5 6 6 6 6 6 8 6 4 12 16", CW, " ")
+    }
+    $1 == "W" { FROM = $2; TO = $3; UNPL = $4 + 0; next }
+    $1 == "K" { NK++; KACC[NK] = $2; next }
+    $1 == "S" { t = $3; gsub(/[\001-\037\177]/, "", t); if (t != "") NAME[$2] = t; next }
+    $1 == "H" { HEAD = 1; HNAME = $2; HID = $3; HACC = ($4 == "?") ? "? unplaced" : $4; HDIR = $5; next }
+    {
+      n++
+      TY[n] = $1; DP[n] = $2 + 0; DM[n] = $3; KY[n] = $4
+      Q[n] = $5; IN[n] = $6; OU[n] = $7; CWR[n] = $8; CRD[n] = $9; U[n] = $10 + 0; UP[n] = $11 + 0
+      FD[n] = $12; LD[n] = $13; ND[n] = $14; MD[n] = $15; MO[n] = $16 + 0
+      if ($1 == "T") { TOT = $10 + 0; TDAYS = $14 + 0; TFROM = $12; TTO = $13 }
+    }
+    function span(f, l,   a, b) { a = substr(f, 6); b = substr(l, 6); return (a == b) ? a : a ".." b }
+    function label(i,   d, k, t) {
+      d = DM[i]; k = KY[i]
+      if (TY[i] == "T") return "total"
+      if (TY[i] == "R")      t = "… " k " more"
+      else if (d == "account") t = (k == "?") ? "? unplaced" : k
+      else if (d == "session") t = (k in NAME) ? NAME[k] "  " substr(k, 1, 8) : substr(k, 1, 8)
+      else if (d == "week")  t = "wk " k
+      else if (d == "model") t = short_model(k)
+      else t = k
+      return substr("        ", 1, 2 * (DP[i] - 1)) t
+    }
+    function cell(c, i) {
+      if (c == "reqs")   return sprintf("%d", Q[i])
+      if (c == "input")  return human(IN[i])
+      if (c == "output") return human(OU[i])
+      if (c == "cwrite") return human(CWR[i])
+      if (c == "cread")  return human(CRD[i])
+      if (c == "total")  return human(IN[i] + OU[i] + CWR[i] + CRD[i])
+      if (c == "usd")    return money(U[i]) (UP[i] > 0 ? "*" : "")
+      if (c == "share")  return sprintf("%.1f%%", pct(U[i], TOT))
+      if (c == "days")   return sprintf("%d", ND[i])
+      if (c == "span") return span(FD[i], LD[i])
+      return MD[i] (MO[i] > 0 ? " +" MO[i] : "")
+    }
+    function fit(s, c) { return (c == "span" || c == "models") ? sprintf("%-" W[c] "s", s) : sprintf("%" W[c] "s", s) }
+    # A line of the table in a style: colour wraps the padded line, so it never changes a width.
+    function out(s, style) { sub(/ +$/, "", s); print (color && style != "") ? style s R : s }
+    # The label of row i, cut to lim characters. A named session is cut in its name and keeps its eight id characters; an unnamed one is its id.
+    function fitlabel(i, lim,   t, ind, room) {
+      t = label(i)
+      if (uclen(t) <= lim || TY[i] != "N") return t
+      if (DM[i] == "session") {
+        if (!(KY[i] in NAME)) return t
+        ind = substr("        ", 1, 2 * (DP[i] - 1))
+        room = lim - length(ind) - 2 - 8 - 1
+        return ind utrunc(NAME[KY[i]], room > 0 ? room : 0) "…  " substr(KY[i], 1, 8)
+      }
+      return utrunc(t, lim - 1) "…"
+    }
+    function used(   j, u) { for (j = 1; j <= nc; j++) u += W[COLS[j]] + 2; return u }
+    function drop(c,   j, k) {
+      for (j = 1; j <= nc; j++) if (COLS[j] == c) { for (k = j; k < nc; k++) COLS[k] = COLS[k + 1]; nc--; return }
+    }
+    # A line that is longer than the table may be is broken at spaces, the lines after the first indented by two. One that fits is printed as it is.
+    function note(s,   m, w, line, wd) {
+      if (uclen(s) <= width) { print s; return }
+      m = split(s, wd, " "); line = ""
+      for (w = 1; w <= m; w++) {
+        if (line != "" && uclen(line) + 1 + uclen(wd[w]) > width) { print line; line = "  " wd[w] }
+        else line = (line == "") ? wd[w] : line " " wd[w]
+      }
+      if (line != "") print line
+    }
+    function and_list(a, m,   i, s) {
+      for (i = 1; i <= m; i++) s = s (i == 1 ? "" : (i == m ? " and " : ", ")) a[i]
+      return s
+    }
+    END {
+      if (!n) exit
+      for (j = 1; j <= 11; j++) { W[CN[j]] = CW[j]; H[CN[j]] = CH[j] }
+      nc = 0
+      if (compact) { COLS[++nc] = "total"; COLS[++nc] = "usd"; COLS[++nc] = "share" }
+      else {
+        for (j = 1; j <= 8; j++) COLS[++nc] = CN[j]
+        if (!HASTIME)  { COLS[++nc] = "days"; COLS[++nc] = "span" }
+        if (!HASMODEL) COLS[++nc] = "models"
+      }
+      for (i = 1; i <= n; i++) {
+        if (UP[i] > 0) FLOOR = 1
+        for (j = 1; j <= nc; j++) { t = cell(COLS[j], i); X[i, COLS[j]] = t; if (length(t) > W[COLS[j]]) W[COLS[j]] = length(t) }
+      }
+      # Columns go in a fixed order until the label has room for 24 characters. The label, total, dollars and share stay, whatever the width.
+      nx = split("models span days input cwrite cread output reqs", DROPS, " ")
+      for (j = 1; j <= nx && width - used() < 24; j++) drop(DROPS[j])
+      lim = width - used(); if (lim < 5) lim = 5
+      labw = 5
+      for (i = 1; i <= n; i++) { L[i] = fitlabel(i, lim); if (uclen(L[i]) > labw) labw = uclen(L[i]) }
+      if (HEAD) {
+        gsub(/[\001-\037\177]/, "", HNAME); gsub(/[\001-\037\177]/, "", HDIR)
+        t = (HNAME == "") ? HID : HNAME "  " HID; out(t, B)
+        print HACC "  ·  " HDIR "  ·  " TDAYS " day" (TDAYS == 1 ? "" : "s") ", " span(TFROM, TTO)
+      } else note("usage  " FROM " .. " TO "  " title)
+      print ""
+      s = upad("", labw)
+      for (j = 1; j <= nc; j++) s = s "  " fit(H[COLS[j]], COLS[j])
+      out(s, D)
+      for (i = 1; i <= n; i++) {
+        s = upad(L[i], labw)
+        for (j = 1; j <= nc; j++) s = s "  " fit(X[i, COLS[j]], COLS[j])
+        out(s, TY[i] == "T" || (TY[i] == "N" && DP[i] < nd) ? B : (TY[i] == "R" ? D : ""))
+      }
+      nl = 0
+      if (FLOOR) NOTE[++nl] = floor_note()
+      if (UNPL > 0) NOTE[++nl] = UNPL " session" (UNPL == 1 ? " belongs" : "s belong") " to no account: TU_ACCOUNT_RULES places a session by the directory it started in."
+      nfa = 0
+      for (i = 1; i <= NK; i++) if (KACC[i] in FAC) FA[++nfa] = KACC[i]
+      if (nfa == 1) NOTE[++nl] = "Dollars are at list price. A meter factor is stored for " FA[1] ": tusage --daily scales its dollars by it."
+      else if (nfa > 1) NOTE[++nl] = "Dollars are at list price. Meter factors are stored for " and_list(FA, nfa) ": tusage --daily scales their dollars by them."
+      if (nl) { print ""; for (i = 1; i <= nl; i++) note(NOTE[i]) }
+    }'
+}
+
+report_by() {  # <the --by list> <cut> <upto>
+  local dims=$1 cut=$2 upto=$3 all=$1 nodes rc
+  have_index || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
+  # --breakdown is one more dimension under the deepest one, unless the model is a dimension already.
+  case ",$dims," in *,model,*) ;; *) [ "$BREAKDOWN" = 1 ] && all="$dims,model" ;; esac
+  if [ "$TSV" = 1 ]; then by_aggregate "$all" "$cut" "$upto" tsv; return; fi
+  nodes=$(mktemp "${TMPDIR:-/tmp}/tusage.by.XXXXXX") || return 1
+  by_aggregate "$all" "$cut" "$upto" table >"$nodes"; rc=$?
+  if [ "$rc" = 0 ]; then
+    { [ -z "$SESSION" ] || session_head "$SESSION"
+      case ",$all," in *,session,*) session_names "$nodes" ;; esac; cat "$nodes"; } |
+      by_render "$all" "by ${all//,/ > }"
+    rc=$?
+  fi
+  rm -f "$nodes"
+  return "$rc"
 }
 
 # sid, cost, reqs, ctx, last_ts, slug, subagent_cost, live_subagents, cost_5h,
 #   model, usd, usd_5h, usd_subagent, unpriced
-# ctx is the context of the session's newest main-chain request (agent id "-"),
-# the number that says "this session is fat, compact it". It used to be the
-# largest context of the last hour, which answered a different question: "how
-# big did this chat get". After a /compact that kept showing the size from
-# before the compaction for up to an hour, and a subagent's own large context
-# could show as the session's. A session that has made no main-chain request in
-# the window reports 0. The newest request is the one of the newest bucket,
-# and of the later row when two rows share a bucket; a row from an index that
-# predates the lastctx column falls back to its maxctx (see fold_rows).
+# ctx is the context of the session's newest main-chain request (agent id "-"), the number that says "this session is fat, compact it". It is not the largest context of the last hour, which answers a different question: "how big did this chat get". After a /compact that would keep showing the size from before the compaction for up to an hour, and a subagent's own large context could show as the session's. A session that has made no main-chain request in the window reports 0. The newest request is the one of the newest bucket, and of the later row when two rows share a bucket; a row from an index that predates the lastctx column falls back to its maxctx (see fold_rows).
 #
 # `model` is the session's CURRENT model — the one the newest row was billed at,
 # which is what a status line should show. The dollar figures are emphatically
@@ -1225,12 +1801,12 @@ report_by() {
 # the dollar figures are a floor, not the whole bill.
 sessions() {
   [ -s "$FACTS" ] || return 0
-  local now; now=$(date +%s)
-  LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v cut="$(( now - $(since_secs "${1:-7d}") ))" \
+  local now; now=${NOW:-$(date +%s)}
+  LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v cut="${1:-0}" -v upto="${2:-0}" \
       -v h1="$(( now - 3600 ))" -v h5="$(( now - 18000 ))" \
       -v prices="$(prices_arg)" "$AWK_PRICE"'
     function cost(i,c5,c1,cr,o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
-    $1 + 0 >= cut {
+    $1 + 0 >= cut && (upto == 0 || $1 + 0 <= upto) {
       s = $3; c = cost($9,$10,$11,$12,$13)
       d = usd($7, $1 + 0, $9,$10,$11,$12,$13)
       # An unpriced row that spent nothing is not a hole in the bill: Claude Code
@@ -1268,10 +1844,9 @@ sessions() {
 # default, because a wrong login is worse than a visible hole.
 daily() {
   [ -s "$FACTS" ] || return 0
-  local cut upto; cut=$(( $(date +%s) - $(since_secs "${1:-7d}") ))
   # --until cuts the far end, so a window can be closed at both ends: the meter
   # calibration in tagents needs the month AS OF the instant the meter was read.
-  upto=${2:-0}; case "$upto" in ''|*[!0-9]*) upto=0 ;; esac
+  local cut=${1:-0} upto=${2:-0}
   { account_map | sed 's/^/A\t/'; cat "$FACTS"; } |
   LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v cut="$cut" -v upto="$upto" -v tz="$(date +%z)" \
       -v prices="$(prices_arg)" -v factors="$(factor_arg)" "$AWK_PRICE$AWK_DAY"'
@@ -1319,11 +1894,8 @@ burn() {   # what the last 5h cost, for the tmux status bar
 }
 
 session_detail() {
-  local sid=$1 full slug
+  local sid=$1 slug
   [ -s "$FACTS" ] || return 1
-  # accept a short prefix; everything downstream needs the full id
-  full=$(LC_ALL=C awk -F"$TAB" -v k="$sid" 'index($1, k) == 1 { print $1; exit }' "$META" 2>/dev/null)
-  [ -n "$full" ] && sid=$full
   slug=$(LC_ALL=C awk -F"$TAB" -v k="$sid" '$1 == k { print $2; exit }' "$META" 2>/dev/null)
   printf '\033[1m%s\033[0m  %s\n' "$sid" "$(origin_dir "$sid" "$slug")"
   LC_ALL=C awk -F"$TAB" -v k="$sid" -v prices="$(prices_arg)" "$AWK_FMT$AWK_PRICE"'
@@ -1359,25 +1931,26 @@ session_detail() {
 }
 
 summary() {
-  local now; now=$(date +%s)
-  [ -s "$FACTS" ] || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
-  { slug_map | sed 's/^/P\t/'; cat "$FACTS"; } |
-  LC_ALL=C awk -F"$TAB" -v now="$now" -v home="$HOME" "$AWK_FMT"'
+  local now top names
+  # One reading of the clock: the windows count from it, and so does the cut of the heaviest sessions (since_cut and sessions read NOW).
+  NOW=$(date +%s); now=$NOW
+  have_index || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
+  { slug_map | sed 's/^/P\t/'; account_map | sed 's/^/A\t/'; cat "$FACTS"; } |
+  LC_ALL=C awk -F"$TAB" -v now="$now" -v home="$HOME" -v prices="$(prices_arg)" \
+      "$AWK_FMT$AWK_PRICE$AWK_TEXT$AWK_TILDE"'
     BEGIN { R = "\033[0m"; DIM = "\033[90m"; B = "\033[1m" }
-    function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home)+1) : p }
-    # pad by CHARACTERS: macOS awk counts bytes, so a "⑂" would eat three of them
-    function uclen(s,   i, n, c) { n = 0
-      for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
-        if (c >= "\200" && c <= "\277") continue; n++ }
-      return n }
-    function upad(s, w,   n) { n = uclen(s); return (w > n) ? s sprintf("%" (w-n) "s", "") : s }
     $1 == "P" { pdir[$2] = $3; next }
+    $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
     {
       c = cost($9,$10,$11,$12,$13); age = now - ($1 + 0)
-      if (age <= 18000) { W5 += c; W5R += $8; if ($14 + 0 > W5X) W5X = $14 + 0 }
-      if (age <= 86400) { D1 += c; D1R += $8 }
-      if (age <= 604800) { D7 += c; D7R += $8
+      # A request on an unrated model is a hole in the bill only when it spent something: the zero-token "<synthetic>" placeholder is not one.
+      d = usd($7, $1 + 0, $9, $10, $11, $12, $13); u = 0; spent = ($9 + $10 + $11 + $12 + $13 > 0)
+      if (d < 0) { d = 0; u = spent }
+      if (age <= 18000) { W5 += c; W5R += $8; W5D += d; W5U += u; if ($14 + 0 > W5X) W5X = $14 + 0 }
+      if (age <= 86400) { D1 += c; D1R += $8; D1D += d; D1U += u }
+      if (age <= 604800) { D7 += c; D7R += $8; D7D += d; D7U += u
         P[$2] += c
+        if (spent) { a = ($3 in ACC) ? ACC[$3] : "?"; AD[a] += d; AU[a] += u; if (!(a in AN)) { AN[a] = 1; NACC++ } }
         if ($4 == "-") MAIN += c
         else { SUBC += c
                SA[$6 ~ /^wf:/ ? "workflow agent" : $5 ($6 == "bg" ? " (bg)" : "")] += c
@@ -1387,11 +1960,33 @@ summary() {
         TREQ += $8
       }
     }
+    # A dollar cell: right-aligned, with a "*" after it when a request in the window had no rate, so the digits of every line stay under each other.
+    function dollars(x, u) { return sprintf("%8s%s", money(x), u > 0 ? "*" : " ") }
+    # The account that comes first: the dearer one, the name when they tie.
+    function acct_before(x, y,   ux, uy) {
+      ux = int(AD[x] * 1000000 + 0.5); uy = int(AD[y] * 1000000 + 0.5)
+      if (ux != uy) return ux > uy
+      return x < y
+    }
     END {
       printf "%s cost = input-token equivalents: in + 1.25*cw5m + 2*cw1h + 0.1*cread + 5*out%s\n\n", DIM, R
-      printf "%slast 5 h%s   %s%10s%s   %5d requests   %speak ctx %.0fk%s\n", B, R, B, human(W5), R, W5R, DIM, W5X/1000, R
-      printf "%slast 24 h%s  %s%10s%s   %5d requests\n", B, R, B, human(D1), R, D1R
-      printf "%slast 7 d%s   %s%10s%s   %5d requests\n\n", B, R, B, human(D7), R, D7R
+      printf "%slast 5 h%s   %s%10s%s  %s  %5d requests   %speak ctx %.0fk%s\n", B, R, B, human(W5), R, dollars(W5D, W5U), W5R, DIM, W5X/1000, R
+      printf "%slast 24 h%s  %s%10s%s  %s  %5d requests\n", B, R, B, human(D1), R, dollars(D1D, D1U), D1R
+      printf "%slast 7 d%s   %s%10s%s  %s  %5d requests\n", B, R, B, human(D7), R, dollars(D7D, D7U), D7R
+      if (W5U + D1U + D7U > 0) printf "%s%s%s\n", DIM, floor_note(), R
+      printf "\n"
+
+      if (NACC > 1) {
+        printf "%sby account (7 d)%s\n", B, R
+        k = 0; for (a in AN) AK[++k] = a
+        for (i = 1; i <= k; i++) for (j = i + 1; j <= k; j++)
+          if (acct_before(AK[j], AK[i])) { t = AK[i]; AK[i] = AK[j]; AK[j] = t }
+        for (i = 1; i <= k; i++) { a = AK[i]
+          nm = (a == "?") ? "? unplaced" : a
+          if (uclen(nm) > 42) nm = utrunc(nm, 41) "…"
+          printf "  %s %9s%s %5.1f%%\n", upad(nm, 42), money(AD[a]), (AU[a] > 0 ? "*" : " "), (D7D > 0 ? 100 * AD[a] / D7D : 0) }
+        printf "\n"
+      }
 
       printf "%swhere it goes (7 d)%s\n", B, R
       wcw = 1.25*CW5 + 2.0*CW1; wcr = 0.1*CR; wou = 5*OU; wt = INP + wcw + wcr + wou
@@ -1435,22 +2030,31 @@ summary() {
     }'
   echo
   printf '\033[1mheaviest sessions (7 d)\033[0m\n'
-  sessions 7d | sort -t"$TAB" -k2,2nr | head -8 |
-  while IFS="$TAB" read -r sid c reqs ctx last slug subc nsub c5h; do
-    printf '  \033[90m%-9.9s\033[0m %9s %6s req  ctx %5.0fk  sub %7s  \033[90m%s\033[0m\n' \
-      "$sid" \
-      "$(LC_ALL=C awk -v v="$c" 'BEGIN{ if (v>=1e6) printf "%.1fM", v/1e6; else if (v>=1e3) printf "%.0fk", v/1e3; else printf "%d", v }')" \
-      "$reqs" "$(( ctx / 1000 ))" \
-      "$(LC_ALL=C awk -v v="$subc" 'BEGIN{ if (v>=1e6) printf "%.1fM", v/1e6; else if (v>=1e3) printf "%.0fk", v/1e3; else printf "%d", v }')" \
-      "$(origin_dir "$sid" "$slug")"
-  done
+  top=$(sessions "$(since_cut 7d)" | sort -t"$TAB" -k2,2nr | head -8)
+  [ -n "$top" ] || return 0
+  names=$(printf '%s\n' "$top" | LC_ALL=C awk -F"$TAB" '{ print $1 "\t" $6 }' | with_names names_of_sessions)
+  { printf '%s\n' "$names"
+    while IFS="$TAB" read -r sid c reqs ctx _ slug subc _; do
+      printf 'R\t%s\t%s\t%s\t%s\t%s\t%s\n' "$sid" "$c" "$reqs" "$ctx" "$subc" "$(origin_dir "$sid" "$slug")"
+    done <<<"$top"
+  } | LC_ALL=C awk -F"$TAB" -v home="$HOME" "$AWK_FMT$AWK_TEXT$AWK_TILDE"'
+    $1 == "S" { NM[$2] = $3; next }
+    $1 == "R" { n++; ID[n] = $2; CS[n] = $3; RQ[n] = $4; CX[n] = $5; SB[n] = $6; DR[n] = $7
+                nm = ($2 in NM) ? NM[$2] : ""
+                if (uclen(nm) > 28) nm = utrunc(nm, 27) "…"
+                NMS[n] = nm; if (uclen(nm) > w) w = uclen(nm) }
+    END {
+      for (i = 1; i <= n; i++)
+        printf "  %s%s\033[90m%-8.8s\033[0m %9s %6s req  ctx %5.0fk  sub %7s  \033[90m%s\033[0m\n",
+               upad(NMS[i], w), (w > 0 ? "  " : ""), ID[i], human(CS[i]), RQ[i], int(CX[i] / 1000), human(SB[i]), tilde(DR[i])
+    }'
 }
 
 json() {
-  [ -s "$FACTS" ] || { echo '{"error":"no data"}'; return 1; }
-  LC_ALL=C awk -F"$TAB" -v cut="$(( $(date +%s) - $(since_secs "${1:-7d}") ))" '
+  have_index || { echo '{"error":"no data"}'; return 1; }
+  LC_ALL=C awk -F"$TAB" -v cut="${1:-0}" -v upto="${2:-0}" '
     function cost(i,c5,c1,cr,o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
-    $1 + 0 >= cut { C[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += cost($9,$10,$11,$12,$13)
+    $1 + 0 >= cut && (upto == 0 || $1 + 0 <= upto) { C[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += cost($9,$10,$11,$12,$13)
                     R[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += $8 }
     END { printf "["; first = 1
       for (k in C) { split(k, a, SUBSEP)
@@ -1461,13 +2065,33 @@ json() {
 
 # ---------------------------------------------------------------------------
 
-SINCE=7d; UNTIL=""; DIM=""; DO_UPDATE=1; CAL_ACCT=""; CAL_AMT=""; CAL_AT=""
+# One DIM holds the report that runs. The session, the dimensions and the filters are held apart from it, so the order of the flags decides nothing: `--session X --by day` and `--by day --session X` are the same report.
+NOW=""; SINCE=""; UNTIL=""; DIM=""; DO_UPDATE=1; CAL_ACCT=""; CAL_AMT=""; CAL_AT=""
 MET_REFRESH=0; MET_FORCE=0
+BYLIST=""; SESSION=""; ACCTS=""; PROJS=""; BREAKDOWN=0; TOPN=12; SORT=""
+COLOR=auto; COMPACT=0; TSV=0
+OUT_TTY=0; [ -t 1 ] && OUT_TTY=1   # asked here: inside $( ) standard output is a pipe
+US=$'\037'
+DIMENSIONS="account project session day week month hour agent model workflow"
+
+die_usage() { echo "tusage: $*" >&2; exit 2; }
+want_value() { [ "$2" -ge 2 ] || die_usage "$1 needs a value"; }
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --by)       DIM=${2:-project}; shift 2 ;;
-    --since)    SINCE=${2:-7d}; shift 2 ;;
-    --until)    UNTIL=${2:-}; shift 2 ;;
+    --by)       want_value "$1" $#; BYLIST=$2; DIM=__by; shift 2 ;;
+    --since)    want_value "$1" $#; SINCE=$2; SINCE_SET=1; shift 2 ;;
+    --until)    want_value "$1" $#; UNTIL=$2; UNTIL_SET=1; shift 2 ;;
+    --account)  want_value "$1" $#; [ -n "$2" ] || die_usage "--account needs a name"
+                ACCTS="${ACCTS:+$ACCTS,}$2"; shift 2 ;;
+    --project)  want_value "$1" $#; [ -n "$2" ] || die_usage "--project needs some text"
+                PROJS="${PROJS:+$PROJS$US}$2"; shift 2 ;;
+    --breakdown) BREAKDOWN=1; shift ;;
+    --top)      want_value "$1" $#; TOPN=$2; shift 2 ;;
+    --sort)     want_value "$1" $#; SORT=$2; shift 2 ;;
+    --color)    want_value "$1" $#; COLOR=$2; shift 2 ;;
+    --compact)  COMPACT=1; shift ;;
+    --tsv)      TSV=1; shift ;;
     --calibrate) DIM=__calibrate; CAL_ACCT=${2:-}; CAL_AMT=${3:-}; shift 3 ;;
     --at)       CAL_AT=${2:-}; shift 2 ;;
     --meter)    DIM=__meter; shift ;;
@@ -1475,7 +2099,8 @@ while [ $# -gt 0 ]; do
     --force)    MET_FORCE=1; shift ;;
     --sessions) DIM=__sessions; shift ;;
     --daily)    DIM=__daily; shift ;;
-    --session)  DIM=__detail; SID=${2:-}; shift 2 ;;
+    --session)  want_value "$1" $#; [ -n "$2" ] || die_usage "--session needs an id or a name"
+                SESSION=$2; [ -n "$DIM" ] || DIM=__detail; shift 2 ;;
     --burn)     DIM=__burn; shift ;;
     --json)     DIM=__json; shift ;;
     # The meter runs AFTER the index work and outside its lock: it is a network
@@ -1486,22 +2111,93 @@ while [ $# -gt 0 ]; do
     # Print to the first non-comment line, never a hardcoded range: the header
     # grows, the range does not, and the help silently loses its tail.
     -h|--help)  LC_ALL=C awk 'NR > 2 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
-    *)          echo "tusage: unknown option $1" >&2; exit 2 ;;
+    *)          die_usage "unknown option $1" ;;
   esac
 done
 
+# Every value is checked before the index is touched: a typo prints a plain message and exits 2, never a plausible table of the wrong thing.
+DIMS=()
+check_by() {
+  local d seen=" "
+  [ -n "$BYLIST" ] || die_usage "--by needs at least one dimension"
+  case ",$BYLIST," in *,,*) die_usage "empty dimension in --by $BYLIST" ;; esac
+  IFS=, read -r -a DIMS <<<"$BYLIST"
+  for d in "${DIMS[@]}"; do
+    case " $DIMENSIONS " in
+      *" $d "*) ;;
+      *) printf 'tusage: unknown dimension %s\nvalid: %s\n' "$d" "${DIMENSIONS// /, }" >&2; exit 2 ;;
+    esac
+    case "$seen" in *" $d "*) die_usage "dimension $d given twice" ;; esac
+    seen="$seen$d "
+  done
+  [ "${#DIMS[@]}" -le 3 ] || die_usage "--by takes at most three dimensions, not ${#DIMS[@]}"
+}
+
+check_accounts() {
+  local a known want
+  [ -n "$ACCTS" ] || return 0
+  known=$(account_dirs | LC_ALL=C cut -f1)
+  IFS=, read -r -a want <<<"$ACCTS"
+  for a in "${want[@]}"; do
+    [ "$a" = "?" ] && continue
+    printf '%s\n' "$known" | grep -Fxq -- "$a" && continue
+    printf 'tusage: unknown account %s\nknown accounts: %s\n' "$a" \
+      "$(printf '%s\n' "$known" | paste -sd, - | sed 's/,/, /g'), ?" >&2
+    exit 2
+  done
+}
+
+[ "$DIM" = __by ] && check_by
+case "$TOPN" in ''|*[!0-9]*) die_usage "--top wants a number of rows, not $TOPN" ;; esac
+[ -z "$SORT" ] || [ "$SORT" = cost ] || die_usage "--sort accepts only cost, not $SORT"
+case "$COLOR" in auto|always|never) ;; *) die_usage "--color accepts auto, always or never, not $COLOR" ;; esac
+# Colour: only on a terminal, with NO_COLOR unset or empty and TERM not dumb; --color always is an explicit request and wins over NO_COLOR.
+COLOR_ON=0
+case "$COLOR" in
+  always) COLOR_ON=1 ;;
+  auto)   [ "$OUT_TTY" = 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != dumb ] && COLOR_ON=1 ;;
+esac
+if [ -n "$ACCTS" ]; then ensure_accounts
+else case "$DIM" in ""|__by|__daily|__meter|__calibrate) ensure_accounts ;; esac
+fi
+check_accounts
+
+# The window. A table by week or month, or of one session, reaches back as far as the index does unless --since says otherwise: seven days is one row of a week table, and the days of a session are not all in the last week.
+wide_window() {
+  [ "$DIM" = __detail ] && return 1
+  [ -n "$SESSION" ] && return 0
+  [ "$DIM" = __by ] || return 1
+  case ",$BYLIST," in *,week,*|*,month,*) return 0 ;; esac
+  return 1
+}
+# The reports with a window read the clock once, for the window and for the rows that count the last hour and five; the others have no window to cut.
+case "$DIM" in __sessions|__daily|__json|__by) NOW=$(date +%s) ;; esac
+if [ "${SINCE_SET:-0}" = 1 ]; then
+  CUT=$(since_cut "$SINCE") || die_usage "bad --since value $SINCE"
+elif wide_window || [ -z "$NOW" ]; then
+  CUT=0
+else
+  CUT=$(since_cut 7d)
+fi
+UPTO=0
+if [ "${UNTIL_SET:-0}" = 1 ]; then
+  UPTO=$(until_cut "$UNTIL") || die_usage "bad --until value $UNTIL"
+fi
+
 [ "$DO_UPDATE" = 1 ] && update 0
+[ -n "$SESSION" ] && resolve_session
+case "$DIM" in ""|__by|__sessions|__daily|__burn|__json) filter_facts ;; esac
 
 case "$DIM" in
   "")          summary ;;
-  __sessions)  sessions "$SINCE" ;;
-  __daily)     daily "$SINCE" "$UNTIL" ;;
+  __sessions)  sessions "$CUT" "$UPTO" ;;
+  __daily)     daily "$CUT" "$UPTO" ;;
   __calibrate) calibrate "$CAL_ACCT" "$CAL_AMT" "$CAL_AT" ;;
   __meter)     if [ "$MET_FORCE" = 1 ]; then meter_refresh --force
                elif [ "$MET_REFRESH" = 1 ]; then meter_refresh; fi
                meter_show ;;
-  __detail)    session_detail "${SID:-}" ;;
+  __detail)    session_detail "$SESSION" ;;
   __burn)      burn ;;
-  __json)      json "$SINCE" ;;
-  *)           report_by "$DIM" "$SINCE" ;;
+  __json)      json "$CUT" "$UPTO" ;;
+  __by)        report_by "$BYLIST" "$CUT" "$UPTO" ;;
 esac
