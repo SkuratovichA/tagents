@@ -259,6 +259,9 @@ function mtimeVectors(): unknown {
 
 // ---- the tokenizer ---------------------------------------------------------------------------
 
+/** The code points the sweep covers, as inclusive ranges (the surrogates are left out of each): the Basic Multilingual Plane, the first two supplementary planes, and U+E0000 to U+E01FF, the tag characters and the first variation selectors of the plane that follows. */
+const SWEPT_RANGES: ReadonlyArray<readonly [number, number]> = [[0x0, 0xffff], [0x10000, 0x2ffff], [0xe0000, 0xe01ff]];
+
 /** The terms the index's tokenizer gives `x<c>x` for each code point `c`, read through `fts5vocab`, in blocks of 256 code points. */
 function tokenizerVectors(): unknown {
   silenceSqliteWarning();
@@ -267,7 +270,7 @@ function tokenizerVectors(): unknown {
   db.exec("create virtual table v using fts5vocab(t, 'instance')");
   const probe = (cp: number): string => `x${String.fromCodePoint(cp)}x`;
   const points: number[] = [];
-  for (let cp = 0; cp <= 0xffff; cp++) if (cp < 0xd800 || cp > 0xdfff) points.push(cp);
+  for (const [first, last] of SWEPT_RANGES) for (let cp = first; cp <= last; cp++) if (cp < 0xd800 || cp > 0xdfff) points.push(cp);
   const supplementary = [0x10000, 0x1000b, 0x10400, 0x1d400, 0x1d7ce, 0x1e900, 0x1f600, 0x20000, 0x2f800, 0xe0001, 0xe0100, 0xf0000, 0x10ffff];
   const all = [...points, ...supplementary];
   const insert = db.prepare('insert into t (rowid, body) values (?, ?)');
@@ -290,6 +293,7 @@ function tokenizerVectors(): unknown {
   return {
     probe: 'x<c>x',
     line: '<code point in hex, four digits at least> <terms separated by a space>',
+    ranges: SWEPT_RANGES,
     codePoints: points.length,
     blocks: [...blocks.entries()].map(([block, text]) => ({ first: block << 8, digest: createHash('sha256').update(text).digest('hex') })),
     supplementary: supplementary.map((cp, i) => ({ cp, terms: termsOf.get(points.length + i + 1) ?? [] })),
