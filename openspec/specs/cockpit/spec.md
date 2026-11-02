@@ -2,7 +2,9 @@
 
 ## Purpose
 The dashboard, and its only layout: the list never moves. It lives in one session `tagents` beside a viewport, a second client of the same tmux server that shows whichever window a row names. Selecting a row points the viewport and puts the keyboard there, moving inside the viewport moves only the list's cursor, and the dashboard comes down in order on `ctrl-q`, so nothing blinks on a window or session switch and no list ever sits in a user's window.
+
 ## Requirements
+
 ### Requirement: The cockpit is the only layout
 The dashboard SHALL be the cockpit and nothing else: no list SHALL run in or move into a user's window, and `tagents` or `tagents --ensure-dash` run in any pane SHALL make or reuse the cockpit and switch that client to it. The config key `dashboard.layout` SHALL NOT be read, and a file that still carries it SHALL be accepted without a word.
 
@@ -249,3 +251,10 @@ A session `tagents` without `@tagents_cockpit` whose only window holds two idle 
 #### Scenario: Restored
 - **WHEN** tmux-resurrect restored a session `tagents` holding two idle shells titled `tagents-sidebar` and `tagents-viewport`, and a terminal is attached to it
 - **THEN** after `tagents --resurrect` those two panes run the list and the viewport, and the terminal was never detached
+
+### Requirement: The viewport's client asks for synchronized updates
+The viewport's client SHALL be started with the terminal feature `sync`, whatever tmux reports for a client inside a pane, so that each redraw reaches the outer terminal inside one synchronized update and the cursor stays where it is.
+
+#### Scenario: The client is attached
+- **WHEN** the viewport's client is attached
+- **THEN** its `client_termfeatures` holds `sync`

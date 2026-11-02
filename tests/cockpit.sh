@@ -268,6 +268,10 @@ ok "A cockpit made: the session tagents exists beside the others" "personal scra
 has "A cockpit made: the list is on its left" tagents "$(tm display -p -t "$(lpane)" '#{pane_start_command}')"
 hasnt "A cockpit made: ...and is not the viewport" --viewport "$(tm display -p -t "$(lpane)" '#{pane_start_command}')"
 has "A cockpit made: the viewport is on its right" --viewport "$(tm display -p -t "$(vpane)" '#{pane_start_command}')"
+vtty=$(tm show -gqv @tagents_viewport_tty)
+vpid=$(tm list-clients -F '#{client_tty} #{client_pid}' | awk -v t="$vtty" '$1 == t { print $2 }')
+has "A cockpit made: the viewport's client asks for synchronized updates" "-T sync" "$(ps -o command= -p "$vpid")"
+has "...and has the feature" sync "$(tm list-clients -F '#{client_tty} #{client_termfeatures}' | awk -v t="$vtty" '$1 == t')"
 ok "A new dashboard: one window" 1 "$(tm list-windows -t '=tagents:' | wc -l | tr -d ' ')"
 near "A new dashboard: the list is 90 columns wide" 90 "$(tm display -p -t "$(lpane)" '#{pane_width}')"
 ok "A new dashboard: @tagents_cockpit is 1" 1 "$(tm show -qv -t '=tagents:' @tagents_cockpit)"

@@ -249,3 +249,6 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **A list sized per breakpoint truncated every row** — build rows first, measure, size each column to its widest value (27.10.2026)
 - **`$` did nothing with no usage tracking** — a switched-off key shows a notice naming the setting (27.10.2026)
 - **A cache key must name every input** — the config-check stamp carries the config path, invalidates on newer `config*.toml` and has an age ceiling `TA_CFG_CHECK_EVERY` (12.09.2026)
+- **`",$TERM:sync"` in zsh is the `:s` modifier** — it fails with `bad substitution`; write `${TERM}` or the name itself (02.11.2026)
+- **A probe row that looked worse was the bug** — before rejecting a fix because forcing a capability off made things worse, compare with what the failing machine reports: it may simply lack that capability (02.11.2026)
+- **A shell suite edited while it runs reads garbage** — bash reads the script incrementally, so wait for the run to end before editing it (02.11.2026)
