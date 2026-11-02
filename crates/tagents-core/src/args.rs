@@ -1,6 +1,6 @@
 //! The options of a verb: `util.parseArgs` of node as far as this binary models it, and nothing else.
 //!
-//! The grammar has no error case. A positional is an argument that does not start with `-` (a lone `-` included), and `--` ends the options. A string option is read as `--name V`, when `V` does not start with `-`, or as `--name=V` for any `V`; a repeated one keeps its last value, unless the table lists it as `multiple`, which keeps all of them in the order given. A flag is a bare `--name`. Anything else is `None`: any other argument that starts with `-` (a short option, an unknown name), a missing value or one that starts with `-`, a flag with `=`, and a positional where the verb takes none. `None` is a call node words itself, since `parseArgs` words its own errors and its exit code comes from the error, so no error text is copied. Taking more than node does is the one thing this reader must not do, and handing over a call node would accept (`--cwd -`) is allowed.
+//! A positional is an argument that does not start with `-` (a lone `-` included), and `--` ends the options. A string option is read as `--name V`, when `V` does not start with `-`, or as `--name=V` for any `V`; a repeated one keeps its last value, unless the table lists it as `multiple`, which keeps all of them in the order given. A flag is a bare `--name`. Anything else is `None`: any other argument that starts with `-` (a short option, an unknown name), a missing value or one that starts with `-`, a flag with `=`, and a positional where the verb takes none. `None` is a call node words itself, since `parseArgs` words its own errors and its exit code comes from the error, so no error text is copied. Taking more than node does is the one thing this reader must not do, and handing over a call node would accept (`--cwd -`) is allowed.
 
 /// What a verb reads: the names of its options, written without their dashes, and whether it takes positionals.
 #[derive(Debug, Clone, Copy)]
@@ -96,6 +96,9 @@ impl<'a> Parsed<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugin::{ADD, NEW, REMOVE};
+    use crate::session::read::{LIST, OPEN};
+    use tagents_spec::{OptionKind, Spec};
 
     fn words(args: &[&str]) -> Vec<String> {
         args.iter().map(|a| (*a).to_owned()).collect()
@@ -114,39 +117,57 @@ mod tests {
         })
     }
 
-    /// The tables `plugin add`, `plugin new` and `plugin remove` read their arguments through.
-    const ADD: Grammar = Grammar {
-        strings: &["name"],
-        flags: &[],
-        multiple: &[],
-        positionals: true,
-    };
-    const NEW: Grammar = Grammar {
-        strings: &["dir"],
-        flags: &[],
-        multiple: &[],
-        positionals: true,
-    };
-    const REMOVE: Grammar = Grammar {
+    /// `session last` reads no option: `session::read::last` takes the reference from the words as they are.
+    const NO_OPTIONS: Grammar = Grammar {
         strings: &[],
         flags: &[],
         multiple: &[],
         positionals: true,
     };
 
-    /// A table like `session open`'s and one like `session list`'s: no positionals, a flag, a string option, and a repeated one.
-    const OPEN: Grammar = Grammar {
-        strings: &["cwd", "label"],
-        flags: &["no-config-dir", "skip-permissions"],
-        multiple: &[],
-        positionals: false,
-    };
-    const LIST: Grammar = Grammar {
-        strings: &["label"],
-        flags: &[],
-        multiple: &["state"],
-        positionals: false,
-    };
+    /// The tables are copies of the `options` in `spec/cli/tagents-core.json`, as `PARSED` of `packages/core/src/cli/spec.ts` is on the node side, where `sameOptions` holds it to the file.
+    #[test]
+    fn every_grammar_is_the_options_of_its_command_in_the_data_file() {
+        let spec = Spec::bundled().unwrap();
+        for (verb, grammar) in [
+            ("session open", OPEN),
+            ("session list", LIST),
+            ("session last", NO_OPTIONS),
+            ("plugin add", ADD),
+            ("plugin remove", REMOVE),
+            ("plugin new", NEW),
+        ] {
+            let command = spec
+                .commands
+                .iter()
+                .find(|command| command.path.join(" ") == verb)
+                .unwrap_or_else(|| panic!("{verb} is not in the data file"));
+            let wanted: Vec<(&str, OptionKind, bool)> = command
+                .options
+                .iter()
+                .map(|(name, shape)| (name.as_str(), shape.kind, shape.multiple.unwrap_or(false)))
+                .collect();
+            let mut read: Vec<(&str, OptionKind, bool)> = grammar
+                .strings
+                .iter()
+                .map(|name| (*name, OptionKind::String, false))
+                .chain(
+                    grammar
+                        .flags
+                        .iter()
+                        .map(|name| (*name, OptionKind::Boolean, false)),
+                )
+                .chain(
+                    grammar
+                        .multiple
+                        .iter()
+                        .map(|name| (*name, OptionKind::String, true)),
+                )
+                .collect();
+            read.sort_by_key(|(name, _, _)| *name);
+            assert_eq!(read, wanted, "{verb}");
+        }
+    }
 
     #[test]
     fn the_grammar_reads_positionals_and_its_one_option_and_nothing_else() {

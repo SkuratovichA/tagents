@@ -96,19 +96,19 @@ pub fn serve(argv: &[String], setting: &Setting) -> Option<Output> {
 }
 
 /// The options of the three verbs.
-const ADD: Grammar = Grammar {
+pub(crate) const ADD: Grammar = Grammar {
     strings: &["name"],
     flags: &[],
     multiple: &[],
     positionals: true,
 };
-const REMOVE: Grammar = Grammar {
+pub(crate) const REMOVE: Grammar = Grammar {
     strings: &[],
     flags: &[],
     multiple: &[],
     positionals: true,
 };
-const NEW: Grammar = Grammar {
+pub(crate) const NEW: Grammar = Grammar {
     strings: &["dir"],
     flags: &[],
     multiple: &[],

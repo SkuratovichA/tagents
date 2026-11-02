@@ -40,7 +40,7 @@ impl Setting {
     }
 }
 
-const OPEN: Grammar = Grammar {
+pub(crate) const OPEN: Grammar = Grammar {
     strings: &[
         "cwd",
         "label",
@@ -56,7 +56,7 @@ const OPEN: Grammar = Grammar {
     positionals: false,
 };
 
-const LIST: Grammar = Grammar {
+pub(crate) const LIST: Grammar = Grammar {
     strings: &["label"],
     flags: &[],
     multiple: &["state"],
