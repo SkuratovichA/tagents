@@ -57,18 +57,21 @@ dayof() { date -r "$1" +%Y-%m-%d 2>/dev/null || date -d "@$1" +%Y-%m-%d; }
 # flowing from there, so ages and timeouts still elapse.
 REAL_DATE=$(command -v date)
 epoch_of() { date -j -f '%Y-%m-%d %H:%M:%S' "$1" +%s 2>/dev/null || date -d "$1" +%s; }
-START=$(date +%s); REAL_START=$START
+pinclock() {  # <dir> <epoch>: a date(1) in <dir>, for the front of a PATH, whose clock starts at that instant
+  mkdir -p "$1"
+  cat >"$1/date" <<CLOCK
+#!/bin/bash
+for a in "\$@"; do case \$a in -j|-r|-d|-f|--date*) exec $REAL_DATE "\$@" ;; esac; done
+e=\$(( \$($REAL_DATE +%s) + $(( $2 - $($REAL_DATE +%s) )) ))
+$REAL_DATE -r "\$e" "\$@" 2>/dev/null || exec $REAL_DATE -d "@\$e" "\$@"
+CLOCK
+  chmod +x "$1/date"
+}
+START=$(date +%s)
 [ -z "${TU_TEST_NOW:-}" ] || START=$(epoch_of "$TU_TEST_NOW") || { echo "TU_TEST_NOW is not YYYY-MM-DD HH:MM:SS: $TU_TEST_NOW" >&2; exit 1; }
 DOM=$(dayof "$START" | cut -c9-10)
 [ "$((10#$DOM))" -ge 4 ] || START=$(( START + (4 - 10#$DOM) * 86400 ))
-mkdir -p "$ROOT/clock"
-cat >"$ROOT/clock/date" <<CLOCK
-#!/bin/bash
-for a in "\$@"; do case \$a in -j|-r|-d|-f|--date*) exec $REAL_DATE "\$@" ;; esac; done
-e=\$(( \$($REAL_DATE +%s) + $(( START - REAL_START )) ))
-$REAL_DATE -r "\$e" "\$@" 2>/dev/null || exec $REAL_DATE -d "@\$e" "\$@"
-CLOCK
-chmod +x "$ROOT/clock/date"
+pinclock "$ROOT/clock" "$START"
 export PATH="$ROOT/clock:$PATH"
 printf 'the clock starts at %s\n' "$(date '+%Y-%m-%d %H:%M:%S')"
 
@@ -1917,16 +1920,6 @@ t "27. a date window is cut where the rows are bucketed"
 # time (+0200) sit an hour off the local midnight: 22:30 UTC of the 19th is 00:30
 # on the 20th by the clock then, and the 19th by today's. Each row below says which.
 
-pinclock() {  # <dir> <epoch>: a date(1) in <dir>, for the front of a PATH, whose clock starts at that instant
-  mkdir -p "$1"
-  cat >"$1/date" <<CLOCK
-#!/bin/bash
-for a in "\$@"; do case \$a in -j|-r|-d|-f|--date*) exec $REAL_DATE "\$@" ;; esac; done
-e=\$(( \$($REAL_DATE +%s) + $(( $2 - $($REAL_DATE +%s) )) ))
-$REAL_DATE -r "\$e" "\$@" 2>/dev/null || exec $REAL_DATE -d "@\$e" "\$@"
-CLOCK
-  chmod +x "$1/date"
-}
 pinclock "$ROOT/clock-prague" "$(TZ=Europe/Prague epoch_of "2026-11-02 12:00:00")"
 
 F27="$ROOT/fx27"; mkdir -p "$F27/usage"
