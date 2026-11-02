@@ -441,7 +441,8 @@ ok "Nothing moves: the dashboard has two panes" 2 "$(tm list-panes -t '=tagents:
 t "A header"
 tm select-pane -t "$(lpane)"
 tm select-window -t '=work:one'
-hk=$(ta --list 2>/dev/null | awk -F'\t' '$2 ~ /▾/ && $2 ~ /work/ { print $1; exit }')
+# The header row prints the group's directory too, and a path with "work" in it (a checkout under ~/git/work) made the first header, personal, match; the name is what follows the marker.
+hk=$(ta --list 2>/dev/null | awk -F'\t' '$2 ~ /▾ work/ { print $1; exit }')
 ta --act open "$hk" none "" "" "▾ work" >/dev/null 2>&1
 ok "A header: the viewport shows the current window of work" work:0 "$(wait_eq work:0 vwin)"
 ok "A header: the viewport is the dashboard's active pane" "$(vpane)" "$(vact)"
