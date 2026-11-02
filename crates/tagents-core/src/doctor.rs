@@ -414,6 +414,12 @@ mod tests {
     }
 
     #[test]
+    fn this_process_gives_node_ten_seconds_to_answer() {
+        // The requirement "doctor asks node once and survives its absence" says 10 seconds; the tests below inject a shorter one through the setting.
+        assert_eq!(Setting::current().deadline, Duration::from_secs(10));
+    }
+
+    #[test]
     fn a_node_that_does_not_answer_in_time_is_stopped_and_missing() {
         let mut f = fixture();
         let node = f.scratch.path().join("slow-node");
@@ -422,7 +428,7 @@ mod tests {
         f.setting.deadline = Duration::from_millis(200);
         let started = Instant::now();
         assert_node_missing(&f, "node: missing");
-        assert!(started.elapsed() < Duration::from_secs(10));
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 
     #[test]
