@@ -28,7 +28,7 @@ pub const VERBS: &[&[&str]] = &[&["doctor"]];
 
 /// What node is asked, once: the two values `doctor` prints about it.
 const IDENTITY: &str = "JSON.stringify([process.version, process.execPath])";
-/// How long node has to answer. It starts and prints in well under a second; a node that does not is as good as absent.
+/// How long node has to answer; a node that has not answered by then is as good as absent.
 const DEADLINE: Duration = Duration::from_secs(10);
 /// How long node has to leave after SIGTERM before SIGKILL.
 const KILL_GRACE: Duration = Duration::from_millis(500);
