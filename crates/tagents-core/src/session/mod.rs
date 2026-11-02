@@ -4,6 +4,7 @@
 
 pub mod read;
 pub mod reference;
+pub mod stream;
 
 use crate::{messages::Texts, sessions::Output};
 use read::Setting;

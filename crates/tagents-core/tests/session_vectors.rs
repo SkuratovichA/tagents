@@ -9,6 +9,7 @@ use serde_json::Value;
 use tagents_core::js;
 use tagents_core::json::{self, Value as Js};
 use tagents_core::session::reference::{self, Read};
+use tagents_core::session::stream;
 
 /// The sections the turn of `session prompt` reads (`args`, `env`, `stream` and the error line of `outcome`), which the tests of `session::{command,stream,outcome}` take up with that verb.
 const READ_BY_THE_TURN: [&str; 4] = ["args", "env", "stream", "outcome"];
@@ -145,5 +146,84 @@ fn a_detail_is_clipped_as_clip_detail_clips_it() {
             "{}",
             text(case, "text")
         );
+    }
+}
+
+/// What the reader made of a case, in the shape of the fixture.
+fn reader_answers(chunks: &[&[u8]]) -> (stream::Reader, Vec<String>) {
+    let mut reader = stream::Reader::listening();
+    let mut events = Vec::new();
+    let mut on = |line: &str| events.push(line.to_owned());
+    for chunk in chunks {
+        reader.push(chunk, &mut on);
+    }
+    reader.end(&mut on);
+    (reader, events)
+}
+
+fn assert_reader_equals(case: &Value, reader: &stream::Reader, events: &[String], how: &str) {
+    let name = text(case, "name");
+    let want: Vec<&str> = case["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|event| event.as_str().unwrap())
+        .collect();
+    assert_eq!(events, want, "{name}, {how}: events");
+    let payload = reader
+        .payload
+        .as_ref()
+        .map(|payload| json::stringify(payload, false));
+    assert_eq!(
+        payload.as_deref(),
+        case["payload"].as_str(),
+        "{name}, {how}: payload"
+    );
+    let session_id = reader.session_id.as_ref().and_then(Js::as_str);
+    assert_eq!(
+        session_id,
+        case["sessionId"].as_str(),
+        "{name}, {how}: session id"
+    );
+    assert_eq!(
+        Some(reader.tool_uses),
+        case["toolUses"].as_u64(),
+        "{name}, {how}: tool uses"
+    );
+    assert_eq!(
+        json::quote_units(&reader.text),
+        text(case, "text"),
+        "{name}, {how}: text"
+    );
+    assert_eq!(
+        Some(reader.saw_result),
+        case["sawResult"].as_bool(),
+        "{name}, {how}: saw result"
+    );
+}
+
+#[test]
+fn the_reader_gives_what_stream_reader_gives() {
+    let stream = section("stream");
+    let cases = stream["cases"].as_array().unwrap();
+    assert!(cases.len() > 60);
+    for case in cases {
+        let input = text(case, "input");
+        // In one read, in the reads node was given, and a byte at a time, which is a cut node's decoder is there to hide.
+        let (reader, events) = reader_answers(&[input.as_bytes()]);
+        assert_reader_equals(case, &reader, &events, "whole");
+        if let Some(size) = case["chunk"].as_u64() {
+            let chars: Vec<char> = input.chars().collect();
+            let pieces: Vec<String> = chars
+                .chunks(usize::try_from(size).unwrap())
+                .map(|piece| piece.iter().collect())
+                .collect();
+            let chunks: Vec<&[u8]> = pieces.iter().map(String::as_bytes).collect();
+            let (reader, events) = reader_answers(&chunks);
+            assert_reader_equals(case, &reader, &events, "chunked");
+        }
+        let bytes: Vec<&[u8]> = input.as_bytes().chunks(1).collect();
+        let (reader, events) = reader_answers(&bytes);
+        assert_reader_equals(case, &reader, &events, "byte by byte");
     }
 }

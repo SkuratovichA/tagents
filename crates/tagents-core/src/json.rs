@@ -44,6 +44,18 @@ impl Value {
         }
     }
 
+    /// `get`, to change or take the value.
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
+        match self {
+            Value::Object(members) => members
+                .iter_mut()
+                .rev()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v),
+            _ => None,
+        }
+    }
+
     /// The members of an object in the order JavaScript keeps them (a key written twice once, with its last value), or `None` for a value that is not an object.
     pub fn entries(&self) -> Option<Vec<(&str, &Value)>> {
         match self {
