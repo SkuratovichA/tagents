@@ -629,7 +629,7 @@ fn a_plugin_argument_that_is_not_utf8_is_forwarded_whole_not_decoded_lossily() {
 
 #[test]
 fn the_session_calls_node_keeps_reach_it_with_their_arguments() {
-    // `session` is a group that serves some of its verbs and hands the rest to node: a bare `session`, an unknown verb, a verb node keeps (`prompt`, `abort`) and a served verb whose arguments the grammar does not read (`open --bogus`), each with every argument as it was typed and nothing written before.
+    // `session` is a group that serves some of its verbs and hands the rest to node: a bare `session`, an unknown verb, a verb node keeps (`abort`) and a served verb whose arguments the grammar does not read (`open --bogus`, `prompt --bogus`), each with every argument as it was typed and nothing written before.
     let checkout = Checkout::new("session-declines");
     for args in [
         &["session"][..],

@@ -19,6 +19,7 @@ use read::Setting;
 /// The verbs this module serves, as the words after the program name. `tagents-core --spec` prints them and a test pins them to `impl: "rust"` in the data file.
 pub const VERBS: &[&[&str]] = &[
     &["session", "open"],
+    &["session", "prompt"],
     &["session", "last"],
     &["session", "list"],
 ];

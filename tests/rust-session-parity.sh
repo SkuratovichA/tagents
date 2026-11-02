@@ -79,9 +79,9 @@ for program in claude caffeinate node; do
 done
 
 if [ -z "$SELF_TEST" ]; then
-  # The first check, before any scenario: the binary says it serves the three verbs. A build with no `session` verb would hand every scenario to node and pass them all.
-  "$RUST" --spec | "$NODE" -e 'const s = JSON.parse(require("fs").readFileSync(0, "utf8")); const has = (p) => s.commands.some((c) => c.path.join(" ") === p); process.exit(has("session open") && has("session list") && has("session last") ? 0 : 1)' \
-    || { echo "rust-session-parity: $RUST does not serve session open, session list and session last (--spec)" >&2; exit 2; }
+  # The first check, before any scenario: the binary says it serves the four verbs. A build with no `session` verb would hand every scenario to node and pass them all.
+  "$RUST" --spec | "$NODE" -e 'const s = JSON.parse(require("fs").readFileSync(0, "utf8")); const has = (p) => s.commands.some((c) => c.path.join(" ") === p); process.exit(has("session open") && has("session prompt") && has("session list") && has("session last") ? 0 : 1)' \
+    || { echo "rust-session-parity: $RUST does not serve session open, session prompt, session list and session last (--spec)" >&2; exit 2; }
 fi
 
 pass=0; fail=0; skipped=0; rust_served=0; handed_over=0
