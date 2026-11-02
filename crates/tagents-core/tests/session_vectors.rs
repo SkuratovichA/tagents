@@ -343,6 +343,7 @@ fn an_outcome_prints_and_its_error_line_reads_as_node_writes_them() {
     let cases = section("outcome");
     let cases = cases["error"].as_array().unwrap();
     assert!(cases.len() >= 10);
+    let mut skipped = 0;
     for case in cases {
         let printed = text(case, "outcome");
         let value: Value = serde_json::from_str(printed).unwrap();
@@ -352,9 +353,12 @@ fn an_outcome_prints_and_its_error_line_reads_as_node_writes_them() {
             case["error"].as_str(),
             "{printed}"
         );
-        // The one case with no `durationMs` is a shape the type no longer allows.
-        if !value["durationMs"].is_null() || value.get("durationMs").is_none() {
+        // A case whose `durationMs` is present and null is a shape the type no longer allows, so its document is not compared; every other case's is.
+        if value.get("durationMs").is_none_or(|v| !v.is_null()) {
             assert_eq!(outcome.document(true), format!("{printed}\n"));
+        } else {
+            skipped += 1;
         }
     }
+    assert_eq!(skipped, 1);
 }
