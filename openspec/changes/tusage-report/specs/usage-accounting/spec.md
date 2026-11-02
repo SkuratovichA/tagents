@@ -110,18 +110,26 @@ Every row of a `--by` table SHALL show requests, input, output, cache write, cac
 - **THEN** that project row is followed by two model rows whose dollars add up to its own
 
 ### Requirement: Top rows and the rest
-Under each parent `--by` SHALL show the twelve largest rows of a non-time dimension and one row `… N more` that sums the others, unless `--top <N>` sets another number or `--top 0` shows all. Time dimensions are never cut. `--sort cost` lists every level by dollars, largest first. A `--top` or `--sort` value that is not a number or `cost` SHALL exit 2.
+Under each parent `--by` SHALL show the twelve largest rows of a non-time dimension and one row `… N more` that sums the others, unless `--top <N>` sets another number or `--top 0` shows all. The time dimensions, `model` and the model rows `--breakdown` adds SHALL never be cut. `--sort cost` lists every level by dollars, largest first. A `--top` or `--sort` value that is not a number or `cost` SHALL exit 2.
 
 #### Scenario: Cutting to three
 - **WHEN** `tusage --by session --top 3` runs with five sessions in the window
 - **THEN** it prints the three largest and a row `… 2 more` with the other two summed
 
+#### Scenario: A day is never left out
+- **WHEN** `tusage --by day --top 2` runs with five days in the window
+- **THEN** it prints all five days and no `… N more` row, since a day left out is a hole in the window
+
 ### Requirement: Dates in the window
-`--since` and `--until` SHALL accept a date `YYYY-MM-DD` in every report that takes them, besides the durations and seconds they take: `--since` starts the window at local midnight of that day and `--until` ends it at the end of that day. A value that is not a duration, seconds or a real date SHALL exit 2 with `tusage: bad --since value <value>`, or `--until` likewise.
+`--since` SHALL accept a duration (`30m`, `5h`, `3d`, or seconds, counted back from now), `month` or a date `YYYY-MM-DD`, and `--until` an epoch in seconds or a date. A date starts the `--since` window at its midnight and ends the `--until` window at the end of that day, both at today's UTC offset. A value that is none of those SHALL exit 2 with `tusage: bad --since value <value>`, or `--until` for that flag.
 
 #### Scenario: Two days
 - **WHEN** `tusage --by day --since 2026-10-28 --until 2026-10-29` runs
 - **THEN** the rows are the two days 2026-10-28 and 2026-10-29, both whole
+
+#### Scenario: The offset rows are bucketed by
+- **WHEN** a window names days in a zone whose offset changed since an earlier day of the window
+- **THEN** the window starts and ends at the midnights the rows are placed in a day by, today's UTC offset, so no row of a named day falls outside it
 
 #### Scenario: A date that does not exist
 - **WHEN** `tusage --by day --since 2026-02-30` runs
@@ -245,11 +253,15 @@ A `--by` table SHALL use colour only when standard output is a terminal, `NO_COL
 - **THEN** each row has the account, the project and ten figures, 12 tab-separated fields
 
 ### Requirement: What the new options leave alone
-`--sessions`, `--daily`, `--burn`, `--json` and `tusage --session <id>` without a report option SHALL print the bytes and keep the field order they print without the new options, SHALL NOT resolve names, and SHALL join sessions to accounts only where they do or `--account` asks. A new figure for machines SHALL be a new flag or a field appended after the last one.
+`--sessions`, `--daily`, `--burn`, `--json` and `tusage --session <id>` without a report option SHALL print the bytes and keep the field order they print without the new options, SHALL NOT resolve names (a `--session` text of hex digits and dashes is looked up as an id and never as a name), and SHALL join sessions to accounts only where they do or `--account` asks. A new figure for machines SHALL be a new flag or a field appended after the last one.
 
 #### Scenario: Fourteen fields
 - **WHEN** `tusage --sessions` runs after `labels.tsv` and transcript titles exist
 - **THEN** each row has the same 14 fields as without them, and no title cache is written
+
+#### Scenario: An id that aged out of the index
+- **WHEN** `tusage --session <a full id the index lacks>` runs
+- **THEN** it prints the empty detail, exits 0 as before, and looks up no name
 
 ### Requirement: Reports read the index
 A report SHALL be computed from the index and SHALL NOT scan transcripts for usage. To name a session it prints, a report MAY read the first lines of that session's transcript once and remember the title in the title cache that the dashboard reads, and it SHALL read no transcript of a session it does not print.

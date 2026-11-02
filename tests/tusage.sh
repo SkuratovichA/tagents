@@ -948,6 +948,7 @@ contains "...named" "tusage: bad --since value 2026-13-01" "$out"
 out=$(fx --daily --until 2026-10-32); rc=$?
 ok "--until likewise exits 2" 2 "$rc"
 contains "...and says --until" "tusage: bad --until value 2026-10-32" "$out"
+ok "--until takes an epoch or a date, not a duration" "2|0" "$(fxrc --daily --until 5h)|$(fxrc --daily --until 9999999999)"
 out=$(fx --daily --since yesterday); rc=$?
 ok "a word that is not a duration exits 2" 2 "$rc"
 contains "...named" "tusage: bad --since value yesterday" "$out"
@@ -1228,6 +1229,7 @@ ok "...and a table that is shorter than the limit has no remainder row" "0" "$(f
 ok "--tsv ignores --top" "$X_SESS" "$(tsv session --top 3 $W)"
 ok "--top cuts under each parent, not the table as a whole" "2" "$(fx --by account,project --top 1 $W | grep -c 'more')"
 ok "time dimensions are never cut" "6" "$(fx --by day --top 2 $W | grep -c '^2026-')"
+ok "a model level is never cut either" "0" "$(fx --by model --top 1 --color never $W | grep -c 'more')"
 ok "the models of a breakdown are never cut" "6" "$(fx --by project --breakdown --top 3 --color never $W | grep -c -e opus -e sonnet -e haiku)"
 ok "--sort cost puts a time dimension in dollar order" "$(printf '%s\n' "$X_DAY" | sort -t"$TAB" -k7,7nr)" "$(tsv day --sort cost $W)"
 
@@ -1558,6 +1560,15 @@ datecalls() { FX_SH='bash -x' "$@" | grep -c 'date +%s$'; }
 ok "--sessions reads the clock once" 1 "$(datecalls fx --sessions --since 1000d)"
 ok "--burn reads it once, for its own five hours" 1 "$(datecalls fx --burn)"
 ok "--session <id> reads it not at all" 0 "$(datecalls fx --session "$(fxsid 3f9a1c20)")"
+
+# A text that could be an id and that no session has is an id that aged out of the
+# index, which the closed-session preview asks for: it prints the empty detail and
+# looks up no name. Anything with a letter outside a hex digit is a name.
+namecalls() { FX_SH='bash -x' "$@" | grep -c 'name_paths$'; }
+ok "--session <an id the index lacks> looks up no name" 0 "$(namecalls fx --session "$(fxsid ffffffff)")"
+ok "...nor does a prefix of one" 0 "$(namecalls fx --session ffffff)"
+ok "...and it exits 0 as it did" 0 "$(fxrc --session "$(fxsid ffffffff)")"
+ok "--session <a name> still looks it up" 1 "$([ "$(namecalls fx --session refactor-billing)" -ge 1 ] && echo 1 || echo 0)"
 
 # ---------------------------------------------------------------------------
 t "22. one session by day"

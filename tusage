@@ -1475,18 +1475,18 @@ name_paths() {
 }
 
 # --session's text becomes the full id, or the run ends: 1 when nothing has that
-# id or name, 3 when several do. An id-shaped text that names nothing is not an
-# error: the detail of a session with no usage is empty, and the dashboard asks
+# id or name, 3 when several do. A text that could be an id (hex digits and dashes
+# only) is looked up as an id and never as a name; one that names nothing is not
+# an error: the detail of a session with no usage is empty, and the dashboard asks
 # for ids that have aged out of the index.
 resolve_session() {
-  local hits
+  local hits idlike=1
   [ -s "$FACTS" ] || return 0
+  case $SESSION in *[!0-9a-fA-F-]*) idlike=0 ;; esac
   hits=$(session_hits "$SESSION" id)
-  [ -n "$hits" ] || { name_paths; hits=$(session_hits "$SESSION" name "$NAME_LAB" "$NAME_TIT"); }
+  [ -n "$hits" ] || [ "$idlike" = 1 ] || { name_paths; hits=$(session_hits "$SESSION" name "$NAME_LAB" "$NAME_TIT"); }
   case $hits in
-    '')      case $SESSION in
-               *[!0-9a-fA-F-]*) echo "tusage: no session called $SESSION" >&2; exit 1 ;;
-             esac ;;
+    '')      [ "$idlike" = 1 ] || { echo "tusage: no session called $SESSION" >&2; exit 1; } ;;
     *$'\n'*) name_paths; session_list "$SESSION" "$hits" "$NAME_LAB" "$NAME_TIT"; exit 3 ;;
     *)       SESSION=$hits ;;
   esac

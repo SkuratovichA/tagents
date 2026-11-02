@@ -19,7 +19,7 @@ Every shell suite runs as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" b
 
 - [x] 4.1 Write failing tests on `--tsv` for exact numbers: columns add up (total tokens is the sum of the four kinds, cache write joins 5-minute and 1-hour), a group is the sum of the rows beneath it at three levels, rows are sorted by dollars and time dimensions oldest first, `workflow` covers only workflow agents, an unrated model marks the dollars with `*` and the floor line appears, a zero-token placeholder and a zero total print 0.0% and exit 0, an empty window and a missing index keep their messages and exits. Proof: `tests/tusage.sh`.
 - [x] 4.2 Write the single aggregation pass (filters, pricing through the shared price function, a node per depth, models, days) and `--tsv`. Proof: `tests/tusage.sh`.
-- [x] 4.3 Write failing tests, then add `--breakdown` (model rows under the deepest rows, a no-op when `model` is a dimension), `--top` with the `… N more` row (twelve by default, `0` for all, time dimensions never cut) and `--sort cost`. Proof: `tests/tusage.sh`.
+- [x] 4.3 Write failing tests, then add `--breakdown` (model rows under the deepest rows, a no-op when `model` is a dimension), `--top` with the `… N more` row (twelve by default, `0` for all, time dimensions and `model` never cut) and `--sort cost`. Proof: `tests/tusage.sh`.
 - [x] 4.4 Write failing tests on the table: the list-price line and the line about a stored calibration factor appear only when they apply, and `--tsv` ignores `--top`. Proof: `tests/tusage.sh`.
 
 ## 5. Accounts and projects
