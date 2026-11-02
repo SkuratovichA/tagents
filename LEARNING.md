@@ -252,3 +252,4 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **`",$TERM:sync"` in zsh is the `:s` modifier** — it fails with `bad substitution`; write `${TERM}` or the name itself (02.11.2026)
 - **A probe row that looked worse was the bug** — before rejecting a fix because forcing a capability off made things worse, compare with what the failing machine reports: it may simply lack that capability (02.11.2026)
 - **A shell suite edited while it runs reads garbage** — bash reads the script incrementally, so wait for the run to end before editing it (02.11.2026)
+- **`tagents --help` is parsed by a test CI does not run** — `packages/contract/test/bash-spec.test.ts` reads every verb from the help and no workflow runs the root `pnpm -r test`, so a change to the help needs that command locally; a usage line of `--version, -V` passed CI and broke it (02.11.2026)
