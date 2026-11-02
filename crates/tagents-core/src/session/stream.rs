@@ -61,26 +61,45 @@ fn fits_payload(json: &Value) -> bool {
 
 /// The output of the schema: the known keys in its order (`type` after them when the schema is `ResultEventSchema`), then the others as they came. A top-level `__proto__` is dropped, whatever it holds. `stringify` prints the keys in JavaScript's order and keeps the last value of a key written twice, so the unknown keys are left as they are. The members move: a nested value can be too deep to clone.
 fn payload_of(mut json: Value, with_type: bool) -> Value {
-    let Value::Object(members) = &mut json else {
-        return json;
+    json.remove("__proto__");
+    match &mut json {
+        Value::Object(members) => Value::Object(in_schema_order(
+            std::mem::take(members),
+            with_type,
+            |name, word| name == word,
+        )),
+        Value::Keyed(members) => Value::Keyed(in_schema_order(
+            std::mem::take(members),
+            with_type,
+            |name: &Vec<u16>, word| name.iter().copied().eq(word.encode_utf16()),
+        )),
+        _ => json,
+    }
+}
+
+/// The members of a payload in the order of its schema, given how a key is compared with a word.
+fn in_schema_order<K>(
+    members: Vec<(K, Value)>,
+    with_type: bool,
+    is: impl Fn(&K, &str) -> bool,
+) -> Vec<(K, Value)> {
+    let words = || {
+        PAYLOAD_KEYS
+            .iter()
+            .copied()
+            .chain(with_type.then_some("type"))
     };
-    let is_known = |key: &str| PAYLOAD_KEYS.contains(&key) || (with_type && key == "type");
-    let (mut known, others): (Vec<_>, Vec<_>) = std::mem::take(members)
+    let (mut known, others): (Vec<_>, Vec<_>) = members
         .into_iter()
-        .filter(|(key, _)| key != "__proto__")
-        .partition(|(key, _)| is_known(key));
+        .partition(|(name, _)| words().any(|word| is(name, word)));
     let mut ordered = Vec::with_capacity(known.len() + others.len());
-    for key in PAYLOAD_KEYS
-        .iter()
-        .copied()
-        .chain(with_type.then_some("type"))
-    {
-        if let Some(at) = known.iter().rposition(|(name, _)| name == key) {
+    for word in words() {
+        if let Some(at) = known.iter().rposition(|(name, _)| is(name, word)) {
             ordered.push(known.swap_remove(at));
         }
     }
     ordered.extend(others);
-    Value::Object(ordered)
+    ordered
 }
 
 /// The value at `key`, moved out of the object.
@@ -140,10 +159,7 @@ impl Reader {
         if !line.starts_with('{') {
             return;
         }
-        let Some(json::Exact {
-            value: mut json, ..
-        }) = json::parse_exact(line)
-        else {
+        let Some(mut json) = json::parse_whole(line) else {
             return;
         };
         let envelope =
@@ -196,7 +212,10 @@ impl Reader {
     fn block(&mut self, mut block: Value, on: &mut dyn FnMut(&str)) {
         match block.get("type").and_then(Value::as_str) {
             Some("tool_use") => {
-                let input_fits = matches!(block.get("input"), None | Some(Value::Object(_)));
+                let input_fits = matches!(
+                    block.get("input"),
+                    None | Some(Value::Object(_) | Value::Keyed(_))
+                );
                 if !input_fits
                     || !matches!(block.get("name"), Some(Value::String(_) | Value::Units(_)))
                 {
@@ -209,9 +228,7 @@ impl Reader {
                 let name = take(&mut block, "name").unwrap_or(Value::Null);
                 let mut input = take(&mut block, "input").unwrap_or(Value::Object(Vec::new()));
                 // `z.record` drops the key, whatever it holds.
-                if let Value::Object(members) = &mut input {
-                    members.retain(|(key, _)| key != "__proto__");
-                }
+                input.remove("__proto__");
                 on(&event("tool_use", vec![("name", name), ("input", input)]));
             }
             Some("text") => {

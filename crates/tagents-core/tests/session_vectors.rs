@@ -13,9 +13,16 @@ use tagents_core::session::outcome::{self, Done, Evidence, Outcome};
 use tagents_core::session::reference::{self, Read};
 use tagents_core::session::stream;
 
-/// The sections the turn of `session prompt` reads (`args`, `env`, `stream` and the error line of `outcome`), which the tests of `session::{command,stream,outcome}` take up with that verb.
-const READ_BY_THE_TURN: [&str; 4] = ["args", "env", "stream", "outcome"];
-const READ_HERE: [&str; 3] = ["print", "decode", "reference"];
+/// The sections of the file, each read by a test below.
+const SECTIONS: [&str; 7] = [
+    "args",
+    "decode",
+    "env",
+    "outcome",
+    "print",
+    "reference",
+    "stream",
+];
 
 fn vectors() -> Value {
     let path = concat!(
@@ -49,9 +56,7 @@ fn no_section_is_left_unread() {
         .map(String::as_str)
         .collect();
     names.sort_unstable();
-    let mut expected: Vec<&str> = READ_HERE.iter().chain(&READ_BY_THE_TURN).copied().collect();
-    expected.sort_unstable();
-    assert_eq!(names, expected);
+    assert_eq!(names, SECTIONS);
 }
 
 #[test]
