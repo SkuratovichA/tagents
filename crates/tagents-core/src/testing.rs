@@ -106,3 +106,42 @@ impl Arming for Recorder {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Scratch, gate};
+    use std::fs;
+    use std::process::Command;
+    use std::thread;
+    use std::time::Duration;
+
+    /// The child stays until `go` exists and says whether it saw it. With a guard held over the reads, `writing` returns only when the child has given up, two minutes on at the least, and the child says `held`.
+    #[test]
+    fn the_gate_is_free_while_the_output_of_a_child_is_read() {
+        let scratch = Scratch::new();
+        let started = scratch.path().join("started");
+        let go = scratch.path().join("go");
+        let script = r#": > "$1"
+i=0
+while [ ! -e "$2" ] && [ "$i" -lt 1200 ]; do sleep 0.1; i=$((i + 1)); done
+[ -e "$2" ] && echo free || echo held"#;
+        let reader = {
+            let (started, go) = (started.clone(), go.clone());
+            thread::spawn(move || {
+                gate::run(
+                    Command::new("/bin/sh")
+                        .args(["-c", script, "_"])
+                        .arg(started)
+                        .arg(go),
+                )
+            })
+        };
+        while !started.exists() && !reader.is_finished() {
+            thread::sleep(Duration::from_millis(10));
+        }
+        drop(gate::writing());
+        fs::write(&go, "").unwrap();
+        let out = reader.join().unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "free\n");
+    }
+}
