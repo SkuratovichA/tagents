@@ -1815,6 +1815,15 @@ exec bash "$TU" "\$@"
 NARROW
   out=$(FX_PTY=1 FX_COLUMNS= FX_TU="$ROOT/narrow.sh" fx --by account,project --color never $W)
   ok "with no COLUMNS the width of the terminal is used" "$(FX_COLUMNS=70 fx --by account,project --color never $W)" "$out"
+  # The terminal is asked through lib/tagents; with no modules beside tusage it is not asked.
+  cat >"$ROOT/narrow-nolib.sh" <<NARROW
+stty cols 70
+exec bash "$ROOT/nolib/tusage" "\$@"
+NARROW
+  out=$(FX_PTY=1 FX_COLUMNS= FX_TU="$ROOT/narrow-nolib.sh" fx --by account,project --color never $W)
+  ok "...but with no modules beside tusage the width is 120, whatever the terminal" \
+     "$(FX_TU="$ROOT/nolib/tusage" FX_COLUMNS=120 fx --by account,project --color never $W)" "$out"
+  ok "...which is not the width the terminal would have given" 1 "$([ "$out" != "$(FX_COLUMNS=70 FX_TU="$ROOT/nolib/tusage" fx --by account,project --color never $W)" ] && echo 1 || echo 0)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -1998,6 +2007,17 @@ ok "the first and the last row of a longer window are its first and last day" \
    "$(prague --by day --since 2026-10-20 --until 2026-10-26 --tsv | cut -f1 | sed -n '1p;$p' | tr '\n' ' ' | sed 's/ $//')"
 ok "--since a day and no --until runs to today, the 27th's row in" "128" \
    "$(prague --by day --since 2026-10-27 --tsv | cut -f2)"
+
+# --since month is the midnight of the 1st cut the same way. On the 27th of October
+# (+0100) the 1st began at 23:00 UTC of 30 September by today's offset, an hour after
+# the 22:00 UTC a +0200 midnight was, so of the two rows only the later one is in.
+pinclock "$ROOT/clock-prague-oct" "$(TZ=Europe/Prague epoch_of "2026-10-27 12:00:00")"
+F27M="$ROOT/fx27m"; mkdir -p "$F27M/usage"
+{ prow "2026-09-30 22:30:00" 1     # the 30th by today's offset
+  prow "2026-09-30 23:30:00" 2     # the 1st
+} >"$F27M/usage/facts.tsv"
+ok "--since month starts at the midnight of the 1st by today's offset: the row of the 30th is out" "2026-10-01	2" \
+   "$(PATH="$ROOT/clock-prague-oct:$PATH" FX_TZ=Europe/Prague FX_STATE="$F27M/usage" fxo --by day --since month --tsv | cut -f1,2)"
 
 # ---------------------------------------------------------------------------
 t "28. what is copied from the dashboard stays what it was copied from"
