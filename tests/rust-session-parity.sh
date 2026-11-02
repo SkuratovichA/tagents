@@ -785,6 +785,13 @@ SETUP='cp "$BIN/claude" work/claude'; EXTRA=("PATH=.:/usr/bin:/bin"); STUB=$ANSW
 SETUP='cp "$BIN/claude" work/claude'; STUB=$ANSWER; STARTS=-; sc "prompt-path-of-the-spec-empty" "$ONLY_NODE_HERE" - - -- session prompt "$(ref_spec ',"env":{"PATH":""}')" go
 # A text file with the mode of a program.
 SETUP='mkdir tmp/p && printf "echo not-a-script\n" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STARTS=-; sc "prompt-no-shebang" "$NO_SHEBANG" - - -- session prompt "$(ref_spec)" go
+SETUP='mkdir tmp/p && : > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STARTS=-; sc "prompt-empty-program" "$NO_SHEBANG" - - -- session prompt "$(ref_spec)" go
+SETUP='mkdir tmp/p && printf "#!\n" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STARTS=-; sc "prompt-interpreter-line-empty" "$NO_SHEBANG" - - -- session prompt "$(ref_spec)" go
+SETUP='mkdir tmp/p && printf "#!/bin/sh\necho from-the-script\n" > tmp/p/wrap && printf "#!%s\n" "$RUN/tmp/p/wrap" > tmp/p/claude && chmod +x tmp/p/wrap tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STARTS=-; sc "prompt-interpreter-is-a-script" "$NO_SHEBANG" - - -- session prompt "$(ref_spec)" go
+SETUP='mkdir tmp/p && printf "#!./nope\n" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STUB=$ANSWER; STARTS=-; sc "prompt-interpreter-relative" "$ONLY_NODE_HERE" - - -- session prompt "$(ref_spec)" go
+SETUP='mkdir tmp/p && printf "#!/no/such/program\n" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:/usr/bin:/bin"); sc "prompt-interpreter-missing" rust 1 'spawn claude ENOENT' -- session prompt "$(ref_spec)" go
+SETUP='mkdir tmp/p && printf "#!/no/such/program\n" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STUB=$ANSWER; sc "prompt-interpreter-missing-first" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
+SETUP='mkdir tmp/p && printf x > tmp/f && printf "#!%s\n" "$RUN/tmp/f/program" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=/no/such:$RUN/tmp/p"); sc "prompt-interpreter-under-a-file" rust 1 'spawn ENOTDIR' -- session prompt "$(ref_spec)" go
 SETUP='mkdir tmp/p && ln -s claude tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); sc "prompt-symlink-loop-first" node 1 'spawn ELOOP' -- session prompt "$(ref_spec)" go
 SETUP='printf x > tmp/f'; EXTRA=("PATH=/usr/bin:/bin:$RUN/tmp/f"); sc "prompt-path-ends-with-a-file" rust 1 'spawn ENOTDIR' -- session prompt "$(ref_spec)" go
 SETUP='printf x > tmp/f'; EXTRA=("PATH=$RUN/tmp/f:/usr/bin:/bin"); sc "prompt-path-starts-with-a-file" rust 1 'spawn claude ENOENT' -- session prompt "$(ref_spec)" go

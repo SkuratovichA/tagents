@@ -2,10 +2,13 @@
 //!
 //! A call answers only what it can prove identical to node's and hands every other call to the node CLI (`None`, before anything is read, written or started): a verb that stays with node, a verb nobody knows, an argument outside the grammar of `args`.
 
+#[cfg(target_os = "macos")]
+pub mod awake;
 pub mod command;
 pub mod outcome;
 pub mod read;
 pub mod reference;
+pub mod spawn;
 pub mod stream;
 pub mod turn;
 

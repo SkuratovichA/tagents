@@ -1,5 +1,7 @@
 //! The machine of one turn of `session prompt`: the three phases and the timers of `ClaudeHeadlessDriver.prompt` (design D6). It reads no clock and starts nothing: the process, the pipes and the time come through `World`, so every timing rule here runs in virtual time in a test.
 
+pub mod supervisor;
+
 use std::os::unix::process::ExitStatusExt;
 use std::process::ExitStatus;
 use std::time::{Duration, Instant};
