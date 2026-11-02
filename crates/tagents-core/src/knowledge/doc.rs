@@ -95,27 +95,6 @@ pub fn one_line(s: &str) -> String {
 
 // ---- dates ------------------------------------------------------------------------------------
 
-const MS_PER_DAY: i64 = 86_400_000;
-
-fn days_in_month(year: i64, month: i64) -> i64 {
-    match month {
-        2 if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 => 29,
-        2 => 28,
-        4 | 6 | 9 | 11 => 30,
-        _ => 31,
-    }
-}
-
-/// Days from 1970-01-01 to a day of the proleptic Gregorian calendar.
-fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
-    let y = if month <= 2 { year - 1 } else { year };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400;
-    let doy = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
-
 fn digits(s: &str) -> Option<i64> {
     if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
         return None;
@@ -134,7 +113,7 @@ fn date_parts(s: &str) -> Option<(i64, i64, i64)> {
         return None;
     }
     let (year, month, day) = (digits(&s[0..4])?, digits(&s[5..7])?, digits(&s[8..10])?);
-    ((1..=12).contains(&month) && day >= 1 && day <= days_in_month(year, month))
+    ((1..=12).contains(&month) && day >= 1 && day <= crate::date::days_in_month(year, month))
         .then_some((year, month, day))
 }
 
@@ -200,7 +179,7 @@ pub fn parse_offset_datetime(value: &str) -> Option<i64> {
     if hour > 23 || minute > 59 || second > 59 {
         return None;
     }
-    let day_ms = days_from_civil(year, month, day) * MS_PER_DAY;
+    let day_ms = crate::date::days_from_civil(year, month, day) * crate::date::MS_PER_DAY;
     Some(day_ms + hour * 3_600_000 + minute * 60_000 + second * 1000 + fraction_ms - offset_ms)
 }
 
