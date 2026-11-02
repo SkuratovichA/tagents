@@ -688,22 +688,27 @@ month_start() {
     date -d "$first" +%s 2>/dev/null
 }
 
-# A calendar day as an epoch: its local midnight, or the given time of day. BSD
-# date wants the format spelt out and GNU date parses the text, so each is
-# tried in that order; the round trip through the date rejects a day that does
-# not exist, which both would otherwise roll into the next month (2026-02-30).
+# A calendar day as an epoch: its midnight, or the given time of day, at the UTC
+# offset daykey buckets rows with (today's, in the awk below), so the first and the
+# last row of a window are the days it names even across a change of the clocks.
+# BSD date wants the format spelt out and GNU date parses the text, so each is
+# tried in that order, in UTC; the round trip through the date rejects a day that
+# does not exist, which both would otherwise roll into the next month (2026-02-30).
 day_epoch() {
-  local d=$1 t=${2:-00:00:00} e back
+  local d=$1 t=${2:-00:00:00} e back z off
   case $d in
     [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
     *) return 1 ;;
   esac
-  e=$(date -j -f '%Y-%m-%d %H:%M:%S' "$d $t" +%s 2>/dev/null) ||
-    e=$(date -d "$d $t" +%s 2>/dev/null) || return 1
-  back=$(date -r "$e" +%Y-%m-%d 2>/dev/null) ||
-    back=$(date -d "@$e" +%Y-%m-%d 2>/dev/null) || return 1
+  e=$(date -u -j -f '%Y-%m-%d %H:%M:%S' "$d $t" +%s 2>/dev/null) ||
+    e=$(date -u -d "$d $t" +%s 2>/dev/null) || return 1
+  back=$(date -u -r "$e" +%Y-%m-%d 2>/dev/null) ||
+    back=$(date -u -d "@$e" +%Y-%m-%d 2>/dev/null) || return 1
   [ "$back" = "$d" ] || return 1
-  printf '%s' "$e"
+  z=$(date +%z)
+  off=$(( 10#${z:1:2} * 3600 + 10#${z:3:2} * 60 ))
+  [ "${z:0:1}" = - ] && off=$(( -off ))
+  printf '%s' "$(( e - off ))"
 }
 
 # The first instant of a window, as an epoch. `month` is spelt out because the

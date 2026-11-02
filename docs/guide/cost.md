@@ -150,6 +150,8 @@ total                   169.9M      $162  100.0%
 | `--tsv` | the deepest rows with no header, no colour and no rounding, for a script |
 | `--color auto\|always\|never` | colour only on a terminal and never with `NO_COLOR` set, unless this says otherwise |
 
+A day is cut at today's UTC offset: the rows of a day and the ends of a `--since` or `--until` date use the same offset, so a table by day begins and ends on the days the window names. Where the clocks change, a day from the other season starts an hour away from the local midnight of its time.
+
 ```text
 usage  2026-10-01 .. 2026-11-01  by week > account
 

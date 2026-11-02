@@ -859,7 +859,7 @@ fx_raw() {
     [ -z "${FX_PRICES:-}" ] || export TU_PRICES="$FX_PRICES"
     [ -z "${FX_RULES:-}" ] || export TU_ACCOUNT_RULES="$FX_RULES"
     export TU_ACCOUNTS="${FX_ACCOUNTS-work=$FX/acct/work;personal=$FX/acct/personal}"
-    export HOME="${FX_HOME:-$FXH}" TZ=UTC TERM="${FX_TERM:-xterm}" COLUMNS="${FX_COLUMNS-140}" \
+    export HOME="${FX_HOME:-$FXH}" TZ="${FX_TZ:-UTC}" TERM="${FX_TERM:-xterm}" COLUMNS="${FX_COLUMNS-140}" \
       TU_STATE="${FX_STATE:-$FX/usage}" TU_PROJECTS="$FX/projects" TU_NO_METER=1 \
       TA_STATE_DIR="${FX_TA:-$FX/ta}" TA_CONFIG="${FX_CONFIG:-$FX/no-such-config.toml}"
     if [ -n "${FX_PTY:-}" ]; then pty ${FX_SH:-bash} "${FX_TU:-$TU}" --no-update "$@"
@@ -1890,6 +1890,54 @@ ok "...and three sessions are in it" 3 "$(printf '%s\n' "$out" | grep -c -- '-6d
 
 out=$(fx26 --by session --top 0 --since 1000d)
 ok "a --by session table prints none" 0 "$(printf '%s\n' "$out" | ncntrl)"
+
+# ---------------------------------------------------------------------------
+t "27. a date window is cut where the rows are bucketed"
+# ---------------------------------------------------------------------------
+# A row is placed in a day at today's UTC offset, and so are the ends of a window
+# that names days. Run in Prague on a clock pinned after the change to winter time
+# of 2026-10-25 (today's offset is +0100), the rows of an earlier day of summer
+# time (+0200) sit an hour off the local midnight: 22:30 UTC of the 19th is 00:30
+# on the 20th by the clock then, and the 19th by today's. Each row below says which.
+
+mkdir -p "$ROOT/clock-prague"
+PRAGUE_NOW=$(TZ=Europe/Prague epoch_of "2026-11-02 12:00:00")
+cat >"$ROOT/clock-prague/date" <<CLOCK
+#!/bin/bash
+for a in "\$@"; do case \$a in -j|-r|-d|-f|--date*) exec $REAL_DATE "\$@" ;; esac; done
+e=\$(( \$($REAL_DATE +%s) + $(( PRAGUE_NOW - $($REAL_DATE +%s) )) ))
+$REAL_DATE -r "\$e" "\$@" 2>/dev/null || exec $REAL_DATE -d "@\$e" "\$@"
+CLOCK
+chmod +x "$ROOT/clock-prague/date"
+
+F27="$ROOT/fx27"; mkdir -p "$F27/usage"
+prow() {  # <UTC time of day, as YYYY-MM-DD HH:MM:SS> <requests>
+  printf '%s\t-h-x\t%s\t-\t-\t-\tclaude-opus-5\t%s\t1000\t0\t0\t0\t0\t1000\t1000\n' \
+    "$(TZ=UTC epoch_of "$1")" "$(fxsid 3f9a1c20)" "$2"
+}
+{ prow "2026-10-19 22:30:00" 1     # the 19th by today's offset
+  prow "2026-10-19 23:30:00" 2     # the 20th
+  prow "2026-10-21 22:30:00" 4     # the 21st
+  prow "2026-10-21 23:30:00" 8     # the 22nd
+  prow "2026-10-24 22:30:00" 16    # the 24th
+  prow "2026-10-24 23:30:00" 32    # the 25th, the day the clocks went back
+  prow "2026-10-26 22:30:00" 64    # the 26th
+  prow "2026-10-26 23:30:00" 128   # the 27th
+} >"$F27/usage/facts.tsv"
+prague() { PATH="$ROOT/clock-prague:$PATH" FX_TZ=Europe/Prague FX_STATE="$F27/usage" fxo "$@"; }
+
+ok "the pinned clock is in winter time" "+0100" "$(PATH="$ROOT/clock-prague:$PATH" TZ=Europe/Prague date +%z)"
+ok "--since a day starts at the local midnight the rows are bucketed by: the 19th's row is out" \
+   "2026-10-20	2
+2026-10-21	4" "$(prague --by day --since 2026-10-20 --until 2026-10-21 --tsv | cut -f1,2)"
+ok "a window across the change of 2026-10-25 holds exactly the days it names" \
+   "2026-10-25	32
+2026-10-26	64" "$(prague --by day --since 2026-10-25 --until 2026-10-26 --tsv | cut -f1,2)"
+ok "the first and the last row of a longer window are its first and last day" \
+   "2026-10-20 2026-10-26" \
+   "$(prague --by day --since 2026-10-20 --until 2026-10-26 --tsv | cut -f1 | sed -n '1p;$p' | tr '\n' ' ' | sed 's/ $//')"
+ok "--since a day and no --until runs to today, the 27th's row in" "128" \
+   "$(prague --by day --since 2026-10-27 --tsv | cut -f2)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
