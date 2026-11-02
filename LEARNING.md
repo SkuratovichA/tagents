@@ -239,6 +239,8 @@ The full earlier text is in the git history of this file, as of commit `d637e2b`
 - **A figure that sounds measured was not** — the design of the knowledge server gave a cost in binary size and build time before any build had run. Write a number only after the command that produced it, and name the command beside it; before that write "not measured" (01.11.2026)
 - **A design reason has to be checked, not recalled** — the design said the daemon needs `setsid` to survive its starter's group, and the claim was repeated for two drafts. The check is `ps -o pid,pgid,sess` on a detached child, and `process_group(0)` was enough. Run the one command that shows the claim before it goes into the design (01.11.2026)
 - **Flipping `impl` in `spec/cli/tagents-core.json` moves a pin in `tagents-spec` that `cargo test -p tagents-core` does not run** — after a flip run `cargo test --workspace --locked`, where `the_bundled_spec_loads` lists the verbs marked rust (02.11.2026)
+- **The `file:line` citations of a docs page go stale at every rebase and every edit of the file they point into** — `docs/architecture/rust-core.md` still named `front_door.rs:60` and `plugin.rs:92` after this branch had moved both. After a rebase, grep the page for `.rs:` and open each cited line; name a symbol where a number is not needed (02.11.2026)
+- **A test that waits as long as a deadline cannot tell the signal from the deadline** — the first doctor signal tests waited 10 s for the exit and passed with the signal ignored, because the probe's own 10 s deadline ended the wait. Bound the wait well below the deadline and run the mutant that ignores the signal (02.11.2026)
 
 ## Other
 
