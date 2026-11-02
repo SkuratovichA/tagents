@@ -13,7 +13,7 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use rusqlite::{Connection, types::ValueRef};
+use rusqlite::Connection;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use tagents_core::knowledge::index::{
@@ -22,7 +22,7 @@ use tagents_core::knowledge::index::{
 use tagents_core::node;
 
 use common::{
-    knowledge::{same_message, vectors},
+    knowledge::{rows, same_message, vectors},
     scratch,
 };
 
@@ -84,33 +84,6 @@ const ONLY_IN_NODE: &[(&str, &str)] = &[
         "the session extension that records changes; unused",
     ),
 ];
-
-fn cell(value: ValueRef) -> Value {
-    match value {
-        ValueRef::Null => Value::Null,
-        ValueRef::Integer(i) => json!(i),
-        ValueRef::Real(f) => json!(f),
-        ValueRef::Text(bytes) => json!(String::from_utf8(bytes.to_vec()).unwrap()),
-        ValueRef::Blob(bytes) => json!(bytes),
-    }
-}
-
-/// The rows of a query as objects keyed by column name, the shape the vectors hold.
-fn rows(db: &Connection, query: &str) -> Vec<Value> {
-    let mut statement = db.prepare(query).unwrap();
-    let names: Vec<String> = statement.column_names().map(str::to_string).collect();
-    statement
-        .query_map([], |row| {
-            let mut object = Map::new();
-            for (i, name) in names.iter().enumerate() {
-                object.insert(name.clone(), cell(row.get_ref(i)?));
-            }
-            Ok(Value::Object(object))
-        })
-        .unwrap()
-        .map(Result::unwrap)
-        .collect()
-}
 
 #[test]
 fn the_constants_are_the_ones_node_has() {

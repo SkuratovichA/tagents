@@ -6,8 +6,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use rusqlite::Connection;
-use serde_json::Value;
+use rusqlite::{Connection, types::ValueRef};
+use serde_json::{Map, Value, json};
 use tagents_core::knowledge::index::{open_db, reindex};
 
 use super::scratch;
@@ -52,4 +52,32 @@ pub fn index_of(name: &str, files: &Value) -> (Connection, String) {
     let mut db = open_db(dir.join("index.sqlite").to_str().unwrap()).unwrap();
     reindex(&mut db, &folder, false).unwrap();
     (db, folder)
+}
+
+/// A SQLite value as the JSON the vectors hold.
+pub fn cell(value: ValueRef) -> Value {
+    match value {
+        ValueRef::Null => Value::Null,
+        ValueRef::Integer(i) => json!(i),
+        ValueRef::Real(f) => json!(f),
+        ValueRef::Text(bytes) => json!(String::from_utf8(bytes.to_vec()).unwrap()),
+        ValueRef::Blob(bytes) => json!(bytes),
+    }
+}
+
+/// The rows of a query as objects keyed by column name, the shape the vectors hold.
+pub fn rows(db: &Connection, query: &str) -> Vec<Value> {
+    let mut statement = db.prepare(query).unwrap();
+    let names: Vec<String> = statement.column_names().map(str::to_string).collect();
+    statement
+        .query_map([], |row| {
+            let mut object = Map::new();
+            for (i, name) in names.iter().enumerate() {
+                object.insert(name.clone(), cell(row.get_ref(i)?));
+            }
+            Ok(Value::Object(object))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
 }

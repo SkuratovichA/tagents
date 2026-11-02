@@ -6,8 +6,8 @@ mod common;
 
 use std::{fs, os::unix::fs::PermissionsExt};
 
-use rusqlite::{Connection, OpenFlags, types::ValueRef};
-use serde_json::{Map, Value, json};
+use rusqlite::{Connection, OpenFlags};
+use serde_json::{Value, json};
 use tagents_core::knowledge::{
     index::open_db,
     search::{Filters, search},
@@ -19,38 +19,12 @@ use tagents_core::knowledge::{
 };
 
 use common::{
-    knowledge::{index_of, vectors},
+    knowledge::{index_of, rows, vectors},
     scratch,
 };
 
 /// The fixed clock of the vectors: 2026-10-31T12:00:00Z.
 const NOW: i64 = 1_793_448_000_000;
-
-fn cell(value: ValueRef) -> Value {
-    match value {
-        ValueRef::Null => Value::Null,
-        ValueRef::Integer(i) => json!(i),
-        ValueRef::Real(f) => json!(f),
-        ValueRef::Text(bytes) => json!(String::from_utf8(bytes.to_vec()).unwrap()),
-        ValueRef::Blob(bytes) => json!(bytes),
-    }
-}
-
-fn rows(db: &Connection, query: &str) -> Vec<Value> {
-    let mut statement = db.prepare(query).unwrap();
-    let names: Vec<String> = statement.column_names().map(str::to_string).collect();
-    statement
-        .query_map([], |row| {
-            let mut object = Map::new();
-            for (i, name) in names.iter().enumerate() {
-                object.insert(name.clone(), cell(row.get_ref(i)?));
-            }
-            Ok(Value::Object(object))
-        })
-        .unwrap()
-        .map(Result::unwrap)
-        .collect()
-}
 
 const STORE_ROWS: &str =
     "select ts, doc_id, heading, kind, caller from usage_events order by rowid";
