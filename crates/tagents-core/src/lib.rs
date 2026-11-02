@@ -4,6 +4,7 @@
 
 pub mod child;
 pub mod date;
+pub mod doctor;
 pub mod ending;
 pub mod front_door;
 pub mod host;

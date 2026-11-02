@@ -138,7 +138,7 @@
       },
       "required": [],
       "summary": "summaryPluginNew",
-      "impl": "node",
+      "impl": "rust",
       "effect": "write"
     },
     {
@@ -147,7 +147,7 @@
       "options": {},
       "required": [],
       "summary": "summaryDoctor",
-      "impl": "node",
+      "impl": "rust",
       "effect": "read"
     },
     {

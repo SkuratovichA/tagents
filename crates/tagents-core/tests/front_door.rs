@@ -18,13 +18,20 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use rustix::process::{Pid, Signal, kill_process};
 use tagents_spec::{Implementation, Spec};
 
 mod common;
-use common::{REPO, closed_pipe, run, scratch, start, write_executable, writing};
+use common::{
+    REPO, closed_pipe,
+    rig::{Rig, until},
+    run, scratch, start, write_executable, writing,
+};
 
 const BIN: &str = env!("CARGO_BIN_EXE_tagents-core");
 const SPEC_FILE: &str = "spec/cli/tagents-core.json";
+/// The call the tests that are about forwarding make: a verb the node CLI keeps (`session`, which no group serves), so the file does not change when a verb moves to Rust.
+const FORWARDED: [&str; 2] = ["session", "list"];
 const FIXTURES: &str = "packages/core/test/fixtures/sessions";
 
 fn repo(path: &str) -> PathBuf {
@@ -282,6 +289,12 @@ impl Checkout {
             .collect()
     }
 
+    /// Was the node CLI's script among the arguments the stub node was last given?
+    fn reached_cli(&self) -> bool {
+        let cli = format!("arg={}", self.cli());
+        fs::read_to_string(&self.argv).is_ok_and(|text| text.lines().any(|line| line == cli))
+    }
+
     fn cli(&self) -> String {
         self.root
             .join("packages/core/dist/cli/main.js")
@@ -377,12 +390,12 @@ fn an_argument_that_is_not_utf8_is_forwarded_byte_for_byte() {
     let checkout = Checkout::new("forward-bytes");
     let out = run(checkout
         .command()
-        .arg("doctor")
+        .args(FORWARDED)
         .arg(OsStr::from_bytes(b"\xff\xfe")));
     assert_eq!(out.status.code(), Some(0));
     let recorded = fs::read(&checkout.argv).unwrap();
     assert!(
-        recorded.ends_with(b"arg=doctor\narg=\xff\xfe\n"),
+        recorded.ends_with(b"arg=session\narg=list\narg=\xff\xfe\n"),
         "{:?}",
         String::from_utf8_lossy(&recorded)
     );
@@ -410,8 +423,9 @@ fn a_verb_the_front_door_serves_is_not_forwarded() {
     let config = checkout.root.join("config");
     fs::create_dir_all(config.join("plugins")).unwrap();
     fs::write(config.join("plugins/notify.toml"), "backend = \"none\"\n").unwrap();
-    // Every verb the data file gives to Rust, run without its arguments: each answers on its own, and the stub node never runs.
+    // Every verb the data file gives to Rust, run without its arguments: each answers on its own, and the node CLI never runs. `doctor` does start node, once, to ask it what it is, which is not the CLI: `reached_cli` looks for the CLI's script among the arguments the stub node was given.
     for command in data_file().served_by(Implementation::Rust) {
+        let _ = fs::remove_file(&checkout.argv);
         let out = run(checkout
             .command()
             .env("HOME", &home)
@@ -421,11 +435,122 @@ fn a_verb_the_front_door_serves_is_not_forwarded() {
             .args(&command.path));
         assert!(out.status.code().is_some(), "{:?}", command.path);
         assert!(
-            !checkout.argv.exists(),
+            !checkout.reached_cli(),
             "{:?} reached the node CLI",
             command.path
         );
     }
+}
+
+#[test]
+fn doctor_is_answered_by_the_binary_which_asks_node_once_and_ignores_its_arguments() {
+    // The stub node answers `-p` with nothing, so line one is the one the binary words itself; the other three come from the environment given here.
+    let checkout = Checkout::new("doctor-served");
+    let config = checkout.root.join("config");
+    let state = checkout.root.join("state");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(
+        state.join("1.tsv"),
+        "1700000000\tworking\tsid\t/work\t/work/t.jsonl\tReading\n",
+    )
+    .unwrap();
+    for args in [
+        vec![OsStr::new("doctor")],
+        vec![OsStr::new("doctor"), OsStr::new("--x"), OsStr::new("y")],
+        vec![OsStr::new("doctor"), OsStr::from_bytes(b"\xff\xfe")],
+    ] {
+        let _ = fs::remove_file(&checkout.argv);
+        let out = run(checkout
+            .command()
+            .env("TAGENTS_CONFIG_DIR", &config)
+            .env("TA_STATE_DIR", &state)
+            .env("PATH", "")
+            .env("SENTINEL", "kept")
+            .args(&args));
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        assert_eq!(
+            stdout_text(&out),
+            format!(
+                "node: missing\nagent state {} (1 record(s))\nconfig {}: missing\nclaude: missing\n",
+                state.display(),
+                config.join("config.toml").display()
+            ),
+            "{args:?}"
+        );
+        assert_eq!(out.stderr, b"", "{args:?}");
+        assert!(!checkout.reached_cli(), "{args:?}");
+        // Node was run once, with the one question and nothing of the call's own arguments.
+        assert_eq!(
+            checkout.recorded()[3..],
+            [
+                "arg=-p",
+                "arg=JSON.stringify([process.version, process.execPath])"
+            ],
+            "{args:?}"
+        );
+    }
+}
+
+/// A signal that comes while `doctor` waits for node ends it with the status a shell reports for a program that signal killed (128 and the number), prints nothing, and stops node first: node runs in a group of its own, which the terminal's Ctrl-C does not reach, so a doctor that only died would leave it running.
+fn a_signal_during_the_wait_for_node_stops_node_and_ends_doctor(
+    name: &str,
+    signal: Signal,
+    code: i32,
+) {
+    let rig = Rig::new(name, r#"echo $$ > "$D/node.pid"; exec sleep 30"#);
+    let mut command = Command::new(BIN);
+    command
+        .env_clear()
+        .env("TAGENTS_NODE", rig.dir.join("tagents-fake"))
+        .env("TAGENTS_CONFIG_DIR", rig.dir.join("config"))
+        .env("TA_STATE_DIR", rig.dir.join("state"))
+        .env("PATH", rig.path())
+        .arg("doctor")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut doctor = start(&mut command);
+    // The pid is written once node runs, which is after doctor has been told to hear signals.
+    assert!(rig.started(1), "node was not asked");
+    kill_process(
+        Pid::from_raw(i32::try_from(doctor.id()).unwrap()).unwrap(),
+        signal,
+    )
+    .unwrap();
+    // Well inside the 10 seconds node is given to answer, so that the signal is what ended the wait and not the deadline.
+    let mut status = None;
+    assert!(
+        until(
+            || {
+                status = doctor.try_wait().unwrap();
+                status.is_some()
+            },
+            5_000
+        ),
+        "doctor did not end at the signal"
+    );
+    assert_eq!(status.unwrap().code(), Some(code));
+    assert!(rig.none_alive(), "node outlived doctor");
+    let out = doctor.wait_with_output().unwrap();
+    assert_eq!((out.stdout, out.stderr), (Vec::new(), Vec::new()));
+}
+
+#[test]
+fn sigterm_during_the_wait_for_node_stops_node_and_ends_doctor() {
+    a_signal_during_the_wait_for_node_stops_node_and_ends_doctor(
+        "doctor_sigterm",
+        Signal::TERM,
+        143,
+    );
+}
+
+#[test]
+fn sigint_during_the_wait_for_node_stops_node_and_ends_doctor() {
+    a_signal_during_the_wait_for_node_stops_node_and_ends_doctor("doctor_sigint", Signal::INT, 130);
+}
+
+#[test]
+fn sighup_during_the_wait_for_node_stops_node_and_ends_doctor() {
+    a_signal_during_the_wait_for_node_stops_node_and_ends_doctor("doctor_sighup", Signal::HUP, 129);
 }
 
 #[test]
@@ -484,7 +609,7 @@ fn a_plugin_argument_that_is_not_utf8_is_forwarded_whole_not_decoded_lossily() {
 #[test]
 fn the_exit_is_the_node_clis_even_when_it_is_a_signal() {
     let checkout = Checkout::new("forward-signal");
-    let out = run(checkout.command().env("KILL_SELF", "1").arg("doctor"));
+    let out = run(checkout.command().env("KILL_SELF", "1").args(FORWARDED));
     // exec replaces the process, so nothing of the front door is left to turn a signal into a number.
     assert_eq!(out.status.signal(), Some(15));
     assert_eq!(out.status.code(), None);
@@ -494,7 +619,7 @@ fn the_exit_is_the_node_clis_even_when_it_is_a_signal() {
 fn a_missing_node_cli_is_exit_2_and_names_where_it_looked() {
     let checkout = Checkout::new("forward-no-cli");
     fs::remove_file(checkout.root.join("packages/core/dist/cli/main.js")).unwrap();
-    let out = run(checkout.command().arg("doctor"));
+    let out = run(checkout.command().args(FORWARDED));
     // 2 is the usage exit of the CLI spec, written out so that changing the constant in the code does not move the test with it.
     assert_eq!(out.status.code(), Some(2));
     assert_eq!(out.stdout, b"");
@@ -514,7 +639,7 @@ fn a_node_that_cannot_run_is_exit_127_or_126() {
     let missing = run(checkout
         .command()
         .env("TAGENTS_NODE", checkout.root.join("no-such-node"))
-        .arg("doctor"));
+        .args(FORWARDED));
     // The shell's codes for "not found" and "found but cannot run", written out so that changing a constant in the code does not move the test with it.
     assert_eq!(missing.status.code(), Some(127));
     assert!(
@@ -527,7 +652,7 @@ fn a_node_that_cannot_run_is_exit_127_or_126() {
     let denied = run(checkout
         .command()
         .env("TAGENTS_NODE", checkout.root.join("not-executable"))
-        .arg("doctor"));
+        .args(FORWARDED));
     assert_eq!(denied.status.code(), Some(126));
 }
 
@@ -540,7 +665,7 @@ fn a_failed_exec_with_stderr_a_closed_pipe_exits_with_the_front_doors_code_not_a
     let missing = start(
         checkout
             .command()
-            .arg("doctor")
+            .args(FORWARDED)
             .stdout(Stdio::null())
             .stderr(closed_pipe()),
     )
@@ -552,7 +677,7 @@ fn a_failed_exec_with_stderr_a_closed_pipe_exits_with_the_front_doors_code_not_a
         checkout
             .command()
             .env("TAGENTS_NODE", checkout.root.join("no-such-node"))
-            .arg("doctor")
+            .args(FORWARDED)
             .stdout(Stdio::null())
             .stderr(closed_pipe()),
     )
@@ -568,10 +693,10 @@ fn node_is_looked_up_on_path_when_no_node_is_pinned() {
     command
         .env_remove("TAGENTS_NODE")
         .env("PATH", &checkout.root)
-        .arg("doctor");
+        .args(FORWARDED);
     let out = run(&mut command);
     assert_eq!(out.status.code(), Some(0));
-    assert_eq!(checkout.recorded().last().unwrap(), "arg=doctor");
+    assert_eq!(checkout.recorded().last().unwrap(), "arg=list");
 }
 
 #[test]
@@ -583,7 +708,7 @@ fn the_binary_finds_its_node_cli_through_a_symlink() {
         .env_clear()
         .env("TAGENTS_NODE", checkout.root.join("node"))
         .env("ARGV_FILE", &checkout.argv)
-        .arg("doctor"));
+        .args(FORWARDED));
     assert_eq!(out.status.code(), Some(0));
     assert!(
         checkout
@@ -647,7 +772,7 @@ fn the_node_cli_starts_with_sigpipe_at_its_default() {
         &checkout.root.join("node"),
         "#!/bin/sh\nyes 2> \"$ARGV_FILE\" | head -c 1 > /dev/null\n",
     );
-    let out = run(checkout.command().arg("doctor"));
+    let out = run(checkout.command().args(FORWARDED));
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(fs::read(&checkout.argv).unwrap(), b"");
 }

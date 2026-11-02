@@ -5,6 +5,7 @@ mod common;
 mod config;
 mod messages;
 mod resolve;
+mod scaffold;
 
 use serde_json::Value;
 

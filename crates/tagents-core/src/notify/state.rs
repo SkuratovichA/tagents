@@ -54,7 +54,7 @@ pub struct AgentStateRow {
 
 /// `stateDir()`: `$TA_STATE_DIR` when it is set to something that is not white space, else `~/.claude/agent-state`.
 pub fn state_dir() -> String {
-    let from_env = std::env::var_os("TA_STATE_DIR").map(|v| v.to_string_lossy().into_owned());
+    let from_env = node::env_text("TA_STATE_DIR");
     state_dir_in(from_env.as_deref(), &node::homedir())
 }
 

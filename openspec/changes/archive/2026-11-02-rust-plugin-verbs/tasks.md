@@ -66,36 +66,36 @@ Where (a) differs from the wording above, each in one line:
 
 ## 8. The scaffold source
 
-- [ ] 8.1 The characterisation test of node's `scaffoldFiles` for the triples of 2.2, written first and passing against the current TypeScript (`pnpm --filter @tagents/core test`)
-- [ ] 8.2 `spec/cli/scaffold/plugin.txt` (sections `@@ <path>`, placeholders `{{name}}`, `{{dir}}`, `{{core}}` and `{{core|json}}`), and `scaffold.ts` reduced to reading it and rendering it, with the characterisation test unchanged and green; `relativeSpecifier` stays as it is, its quirk included (`pnpm --filter @tagents/core test`, `pnpm --filter @tagents/core typecheck`)
-- [ ] 8.3 `crates/tagents-core/src/plugin/scaffold.rs`: `include_str!` of the file, the renderer with `json::quote` for the filter, `<root>/packages/core` from `node::root()` (a hand-over when it fails), `{{dir}}` made as `relativeSpecifier` makes it, from `node::relative` (the one caller of that function), the vectors of 2.2 (`cargo test -p tagents-core plugin::scaffold`, `cargo test -p tagents-core --test plugin_vectors`)
+- [x] 8.1 The characterisation test of node's `scaffoldFiles` for the triples of 2.2, written first and passing against the current TypeScript (`pnpm --filter @tagents/core test`)
+- [x] 8.2 `spec/cli/scaffold/plugin.txt` (sections `@@ <path>`, placeholders `{{name}}`, `{{dir}}` and `{{core|json}}`), and `scaffold.ts` reduced to reading it and rendering it, with the characterisation test unchanged and green; `relativeSpecifier` stays as it is, its quirk included (`pnpm --filter @tagents/core test`, `pnpm --filter @tagents/core typecheck`)
+- [x] 8.3 `crates/tagents-core/src/plugin/scaffold.rs`: `include_str!` of the file, the renderer with `json::quote` for the filter, `<root>/packages/core` from `node::root()` (a hand-over when it fails), the value of `{{core|json}}` made as `relativeSpecifier` makes it, from `node::relative` (the one caller of that function), the vectors of 2.2 (`cargo test -p tagents-core plugin::scaffold`, `cargo test -p tagents-core --test plugin_vectors`)
 
 ## 9. plugin new
 
-- [ ] 9.1 `plugin::new` in `plugin.rs`: the name check (exit 2), `--dir` through `node::resolve`, a target that holds anything refused with `pluginTargetExists` (exit 3), an empty or missing one accepted, the five files written in order, `pluginScaffolded`, the undo of D3 on a failed write, and a hand-over for a target that cannot be listed; not yet called by `run` (`cargo test -p tagents-core plugin::`)
-- [ ] 9.2 Unit tests with an injected failing writer for the undo of `plugin new`, and for the refusal of a non-empty target and the acceptance of an empty one (`cargo test -p tagents-core plugin::`)
-- [ ] 9.3 `new` wired into `plugin::run` and `"impl": "rust"` for `["plugin", "new"]` in `spec/cli/tagents-core.json`; `pnpm plugin:gen` and `pnpm plugin:check` show no diff, `cargo test -p tagents-core --test front_door` passes
-- [ ] 9.4 The parity scenarios of design D10 for `new`, including the directory that is a file and the unwritable parent, with the tree compared by path, bytes and mode (`bash tests/rust-plugin-parity.sh`, exit 0)
+- [x] 9.1 `plugin::new` in `plugin.rs`: the name check (exit 2), `--dir` through `node::resolve`, a target that holds anything refused with `pluginTargetExists` (exit 3), an empty or missing one accepted, the five files written in order, `pluginScaffolded`, the undo of D3 on a failed write, and a hand-over for a target that cannot be listed; not yet called by `run` (`cargo test -p tagents-core plugin::`)
+- [x] 9.2 Unit tests with an injected failing writer for the undo of `plugin new`, and for the refusal of a non-empty target and the acceptance of an empty one (`cargo test -p tagents-core plugin::`)
+- [x] 9.3 `new` wired into `plugin::run` and `"impl": "rust"` for `["plugin", "new"]` in `spec/cli/tagents-core.json`; `pnpm plugin:gen` and `pnpm plugin:check` show no diff, `cargo test -p tagents-core --test front_door` passes
+- [x] 9.4 The parity scenarios of design D10 for `new`, including the directory that is a file and the unwritable parent, with the tree compared by path, bytes and mode (`bash tests/rust-plugin-parity.sh`, exit 0)
 
 ## 10. doctor
 
-- [ ] 10.1 `crates/tagents-core/src/doctor.rs`: `VERBS`, one `node -p` through `child::run` with a deadline, `notify::state::{state_dir, read_agent_state}`, `host::config_dir`, `node::find_on_path`, the four lines, `doctorNodeMissing` when node cannot be started or answers anything but the array, exit 0, arguments ignored; the module is not yet in `GROUPS` (`cargo test -p tagents-core doctor::`)
-- [ ] 10.2 Unit tests for a state directory with a valid record, a broken one and a file that is not a record, for the config present and missing, for `claude` on and off `PATH`, and for `$TAGENTS_NODE` naming a missing file, which prints `node: missing` and the other three lines (`cargo test -p tagents-core doctor::`)
-- [ ] 10.3 `doctor` in `GROUPS` and `"impl": "rust"` for `["doctor"]`, in the same commit as the change of the forwarded word of `crates/tagents-core/tests/front_door.rs` from `doctor` to `session list`, one constant for the whole file, and of the module comment of `front_door.rs`, which stops naming `doctor` as a forwarded word; `pnpm plugin:gen` and `pnpm plugin:check` show no diff, `--spec` lists it (`cargo test -p tagents-core --test front_door`)
-- [ ] 10.4 The parity scenarios of design D10 for `doctor` (`bash tests/rust-plugin-parity.sh`, exit 0)
+- [x] 10.1 `crates/tagents-core/src/doctor.rs`: `VERBS`, one `node -p` through `child::run` with a deadline, `notify::state::{state_dir, read_agent_state}`, `host::config_dir`, `node::find_on_path`, the four lines, `doctorNodeMissing` when node cannot be started or answers anything but the array, exit 0, arguments ignored; the module is not yet in `GROUPS` (`cargo test -p tagents-core doctor::`)
+- [x] 10.2 Unit tests for a state directory with a valid record, a broken one and a file that is not a record, for the config present and missing, for `claude` on and off `PATH`, and for `$TAGENTS_NODE` naming a missing file, which prints `node: missing` and the other three lines (`cargo test -p tagents-core doctor::`)
+- [x] 10.3 `doctor` in `GROUPS` and `"impl": "rust"` for `["doctor"]`, in the same commit as the change of the forwarded word of `crates/tagents-core/tests/front_door.rs` from `doctor` to `session list`, one constant for the whole file, and of the module comment of `front_door.rs`, which stops naming `doctor` as a forwarded word; `pnpm plugin:gen` and `pnpm plugin:check` show no diff, `--spec` lists it (`cargo test -p tagents-core --test front_door`)
+- [x] 10.4 The parity scenarios of design D10 for `doctor` (`bash tests/rust-plugin-parity.sh`, exit 0)
 
 ## 11. The suite, completed
 
-- [ ] 11.1 The forward loop of `tests/rust-parity.sh` keeps `plugin`, `plugin list`, `plugin list --json`, `plugin bogus`, `plugin new`, `doctor` and `doctor --x`; they compare node with a Rust answer or with the hand-over (`bash tests/rust-parity.sh`, exit 0)
-- [ ] 11.2 Mutations of the Rust code each make the suite or the vectors fail: the template placeholder `{{core|json}}` unescaped, `relativeSpecifier`'s quirk fixed, the locale ignored, the state count counting a broken record, `node: missing` printed with exit 1, the undo of `plugin new` left out (one failing check each, listed in the pull request)
+- [x] 11.1 The forward loop of `tests/rust-parity.sh` keeps `plugin`, `plugin list`, `plugin list --json`, `plugin bogus`, `plugin new`, `doctor` and `doctor --x`; they compare node with a Rust answer or with the hand-over (`bash tests/rust-parity.sh`, exit 0)
+- [x] 11.2 Mutations of the Rust code each make the suite or the vectors fail: the template placeholder `{{core|json}}` unescaped, `relativeSpecifier`'s quirk fixed, the locale ignored, the state count counting a broken record, `node: missing` printed with exit 1, the undo of `plugin new` left out (one failing check each, listed in the pull request)
 
 ## 12. Documents and release
 
-- [ ] 12.1 `docs/architecture/rust-core.md`: the other two verbs and `doctor`, the template and the scaffold source, "Where the two are known to differ" (`node: missing`), the list of what is not decided (`plugin list` and the plugin host), the version lines the gate names; the sentences elsewhere in `docs/` that say node runs `plugin new` or `doctor`; `docs/` needs a breadcrumb line and a row in its directory `README.md` only for a new page, and there is none
-- [ ] 12.2 `CHANGELOG.md`: one line under `[Unreleased]` in "Added" saying that `tagents-core plugin new` and `doctor` run in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback, with no `(#N)`
-- [ ] 12.3 The release gate: the workspace version raised one step above the merge base (`sh .github/scripts/core-release.sh gate origin/main` exits 0, `bash tests/release.sh` exits 0, `bash tests/install.sh` exits 0)
-- [ ] 12.4 The gates of 7.9 again, each exit 0, and `git diff --exit-code` after `pnpm plugin:gen`, `pnpm messages:gen` and `node tests/rust-plugin-vectors.mts`
+- [x] 12.1 `docs/architecture/rust-core.md`: the other two verbs and `doctor`, the template and the scaffold source, "Where the two are known to differ" (`node: missing`), the list of what is not decided (`plugin list` and the plugin host), the version lines the gate names; the sentences elsewhere in `docs/` that say node runs `plugin new` or `doctor`; `docs/` needs a breadcrumb line and a row in its directory `README.md` only for a new page, and there is none
+- [x] 12.2 `CHANGELOG.md`: one line under `[Unreleased]` in "Added" saying that `tagents-core plugin new` and `doctor` run in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback, with no `(#N)`
+- [x] 12.3 The release gate: the workspace version raised one step above the merge base (`sh .github/scripts/core-release.sh gate origin/main` exits 0, `bash tests/release.sh` exits 0, `bash tests/install.sh` exits 0)
+- [x] 12.4 The gates of 7.9 again, each exit 0, and `git diff --exit-code` after `pnpm plugin:gen`, `pnpm messages:gen` and `node tests/rust-plugin-vectors.mts`
 
 ## 13. Archive
 
-- [ ] 13.1 Archive the change with `/opsx:archive` as the last commit of pull request (b): `openspec/specs/rust-plugin-verbs/spec.md` is created, `core-front-door` is updated, and `pnpm spec:check` exits 0
+- [x] 13.1 Archive the change with `/opsx:archive` as the last commit of pull request (b): `openspec/specs/rust-plugin-verbs/spec.md` is created, `core-front-door` is updated, and `pnpm spec:check` exits 0

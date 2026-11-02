@@ -17,10 +17,15 @@ use crate::js;
 /// The node binary the wrapper `install.sh` writes pinned, or `node` on `PATH`.
 const NODE_ENV: &str = "TAGENTS_NODE";
 
+/// `process.env[name]`: the value as node hands it to a program, a byte that is not UTF-8 replaced by U+FFFD. `None` when the variable is unset.
+pub fn env_text(name: &str) -> Option<String> {
+    std::env::var_os(name).map(|value| value.to_string_lossy().into_owned())
+}
+
 /// `os.homedir()`: `$HOME` when it is set, empty or not, else the passwd entry.
 pub fn homedir() -> String {
-    match std::env::var_os("HOME") {
-        Some(home) => home.to_string_lossy().into_owned(),
+    match env_text("HOME") {
+        Some(home) => home,
         None => std::env::home_dir()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default(),

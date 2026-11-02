@@ -14,6 +14,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 - The site's icons and link preview draw the pixel sprite of its hero ([#41](https://github.com/SkuratovichA/tagents/pull/41)).
 - The notification service runs in the prebuilt Rust binary under the LaunchAgent when the installer has put one on the machine, and node stays the fallback ([#49](https://github.com/SkuratovichA/tagents/pull/49)).
 - `tagents-core plugin add` and `plugin remove` run in the prebuilt Rust binary when the installer has put one on the machine, and every call it cannot prove identical to node's goes to node ([#50](https://github.com/SkuratovichA/tagents/pull/50)).
+- `tagents-core plugin new` and `doctor` run in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback ([#53](https://github.com/SkuratovichA/tagents/pull/53)).
 
 ### Removed
 
