@@ -1992,5 +1992,22 @@ shorts() {  # <awk function text> <function name>: the short form of each model 
 ok "the model names a table here prints keep their dashes" "opus-5 haiku-4-5 opus-4-8 mystery-9 " "$(shorts "$SHORT_TU" short_model)"
 ok "...where the dashboard's column makes opus5 and haiku4.5" "opus5 haiku4.5 opus4.8 mystery9 " "$(shorts "$SHORT_LIST" shortmodel)"
 
+# ---------------------------------------------------------------------------
+t "29. the home directory is a prefix of a path only up to a slash"
+# ---------------------------------------------------------------------------
+# With HOME=/Users/a, the directory /Users/ab/x is nobody's home subdirectory and
+# shows as it is, not as ~b/x. The home itself is ~ and a directory under it ~/x.
+
+F29="$ROOT/fx29"; mkdir -p "$F29/usage"
+{ f5row 1800 n 3f9a1c20 opus-5 5 1000000 100000 612000
+  f5row 1800 h d8c3b615 opus-5 5 1000000 100000 612000
+  f5row 1800 u 7b2c5d33 opus-5 5 1000000 100000 612000
+} >"$F29/usage/facts.tsv"
+printf -- '-h-n\t%sb/git/x\n-h-h\t%s\n-h-u\t%s/under/it\n' "$FXH" "$FXH" "$FXH" >"$F29/usage/projects.tsv"
+ok "a directory that only starts like the home is not shortened; the home is ~; a directory under it is ~/..." \
+   "${FXH}b/git/x
+~
+~/under/it" "$(FX_STATE="$F29/usage" fxo --by project --tsv --since 7d | cut -f1 | LC_ALL=C sort)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

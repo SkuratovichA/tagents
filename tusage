@@ -1240,9 +1240,11 @@ AWK_TEXT='
     return r }
 '
 
-# A directory as the tables show it: the home is a tilde. Needs -v home.
+# A directory as the tables show it: the home is a tilde, and so is the start of a
+# path under it, which is the home and then a slash (/Users/ab/x is not under
+# /Users/a). Needs -v home.
 AWK_TILDE='
-  function tilde(p) { return (index(p, home) == 1) ? "~" substr(p, length(home) + 1) : p }
+  function tilde(p) { return (home != "" && (p == home || index(p, home "/") == 1)) ? "~" substr(p, length(home) + 1) : p }
 '
 
 # --account and --project narrow every report by the same means: the rows that
