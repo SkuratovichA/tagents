@@ -145,7 +145,7 @@ fn push_quoted(out: &mut String, text: &str) {
 
 /// `JSON.stringify(text.slice(0, n))`, with `n` in UTF-16 units. A cut between the two halves of a surrogate pair leaves the high half alone, which `quote_units` writes as an escape.
 pub fn quote_prefix16(text: &str, n: usize) -> String {
-    quote_units(js::slice16(&js::units(text), n))
+    quote_units(&text.encode_utf16().take(n).collect::<Vec<u16>>())
 }
 
 /// `JSON.parse(text)`, or `None` where it would throw.
