@@ -16,11 +16,15 @@
 - **THEN** the node CLI receives exactly those arguments, and its output and exit code are the call's
 
 ### Requirement: What Rust cannot prove identical goes to node before anything starts
-A call outside the subset Rust answers exactly SHALL be run by the node CLI with the same arguments and environment, before Rust reads a file, writes one or starts `claude`: arguments the node parser rejects, a value that node's `spawn` refuses, an argument or environment entry that is not UTF-8, no node on the machine, and a `spawn` that fails with an errno other than `ENOENT`, `EACCES` or `ENOTDIR`.
+A call outside the subset Rust answers exactly SHALL be run by the node CLI with the same arguments and environment, before Rust reads a file, writes one or starts `claude`: arguments the node parser rejects, a value that node's `spawn` refuses, an argument that is not UTF-8, and, for a verb that starts a child, an environment entry that is not UTF-8, no node on the machine, and a `spawn` that fails with an errno other than `ENOENT`, `EACCES` or `ENOTDIR`.
 
 #### Scenario: An option node rejects
 - **WHEN** `session open --cwd /x --bogus` runs
 - **THEN** the node CLI receives those arguments and answers with its usage error and exit code 2
+
+#### Scenario: A read verb starts no child
+- **WHEN** `session open`, `session list` or `session last` runs with an environment entry that is not UTF-8, or with no node on the machine
+- **THEN** the binary answers the call itself, because neither class can change what a verb that starts no child prints
 
 #### Scenario: A value spawn refuses
 - **WHEN** `session prompt` is given a reference whose `spec.env` holds a name that contains `=`

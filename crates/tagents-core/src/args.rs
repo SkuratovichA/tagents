@@ -166,6 +166,11 @@ mod tests {
                 .collect();
             read.sort_by_key(|(name, _, _)| *name);
             assert_eq!(read, wanted, "{verb}");
+            assert_eq!(
+                grammar.positionals,
+                !command.positionals.is_empty(),
+                "{verb}: positionals"
+            );
         }
     }
 

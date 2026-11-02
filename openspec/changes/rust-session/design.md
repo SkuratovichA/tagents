@@ -54,6 +54,8 @@ Rust serves `open`, `list` and `last` in the first pull request, `prompt` in the
 - `open` cannot read 16 random bytes from the system (no `uuid` crate is added: the id is RFC 4122 version 4 from `/dev/urandom`);
 - after the spawn has failed with an errno other than `ENOENT`, `EACCES` or `ENOTDIR` (D5): nothing has run, so node can run the call.
 
+The entries on the environment and on `node` are about a verb that starts a child, which is `prompt`. `open`, `list` and `last` start none, so they answer in both cases, pinned by `list-state-variable-is-not-utf8`, `list-home-is-not-utf8` and `the_read_verbs_of_session_start_nothing_so_they_answer_with_no_node`.
+
 A reference that is not JSON, or that fails the schema, is not handed over: node prints `no session matches <ref>` with exit 1, Rust prints the same text from the catalogue, and the vectors of D12 hold the schema decisions (D8).
 
 ### D3. One grammar for the options of a verb group
