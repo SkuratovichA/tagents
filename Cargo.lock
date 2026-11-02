@@ -415,6 +415,7 @@ name = "tagents-core"
 version = "0.6.5"
 dependencies = [
  "kqueue",
+ "libc",
  "rusqlite",
  "rustix",
  "saphyr",

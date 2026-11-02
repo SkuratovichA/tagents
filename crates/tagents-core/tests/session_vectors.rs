@@ -8,6 +8,7 @@
 use serde_json::Value;
 use tagents_core::js;
 use tagents_core::json::{self, Value as Js};
+use tagents_core::session::command;
 use tagents_core::session::reference::{self, Read};
 use tagents_core::session::stream;
 
@@ -226,4 +227,63 @@ fn the_reader_gives_what_stream_reader_gives() {
         let (reader, events) = reader_answers(&bytes);
         assert_reader_equals(case, &reader, &events, "byte by byte");
     }
+}
+
+/// The spec of a case, read as `session prompt` reads it: inside a reference.
+fn spec_of(value: &Value) -> reference::Spec {
+    let text = format!(r#"{{"id":"s","claudeSessionId":null,"transcript":null,"spec":{value}}}"#);
+    match reference::read(&text) {
+        Read::Ref(reference) => reference.spec,
+        other => panic!("{text}: {other:?}"),
+    }
+}
+
+#[test]
+fn the_argv_is_what_build_args_gives() {
+    let args = section("args");
+    let cases = args["cases"].as_array().unwrap();
+    assert!(cases.len() > 200);
+    for case in cases {
+        let want: Vec<&str> = case["argv"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|word| word.as_str().unwrap())
+            .collect();
+        let got = command::args(
+            &spec_of(&case["spec"]),
+            text(case, "text"),
+            case["resume"].as_str(),
+        );
+        assert_eq!(got, want, "{} {:?}", text(case, "name"), case["text"]);
+    }
+}
+
+#[test]
+fn the_environment_is_what_child_env_gives() {
+    let env = section("env");
+    let cases = env["cases"].as_array().unwrap();
+    assert!(cases.len() > 80);
+    for case in cases {
+        let parent = case["parentEnv"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(name, value)| (name.clone(), value.as_str().unwrap().to_owned()))
+            .collect();
+        let got = command::environment(
+            &spec_of(&case["specValue"]),
+            &parent,
+            "<node-dir>",
+            "<home>",
+        );
+        let want: std::collections::BTreeMap<String, String> = case["env"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(name, value)| (name.clone(), value.as_str().unwrap().to_owned()))
+            .collect();
+        assert_eq!(got, want, "{} {}", text(case, "parent"), text(case, "spec"));
+    }
+    assert_eq!(text(&env, "localBin"), "<home>/.local/bin");
 }
