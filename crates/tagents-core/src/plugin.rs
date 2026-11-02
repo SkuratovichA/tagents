@@ -247,17 +247,28 @@ fn write_files(
     files: &[scaffold::File],
     put: &dyn Fn(&str, &str) -> io::Result<()>,
 ) -> io::Result<()> {
+    let topmost = topmost_missing(dir);
     for (done, file) in files.iter().enumerate() {
         if let Err(err) = put(&node::join(dir, &file.path), &file.body) {
-            undo(dir, &files[..=done]);
+            undo(dir, &files[..=done], topmost);
             return Err(err);
         }
     }
     Ok(())
 }
 
-/// Removes what writing `attempted` may have left below `dir`: the files, whole or half written, and then the directories made for them, deepest first. The target was missing or empty, so all of it is ours; `dir` itself and the directories above it stay, because node makes those first as well. A removal that fails is skipped: node words whatever is left.
-fn undo(dir: &str, attempted: &[scaffold::File]) {
+/// The directory nearest the root that is not there yet on the way down to `dir`: `dir` itself or one above it, and `None` when `dir` is there. A link to nowhere is there.
+fn topmost_missing(dir: &str) -> Option<&Path> {
+    Path::new(dir)
+        .ancestors()
+        .take_while(|above| {
+            matches!(fs::symlink_metadata(above), Err(err) if err.kind() == io::ErrorKind::NotFound)
+        })
+        .last()
+}
+
+/// Removes what writing `attempted` may have left: the files, whole or half written, then the directories made for them below `dir`, deepest first, then, when `dir` was missing, `dir` and the directories made on the way to it, up to `topmost`, the first that was missing. The target was missing or empty, so all of it is ours, and a directory that was there stays. A removal that fails is skipped: node words whatever is left.
+fn undo(dir: &str, attempted: &[scaffold::File], topmost: Option<&Path>) {
     let mut made = std::collections::BTreeSet::new();
     for file in attempted {
         let _ = fs::remove_file(node::join(dir, &file.path));
@@ -271,6 +282,14 @@ fn undo(dir: &str, attempted: &[scaffold::File]) {
     }
     for above in made.iter().rev() {
         let _ = fs::remove_dir(node::join(dir, above));
+    }
+    let Some(topmost) = topmost else {
+        return;
+    };
+    for above in Path::new(dir).ancestors() {
+        if fs::remove_dir(above).is_err() || above == topmost {
+            break;
+        }
     }
 }
 
@@ -751,35 +770,53 @@ mod tests {
         );
     }
 
+    /// `new demo --dir <target>` with the directories `existing` made first and the write number `fail_at` failing: the tree is as it was, and the call is handed to node.
+    fn assert_a_failed_write_is_undone(fail_at: usize, existing: &[&str], target: &str) {
+        let fx = fixture(Locale::En);
+        let texts = Texts::load(Locale::En).unwrap();
+        for dir in existing {
+            fs::create_dir_all(format!("{}/{dir}", fx.root)).unwrap();
+        }
+        let before = tree(&fx.root);
+        let calls = std::cell::Cell::new(0);
+        // The step that fails has written its file by then, as a write that stops half way has.
+        let put = |path: &str, body: &str| {
+            let n = calls.get();
+            calls.set(n + 1);
+            write_file(path, body)?;
+            if n == fail_at {
+                return Err(io::Error::from_raw_os_error(28));
+            }
+            Ok(())
+        };
+        assert_eq!(
+            create(
+                &words(&["demo", "--dir", target]),
+                &fx.setting,
+                &texts,
+                &put
+            ),
+            None,
+            "{target} after {existing:?}, step {fail_at}"
+        );
+        assert_eq!(calls.get(), fail_at + 1, "it stopped at the failure");
+        assert_eq!(
+            tree(&fx.root),
+            before,
+            "{target} after {existing:?}, step {fail_at}"
+        );
+    }
+
     #[test]
-    fn a_failed_write_leaves_the_target_as_empty_as_it_was_and_hands_the_call_to_node() {
+    fn a_failed_write_leaves_the_tree_as_it_was_and_hands_the_call_to_node() {
         for fail_at in 0..5 {
-            let fx = fixture(Locale::En);
-            let texts = Texts::load(Locale::En).unwrap();
-            let calls = std::cell::Cell::new(0);
-            // The step that fails has written its file by then, as a write that stops half way has.
-            let put = |path: &str, body: &str| {
-                let n = calls.get();
-                calls.set(n + 1);
-                write_file(path, body)?;
-                if n == fail_at {
-                    return Err(io::Error::from_raw_os_error(28));
-                }
-                Ok(())
-            };
-            let dir = format!("{}/demo", fx.root);
-            fs::create_dir(&dir).unwrap();
-            assert_eq!(
-                create(&words(&["demo"]), &fx.setting, &texts, &put),
-                None,
-                "{fail_at}"
-            );
-            assert_eq!(calls.get(), fail_at + 1, "it stopped at the failure");
-            assert_eq!(
-                tree(&dir),
-                Vec::<String>::new(),
-                "step {fail_at} left something"
-            );
+            // The target was there and empty: it stays, empty.
+            assert_a_failed_write_is_undone(fail_at, &["demo"], "demo");
+            // The target was not there: it is not there after, and neither are the directories made on the way to it.
+            assert_a_failed_write_is_undone(fail_at, &[], "demo");
+            assert_a_failed_write_is_undone(fail_at, &[], "deep/er/demo");
+            // A directory on the way that was there stays.
+            assert_a_failed_write_is_undone(fail_at, &["deep"], "deep/er/demo");
         }
     }
 
