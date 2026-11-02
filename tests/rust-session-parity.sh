@@ -800,7 +800,8 @@ sc "prompt-bin-missing" rust 1 "spawn $RUN/nope ENOENT" -- session prompt "$(ref
 EXTRA=("PATH=/usr/bin:/bin"); STUB=$ANSWER; sc "prompt-bin-absolute" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec ",\"bin\":\"$BIN/claude\"")" go
 SETUP='mkdir tmp/p && cp "$BIN/claude" tmp/p/claude2'; EXTRA=("PATH=$RUN/tmp/p:/usr/bin:/bin"); STUB=$ANSWER; sc "prompt-bin-bare" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec ',"bin":"claude2"')" go
 sc "prompt-bin-bare-missing" rust 1 'spawn nope ENOENT' -- session prompt "$(ref_spec ',"bin":"nope"')" go
-SETUP='cp "$BIN/claude" work/c'; STUB=$ANSWER; STARTS=-; sc "prompt-bin-relative" "$ONLY_NODE_HERE" - - -- session prompt "$(ref_spec ',"bin":"./c"')" go
+# A relative `bin` with a slash is the reader's to hand over on every platform (`reference.rs`), before any of this.
+SETUP='cp "$BIN/claude" work/c'; STUB=$ANSWER; STARTS=-; sc "prompt-bin-relative" node - - -- session prompt "$(ref_spec ',"bin":"./c"')" go
 SETUP='cp "$BIN/claude" work/claude'; EXTRA=("PATH=.:/usr/bin:/bin"); STUB=$ANSWER; STARTS=-; sc "prompt-path-with-a-relative-entry" "$ONLY_NODE_HERE" - - -- session prompt "$(ref_spec)" go
 SETUP='cp "$BIN/claude" work/claude'; STUB=$ANSWER; STARTS=-; sc "prompt-path-of-the-spec-empty" "$ONLY_NODE_HERE" - - -- session prompt "$(ref_spec ',"env":{"PATH":""}')" go
 # A text file with the mode of a program.
