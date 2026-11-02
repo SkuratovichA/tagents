@@ -1939,10 +1939,15 @@ t "26. a name is text: no control character reaches the terminal"
 # A name comes from three places (a typed label, the cached title, the title in the
 # transcript) and every one of them can hold an escape sequence. The summary, the
 # listing on standard error and a table all print it, so the name is scrubbed once,
-# where it is produced.
+# where it is produced. A tab is a control character too, but no reader hands one
+# over: a label and a cached title are fields of a tab-separated file, and title_of
+# turns a tab of a transcript title into a space. The fourth session below has one
+# in its title, to see the name come out in one piece; the scrub itself is run on a
+# tab at the end of this section.
 
 F26="$ROOT/fx26"; mkdir -p "$F26/usage" "$FX/projects/-h-z"
 cp "$F5/usage/facts.tsv" "$F5/usage/projects.tsv" "$F5/usage/origin.tsv" "$F26/usage/"
+f5row 432000 z 9c4e7a1b haiku-4-5 2 1000000 0 40000 >>"$F26/usage/facts.tsv"
 LC_ALL=C awk -F'\t' -v OFS='\t' '{ if (!($3 in F) || $1 < F[$3]) F[$3] = $1; if ($1 > L[$3]) L[$3] = $1; S[$3] = $2; M[$3] = $7 }
   END { for (s in F) print s, S[s], F[s], L[s], M[s] }' "$F26/usage/facts.tsv" >"$F26/usage/sessions.tsv"
 EVIL=$(printf '\033[2J\033]0;x\007')
@@ -1950,6 +1955,7 @@ TA26="$ROOT/ta26"; mkdir -p "$TA26"
 printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "typed${EVIL}label" >"$TA26/labels.tsv"
 printf '%s\t%s\t%s\n' "$(fxsid d8c3b615)" "cached${EVIL}title" 1 >"$TA26/title.tsv"
 printf '%s\n' '{"type":"ai-title","aiTitle":"from\u001b[2J\u001b]0;x\u0007transcript"}' >"$FX/projects/-h-z/$(fxsid 7b2c5d33).jsonl"
+printf '%s\n' '{"type":"ai-title","aiTitle":"tab\there"}' >"$FX/projects/-h-z/$(fxsid 9c4e7a1b).jsonl"
 touch "$F26/usage/projects.tsv"
 fx26() { FX_STATE="$F26/usage" FX_TA="$TA26" fx "$@" | sed "s/${ESC}\\[[0-9;]*m//g"; }
 ncntrl() { LC_ALL=C tr -d '\n' | LC_ALL=C tr -cd '\001-\037\177' | wc -c | tr -d ' '; }
@@ -1959,6 +1965,7 @@ ok "the summary prints no control character from a typed, a cached or a transcri
 contains "...and the name is kept without them" "typed[2J]0;xlabel" "$out"
 contains "...in the cached title too" "cached[2J]0;xtitle" "$out"
 contains "...and in the title read from the transcript" "from[2J]0;xtranscript" "$out"
+ok "...and a tab in a title leaves the name in one piece" 1 "$(printf '%s\n' "$out" | grep -cE 'tab ?here')"
 
 out=$(fx26 --session '0;x')
 ok "an ambiguous --session lists the sessions on standard error and exits 3" 3 "$(FX_STATE="$F26/usage" FX_TA="$TA26" fxrc --session '0;x')"
@@ -1967,6 +1974,29 @@ ok "...and three sessions are in it" 3 "$(printf '%s\n' "$out" | grep -c -- '-6d
 
 out=$(fx26 --by session --top 0 --since 1000d)
 ok "a --by session table prints none" 0 "$(printf '%s\n' "$out" | ncntrl)"
+
+# The two places that scrub a name, each handed a name with a tab, an escape, a
+# carriage return and a delete in it. names_of_sessions is run as it stands in
+# tusage with the reader of a label stubbed; AWK_NAME is evaluated from its own text.
+NOISY=$(printf 'a\tb\001c\rd\033e\177f')
+NAMES_FN=$(sed -n '/^names_of_sessions() {/,/^}$/p' "$TU")
+AWK_NAME_SRC=$(sed -n "/^AWK_NAME='/,/^'\$/p" "$TU")
+ok "names_of_sessions and AWK_NAME were found" "1 1" "$([ -n "$NAMES_FN" ] && echo 1) $([ -n "$AWK_NAME_SRC" ] && echo 1)"
+scrubbed_by_names_of_sessions() (
+  eval "$NAMES_FN"
+  TAB=$(printf '\t'); US=$(printf '\037'); LABELS="$TA26/labels.tsv"; TITLES="$ROOT/no-such-titles"; PROJECTS="$ROOT/no-such-projects"
+  label_of() { printf '%s\n' "$NOISY"; }
+  printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "-h-x" | names_of_sessions | cut -f3
+)
+ok "names_of_sessions scrubs a tab and every other control character from a name" "abcdef" "$(scrubbed_by_names_of_sessions)"
+scrubbed_by_awk_name() (  # <label|title>: where the name is put
+  eval "$AWK_NAME_SRC"
+  LC_ALL=C awk -v lab=/dev/null -v tit=/dev/null -v noisy="$NOISY" -v where="$1" "$AWK_NAME"' BEGIN {
+    if (where == "label") { HL["s"] = 1; LN["s"] = noisy } else TN["s"] = noisy
+    print name("s"); exit }'
+)
+ok "AWK_NAME scrubs them from a typed name" "abcdef" "$(scrubbed_by_awk_name label)"
+ok "...and from a cached title" "abcdef" "$(scrubbed_by_awk_name title)"
 
 # ---------------------------------------------------------------------------
 t "27. a date window is cut where the rows are bucketed"
