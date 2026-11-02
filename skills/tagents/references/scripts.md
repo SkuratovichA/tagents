@@ -120,6 +120,11 @@ stays worth reacting to.
                           which account those rules pick, without launching
                           anything. Prints a profile name or "ask"; exits 1
                           when no profiles are configured
+  tagents --version, -V   one line: the workspace version of the checkout the
+                          script lives in and its short commit, as in
+                          "tagents 0.6.2 (ddc1ae1)". A part that cannot be read is
+                          left out ("unknown" for the version); exits 0 and needs
+                          no config, tmux or modules
   tagents --config        the config as tagents actually reads it, one
                           path<TAB>value line per leaf. This is the answer to
                           "why is my rule not firing"; --check is the answer

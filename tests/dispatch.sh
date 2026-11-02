@@ -151,6 +151,55 @@ for flag in --poke --unpark --undock-pane --undock-window; do
 done
 
 # ---------------------------------------------------------------------------
+t "2b. --version names the checkout, and needs nothing"
+# ---------------------------------------------------------------------------
+# A checkout holding the script alone (no lib/), the release script that reads the workspace version, a Cargo.toml and one commit. tmux is a stub that writes down it was started.
+VER="$TMP/ver"; mkdir -p "$VER/co/.github/scripts" "$VER/bin"
+cp "$TA" "$VER/co/tagents"; cp "$HERE/../.github/scripts/core-release.sh" "$VER/co/.github/scripts/"
+printf '[workspace.package]\nversion = "0.6.2"\n' > "$VER/co/Cargo.toml"
+git -C "$VER/co" init -q && git -C "$VER/co" add -A &&
+  git -C "$VER/co" -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q -m x
+SHORT=$(git -C "$VER/co" rev-parse --short HEAD)
+printf '#!/bin/sh\ntouch "%s/tmux-started"\n' "$VER" > "$VER/bin/tmux"; chmod +x "$VER/bin/tmux"
+ln -s "$VER/co/tagents" "$VER/link"
+mkdir -p "$VER/wrapped"; printf '#!/bin/sh\nexec "%s" "$@"\n' "$VER/co/tagents" > "$VER/wrapped/tagents"; chmod +x "$VER/wrapped/tagents"
+
+for flag in --version -V; do
+  run "$VER/co/tagents" "$VER/bin:$BARE" "$flag" >/dev/null
+  ok "$flag prints the workspace version and the short commit" "tagents 0.6.2 ($SHORT)" "$out"
+  ok "...and exits 0" 0 "$rc"
+done
+ok "...without starting tmux" "no" "$([ -e "$VER/tmux-started" ] && echo yes || echo no)"
+run "$VER/co/tagents" "$VER/bin:$BARE" --version extra >/dev/null
+ok "extra arguments change nothing" "tagents 0.6.2 ($SHORT)" "$out"
+run "$VER/link" "$VER/bin:$BARE" --version >/dev/null
+ok "through a symlink it reads the checkout the file is in" "tagents 0.6.2 ($SHORT)" "$out"
+run "$VER/wrapped/tagents" "$VER/bin:$BARE" -V >/dev/null
+ok "through a wrapper that execs it" "tagents 0.6.2 ($SHORT)" "$out"
+ok "...and the forwarder was not reached" "" "$(argv)"
+
+# A relative symlink, and the script run by a bare name from its own directory.
+mkdir -p "$VER/rel"; ln -s ../co/tagents "$VER/rel/tagents"
+run "$VER/rel/tagents" "$VER/bin:$BARE" --version >/dev/null
+ok "through a relative symlink" "tagents 0.6.2 ($SHORT)" "$out"
+out=$(cd "$VER/co" && PATH="$VER/bin:$BARE" TA_STATE_DIR="$TMP/state" TA_CONFIG="$TMP/no-config.toml" /bin/bash tagents --version 2>&1)
+ok "run by its bare name from its own directory" "tagents 0.6.2 ($SHORT)" "$out"
+
+# A part that cannot be read leaves out that part and never fails the flag.
+cp -R "$VER/co" "$VER/nover"; printf '[workspace.package]\n' > "$VER/nover/Cargo.toml"
+run "$VER/nover/tagents" "$VER/bin:$BARE" --version >/dev/null
+ok "no readable version prints unknown, with the commit" "tagents unknown ($SHORT)" "$out"
+ok "...and exits 0" 0 "$rc"
+cp -R "$VER/co" "$VER/nogit"; rm -rf "$VER/nogit/.git"
+run "$VER/nogit/tagents" "$VER/bin:$BARE" --version >/dev/null
+ok "no commit prints the version alone" "tagents 0.6.2" "$out"
+ok "...and exits 0" 0 "$rc"
+mkdir -p "$VER/bare"; cp "$TA" "$VER/bare/tagents"
+run "$VER/bare/tagents" "$VER/bin:$BARE" -V >/dev/null
+ok "neither prints unknown" "tagents unknown" "$out"
+ok "...and exits 0" 0 "$rc"
+
+# ---------------------------------------------------------------------------
 t "3. where tagents-core is found"
 # ---------------------------------------------------------------------------
 
