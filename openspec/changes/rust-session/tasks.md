@@ -75,7 +75,7 @@ The tasks serve `session open`, `session list`, `session last`, `session prompt`
 ## 12. A turn, compared with node
 
 - [x] 12.1 Every scenario of 9.2 runs on node and on the binary and passes, and each scenario marked as answered by Rust fails when the binary hands the call to node (`bash tests/rust-session-parity.sh`, exit 0, and the same with `TAGENTS_NODE` pointing at a shim that fails the scenario it is called for)
-- [ ] 12.2 Mutations of the Rust code each make the suite or the vectors fail: the prompt placed before an option, `--resume` left out, a `CLAUDE*` variable kept, the node directory left off `PATH`, the grace of 60 seconds made 6, the drain left out, a chunk decoded with `from_utf8_lossy` instead of a line, the lingering left out, a signal handler that kills the child, the key order of `timeout` changed, `-0` printed as `-0`, a lone surrogate printed as U+FFFD, `detail` cut at 300 bytes (one failing check each, listed in the pull request)
+- [x] 12.2 Mutations of the Rust code each make the suite or the vectors fail: the prompt placed before an option, `--resume` left out, a `CLAUDE*` variable kept, the node directory left off `PATH`, the grace of 60 seconds made 6, the drain left out, a chunk decoded with `from_utf8_lossy` instead of a line, the lingering left out, a signal handler that kills the child, the key order of `timeout` changed, `-0` printed as `-0`, a lone surrogate printed as U+FFFD, `detail` cut at 300 bytes (one failing check each, listed in the pull request)
 
 ## 13. Pull request 2, closed
 

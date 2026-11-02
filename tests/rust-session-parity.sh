@@ -138,7 +138,7 @@ run_it() {  # <tag> <program words...>
       LIVE_STUB=$(cat "$RUN/rec/pid")
       kill "-$SIGNAL" "$cli"
       wait "$cli"; echo $? > "$TMP/code.$tag"
-      if kill -0 "$LIVE_STUB" 2> /dev/null; then echo alive; else echo gone; fi > "$TMP/stub.$tag"
+      if until_true 10 stub_stopped "$LIVE_STUB"; then echo gone; else echo alive; fi > "$TMP/stub.$tag"
       kill -9 "$LIVE_STUB" 2> /dev/null; LIVE_STUB=
       norm < "$TMP/raw.$tag" > "$TMP/out.$tag"
       ;;
@@ -159,6 +159,13 @@ run_it() {  # <tag> <program words...>
       echo "${PIPESTATUS[0]}" > "$TMP/code.$tag"
       ;;
   esac
+}
+
+# Whether a child has stopped running: `kill -0` also answers for a zombie, and a child the CLI killed on its way out is one until init has reaped it, so the answer has to come from its state and be given time to arrive.
+stub_stopped() {  # <pid>
+  local state
+  state=$(ps -o state= -p "$1" 2> /dev/null)
+  [ -z "$state" ] || [ "${state#Z}" != "$state" ]
 }
 
 # What a stub left in rec/, in the form two runs are compared in: how often it ran, the record with its volatile parts settled and no pid. The node directory this run must have is the real node's, or on the binary's side that of $TAGENTS_NODE, the shim, unless a scenario says otherwise.
