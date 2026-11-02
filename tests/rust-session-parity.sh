@@ -168,7 +168,7 @@ PLAIN="$RUN/tr/plain.jsonl"
 # ------------------------------------------------------------------- open ---
 t "open: every option"
 sc "open-all-options" rust 0 '"skipPermissions": true' -- session open --cwd "$RUN/work" --resume sid-1 --label L --model opus --effort high --system-prompt-file /p/sys.md --mcp-config /p/mcp.json --config-dir /acct --skip-permissions
-sc "open-minimal" rust 0 '"id": "UUID4"' -- session open --cwd "$RUN/work"
+sc "open-minimal" rust 0 "\"cwd\": \"$RUN/work\"" -- session open --cwd "$RUN/work"
 sc "open-inline-values" rust 0 '"model": "opus"' -- session open --cwd="$RUN/work" --model=opus --effort=high --label=a=b --system-prompt-file=/p/s.md --mcp-config=/p/m.json
 sc "open-inline-empty-value" rust 0 '"label": ""' -- session open --cwd "$RUN/work" --label=
 sc "open-empty-value" rust 0 '"model": ""' -- session open --cwd "$RUN/work" --model ""
@@ -182,7 +182,7 @@ sc "open-value-with-spaces" rust 0 'two words' -- session open --cwd "$RUN/work"
 sc "open-value-with-unicode" rust 0 'é😀' -- session open --cwd "$RUN/work" --label 'é😀 привет'
 sc "open-value-with-quote-and-backslash" rust 0 '\"' -- session open --cwd "$RUN/work" --label 'say "x" \ y'
 sc "open-value-with-control-characters" rust 0 '\u0007' -- session open --cwd "$RUN/work" --label $'tab\there\nnewline\a bell\x7f'
-sc "open-value-with-separator" rust 0 ' ' -- session open --cwd "$RUN/work" --label $'a\xe2\x80\xa8b'
+sc "open-value-with-separator" rust 0 $'\xe2\x80\xa8' -- session open --cwd "$RUN/work" --label $'a\xe2\x80\xa8b'
 sc "open-value-looks-like-id" rust 0 '"label": "123"' -- session open --cwd "$RUN/work" --label 123
 sc "open-value-starts-with-dash-inline" rust 0 '"label": "-x"' -- session open --cwd "$RUN/work" --label=-x
 sc "open-value-is-a-lone-dash" node 0 '"label": "-"' -- session open --cwd "$RUN/work" --label -
@@ -222,15 +222,15 @@ sc "open-cwd-with-unicode" rust 0 'é😀' -- session open --cwd 'é😀'
 t "open: --resume and the state"
 ROW_T=$(row 5 1700000100 working sid-1 "$RUN/work" "$PLAIN" detail)
 SETUP=$ROW_T; sc "open-resume-with-state" rust 0 "\"transcript\": \"$PLAIN\"" -- session open --cwd "$RUN/work" --resume sid-1
-sc "open-resume-without-state" rust 0 '"transcript": null' -- session open --cwd "$RUN/work" --resume sid-1
-SETUP=$ROW_T; sc "open-resume-other-session" rust 0 '"transcript": null' -- session open --cwd "$RUN/work" --resume sid-2
-SETUP=$ROW_T; sc "open-resume-prefix-is-not-a-session" rust 0 '"transcript": null' -- session open --cwd "$RUN/work" --resume sid
-SETUP=$(row 5 1700000100 working sid-1 "$RUN/work" "" detail); sc "open-resume-row-without-transcript" rust 0 '"transcript": null' -- session open --cwd "$RUN/work" --resume sid-1
+sc "open-resume-without-state" rust 0 '"claudeSessionId": "sid-1"' -- session open --cwd "$RUN/work" --resume sid-1
+SETUP=$ROW_T; sc "open-resume-other-session" rust 0 '"claudeSessionId": "sid-2"' -- session open --cwd "$RUN/work" --resume sid-2
+SETUP=$ROW_T; sc "open-resume-prefix-is-not-a-session" rust 0 '"claudeSessionId": "sid"' -- session open --cwd "$RUN/work" --resume sid
+SETUP=$(row 5 1700000100 working sid-1 "$RUN/work" "" detail); sc "open-resume-row-without-transcript" rust 0 '"claudeSessionId": "sid-1"' -- session open --cwd "$RUN/work" --resume sid-1
 SETUP="$(row 5 1700000100 working sid-1 "$RUN/work" "" detail)$(row 6 1700000200 done sid-1 "$RUN/work" "$RUN/tr/ru.jsonl" detail)"; sc "open-resume-newest-row-wins" rust 0 "ru.jsonl" -- session open --cwd "$RUN/work" --resume sid-1
 SETUP="$(row 5 1700000300 working sid-1 "$RUN/work" "" detail)$(row 6 1700000200 done sid-1 "$RUN/work" "$RUN/tr/ru.jsonl" detail)"; sc "open-resume-skips-a-newer-row-without-transcript" rust 0 "ru.jsonl" -- session open --cwd "$RUN/work" --resume sid-1
 SETUP="$(row s-sid-1 1700000100 done sid-1 "$RUN/work" "$PLAIN" detail)"; sc "open-resume-headless-row" rust 0 "plain.jsonl" -- session open --cwd "$RUN/work" --resume sid-1
 SETUP="$(row 5 1700000100 subdone sid-1 "$RUN/work" "$PLAIN" detail)"; sc "open-resume-subdone-row" rust 0 "plain.jsonl" -- session open --cwd "$RUN/work" --resume sid-1
-SETUP="$(row 5 junk working sid-1 "$RUN/work" "$PLAIN" detail)"; sc "open-resume-broken-row" rust 0 '"transcript": null' -- session open --cwd "$RUN/work" --resume sid-1
+SETUP="$(row 5 junk working sid-1 "$RUN/work" "$PLAIN" detail)"; sc "open-resume-broken-row" rust 0 '"claudeSessionId": "sid-1"' -- session open --cwd "$RUN/work" --resume sid-1
 SETUP="$(row 5 1700000100 working '' "$RUN/work" "$PLAIN" detail)"; sc "open-resume-empty-session-in-a-row" rust 0 '"claudeSessionId": ""' -- session open --cwd "$RUN/work" --resume ''
 LOCALE=ru; SETUP=$ROW_T; sc "open-ru" rust 0 "\"transcript\": \"$PLAIN\"" -- session open --cwd "$RUN/work" --resume sid-1
 
@@ -250,7 +250,7 @@ sc "open-flag-with-value" node 2 - -- session open --cwd "$RUN/work" --skip-perm
 sc "open-no-config-dir-with-value" node 2 - -- session open --cwd "$RUN/work" --no-config-dir=x
 sc "open-negated-flag" node 2 - -- session open --cwd "$RUN/work" --no-skip-permissions
 sc "open-help" node 2 - -- session open --help
-sc "open-double-dash-ends-the-options" rust 0 '"id": "UUID4"' -- session open --cwd "$RUN/work" --
+sc "open-double-dash-ends-the-options" rust 0 "\"cwd\": \"$RUN/work\"" -- session open --cwd "$RUN/work" --
 sc "open-double-dash-positional" node 2 - -- session open --cwd "$RUN/work" -- x
 sc "open-lone-dash-is-a-positional" node 2 - -- session open --cwd "$RUN/work" -
 sc "open-an-argument-that-is-not-utf8" node - - -- session open --cwd "$RUN/work" --label $'\xff'
@@ -280,8 +280,8 @@ SETUP=$STATES; sc "list-state-repeated" rust 0 'sid-blocked' -- session list --s
 SETUP=$STATES; sc "list-state-all-five" rust 0 'sid-gone' -- session list --state new --state working --state blocked --state done --state gone
 SETUP=$STATES; sc "list-state-none-match" rust 0 '[]' -- session list --state working --label nobody
 SETUP=$STATES; sc "list-state-and-label" rust 0 '[]' -- session list --state new --label x
-SETUP=$STATES; sc "list-key-order-and-layout" rust 0 '"skipPermissions": false' -- session list
-SETUP=$STATES; sc "list-state-new-only" rust 0 '"id": "1"' -- session list --state new
+SETUP=$STATES; sc "list-key-order-and-layout" rust 0 '    "claudeSessionId": "sid-new",' -- session list
+SETUP=$STATES; sc "list-state-new-only" rust 0 '"claudeSessionId": "sid-new"' -- session list --state new
 
 t "list: an unknown state"
 SETUP=$STATES; sc "list-bad-state" rust 2 'unknown option --state a,b' -- session list --state a,b
@@ -300,22 +300,27 @@ LOCALE=ru; SETUP=$STATES; sc "list-ru-ok" rust 0 'sid-working' -- session list -
 t "list: the label"
 HIST="$(hist 1700000001 start sid-working %1 build "$RUN/work")$(hist 1700000002 turn sid-working %1 build "$RUN/work")$(hist 1700000003 start sid-done %2 review "$RUN/work")$(hist 1700000004 start sid-new %3 '' "$RUN/work")"
 SETUP="$STATES$HIST"; sc "list-label" rust 0 '"label": "build"' -- session list
-SETUP="$STATES$HIST"; sc "list-label-filter" rust 0 'sid-working' -- session list --label build
-SETUP="$STATES$HIST"; sc "list-label-filter-inline" rust 0 'sid-done' -- session list --label=review
+SETUP="$STATES$HIST"; sc "list-label-filter" rust 0 '"label": "build"' -- session list --label build
+SETUP="$STATES$HIST"; sc "list-label-filter-inline" rust 0 '"label": "review"' -- session list --label=review
 SETUP="$STATES$HIST"; sc "list-label-filter-none" rust 0 '[]' -- session list --label Build
 SETUP="$STATES$HIST"; sc "list-label-filter-empty" rust 0 'sid-new' -- session list --label ""
-SETUP="$STATES$HIST"; sc "list-label-filter-repeated" rust 0 'sid-working' -- session list --label review --label build
-SETUP="$STATES$HIST"; sc "list-label-and-state" rust 0 'sid-done' -- session list --label review --state done
+SETUP="$STATES$HIST"; sc "list-label-filter-repeated" rust 0 '"label": "build"' -- session list --label review --label build
+SETUP="$STATES$HIST"; sc "list-label-and-state" rust 0 '"label": "review"' -- session list --label review --state done
 SETUP="$STATES$HIST"; sc "list-label-and-state-disjoint" rust 0 '[]' -- session list --label review --state working
 SETUP="$STATES$(hist 1 start sid-working %1 first "$RUN/work")$(hist 2 start sid-working %1 second "$RUN/work")"; sc "list-label-last-history-line-wins" rust 0 'second' -- session list
 SETUP="$STATES$(hist 1 start sid-working %1 'a b' "$RUN/work")"; sc "list-label-with-space" rust 0 'a b' -- session list --label 'a b'
 SETUP="$STATES$(hist 1 start sid-working %1 'é😀' "$RUN/work")"; sc "list-label-with-unicode" rust 0 'é😀' -- session list --label 'é😀'
 SETUP="$STATES$(hist 1 start sid-working %1 'say "x"' "$RUN/work")"; sc "list-label-with-quotes" rust 0 'say \"x\"' -- session list
-SETUP="$STATES$(hist 1 kind sid-working %1 bad "$RUN/work")"; sc "list-label-history-line-with-a-bad-kind" rust 0 '[' -- session list
-SETUP="$STATES$(hist 1700000001 start sid-working %1)"; sc "list-label-history-line-too-short" rust 0 '[' -- session list
-SETUP="$STATES$(hist x start sid-working %1 build "$RUN/work")"; sc "list-label-history-line-with-a-bad-time" rust 0 '[' -- session list
-SETUP="$STATES"'printf "1700000001\tstart\tsid-working\t%%1\tcrlf\t/w\r\n" >> st/history.tsv'; sc "list-label-history-with-crlf" rust 0 '[' -- session list
-SETUP="$STATES"'mkdir -p st/history.tsv'; sc "list-label-history-is-a-directory" rust 0 '[' -- session list
+SETUP="$STATES$(hist 1 kind sid-working %1 bad "$RUN/work")"; sc "list-label-history-line-with-a-bad-kind" rust 0 'sid-working' -- session list
+SETUP="$STATES$(hist 1 start sid-working %1 bad "$RUN/work")"; sc "list-label-history-line-with-a-good-kind" rust 0 '"label": "bad"' -- session list
+SETUP="$STATES$(hist 1700000001 start sid-working %1)"; sc "list-label-history-line-too-short" rust 0 'sid-working' -- session list
+SETUP="$STATES$(hist 1700000001 start sid-working %1 five)"; sc "list-label-history-line-of-five-fields" rust 0 'sid-working' -- session list
+SETUP="$STATES$(hist 1700000001 start sid-working %1 six '')"; sc "list-label-history-line-of-six-fields" rust 0 '"label": "six"' -- session list
+SETUP="$STATES$(hist x start sid-working %1 build "$RUN/work")"; sc "list-label-history-line-with-a-bad-time" rust 0 'sid-working' -- session list
+SETUP="$STATES$(hist 1 start sid-working %1 timed "$RUN/work")"; sc "list-label-history-line-with-a-good-time" rust 0 '"label": "timed"' -- session list
+SETUP="$STATES"'printf "1700000001\tstart\tsid-working\t%%1\tcrlf\t/w\r\n" >> st/history.tsv'; sc "list-label-history-with-crlf" rust 0 '"label": "crlf"' -- session list
+SETUP="$STATES"'mkdir -p st/history.tsv'; sc "list-label-history-is-a-directory" rust 0 'sid-working' -- session list
+SETUP="$STATES$(hist 1 start sid-working %1 filed "$RUN/work")"; sc "list-label-history-is-a-file" rust 0 '"label": "filed"' -- session list
 SETUP="$STATES$(hist 1 start sid-working %1 build "$RUN/work")"; sc "list-label-filter-with-lookalike" rust 0 '[]' -- session list --label 'build '
 
 t "list: broken records and the columns"
@@ -325,7 +330,7 @@ SETUP="$(row 1 1700000100 working sid-1 /w '' d)$(rowraw 2 '1700000100\tworking\
 SETUP="$(row 1 1700000100 working sid-1 /w '' d)$(rowraw 2 '1700000100\tworking\tsid-2\t/w\t\td\r\n')"; sc "list-record-with-crlf" rust 0 'sid-2' -- session list
 SETUP="$(rowraw 1 '1700000100\tworking\tsid-1\t/w\t\td\nsecond line\n')"; sc "list-record-with-two-lines" rust 0 'sid-1' -- session list
 SETUP="$(rowraw 1 '\n1700000100\tworking\tsid-1\t/w\t\td\n')"; sc "list-record-starting-with-an-empty-line" rust 0 '[]' -- session list
-SETUP="$(row 1 1700000100 working sid-1 /w '' d)"; sc "list-six-columns" rust 0 '"skipPermissions": false' -- session list
+SETUP="$(row 1 1700000100 working sid-1 /w '' d)"; sc "list-six-columns" rust 0 '"claudeSessionId": "sid-1"' -- session list
 SETUP="$(row 1 1700000100 working sid-1 /w '' d '')"; sc "list-seven-columns-account-empty" rust 0 '"configDir": null' -- session list
 SETUP="$(row 1 1700000100 working sid-1 /w '' d /acct)"; sc "list-seven-columns-account-set" rust 0 '"configDir": "/acct"' -- session list
 SETUP="$(row 1 1700000100 working sid-1 /w '' d /acct 4242 /log build 2 psid)"; sc "list-twelve-columns" rust 0 '"configDir": "/acct"' -- session list
@@ -337,7 +342,7 @@ SETUP="$(row s-abc.def_1 1700000100 working sid-1 /w '' d)"; sc "list-headless-k
 SETUP="$(row 007 1700000100 working sid-1 /w '' d)"; sc "list-key-with-leading-zeros" rust 0 '"id": "007"' -- session list
 SETUP="$(row s-é 1700000100 working sid-1 /w '' d)$(row 1x 1700000100 working sid-2 /w '' d)$(row s- 1700000100 working sid-3 /w '' d)$(row S-a 1700000100 working sid-4 /w '' d)"; sc "list-keys-that-are-not-keys" rust 0 '[]' -- session list
 SETUP="$(row 1 1700000100 working sid-1 /w '' d)"'cp st/1.tsv st/2.tsv.bak; cp st/1.tsv st/3'; sc "list-files-that-are-not-records" rust 0 'sid-1' -- session list
-SETUP="$(row 1 1700000100.5 working sid-1 /w '' d)$(row 2 1.7e9 working sid-2 /w '' d)$(row 3 ' 1700000000' working sid-3 /w '' d)"; sc "list-times-that-are-numbers" rust 0 '[' -- session list
+SETUP="$(row 1 1700000100.5 working sid-1 /w '' d)$(row 2 1.7e9 working sid-2 /w '' d)$(row 3 ' 1700000000' working sid-3 /w '' d)"; sc "list-times-that-are-numbers" rust 0 '"claudeSessionId": "sid-3"' -- session list
 SETUP="$(row 1 1700000100 working 'é😀' '/w é' '/t é' 'd é' '/a é')"; sc "list-unicode" rust 0 'é😀' -- session list
 SETUP="$(row 1 1700000100 working 'a"b' '/w\x' '' d)"; sc "list-escapes" rust 0 'a\"b' -- session list
 SETUP="$(row 1 1700000100 working sid-1 /w '' d)$(row 2 1700000200 working sid-2 /w '' d)$(row 3 1700000300 working sid-3 /w '' d)"; sc "list-newest-first" rust 0 'sid-3' -- session list
@@ -350,7 +355,7 @@ sc "list-option-without-value" node 2 - -- session list --label
 sc "list-state-without-value" node 2 - -- session list --state
 sc "list-value-starts-with-dash" node 2 - -- session list --label -x
 sc "list-short-option" node 2 - -- session list -l x
-sc "list-double-dash-ends-the-options" rust 0 '[]' -- session list --
+SETUP="$(row 1 1700000100 working sid-1 /w '' d)"; sc "list-double-dash-ends-the-options" rust 0 'sid-1' -- session list --
 sc "list-double-dash-positional" node 2 - -- session list -- x
 sc "list-an-argument-that-is-not-utf8" node - - -- session list --label $'\xff'
 EXTRA=("TA_STATE_DIR="); SETUP="mkdir -p home/.claude/agent-state; $(row 1 1700000100 working sid-1 /w '' d | sed 's#st/#home/.claude/agent-state/#')"; sc "list-empty-state-variable-means-the-default" rust 0 'sid-1' -- session list
@@ -368,10 +373,10 @@ sc "last-transcript-controls" rust 0 '\u0007' -- session last "$(ref_transcript 
 sc "last-transcript-pair-and-escapes" rust 0 '\u0000' -- session last "$(ref_transcript pair.jsonl)"
 sc "last-transcript-inside-the-window" rust 0 'inside the window' -- session last "$(ref_transcript at-window.jsonl)"
 sc "last-transcript-cut-in-a-character" rust 0 'after a cut' -- session last "$(ref_transcript cut-char.jsonl)"
-sc "last-transcript-invalid-utf8" rust 0 'a' -- session last "$(ref_transcript bad-utf8.jsonl)"
+sc "last-transcript-invalid-utf8" rust 0 $'a\xef\xbf\xbd\xef\xbf\xbdb' -- session last "$(ref_transcript bad-utf8.jsonl)"
 sc "last-reference-with-spaces-before" rust 0 'the last reply' -- session last "  $(ref_transcript plain.jsonl)"
 sc "last-reference-with-newline-before" rust 0 'the last reply' -- session last "$(printf '\n\t')$(ref_transcript plain.jsonl)"
-sc "last-reference-with-trailing-text" rust 1 'no session matches' -- session last "$(ref_transcript plain.jsonl) trailing"
+sc "last-reference-with-trailing-text" rust 1 '}} trailing' -- session last "$(ref_transcript plain.jsonl) trailing"
 LOCALE=ru; sc "last-transcript-and-ru" rust 0 'the last reply' -- session last "$(ref_transcript plain.jsonl)"
 
 t "last: no reply"
@@ -421,12 +426,12 @@ SETUP="$(row 5 1700000100 working abc "$RUN/work" "$PLAIN" d)$(row 6 1700000200 
 SETUP="$(row 5 1700000100 working abcdef "$RUN/work" "$PLAIN" d)$(row 6 1700000200 working abc "$RUN/work" "$RUN/tr/ru.jsonl" d)"; sc "last-exact-beats-a-prefix-of-a-later-row" rust 0 'ответ' -- session last abc
 SETUP="$(row 7 1700000100 working 7 "$RUN/work" "$PLAIN" d)$(row 8 1700000200 working sid-8 "$RUN/work" "$RUN/tr/ru.jsonl" d)"; sc "last-key-matches-exactly" rust 0 'ответ' -- session last 8
 SETUP="$(row 7 1700000100 working sid-7 "$RUN/work" "$PLAIN" d)$(row 8 1700000200 working 7 "$RUN/work" "$RUN/tr/ru.jsonl" d)"; sc "last-id-matches-a-key-or-a-session-first-in-order" rust 0 'ответ' -- session last 7
-SETUP="$(row 5 1700000100 working '' "$RUN/work" "$PLAIN" d)"; sc "last-a-row-with-no-session-has-no-prefix" rust 1 'no session matches' -- session last s
+SETUP="$(row 5 1700000100 working '' "$RUN/work" "$PLAIN" d)"; sc "last-a-row-with-no-session-has-no-prefix" rust 1 'no session matches s' -- session last s
 SETUP="$(row 5 1700000100 subdone sid-1 "$RUN/work" "$PLAIN" d)"; sc "last-a-subdone-row-is-not-listed" rust 1 'no session matches sid-1' -- session last sid-1
 SETUP="$(row 5 1700000100 working sid-1 "$RUN/work" "$PLAIN" d)"; sc "last-id-is-case-sensitive" rust 1 'no session matches SID-1' -- session last SID-1
-SETUP="$(row 5 1700000100 working sid-1 "$RUN/work" "$PLAIN" d)"; sc "last-id-with-a-trailing-space" rust 1 'no session matches' -- session last 'sid-1 '
+SETUP="$(row 5 1700000100 working sid-1 "$RUN/work" "$PLAIN" d)"; sc "last-id-with-a-trailing-space" rust 1 'no session matches sid-1 ' -- session last 'sid-1 '
 SETUP="$(row 5 1700000100 working 'é😀x' "$RUN/work" "$PLAIN" d)"; sc "last-prefix-is-unicode" rust 0 'the last reply' -- session last 'é😀'
-SETUP="$(row 5 1700000100 working 'é😀x' "$RUN/work" "$PLAIN" d)"; sc "last-prefix-is-half-an-emoji" node 1 'no session matches' -- session last $'\xf0\x9f'
+SETUP="$(row 5 1700000100 working 'é😀x' "$RUN/work" "$PLAIN" d)"; sc "last-prefix-is-half-an-emoji" node 1 $'no session matches \xef\xbf\xbd' -- session last $'\xf0\x9f'
 SETUP="$(row 5 1700000100 working sid-1 "$RUN/work" "$PLAIN" d)"; sc "last-id-looks-like-an-option" rust 0 'the last reply' -- session last sid-1 --bogus
 SETUP="$(row 5 1700000100 working -x "$RUN/work" "$PLAIN" d)"; sc "last-id-is-an-option-looking-session" rust 0 'the last reply' -- session last -x
 SETUP="$(row 5 1700000100 working sid-1 "$RUN/work" "$PLAIN" d)"; sc "last-id-and-more-words" rust 0 'the last reply' -- session last sid-1 more words
@@ -437,14 +442,14 @@ t "last: a reference that does not name a session"
 sc "last-bad-ref" rust 1 'no session matches {bad' -- session last '{bad'
 sc "last-bad-ref-schema" rust 1 'no session matches {"id":1}' -- session last '{"id":1}'
 sc "last-bad-ref-empty-object" rust 1 'no session matches {}' -- session last '{}'
-sc "last-bad-ref-kind" rust 1 'no session matches' -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"other","cwd":"/w","skipPermissions":false}}'
-sc "last-bad-ref-missing-spec" rust 1 'no session matches' -- session last '{"id":"r1","claudeSessionId":null,"transcript":null}'
-sc "last-bad-ref-trailing-comma" rust 1 'no session matches' -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false},}'
+sc "last-bad-ref-kind" rust 1 '"kind":"other"' -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"other","cwd":"/w","skipPermissions":false}}'
+sc "last-bad-ref-missing-spec" rust 1 'no session matches {"id":"r1","claudeSessionId":null,"transcript":null}' -- session last '{"id":"r1","claudeSessionId":null,"transcript":null}'
+sc "last-bad-ref-trailing-comma" rust 1 '"skipPermissions":false},}' -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false},}'
 sc "last-bad-ref-array" rust 1 'no session matches [' -- session last '[]'
-sc "last-bad-ref-not-an-object-after-spaces" rust 1 'no session matches' -- session last '   {'
-sc "last-bad-ref-spaces-only-is-a-session-id" rust 1 'no session matches' -- session last '   '
+sc "last-bad-ref-not-an-object-after-spaces" rust 1 'no session matches    {' -- session last '   {'
+sc "last-bad-ref-spaces-only-is-a-session-id" rust 1 'no session matches    ' -- session last '   '
 sc "last-bad-ref-with-unicode" rust 1 'no session matches {é😀' -- session last '{é😀'
-sc "last-bad-ref-with-a-newline" rust 1 'no session matches' -- session last $'{\n}'
+sc "last-bad-ref-with-a-newline" rust 1 'no session matches {' -- session last $'{\n}'
 LOCALE=ru; sc "last-bad-ref-ru" rust 1 'сессия не найдена: {bad' -- session last '{bad'
 LOCALE=ru; sc "last-missing-ref-ru" rust 2 'не хватает обязательного параметра <ref>' -- session last
 sc "last-missing-ref" rust 2 'missing required option <ref>' -- session last
