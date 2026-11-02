@@ -184,7 +184,7 @@ personal	318	660000	231000	3520000	42900000	44.260000	0	2026-10-27	2026-11-01	4
 
 ### One account, one project
 
-`--account work` narrows a report to the sessions of an account, `--project billing` to the projects whose directory contains the text, ignoring case, as the tables show the directory (`~/git/work/billing-api`) or written out (`/Users/you/git/work/billing-api`, which is what a shell hands over for the first). `--account` may be repeated or take a comma list; `--project` may only be repeated, because a directory name can hold a comma. Both work in every report and combine. The name `?` is the sessions no account claims. An unknown account exits 2 and lists the known ones. How the names are found is on the [accounts](./accounts#account-names-in-a-terminal) page.
+`--account work` narrows a report to the sessions of an account, `--project billing` to the projects whose directory contains the text, ignoring case, as the tables show the directory (`~/git/work/billing-api`). A text that starts with a slash is also matched against the directory written out (`/Users/you/git/work/billing-api`, which is what a shell hands over for the first); any other text is looked for in the directory as the tables show it, so the user name does not match every project. `--account` may be repeated or take a comma list; `--project` may only be repeated, because a directory name can hold a comma. Both work in every report and combine. The name `?` is the sessions no account claims. An unknown account exits 2 and lists the known ones. How the names are found is on the [accounts](./accounts#account-names-in-a-terminal) page.
 
 ### One session by day
 

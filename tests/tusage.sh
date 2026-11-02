@@ -1333,6 +1333,15 @@ ok "--project takes a path as the shell expands it, the home directory and all" 
    "$(tsv session --project BILLING $W)" "$(tsv session --project "$FXH/git/work/billing-api" $W)"
 ok "...and the path as the tables show it, with the tilde" \
    "$(tsv session --project BILLING $W)" "$(tsv session --project '~/git/work/billing-api' $W)"
+ok "...and a path that stops short of the end, written out in full, still matches" \
+   "$(tsv session --project '~/git/work' $W)" "$(tsv session --project "$FXH/git/work" $W)"
+# The full path is matched only for a text that is a path (it starts with a slash, as
+# what a shell expands does). A word that is only in the home, the user name or a
+# directory above it, is in every project's full path and in none of the tables'.
+out=$(fx --by session --project "${FXH##*/}" $W); rc=$?
+ok "a word that is only in the home directory's path keeps nothing" "no data in this window|1" "$out|$rc"
+out=$(fx --by session --project "$(basename "$ROOT")" $W); rc=$?
+ok "...nor does a word from the directories above the home" "no data in this window|1" "$out|$rc"
 ok "--project twice keeps a row that matches either" "4" "$(tsv session --project billing --project probe $W | wc -l | tr -d ' ')"
 ok "--project with --account keeps the rows that match both" \
    "$(fxsid 91ab44ee) $(fxsid e5d1f0a7)" "$(tsv session --account work --project web $W | cut -f1 | tr '\n' ' ' | sed 's/ $//')"
