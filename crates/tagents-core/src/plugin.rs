@@ -1,8 +1,8 @@
-//! `tagents-core plugin add` and `plugin remove`: the verbs of the plugin group that this binary serves.
+//! `tagents-core plugin add`, `plugin remove` and `plugin new`: the verbs of the plugin group that this binary serves.
 //!
 //! Each verb answers only what it can prove identical to the node CLI and hands every other call to it (`None`, before anything is written): a verb that stays with node (`list`, bare `plugin`, a word nobody knows), an argument outside the grammar below, a package the resolution cannot prove, a config that cannot be edited, and any I/O error. The texts it does print are the catalogue's, in `spec/cli/messages.json`.
 //!
-//! The grammar has no error case. A positional is an argument that does not start with `-` (a lone `-` included) and `--` ends the options; `add` takes `--name V` when `V` does not start with `-` and `--name=V` for any `V`, the last one wins; `remove` takes no option. Any other argument that starts with `-` is node's to word, since `util.parseArgs` words its own errors.
+//! The grammar has no error case. A positional is an argument that does not start with `-` (a lone `-` included) and `--` ends the options; `add` takes `--name V` and `new` takes `--dir V` when `V` does not start with `-`, and `--name=V` and `--dir=V` for any `V`, the last one wins; `remove` takes no option. Any other argument that starts with `-` is node's to word, since `util.parseArgs` words its own errors.
 
 pub mod config;
 pub mod resolve;
@@ -10,6 +10,8 @@ pub mod scaffold;
 
 use config::{Added, Removed};
 use resolve::Failure;
+
+use std::{fs, io, path::Path};
 
 use crate::{
     host::config_dir,
@@ -19,7 +21,11 @@ use crate::{
 };
 
 /// The verbs this module serves, as the words after the program name. `tagents-core --spec` prints them and a test pins them to `impl: "rust"` in the data file.
-pub const VERBS: &[&[&str]] = &[&["plugin", "add"], &["plugin", "remove"]];
+pub const VERBS: &[&[&str]] = &[
+    &["plugin", "add"],
+    &["plugin", "remove"],
+    &["plugin", "new"],
+];
 
 /// The config file's name inside the config directory (`CONFIG_BASENAME` of `packages/core/src/host.ts`).
 const CONFIG_BASENAME: &str = "config.toml";
@@ -46,6 +52,8 @@ pub struct Setting {
     pub file: String,
     pub locale: Locale,
     pub env: resolve::Env,
+    /// `<root>/packages/core` of the checkout this binary belongs to, which is where the node CLI that `plugin new` links sits; `None` when the root cannot be told.
+    pub core_dir: Option<String>,
 }
 
 impl Setting {
@@ -61,6 +69,12 @@ impl Setting {
             file: node::join(&config_dir(), CONFIG_BASENAME),
             locale: Locale::of(std::env::var("TAGENTS_LOCALE").ok().as_deref()),
             env: resolve::Env::current(),
+            core_dir: node::root().ok().and_then(|root| {
+                root.join("packages/core")
+                    .into_os_string()
+                    .into_string()
+                    .ok()
+            }),
         })
     }
 }
@@ -78,6 +92,7 @@ pub fn serve(argv: &[String], setting: &Setting) -> Option<Output> {
     match verb.as_str() {
         "add" => add(args, setting, &texts),
         "remove" => remove(args, setting, &texts),
+        "new" => new(args, setting, &texts),
         _ => None,
     }
 }
@@ -86,14 +101,15 @@ pub fn serve(argv: &[String], setting: &Setting) -> Option<Output> {
 #[derive(Debug, PartialEq, Eq)]
 struct Parsed<'a> {
     positionals: Vec<&'a str>,
-    name: Option<&'a str>,
+    /// What the verb's one option was given.
+    value: Option<&'a str>,
 }
 
-/// `args` by the grammar; `None` for an argument it does not read. `takes_name` is `add`.
-fn parse(args: &[String], takes_name: bool) -> Option<Parsed<'_>> {
+/// `args` by the grammar; `None` for an argument it does not read. `flag` is the option the verb takes, as `--name` for `add` and `--dir` for `new`; `remove` takes none.
+fn parse<'a>(args: &'a [String], flag: Option<&str>) -> Option<Parsed<'a>> {
     let mut parsed = Parsed {
         positionals: Vec::new(),
-        name: None,
+        value: None,
     };
     let mut rest = args.iter().map(String::as_str);
     while let Some(arg) = rest.next() {
@@ -101,10 +117,10 @@ fn parse(args: &[String], takes_name: bool) -> Option<Parsed<'_>> {
             parsed.positionals.extend(rest.by_ref());
         } else if !arg.starts_with('-') || arg == "-" {
             parsed.positionals.push(arg);
-        } else if takes_name && arg == "--name" {
-            parsed.name = Some(rest.next().filter(|value| !value.starts_with('-'))?);
+        } else if flag == Some(arg) {
+            parsed.value = Some(rest.next().filter(|value| !value.starts_with('-'))?);
         } else {
-            parsed.name = Some(arg.strip_prefix("--name=").filter(|_| takes_name)?);
+            parsed.value = Some(arg.strip_prefix(flag?)?.strip_prefix('=')?);
         }
     }
     Some(parsed)
@@ -127,7 +143,7 @@ fn failure(code: u8, line: String) -> Output {
 
 /// `add(argv)` of `cli/plugin.ts`.
 fn add(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
-    let parsed = parse(args, true)?;
+    let parsed = parse(args, Some("--name"))?;
     let Some(spec) = parsed.positionals.first() else {
         return Some(failure(
             exit::USAGE,
@@ -159,7 +175,7 @@ fn add(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
     };
 
     let name = parsed
-        .name
+        .value
         .map_or_else(|| default_plugin_name(&package.package_name), str::to_owned);
     if !is_name(&name) {
         return Some(failure(
@@ -186,7 +202,7 @@ fn add(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
 
 /// `remove(argv)` of `cli/plugin.ts`.
 fn remove(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
-    let parsed = parse(args, false)?;
+    let parsed = parse(args, None)?;
     let Some(name) = parsed.positionals.first() else {
         return Some(failure(
             exit::USAGE,
@@ -206,6 +222,101 @@ fn remove(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
     }
 }
 
+/// One file of the scaffold written as node writes it: `mkdirSync(dirname, { recursive: true })`, then `writeFileSync`.
+fn write_file(path: &str, body: &str) -> io::Result<()> {
+    if let Some(parent) = Path::new(path).parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, body)
+}
+
+/// Whether `dir` holds anything, as `fs.existsSync(dir) && fs.readdirSync(dir).length > 0` finds out. `None` where node does not get an answer: a path that cannot be looked at, or a directory that cannot be listed (a file, a link to nowhere, no permission), which node fails on with the system's text.
+fn holds_anything(dir: &str) -> Option<bool> {
+    match fs::symlink_metadata(dir) {
+        Ok(_) => {}
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Some(false),
+        Err(_) => return None,
+    }
+    match fs::read_dir(dir).ok()?.next() {
+        None => Some(false),
+        Some(Ok(_)) => Some(true),
+        Some(Err(_)) => None,
+    }
+}
+
+/// Writes `files` below `dir` in order with `put`. A step that fails undoes what the sequence made and returns the error, which node will meet again.
+fn write_files(
+    dir: &str,
+    files: &[scaffold::File],
+    put: &dyn Fn(&str, &str) -> io::Result<()>,
+) -> io::Result<()> {
+    for (done, file) in files.iter().enumerate() {
+        if let Err(err) = put(&node::join(dir, &file.path), &file.body) {
+            undo(dir, &files[..=done]);
+            return Err(err);
+        }
+    }
+    Ok(())
+}
+
+/// Removes what writing `attempted` may have left below `dir`: the files, whole or half written, and then the directories made for them, deepest first. The target was missing or empty, so all of it is ours; `dir` itself and the directories above it stay, because node makes those first as well. A removal that fails is skipped: node words whatever is left.
+fn undo(dir: &str, attempted: &[scaffold::File]) {
+    let mut made = std::collections::BTreeSet::new();
+    for file in attempted {
+        let _ = fs::remove_file(node::join(dir, &file.path));
+        made.extend(
+            Path::new(&file.path)
+                .ancestors()
+                .skip(1)
+                .filter(|above| !above.as_os_str().is_empty())
+                .map(|above| above.display().to_string()),
+        );
+    }
+    for above in made.iter().rev() {
+        let _ = fs::remove_dir(node::join(dir, above));
+    }
+}
+
+/// `new(argv)` of `cli/plugin.ts`.
+fn new(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
+    create(args, setting, texts, &write_file)
+}
+
+/// `new` with `put` as the write of one file, which the tests make fail.
+fn create(
+    args: &[String],
+    setting: &Setting,
+    texts: &Texts,
+    put: &dyn Fn(&str, &str) -> io::Result<()>,
+) -> Option<Output> {
+    let parsed = parse(args, Some("--dir"))?;
+    let Some(name) = parsed.positionals.first() else {
+        return Some(failure(
+            exit::USAGE,
+            texts.t("missingOption", &[("option", "<name>")]),
+        ));
+    };
+    if !is_name(name) {
+        return Some(failure(
+            exit::USAGE,
+            texts.t("pluginBadName", &[("name", name)]),
+        ));
+    }
+    let dir = node::resolve(&setting.cwd, parsed.value.unwrap_or(name));
+    if holds_anything(&dir)? {
+        return Some(failure(
+            exit::REFUSED,
+            texts.t("pluginTargetExists", &[("dir", &dir)]),
+        ));
+    }
+    let files = scaffold::files(name, &dir, setting.core_dir.as_deref()?);
+    write_files(&dir, &files, put).ok()?;
+    Some(Output::out(format!(
+        "{}\n",
+        texts.t("pluginScaffolded", &[("dir", &dir)])
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use std::{fs, path::Path};
@@ -217,68 +328,83 @@ mod tests {
         args.iter().map(|a| (*a).to_owned()).collect()
     }
 
-    fn parsed<'a>(positionals: &[&'a str], name: Option<&'a str>) -> Option<Parsed<'a>> {
+    fn parsed<'a>(positionals: &[&'a str], value: Option<&'a str>) -> Option<Parsed<'a>> {
         Some(Parsed {
             positionals: positionals.to_vec(),
-            name,
+            value,
         })
     }
 
     #[test]
-    fn the_grammar_reads_positionals_and_name_and_nothing_else() {
-        for (args, takes_name, want) in [
-            (&[][..], true, parsed(&[], None)),
-            (&["pkg"], true, parsed(&["pkg"], None)),
-            (&["pkg", "--name", "x"], true, parsed(&["pkg"], Some("x"))),
-            (&["--name", "x", "pkg"], true, parsed(&["pkg"], Some("x"))),
-            (&["--name=x", "pkg"], true, parsed(&["pkg"], Some("x"))),
-            (&["--name=", "pkg"], true, parsed(&["pkg"], Some(""))),
-            (&["--name=-x", "pkg"], true, parsed(&["pkg"], Some("-x"))),
+    fn the_grammar_reads_positionals_and_its_one_option_and_nothing_else() {
+        const ADD: Option<&str> = Some("--name");
+        const NEW: Option<&str> = Some("--dir");
+        for (args, flag, want) in [
+            (&[][..], ADD, parsed(&[], None)),
+            (&["pkg"], ADD, parsed(&["pkg"], None)),
+            (&["pkg", "--name", "x"], ADD, parsed(&["pkg"], Some("x"))),
+            (&["--name", "x", "pkg"], ADD, parsed(&["pkg"], Some("x"))),
+            (&["--name=x", "pkg"], ADD, parsed(&["pkg"], Some("x"))),
+            (&["--name=", "pkg"], ADD, parsed(&["pkg"], Some(""))),
+            (&["--name=-x", "pkg"], ADD, parsed(&["pkg"], Some("-x"))),
             (
                 &["--name", "a", "--name=b", "p"],
-                true,
+                ADD,
                 parsed(&["p"], Some("b")),
             ),
             (
                 &["--name=a", "--name", "b", "p"],
-                true,
+                ADD,
                 parsed(&["p"], Some("b")),
             ),
-            (&["a", "b", "c"], true, parsed(&["a", "b", "c"], None)),
-            (&["-"], true, parsed(&["-"], None)),
+            (&["a", "b", "c"], ADD, parsed(&["a", "b", "c"], None)),
+            (&["-"], ADD, parsed(&["-"], None)),
             (
                 &["--", "-x", "--name", "--"],
-                true,
+                ADD,
                 parsed(&["-x", "--name", "--"], None),
             ),
             (
                 &["p", "--", "--name=x"],
-                true,
+                ADD,
                 parsed(&["p", "--name=x"], None),
             ),
-            (&["x", "y"], false, parsed(&["x", "y"], None)),
-            (&["--", "--name"], false, parsed(&["--name"], None)),
+            (&["x", "y"], None, parsed(&["x", "y"], None)),
+            (&["--", "--name"], None, parsed(&["--name"], None)),
+            // `new` reads `--dir` the same way, and `--name` is not its option.
+            (&["x", "--dir", "d"], NEW, parsed(&["x"], Some("d"))),
+            (&["--dir=d", "x"], NEW, parsed(&["x"], Some("d"))),
+            (&["--dir=", "x"], NEW, parsed(&["x"], Some(""))),
+            (&["--dir=-d", "x"], NEW, parsed(&["x"], Some("-d"))),
+            (
+                &["--dir", "a", "--dir=b", "x"],
+                NEW,
+                parsed(&["x"], Some("b")),
+            ),
+            (&["x", "--", "--dir"], NEW, parsed(&["x", "--dir"], None)),
+            (&["--dir"], NEW, None),
+            (&["--dir", "-d"], NEW, None),
+            (&["--dir-x=d"], NEW, None),
+            (&["--directory=d"], NEW, None),
+            (&["--name", "x"], NEW, None),
+            (&["--dir", "d"], ADD, None),
             // What node words itself.
-            (&["--name"], true, None),
-            (&["p", "--name"], true, None),
-            (&["--name", "-x"], true, None),
-            (&["--name", "-"], true, None),
-            (&["--name", "--other"], true, None),
-            (&["--nam", "x"], true, None),
-            (&["--name-x", "p"], true, None),
-            (&["--json"], true, None),
-            (&["-n", "x"], true, None),
-            (&["-abc"], true, None),
-            (&["--no-name", "p"], true, None),
-            (&["--name=x"], false, None),
-            (&["--name", "x"], false, None),
-            (&["-x"], false, None),
+            (&["--name"], ADD, None),
+            (&["p", "--name"], ADD, None),
+            (&["--name", "-x"], ADD, None),
+            (&["--name", "-"], ADD, None),
+            (&["--name", "--other"], ADD, None),
+            (&["--nam", "x"], ADD, None),
+            (&["--name-x", "p"], ADD, None),
+            (&["--json"], ADD, None),
+            (&["-n", "x"], ADD, None),
+            (&["-abc"], ADD, None),
+            (&["--no-name", "p"], ADD, None),
+            (&["--name=x"], None, None),
+            (&["--name", "x"], None, None),
+            (&["-x"], None, None),
         ] {
-            assert_eq!(
-                parse(&words(args), takes_name),
-                want,
-                "{args:?} (takes_name: {takes_name})"
-            );
+            assert_eq!(parse(&words(args), flag), want, "{args:?} ({flag:?})");
         }
     }
 
@@ -305,8 +431,15 @@ mod tests {
     }
 
     #[test]
-    fn the_verbs_are_add_and_remove() {
-        assert_eq!(VERBS, [&["plugin", "add"][..], &["plugin", "remove"]]);
+    fn the_verbs_are_add_remove_and_new() {
+        assert_eq!(
+            VERBS,
+            [
+                &["plugin", "add"][..],
+                &["plugin", "remove"],
+                &["plugin", "new"]
+            ]
+        );
     }
 
     /// A working directory with a plugin at `pkg` and a config directory of its own, in English.
@@ -338,6 +471,7 @@ mod tests {
                 home: format!("{root}/home"),
                 node_flags: false,
             },
+            core_dir: Some(format!("{root}/core")),
         };
         Fixture {
             _scratch: scratch,
@@ -450,7 +584,6 @@ mod tests {
         for args in [
             &[][..],
             &["list"],
-            &["new", "x"],
             &["bogus"],
             &["add", "--bogus", "./pkg"],
             &["add", "./pkg", "--name"],
@@ -467,5 +600,219 @@ mod tests {
             !Path::new(&fx.setting.file).exists()
                 && !Path::new(&format!("{}/cfg", fx.root)).exists()
         );
+    }
+
+    /// The tree below `dir` as `path` lines, directories with a trailing slash, sorted.
+    fn tree(dir: &str) -> Vec<String> {
+        fn walk(dir: &Path, base: &Path, out: &mut Vec<String>) {
+            let Ok(entries) = fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.map(|e| e.unwrap().path()) {
+                let rel = entry.strip_prefix(base).unwrap().display().to_string();
+                if entry.is_dir() {
+                    out.push(format!("{rel}/"));
+                    walk(&entry, base, out);
+                } else {
+                    out.push(rel);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(Path::new(dir), Path::new(dir), &mut out);
+        out.sort();
+        out
+    }
+
+    const SCAFFOLD: [&str; 7] = [
+        "README.md",
+        "package.json",
+        "src/",
+        "src/plugin.ts",
+        "test/",
+        "test/plugin.test.ts",
+        "tsconfig.json",
+    ];
+
+    /// `create` with the real write.
+    fn create_here(fx: &Fixture, args: &[&str]) -> Option<Output> {
+        let texts = Texts::load(fx.setting.locale).unwrap();
+        create(&words(args), &fx.setting, &texts, &write_file)
+    }
+
+    #[test]
+    fn new_writes_the_five_files_below_the_name_and_says_where() {
+        let fx = fixture(Locale::En);
+        let dir = format!("{}/demo", fx.root);
+        assert_eq!(
+            said(create_here(&fx, &["demo"])),
+            (
+                format!("wrote {dir} — install it with: tagents plugin add {dir}\n"),
+                String::new(),
+                0
+            )
+        );
+        assert_eq!(tree(&dir), SCAFFOLD);
+        let package = fs::read_to_string(format!("{dir}/package.json")).unwrap();
+        assert!(
+            package.contains(r#""@tagents/core": "link:../core""#),
+            "{package}"
+        );
+    }
+
+    #[test]
+    fn new_takes_a_directory_from_dir_and_resolves_it_against_the_working_directory() {
+        let fx = fixture(Locale::En);
+        assert_eq!(said(create_here(&fx, &["x", "--dir", "a/b/../c"])).2, 0);
+        assert_eq!(tree(&format!("{}/a/c", fx.root)), SCAFFOLD);
+        assert!(!Path::new(&format!("{}/x", fx.root)).exists());
+        // `--dir=` is an empty directory argument, which `path.resolve` reads as the working directory: here the one that holds `pkg`, so it is refused.
+        let (_, err, code) = said(create_here(&fx, &["x", "--dir="]));
+        assert_eq!(
+            (err, code),
+            (format!("{} exists and is not empty\n", fx.root), 3)
+        );
+    }
+
+    #[test]
+    fn new_accepts_an_empty_directory_and_refuses_one_that_holds_anything() {
+        let fx = fixture(Locale::En);
+        let empty = format!("{}/empty", fx.root);
+        fs::create_dir(&empty).unwrap();
+        assert_eq!(said(create_here(&fx, &["empty"])).2, 0);
+        assert_eq!(tree(&empty), SCAFFOLD);
+
+        for (kind, make) in [("a file", "f"), (".hidden", ".h"), ("a directory", "d/")] {
+            let busy = format!(
+                "{}/busy-{}",
+                fx.root,
+                make.trim_end_matches('/').trim_start_matches('.')
+            );
+            fs::create_dir(&busy).unwrap();
+            if let Some(dir) = make.strip_suffix('/') {
+                fs::create_dir(format!("{busy}/{dir}")).unwrap();
+            } else {
+                fs::write(format!("{busy}/{make}"), "mine").unwrap();
+            }
+            let before = tree(&busy);
+            let name = busy.rsplit('/').next().unwrap();
+            let (out, err, code) = said(create_here(&fx, &["x", "--dir", name]));
+            assert_eq!(
+                (out.as_str(), err.as_str(), code),
+                ("", format!("{busy} exists and is not empty\n").as_str(), 3),
+                "{kind}"
+            );
+            assert_eq!(tree(&busy), before, "{kind}: left alone");
+        }
+    }
+
+    #[test]
+    fn new_checks_its_arguments_in_the_order_node_does() {
+        let fx = fixture(Locale::En);
+        let serve = |args: &[&str]| said(create_here(&fx, args));
+        assert_eq!(
+            serve(&[]),
+            (
+                String::new(),
+                "missing required option <name>\n".to_owned(),
+                2
+            )
+        );
+        assert_eq!(
+            serve(&["--dir", "d"]),
+            (
+                String::new(),
+                "missing required option <name>\n".to_owned(),
+                2
+            )
+        );
+        for bad in ["", ".a", "a b", "a/b", "é", "-"] {
+            let (out, err, code) = serve(&["--", bad]);
+            assert_eq!(
+                (out.as_str(), err.as_str(), code),
+                ("", format!("not a usable plugin name: {bad}\n").as_str(), 2),
+                "{bad:?}"
+            );
+        }
+        // A second positional is ignored.
+        assert_eq!(serve(&["one", "two"]).2, 0);
+        assert!(Path::new(&format!("{}/one/package.json", fx.root)).exists());
+        assert!(!Path::new(&format!("{}/two", fx.root)).exists());
+    }
+
+    #[test]
+    fn new_answers_in_the_language_of_the_locale() {
+        let fx = fixture(Locale::Ru);
+        let dir = format!("{}/demo", fx.root);
+        assert_eq!(
+            said(create_here(&fx, &["demo"])).0,
+            format!("создан {dir} — подключить: tagents plugin add {dir}\n")
+        );
+        assert_eq!(
+            said(create_here(&fx, &["demo"])).1,
+            format!("{dir} существует и не пуст\n")
+        );
+    }
+
+    #[test]
+    fn a_failed_write_leaves_the_target_as_empty_as_it_was_and_hands_the_call_to_node() {
+        for fail_at in 0..5 {
+            let fx = fixture(Locale::En);
+            let texts = Texts::load(Locale::En).unwrap();
+            let calls = std::cell::Cell::new(0);
+            // The step that fails has written its file by then, as a write that stops half way has.
+            let put = |path: &str, body: &str| {
+                let n = calls.get();
+                calls.set(n + 1);
+                write_file(path, body)?;
+                if n == fail_at {
+                    return Err(io::Error::from_raw_os_error(28));
+                }
+                Ok(())
+            };
+            let dir = format!("{}/demo", fx.root);
+            fs::create_dir(&dir).unwrap();
+            assert_eq!(
+                create(&words(&["demo"]), &fx.setting, &texts, &put),
+                None,
+                "{fail_at}"
+            );
+            assert_eq!(calls.get(), fail_at + 1, "it stopped at the failure");
+            assert_eq!(
+                tree(&dir),
+                Vec::<String>::new(),
+                "step {fail_at} left something"
+            );
+        }
+    }
+
+    #[test]
+    fn what_node_words_is_handed_over_before_a_write() {
+        let fx = fixture(Locale::En);
+        // The target is a file, or a link to nowhere, or below a file: node fails with the system's text.
+        fs::write(format!("{}/a-file", fx.root), "x").unwrap();
+        std::os::unix::fs::symlink(
+            format!("{}/nowhere", fx.root),
+            format!("{}/dangling", fx.root),
+        )
+        .unwrap();
+        for args in [
+            &["x", "--dir", "a-file"][..],
+            &["x", "--dir", "a-file/below"],
+            &["x", "--dir", "dangling"],
+            &["x", "--bogus"],
+            &["x", "--dir"],
+            &["x", "--dir", "-d"],
+            &["x", "-d", "y"],
+            &["x", "--name", "y"],
+        ] {
+            assert_eq!(create_here(&fx, args), None, "{args:?}");
+        }
+        let mut no_core = fixture(Locale::En);
+        no_core.setting.core_dir = None;
+        assert_eq!(create_here(&no_core, &["demo"]), None);
+        assert!(!Path::new(&format!("{}/demo", no_core.root)).exists());
+        // What is refused is refused without it: nothing is written and nothing needs the root.
+        assert_eq!(said(create_here(&no_core, &["a b"])).2, 2);
     }
 }

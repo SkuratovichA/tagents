@@ -138,7 +138,7 @@
       },
       "required": [],
       "summary": "summaryPluginNew",
-      "impl": "node",
+      "impl": "rust",
       "effect": "write"
     },
     {

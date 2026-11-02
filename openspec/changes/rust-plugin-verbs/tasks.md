@@ -72,9 +72,9 @@ Where (a) differs from the wording above, each in one line:
 
 ## 9. plugin new
 
-- [ ] 9.1 `plugin::new` in `plugin.rs`: the name check (exit 2), `--dir` through `node::resolve`, a target that holds anything refused with `pluginTargetExists` (exit 3), an empty or missing one accepted, the five files written in order, `pluginScaffolded`, the undo of D3 on a failed write, and a hand-over for a target that cannot be listed; not yet called by `run` (`cargo test -p tagents-core plugin::`)
-- [ ] 9.2 Unit tests with an injected failing writer for the undo of `plugin new`, and for the refusal of a non-empty target and the acceptance of an empty one (`cargo test -p tagents-core plugin::`)
-- [ ] 9.3 `new` wired into `plugin::run` and `"impl": "rust"` for `["plugin", "new"]` in `spec/cli/tagents-core.json`; `pnpm plugin:gen` and `pnpm plugin:check` show no diff, `cargo test -p tagents-core --test front_door` passes
+- [x] 9.1 `plugin::new` in `plugin.rs`: the name check (exit 2), `--dir` through `node::resolve`, a target that holds anything refused with `pluginTargetExists` (exit 3), an empty or missing one accepted, the five files written in order, `pluginScaffolded`, the undo of D3 on a failed write, and a hand-over for a target that cannot be listed; not yet called by `run` (`cargo test -p tagents-core plugin::`)
+- [x] 9.2 Unit tests with an injected failing writer for the undo of `plugin new`, and for the refusal of a non-empty target and the acceptance of an empty one (`cargo test -p tagents-core plugin::`)
+- [x] 9.3 `new` wired into `plugin::run` and `"impl": "rust"` for `["plugin", "new"]` in `spec/cli/tagents-core.json`; `pnpm plugin:gen` and `pnpm plugin:check` show no diff, `cargo test -p tagents-core --test front_door` passes
 - [ ] 9.4 The parity scenarios of design D10 for `new`, including the directory that is a file and the unwritable parent, with the tree compared by path, bytes and mode (`bash tests/rust-plugin-parity.sh`, exit 0)
 
 ## 10. doctor
