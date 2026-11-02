@@ -681,12 +681,7 @@ update() {
 #                8 reqs 9 in 10 cw5 11 cw1h 12 cr 13 out 14 maxctx 15 lastctx
 # (15 is absent from rows an older version wrote; see fold_rows)
 
-# A calendar day as an epoch: its midnight, or the given time of day, at the UTC
-# offset daykey buckets rows with (today's, in the awk below), so the first and the
-# last row of a window are the days it names even across a change of the clocks.
-# BSD date wants the format spelt out and GNU date parses the text, so each is
-# tried in that order, in UTC; the round trip through the date rejects a day that
-# does not exist, which both would otherwise roll into the next month (2026-02-30).
+# A calendar day as an epoch: its midnight, or the given time of day, at the UTC offset daykey buckets rows with (today's, in the awk below), so the first and the last row of a window are the days it names even across a change of the clocks. BSD date wants the format spelt out and GNU date parses the text, so each is tried in that order, in UTC; the round trip through the date rejects a day that does not exist, which both would otherwise roll into the next month (2026-02-30).
 day_epoch() {
   local d=$1 t=${2:-00:00:00} e back z off
   case $d in
@@ -704,12 +699,7 @@ day_epoch() {
   printf '%s' "$(( e - off ))"
 }
 
-# The first instant of a window, as an epoch. `month` is spelt out because the
-# suffix space is taken: *m already means minutes, and silently re-reading "1m"
-# as a month would change what every existing caller asks for. A duration
-# reaches back from now, a date starts at its midnight, and anything else
-# fails: an unknown word is an error, not shell arithmetic that would make
-# `--since yesterday` mean "now".
+# The first instant of a window, as an epoch. `month` is spelt out because the suffix space is taken: *m already means minutes, and silently re-reading "1m" as a month would change what every existing caller asks for. A duration reaches back from now, a date starts at its midnight, and anything else fails: an unknown word is an error, not shell arithmetic that would make `--since yesterday` mean "now".
 since_cut() {
   local v=$1 n=$1 unit=1
   case $v in
@@ -723,8 +713,7 @@ since_cut() {
   printf '%s' "$(( ${NOW:-$(date +%s)} - 10#$n * unit ))"
 }
 
-# The last instant of a window. An all-digit value is an epoch, which is what
-# the dashboard sends; a date is the end of that day.
+# The last instant of a window. An all-digit value is an epoch, which is what the dashboard sends; a date is the end of that day.
 until_cut() {
   case $1 in
     '')                return 1 ;;
@@ -992,10 +981,7 @@ meter_fetch() {  # <account> — one GET, one row, never more than one of either
   if [ "$pct" -ge 90 ] && [ "$ttl" -gt 300 ]; then ttl=300; fi
   meter_put "$acct" "$used" "$lim" "$now" ok "$((now + ttl))" || return 1
 
-  # The meter prices the month; the factor makes --daily and the sparkline agree
-  # with it. calibrate() derives the factor from the meter's reading as it does
-  # from one a human types. A refusal is a note on stderr, not a failure: the
-  # row is good even when the ratio it implies is not a price.
+  # The meter prices the month; the factor makes --daily and the sparkline agree with it. calibrate() derives the factor from the meter's reading as it does from one a human types. A refusal is a note on stderr, not a failure: the row is good even when the ratio it implies is not a price.
   calibrate "$acct" "$used" >/dev/null
   return 0
 }
@@ -1181,11 +1167,7 @@ AWK_FMT='
   # A share of nothing is 0%, not a division by zero: a week with no usage, or a
   # window of nothing but zero-token placeholder requests, is a total of 0.
   function pct(v, of) { return (of > 0) ? 100*v/of : 0 }
-  # claude-opus-5 and claude-haiku-4-5-20251001 read as opus-5 and haiku-4-5. Not
-  # shortmodel of lib/tagents/list.sh, which makes opus5 and haiku4.5 for a column
-  # of a few characters: a table here has room for the whole name, and the
-  # documentation and the specs print opus-5. Section 28 of tests/tusage.sh pins
-  # what each makes of the same names.
+  # claude-opus-5 and claude-haiku-4-5-20251001 read as opus-5 and haiku-4-5. Not shortmodel of lib/tagents/list.sh, which makes opus5 and haiku4.5 for a column of a few characters: a table here has room for the whole name, and the documentation and the specs print opus-5. Section 28 of tests/tusage.sh pins what each makes of the same names.
   function short_model(m) {
     sub(/^claude-/, "", m)
     if (m ~ /-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$/) m = substr(m, 1, length(m) - 9)
@@ -1225,19 +1207,14 @@ AWK_DAY='
   }
 '
 
-# Text measured in characters: macOS awk counts bytes, so a "⑂", a "…" or a
-# Cyrillic letter would eat two or three of the columns a pad meant to fill. Copies
-# of uclen, which awk text cannot import: lib/tagents/dash.sh, list.sh and
-# timeline.sh. Section 28 of tests/tusage.sh runs the four on the same texts.
+# Text measured in characters: macOS awk counts bytes, so a "⑂", a "…" or a Cyrillic letter would eat two or three of the columns a pad meant to fill. Copies of uclen, which awk text cannot import: lib/tagents/dash.sh, list.sh and timeline.sh. Section 28 of tests/tusage.sh runs the four on the same texts.
 AWK_TEXT='
   function uclen(s,   i, n, c) { n = 0
     for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
       if (c >= "\200" && c <= "\277") continue; n++ }
     return n }
   function upad(s, w,   n) { n = uclen(s); return (w > n) ? s sprintf("%" (w-n) "s", "") : s }
-  # The first n characters of s: a copy of uclip in lib/tagents/list.sh and timeline.sh,
-  # which awk text cannot import and which this file must run without. Section 28 of
-  # tests/tusage.sh runs the two on the same inputs.
+  # The first n characters of s: a copy of uclip in lib/tagents/list.sh and timeline.sh, which awk text cannot import and which this file must run without. Section 28 of tests/tusage.sh runs the two on the same inputs.
   function utrunc(s, n,   i, c, k, r) { k = 0; r = ""
     for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
       if (c < "\200" || c > "\277") { if (k == n) break; k++ }
@@ -1245,21 +1222,12 @@ AWK_TEXT='
     return r }
 '
 
-# A directory as the tables show it: the home is a tilde, and so is the start of a
-# path under it, which is the home and then a slash (/Users/ab/x is not under
-# /Users/a). Needs -v home. Copies, which awk text cannot import: tilde in
-# lib/tagents/list.sh, closed.sh and timeline.sh, and tilde_of in
-# lib/tagents/core.sh (bash). Section 28 of tests/tusage.sh runs them on the
-# same paths.
+# A directory as the tables show it: the home is a tilde, and so is the start of a path under it, which is the home and then a slash (/Users/ab/x is not under /Users/a). Needs -v home. Copies, which awk text cannot import: tilde in lib/tagents/list.sh, closed.sh and timeline.sh, and tilde_of in lib/tagents/core.sh (bash). Section 28 of tests/tusage.sh runs them on the same paths.
 AWK_TILDE='
   function tilde(p) { return (home != "" && (p == home || index(p, home "/") == 1)) ? "~" substr(p, length(home) + 1) : p }
 '
 
-# --account and --project narrow every report by the same means: the rows that
-# stay are written to a file of their own, FACTS points at it, and the report
-# reads it as it reads the index. No report has a filter of its own, so none
-# can disagree about what a filter means, and a call with no filter reads the
-# index itself.
+# --account and --project narrow every report by the same means: the rows that stay are written to a file of their own, FACTS points at it, and the report reads it as it reads the index. No report has a filter of its own, so none can disagree about what a filter means, and a call with no filter reads the index itself.
 FILTERED=""
 have_index() { [ -s "$FACTS" ] || [ -n "$FILTERED" ]; }  # an empty answer is not a missing index
 filter_facts() {
@@ -1283,10 +1251,7 @@ filter_facts() {
       if (sess != "" && $3 != sess) next
       if (na) { x = ($3 in ACC) ? ACC[$3] : "?"; if (!(x in WANTA)) next }
       if (np) {
-        # the path as the tables show it (~/git/x); a text that starts with a slash is
-        # a path, which is what a shell hands over for ~/git/x, and it is matched in
-        # full (/Users/me/git/x) too. Any other text is not looked for in the home
-        # directory, which every full path holds.
+        # the path as the tables show it (~/git/x); a text that starts with a slash is a path, which is what a shell hands over for ~/git/x, and it is matched in full (/Users/me/git/x) too. Any other text is not looked for in the home directory, which every full path holds.
         p = ($2 in PD) ? PD[$2] : tolower($2); r = ($2 in RD) ? RD[$2] : p; ok = 0
         for (i = 1; i <= np; i++) if (index(p, WP[i]) || (substr(WP[i], 1, 1) == "/" && index(r, WP[i]))) { ok = 1; break }
         if (!ok) next
@@ -1299,18 +1264,9 @@ filter_facts() {
 # ---------------------------------------------------------------------------
 # tagents, when it is there
 # ---------------------------------------------------------------------------
-# A session is called what it was named in tagents, and an account what the
-# tagents config calls it. Both live in lib/tagents/, beside this file in a
-# checkout and nowhere else. Reading the index needs none of it, so without that
-# directory every name is an id, every account is a discovered one, and no
-# report fails for it. The modules are sourced in a subshell with its standard
-# error discarded: a module that prints, or a config the parser refuses, is not
-# tusage's output.
+# A session is called what it was named in tagents, and an account what the tagents config calls it. Both live in lib/tagents/, beside this file in a checkout and nowhere else. Reading the index needs none of it, so without that directory every name is an id, every account is a discovered one, and no report fails for it. The modules are sourced in a subshell with its standard error discarded: a module that prints, or a config the parser refuses, is not tusage's output.
 
-# lib/tagents/ beside the real file, found by following the symlinks by hand
-# (macOS ships no readlink -f). The loop is the one in ./tagents, word for word,
-# and tests/tusage.sh compares the two. Sets TA_LIB; fails when the modules are
-# not there.
+# lib/tagents/ beside the real file, found by following the symlinks by hand (macOS ships no readlink -f). The loop is the one in ./tagents, word for word, and tests/tusage.sh compares the two. Sets TA_LIB; fails when the modules are not there.
 tu_lib() {
   local ta_real ta_link
   ta_real=${BASH_SOURCE[0]}
@@ -1331,9 +1287,7 @@ tu_lib() {
   [ -r "$TA_LIB/core.sh" ] && [ -r "$TA_LIB/names.sh" ] && [ -r "$TA_LIB/state.sh" ]
 }
 
-# Run a function of this file with the names modules loaded. Its answer is on
-# standard output; nothing is printed and the status is 1 when the modules are
-# not found.
+# Run a function of this file with the names modules loaded. Its answer is on standard output; nothing is printed and the status is 1 when the modules are not found.
 with_names() {  # <function> [args…]
   tu_lib || return 1
   # shellcheck disable=SC1091  # the dashboard modules sit beside the script, found at run time
@@ -1344,12 +1298,7 @@ with_names() {  # <function> [args…]
 
 name_files() { printf '%s\n%s\n' "$LABELS" "$TITLES"; }
 
-# stdin: sid<TAB>project slug, one session per line. Prints S<TAB>sid<TAB>name
-# for each that has a name, by the rule of the dashboard: the name typed for it
-# (the first line for its id in labels.tsv, where an empty name is no name),
-# else the title in the cache, else the title of its transcript. That one is
-# read at most once: title_of is the only writer of title.tsv, atomically, and
-# it re-reads a transcript that has no title only after the transcript grew.
+# stdin: sid<TAB>project slug, one session per line. Prints S<TAB>sid<TAB>name for each that has a name, by the rule of the dashboard: the name typed for it (the first line for its id in labels.tsv, where an empty name is no name), else the title in the cache, else the title of its transcript. That one is read at most once: title_of is the only writer of title.tsv, atomically, and it re-reads a transcript that has no title only after the transcript grew.
 names_of_sessions() {
   local sid slug haslabel hit hsz nm tr
   set --
@@ -1373,19 +1322,13 @@ names_of_sessions() {
       { print $1, $2, ($1 in HL) + 0, TH[$1], TZ[$1] }' "$@" -)
 }
 
-# S lines for the session rows of a node file: only the rows the table prints,
-# so a session cut by --top is never looked at.
+# S lines for the session rows of a node file: only the rows the table prints, so a session cut by --top is never looked at.
 session_names() {  # <nodes file>
   LC_ALL=C awk -F"$TAB" '$1 == "N" && $3 == "session" { print $4 "\t" $17 }' "$1" |
     with_names names_of_sessions
 }
 
-# The accounts of the tagents config, for a terminal. The dashboard hands tusage
-# TU_ACCOUNTS and TU_ACCOUNT_RULES through usage_env; a hand-typed tusage asks
-# the same function, so it names the accounts the dashboard does. A TU_ACCOUNTS
-# set by hand wins and the config is not read; so does a TU_ACCOUNT_RULES. With
-# no config, or a config with no profiles, nothing is set and the discovery in
-# account_dirs stays.
+# The accounts of the tagents config, for a terminal. The dashboard hands tusage TU_ACCOUNTS and TU_ACCOUNT_RULES through usage_env; a hand-typed tusage asks the same function, so it names the accounts the dashboard does. A TU_ACCOUNTS set by hand wins and the config is not read; so does a TU_ACCOUNT_RULES. With no config, or a config with no profiles, nothing is set and the discovery in account_dirs stays.
 ensure_accounts() {
   local got accts rules
   [ -z "${TU_ACCOUNTS:-}" ] || return 0
@@ -1402,9 +1345,7 @@ ensure_accounts() {
   return 0
 }
 
-# A session's name as the lookup has it: the typed one (the first line for its
-# id in labels.tsv; an empty one is none), else a title in the cache. Spliced
-# into the programs below, which pass the two files as -v lab and -v tit.
+# A session's name as the lookup has it: the typed one (the first line for its id in labels.tsv; an empty one is none), else a title in the cache. Spliced into the programs below, which pass the two files as -v lab and -v tit.
 # shellcheck disable=SC2016  # awk source, $1 and $2 are awk fields
 AWK_NAME='
   FILENAME == lab { if (!($1 in HL)) { HL[$1] = 1; LN[$1] = $2 }; next }
@@ -1417,10 +1358,7 @@ AWK_NAME='
   }
 '
 
-# The sessions a text names by one rule, "sid<TAB>name" each, in index order.
-# The rules, in turn: id (the whole id, else the start of one) and name (the
-# whole name, else part of it, any case). The first step that matches anything
-# is the answer. --account keeps those accounts' sessions. No transcript is read.
+# The sessions a text names by one rule, "sid<TAB>name" each, in index order. The rules, in turn: id (the whole id, else the start of one) and name (the whole name, else part of it, any case). The first step that matches anything is the answer. --account keeps those accounts' sessions. No transcript is read.
 session_hits() {  # <text> id|name [labels file] [titles file]
   local x=$1 rule=$2 lab=${3:-} tit=${4:-}
   [ -s "$META" ] || return 0
@@ -1475,8 +1413,7 @@ session_list() {  # <text> <hit ids, one per line> [labels file] [titles file]
     }' - "$@" "$FACTS" >&2
 }
 
-# labels.tsv and title.tsv where the names modules keep them, as NAME_LAB and
-# NAME_TIT; both empty when the modules are not there.
+# labels.tsv and title.tsv where the names modules keep them, as NAME_LAB and NAME_TIT; both empty when the modules are not there.
 NAME_LAB=""; NAME_TIT=""; NAME_PATHS=""
 name_paths() {
   local paths
@@ -1486,12 +1423,7 @@ name_paths() {
   { IFS= read -r NAME_LAB; IFS= read -r NAME_TIT; } <<<"$paths"
 }
 
-# --session's text becomes the full id, or the run ends: 1 when nothing has that
-# id or name, 3 when several do. A text no id starts with is looked up as a name,
-# whatever it is made of: a session can be called feed or 2026-11-02. The one
-# exception is a whole id (8-4-4-4-12 hex digits, the shape the dashboard sends)
-# that the index lacks: it is an id that has aged out of the index, not a name, so
-# it is no error and the detail of a session with no usage is empty.
+# --session's text becomes the full id, or the run ends: 1 when nothing has that id or name, 3 when several do. A text no id starts with is looked up as a name, whatever it is made of: a session can be called feed or 2026-11-02. The one exception is a whole id (8-4-4-4-12 hex digits, the shape the dashboard sends) that the index lacks: it is an id that has aged out of the index, not a name, so it is no error and the detail of a session with no usage is empty.
 resolve_session() {
   local hits sidshape=0 re='^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$'
   [ -s "$FACTS" ] || return 0
@@ -1505,9 +1437,7 @@ resolve_session() {
   esac
 }
 
-# The heading of a table of one session, as the H record by_render prints it:
-# the name the session has in the other tables (none when it has none), its full
-# id, its account and its project directory.
+# The heading of a table of one session, as the H record by_render prints it: the name the session has in the other tables (none when it has none), its full id, its account and its project directory.
 session_head() {  # <full session id>
   local sid=$1 slug acct dir nm
   { slug_map | sed 's/^/P\t/'; account_map | sed 's/^/A\t/'; sed 's/^/S\t/' "$META"; } |
@@ -1524,9 +1454,7 @@ session_head() {  # <full session id>
 # ---------------------------------------------------------------------------
 # --by: one aggregation pass, one render pass
 # ---------------------------------------------------------------------------
-# by_aggregate reads facts.tsv once and prints a stream of nodes; by_render
-# turns the stream into a table. --tsv stops after the first pass, so a script
-# and the tests read exact numbers instead of a padded table.
+# by_aggregate reads facts.tsv once and prints a stream of nodes; by_render turns the stream into a table. --tsv stops after the first pass, so a script and the tests read exact numbers instead of a padded table.
 #
 # The stream, one tab-separated line each:
 #   W  first day  last day  sessions that belong to no account
@@ -1534,8 +1462,7 @@ session_head() {  # <full session id>
 #   N  depth  dimension  key  reqs  in  out  cwrite  cread  usd  unpriced  first  last  days  models  more models  slug
 #   R  as N, for the "… n more" row: its key is the count of rows it sums
 #   T  as N, for the total: depth 0
-# Depth is 1 for the first dimension. Rows come depth first, children after
-# their parent, each parent's children in the order the table prints them.
+# Depth is 1 for the first dimension. Rows come depth first, children after their parent, each parent's children in the order the table prints them.
 by_aggregate() {  # <dimensions, comma list> <cut> <upto> table|tsv
   local dims=$1 cut=$2 upto=$3 mode=$4 withacct=0
   case ",$dims," in *,account,*) withacct=1 ;; esac
@@ -1555,8 +1482,7 @@ by_aggregate() {  # <dimensions, comma list> <cut> <upto> table|tsv
       }
       ROOT = "0"
     }
-    # The key of the current row for one dimension. A week is its Monday: day
-    # number 0 was a Thursday, so (day + 3) mod 7 counts days since Monday.
+    # The key of the current row for one dimension. A week is its Monday: day number 0 was a Thursday, so (day + 3) mod 7 counts days since Monday.
     function rowkey(name, dk,   a) {
       if (name == "account") { a = ($3 in ACC) ? ACC[$3] : "?"; if (a == "?") UNPL[$3] = 1; return a }
       if (name == "project") return ($2 in PD) ? PD[$2] : $2
@@ -1579,8 +1505,7 @@ by_aggregate() {  # <dimensions, comma list> <cut> <upto> table|tsv
     {
       d = usd($7, $1 + 0, $9, $10, $11, $12, $13)
       u = 0
-      # A request on an unrated model is a hole in the bill only when it spent
-      # something: the zero-token "<synthetic>" placeholder is not one.
+      # A request on an unrated model is a hole in the bill only when it spent something: the zero-token "<synthetic>" placeholder is not one.
       if (d < 0) { d = 0; if ($9 + $10 + $11 + $12 + $13 > 0) u = $8 + 0 }
       dk = daykey($1)
       if (!NC || dk < MINDK) MINDK = dk
@@ -1592,11 +1517,7 @@ by_aggregate() {  # <dimensions, comma list> <cut> <upto> table|tsv
       CU[id] += d; CP[id] += u
       if (!($3 in SLUGOF)) SLUGOF[$3] = $2
     }
-    # Children of a node go out in the order a table prints them. Time runs
-    # oldest first unless --sort cost; everything else is dearest first, and a
-    # tie is broken by the key, so two runs print the same rows. Dollars are
-    # compared at the millionth, where the order of the additions has stopped
-    # mattering.
+    # Children of a node go out in the order a table prints them. Time runs oldest first unless --sort cost; everything else is dearest first, and a tie is broken by the key, so two runs print the same rows. Dollars are compared at the millionth, where the order of the additions has stopped mattering.
     function before(x, y,   ux, uy) {
       if (!SORTTIME) {
         ux = int(NU[x] * 1000000 + 0.5); uy = int(NU[y] * 1000000 + 0.5)
@@ -1707,9 +1628,7 @@ by_aggregate() {  # <dimensions, comma list> <cut> <upto> table|tsv
     }'
 }
 
-# How wide a table may be: COLUMNS when that is a number, else the width of the
-# controlling terminal (tty_cols of lib/tagents/core.sh) when standard output is
-# one, else 120, which is also the answer when lib/tagents is not beside this file.
+# How wide a table may be: COLUMNS when that is a number, else the width of the controlling terminal (tty_cols of lib/tagents/core.sh) when standard output is one, else 120, which is also the answer when lib/tagents is not beside this file.
 out_width() {
   local w=""
   case ${COLUMNS:-} in ''|*[!0-9]*|0) ;; *) w=$COLUMNS ;; esac
@@ -1718,8 +1637,7 @@ out_width() {
   echo "$w"
 }
 
-# The table. The nodes arrive on standard input; <title> is the dimensions as
-# the first line names them.
+# The table. The nodes arrive on standard input; <title> is the dimensions as the first line names them.
 by_render() {  # <dimensions, comma list> <title>
   LC_ALL=C awk -F"$TAB" -v dims="$1" -v title="$2" -v factors="$(factor_arg)" \
       -v width="$(out_width)" -v compact="$COMPACT" -v color="$COLOR_ON" \
@@ -1774,11 +1692,9 @@ by_render() {  # <dimensions, comma list> <title>
       return MD[i] (MO[i] > 0 ? " +" MO[i] : "")
     }
     function fit(s, c) { return (c == "span" || c == "models") ? sprintf("%-" W[c] "s", s) : sprintf("%" W[c] "s", s) }
-    # A line of the table in a style: colour wraps the padded line, so it never
-    # changes a width.
+    # A line of the table in a style: colour wraps the padded line, so it never changes a width.
     function out(s, style) { sub(/ +$/, "", s); print (color && style != "") ? style s R : s }
-    # The label of row i, cut to lim characters. A named session is cut in its
-    # name and keeps its eight id characters; an unnamed one is its id.
+    # The label of row i, cut to lim characters. A named session is cut in its name and keeps its eight id characters; an unnamed one is its id.
     function fitlabel(i, lim,   t, ind, room) {
       t = label(i)
       if (uclen(t) <= lim || TY[i] != "N") return t
@@ -1794,8 +1710,7 @@ by_render() {  # <dimensions, comma list> <title>
     function drop(c,   j, k) {
       for (j = 1; j <= nc; j++) if (COLS[j] == c) { for (k = j; k < nc; k++) COLS[k] = COLS[k + 1]; nc--; return }
     }
-    # A line that is longer than the table may be is broken at spaces, the lines
-    # after the first indented by two. One that fits is printed as it is.
+    # A line that is longer than the table may be is broken at spaces, the lines after the first indented by two. One that fits is printed as it is.
     function note(s,   m, w, line, wd) {
       if (uclen(s) <= width) { print s; return }
       m = split(s, wd, " "); line = ""
@@ -1823,8 +1738,7 @@ by_render() {  # <dimensions, comma list> <title>
         if (UP[i] > 0) FLOOR = 1
         for (j = 1; j <= nc; j++) { t = cell(COLS[j], i); X[i, COLS[j]] = t; if (length(t) > W[COLS[j]]) W[COLS[j]] = length(t) }
       }
-      # Columns go in a fixed order until the label has room for 24 characters.
-      # The label, total, dollars and share stay, whatever the width.
+      # Columns go in a fixed order until the label has room for 24 characters. The label, total, dollars and share stay, whatever the width.
       nx = split("models span days input cwrite cread output reqs", DROPS, " ")
       for (j = 1; j <= nx && width - used() < 24; j++) drop(DROPS[j])
       lim = width - used(); if (lim < 5) lim = 5
@@ -1858,8 +1772,7 @@ by_render() {  # <dimensions, comma list> <title>
 report_by() {  # <the --by list> <cut> <upto>
   local dims=$1 cut=$2 upto=$3 all=$1 nodes rc
   have_index || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
-  # --breakdown is one more dimension under the deepest one, unless the model
-  # is a dimension already.
+  # --breakdown is one more dimension under the deepest one, unless the model is a dimension already.
   case ",$dims," in *,model,*) ;; *) [ "$BREAKDOWN" = 1 ] && all="$dims,model" ;; esac
   if [ "$TSV" = 1 ]; then by_aggregate "$all" "$cut" "$upto" tsv; return; fi
   nodes=$(mktemp "${TMPDIR:-/tmp}/tusage.by.XXXXXX") || return 1
@@ -1876,15 +1789,7 @@ report_by() {  # <the --by list> <cut> <upto>
 
 # sid, cost, reqs, ctx, last_ts, slug, subagent_cost, live_subagents, cost_5h,
 #   model, usd, usd_5h, usd_subagent, unpriced
-# ctx is the context of the session's newest main-chain request (agent id "-"),
-# the number that says "this session is fat, compact it". It is not the largest
-# context of the last hour, which answers a different question: "how big did this
-# chat get". After a /compact that would keep showing the size from before the
-# compaction for up to an hour, and a subagent's own large context could show as
-# the session's. A session that has made no main-chain request in the window
-# reports 0. The newest request is the one of the newest bucket, and of the later
-# row when two rows share a bucket; a row from an index that predates the lastctx
-# column falls back to its maxctx (see fold_rows).
+# ctx is the context of the session's newest main-chain request (agent id "-"), the number that says "this session is fat, compact it". It is not the largest context of the last hour, which answers a different question: "how big did this chat get". After a /compact that would keep showing the size from before the compaction for up to an hour, and a subagent's own large context could show as the session's. A session that has made no main-chain request in the window reports 0. The newest request is the one of the newest bucket, and of the later row when two rows share a bucket; a row from an index that predates the lastctx column falls back to its maxctx (see fold_rows).
 #
 # `model` is the session's CURRENT model — the one the newest row was billed at,
 # which is what a status line should show. The dollar figures are emphatically
@@ -2027,8 +1932,7 @@ session_detail() {
 
 summary() {
   local now top names
-  # One reading of the clock: the windows count from it, and so does the cut of
-  # the heaviest sessions (since_cut and sessions read NOW).
+  # One reading of the clock: the windows count from it, and so does the cut of the heaviest sessions (since_cut and sessions read NOW).
   NOW=$(date +%s); now=$NOW
   have_index || { echo "tusage: no data yet — run 'tusage --rebuild'" >&2; return 1; }
   { slug_map | sed 's/^/P\t/'; account_map | sed 's/^/A\t/'; cat "$FACTS"; } |
@@ -2039,8 +1943,7 @@ summary() {
     $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
     {
       c = cost($9,$10,$11,$12,$13); age = now - ($1 + 0)
-      # A request on an unrated model is a hole in the bill only when it spent
-      # something: the zero-token "<synthetic>" placeholder is not one.
+      # A request on an unrated model is a hole in the bill only when it spent something: the zero-token "<synthetic>" placeholder is not one.
       d = usd($7, $1 + 0, $9, $10, $11, $12, $13); u = 0; spent = ($9 + $10 + $11 + $12 + $13 > 0)
       if (d < 0) { d = 0; u = spent }
       if (age <= 18000) { W5 += c; W5R += $8; W5D += d; W5U += u; if ($14 + 0 > W5X) W5X = $14 + 0 }
@@ -2057,8 +1960,7 @@ summary() {
         TREQ += $8
       }
     }
-    # A dollar cell: right-aligned, with a "*" after it when a request in the
-    # window had no rate, so the digits of every line stay under each other.
+    # A dollar cell: right-aligned, with a "*" after it when a request in the window had no rate, so the digits of every line stay under each other.
     function dollars(x, u) { return sprintf("%8s%s", money(x), u > 0 ? "*" : " ") }
     # The account that comes first: the dearer one, the name when they tie.
     function acct_before(x, y,   ux, uy) {
@@ -2163,9 +2065,7 @@ json() {
 
 # ---------------------------------------------------------------------------
 
-# One DIM holds the report that runs. The session, the dimensions and the
-# filters are held apart from it, so the order of the flags decides nothing:
-# `--session X --by day` and `--by day --session X` are the same report.
+# One DIM holds the report that runs. The session, the dimensions and the filters are held apart from it, so the order of the flags decides nothing: `--session X --by day` and `--by day --session X` are the same report.
 NOW=""; SINCE=""; UNTIL=""; DIM=""; DO_UPDATE=1; CAL_ACCT=""; CAL_AMT=""; CAL_AT=""
 MET_REFRESH=0; MET_FORCE=0
 BYLIST=""; SESSION=""; ACCTS=""; PROJS=""; BREAKDOWN=0; TOPN=12; SORT=""
@@ -2215,8 +2115,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Every value is checked before the index is touched: a typo prints a plain
-# message and exits 2, never a plausible table of the wrong thing.
+# Every value is checked before the index is touched: a typo prints a plain message and exits 2, never a plausible table of the wrong thing.
 DIMS=()
 check_by() {
   local d seen=" "
@@ -2252,8 +2151,7 @@ check_accounts() {
 case "$TOPN" in ''|*[!0-9]*) die_usage "--top wants a number of rows, not $TOPN" ;; esac
 [ -z "$SORT" ] || [ "$SORT" = cost ] || die_usage "--sort accepts only cost, not $SORT"
 case "$COLOR" in auto|always|never) ;; *) die_usage "--color accepts auto, always or never, not $COLOR" ;; esac
-# Colour: only on a terminal, with NO_COLOR unset or empty and TERM not dumb;
-# --color always is an explicit request and wins over NO_COLOR.
+# Colour: only on a terminal, with NO_COLOR unset or empty and TERM not dumb; --color always is an explicit request and wins over NO_COLOR.
 COLOR_ON=0
 case "$COLOR" in
   always) COLOR_ON=1 ;;
@@ -2264,9 +2162,7 @@ else case "$DIM" in ""|__by|__daily|__meter|__calibrate) ensure_accounts ;; esac
 fi
 check_accounts
 
-# The window. A table by week or month, or of one session, reaches back as far
-# as the index does unless --since says otherwise: seven days is one row of a
-# week table, and the days of a session are not all in the last week.
+# The window. A table by week or month, or of one session, reaches back as far as the index does unless --since says otherwise: seven days is one row of a week table, and the days of a session are not all in the last week.
 wide_window() {
   [ "$DIM" = __detail ] && return 1
   [ -n "$SESSION" ] && return 0
@@ -2274,8 +2170,7 @@ wide_window() {
   case ",$BYLIST," in *,week,*|*,month,*) return 0 ;; esac
   return 1
 }
-# The reports with a window read the clock once, for the window and for the rows
-# that count the last hour and five; the others have no window to cut.
+# The reports with a window read the clock once, for the window and for the rows that count the last hour and five; the others have no window to cut.
 case "$DIM" in __sessions|__daily|__json|__by) NOW=$(date +%s) ;; esac
 if [ "${SINCE_SET:-0}" = 1 ]; then
   CUT=$(since_cut "$SINCE") || die_usage "bad --since value $SINCE"

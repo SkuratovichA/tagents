@@ -49,12 +49,7 @@ t() { printf '\n%s\n' "$1"; }
 # Local day of an epoch, whichever date(1) is installed.
 dayof() { date -r "$1" +%Y-%m-%d 2>/dev/null || date -d "@$1" +%Y-%m-%d; }
 
-# THE CLOCK. Section 5b and the meter sections divide a reading by the month to
-# date, and the fixture keeps the work account's older row two days behind its
-# newest, so both rows are in one month only from the 4th of it. This script and
-# tusage therefore read a date(1) that starts no earlier than the 4th, and
-# TU_TEST_NOW="YYYY-MM-DD HH:MM:SS" starts it at any other instant. Time keeps
-# flowing from there, so ages and timeouts still elapse.
+# THE CLOCK. Section 5b and the meter sections divide a reading by the month to date, and the fixture keeps the work account's older row two days behind its newest, so both rows are in one month only from the 4th of it. This script and tusage therefore read a date(1) that starts no earlier than the 4th, and TU_TEST_NOW="YYYY-MM-DD HH:MM:SS" starts it at any other instant. Time keeps flowing from there, so ages and timeouts still elapse.
 REAL_DATE=$(command -v date)
 epoch_of() { date -j -f '%Y-%m-%d %H:%M:%S' "$1" +%s 2>/dev/null || date -d "$1" +%s; }
 pinclock() {  # <dir> <epoch>: a date(1) in <dir>, for the front of a PATH, whose clock starts at that instant
@@ -84,8 +79,7 @@ T1=$(( T2 - 172800 ))              # two days back: a different local day under 
 D1=$(dayof "$T1"); D2=$(dayof "$T2")
 
 export TU_STATE="$ROOT/usage" TU_PROJECTS="$ROOT/projects"
-# The names of sessions and the account names come from tagents' own state and
-# config. Pointed at nothing, so no test reads the real ones whatever it runs.
+# The names of sessions and the account names come from tagents' own state and config. Pointed at nothing, so no test reads the real ones whatever it runs.
 export TA_STATE_DIR="$ROOT/ta-none" TA_CONFIG="$ROOT/no-such-config.toml"
 # THE METER IS OFF EXCEPT WHERE IT IS THE SUBJECT. --update fetches it now, and
 # a test suite must never ask the real keychain for a token or the real API for
@@ -264,12 +258,7 @@ export TU_STATE="$SAVE_STATE"
 # ---------------------------------------------------------------------------
 t "4c. what the report options leave alone: the bytes the dashboard reads"
 # ---------------------------------------------------------------------------
-# --sessions, --daily, --burn, --session <id> and --json are read by other
-# programs (state.sh, usage.sh, list.sh, preview.sh, closed.sh), so their bytes
-# are pinned against the fixture at the top of this file. A name typed in
-# tagents and a cached title are present, and neither may reach these outputs
-# or be rewritten by them. (No transcript is added: a new directory under
-# $TU_PROJECTS would make slug_map regenerate the fixture's projects.tsv.)
+# --sessions, --daily, --burn, --session <id> and --json are read by other programs (state.sh, usage.sh, list.sh, preview.sh, closed.sh), so their bytes are pinned against the fixture at the top of this file. A name typed in tagents and a cached title are present, and neither may reach these outputs or be rewritten by them. (No transcript is added: a new directory under $TU_PROJECTS would make slug_map regenerate the fixture's projects.tsv.)
 
 export TA_STATE_DIR="$ROOT/ta12"
 mkdir -p "$TA_STATE_DIR"
@@ -278,8 +267,7 @@ printf 's-pers\tCached Title\t100\n' >"$TA_STATE_DIR/title.tsv"
 sum12() { cksum "$TA_STATE_DIR/labels.tsv" "$TA_STATE_DIR/title.tsv" | tr '\n' ' '; ls "$TA_STATE_DIR" | tr '\n' ' '; }
 before12=$(sum12)
 
-# The bytes of the reports the dashboard reads, captured with printf %q so the
-# escape sequences are the ones the popups render.
+# The bytes of the reports the dashboard reads, captured with printf %q so the escape sequences are the ones the popups render.
 PIN_DETAIL_WORK=$'\E[1ms-work\E[0m  ?\n\E[90m  who                            cost        $    reqs   cwrite    cread      out\E[0m\n  · main                        6.0M    $30.0       5        0        0     1.0M\n\E[90m  TOTAL                          6.0M    $30.0\E[0m\nx'
 PIN_DETAIL_RULE=$'\E[1ms-rule\E[0m  ?\n\E[90m  who                            cost        $    reqs   cwrite    cread      out\E[0m\n  · main                        3.5M    $2.50       2     100k     1.0M     500k\n\E[90m  TOTAL                          3.5M    $2.50\E[0m\n\n\E[90m  model                          cost        $\E[0m\n  claude-opus-5                  500k    $2.50\n  claude-gizmo-9                 3.0M       $0  \E[33m(no published rate)\E[0m\n\E[33m  1 request(s) ran on a model with no published rate �\200\224 $ is a floor\E[0m\nx'
 SID_AGED=deadbeef-6d4e-4b0a-9c75-1e2f8a7b5d90   # a whole id, which is what the dashboard asks for
@@ -782,11 +770,7 @@ export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
 # ---------------------------------------------------------------------------
 t "13. a fixture for the report options: twelve sessions in two accounts"
 # ---------------------------------------------------------------------------
-# Fixed dates and TZ=UTC, so a window given as dates reads the same on any day
-# and in any zone. Sunday 2026-11-01 is the last day. Every figure expected
-# below is computed from the PRICES table by hand: opus-5 is 5/25, sonnet-5 is
-# 2/10, haiku-4-5 is 1/5; a 5m cache write is 1.25x and a read 0.1x the input
-# rate. The figures of a row are input, output, cache write and cache read.
+# Fixed dates and TZ=UTC, so a window given as dates reads the same on any day and in any zone. Sunday 2026-11-01 is the last day. Every figure expected below is computed from the PRICES table by hand: opus-5 is 5/25, sonnet-5 is 2/10, haiku-4-5 is 1/5; a 5m cache write is 1.25x and a read 0.1x the input rate. The figures of a row are input, output, cache write and cache read.
 
 FX="$ROOT/fx"; FXH="$FX/home"
 mkdir -p "$FX/usage" "$FX/projects" "$FX/ta" "$FX/acct/work" "$FX/acct/personal" "$FXH"
@@ -839,14 +823,7 @@ fxhist() { printf '{"display":"x","pastedContents":{},"timestamp":1000,"project"
 for s in 3f9a1c20 b72e90d4 c04d7be1 91ab44ee e5d1f0a7 5a1d2c33 6b2e3d44; do fxhist work $s; done
 for s in d8c3b615 0a6f7e92 7c3f4e55 8d4a5f66; do fxhist personal $s; done
 
-# One call of tusage on the fixture, with nothing of the real machine in reach.
-# The width is wide and colour is off unless a test says otherwise. FX_STATE
-# names another index and FX_PRICES another price table; FX_TA the tagents state
-# directory (names), FX_CONFIG the tagents config, FX_HOME the home, FX_ACCOUNTS
-# the TU_ACCOUNTS (empty is unset), FX_RULES the TU_ACCOUNT_RULES, FX_TU the
-# script to run and FX_SH the shell that runs it, FX_COLUMNS the COLUMNS (empty
-# is none), FX_NO_COLOR the NO_COLOR (empty is set but empty) and FX_PTY, when
-# set, runs it under a pseudo-terminal.
+# One call of tusage on the fixture, with nothing of the real machine in reach. The width is wide and colour is off unless a test says otherwise. FX_STATE names another index and FX_PRICES another price table; FX_TA the tagents state directory (names), FX_CONFIG the tagents config, FX_HOME the home, FX_ACCOUNTS the TU_ACCOUNTS (empty is unset), FX_RULES the TU_ACCOUNT_RULES, FX_TU the script to run and FX_SH the shell that runs it, FX_COLUMNS the COLUMNS (empty is none), FX_NO_COLOR the NO_COLOR (empty is set but empty) and FX_PTY, when set, runs it under a pseudo-terminal.
 pty() {  # <command...>: standard output is a terminal, standard input is empty
   { if [ "$PTY" = bsd ]; then script -q /dev/null "$@" </dev/null
     else script -qc "$(printf '%q ' "$@")" /dev/null </dev/null; fi; } 2>/dev/null |
@@ -915,8 +892,7 @@ contains "...all of them" "personal" "$out"
 ok "--account ? is accepted" 0 "$(fxrc --by day --account '?' $W)"
 ok "--account with a comma list is accepted" 0 "$(fxrc --by day --account work,personal $W)"
 ok "an unknown option exits 2" 2 "$(fxrc --by day --nonsense)"
-# A flag with no value exits 2: `shift 2` fails with one word left, and a parser
-# that carries on reads the same option again and again.
+# A flag with no value exits 2: `shift 2` fails with one word left, and a parser that carries on reads the same option again and again.
 for o in --by --since --until --account --project --top --sort --color --session; do
   out=$(fx "$o"); rc=$?
   ok "$o with no value exits 2" 2 "$rc"
@@ -964,11 +940,7 @@ ok "--since 5h, 3d, 30m and month parse" "0 0 0 0" \
 # ---------------------------------------------------------------------------
 t "16. the breakdown: exact figures, read through --tsv"
 # ---------------------------------------------------------------------------
-# The expected rows below come from a second program, written apart from the
-# awk of tusage, that prices the same twenty-one rows from the PRICES table.
-# A row is the keys of its dimensions, then requests, input, output, cache
-# write, cache read, dollars to six decimals, unpriced requests, the first and
-# the last day and the number of days.
+# The expected rows below come from a second program, written apart from the awk of tusage, that prices the same twenty-one rows from the PRICES table. A row is the keys of its dimensions, then requests, input, output, cache write, cache read, dollars to six decimals, unpriced requests, the first and the last day and the number of days.
 
 X_ACCT=$(cat <<'EOT'
 work	812	1730000	584000	9210000	110200000	117.590000	0	2026-10-28	2026-11-01	5
@@ -1190,8 +1162,7 @@ W2="--since 2026-10-20 --until 2026-10-20"
 tsv2() { fx2 --by "$@" --tsv; }
 
 D2="2026-10-20${TAB}2026-10-20"
-# 5-minute and 1-hour cache writes are one column. Opus at 5 dollars in: 1M
-# input is 5, 1M 5-minute writes 6.25 and 1M 1-hour writes 10.
+# 5-minute and 1-hour cache writes are one column. Opus at 5 dollars in: 1M input is 5, 1M 5-minute writes 6.25 and 1M 1-hour writes 10.
 ok "--by model: cache write is the 5- and the 1-hour writes together, each priced at its own rate" \
    "$(printf 'claude-opus-5\t10\t1000000\t0\t2000000\t0\t21.250000\t0\t%s\t1' "$D2")" \
    "$(tsv2 model $W2 | grep -F 'claude-opus-5')"
@@ -1282,8 +1253,7 @@ contains "...and the closing line counts it and says what places it" \
   "1 session belongs to no account: TU_ACCOUNT_RULES places a session by the directory it started in." "$out"
 lacks "...but a table with no account dimension has no such line" "belongs to no account" "$(fx --by project $W)"
 
-# A factor stored for work, under a price table the test sets: list price is
-# said at the end when the account is a row, and only then.
+# A factor stored for work, under a price table the test sets: list price is said at the end when the account is a row, and only then.
 FX_PRICES=$'claude-opus-5 5 25\nclaude-sonnet-5 2 10\nclaude-haiku-4-5 1 5\n'
 fpr=$(printf '%s' "$FX_PRICES" | tr -s ' \n' ' ' | cksum | tr -d ' ')
 printf 'work\t0.8\t1\t1\t%s\n' "$fpr" >"$FX/usage/factor.tsv"
@@ -1336,16 +1306,13 @@ ok "...and the path as the tables show it, with the tilde" \
    "$(tsv session --project BILLING $W)" "$(tsv session --project '~/git/work/billing-api' $W)"
 ok "...and a path that stops short of the end, written out in full, still matches" \
    "$(tsv session --project '~/git/work' $W)" "$(tsv session --project "$FXH/git/work" $W)"
-# The full path is matched only for a text that is a path (it starts with a slash, as
-# what a shell expands does). A word that is only in the home, the user name or a
-# directory above it, is in every project's full path and in none of the tables'.
+# The full path is matched only for a text that is a path (it starts with a slash, as what a shell expands does). A word that is only in the home, the user name or a directory above it, is in every project's full path and in none of the tables'.
 out=$(fx --by session --project "${FXH##*/}" $W); rc=$?
 ok "a word that is only in the home directory's path keeps nothing" "no data in this window|1" "$out|$rc"
 out=$(fx --by session --project "$(basename "$ROOT")" $W); rc=$?
 ok "...nor does a word from the directories above the home" "no data in this window|1" "$out|$rc"
 ok "--project twice keeps a row that matches either" "4" "$(tsv session --project billing --project probe $W | wc -l | tr -d ' ')"
-# Unlike --account, --project takes a comma as a character of the text: one project's
-# path may hold one, and two texts are two flags.
+# Unlike --account, --project takes a comma as a character of the text: one project's path may hold one, and two texts are two flags.
 F19C="$ROOT/fx19c"; mkdir -p "$F19C/usage"
 now19c=$(( $(date +%s) / 300 * 300 - 1800 ))
 { printf '%s\t-h-c\t%s\t-\t-\t-\tclaude-opus-5\t5\t1000000\t0\t0\t0\t0\t100\t100\n' "$now19c" "$(fxsid 3f9a1c20)"
@@ -1364,8 +1331,7 @@ ok "nothing left after the filters is an empty window, not a missing index" "no 
 ok "--project with no text exits 2" "2" "$(fxrc --by day --project '')"
 ok "--account with no name exits 2" "2" "$(fxrc --by day --account '')"
 
-# The summary and --burn read the clock, so they get rows of their own: one
-# work session and one personal session, spent half an hour ago.
+# The summary and --burn read the clock, so they get rows of their own: one work session and one personal session, spent half an hour ago.
 F4="$ROOT/fx4"; mkdir -p "$F4/usage" "$F4/projects/-h-x" "$F4/projects/-h-y"
 now4=$(( $(date +%s) / 300 * 300 - 1800 ))
 { printf '%s\t-h-x\t%s\t-\t-\t-\tclaude-opus-5\t5\t1000000\t0\t0\t0\t0\t100\t100\n' "$now4" "$(fxsid 3f9a1c20)"
@@ -1387,9 +1353,7 @@ lacks "...and drops the other's" "~/git/y" "$out"
 # ---------------------------------------------------------------------------
 t "20. sessions are named: a typed name, a title, or the eight characters"
 # ---------------------------------------------------------------------------
-# The names are the dashboard's: labels.tsv holds what was typed, title.tsv the
-# titles read from transcripts. A scratch state directory holds both, so nothing
-# of the real machine is read and no other section sees these files.
+# The names are the dashboard's: labels.tsv holds what was typed, title.tsv the titles read from transcripts. A scratch state directory holds both, so nothing of the real machine is read and no other section sees these files.
 
 TA20="$ROOT/ta20"; mkdir -p "$TA20"
 printf '%s\t%s\n' \
@@ -1504,8 +1468,7 @@ out=$(fx --session deadbeef); rc=$?
 ok "the start of an id that nothing has and no name holds exits 1" 1 "$rc"
 ok "...and says so" "tusage: no session called deadbeef" "$out"
 
-# A name can be hex digits and dashes and nothing else. A text is a name when no id
-# starts with it, and an id wins when one does.
+# A name can be hex digits and dashes and nothing else. A text is a name when no id starts with it, and an id wins when one does.
 ok "no session id starts with the hex-only names below" 0 \
    "$(cut -f1 "$FX/usage/sessions.tsv" | grep -c -e '^feed' -e '^cafe' -e '^42' -e '^2026-11-02')"
 TA20B="$ROOT/ta20b"; mkdir -p "$TA20B"
@@ -1536,9 +1499,7 @@ unset FX_TA
 # ---------------------------------------------------------------------------
 t "21. account names in a terminal: the tagents config, then discovery"
 # ---------------------------------------------------------------------------
-# TU_ACCOUNTS is unset in these runs (FX_ACCOUNTS empty). The configs are files
-# of a scratch directory named by TA_CONFIG; the home has a default account and
-# one more, discovered the way a terminal with no config would find them.
+# TU_ACCOUNTS is unset in these runs (FX_ACCOUNTS empty). The configs are files of a scratch directory named by TA_CONFIG; the home has a default account and one more, discovered the way a terminal with no config would find them.
 
 C21="$ROOT/cfg21"; mkdir -p "$C21"
 cat >"$C21/profiles.toml" <<EOF
@@ -1591,9 +1552,7 @@ ok "a run through a symlink finds the config" "work personal ?" \
 ok "--daily splits by the accounts of the config" "? personal work" \
    "$(FX_CONFIG="$C21/profiles.toml" fxc --daily --since 1000d | cut -f2 | sort -u | tr '\n' ' ' | sed 's/ $//')"
 
-# Only the reports that split by account look at the config, and never when
-# TU_ACCOUNTS says what the accounts are: the dashboard reads --sessions on every
-# refresh. bash -x prints the calls, so a call that was not made is a count of 0.
+# Only the reports that split by account look at the config, and never when TU_ACCOUNTS says what the accounts are: the dashboard reads --sessions on every refresh. bash -x prints the calls, so a call that was not made is a count of 0.
 traced() { FX_SH='bash -x' FX_HOME="$H21" FX_CONFIG="$C21/profiles.toml" "$@" | grep -c 'ensure_accounts$'; }
 ok "--by account looks at the config" 1 "$([ "$(FX_ACCOUNTS= traced fx --by account $W)" -ge 1 ] && echo 1 || echo 0)"
 ok "the summary does too: it has a block by account" 1 "$([ "$(FX_ACCOUNTS= traced fx)" -ge 1 ] && echo 1 || echo 0)"
@@ -1602,10 +1561,7 @@ ok "--burn does not" 0 "$(FX_ACCOUNTS= traced fx --burn)"
 ok "--json does not" 0 "$(FX_ACCOUNTS= traced fx --json --since 1000d)"
 ok "--session <id> does not" 0 "$(FX_ACCOUNTS= traced fx --session "$(fxsid 3f9a1c20)")"
 
-# The dashboard calls these four on every refresh, so each reads the clock as few
-# times as the work needs: a report with a window reads it once for the window and
-# for the rows that count the last hour and five, and one with no window reads it
-# for nothing else.
+# The dashboard calls these four on every refresh, so each reads the clock as few times as the work needs: a report with a window reads it once for the window and for the rows that count the last hour and five, and one with no window reads it for nothing else.
 datecalls() { FX_SH='bash -x' "$@" | grep -c 'date +%s$'; }
 ok "--sessions reads the clock once" 1 "$(datecalls fx --sessions --since 1000d)"
 ok "--burn reads it once, for its own five hours" 1 "$(datecalls fx --burn)"
@@ -1613,9 +1569,7 @@ ok "--session <id> reads it not at all" 0 "$(datecalls fx --session "$(fxsid 3f9
 ok "--by reads the clock once, for its window and for its rows" 1 "$(datecalls fx --by day --since 1000d)"
 ok "the summary reads it once" 1 "$(datecalls fx)"
 
-# A whole id that no session has is an id that aged out of the index, which the
-# closed-session preview asks for: it prints the empty detail and looks up no name.
-# Any other text that no id starts with is a name, whatever characters it is made of.
+# A whole id that no session has is an id that aged out of the index, which the closed-session preview asks for: it prints the empty detail and looks up no name. Any other text that no id starts with is a name, whatever characters it is made of.
 namecalls() { FX_SH='bash -x' "$@" | grep -c 'name_paths$'; }
 ok "--session <an id the index lacks> looks up no name" 0 "$(namecalls fx --session "$(fxsid ffffffff)")"
 ok "...and it exits 0" 0 "$(fxrc --session "$(fxsid ffffffff)")"
@@ -1626,8 +1580,7 @@ ok "--session <a name> looks it up" 1 "$([ "$(namecalls fx --session refactor-bi
 # ---------------------------------------------------------------------------
 t "22. one session by day"
 # ---------------------------------------------------------------------------
-# --session names the rows; --by names the table. Neither flag decides on its
-# own which report runs, so they mean the same in either order.
+# --session names the rows; --by names the table. Neither flag decides on its own which report runs, so they mean the same in either order.
 
 export FX_TA="$TA20"
 SD_HEAD="refactor-billing  $SID3
@@ -1687,9 +1640,7 @@ unset FX_TA
 # ---------------------------------------------------------------------------
 t "23. the table fits the terminal"
 # ---------------------------------------------------------------------------
-# The width is COLUMNS when that is a number, else the terminal's, else 120.
-# Columns go in a fixed order until the label has 24 characters; the label,
-# total, dollars and share stay. Lengths are counted in characters.
+# The width is COLUMNS when that is a number, else the terminal's, else 120. Columns go in a fixed order until the label has 24 characters; the label, total, dollars and share stay. Lengths are counted in characters.
 
 maxlen() {  # the longest line of standard input, in characters
   LC_ALL=C awk '{ n = 0; for (i = 1; i <= length($0); i++) { c = substr($0, i, 1); if (c < "\200" || c > "\277") n++ }
@@ -1829,12 +1780,7 @@ fi
 # ---------------------------------------------------------------------------
 t "25. the summary: dollars, the accounts, named sessions"
 # ---------------------------------------------------------------------------
-# The summary reads the clock, so its rows are placed by their age: half an hour
-# (inside five hours), twenty hours (inside 24), five days (inside seven) and
-# ten days (outside). Dollars by hand: opus-5 is 5/25 and sonnet-5 2/10 per
-# million, haiku-4-5 1/5. work: 1M in and 100k out on opus is 7.50, then 2M in
-# on opus is 10.00. personal: 1M in and 400k out on sonnet is 6.00. The session
-# no account claims: 1M in on haiku is 1.00.
+# The summary reads the clock, so its rows are placed by their age: half an hour (inside five hours), twenty hours (inside 24), five days (inside seven) and ten days (outside). Dollars by hand: opus-5 is 5/25 and sonnet-5 2/10 per million, haiku-4-5 1/5. work: 1M in and 100k out on opus is 7.50, then 2M in on opus is 10.00. personal: 1M in and 400k out on sonnet is 6.00. The session no account claims: 1M in on haiku is 1.00.
 
 F5="$ROOT/fx5"; mkdir -p "$F5/usage"
 now5=$(( $(date +%s) / 300 * 300 ))
@@ -1936,14 +1882,7 @@ ok "...and a dollar figure of nothing" "\$0 0" "$(printf '%s\n' "$out" | awk '/^
 # ---------------------------------------------------------------------------
 t "26. a name is text: no control character reaches the terminal"
 # ---------------------------------------------------------------------------
-# A name comes from three places (a typed label, the cached title, the title in the
-# transcript) and every one of them can hold an escape sequence. The summary, the
-# listing on standard error and a table all print it, so the name is scrubbed once,
-# where it is produced. A tab is a control character too, but no reader hands one
-# over: a label and a cached title are fields of a tab-separated file, and title_of
-# turns a tab of a transcript title into a space. The fourth session below has one
-# in its title, to see the name come out in one piece; the scrub itself is run on a
-# tab at the end of this section.
+# A name comes from three places (a typed label, the cached title, the title in the transcript) and every one of them can hold an escape sequence. The summary, the listing on standard error and a table all print it, so the name is scrubbed once, where it is produced. A tab is a control character too, but no reader hands one over: a label and a cached title are fields of a tab-separated file, and title_of turns a tab of a transcript title into a space. The fourth session below has one in its title, to see the name come out in one piece; the scrub itself is run on a tab at the end of this section.
 
 F26="$ROOT/fx26"; mkdir -p "$F26/usage" "$FX/projects/-h-z"
 cp "$F5/usage/facts.tsv" "$F5/usage/projects.tsv" "$F5/usage/origin.tsv" "$F26/usage/"
@@ -1975,9 +1914,7 @@ ok "...and three sessions are in it" 3 "$(printf '%s\n' "$out" | grep -c -- '-6d
 out=$(fx26 --by session --top 0 --since 1000d)
 ok "a --by session table prints none" 0 "$(printf '%s\n' "$out" | ncntrl)"
 
-# The two places that scrub a name, each handed a name with a tab, an escape, a
-# carriage return and a delete in it. names_of_sessions is run as it stands in
-# tusage with the reader of a label stubbed; AWK_NAME is evaluated from its own text.
+# The two places that scrub a name, each handed a name with a tab, an escape, a carriage return and a delete in it. names_of_sessions is run as it stands in tusage with the reader of a label stubbed; AWK_NAME is evaluated from its own text.
 NOISY=$(printf 'a\tb\001c\rd\033e\177f')
 NAMES_FN=$(sed -n '/^names_of_sessions() {/,/^}$/p' "$TU")
 AWK_NAME_SRC=$(sed -n "/^AWK_NAME='/,/^'\$/p" "$TU")
@@ -2001,11 +1938,7 @@ ok "...and from a cached title" "abcdef" "$(scrubbed_by_awk_name title)"
 # ---------------------------------------------------------------------------
 t "27. a date window is cut where the rows are bucketed"
 # ---------------------------------------------------------------------------
-# A row is placed in a day at today's UTC offset, and so are the ends of a window
-# that names days. Run in Prague on a clock pinned after the change to winter time
-# of 2026-10-25 (today's offset is +0100), the rows of an earlier day of summer
-# time (+0200) sit an hour off the local midnight: 22:30 UTC of the 19th is 00:30
-# on the 20th by the clock then, and the 19th by today's. Each row below says which.
+# A row is placed in a day at today's UTC offset, and so are the ends of a window that names days. Run in Prague on a clock pinned after the change to winter time of 2026-10-25 (today's offset is +0100), the rows of an earlier day of summer time (+0200) sit an hour off the local midnight: 22:30 UTC of the 19th is 00:30 on the 20th by the clock then, and the 19th by today's. Each row below says which.
 
 pinclock "$ROOT/clock-prague" "$(TZ=Europe/Prague epoch_of "2026-11-02 12:00:00")"
 
@@ -2038,9 +1971,7 @@ ok "the first and the last row of a longer window are its first and last day" \
 ok "--since a day and no --until runs to today, the 27th's row in" "128" \
    "$(prague --by day --since 2026-10-27 --tsv | cut -f2)"
 
-# --since month is the midnight of the 1st cut the same way. On the 27th of October
-# (+0100) the 1st began at 23:00 UTC of 30 September by today's offset, an hour after
-# the 22:00 UTC a +0200 midnight was, so of the two rows only the later one is in.
+# --since month is the midnight of the 1st cut the same way. On the 27th of October (+0100) the 1st began at 23:00 UTC of 30 September by today's offset, an hour after the 22:00 UTC a +0200 midnight was, so of the two rows only the later one is in.
 pinclock "$ROOT/clock-prague-oct" "$(TZ=Europe/Prague epoch_of "2026-10-27 12:00:00")"
 F27M="$ROOT/fx27m"; mkdir -p "$F27M/usage"
 { prow "2026-09-30 22:30:00" 1     # the 30th by today's offset
@@ -2052,9 +1983,7 @@ ok "--since month starts at the midnight of the 1st by today's offset: the row o
 # ---------------------------------------------------------------------------
 t "28. what is copied from the dashboard stays what it was copied from"
 # ---------------------------------------------------------------------------
-# awk text cannot be sourced, and tusage runs with no lib/tagents beside it, so some
-# awk functions are copies (utrunc, uclen, tilde). Each is run here, as it stands in
-# its file, on the same inputs as the original.
+# awk text cannot be sourced, and tusage runs with no lib/tagents beside it, so some awk functions are copies (utrunc, uclen, tilde). Each is run here, as it stands in its file, on the same inputs as the original.
 
 LIBT="$HERE/../lib/tagents"
 UTRUNC_FN=$(sed -n '/function utrunc(/,/return r }/p' "$TU")
@@ -2102,8 +2031,7 @@ ok "...as the uclen of list.sh does" "$(lens "$UCLEN_LIST")" "$(lens "$UCLEN_TU"
 ok "...as the one of timeline.sh does" "$(lens "$UCLEN_TIME")" "$(lens "$UCLEN_TU")"
 ok "...as the one of dash.sh does" "$(lens "$UCLEN_DASH")" "$(lens "$UCLEN_TU")"
 
-# tilde: the home directory as a tilde, only up to a slash. Five copies, four of them
-# awk (here, list.sh, closed.sh, timeline.sh) and tilde_of in core.sh, which is bash.
+# tilde: the home directory as a tilde, only up to a slash. Five copies, four of them awk (here, list.sh, closed.sh, timeline.sh) and tilde_of in core.sh, which is bash.
 TILDE_TU=$(sed -n '/function tilde(/p' "$TU")
 TILDE_LIST=$(sed -n '/function tilde(/p' "$LIBT/list.sh")
 TILDE_CLOSED=$(sed -n '/function tilde(/p' "$LIBT/closed.sh")
@@ -2136,8 +2064,7 @@ ok "with no home nothing is shortened, here and in list.sh, closed.sh and timeli
 # ---------------------------------------------------------------------------
 t "29. the home directory is a prefix of a path only up to a slash"
 # ---------------------------------------------------------------------------
-# With HOME=/Users/a, the directory /Users/ab/x is nobody's home subdirectory and
-# shows as it is, not as ~b/x. The home itself is ~ and a directory under it ~/x.
+# With HOME=/Users/a, the directory /Users/ab/x is nobody's home subdirectory and shows as it is, not as ~b/x. The home itself is ~ and a directory under it ~/x.
 
 F29="$ROOT/fx29"; mkdir -p "$F29/usage"
 { f5row 1800 n 3f9a1c20 opus-5 5 1000000 100000 612000
@@ -2153,8 +2080,7 @@ ok "a directory that only starts like the home is not shortened; the home is ~; 
 # ---------------------------------------------------------------------------
 t "30. --calibrate --at divides by the month of that instant"
 # ---------------------------------------------------------------------------
-# A reading taken on 2026-10-31 is a reading of October. On a clock at 2026-11-04
-# the month to divide by is October up to that instant, not November.
+# A reading taken on 2026-10-31 is a reading of October. On a clock at 2026-11-04 the month to divide by is October up to that instant, not November.
 
 F30="$ROOT/fx30"; mkdir -p "$F30"; cp -R "$FX/usage" "$F30/usage"; rm -f "$F30/usage/factor.tsv"
 pinclock "$ROOT/clock-nov" "$(TZ=UTC epoch_of "2026-11-04 12:00:00")"
