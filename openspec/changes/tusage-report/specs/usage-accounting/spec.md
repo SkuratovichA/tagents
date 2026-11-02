@@ -261,7 +261,7 @@ A `--by` table SHALL use colour only when standard output is a terminal, `NO_COL
 
 #### Scenario: An id that aged out of the index
 - **WHEN** `tusage --session <a full id the index lacks>` runs
-- **THEN** it prints the empty detail, exits 0 as before, and looks up no name
+- **THEN** it prints the empty detail, exits 0 and looks up no name
 
 ### Requirement: Reports read the index
 A report SHALL be computed from the index and SHALL NOT scan transcripts for usage. To name a session it prints, a report MAY read the first lines of that session's transcript once and remember the title in the title cache that the dashboard reads, and it SHALL read no transcript of a session it does not print.

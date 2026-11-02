@@ -706,9 +706,9 @@ day_epoch() {
 # The first instant of a window, as an epoch. `month` is spelt out because the
 # suffix space is taken: *m already means minutes, and silently re-reading "1m"
 # as a month would change what every existing caller asks for. A duration
-# reaches back from now, a date starts at its local midnight, and anything else
-# fails: the old reading evaluated an unknown word as shell arithmetic, so
-# `--since yesterday` quietly meant "now".
+# reaches back from now, a date starts at its midnight, and anything else
+# fails: an unknown word is an error, not shell arithmetic that would make
+# `--since yesterday` mean "now".
 since_cut() {
   local v=$1 n=$1 unit=1
   case $v in
@@ -2203,8 +2203,7 @@ while [ $# -gt 0 ]; do
 done
 
 # Every value is checked before the index is touched: a typo prints a plain
-# message and exits 2, where the old reading fell through to a plausible table
-# of the wrong thing.
+# message and exits 2, never a plausible table of the wrong thing.
 DIMS=()
 check_by() {
   local d seen=" "

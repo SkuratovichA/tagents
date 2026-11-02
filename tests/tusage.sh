@@ -275,8 +275,8 @@ printf 's-pers\tCached Title\t100\n' >"$TA_STATE_DIR/title.tsv"
 sum12() { cksum "$TA_STATE_DIR/labels.tsv" "$TA_STATE_DIR/title.tsv" | tr '\n' ' '; ls "$TA_STATE_DIR" | tr '\n' ' '; }
 before12=$(sum12)
 
-# Captured from the script before this change, with printf %q, so the escape
-# sequences are the ones the popups render.
+# The bytes of the reports the dashboard reads, captured with printf %q so the
+# escape sequences are the ones the popups render.
 PIN_DETAIL_WORK=$'\E[1ms-work\E[0m  ?\n\E[90m  who                            cost        $    reqs   cwrite    cread      out\E[0m\n  · main                        6.0M    $30.0       5        0        0     1.0M\n\E[90m  TOTAL                          6.0M    $30.0\E[0m\nx'
 PIN_DETAIL_RULE=$'\E[1ms-rule\E[0m  ?\n\E[90m  who                            cost        $    reqs   cwrite    cread      out\E[0m\n  · main                        3.5M    $2.50       2     100k     1.0M     500k\n\E[90m  TOTAL                          3.5M    $2.50\E[0m\n\n\E[90m  model                          cost        $\E[0m\n  claude-opus-5                  500k    $2.50\n  claude-gizmo-9                 3.0M       $0  \E[33m(no published rate)\E[0m\n\E[33m  1 request(s) ran on a model with no published rate �\200\224 $ is a floor\E[0m\nx'
 PIN_DETAIL_NONE=$'\E[1mdeadbeef\E[0m  ?\n  (no usage recorded in the retained window)\nx'
@@ -910,9 +910,9 @@ contains "...with the known names listed" "work" "$out"
 contains "...all of them" "personal" "$out"
 ok "--account ? is accepted" 0 "$(fxrc --by day --account '?' $W)"
 ok "--account with a comma list is accepted" 0 "$(fxrc --by day --account work,personal $W)"
-ok "an unknown option still exits 2" 2 "$(fxrc --by day --nonsense)"
-# These used to loop for ever: `shift 2` fails with one word left, so the
-# same option was read again, and again.
+ok "an unknown option exits 2" 2 "$(fxrc --by day --nonsense)"
+# A flag with no value exits 2: `shift 2` fails with one word left, and a parser
+# that carries on reads the same option again and again.
 for o in --by --since --until --account --project --top --sort --color --session; do
   out=$(fx "$o"); rc=$?
   ok "$o with no value exits 2" 2 "$rc"
@@ -927,7 +927,7 @@ want=$(printf '2026-10-28\tpersonal\t1.6800\t33\t0\n2026-10-28\twork\t2.5800\t54
 ok "--daily with two dates: both days, whole" "$want" "$(fx --daily --since 2026-10-28 --until 2026-10-29)"
 ok "--until is the end of its day, not its start" "$(printf '2026-10-28\tpersonal\t1.6800\t33\t0\n2026-10-28\twork\t2.5800\t54\t0')" \
    "$(fx --daily --since 2026-10-28 --until 2026-10-28)"
-ok "an all-digit --until is still an epoch" "$(printf '2026-10-28\tpersonal\t1.6800\t33\t0\n2026-10-28\twork\t2.5800\t54\t0')" \
+ok "an all-digit --until is an epoch" "$(printf '2026-10-28\tpersonal\t1.6800\t33\t0\n2026-10-28\twork\t2.5800\t54\t0')" \
    "$(fx --daily --since 2026-10-28 --until "$(ep '2026-10-28 23:59:59')")"
 ok "--since is local midnight: a row at noon of that day is in" "1" \
    "$(fx --daily --since 2026-11-01 --until 2026-11-01 | grep -c 'personal')"
@@ -952,7 +952,7 @@ ok "--until takes an epoch or a date, not a duration" "2|0" "$(fxrc --daily --un
 out=$(fx --daily --since yesterday); rc=$?
 ok "a word that is not a duration exits 2" 2 "$rc"
 contains "...named" "tusage: bad --since value yesterday" "$out"
-ok "--since 5h, 3d, 30m and month still parse" "0 0 0 0" \
+ok "--since 5h, 3d, 30m and month parse" "0 0 0 0" \
    "$(fxrc --daily --since 5h) $(fxrc --daily --since 3d) $(fxrc --daily --since 30m) $(fxrc --daily --since month)"
 
 
@@ -1435,7 +1435,7 @@ ok "...and prints the ids alone" 0 "$(names_of <<<"$out" | grep -vcE '^[0-9a-f]{
 
 # The modules are found beside the real file, through any chain of symlinks.
 mkdir -p "$ROOT/ln"; ln -s "$TU" "$ROOT/ln/two"; ln -s two "$ROOT/ln/one"
-contains "run through two symlinks the names still resolve" "refactor-billing  3f9a1c20" \
+contains "run through two symlinks the names resolve" "refactor-billing  3f9a1c20" \
          "$(FX_TU="$ROOT/ln/one" fx --by session --top 0 $W)"
 
 # The walk is a copy of the one in ./tagents, and the two must not drift.
@@ -1569,8 +1569,8 @@ ok "the summary reads it once" 1 "$(datecalls fx)"
 namecalls() { FX_SH='bash -x' "$@" | grep -c 'name_paths$'; }
 ok "--session <an id the index lacks> looks up no name" 0 "$(namecalls fx --session "$(fxsid ffffffff)")"
 ok "...nor does a prefix of one" 0 "$(namecalls fx --session ffffff)"
-ok "...and it exits 0 as it did" 0 "$(fxrc --session "$(fxsid ffffffff)")"
-ok "--session <a name> still looks it up" 1 "$([ "$(namecalls fx --session refactor-billing)" -ge 1 ] && echo 1 || echo 0)"
+ok "...and it exits 0" 0 "$(fxrc --session "$(fxsid ffffffff)")"
+ok "--session <a name> looks it up" 1 "$([ "$(namecalls fx --session refactor-billing)" -ge 1 ] && echo 1 || echo 0)"
 
 # ---------------------------------------------------------------------------
 t "22. one session by day"
@@ -1862,13 +1862,13 @@ ok "a name longer than 28 characters is cut with an ellipsis" "$(printf 'a%.0s' 
 printf '%s\t%s\n' "$(fxsid 3f9a1c20)" "refactor-billing" >"$TA25/labels.tsv"
 
 # What stays as it is.
-ok "no index at all still exits 1 with the old words" "tusage: no data yet — run 'tusage --rebuild'|1" \
+ok "no index at all exits 1 and says to rebuild" "tusage: no data yet — run 'tusage --rebuild'|1" \
    "$(FX_STATE="$ROOT/fx5-none" fx 2>&1 | tr -d '\n')|$(FX_STATE="$ROOT/fx5-none" fxrc)"
 F5D="$ROOT/fx5d"; mkdir -p "$F5D/usage"
 f5row 864000 x 3f9a1c20 opus-5 5 1000000 100000 612000 >"$F5D/usage/facts.tsv"
 cp "$F5/usage/projects.tsv" "$F5D/usage/projects.tsv"
 out=$(FX_STATE="$F5D/usage" FX_TA="$TA25" fx | sed "s/${ESC}\\[[0-9;]*m//g")
-contains "an empty week still says so" "nothing in the last 7 days" "$out"
+contains "an empty week says so" "nothing in the last 7 days" "$out"
 lacks "...and has no account block" "by account" "$out"
 ok "...and a dollar figure of nothing" "\$0 0" "$(printf '%s\n' "$out" | awk '/^last 7 d/ { print $5, $6 }')"
 
