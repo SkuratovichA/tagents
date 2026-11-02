@@ -1,6 +1,8 @@
 //! `session prompt`: one turn of `claude`, as `session()` of `packages/core/src/cli/main.ts` and `ClaudeHeadlessDriver.prompt` serve it. A verb that starts a child hands the call over for what the read verbs answer themselves (design D2): an environment that is not UTF-8 and a machine with no node, because the child's environment is built from the one and its `PATH` begins with the directory of the other.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{self, Sender};
 use std::time::Duration;
 
@@ -103,6 +105,11 @@ impl Stdout {
 pub fn prompt(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
     let parsed = PROMPT.parse(args)?;
     let machine = Machine::current(setting)?;
+    // Linux keeps an ignored SIGCHLD through exec: under a caller that left it so the kernel reaps the child, waiting for it finds nothing, and a good turn reads as a failure, where node sets its dispositions back when it starts. A handler that only sets a flag is the safe form of not ignoring it, and exec sets it back to the default for the child and for node; a failed registration leaves what was inherited.
+    let _ = signal_hook::flag::register(
+        signal_hook::consts::SIGCHLD,
+        Arc::new(AtomicBool::new(false)),
+    );
     answer(&parsed, setting, texts, &machine, emit_stdout, emit_stderr)
 }
 
@@ -191,7 +198,7 @@ fn answer(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Mutex;
     use std::time::Instant;
 
     use super::*;

@@ -1,4 +1,4 @@
-//! The real `World` of a turn (design D6): one thread per pipe and one that waits for the child, feeding one channel, and a loop that sleeps in `recv_timeout` until the next timer of the machine. No signal handler is installed: a signal that ends the CLI leaves the child running, as it does in node.
+//! The real `World` of a turn (design D6): one thread per pipe and one that waits for the child, feeding one channel, and a loop that sleeps in `recv_timeout` until the next timer of the machine. The only signal handler is the flag `prompt` registers for SIGCHLD, which ends nothing: a signal that ends the CLI leaves the child running, as it does in node.
 
 use std::io::{ErrorKind, Read};
 use std::os::fd::OwnedFd;

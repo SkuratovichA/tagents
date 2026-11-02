@@ -89,8 +89,8 @@ pass=0; fail=0; skipped=0; rust_served=0; handed_over=0
 
 # --------------------------------------------------------------- scenario state ---
 # Set before a scenario, cleared after it by `reset`: the directory to run in (relative to the run), the locale, a setup run in the run's directory before the program (a shell command), the environment to add, the arguments, and the stream whose reader went away (stdout or stderr).
-CWD=; LOCALE=en; SETUP=; EXTRA=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; RAN=
-reset() { CWD=; LOCALE=en; SETUP=; EXTRA=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; }
+CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; RAN=
+reset() { CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; }
 
 # The only differences allowed between the two programs: the id of a new reference, as long as it is a version 4 UUID, and how long a turn took.
 norm() { LC_ALL=C sed -E 's/"id": "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"/"id": "UUID4"/; s/"durationMs":( ?)[0-9]+/"durationMs":\1N/'; }
@@ -100,7 +100,7 @@ program() {
   local awake=("TA_KEEP_AWAKE=0")
   [ -n "$AWAKE" ] && awake=()
   cd "$RUN/$CWD" && exec env -i "PATH=$BIN:/usr/bin:/bin" "HOME=$RUN/home" "TMPDIR=$RUN/tmp" "TA_STATE_DIR=$RUN/st" "TAGENTS_CONFIG_DIR=$RUN/cfg" "TAGENTS_LOCALE=$LOCALE" \
-    "TAGENTS_NODE=$SHIM/node" "PARITY_MARK=$MARK" "PARITY_REAL_NODE=$NODE" "PARITY_REC=$RUN/rec" "${awake[@]}" "${EXTRA[@]}" "$@" "${ARGS[@]}" < /dev/null
+    "TAGENTS_NODE=$SHIM/node" "PARITY_MARK=$MARK" "PARITY_REAL_NODE=$NODE" "PARITY_REC=$RUN/rec" "${awake[@]}" "${EXTRA[@]}" "${UNDER[@]}" "$@" "${ARGS[@]}" < /dev/null
 }
 
 # Waits, bounded, for a test to hold; it says whether it did. The bound is the failure of a scenario, not its pace.
@@ -758,6 +758,15 @@ for entry in $("$NODE" -p 'Object.entries(os.constants.signals).filter(([n]) => 
 done
 if [ "$(uname)" = Darwin ]; then NAMELESS=7; else NAMELESS=34; fi
 STUB_SH="ulimit -c 0; kill -$NAMELESS \$\$; sleep 1; exit 5"; sc "prompt-exit-signal-with-no-name" rust 1 '"code": 0' -- session prompt "$(ref_spec)" go
+
+t "prompt: a caller that left SIGCHLD ignored"
+# Linux keeps an ignored SIGCHLD through exec, so the kernel reaps the child and waiting for it finds nothing unless the CLI gives the signal a handler. macOS sets it back to the default at exec.
+IGNORING_SIGCHLD=(perl -e '$SIG{CHLD}="IGNORE"; exec @ARGV')
+UNDER=("${IGNORING_SIGCHLD[@]}"); STUB=$ANSWER; sc "prompt-sigchld-ignored" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
+UNDER=("${IGNORING_SIGCHLD[@]}"); STUB_SH='exit 3'; sc "prompt-sigchld-ignored-exit-code" rust 1 '"code": 3' -- session prompt "$(ref_spec)" go
+UNDER=("${IGNORING_SIGCHLD[@]}"); SETUP='mkdir tmp/p && ln -s claude tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); sc "prompt-sigchld-ignored-handed-over" node 1 'spawn ELOOP' -- session prompt "$(ref_spec)" go
+# A handler interrupts what blocks: SIGCHLD again and again through a turn, and no line may be lost to it.
+STUB_SH="i=0; while [ \"\$i\" -lt 200 ]; do kill -s CHLD \"\$PPID\"; printf '%s\n' '$(text_event word)'; i=\$((i + 1)); done; printf '%s\n' '$RESULT'"; sc "prompt-sigchld-again-and-again" rust 0 '{"kind":"ok"' -- session prompt "$(ref_spec)" go --events
 
 t "prompt: the time limit"
 STUB_SH='exec sleep 30'; sc "prompt-timeout" rust 4 '"limitMs": 400' -- session prompt "$(ref_spec)" go --timeout 400

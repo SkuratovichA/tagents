@@ -292,10 +292,18 @@ pub(crate) fn readable(open: &[(Stream, OwnedFd)]) -> bool {
         .iter()
         .map(|(_, fd)| PollFd::new(fd, PollFlags::IN))
         .collect();
-    poll(&mut fds, Some(&Timespec::default())).is_ok()
-        && fds
-            .iter()
-            .any(|fd| fd.revents().intersects(PollFlags::IN | PollFlags::HUP))
+    loop {
+        match poll(&mut fds, Some(&Timespec::default())) {
+            Ok(_) => {
+                return fds
+                    .iter()
+                    .any(|fd| fd.revents().intersects(PollFlags::IN | PollFlags::HUP));
+            }
+            // `poll` is not restarted past a handler, even with `SA_RESTART`, and the question is still open.
+            Err(Errno::INTR) => {}
+            Err(_) => return false,
+        }
+    }
 }
 
 /// Follows the program to its end and, whatever ends it, stops everything it started in its group. A timeout, or a stop of the request, sends SIGTERM to the group and SIGKILL when the grace is over, or SIGKILL at once when there is no grace; the exit of the program kills the group at once and gives the pipes the drain to run dry. When the drain is over a pipe that is still `readable` is waited for in steps, up to the drain and the grace after the exit: its reader thread has not run yet, which a process holding an empty pipe never causes. `open` is the pipes whose reader has not finished, each by a duplicate, and it is dropped when the call is.
