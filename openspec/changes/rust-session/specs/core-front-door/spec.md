@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: The Rust binary serves the verbs the file marks rust
-`target/release/tagents-core` SHALL serve itself every verb whose `impl` is `"rust"` in the data file, and no other. Everything that starts with `sessions` is answered by the Rust binary with the node CLI's wording and exit codes. In a word whose verbs are served one by one (`session`, `plugin`), a call that is not one of them, or that the binary cannot prove it answers as node does, is the node CLI's.
+`target/release/tagents-core` SHALL serve itself every verb whose `impl` is `"rust"`: `sessions recent`, `search` and `show` (and the bare `sessions`), `plugin add`, `remove` and `new`, `doctor`, and `session open`, `list`, `last`, `prompt` and `abort`. Everything that starts with `sessions` or `doctor` is answered with the node CLI's wording and exit codes; a `plugin` or `session` call that is not one of its verbs, or that the binary cannot prove it answers as node does, is the node CLI's.
 
 #### Scenario: A served verb
 - **WHEN** `target/release/tagents-core sessions recent 3` runs
@@ -10,6 +10,14 @@
 #### Scenario: A misspelled subcommand
 - **WHEN** `target/release/tagents-core sessions rescent` runs
 - **THEN** the usage line and exit code are the ones the node CLI gives for it
+
+#### Scenario: A plugin verb
+- **WHEN** `target/release/tagents-core plugin remove x` runs
+- **THEN** the node CLI is not started
+
+#### Scenario: A plugin call that is not served
+- **WHEN** `target/release/tagents-core plugin list`, a bare `plugin` or `plugin bogus` runs
+- **THEN** the node CLI receives exactly those arguments and its output and exit code are the call's
 
 #### Scenario: A session verb
 - **WHEN** `target/release/tagents-core session list` runs

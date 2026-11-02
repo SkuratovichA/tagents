@@ -1,6 +1,6 @@
 ## Context
 
-`tagents-core session open|prompt|last|list|abort` are served by `packages/core/src/cli/main.ts` (`session`, lines 52-196) over `ClaudeHeadlessDriver` (`claude-driver.ts`, 566 lines), `StreamReader` (`stream.ts`), `parseSessionRef` (`session-ref.ts`), the state reader (`agent-state.ts`) and `isAlive` (`pid.ts`). The front door already serves `sessions` and `plugin add|remove` from Rust, and hands everything else to node (`front_door.rs`, `GROUPS`). The slice plan of the archived `rust-core` change calls this stage S3 and leaves open whether the driver shares the crate of the front door (its design, line 250).
+`tagents-core session open|prompt|last|list|abort` are served by `packages/core/src/cli/main.ts` (`session`, lines 52-196) over `ClaudeHeadlessDriver` (`claude-driver.ts`, 566 lines), `StreamReader` (`stream.ts`), `parseSessionRef` (`session-ref.ts`), the state reader (`agent-state.ts`) and `isAlive` (`pid.ts`). The front door already serves `sessions`, `plugin add|remove|new` and `doctor` from Rust, and hands everything else to node (`front_door.rs`, `GROUPS`). The slice plan of the archived `rust-core` change calls this stage S3 and leaves open whether the driver shares the crate of the front door (its design, line 250).
 
 Three premises of the brief do not hold for these five verbs, each checked in the source. The verbs never read the tagents config: there are no accounts or profiles to resolve, the account is `--config-dir`, `--no-config-dir` or the inherited `CLAUDE_CONFIG_DIR` (`grep -n -i "profile\|accounts\|config.toml\|loadConfig" packages/core/src/claude-driver.ts packages/core/src/cli/main.ts` finds nothing). Nothing in them touches tmux: the word occurs only in comments about the hook that writes the state records. And `prompt` does not wait on the state records or the transcript: it waits on the child's stdout, its exit and a deadline, and the state records are written by the hook that `claude` itself runs (`hooks/tmux-agent-state.sh`), which the verbs only read afterwards (`list`, `abort`, and `last` through `transcriptOf`).
 
@@ -36,7 +36,7 @@ Group {
 },
 ```
 
-The `Group::run` signature stays as it is, so the change does not collide with `rust-plugin-verbs` and `rust-knowledge`, which edit the same table. A verb that has to write while it works, `prompt --events`, writes its lines itself and returns an `Output` that holds only the exit code. For that, `emit` of `front_door.rs` is split into `emit_stdout` and `emit_stderr`, each the best-effort write it already is (a reader that went away is ignored, which `headless-sessions` requires of every write), and `session` calls the two. `prompt` writes the outcome and the error line itself, in node's order, before it lingers (D6), so that `2>&1` shows the same order and the same time as node.
+The `Group::run` signature stays as it is, so the change does not collide with `rust-knowledge`, which edits the same table. A verb that has to write while it works, `prompt --events`, writes its lines itself and returns an `Output` that holds only the exit code. For that, `emit` of `front_door.rs` is split into `emit_stdout` and `emit_stderr`, each the best-effort write it already is (a reader that went away is ignored, which `headless-sessions` requires of every write), and `session` calls the two. `prompt` writes the outcome and the error line itself, in node's order, before it lingers (D6), so that `2>&1` shows the same order and the same time as node.
 
 Options considered: a `Group` field for "streams" (a wider contract for one verb and a collision with the two builders), and a new arm beside `mcp` and `notify run` (those own their whole word; `session` shares its word with four verbs that return whole outputs). The group is the smaller change.
 
@@ -58,9 +58,9 @@ A reference that is not JSON, or that fails the schema, is not handed over: node
 
 ### D3. One grammar for the options of a verb group
 
-`parseArgs` of node is what accepts or rejects a call, and `plugin.rs` has a 20-line hand-written reader of one option (`parse`, `plugin.rs:92`). `session` has four option sets (`open`: eight string options and two booleans; `prompt`: `--timeout`, `--warn-before` and the boolean `--events`; `list`: `--label` and a repeated `--state`) and two verbs that take a raw first word (`last`, `abort`).
+`parseArgs` of node is what accepts or rejects a call, and `plugin.rs` has a 20-line hand-written reader of one option (`parse`, `plugin.rs:106`). `session` has four option sets (`open`: eight string options and two booleans; `prompt`: `--timeout`, `--warn-before` and the boolean `--events`; `list`: `--label` and a repeated `--state`) and two verbs that take a raw first word (`last`, `abort`).
 
-Options considered: (a) copy `plugin::parse` four times, which is the parallel copy the repository forbids; (b) generalise `plugin::parse` in place, which collides with `rust-plugin-verbs` part b, the builder editing that file; (c) a table-driven grammar in a new module `args.rs`, and `plugin::parse` migrated onto it in the last pull request, after part b has merged. Chosen: (c), with a unit test that feeds a corpus of argument lists to both `args::parse` with the `plugin add` table and `plugin::parse` and requires the same answer, which is the pin the repository asks for while two readers exist (it is removed with the old one).
+Options considered: (a) copy `plugin::parse` four times, which is the parallel copy the repository forbids; (b) generalise `plugin::parse` in place into a table-driven grammar that `plugin` and `session` both read; (c) a new module beside it, with `plugin::parse` migrated later and a pin test between the two readers until then. `rust-plugin-verbs` has merged, so the collision that made (c) necessary is gone, and (c) would keep two readers of one grammar alive for two pull requests. Chosen: (b) in substance. `args.rs` is `plugin::parse` generalised, and `plugin.rs` moves onto it in this pull request: its unit tests keep their cases and answers and `tests/rust-plugin-parity.sh` is unchanged, and both stay green as the proof that `plugin` behaves as before. There are never two readers, so no test pins one against another.
 
 ```rust
 pub struct Grammar { strings: &'static [&'static str], flags: &'static [&'static str], multiple: &'static [&'static str], positionals: bool }
@@ -75,7 +75,7 @@ const OPEN: Grammar = Grammar {
 let parsed = OPEN.parse(args)?;
 ```
 
-It reads `--name value` (the value must not start with `-`) and `--name=value` for a string option, a bare `--flag` for a boolean, a lone `-` and everything after `--` as positionals, and returns `None` for the rest. A repeated string option keeps its last value, and a repeated `multiple` option keeps all of them, as `parseArgs` does. `last` and `abort` do not parse: `rest[0]` is the reference, whatever it looks like (`session last --foo` asks for the session `--foo`), which the verbs repeat.
+It reads `--name value` (the value must not start with `-`) and `--name=value` for a string option, a bare `--flag` for a boolean, a lone `-` and everything after `--` as positionals, and returns `None` for the rest. A repeated string option keeps its last value, and a repeated `multiple` option keeps all of them, as `parseArgs` does. `plugin add` is the table with the string `name`, `plugin new` the one with `dir`, and `plugin remove` the one with neither. `last` and `abort` do not parse: `rest[0]` is the reference, whatever it looks like (`session last --foo` asks for the session `--foo`), which the verbs repeat.
 
 ### D4. How `claude` is started and fed, and who owns the process
 
@@ -171,7 +171,7 @@ All three read the state directory (`$TA_STATE_DIR`, else `~/.claude/agent-state
 - `abort <ref>` matches the first row whose key equals the reference's `id` or whose `sessionId` equals its `claudeSessionId` (a `null` never matches, an empty string can match an empty column). A row whose key does not start with `s-` is a pane: `abortPaneAgent`, exit 3. No pid, or a pid that is not alive, is `nothingToAbort`, exit 3. Alive is `kill(pid, 0)` succeeding or failing with `EPERM`, and a pid beyond 32-bit signed integers is dead (node's `process.kill` throws for it, checked on 4294967297 and 2147483648; 2147483647 gives `ESRCH`); `is_alive` of `notify/lock.rs:117` is that check already, so it becomes `pub(crate)` and `abort` calls it instead of a second copy. A SIGKILL that fails is `nothingToAbort`; one that works prints `{"aborted": true, "id": …, "pid": …}`, exit 0. The pid-reuse window between the check and the signal is node's, and is listed rather than closed.
 - A reference that is a string and not JSON is resolved against `list` (the id or the `claudeSessionId` first, then a unique-or-first prefix of a `claudeSessionId`), the way `resolveRef` of `main.ts` does; a reference that starts with `{` after trimming is read as JSON. No match is `no session matches <ref>`, exit 1.
 
-The exit codes are the ones of `cli/exit.ts`: 0 ok, 1 error, 2 usage, 3 refused (`abort`), 4 timeout (`prompt`). `sessions::exit` already holds 0 to 3, and the unit test of `rust-plugin-verbs` that pins it to the `exit` table of the data file gains 4.
+The exit codes are the ones of `cli/exit.ts`: 0 ok, 1 error, 2 usage, 3 refused (`abort`), 4 timeout (`prompt`). `sessions::exit` holds 0 to 3, and the test of `tests/front_door.rs` that pins it to the `exit` table of the data file gains 4.
 
 ### D10. The texts
 
@@ -203,35 +203,34 @@ The driver lives in `tagents-core`, not in a crate of its own. It needs `child` 
 
 ### D14. The pull requests
 
-Three, in this order, each leaving a machine that runs the node CLI for every verb that is not flipped. Each raises the workspace version in `Cargo.toml` and `Cargo.lock` (`.github/scripts/core-release.sh` treats `Cargo.toml`, `Cargo.lock`, `crates/*/src/*` and `spec/cli/*` as inputs of the binary), by one past the highest version on `dev` at the time it merges, because the two other builders raise it too.
+Three, in this order, each leaving a machine that runs the node CLI for every verb that is not flipped. Each raises the workspace version in `Cargo.toml` and `Cargo.lock` (`.github/scripts/core-release.sh` treats `Cargo.toml`, `Cargo.lock`, `crates/*/src/*` and `spec/cli/*` as inputs of the binary), by one past the highest version on `main` at the time it merges, because `rust-knowledge` part b raises it too.
 
-1. **Foundations and the read verbs.** The decoder fix in node with its test and spec requirement; the vectors and their test; `args.rs`; `json::parse_exact` and `stringify`; the `pid` field and the exact `mtime`; the `session` group with `open`, `list` and `last`; the parity suite and its stub with the scenarios of those verbs; their flags flipped last.
+1. **Foundations and the read verbs.** The decoder fix in node with its test and spec requirement; the vectors and their test; `args.rs` with `plugin.rs` moved onto it; `json::parse_exact` and `stringify`; the `pid` field and the exact `mtime`; the `session` group with `open`, `list` and `last`; the parity suite and its stub with the scenarios of those verbs; their flags flipped last.
 2. **`prompt`.** The supervisor, the stream reader, the argv and environment builders, the spawn errors, the events, the keep-awake hold, the signal names and the lingering; the scenarios of a turn; its flag flipped last.
-3. **`abort`, the migration and the archive.** `abort` and its scenarios and flag; `plugin::parse` migrated onto `args.rs` once `rust-plugin-verbs` part b has merged; the documents; the archive, the last task.
+3. **`abort` and the archive.** `abort` and its scenarios and flag; the documents; the archive, the last task.
 
 ### D15. What the implementation rebases over
 
-Two builders work on the same files. The conflicts are in these places, and the task that touches each says what to look at after a rebase:
+The implementation starts from `main` with `rust-plugin-verbs` merged. One builder still works in parallel: `rust-knowledge` part b, which adds a `knowledge` group to `GROUPS` of `front_door.rs`, its entries to `spec/cli/tagents-core.json`, and edits the version, `CHANGELOG.md`, `docs/architecture/rust-core.md` and `.github/workflows/rust.yml`. The conflicts are in these places, and the task that touches each says what to look at after a rebase:
 
-- `crates/tagents-core/src/front_door.rs`: `GROUPS` (this change adds a group; `rust-plugin-verbs` b edits the `plugin` entry; `rust-knowledge` b adds a `knowledge` entry), the module comment, the split of `emit`, and the constant of forwarded words in `crates/tagents-core/tests/front_door.rs`.
-- `spec/cli/tagents-core.json`: the `impl` flags of the five `session` entries (rust-plugin-verbs b adds `plugin new` and `doctor` entries beside them).
-- `crates/tagents-core/src/plugin.rs`: only in the last pull request, by the migration of `parse`.
+- `crates/tagents-core/src/front_door.rs`: `GROUPS` (this change adds a group; `rust-knowledge` b adds a `knowledge` entry), the module comment, the split of `emit`, and the constant of forwarded words in `crates/tagents-core/tests/front_door.rs`.
+- `spec/cli/tagents-core.json`: the `impl` flags of the five `session` entries and the entries `rust-knowledge` b adds.
 - `.github/workflows/rust.yml`: both `paths:` lists and the parity and regeneration steps; the list entries are added after the last one present.
 - `docs/architecture/rust-core.md`: "What is served in Rust today", "Which program a command goes to", "The parity suite", "Where the two are known to differ", "What is not decided yet", the dependency table, and the lines that name the workspace version.
 - `Cargo.toml` and `Cargo.lock`: the version, raised again after each rebase.
 - `CHANGELOG.md` and `LEARNING.md`: each adds lines under the same headings.
-- `openspec`: this change and `rust-plugin-verbs` both restate the two `core-front-door` requirements, "The Rust binary serves the verbs the file marks rust" and "Every other word reaches the node CLI untouched" (the example of a forwarded call that stays node's is `plugin list`, because `session prompt` is served after this change). Whichever change archives second restates them from the text the first left.
+- `openspec`: `rust-plugin-verbs` left the two `core-front-door` requirements, "The Rust binary serves the verbs the file marks rust" and "Every other word reaches the node CLI untouched", as `openspec/specs/core-front-door/spec.md` holds them, and the MODIFIED requirements of this change restate that text (the example of a forwarded call that stays node's is `plugin list`, because `session prompt` is served after this change). `rust-knowledge` b may restate them too: whichever change archives second restates them from the text the first left.
 
 ## Reuse
 
-Each new piece names the helper it builds on, found by search before the design was written. Where a helper has to widen, the widening is a task, and a parallel copy exists nowhere except the one named in D3.
+Each new piece names the helper it builds on, found by search before the design was written. Where a helper has to widen, the widening is a task, and a parallel copy exists nowhere.
 
 | New piece | Existing code it reuses or widens |
 |---|---|
 | the `session` group | `Group` and `GROUPS` of `front_door.rs:33-42`, the `None` hand-over of `plugin::run` |
 | best-effort writers of `prompt` | `emit` of `front_door.rs:95`, split into two |
 | the hand-over to node | `exec_node` of `front_door.rs:106`, `node::interpreter` (`node.rs:298`) |
-| the option grammar | the model of `plugin::parse` (`plugin.rs:92`), which migrates onto it |
+| the option grammar | `plugin::parse` (`plugin.rs:106`), generalised into `args.rs`, which `plugin.rs` then calls |
 | every printed line | `messages::{Locale::of, Texts::load, Texts::t}` (`messages.rs:16-41`) |
 | exit codes and output | `sessions::exit` and `Output` (`sessions.rs:22-40`), widened by `TIMEOUT` |
 | numbers, white space, UTF-16 cuts | `js::{number, number_text, trim, collapse_space, len16, take16, split16}` (`js.rs`), widened by the exact-string operations |
@@ -256,6 +255,5 @@ Each new piece names the helper it builds on, found by search before the design 
 - **Lossy decoding.** Node's `StringDecoder`, `Buffer.toString()` and Rust's `String::from_utf8_lossy` gave the same code points for 11 sequences tried here (a truncated two-, three- and four-byte sequence, `C0 80`, `ED A0 80`, a value beyond U+10FFFF, a stray continuation byte, a valid character followed by a truncated one), and the vector corpus of invalid sequences is what proves the rest. A difference found there cannot be a hand-over, because the stream is read after the spawn, so the Rust decoder would be written to node's rule instead.
 - **A process that stops reading.** A reader thread that blocks on a full channel would stall a pipe; the channel is unbounded, and the memory of a turn is bounded the way node's is (stderr and the text are kept whole, tool results are not).
 - **Pid reuse in `abort`.** A pid that was alive when read can be another process when the signal arrives. It is node's window; the record carries no start time to check it against.
-- **The two readers of options.** `args.rs` and `plugin::parse` exist side by side until the last pull request, pinned against each other by a test.
-- **A concurrent version bump.** The three pull requests and the two other builders all raise the workspace version; each rebase raises it again, and `core-release.sh` fails a pull request that does not.
+- **A concurrent version bump.** The three pull requests and `rust-knowledge` part b all raise the workspace version; each rebase raises it again, and `core-release.sh` fails a pull request that does not.
 - **node must be found.** With no node, `session` hands over, and the fallback fails the same way. This is the state of every verb that is not Rust until S5.
