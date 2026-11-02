@@ -1226,7 +1226,9 @@ AWK_DAY='
 '
 
 # Text measured in characters: macOS awk counts bytes, so a "⑂", a "…" or a
-# Cyrillic letter would eat two or three of the columns a pad meant to fill.
+# Cyrillic letter would eat two or three of the columns a pad meant to fill. Copies
+# of uclen, which awk text cannot import: lib/tagents/dash.sh, list.sh and
+# timeline.sh. Section 28 of tests/tusage.sh runs the four on the same texts.
 AWK_TEXT='
   function uclen(s,   i, n, c) { n = 0
     for (i = 1; i <= length(s); i++) { c = substr(s, i, 1)
