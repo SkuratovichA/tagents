@@ -41,6 +41,7 @@ on:
       - tests/rust-session-parity-driver.mts
       - tests/rust-session-vectors.mts
       - tests/rust-session-vectors/**
+      - tests/lib/parity.sh
   pull_request:
     paths:
       - Cargo.toml
@@ -80,6 +81,7 @@ on:
       - tests/rust-session-parity-driver.mts
       - tests/rust-session-vectors.mts
       - tests/rust-session-vectors/**
+      - tests/lib/parity.sh
 
 permissions:
   contents: read

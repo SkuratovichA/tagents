@@ -9,6 +9,8 @@
 # Differences that are known and listed in docs/architecture/rust-core.md are not scenarios: a file that is not TOML (the reason after `Invalid TOML document:` is the parser's own, so the documents here are all TOML the schema refuses), a document one TOML parser accepts and the other refuses, a prompt that arrives during a post after the deadline of the same session passed during that post, a stop during a failing start, a failed watch, an options file without read permission, `plugins` being a regular file, the operating system's text inside a line for an error number the two systems do not share, the spawn failure text of the helper for an error other than ENOENT and EACCES, a SIGKILL at a deadline reaching the whole group, and a helper that writes more than 1 MiB. The one known difference that cannot be left out of a scenario, the `handing over to the node service: <why>` line the Rust daemon writes before it becomes node when its start fails, is dropped from the transcript of the scenario about a start that cannot take the state directory (HANDOVER=1), with a comment there.
 # Tripwires assert on the node transcript alone, so a scenario that stopped provoking what it exists for fails here instead of passing for nothing.
 #
+# The helpers the parity suites share are in tests/lib/parity.sh. `cleanup`, `file`, `gone`, `quiet`, `jstr`, `norm`, `first_difference`, `play`, `must` and `must_before` stay here because they differ from those of tests/rust-mcp-parity.sh: `cleanup` reads daemon.pids and the stubs' pids, `file`, `gone` and `quiet` write this driver's shape of a step, `jstr` also escapes a newline, a tab and a carriage return, `norm` takes out the time, the process id and the scratch path, `first_difference` names only the line, `play` goes through `run_side` and fails a node run whose wait ran out, and `must` and `must_before` word their failures in their own way. `row` stays because it writes a step for the driver, where the `row` of tests/rust-session-parity.sh writes a setup command.
+#
 # The first check, before any scenario: the process `<rust> notify run` starts must say it has started and must be the Rust binary. A binary with no `notify` arm hands the verb to the node CLI (front_door.rs, the `None => exec_node` arm), whose process is `node` and which writes no `started` line of the notify service, so the suite would compare node with node. It fails, with that said, and runs no scenario.
 # After the last scenario one more run starts the Rust daemon alone and checks its resource use (the processor time of an idle daemon, its threads, the descriptors of its watch and their number across repeated reloads of the options file), because node's numbers are not the reference for those; PARITY_ONLY=resources picks it.
 # PARITY_SELF_TEST=1 skips the first check and the resource checks and runs node on both sides: it proves the suite and node's determinism, not the Rust daemon. It is how the suite is proven before the Rust daemon exists and how a change to a scenario is checked for flakiness.
@@ -55,12 +57,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 pass=0; fail=0; ran=0; skipped=0
-ok() { pass=$((pass + 1)); }
-bad() {  # <label> <detail...>
-  fail=$((fail + 1)); printf '  FAIL %s\n' "$1"; shift
-  [ $# -gt 0 ] && printf '       %s\n' "$@"
-}
-t() { printf '\n%s\n' "$1"; }
+. "$HERE/lib/parity.sh"
 TAB=$(printf '\t')
 
 # ----------------------------------------------------------------- stubs ---
@@ -149,8 +146,6 @@ reset_scenario() {
 }
 reset_scenario
 
-# The steps of a script, as JSON the driver reads.
-steps() { local out= s; for s in "$@"; do out=${out:+$out,}$s; done; printf '[%s]' "$out"; }
 # The text as the inside of a JSON string: the backslash, the quote and the newline, tab and carriage return (turned into control bytes the sed can see and back, so a text with a line break in it is one line of the script).
 C1=$(printf '\001'); C2=$(printf '\002'); C3=$(printf '\003')
 jstr() { printf '%s' "$1" | LC_ALL=C tr '\n\t\r' '\001\002\003' | LC_ALL=C sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$C1/\\\\n/g" -e "s/$C2/\\\\t/g" -e "s/$C3/\\\\r/g"; }
@@ -293,11 +288,6 @@ play_mac() {
 must() {  # <label> <needle>
   [ -n "$RAN" ] || return 0
   if grep -qF -- "$2" "$TMP/transcript.node"; then ok; else bad "tripwire $1: node did not say what this scenario exists to provoke" "wanted: $2"; fi
-}
-# The reverse: the string is not in it.
-must_not() {  # <label> <needle>
-  [ -n "$RAN" ] || return 0
-  if grep -qF -- "$2" "$TMP/transcript.node"; then bad "tripwire $1: node said what this scenario expects it not to say" "found: $2"; else ok; fi
 }
 # The string is on exactly n lines of the node transcript.
 must_count() {  # <label> <needle> <n>
