@@ -65,5 +65,5 @@ Every shell suite runs as `env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" b
 
 ## 12. Gates
 
-- [ ] 12.1 `tests/tusage.sh`, `tests/usage.sh`, `tests/ui.sh` and `tests/modules.sh`, each on a scratch tmux server, each exit 0. Proof: the four suites.
+- [x] 12.1 `tests/tusage.sh`, `tests/usage.sh`, `tests/ui.sh` and `tests/modules.sh`, each on a scratch tmux server, each exit 0. Proof: the four suites.
 - [x] 12.2 `pnpm spec:check`, `pnpm exec openspec validate tusage-report --strict`, `pnpm plugin:check` and `pnpm docs:build`, each exit 0. Proof: those commands.
