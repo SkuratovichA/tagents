@@ -42,6 +42,14 @@ impl Value {
         }
     }
 
+    /// The members of an object in the order JavaScript keeps them (a key written twice once, with its last value), or `None` for a value that is not an object.
+    pub fn entries(&self) -> Option<Vec<(&str, &Value)>> {
+        match self {
+            Value::Object(members) => Some(in_js_order(members)),
+            _ => None,
+        }
+    }
+
     /// The text of a well-formed string; a string with a lone half has none.
     pub fn as_str(&self) -> Option<&str> {
         match self {
@@ -551,6 +559,24 @@ mod tests {
 
     fn ok(text: &str) -> Value {
         parse(text).unwrap_or_else(|| panic!("{text:?} should parse"))
+    }
+
+    /// `Object.entries(JSON.parse('{"b":1,"2":2,"a":3,"1":4,"b":5}'))` is `[["1",4],["2",2],["b",5],["a",3]]`: indices first and ascending, a repeated key at its first place with its last value.
+    #[test]
+    fn entries_come_in_the_order_javascript_keeps() {
+        let value = ok(r#"{"b":1,"2":2,"a":3,"1":4,"b":5}"#);
+        let got: Vec<(&str, f64)> = value
+            .entries()
+            .unwrap()
+            .into_iter()
+            .map(|(key, member)| match member {
+                Value::Number(n) => (key, *n),
+                other => panic!("{other:?}"),
+            })
+            .collect();
+        assert_eq!(got, [("1", 4.0), ("2", 2.0), ("b", 5.0), ("a", 3.0)]);
+        assert!(ok("[1]").entries().is_none());
+        assert!(ok("null").entries().is_none());
     }
 
     /// The expected text is what `node -e 'JSON.stringify(...)'` printed for the same string (31.10.2026): a quote, a backslash, `\n`, `\t`, `\b`, `\f`, `\r`, U+001f and U+0000 as lowercase `\u00xx`, DEL, U+2028, U+2029 and a non-ASCII letter raw.

@@ -795,6 +795,21 @@
         "handOver": false
       },
       {
+        "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"__proto__\":5,\"A\":\"b\"}}}",
+        "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"b\"}}}",
+        "handOver": false
+      },
+      {
+        "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":5,\"A\":\"x\"}}}",
+        "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"x\"}}}",
+        "handOver": false
+      },
+      {
+        "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"x\",\"A\":5}}}",
+        "parsed": null,
+        "handOver": false
+      },
+      {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"__proto__\":{\"kind\":\"other\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "handOver": false

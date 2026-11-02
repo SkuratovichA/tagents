@@ -68,6 +68,9 @@ const TEXTS: string[] = [
   raw(`{"kind":"claude","cwd":"/work","skipPermissions":false,"env":{"__proto__":"1","A":"b"}}`),
   raw(`{"kind":"claude","cwd":"/work","skipPermissions":false,"env":{"A":"b","A":"c"}}`),
   raw(`{"kind":"claude","cwd":"/work","skipPermissions":false,"env":{"2":"b","1":"c","A":"d"}}`),
+  raw(`{"kind":"claude","cwd":"/work","skipPermissions":false,"env":{"__proto__":5,"A":"b"}}`),
+  raw(`{"kind":"claude","cwd":"/work","skipPermissions":false,"env":{"A":5,"A":"x"}}`),
+  raw(`{"kind":"claude","cwd":"/work","skipPermissions":false,"env":{"A":"x","A":5}}`),
   raw(`{"kind":"claude","cwd":"/work","skipPermissions":false,"__proto__":{"kind":"other"}}`),
   raw(`{"kind":"claude","cwd":"/work","skipPermissions":false,"constructor":1}`),
   // The classes of hand-over.
