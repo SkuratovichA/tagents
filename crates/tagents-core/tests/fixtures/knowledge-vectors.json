@@ -7933,6 +7933,20 @@
       "indexBusyMs": 5000,
       "usageBusyMs": 250,
       "retentionDays": 365,
+      "applied": {
+        "index": {
+          "busyTimeout": 5000,
+          "journalMode": "delete",
+          "synchronous": 2,
+          "foreignKeys": 1
+        },
+        "usage": {
+          "busyTimeout": 250,
+          "journalMode": "wal",
+          "synchronous": 1,
+          "foreignKeys": 1
+        }
+      },
       "meta": [
         {
           "key": "schema_version",

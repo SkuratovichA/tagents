@@ -81,3 +81,15 @@ pub fn rows(db: &Connection, query: &str) -> Vec<Value> {
         .map(Result::unwrap)
         .collect()
 }
+
+/// What a connection reports about itself, read back from SQLite: the shape of `engine.schema.applied` in the vectors.
+pub fn settings(db: &Connection) -> Value {
+    let setting =
+        |pragma: &str, column: &str| rows(db, &format!("pragma {pragma}"))[0][column].clone();
+    json!({
+        "busyTimeout": setting("busy_timeout", "timeout"),
+        "journalMode": setting("journal_mode", "journal_mode"),
+        "synchronous": setting("synchronous", "synchronous"),
+        "foreignKeys": setting("foreign_keys", "foreign_keys"),
+    })
+}

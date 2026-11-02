@@ -23,15 +23,28 @@ function master(db: DatabaseSync): Table {
 
 // ---- schema ----------------------------------------------------------------------------------
 
+/** What a connection reports about itself once `openDb` or `openUsageDb` has run: the settings the code asks for, read back from SQLite and not from the constant that was passed. */
+function applied(db: DatabaseSync): Record<string, unknown> {
+  const setting = (pragma: string, column: string): unknown => rowsOf(db, `pragma ${pragma}`)[0]?.[column];
+  return {
+    busyTimeout: setting('busy_timeout', 'timeout'),
+    journalMode: setting('journal_mode', 'journal_mode'),
+    synchronous: setting('synchronous', 'synchronous'),
+    foreignKeys: setting('foreign_keys', 'foreign_keys'),
+  };
+}
+
 export function schemaVectors(): unknown {
   silenceSqliteWarning();
   const dir = scratch('schema');
   const index = openDb(path.join(dir, 'nested', 'index.sqlite'));
   const meta = rowsOf(index, 'select key, value from meta order by key');
   const indexMaster = master(index);
+  const indexApplied = applied(index);
   index.close();
   const usage = openUsageDb(path.join(dir, 'nested', 'usage.sqlite'));
   const usageMaster = master(usage);
+  const usageApplied = applied(usage);
   usage.close();
   const probe = new DatabaseSync(':memory:');
   const sqlite = rowsOf(probe, 'select sqlite_version() as version')[0];
@@ -46,6 +59,7 @@ export function schemaVectors(): unknown {
     indexBusyMs: INDEX_BUSY_TIMEOUT_MS,
     usageBusyMs: BUSY_TIMEOUT_MS,
     retentionDays: RETENTION_DAYS,
+    applied: { index: indexApplied, usage: usageApplied },
     meta,
     indexMaster,
     usageMaster,

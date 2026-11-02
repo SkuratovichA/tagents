@@ -4,7 +4,13 @@
 
 mod common;
 
-use std::{fs, os::unix::fs::PermissionsExt};
+use std::{
+    fs,
+    os::unix::fs::PermissionsExt,
+    sync::mpsc,
+    thread,
+    time::{Duration, Instant},
+};
 
 use rusqlite::{Connection, OpenFlags};
 use serde_json::{Value, json};
@@ -19,7 +25,7 @@ use tagents_core::knowledge::{
 };
 
 use common::{
-    knowledge::{index_of, rows, vectors},
+    knowledge::{index_of, rows, settings, vectors},
     scratch,
 };
 
@@ -61,6 +67,16 @@ fn options_of(value: &Value) -> ReportOptions {
         min_gets: value["minGets"].as_i64(),
         min_days: value["minDays"].as_i64(),
     }
+}
+
+#[test]
+fn an_open_store_carries_the_settings_node_gives_it() {
+    let dir = scratch("knowledge-usage-settings");
+    let db = open_usage_db(dir.join("usage.sqlite").to_str().unwrap()).unwrap();
+    assert_eq!(
+        vectors()["engine"]["schema"]["applied"]["usage"],
+        settings(&db)
+    );
 }
 
 #[test]
@@ -202,6 +218,47 @@ fn a_store_that_is_not_what_it_should_be_is_empty_or_refused_as_node_does() {
             (_, other) => panic!("{setup}: node and Rust differ: {other:?}"),
         }
     }
+}
+
+/// The node test of the same name holds the lock from the same thread for as long as the call lasts; here another thread lets go when the call is over or after three seconds, whichever is first, so a call that waited for it would end late and the assertion on the time would say so.
+#[test]
+fn a_store_that_stays_locked_is_given_up_on_after_the_busy_timeout() {
+    let dir = scratch("knowledge-usage-locked");
+    let file = dir.join("usage.sqlite");
+    let file = file.to_str().unwrap().to_string();
+    drop(open_usage_db(&file).unwrap());
+    let (locked, wait) = mpsc::channel();
+    let (done, release) = mpsc::channel::<()>();
+    let holder = {
+        let file = file.clone();
+        thread::spawn(move || {
+            let other = open_usage_db(&file).unwrap();
+            other.execute_batch("begin immediate").unwrap();
+            locked.send(()).unwrap();
+            let _ = release.recv_timeout(Duration::from_secs(3));
+            other.execute_batch("rollback").unwrap();
+        })
+    };
+    wait.recv().unwrap();
+    let start = Instant::now();
+    let reason = record_reads(&file, &[get_event("alpha", "", None)], NOW);
+    let waited = start.elapsed();
+    done.send(()).unwrap();
+    holder.join().unwrap();
+    assert!(
+        waited >= Duration::from_millis(BUSY_TIMEOUT_MS - 50),
+        "gave up before the busy timeout: {waited:?}"
+    );
+    assert!(
+        waited < Duration::from_secs(1),
+        "waited for the holder instead of giving up: {waited:?}"
+    );
+    assert_eq!(Some("database is locked".to_string()), reason);
+    let db = open_usage_db(&file).unwrap();
+    assert_eq!(
+        vec![json!({"n": 0})],
+        rows(&db, "select count(*) as n from usage_events")
+    );
 }
 
 #[test]

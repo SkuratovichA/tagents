@@ -22,7 +22,7 @@ use tagents_core::knowledge::index::{
 use tagents_core::node;
 
 use common::{
-    knowledge::{rows, same_message, vectors},
+    knowledge::{rows, same_message, settings, vectors},
     scratch,
 };
 
@@ -91,6 +91,16 @@ fn the_constants_are_the_ones_node_has() {
     assert_eq!(json!(SCHEMA_VERSION), schema["schemaVersion"]);
     assert_eq!(json!(TOKENIZER), schema["tokenizer"]);
     assert_eq!(json!(INDEX_BUSY_TIMEOUT_MS), schema["indexBusyMs"]);
+}
+
+#[test]
+fn an_open_index_carries_the_settings_node_gives_it() {
+    let dir = scratch("knowledge-index-settings");
+    let db = open_db(dir.join("index.sqlite").to_str().unwrap()).unwrap();
+    assert_eq!(
+        vectors()["engine"]["schema"]["applied"]["index"],
+        settings(&db)
+    );
 }
 
 #[test]
