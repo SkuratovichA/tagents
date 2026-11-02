@@ -93,7 +93,7 @@ Where (a) differs from the wording above, each in one line:
 
 - [x] 12.1 `docs/architecture/rust-core.md`: the other two verbs and `doctor`, the template and the scaffold source, "Where the two are known to differ" (`node: missing`), the list of what is not decided (`plugin list` and the plugin host), the version lines the gate names; the sentences elsewhere in `docs/` that say node runs `plugin new` or `doctor`; `docs/` needs a breadcrumb line and a row in its directory `README.md` only for a new page, and there is none
 - [x] 12.2 `CHANGELOG.md`: one line under `[Unreleased]` in "Added" saying that `tagents-core plugin new` and `doctor` run in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback, with no `(#N)`
-- [ ] 12.3 The release gate: the workspace version raised one step above the merge base (`sh .github/scripts/core-release.sh gate origin/main` exits 0, `bash tests/release.sh` exits 0, `bash tests/install.sh` exits 0)
+- [x] 12.3 The release gate: the workspace version raised one step above the merge base (`sh .github/scripts/core-release.sh gate origin/main` exits 0, `bash tests/release.sh` exits 0, `bash tests/install.sh` exits 0)
 - [ ] 12.4 The gates of 7.9 again, each exit 0, and `git diff --exit-code` after `pnpm plugin:gen`, `pnpm messages:gen` and `node tests/rust-plugin-vectors.mts`
 
 ## 13. Archive
