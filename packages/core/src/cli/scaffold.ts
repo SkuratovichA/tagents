@@ -8,11 +8,7 @@
 // same strictness the host is written under) and a README that says what to do
 // next.
 //
-// The files are one text, spec/cli/scaffold/plugin.txt, which the Rust
-// `tagents-core` compiles in and this reads at run time, so the two cannot
-// write different bytes: a line `@@ <path>` starts a file and its body runs to
-// the next such line. `{{name}}`, `{{dir}}` and `{{core|json}}` are replaced in
-// one pass, so a value that holds `{{name}}` is written as typed.
+// The files are one text, spec/cli/scaffold/plugin.txt, which the Rust `tagents-core` compiles in and this reads at run time, so the two cannot write different bytes: a line `@@ <path>` starts a file and its body runs to the next such line. `{{name}}`, `{{dir}}` and `{{core|json}}` are replaced in one pass, so a value that holds `{{name}}` is written as typed.
 //
 // @tagents/core is depended on as `link:<relative path>`, the way the first
 // real plugin depends on it: a scaffold made from a checkout points at that
