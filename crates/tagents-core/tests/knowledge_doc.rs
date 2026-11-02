@@ -44,16 +44,10 @@ fn chunks_json(body: &str) -> Value {
 }
 
 /// Documents whose reading differs from node's, each with the reason. The test fails for a document that differs and is not here, and for one that is here and no longer differs.
-const KNOWN_DIFFERENCES: &[(&str, &str)] = &[
-    (
-        "CRLF line endings",
-        "the `yaml` package keeps a lone carriage return that ends the front matter as part of the last plain scalar (`title: Crlf` is `Crlf\\r`) and refuses a quoted or flow value that ends it; saphyr takes it for a line break",
-    ),
-    (
-        "an explicit int tag on a title",
-        "saphyr resolves an explicit core tag on a quoted scalar to a string and drops the tag (see `front_matter::tests::KNOWN_DIFFERENCES`)",
-    ),
-];
+const KNOWN_DIFFERENCES: &[(&str, &str)] = &[(
+    "an explicit int tag on a title",
+    "saphyr resolves an explicit core tag on a quoted scalar to a string and drops the tag (see `front_matter::tests::KNOWN_DIFFERENCES`)",
+)];
 
 #[test]
 fn every_document_splits_parses_and_cuts_into_sections_as_node_does() {

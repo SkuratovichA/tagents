@@ -546,7 +546,7 @@
         "file": "edge.md",
         "text": "---\r\ntype: Note\r\ntitle: Crlf\r\n---\r\n## One\r\nbody\r\n## Two\r\nmore\r\n",
         "split": {
-          "yaml": "type: Note\r\ntitle: Crlf\r",
+          "yaml": "type: Note\r\ntitle: Crlf",
           "body": "## One\r\nbody\r\n## Two\r\nmore\r\n"
         },
         "result": {
@@ -554,7 +554,7 @@
             "meta": {
               "id": "edge",
               "type": "Note",
-              "title": "Crlf\r",
+              "title": "Crlf",
               "description": null,
               "tags": [],
               "resource": null,
@@ -581,6 +581,169 @@
             ],
             "hash": "2f1873c236ed17e63f3977c408627b31"
           }
+        }
+      },
+      {
+        "name": "CRLF with a quoted last value",
+        "file": "edge.md",
+        "text": "---\r\ntype: Note\r\ntitle: \"Quoted\"\r\n---\r\nbody\r\n",
+        "split": {
+          "yaml": "type: Note\r\ntitle: \"Quoted\"",
+          "body": "body\r\n"
+        },
+        "result": {
+          "ok": {
+            "meta": {
+              "id": "edge",
+              "type": "Note",
+              "title": "Quoted",
+              "description": null,
+              "tags": [],
+              "resource": null,
+              "generated": null,
+              "sources": [],
+              "status": "stable",
+              "staleAfter": null,
+              "scope": null,
+              "legacy": false
+            },
+            "declaredId": null,
+            "body": "body\r\n",
+            "chunks": [
+              {
+                "heading": "",
+                "ord": 0,
+                "body": "body"
+              }
+            ],
+            "hash": "902003f280c69cfb43b95c242a203ebf"
+          }
+        }
+      },
+      {
+        "name": "CRLF with a flow last value",
+        "file": "edge.md",
+        "text": "---\r\ntype: Note\r\ntags: [a, b]\r\n---\r\nbody\r\n",
+        "split": {
+          "yaml": "type: Note\r\ntags: [a, b]",
+          "body": "body\r\n"
+        },
+        "result": {
+          "ok": {
+            "meta": {
+              "id": "edge",
+              "type": "Note",
+              "title": "edge",
+              "description": null,
+              "tags": [
+                "a",
+                "b"
+              ],
+              "resource": null,
+              "generated": null,
+              "sources": [],
+              "status": "stable",
+              "staleAfter": null,
+              "scope": null,
+              "legacy": false
+            },
+            "declaredId": null,
+            "body": "body\r\n",
+            "chunks": [
+              {
+                "heading": "",
+                "ord": 0,
+                "body": "body"
+              }
+            ],
+            "hash": "f7c491d6ba0362bb7d860ecbace45b47"
+          }
+        }
+      },
+      {
+        "name": "CRLF with a block scalar last value",
+        "file": "edge.md",
+        "text": "---\r\ntype: Note\r\ndescription: |\r\n  one\r\n  two\r\n---\r\nbody\r\n",
+        "split": {
+          "yaml": "type: Note\r\ndescription: |\r\n  one\r\n  two",
+          "body": "body\r\n"
+        },
+        "result": {
+          "ok": {
+            "meta": {
+              "id": "edge",
+              "type": "Note",
+              "title": "edge",
+              "description": "one\ntwo",
+              "tags": [],
+              "resource": null,
+              "generated": null,
+              "sources": [],
+              "status": "stable",
+              "staleAfter": null,
+              "scope": null,
+              "legacy": false
+            },
+            "declaredId": null,
+            "body": "body\r\n",
+            "chunks": [
+              {
+                "heading": "",
+                "ord": 0,
+                "body": "body"
+              }
+            ],
+            "hash": "a0ce794f6fccd5e2abf0529e9addebf9"
+          }
+        }
+      },
+      {
+        "name": "CRLF with a blank line before the closing fence",
+        "file": "edge.md",
+        "text": "---\r\ntype: Note\r\n\r\n---\r\nbody\r\n",
+        "split": {
+          "yaml": "type: Note\r\n",
+          "body": "body\r\n"
+        },
+        "result": {
+          "ok": {
+            "meta": {
+              "id": "edge",
+              "type": "Note",
+              "title": "edge",
+              "description": null,
+              "tags": [],
+              "resource": null,
+              "generated": null,
+              "sources": [],
+              "status": "stable",
+              "staleAfter": null,
+              "scope": null,
+              "legacy": false
+            },
+            "declaredId": null,
+            "body": "body\r\n",
+            "chunks": [
+              {
+                "heading": "",
+                "ord": 0,
+                "body": "body"
+              }
+            ],
+            "hash": "8c473c65b6d45e949a925e43a3849cab"
+          }
+        }
+      },
+      {
+        "name": "CRLF with an empty front matter",
+        "file": "edge.md",
+        "text": "---\r\n---\r\nbody\r\n",
+        "split": {
+          "yaml": "",
+          "body": "body\r\n"
+        },
+        "result": {
+          "error": "frontmatter: type: required — a document needs a `type` (legacy: `kind`)"
         }
       },
       {
@@ -3669,6 +3832,234 @@
         },
         "result": {
           "error": "frontmatter is not YAML: Tabs are not allowed as indentation at line 3, column 1:\n\ngenerated:\n\tby: tool\n^\n"
+        }
+      },
+      {
+        "name": "a tab after the colon of the title",
+        "file": "edge.md",
+        "text": "---\ntype: Note\ntitle:\tRunbook\n---\nBody.\n",
+        "split": {
+          "yaml": "type: Note\ntitle:\tRunbook",
+          "body": "Body.\n"
+        },
+        "result": {
+          "ok": {
+            "meta": {
+              "id": "edge",
+              "type": "Note",
+              "title": "Runbook",
+              "description": null,
+              "tags": [],
+              "resource": null,
+              "generated": null,
+              "sources": [],
+              "status": "stable",
+              "staleAfter": null,
+              "scope": null,
+              "legacy": false
+            },
+            "declaredId": null,
+            "body": "Body.\n",
+            "chunks": [
+              {
+                "heading": "",
+                "ord": 0,
+                "body": "Body."
+              }
+            ],
+            "hash": "9c9a61222189ce60a1d3911a828604aa"
+          }
+        }
+      },
+      {
+        "name": "a tab after the colon of every key",
+        "file": "edge.md",
+        "text": "---\ntype:\tNote\ntitle:\tRunbook\ntags:\t[a,\tb]\n---\nBody.\n",
+        "split": {
+          "yaml": "type:\tNote\ntitle:\tRunbook\ntags:\t[a,\tb]",
+          "body": "Body.\n"
+        },
+        "result": {
+          "ok": {
+            "meta": {
+              "id": "edge",
+              "type": "Note",
+              "title": "Runbook",
+              "description": null,
+              "tags": [
+                "a",
+                "b"
+              ],
+              "resource": null,
+              "generated": null,
+              "sources": [],
+              "status": "stable",
+              "staleAfter": null,
+              "scope": null,
+              "legacy": false
+            },
+            "declaredId": null,
+            "body": "Body.\n",
+            "chunks": [
+              {
+                "heading": "",
+                "ord": 0,
+                "body": "Body."
+              }
+            ],
+            "hash": "94025adc62fe589354fb1b8a25d23534"
+          }
+        }
+      },
+      {
+        "name": "a tab inside a value",
+        "file": "edge.md",
+        "text": "---\ntype: Note\ntitle: Run\tbook\n---\nBody.\n",
+        "split": {
+          "yaml": "type: Note\ntitle: Run\tbook",
+          "body": "Body.\n"
+        },
+        "result": {
+          "ok": {
+            "meta": {
+              "id": "edge",
+              "type": "Note",
+              "title": "Run\tbook",
+              "description": null,
+              "tags": [],
+              "resource": null,
+              "generated": null,
+              "sources": [],
+              "status": "stable",
+              "staleAfter": null,
+              "scope": null,
+              "legacy": false
+            },
+            "declaredId": null,
+            "body": "Body.\n",
+            "chunks": [
+              {
+                "heading": "",
+                "ord": 0,
+                "body": "Body."
+              }
+            ],
+            "hash": "70014e09558f4c70dd06d02e162de2b1"
+          }
+        }
+      },
+      {
+        "name": "a tab after the colon inside a flow mapping",
+        "file": "edge.md",
+        "text": "---\ntype: Note\ngenerated: {by:\ttool, at:\t2026-10-30T00:00:00Z}\n---\nBody.\n",
+        "split": {
+          "yaml": "type: Note\ngenerated: {by:\ttool, at:\t2026-10-30T00:00:00Z}",
+          "body": "Body.\n"
+        },
+        "result": {
+          "ok": {
+            "meta": {
+              "id": "edge",
+              "type": "Note",
+              "title": "edge",
+              "description": null,
+              "tags": [],
+              "resource": null,
+              "generated": {
+                "by": "tool",
+                "at": "2026-10-30T00:00:00Z"
+              },
+              "sources": [],
+              "status": "stable",
+              "staleAfter": null,
+              "scope": null,
+              "legacy": false
+            },
+            "declaredId": null,
+            "body": "Body.\n",
+            "chunks": [
+              {
+                "heading": "",
+                "ord": 0,
+                "body": "Body."
+              }
+            ],
+            "hash": "b41c58736022a48f6330441b7caa7ab3"
+          }
+        }
+      },
+      {
+        "name": "a tab after a colon inside a quoted value is kept",
+        "file": "edge.md",
+        "text": "---\ntype: Note\ntitle: \"a:\tb\"\n---\nBody.\n",
+        "split": {
+          "yaml": "type: Note\ntitle: \"a:\tb\"",
+          "body": "Body.\n"
+        },
+        "result": {
+          "ok": {
+            "meta": {
+              "id": "edge",
+              "type": "Note",
+              "title": "a:\tb",
+              "description": null,
+              "tags": [],
+              "resource": null,
+              "generated": null,
+              "sources": [],
+              "status": "stable",
+              "staleAfter": null,
+              "scope": null,
+              "legacy": false
+            },
+            "declaredId": null,
+            "body": "Body.\n",
+            "chunks": [
+              {
+                "heading": "",
+                "ord": 0,
+                "body": "Body."
+              }
+            ],
+            "hash": "21abf2e510de8cfe8cd9c3809d0a4782"
+          }
+        }
+      },
+      {
+        "name": "a tab after a colon inside a block scalar is kept",
+        "file": "edge.md",
+        "text": "---\ntype: Note\ndescription: |\n  a:\tb\n  c\n---\nBody.\n",
+        "split": {
+          "yaml": "type: Note\ndescription: |\n  a:\tb\n  c",
+          "body": "Body.\n"
+        },
+        "result": {
+          "ok": {
+            "meta": {
+              "id": "edge",
+              "type": "Note",
+              "title": "edge",
+              "description": "a:\tb\nc",
+              "tags": [],
+              "resource": null,
+              "generated": null,
+              "sources": [],
+              "status": "stable",
+              "staleAfter": null,
+              "scope": null,
+              "legacy": false
+            },
+            "declaredId": null,
+            "body": "Body.\n",
+            "chunks": [
+              {
+                "heading": "",
+                "ord": 0,
+                "body": "Body."
+              }
+            ],
+            "hash": "ccc601283e06d9c250dec9999135827f"
+          }
         }
       },
       {
@@ -37846,6 +38237,355 @@
         "v": [
           [
             "a",
+            {
+              "t": "str",
+              "v": "b"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "title:\tRunbook",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "title",
+            {
+              "t": "str",
+              "v": "Runbook"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "a:\tb\nc:\td",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "a",
+            {
+              "t": "str",
+              "v": "b"
+            }
+          ],
+          [
+            "c",
+            {
+              "t": "str",
+              "v": "d"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "a:\t\tb",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "a",
+            {
+              "t": "str",
+              "v": "b"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "a:\n  b:\t1\n  c:\t[x,\ty]",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "a",
+            {
+              "t": "map",
+              "v": [
+                [
+                  "b",
+                  {
+                    "t": "num",
+                    "v": "1"
+                  }
+                ],
+                [
+                  "c",
+                  {
+                    "t": "seq",
+                    "v": [
+                      {
+                        "t": "str",
+                        "v": "x"
+                      },
+                      {
+                        "t": "str",
+                        "v": "y"
+                      }
+                    ]
+                  }
+                ]
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "\"a\":\t1\n'b':\t2",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "a",
+            {
+              "t": "num",
+              "v": "1"
+            }
+          ],
+          [
+            "b",
+            {
+              "t": "num",
+              "v": "2"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "a: {b:\t1, c:\t2}",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "a",
+            {
+              "t": "map",
+              "v": [
+                [
+                  "b",
+                  {
+                    "t": "num",
+                    "v": "1"
+                  }
+                ],
+                [
+                  "c",
+                  {
+                    "t": "num",
+                    "v": "2"
+                  }
+                ]
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "a: [b:\t1]",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "a",
+            {
+              "t": "seq",
+              "v": [
+                {
+                  "t": "map",
+                  "v": [
+                    [
+                      "b",
+                      {
+                        "t": "num",
+                        "v": "1"
+                      }
+                    ]
+                  ]
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "{a:\t1}",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "a",
+            {
+              "t": "num",
+              "v": "1"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "a:\t-x",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "a",
+            {
+              "t": "str",
+              "v": "-x"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "a:\t- x",
+      "error": "Unexpected block-seq-ind on same line with key at line 1, column 4:"
+    },
+    {
+      "text": "a:\tb:\tc",
+      "error": "Tabs are not allowed as indentation at line 1, column 3:"
+    },
+    {
+      "text": "a:\t# c\nb:\t1",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "a",
+            {
+              "t": "null"
+            }
+          ],
+          [
+            "b",
+            {
+              "t": "num",
+              "v": "1"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "a: |\n  x:\ty\n  z",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "a",
+            {
+              "t": "str",
+              "v": "x:\ty\nz\n"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "a: \"x:\ty\"\nb: 'x:\ty'",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "a",
+            {
+              "t": "str",
+              "v": "x:\ty"
+            }
+          ],
+          [
+            "b",
+            {
+              "t": "str",
+              "v": "x:\ty"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "a: x\ty\nb: [x\ty]",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "a",
+            {
+              "t": "str",
+              "v": "x\ty"
+            }
+          ],
+          [
+            "b",
+            {
+              "t": "seq",
+              "v": [
+                {
+                  "t": "str",
+                  "v": "x\ty"
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "?\ta\n:\tb",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "a",
+            {
+              "t": "str",
+              "v": "b"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "text": "a:\n\tb: 1",
+      "error": "Tabs are not allowed as indentation at line 2, column 1:"
+    },
+    {
+      "text": "ключ:\tзначение\n😀:\tb\nе́:\t\"q:\tr\"\nd:\tж",
+      "ok": {
+        "t": "map",
+        "v": [
+          [
+            "d",
+            {
+              "t": "str",
+              "v": "ж"
+            }
+          ],
+          [
+            "е́",
+            {
+              "t": "str",
+              "v": "q:\tr"
+            }
+          ],
+          [
+            "ключ",
+            {
+              "t": "str",
+              "v": "значение"
+            }
+          ],
+          [
+            "😀",
             {
               "t": "str",
               "v": "b"

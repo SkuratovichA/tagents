@@ -226,10 +226,16 @@ pub fn split_frontmatter(text: &str) -> Option<(String, String)> {
     }
     let end = 3 + normalized.get(3..)?.find("\n---")?;
     let first_line_end = normalized.find('\n')?;
-    let yaml = if first_line_end + 1 >= end {
+    // The `\r` of a CRLF break that ends the last line goes with its `\n`: node cuts it, and a YAML reader takes a lone `\r` for part of the last value.
+    let stop = if normalized[..end].ends_with('\r') {
+        end - 1
+    } else {
+        end
+    };
+    let yaml = if first_line_end + 1 >= stop {
         ""
     } else {
-        &normalized[first_line_end + 1..end]
+        &normalized[first_line_end + 1..stop]
     };
     let body = match normalized[end + 1..].find('\n') {
         Some(at) => &normalized[end + 1 + at + 1..],

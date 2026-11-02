@@ -35,16 +35,50 @@ impl Yaml {
     }
 }
 
+/// What saphyr says of a tab after the colon of a mapping entry that is followed by a plain scalar: `yaml` accepts the tab as white space there, and saphyr refuses it.
+const TAB_AFTER_COLON: &str = "':' must be followed by a valid YAML whitespace";
+
 /// `yaml.parse(text)`: the value of the one document in `text`, null for none, or the message of why it is not YAML. More than one document is refused, as the package refuses it.
+///
+/// A tab after a mapping colon (`title:\tRunbook`) is a space to `yaml`. When saphyr refuses one, that tab is made a space and the text is read again; the scanner has said where a colon is an indicator, so no tab inside a quoted scalar, a block scalar or a comment is ever touched, and a space takes the place of the tab one for one, so every position stays as it was.
 pub fn parse(text: &str) -> Result<Yaml, String> {
-    let mut documents = Node::load_from_str(text).map_err(|e| e.to_string())?;
-    match documents.len() {
-        0 => Ok(Yaml::Null),
-        1 => convert(&documents.remove(0)),
-        _ => Err(
-            "Source contains multiple documents; please use YAML.parseAllDocuments()".to_owned(),
-        ),
+    let mut source = text.to_owned();
+    loop {
+        match Node::load_from_str(&source) {
+            Ok(mut documents) => {
+                return match documents.len() {
+                    0 => Ok(Yaml::Null),
+                    1 => convert(&documents.remove(0)),
+                    _ => Err(
+                        "Source contains multiple documents; please use YAML.parseAllDocuments()"
+                            .to_owned(),
+                    ),
+                };
+            }
+            Err(e) if e.info() == TAB_AFTER_COLON => {
+                match space_after_colon(&source, e.marker().index()) {
+                    Some(fixed) => source = fixed,
+                    None => return Err(e.to_string()),
+                }
+            }
+            Err(e) => return Err(e.to_string()),
+        }
     }
+}
+
+/// `source` with the first tab of the run of tabs that ends at character `at` made a space, when a colon comes right before that run.
+fn space_after_colon(source: &str, at: usize) -> Option<String> {
+    let end = source
+        .char_indices()
+        .nth(at)
+        .map_or(source.len(), |(i, _)| i);
+    let before_tabs = source[..end].trim_end_matches('\t');
+    if before_tabs.len() == end || !before_tabs.ends_with(':') {
+        return None;
+    }
+    let mut fixed = source.to_owned();
+    fixed.replace_range(before_tabs.len()..=before_tabs.len(), " ");
+    Some(fixed)
 }
 
 fn convert(node: &Node) -> Result<Yaml, String> {
@@ -176,8 +210,8 @@ mod tests {
             "a surrogate pair written as two `\\u` escapes is refused by saphyr, as YAML 1.2 defines `\\u` as one code point",
         ),
         (
-            "a:\tb",
-            "a tab after the colon of a mapping entry is refused by saphyr and accepted by node",
+            "?\ta\n:\tb",
+            "a tab after the `?` of an explicit key is refused by saphyr and accepted by node; only a tab after a mapping colon is made a space",
         ),
         (
             "a: x\0y",
