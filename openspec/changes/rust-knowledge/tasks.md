@@ -163,5 +163,5 @@ Pull request (c).
 Pull request (c).
 
 - [x] 17.1 `CHANGELOG.md` has one line under `[Unreleased]`: a session's knowledge server is the Rust binary when it is installed, joining one shared daemon with no node and no `nc`, and the node server stays as the way out (`grep -n 'knowledge' CHANGELOG.md`)
-- [ ] 17.2 `pnpm spec:check` accepts the specs after the change is archived (`pnpm spec:check`)
-- [ ] 17.3 This change is archived, as the last task, with the delta specs applied to `openspec/specs/` (`/opsx:archive`, `pnpm spec:check`)
+- [x] 17.2 `pnpm spec:check` accepts the specs after the change is archived (`pnpm spec:check`)
+- [x] 17.3 This change is archived, as the last task, with the delta specs applied to `openspec/specs/` (`/opsx:archive`, `pnpm spec:check`)
