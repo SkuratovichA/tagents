@@ -125,7 +125,12 @@ t "2. over a scratch install: the program a session starts"
 CORE=${TAGENTS_CORE_BIN:-$ROOT/target/debug/tagents-core}
 REAL_NODE=$(command -v node || true)
 if [ ! -x "$CORE" ] || [ -z "$REAL_NODE" ]; then
-  printf '  skip no built tagents-core (%s) or no node\n' "$CORE"
+  # Part two is the part that runs the real binary: in CI a machine that cannot run it is a failure, not a skip that reads as a pass.
+  if [ -n "${CI:-}" ]; then
+    fail=$((fail + 1)); printf '  FAIL part two cannot run: no built tagents-core (%s) or no node, and CI is set\n' "$CORE"
+  else
+    printf '  skip no built tagents-core (%s) or no node\n' "$CORE"
+  fi
 else
   # A node that writes down every start and then is the real one: a probe or a join that starts node shows in the log.
   mkdir -p "$TMP/rec"
@@ -161,14 +166,17 @@ else
   senv() { "${SENV[@]}" "$@"; }
   INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"launcher-test","version":"0"}}}'
 
-  # <label> — starts the launcher as a session does: its stdin is a pipe that stays open for four seconds after the request; SPID is its pid
+  # <label> [more request lines] — starts the launcher as a session does: its stdin is a pipe fed the initialize request and the lines given, which stays open until end_session closes it (or 60 s pass), so the input cannot end before the replies are read; SPID is the launcher's pid. It returns when every request has its reply.
   session() {
-    { printf '%s\n' "$INIT"; sleep 4; } | "${SENV[@]}" /bin/sh "$LAUNCHER" > "$TMP/out.$1" 2> "$TMP/err.$1" &
+    lab=$1; shift
+    want=$(( $# + 1 ))
+    { printf '%s\n' "$INIT"; for l in "$@"; do printf '%s\n' "$l"; done; for _ in $(seq 1 600); do [ -e "$TMP/close.$lab" ] && break; sleep 0.1; done; } | "${SENV[@]}" /bin/sh "${SESSION_LAUNCHER:-$LAUNCHER}" > "$TMP/out.$lab" 2> "$TMP/err.$lab" &
     SPID=$!
-    for _ in $(seq 1 100); do grep -q '"result"' "$TMP/out.$1" 2>/dev/null && break; sleep 0.1; done
+    for _ in $(seq 1 100); do [ "$(grep -c '"result"' "$TMP/out.$lab" 2>/dev/null)" -ge "$want" ] && break; sleep 0.1; done
   }
   # the session ends by itself when its input closes
-  end_session() {
+  end_session() {  # <label>
+    : > "$TMP/close.$1"
     for _ in $(seq 1 100); do kill -0 "$SPID" 2>/dev/null || break; sleep 0.1; done
     if kill -0 "$SPID" 2>/dev/null; then echo gone=no; kill "$SPID" 2>/dev/null; else echo gone=yes; fi
     wait 2>/dev/null
@@ -186,7 +194,7 @@ else
   ok "...after a serve that the wrapper handed to node" yes "$(grep -q ' serve' "$TMP/node-starts" && echo yes || echo no)"
   ok "...and no join was started" 0 "$(grep -c ' join' "$TMP/node-starts")"
   ok "...nothing on stderr" "" "$(cat "$TMP/err.nobin")"
-  ok "...and ends when its input closes" gone=yes "$(end_session)"
+  ok "...and ends when its input closes" gone=yes "$(end_session nobin)"
   stop_scratch_daemons
   sleep 0.5
 
@@ -205,7 +213,7 @@ else
   ok "...no node was started" 0 "$(starts)"
   ok "...no process under it: no node, no nc" "" "$(pgrep -P "$SPID" | tr -d '\n')"
   ok "...nothing on stderr" "" "$(cat "$TMP/err.bin")"
-  ok "...and ends when its input closes" gone=yes "$(end_session)"
+  ok "...and ends when its input closes" gone=yes "$(end_session bin)"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

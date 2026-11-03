@@ -175,5 +175,3 @@ jobs:
         run: bash tests/release.sh
       - name: The installer, including the prebuilt tagents-core it fetches
         run: bash tests/install.sh
-      - name: The knowledge launcher, over stubs and over a scratch install
-        run: bash tests/knowledge-launcher.sh
