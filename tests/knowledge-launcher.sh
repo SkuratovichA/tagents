@@ -12,31 +12,24 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
 LAUNCHER=${TAGENTS_LAUNCHER:-$ROOT/packages/knowledge/bin/knowledge-mcp}
 TMP=$(cd -P "$(mktemp -d "${TMPDIR:-/tmp}/tagents-launcher.XXXXXX")" && pwd -P) || exit 1
-# The daemons of this run live outside the scratch directory (their socket is under /tmp), but their command line or their environment names the scratch install or the scratch folder: only a process whose command or environment contains this run's directory is signalled.
-stop_scratch_daemons() {
-  ps -A -E -ww -o pid=,command= | grep -F "$TMP/" | grep -v grep | awk '{print $1}' | while read -r p; do kill "$p" 2>/dev/null; done
-  sleep 0.3
+# The daemons of this run keep their sockets in a directory of their own under the system temp directory (/tmp/tagents-<uid>), not under TMPDIR, so the scratch directory does not hold them. What names the run is the environment they were started with (TAGENTS_HOME, the knowledge folder and the databases are under $TMP), and for the Rust daemon its command line too. Only a process whose environment or command holds this run's directory is signalled, and never the suite itself. /proc/<pid>/environ where there is a /proc (Linux), `ps -E` where there is not (macOS).
+scratch_pids() {
+  if [ -d /proc/self ]; then
+    for e in /proc/[0-9]*/environ; do
+      pid=${e#/proc/}; pid=${pid%/environ}
+      { tr '\0' '\n' < "$e"; tr '\0' ' ' < "/proc/$pid/cmdline"; } 2>/dev/null | grep -qF "$TMP/" && echo "$pid"
+    done
+  else
+    ps -A -E -ww -o pid=,command= | grep -F "$TMP/" | grep -v grep | awk '{print $1}'
+  fi | awk -v me=$$ '$1 != me'
 }
-# The node daemon is named by its socket and the pid file beside it, and the socket is derived from the scratch environment.
-SOCKS=$TMP/daemon-sockets
-stop_daemons() {
-  if [ -f "$SOCKS" ]; then
-    while read -r s; do
-      [ -n "$s" ] || continue
-      p=$(cat "$s.pid" 2>/dev/null); case $p in ''|*[!0-9]*) ;; *) kill "$p" 2>/dev/null ;; esac
-      rm -f "$s" "$s.pid"
-    done < "$SOCKS"
-    : > "$SOCKS"
-  fi
-  stop_scratch_daemons
+stop_scratch_daemons() {
+  for p in $(scratch_pids); do kill "$p" 2>/dev/null; done
+  sleep 0.3
+  for p in $(scratch_pids); do kill -9 "$p" 2>/dev/null; done
 }
 cleanup() {
-  stop_daemons
-  # A daemon is signalled only by the pid its own pid file names, and only when the file is under the scratch directory.
-  for f in $(find "$TMP" -name '*.pid' 2>/dev/null); do
-    p=$(cat "$f" 2>/dev/null); case $p in ''|*[!0-9]*) continue ;; esac
-    kill "$p" 2>/dev/null
-  done
+  stop_scratch_daemons
   rm -rf "$TMP"
 }
 trap cleanup EXIT INT TERM
@@ -194,8 +187,7 @@ else
   ok "...and no join was started" 0 "$(grep -c ' join' "$TMP/node-starts")"
   ok "...nothing on stderr" "" "$(cat "$TMP/err.nobin")"
   ok "...and ends when its input closes" gone=yes "$(end_session)"
-  remember_daemon
-  stop_daemons
+  stop_scratch_daemons
   sleep 0.5
 
   # --- the binary -------------------------------------------------------------
@@ -214,7 +206,6 @@ else
   ok "...no process under it: no node, no nc" "" "$(pgrep -P "$SPID" | tr -d '\n')"
   ok "...nothing on stderr" "" "$(cat "$TMP/err.bin")"
   ok "...and ends when its input closes" gone=yes "$(end_session)"
-  remember_daemon
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
