@@ -4,7 +4,7 @@ members = ["crates/*"]
 default-members = ["crates/tagents-core"]
 
 [workspace.package]
-version = "0.6.5"
+version = "0.6.6"
 edition = "2024"
 rust-version = "1.99"
 license = "MIT"
@@ -30,6 +30,8 @@ toml = { version = "1", default-features = false, features = ["std", "parse", "p
 rusqlite = { version = "0.41", default-features = false, features = ["bundled"] }
 # saphyr reads the YAML 1.2 front matter of a knowledge document (knowledge::front_matter) as the `yaml` package does for the node index; `default-features = false` leaves out the decoder for other encodings, because a document is UTF-8 text already. A converter turns its tree into the values `doc.ts` receives.
 saphyr = { version = "0.3", default-features = false }
+# libc is a dev-dependency of tagents-core only: a test holds the signal table of `session prompt` against the C library's numbers on the target.
+libc = "0.2"
 # sha2 is the hash of a document (the first 32 hex digits of its SHA-256, which the index stores as `hash`); the tree has no hash.
 sha2 = "0.11"
 

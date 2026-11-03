@@ -732,7 +732,7 @@ modsh install_event_hooks; modsh install_event_hooks
 ok "installing the event hooks twice leaves one ring on each of the 18 events" 18 "$(hooks42)"
 tm split-window -d -t tatest-dash: 'sleep 1'
 /bin/sleep 0.3
-ok "the owner's hook at [7] ran beside ours" yes "$(tm show -gv @mine 2>/dev/null | grep -q yes && echo yes || echo no)"
+ok "the owner's hook at [7] ran beside ours" yes "$(grep -q yes <<< "$(tm show -gv @mine 2>/dev/null)" && echo yes || echo no)"
 
 # THE HOOK'S COPY OF THE COUNT. The agent-state hook is POSIX sh and cannot source core.sh, so it carries the format that bumps @tagents_evgen itself; the two must stay the same text.
 HOOKB=$(sed -n "s/^EV_BUMP='\(.*\)'\$/\1/p" "$HOOK")

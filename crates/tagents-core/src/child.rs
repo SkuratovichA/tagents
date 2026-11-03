@@ -21,9 +21,9 @@ use crate::ending::Stop;
 use crate::sync::locked;
 
 /// How often a call whose drain is over looks again at the pipes that have bytes or an end to read. The Rust server's own: the node server reads in its event loop's poll phase and has no such wait.
-const DRAIN_STEP: Duration = Duration::from_millis(10);
+pub(crate) const DRAIN_STEP: Duration = Duration::from_millis(10);
 /// How long a call with no grace waits, past the drain, for a pipe that still has bytes or an end to read.
-const READER_WAIT: Duration = Duration::from_millis(2000);
+pub(crate) const READER_WAIT: Duration = Duration::from_millis(2000);
 
 /// What a call is allowed.
 pub struct Policy {
@@ -121,8 +121,8 @@ fn complete_end(bytes: &[u8]) -> usize {
 }
 
 /// One of the two output pipes of the program.
-#[derive(Clone, Copy, PartialEq)]
-enum Stream {
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Stream {
     Out,
     Err,
 }
@@ -160,7 +160,7 @@ fn group_of(child: &Child) -> Option<Pid> {
     Pid::from_raw(i32::try_from(child.id()).ok()?)
 }
 
-fn spawn_thread(name: &str, work: impl FnOnce() + Send + 'static) -> Result<(), String> {
+pub(crate) fn spawn_thread(name: &str, work: impl FnOnce() + Send + 'static) -> Result<(), String> {
     std::thread::Builder::new()
         .name(name.into())
         .spawn(work)
@@ -192,7 +192,7 @@ fn write_input(mut pipe: ChildStdin, input: &[u8]) {
 }
 
 /// Waits for the program to exit without reaping it.
-fn wait_for_exit(group: Pid) -> Option<i32> {
+pub(crate) fn wait_for_exit(group: Pid) -> Option<i32> {
     loop {
         match waitid(
             WaitId::Pid(group),
@@ -206,7 +206,7 @@ fn wait_for_exit(group: Pid) -> Option<i32> {
 }
 
 /// A second descriptor of the read end of `pipe`, to ask whether it is readable without reading it. It is the same pipe, so it keeps the pipe open: it must be dropped once the call is over, or a process that outlived the call would never get EPIPE.
-fn duplicate(pipe: &impl AsFd) -> Result<OwnedFd, String> {
+pub(crate) fn duplicate(pipe: &impl AsFd) -> Result<OwnedFd, String> {
     pipe.as_fd()
         .try_clone_to_owned()
         .map_err(|e| format!("could not duplicate an output pipe of the call: {e}"))
@@ -287,15 +287,23 @@ fn launch(child: &mut Child, group: Pid, policy: &Policy, stop: &Stop) -> Result
 }
 
 /// Whether a pipe of `open` holds bytes or has lost its last writer, so that its reader has something to take that it has not taken yet. A pipe that is empty and still open is held by a process the call cannot stop, or its reader has taken everything. An error of the poll counts as not readable: the call gives up at the drain.
-fn readable(open: &[(Stream, OwnedFd)]) -> bool {
+pub(crate) fn readable(open: &[(Stream, OwnedFd)]) -> bool {
     let mut fds: Vec<PollFd<'_>> = open
         .iter()
         .map(|(_, fd)| PollFd::new(fd, PollFlags::IN))
         .collect();
-    poll(&mut fds, Some(&Timespec::default())).is_ok()
-        && fds
-            .iter()
-            .any(|fd| fd.revents().intersects(PollFlags::IN | PollFlags::HUP))
+    loop {
+        match poll(&mut fds, Some(&Timespec::default())) {
+            Ok(_) => {
+                return fds
+                    .iter()
+                    .any(|fd| fd.revents().intersects(PollFlags::IN | PollFlags::HUP));
+            }
+            // `poll` is not restarted past a handler, even with `SA_RESTART`, and the question is still open.
+            Err(Errno::INTR) => {}
+            Err(_) => return false,
+        }
+    }
 }
 
 /// Follows the program to its end and, whatever ends it, stops everything it started in its group. A timeout, or a stop of the request, sends SIGTERM to the group and SIGKILL when the grace is over, or SIGKILL at once when there is no grace; the exit of the program kills the group at once and gives the pipes the drain to run dry. When the drain is over a pipe that is still `readable` is waited for in steps, up to the drain and the grace after the exit: its reader thread has not run yet, which a process holding an empty pipe never causes. `open` is the pipes whose reader has not finished, each by a duplicate, and it is dropped when the call is.

@@ -1223,8 +1223,8 @@ resource_checks() {
   [ -z "$SELF_TEST" ] && selected "$label" || return 0
   ran=$((ran + 1))
   report=$(alone resources 2> "$TMP/resources.err") || { bad "$label: the driver failed (exit $?)" "$(head -c 400 "$TMP/resources.err" | tr '\n' '|')"; return; }
-  if ! printf '%s\n' "$report" | grep -q '^started yes$'; then bad "$label: the daemon never said it had started" "$(printf '%s\n' "$report" | tr '\n' '|' | head -c 400)"; return; fi
-  if printf '%s\n' "$report" | grep -q '^timeout '; then bad "$label: a wait ran out" "$(printf '%s\n' "$report" | grep '^timeout ' | head -3 | tr '\n' '|')"; return; fi
+  if ! grep -q '^started yes$' <<< "$report"; then bad "$label: the daemon never said it had started" "$(printf '%s\n' "$report" | tr '\n' '|' | head -c 400)"; return; fi
+  if grep -q '^timeout ' <<< "$report"; then bad "$label: a wait ran out" "$(printf '%s\n' "$report" | grep '^timeout ' | head -3 | tr '\n' '|')"; return; fi
   growth=$(printf '%s\n' "$report" | awk '$1 == "cpu" { print $3 - $2 }')
   if [ "${growth:-x}" -le 1 ] 2>/dev/null; then ok; else bad "resources: idle processor time grew by ${growth:-?} ticks in ten seconds, at most 1" "$(printf '%s\n' "$report" | grep '^cpu ')"; fi
   threads=$(printf '%s\n' "$report" | awk '$1 == "threads" { print $2 }')

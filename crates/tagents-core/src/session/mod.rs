@@ -1,9 +1,17 @@
 //! `tagents-core session …`: the verbs that drive a headless Claude Code session, served as the node CLI's `session()` of `packages/core/src/cli/main.ts` serves them.
 //!
-//! A call answers only what it can prove identical to node's and hands every other call to the node CLI (`None`, before anything is read, written or started): a verb that stays with node, a verb nobody knows, an argument outside the grammar of `args`.
+//! A call answers only what it can prove identical to node's and hands every other call to the node CLI (`None`, before anything is read, written or started): a verb that stays with node, a verb nobody knows, an argument outside the grammar of `args`, and a call of `prompt` that node's `spawn` would treat in a way Rust cannot prove (`session::prompt`, `session::spawn`).
 
+#[cfg(target_os = "macos")]
+pub mod awake;
+pub mod command;
+pub mod outcome;
+pub mod prompt;
 pub mod read;
 pub mod reference;
+pub mod spawn;
+pub mod stream;
+pub mod turn;
 
 use crate::{messages::Texts, sessions::Output};
 use read::Setting;
@@ -11,6 +19,7 @@ use read::Setting;
 /// The verbs this module serves, as the words after the program name. `tagents-core --spec` prints them and a test pins them to `impl: "rust"` in the data file.
 pub const VERBS: &[&[&str]] = &[
     &["session", "open"],
+    &["session", "prompt"],
     &["session", "last"],
     &["session", "list"],
 ];
@@ -27,6 +36,7 @@ fn run_in(argv: &[String], setting: &Setting) -> Option<Output> {
         "open" => read::open,
         "list" => read::list,
         "last" => read::last,
+        "prompt" => prompt::prompt,
         _ => return None,
     };
     serve(args, setting, &Texts::load(setting.locale).ok()?)
@@ -42,7 +52,7 @@ mod tests {
     }
 
     #[test]
-    fn the_group_serves_the_three_read_verbs_and_hands_over_the_rest() {
+    fn the_group_serves_its_verbs_and_hands_over_the_rest() {
         let setting = Setting {
             cwd: "/base".to_owned(),
             state_dir: "/no/such/state".to_owned(),
@@ -51,7 +61,7 @@ mod tests {
         for words in [
             &[][..],
             &["bogus"],
-            &["prompt", "s-1", "text"],
+            &["prompt", "--unknown"],
             &["abort", "s-1"],
             &["open", "--unknown"],
             &["list", "extra"],

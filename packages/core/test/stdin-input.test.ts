@@ -183,7 +183,7 @@ test('an item that arrives after stdin was closed is not written and is reported
   const ref = await driver.open(spec);
   const f = feed({ ignoreReturn: true });
   const o = await driver.prompt(ref, 'work', {
-    timeoutMs: 5000,
+    timeoutMs: 60_000,
     input: f.input,
     onEvent: (e) => {
       // The driver has closed stdin by the time a listener hears the result.

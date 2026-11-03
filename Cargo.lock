@@ -412,9 +412,10 @@ dependencies = [
 
 [[package]]
 name = "tagents-core"
-version = "0.6.5"
+version = "0.6.6"
 dependencies = [
  "kqueue",
+ "libc",
  "rusqlite",
  "rustix",
  "saphyr",
@@ -428,7 +429,7 @@ dependencies = [
 
 [[package]]
 name = "tagents-spec"
-version = "0.6.5"
+version = "0.6.6"
 dependencies = [
  "serde",
  "serde_json",

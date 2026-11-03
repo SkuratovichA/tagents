@@ -72,7 +72,7 @@ const STATES: [(&str, RowState); 5] = [
     ("gone", RowState::Gone),
 ];
 
-fn usage(stderr: String) -> Output {
+pub(super) fn usage(stderr: String) -> Output {
     Output {
         stdout: String::new(),
         stderr: format!("{stderr}\n"),

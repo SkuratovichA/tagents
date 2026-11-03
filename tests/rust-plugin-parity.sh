@@ -113,7 +113,7 @@ sc() {
   if [ "$want" != - ] && [ "$(cat "$TMP/code.node")" != "$want" ]; then
     bad "tripwire $label: node exited $(cat "$TMP/code.node"), this scenario exists to provoke $want" "stderr: $(head -c 200 "$TMP/err.node" | tr '\n' '|')"
   fi
-  if [ "$needle" != - ] && ! cat "$TMP/out.node" "$TMP/err.node" | grep -qF -- "$needle"; then
+  if [ "$needle" != - ] && ! grep -qF -- "$needle" "$TMP/out.node" "$TMP/err.node"; then
     bad "tripwire $label: node did not print what this scenario exists to provoke" "wanted: $needle" "stdout: $(head -c 200 "$TMP/out.node" | tr '\n' '|')" "stderr: $(head -c 200 "$TMP/err.node" | tr '\n' '|')"
   fi
 

@@ -10,11 +10,13 @@
 //!
 //! `parse_exact` is the same reader for a program that prints what it read back as `JSON.stringify` does: it keeps a string that holds a lone surrogate half as the UTF-16 it is (`Value::Units`), where `parse` reads U+FFFD, which is what stdout would show.
 //! The one thing it does not keep is an object key with a lone half, which it reads as U+FFFD and reports in `Exact::lone_key`.
+//! `parse_whole` keeps that too, for a text that is printed back whole: the object that holds such a key is a `Value::Keyed`.
 //!
 //! `quote` is the other direction for one string: `JSON.stringify(text)`, which the daemon writes into the helper's input, into its log lines and into the text of a problem. `quote_units` is the same for UTF-16, which can hold a half that only an escape can write, and `quote_prefix16` is `JSON.stringify(text.slice(0, n))`, whose cut can leave one. `stringify` prints a whole value.
 
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::hash::Hash;
 
 use serde::Serialize;
 
@@ -33,6 +35,13 @@ pub enum Value {
     Array(Vec<Value>),
     /// In document order, so a key written twice is found last, as in an object.
     Object(Vec<(String, Value)>),
+    /// An object with a key that holds a surrogate half with no partner, which only `parse_whole` makes: every key is code units, as `Units` is for a string. It reads and prints as an object does.
+    Keyed(Vec<(Vec<u16>, Value)>),
+}
+
+/// Whether a key given as code units is this text.
+fn is_key(units: &[u16], key: &str) -> bool {
+    units.iter().copied().eq(key.encode_utf16())
 }
 
 impl Value {
@@ -40,11 +49,42 @@ impl Value {
     pub fn get(&self, key: &str) -> Option<&Value> {
         match self {
             Value::Object(members) => members.iter().rev().find(|(k, _)| k == key).map(|(_, v)| v),
+            Value::Keyed(members) => members
+                .iter()
+                .rev()
+                .find(|(k, _)| is_key(k, key))
+                .map(|(_, v)| v),
             _ => None,
         }
     }
 
-    /// The members of an object in the order JavaScript keeps them (a key written twice once, with its last value), or `None` for a value that is not an object.
+    /// `get`, to change or take the value.
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut Value> {
+        match self {
+            Value::Object(members) => members
+                .iter_mut()
+                .rev()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v),
+            Value::Keyed(members) => members
+                .iter_mut()
+                .rev()
+                .find(|(k, _)| is_key(k, key))
+                .map(|(_, v)| v),
+            _ => None,
+        }
+    }
+
+    /// `delete obj[key]` when `self` is an object.
+    pub fn remove(&mut self, key: &str) {
+        match self {
+            Value::Object(members) => members.retain(|(k, _)| k != key),
+            Value::Keyed(members) => members.retain(|(k, _)| !is_key(k, key)),
+            _ => {}
+        }
+    }
+
+    /// The members of an object in the order JavaScript keeps them (a key written twice once, with its last value), or `None` for a value that is not an object, which a `Value::Keyed` counts as here: its keys are not text.
     pub fn entries(&self) -> Option<Vec<(&str, &Value)>> {
         match self {
             Value::Object(members) => Some(in_js_order(members)),
@@ -84,7 +124,7 @@ impl Value {
             Value::Bool(b) => *b,
             Value::Number(n) => *n != 0.0,
             Value::String(s) => !s.is_empty(),
-            Value::Units(_) | Value::Array(_) | Value::Object(_) => true,
+            Value::Units(_) | Value::Array(_) | Value::Object(_) | Value::Keyed(_) => true,
         }
     }
 }
@@ -105,6 +145,7 @@ impl Value {
         match self {
             Value::Array(items) => into.append(items),
             Value::Object(members) => into.extend(members.drain(..).map(|(_, value)| value)),
+            Value::Keyed(members) => into.extend(members.drain(..).map(|(_, value)| value)),
             _ => {}
         }
     }
@@ -113,6 +154,23 @@ impl Value {
 enum Open {
     Array(Vec<Value>),
     Object(Vec<(String, Value)>, String),
+    Keyed(Vec<(Vec<u16>, Value)>, Vec<u16>),
+}
+
+impl Open {
+    /// An object with its next key. A key with a lone half turns the keys read so far into code units.
+    fn object(members: Vec<(String, Value)>, key: Text) -> Open {
+        match key {
+            Text::Chars(key) => Open::Object(members, key),
+            Text::Units(key) => Open::Keyed(
+                members
+                    .into_iter()
+                    .map(|(name, value)| (js::units(&name), value))
+                    .collect(),
+                key,
+            ),
+        }
+    }
 }
 
 /// `JSON.stringify(text)` of a string: a quote, a backslash, `\b \f \n \r \t`, any other control character as lowercase `\u00xx`, and U+2028, U+2029 and everything above ASCII raw, which the tests pin against V8.
@@ -183,9 +241,22 @@ pub fn parse_exact(text: &str) -> Option<Exact> {
     })
 }
 
+/// `parse_exact` for a text that is printed back whole: an object with a key that holds a lone half is a `Value::Keyed`, so `stringify` writes that key as `JSON.stringify` does. Nothing else differs.
+pub fn parse_whole(text: &str) -> Option<Value> {
+    let mut parser = Parser::new(text, true);
+    parser.keep_keys = true;
+    parser.document()
+}
+
+/// The name of a member being printed.
+enum Name<'a> {
+    Text(&'a str),
+    Units(&'a [u16]),
+}
+
 /// A container being printed: the members still to come, the character that closes it, and whether one has been written.
 struct Level<'a> {
-    members: Box<dyn Iterator<Item = (Option<&'a str>, &'a Value)> + 'a>,
+    members: Box<dyn Iterator<Item = (Option<Name<'a>>, &'a Value)> + 'a>,
     close: char,
     written: bool,
 }
@@ -220,7 +291,10 @@ pub fn stringify(value: &Value, indent: bool) -> String {
             newline(&mut out, open.len());
         }
         if let Some(key) = key {
-            out.push_str(&quote(key));
+            out.push_str(&match key {
+                Name::Text(text) => quote(text),
+                Name::Units(units) => quote_units(units),
+            });
             out.push(':');
             if indent {
                 out.push(' ');
@@ -255,7 +329,22 @@ fn begin<'a>(value: &'a Value, out: &mut String) -> Option<Level<'a>> {
         Value::Object(members) => {
             out.push('{');
             return Some(Level {
-                members: Box::new(in_js_order(members).into_iter().map(|(k, v)| (Some(k), v))),
+                members: Box::new(
+                    in_js_order(members)
+                        .into_iter()
+                        .map(|(k, v)| (Some(Name::Text(k)), v)),
+                ),
+                close: '}',
+                written: false,
+            });
+        }
+        Value::Keyed(members) => {
+            out.push('{');
+            let order = js_order(members.iter().map(|(k, v)| (k.as_slice(), v)), |units| {
+                array_index(&String::from_utf16(units).ok()?)
+            });
+            return Some(Level {
+                members: Box::new(order.into_iter().map(|(k, v)| (Some(Name::Units(k)), v))),
                 close: '}',
                 written: false,
             });
@@ -266,8 +355,16 @@ fn begin<'a>(value: &'a Value, out: &mut String) -> Option<Level<'a>> {
 
 /// The members of an object in the order JavaScript keeps them: the keys that are array indices first and ascending, then the others as they came; a key written twice keeps the place of its first and the value of its last.
 fn in_js_order(members: &[(String, Value)]) -> Vec<(&str, &Value)> {
-    let mut slots: Vec<(&str, &Value)> = Vec::with_capacity(members.len());
-    let mut at: HashMap<&str, usize> = HashMap::new();
+    js_order(members.iter().map(|(k, v)| (k.as_str(), v)), array_index)
+}
+
+/// `in_js_order` over keys of any form, given the array index a key stands for.
+fn js_order<'a, K: ?Sized + Eq + Hash>(
+    members: impl ExactSizeIterator<Item = (&'a K, &'a Value)>,
+    index: impl Fn(&K) -> Option<u32>,
+) -> Vec<(&'a K, &'a Value)> {
+    let mut slots: Vec<(&K, &Value)> = Vec::with_capacity(members.len());
+    let mut at: HashMap<&K, usize> = HashMap::new();
     for (key, value) in members {
         match at.entry(key) {
             Entry::Occupied(slot) => slots[*slot.get()].1 = value,
@@ -278,7 +375,7 @@ fn in_js_order(members: &[(String, Value)]) -> Vec<(&str, &Value)> {
         }
     }
     // The sort is stable, and every key that is not an index has the same sort key.
-    slots.sort_by_key(|(key, _)| array_index(key).map_or((1, 0), |index| (0, index)));
+    slots.sort_by_key(|(key, _)| index(key).map_or((1, 0), |index| (0, index)));
     slots
 }
 
@@ -326,6 +423,13 @@ impl Text {
             Text::Units(units) => Value::Units(units),
         }
     }
+
+    fn into_units(self) -> Vec<u16> {
+        match self {
+            Text::Chars(chars) => js::units(&chars),
+            Text::Units(units) => units,
+        }
+    }
 }
 
 struct Parser<'a> {
@@ -336,6 +440,8 @@ struct Parser<'a> {
     exact: bool,
     /// Whether the key of an object held a lone half.
     lone_key: bool,
+    /// Whether such a key is kept (`parse_whole`) or read as U+FFFD.
+    keep_keys: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -346,6 +452,7 @@ impl<'a> Parser<'a> {
             i: 0,
             exact,
             lone_key: false,
+            keep_keys: false,
         }
     }
 
@@ -374,7 +481,7 @@ impl<'a> Parser<'a> {
                         Value::Object(Vec::new())
                     } else {
                         let key = self.key()?;
-                        stack.push(Open::Object(Vec::new(), key));
+                        stack.push(Open::object(Vec::new(), key));
                         continue;
                     }
                 }
@@ -407,10 +514,23 @@ impl<'a> Parser<'a> {
                             b',' => {
                                 self.skip_space();
                                 let key = self.key()?;
-                                stack.push(Open::Object(members, key));
+                                stack.push(Open::object(members, key));
                                 break;
                             }
                             b'}' => done = Value::Object(members),
+                            _ => return None,
+                        }
+                    }
+                    Some(Open::Keyed(mut members, key)) => {
+                        members.push((key, done));
+                        match self.next()? {
+                            b',' => {
+                                self.skip_space();
+                                let key = self.key()?.into_units();
+                                stack.push(Open::Keyed(members, key));
+                                break;
+                            }
+                            b'}' => done = Value::Keyed(members),
                             _ => return None,
                         }
                     }
@@ -435,17 +555,17 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// `"name" :`, with the cursor on the opening quote. A key is text: a lone half in it reads as U+FFFD, and `lone_key` says so.
-    fn key(&mut self) -> Option<String> {
+    /// `"name" :`, with the cursor on the opening quote. Unless `keep_keys` is set a key is text: a lone half in it reads as U+FFFD, and `lone_key` says so.
+    fn key(&mut self) -> Option<Text> {
         if self.peek()? != b'"' {
             return None;
         }
         let key = match self.string()? {
-            Text::Chars(text) => text,
-            Text::Units(units) => {
+            Text::Units(units) if !self.keep_keys => {
                 self.lone_key = true;
-                js::text16(&units)
+                Text::Chars(js::text16(&units))
             }
+            key => key,
         };
         self.skip_space();
         (self.next()? == b':').then_some(key)
@@ -840,6 +960,70 @@ mod tests {
         assert!(!value.lone_key);
         assert_eq!(value.value.get("😀"), Some(&Value::Units(vec![0xd83d])));
         assert!(!parse_exact("[\"\\ud83d\", {\"k\": 1}]").unwrap().lone_key);
+    }
+
+    /// The expected text is what `JSON.stringify(JSON.parse(text))` printed on node 22 for the same input (02.11.2026): indices first and ascending, a repeated key at its first place with its last value, and two different lone halves two keys.
+    #[test]
+    fn parse_whole_keeps_a_key_with_a_lone_half_and_prints_it_as_node_does() {
+        let text = r#"{"\ude00":"\ud83d","2":1,"a":{"\ud83d":[{"\ude00":1}]},"\ude00":2,"1":0,"\ud83d\ude00":3,"\ud83e":4}"#;
+        let value = parse_whole(text).unwrap();
+        assert_eq!(
+            stringify(&value, false),
+            r#"{"1":0,"2":1,"\ude00":2,"a":{"\ud83d":[{"\ude00":1}]},"😀":3,"\ud83e":4}"#
+        );
+        assert_eq!(value.get("2"), Some(&Value::Number(1.0)));
+        assert_eq!(value.get("😀"), Some(&Value::Number(3.0)));
+        assert_eq!(value.get("b"), None);
+        assert!(value.truthy());
+        assert_eq!(value.entries(), None);
+        assert_eq!(
+            stringify(&parse_whole(r#"{"\ud83d":[{}]}"#).unwrap(), true),
+            "{\n  \"\\ud83d\": [\n    {}\n  ]\n}"
+        );
+    }
+
+    #[test]
+    fn a_kept_key_can_be_changed_and_removed_like_any_other() {
+        let mut value = parse_whole(r#"{"a":1,"\ud83d":2,"a":3,"b":4}"#).unwrap();
+        *value.get_mut("a").unwrap() = Value::Null;
+        value.remove("b");
+        assert_eq!(stringify(&value, false), r#"{"a":null,"\ud83d":2}"#);
+        value.remove("a");
+        assert_eq!(stringify(&value, false), r#"{"\ud83d":2}"#);
+    }
+
+    /// With no lone half in a key `parse_whole` and `parse_exact` read the same value, and they accept the same texts.
+    #[test]
+    fn parse_whole_is_parse_exact_but_for_the_key() {
+        for text in [
+            r#"{"a":1,"b":{"c":["\ud83d"]},"😀":null,"\ud83d\ude00":0}"#,
+            r#"["\ude00",{}]"#,
+            "1e999",
+        ] {
+            assert_eq!(
+                parse_whole(text),
+                parse_exact(text).map(|exact| exact.value),
+                "{text}"
+            );
+        }
+        for text in [
+            r#"{"\ud83d"}"#,
+            r#"{"\ud83d":}"#,
+            r#"{"\ud83d":1,}"#,
+            r#"{"\ud83d":1,2:3}"#,
+        ] {
+            assert!(parse_whole(text).is_none(), "{text}");
+            assert!(parse_exact(text).is_none(), "{text}");
+        }
+        assert!(parse_exact(r#"{"\ud83d":1}"#).unwrap().lone_key);
+    }
+
+    #[test]
+    fn a_deep_value_under_a_kept_key_costs_no_call_frames() {
+        let depth = 200_000;
+        let text = format!(r#"{}1{}"#, r#"{"\ud83d":"#.repeat(depth), "}".repeat(depth));
+        let value = parse_whole(&text).unwrap();
+        assert_eq!(stringify(&value, false), text);
     }
 
     #[test]

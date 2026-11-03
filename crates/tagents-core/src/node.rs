@@ -352,7 +352,7 @@ pub fn read_utf8(file: &str) -> Result<Option<String>, String> {
 }
 
 /// `isExecutableFile`: a regular file this process may execute, a symlink followed. Answered by looking, never by running it.
-fn is_executable_file(file: &str) -> bool {
+pub fn is_executable_file(file: &str) -> bool {
     rustix::fs::access(file, rustix::fs::Access::EXEC_OK).is_ok()
         && fs::metadata(file).is_ok_and(|meta| meta.is_file())
 }

@@ -58,7 +58,7 @@ export interface FakeScript {
   readonly stderr?: string;
   /** One line appended per invocation. */
   readonly countFile?: string;
-  /** argv and env of the invocation, as JSON. */
+  /** argv, env, the kind of stdin and the working directory of the invocation, as JSON. */
   readonly argvFile?: string;
   /** Split every line across two writes, to prove the reader reassembles them. */
   readonly chunked?: boolean;
@@ -67,6 +67,12 @@ export interface FakeScript {
    * `chunked` cuts by UTF-16 units and so never splits a character; this does.
    */
   readonly rawWrites?: readonly FakeRawWrite[];
+  /** A background `sleep` of this long, started once the script is done, that inherits stdout and stderr and outlives the process: a child that left a pipe held open behind it. */
+  readonly grandchildMs?: number;
+  /** A signal the process sends itself once its script is done, in place of an exit code. */
+  readonly killSelf?: NodeJS.Signals;
+  /** The pid of the process, written before anything else. */
+  readonly pidFile?: string;
   /**
    * Behave like `--input-format stream-json --replay-user-messages`: ignore
    * the argv prompt, read user lines from stdin, echo each one back, and answer
@@ -100,13 +106,14 @@ const RUNNER = `#!NODE#
 'use strict';
 const fs = require('fs');
 const plan = #PLAN#;
+if (plan.pidFile) fs.writeFileSync(plan.pidFile, String(process.pid));
 const stdinKind = () => {
   try {
     const st = fs.fstatSync(0);
     return st.isFIFO() || st.isSocket() ? 'pipe' : st.isCharacterDevice() ? 'null' : 'other';
   } catch { return 'none'; }
 };
-if (plan.argvFile) fs.writeFileSync(plan.argvFile, JSON.stringify({ argv: process.argv.slice(2), env: process.env, stdin: stdinKind() }));
+if (plan.argvFile) fs.writeFileSync(plan.argvFile, JSON.stringify({ argv: process.argv.slice(2), env: process.env, stdin: stdinKind(), cwd: process.cwd() }));
 if (plan.countFile) fs.appendFileSync(plan.countFile, 'run\\n');
 const sid = plan.sessionId || 'sess-1';
 const say = (o) => {
@@ -197,6 +204,8 @@ if (plan.stdin) {
   await raw(plan.rawWrites || []);
   if (plan.result !== null && plan.result !== undefined) say(resultLine(plan.result));
   if (plan.stderr) process.stderr.write(plan.stderr);
+  if (plan.grandchildMs) require('child_process').spawn('sleep', [String(plan.grandchildMs / 1000)], { stdio: ['ignore', 'inherit', 'inherit'], detached: true }).unref();
+  if (plan.killSelf) process.kill(process.pid, plan.killSelf);
   if (plan.hangAfterResult || plan.hang) { hang(); return; }
   process.exitCode = plan.exitCode || 0;
 })();

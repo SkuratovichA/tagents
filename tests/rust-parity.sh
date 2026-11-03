@@ -244,7 +244,7 @@ compare "recent 1000 into a closed pipe"
 
 # ------------------------------------------------------------ forwarded ---
 t "every other word reaches the node CLI untouched"
-# `plugin add`, `plugin remove`, `plugin new` and `doctor` are served by the binary, and each of those lines is either answered by it and compared with node's answer (a usage error; `doctor`, whose node is the one on PATH here) or is an argument its grammar hands to node; tests/rust-plugin-parity.sh holds the cases that write and the many that read.
+# `plugin add`, `plugin remove`, `plugin new`, `doctor` and `session prompt` are served by the binary, and each of those lines is either answered by it and compared with node's answer (a usage error; `doctor`, whose node is the one on PATH here) or is an argument its grammar hands to node; tests/rust-plugin-parity.sh holds the cases that write and the many that read.
 # `--version` as the only argument is answered by the Rust binary itself and is a known difference (docs/architecture/rust-core.md); with another word after it, it is the node CLI's.
 for args in "help" "--help" "-h" "" "bogus" "sessionsx" "Sessions" "session" "session bogus" "session open --nope" "session list --nope" "session prompt" "plugin" "plugin list" "plugin list --json" "plugin bogus" "plugin new" "plugin add" "plugin remove" "plugin add --bogus" "plugin add p --name" "plugin remove -x" "doctor" "doctor --x" "telegram status" "--version x" "--" "-" "--spec2" "spec"; do
   # shellcheck disable=SC2086

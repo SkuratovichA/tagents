@@ -628,7 +628,7 @@ transcript sid-old
 OLDSNAP="$SNAP/old-seat.tsv"
 { printf 'D\ttatest-old\t0\n'; arow sid-old "" 1 tatest-old 0 0 old-w old-t "$NOR" 1 "" "" claude; } >"$OLDSNAP"
 out=$(run --resurrect --from "$OLDSNAP"); ok "--resurrect succeeds" 0 "$?"
-ok "the chat was started where its row says" yes "$(tm list-panes -a -F '#{session_name}' | grep -q '^tatest-old$' && echo yes || echo no)"
+ok "the chat was started where its row says" yes "$(grep -q '^tatest-old$' <<< "$(tm list-panes -a -F '#{session_name}')" && echo yes || echo no)"
 ok "the docked flag was ignored: no pane carries a seat option" "" "$(tm list-panes -a -F '#{@tagents_slot}#{@tagents_docked}#{@tagents_parked}' | tr -d '\n')"
 
 # ---------------------------------------------------------------------------

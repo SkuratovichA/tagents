@@ -629,15 +629,15 @@ fn a_plugin_argument_that_is_not_utf8_is_forwarded_whole_not_decoded_lossily() {
 
 #[test]
 fn the_session_calls_node_keeps_reach_it_with_their_arguments() {
-    // `session` is a group that serves some of its verbs and hands the rest to node: a bare `session`, an unknown verb, a verb node keeps (`prompt`, `abort`) and a served verb whose arguments the grammar does not read (`open --bogus`), each with every argument as it was typed and nothing written before.
+    // `session` is a group that serves some of its verbs and hands the rest to node: a bare `session`, an unknown verb, a verb node keeps (`abort`) and a served verb whose arguments the grammar does not read (`open --bogus`, `prompt --bogus`), each with every argument as it was typed and nothing written before.
     let checkout = Checkout::new("session-declines");
     for args in [
         &["session"][..],
         &["session", "bogus"],
         &["session", "bogus", "--cwd", "x"],
         &["session", "open", "--bogus"],
-        &["session", "prompt"],
-        &["session", "prompt", "s-1", "two words", "--timeout", "5"],
+        &["session", "prompt", "--bogus"],
+        &["session", "prompt", "s-1", "two words", "--timeout"],
         &["session", "abort"],
         &["session", "abort", "s-1"],
     ] {
@@ -753,6 +753,8 @@ fn a_session_call_for_node_with_no_node_gets_the_front_doors_error() {
         &["session"][..],
         &["session", "bogus"],
         &["session", "open", "--bogus"],
+        // A child's `PATH` begins with the directory of node, so a turn is node's to run, and with no node nothing runs it.
+        &["session", "prompt", "s-1", "go"],
     ] {
         let pinned = run(checkout
             .command()

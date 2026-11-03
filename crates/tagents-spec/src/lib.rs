@@ -367,6 +367,7 @@ mod tests {
             rust,
             [
                 "session open",
+                "session prompt",
                 "session last",
                 "session list",
                 "sessions recent",

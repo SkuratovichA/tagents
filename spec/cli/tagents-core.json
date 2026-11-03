@@ -34,7 +34,7 @@
       },
       "required": [],
       "summary": "summarySessionPrompt",
-      "impl": "node",
+      "impl": "rust",
       "effect": "spawn",
       "tool": false
     },
