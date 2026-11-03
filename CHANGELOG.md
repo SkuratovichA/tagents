@@ -18,7 +18,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 - `tagents-core plugin add` and `plugin remove` run in the prebuilt Rust binary when the installer has put one on the machine, and every call it cannot prove identical to node's goes to node ([#50](https://github.com/SkuratovichA/tagents/pull/50)).
 - `tagents-core plugin new` and `doctor` run in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback ([#53](https://github.com/SkuratovichA/tagents/pull/53)).
 - `tagents-core session open`, `session list` and `session last` run in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback ([#58](https://github.com/SkuratovichA/tagents/pull/58)).
-- `tagents-core session prompt` runs in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback.
+- `tagents-core session prompt` runs in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback ([#61](https://github.com/SkuratovichA/tagents/pull/61)).
 
 ### Removed
 
