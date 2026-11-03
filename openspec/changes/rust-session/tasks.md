@@ -97,9 +97,9 @@ The tasks serve `session open`, `session list`, `session last`, `session prompt`
 
 - [x] 15.1 `docs/architecture/rust-core.md`: `session abort` in "What is served in Rust today", the sentence that `session` is a group that declines a verb it does not serve, the dependency table unchanged (no dependency is added), "What is not decided yet" (the plugin host, retiring the node verbs), and the version lines the gate names; the sentences elsewhere in `docs/` that say node runs a `session` verb; no new page, so no breadcrumb or directory row (`pnpm docs:check`)
 - [x] 15.2 `CHANGELOG.md`: one line under `[Unreleased]` in "Added" saying that `tagents-core session abort` runs in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback, with no `(#N)`
-- [ ] 15.3 The release gate: the workspace version raised one step above the merge base (`sh .github/scripts/core-release.sh gate origin/main` exits 0, `bash tests/release.sh` exits 0, `bash tests/install.sh` exits 0)
-- [ ] 15.4 The gates of 7.6 and `bash tests/rust-parity.sh`, whose forward loop keeps `session`, `session bogus` and `plugin list` as forwarded words, each exit 0
+- [x] 15.3 The release gate: the workspace version raised one step above the merge base (`sh .github/scripts/core-release.sh gate origin/main` exits 0, `bash tests/release.sh` exits 0, `bash tests/install.sh` exits 0)
+- [x] 15.4 The gates of 7.6 and `bash tests/rust-parity.sh`, whose forward loop keeps `session`, `session bogus` and `plugin list` as forwarded words, each exit 0
 
 ## 16. Archive
 
-- [ ] 16.1 Read `openspec/specs/core-front-door/spec.md` as `origin/main` has it, restate the two MODIFIED requirements of this change over the text the other changes left, and archive the change with `/opsx:archive` as the last commit of pull request (3): `openspec/specs/rust-session/spec.md` is created, `core-front-door` and `headless-sessions` are updated, and `pnpm spec:check` exits 0
+- [x] 16.1 Read `openspec/specs/core-front-door/spec.md` as `origin/main` has it, restate the two MODIFIED requirements of this change over the text the other changes left, and archive the change with `/opsx:archive` as the last commit of pull request (3): `openspec/specs/rust-session/spec.md` is created, `core-front-door` and `headless-sessions` are updated, and `pnpm spec:check` exits 0
