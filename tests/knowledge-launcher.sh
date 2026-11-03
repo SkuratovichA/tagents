@@ -17,12 +17,14 @@ scratch_pids() {
   if [ -d /proc/self ]; then
     for e in /proc/[0-9]*/environ; do
       pid=${e#/proc/}; pid=${pid%/environ}
-      { tr '\0' '\n' < "$e"; tr '\0' ' ' < "/proc/$pid/cmdline"; } 2>/dev/null | grep -qF "$TMP/" && echo "$pid"
+      { tr '\0' '\n' < "$e"; tr '\0' ' ' < "/proc/$pid/cmdline"; } 2>/dev/null | grep -F "$TMP/" > /dev/null && echo "$pid"  # no -q: grep leaving early would SIGPIPE tr and, under pipefail, lose the match
     done
   else
     ps -A -E -ww -o pid=,command= | grep -F "$TMP/" | grep -v grep | awk '{print $1}'
   fi | awk -v me=$$ '$1 != me'
 }
+# a process that has exited but is not yet reaped (its parent is a shell that never waits, such as pid 1 of a container) is gone for this suite
+alive() { st=$(ps -o stat= -p "$1" 2>/dev/null); [ -n "$st" ] && [ "${st#Z}" = "$st" ]; }
 stop_scratch_daemons() {
   for p in $(scratch_pids); do kill "$p" 2>/dev/null; done
   sleep 0.3
@@ -271,11 +273,11 @@ OLD
     case $cmd in "nc -U "*) got=nc ;; *) got="$cmd" ;; esac
     ok "...through nc -U, the process the session started" nc "$got"
     ok "...to the daemon the wrapper started in Rust, and no node was started" 0 "$(starts)"
-    ok "...which is alive while the session is connected" yes "$(kill -0 "$odpid" 2>/dev/null && echo yes || echo no)"
+    ok "...which is alive while the session is connected" yes "$(alive "$odpid" && echo yes || echo no)"
     ok "...nothing on stderr" "" "$(cat "$TMP/err.old")"
     ok "...and the session ends: at end of input where nc does (here: $NC_ENDS), at SIGTERM where it does not" "$(ncexpect)" "$(end_nc_session old)"
-    for _ in $(seq 1 120); do kill -0 "$odpid" 2>/dev/null || break; sleep 0.2; done
-    ok "...and the daemon, with nobody connected, leaves after its idle time" no "$(kill -0 "$odpid" 2>/dev/null && echo yes || echo no)"
+    for _ in $(seq 1 120); do alive "$odpid" || break; sleep 0.2; done
+    ok "...and the daemon, with nobody connected, leaves after its idle time" no "$(alive "$odpid" && echo yes || echo no)"
     stop_scratch_daemons
   fi
 
