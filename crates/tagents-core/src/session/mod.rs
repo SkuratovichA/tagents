@@ -2,6 +2,7 @@
 //!
 //! A call answers only what it can prove identical to node's and hands every other call to the node CLI (`None`, before anything is read, written or started): a verb that stays with node, a verb nobody knows, an argument outside the grammar of `args`, and a call of `prompt` that node's `spawn` would treat in a way Rust cannot prove (`session::prompt`, `session::spawn`).
 
+pub mod abort;
 #[cfg(target_os = "macos")]
 pub mod awake;
 pub mod command;
@@ -22,6 +23,7 @@ pub const VERBS: &[&[&str]] = &[
     &["session", "prompt"],
     &["session", "last"],
     &["session", "list"],
+    &["session", "abort"],
 ];
 
 /// `session(argv)` of the node CLI for the verbs served here: `argv` is the words after `session`. `None` hands the call to node.
@@ -37,6 +39,7 @@ fn run_in(argv: &[String], setting: &Setting) -> Option<Output> {
         "list" => read::list,
         "last" => read::last,
         "prompt" => prompt::prompt,
+        "abort" => abort::abort,
         _ => return None,
     };
     serve(args, setting, &Texts::load(setting.locale).ok()?)
@@ -62,7 +65,6 @@ mod tests {
             &[][..],
             &["bogus"],
             &["prompt", "--unknown"],
-            &["abort", "s-1"],
             &["open", "--unknown"],
             &["list", "extra"],
         ] {

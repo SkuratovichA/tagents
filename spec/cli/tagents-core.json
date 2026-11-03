@@ -65,7 +65,7 @@
       "options": {},
       "required": [],
       "summary": "summarySessionAbort",
-      "impl": "node",
+      "impl": "rust",
       "effect": "destructive",
       "tool": false
     },
