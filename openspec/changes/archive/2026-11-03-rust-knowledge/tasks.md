@@ -135,33 +135,33 @@ Pull request (b).
 
 Pull request (c).
 
-- [ ] 14.1 Tests first: `tests/install.sh` pins the `tagents-notify` wrapper byte for byte as it is, the `tagents-knowledge` wrapper with the binary and without it (the texts of the design), `join` and `mcp` alone and `serve` with no, one and several arguments reaching the binary, `mcp extra`, `join x`, `search x` and no arguments reaching node, and `join` without a binary exiting 69 with a stub `node` on `PATH` that records any start and was not started (`bash tests/install.sh`, failing before 14.2)
-- [ ] 14.2 `write_wrapper` takes the knowledge wrapper's own rule (`serve` with any arguments, `join` and `mcp` alone) beside the one-word rule of `tagents-notify`, which keeps its text, writes the line `[ "$#" -ne 1 ] || [ "$1" != join ] || exit 69` before the `exec` of the node program in every `tagents-knowledge` wrapper, and `install_commands` names the binary of `tagents-core` with the word `knowledge` under the `--version` check of `tagents-mcp` (`bash tests/install.sh`)
-- [ ] 14.3 With no binary the wrapper is the node wrapper plus the `join` line, a binary that vanishes or loses its executable bit falls through to node for `serve` and `mcp` and to exit 69 for `join`, and a binary of another version, `TAGENTS_NO_NATIVE=1` and a version without a release leave the wrapper with no binary (`bash tests/install.sh`)
-- [ ] 14.4 Mutations of the installer each make `tests/install.sh` fail: the guard `"$#" -ne 1` left out of the notify wrapper, a word left out of the knowledge rule, `serve` limited to one argument, the word `knowledge` left out, the binary named when none is installed, the version check dropped, the `join` line left out, the code changed (`bash tests/install.sh`, one failing check each)
-- [ ] 14.5 `shellcheck -s sh install.sh` has no finding that `origin/main` does not have (`shellcheck -s sh install.sh`)
+- [x] 14.1 Tests first: `tests/install.sh` pins the `tagents-notify` wrapper byte for byte as it is, the `tagents-knowledge` wrapper with the binary and without it (the texts of the design), `join` and `mcp` alone and `serve` with no, one and several arguments reaching the binary, `mcp extra`, `join x`, `search x` and no arguments reaching node, and `join` without a binary exiting 69 with a stub `node` on `PATH` that records any start and was not started (`bash tests/install.sh`, failing before 14.2)
+- [x] 14.2 `write_wrapper` takes the knowledge wrapper's own rule (`serve` with any arguments, `join` and `mcp` alone) beside the one-word rule of `tagents-notify`, which keeps its text, writes the line `[ "$#" -ne 1 ] || [ "$1" != join ] || exit 69` before the `exec` of the node program in every `tagents-knowledge` wrapper, and `install_commands` names the binary of `tagents-core` with the word `knowledge` under the `--version` check of `tagents-mcp` (`bash tests/install.sh`)
+- [x] 14.3 With no binary the wrapper is the node wrapper plus the `join` line, a binary that vanishes or loses its executable bit falls through to node for `serve` and `mcp` and to exit 69 for `join`, and a binary of another version, `TAGENTS_NO_NATIVE=1` and a version without a release leave the wrapper with no binary (`bash tests/install.sh`)
+- [x] 14.4 Mutations of the installer each make `tests/install.sh` fail: the guard `"$#" -ne 1` left out of the notify wrapper, a word left out of the knowledge rule, `serve` limited to one argument, the word `knowledge` left out, the binary named when none is installed, the version check dropped, the `join` line left out, the code changed (`bash tests/install.sh`, one failing check each)
+- [x] 14.5 `shellcheck -s sh install.sh` has no finding that `origin/main` does not have (`shellcheck -s sh install.sh`)
 
 ## 15. The launcher
 
 Pull request (c).
 
-- [ ] 15.1 Tests first: a shell test runs `packages/knowledge/bin/knowledge-mcp` with a stub `tagents-knowledge` on `PATH` in a scratch directory and checks which program replaces it and what reaches stderr: `join` when the stub's `join` exits 0 on empty input with nothing on stderr; the old arrangement with nothing on stderr when `join` exits 69 and when it exits 2 (`nc -U` on the socket when `serve` prints one, `mcp` when there is no `nc` or no socket); and after exit 1, 3 and 127 the old arrangement with exactly one line on stderr that names the code (`bash tests/knowledge-launcher.sh`, failing before 15.2)
-- [ ] 15.2 `packages/knowledge/bin/knowledge-mcp` probes `tagents-knowledge join` with no input and output of its own, replaces itself with `tagents-knowledge join` on exit 0, runs the old arrangement unchanged on 69 and 2, and writes one line naming the code to stderr before it does after any other code; its comment says what each line and each code is for and what the probe costs (`bash tests/knowledge-launcher.sh`)
-- [ ] 15.3 Over a scratch install with the binary, the process a session starts is `tagents-core knowledge join`, with no node process and no `nc`; over a scratch install without it, the probe starts no node (a stub `node` on `PATH` records a start and the probe leaves none) and the session gets `nc -U` on the node daemon's socket, as before (`bash tests/knowledge-launcher.sh`, `ps` of the scratch process tree)
-- [ ] 15.4 `docs/guide/claude-code-plugin.md` and `packages/knowledge/README.md` say what a session starts with and without the binary, and how to see which program serves (`tagents-knowledge join </dev/null; echo $?`, `footprint <pid>`) (`pnpm docs:build`)
+- [x] 15.1 Tests first: a shell test runs `packages/knowledge/bin/knowledge-mcp` with a stub `tagents-knowledge` on `PATH` in a scratch directory and checks which program replaces it and what reaches stderr: `join` when the stub's `join` exits 0 on empty input with nothing on stderr; the old arrangement with nothing on stderr when `join` exits 69 and when it exits 2 (`nc -U` on the socket when `serve` prints one, `mcp` when there is no `nc` or no socket); and after exit 1, 3 and 127 the old arrangement with exactly one line on stderr that names the code (`bash tests/knowledge-launcher.sh`, failing before 15.2)
+- [x] 15.2 `packages/knowledge/bin/knowledge-mcp` probes `tagents-knowledge join` with no input and output of its own, replaces itself with `tagents-knowledge join` on exit 0, runs the old arrangement unchanged on 69 and 2, and writes one line naming the code to stderr before it does after any other code; its comment says what each line and each code is for and what the probe costs (`bash tests/knowledge-launcher.sh`)
+- [x] 15.3 Over a scratch install with the binary, the process a session starts is `tagents-core knowledge join`, with no node process and no `nc`; over a scratch install without it, the probe starts no node (a stub `node` on `PATH` records a start and the probe leaves none) and the session gets `nc -U` on the node daemon's socket, as before (`bash tests/knowledge-launcher.sh`, `ps` of the scratch process tree)
+- [x] 15.4 `docs/guide/claude-code-plugin.md` and `packages/knowledge/README.md` say what a session starts with and without the binary, and how to see which program serves (`tagents-knowledge join </dev/null; echo $?`, `footprint <pid>`) (`pnpm docs:build`)
 
 ## 16. Measurements
 
 Pull request (c).
 
-- [ ] 16.1 `footprint` of a `join` and of the Rust daemon, and of a node `tagents-knowledge mcp` and the node daemon, after the same search over the same five documents, and the time from the launcher's start to the first reply, in the pull request description
-- [ ] 16.2 Release size, crates added and clean build time for `rusqlite`, `saphyr` and `sha2` on each of the three targets, in the dependency table of `docs/architecture/rust-core.md` (`ls -l target/release/tagents-core`, `cargo build --release --timings`)
-- [ ] 16.3 The x86_64 musl build and the cross-built x86_64 macOS build pass in the release workflow, and the open question about them in the design is answered (`gh run list --branch <branch>`)
+- [x] 16.1 `footprint` of a `join` and of the Rust daemon, and of a node `tagents-knowledge mcp` and the node daemon, after the same search over the same five documents, and the time from the launcher's start to the first reply, in the pull request description
+- [x] 16.2 Release size, crates added and clean build time for `rusqlite`, `saphyr` and `sha2` on each of the three targets, in the dependency table of `docs/architecture/rust-core.md` (`ls -l target/release/tagents-core`, `cargo build --release --timings`)
+- [x] 16.3 The x86_64 musl build and the cross-built x86_64 macOS build pass in the release workflow, and the open question about them in the design is answered (`gh run list --branch <branch>`)
 
 ## 17. The changelog and the archive
 
 Pull request (c).
 
-- [ ] 17.1 `CHANGELOG.md` has one line under `[Unreleased]`: a session's knowledge server is the Rust binary when it is installed, joining one shared daemon with no node and no `nc`, and the node server stays as the way out (`grep -n 'knowledge' CHANGELOG.md`)
-- [ ] 17.2 `pnpm spec:check` accepts the specs after the change is archived (`pnpm spec:check`)
-- [ ] 17.3 This change is archived, as the last task, with the delta specs applied to `openspec/specs/` (`/opsx:archive`, `pnpm spec:check`)
+- [x] 17.1 `CHANGELOG.md` has one line under `[Unreleased]`: a session's knowledge server is the Rust binary when it is installed, joining one shared daemon with no node and no `nc`, and the node server stays as the way out (`grep -n 'knowledge' CHANGELOG.md`)
+- [x] 17.2 `pnpm spec:check` accepts the specs after the change is archived (`pnpm spec:check`)
+- [x] 17.3 This change is archived, as the last task, with the delta specs applied to `openspec/specs/` (`/opsx:archive`, `pnpm spec:check`)

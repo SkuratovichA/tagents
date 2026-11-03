@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createT } from '../src/i18n/index.ts';
 import { parseJson, stringifyJson } from '../src/json.ts';
-import { REFERENCES_DIR, planGenerate, type Disk } from '../src/plan.ts';
+import { REFERENCES_DIR, SHIPPED_FILES, planGenerate, type Disk } from '../src/plan.ts';
 import type { Sources } from '../src/types.ts';
 import { SAMPLE_PLUGIN, applied, sampleCli, sampleDisk, sampleSources } from './sample.ts';
 
@@ -103,6 +103,17 @@ test('a file under skills outside references is part of the payload, never delet
   assert.equal(plan.move, 'patch');
   assert.equal(plan.versionTo, '0.1.1');
   assert.deepEqual([...plan.writes.keys()], [PLUGIN]);
+});
+
+test('a changed launcher in SHIPPED_FILES is a patch: it reaches an installed copy only as a new version', () => {
+  const { sources, disk } = generated();
+  const launcher = SHIPPED_FILES[0];
+  const first = planGenerate(sources, withDisk(disk, { [launcher]: '#!/bin/sh\nexec one\n' }), t);
+  assert.deepEqual([first.move, first.versionTo], ['patch', '0.1.1']);
+  const placed = applied(withDisk(disk, { [launcher]: '#!/bin/sh\nexec one\n' }), first);
+  assert.equal(planGenerate(sources, placed, t).move, 'same');
+  const second = planGenerate(sources, withDisk(placed, { [launcher]: '#!/bin/sh\nexec two\n' }), t);
+  assert.deepEqual([second.move, second.versionTo], ['patch', '0.1.2']);
 });
 
 test('a changed marketplace.json is a patch', () => {

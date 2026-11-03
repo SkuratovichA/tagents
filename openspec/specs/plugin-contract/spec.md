@@ -87,7 +87,7 @@ The generator SHALL accept `--check` and nothing else: any other option prints `
 - **THEN** the message names that script and the exit code is 1
 
 ### Requirement: The plugin version follows what the plugin ships
-`.claude-plugin/plugin.json` SHALL carry a `version` and a `metadata.digest`, both maintained by the generator. The digest SHALL be a `sha256:` hash over the paths and contents of the payload: the generated files, every file under `skills/` outside `references/`, `.claude-plugin/marketplace.json` when present, and `plugin.json` without its `version` and `digest`. The version SHALL move only when the digest moved.
+`.claude-plugin/plugin.json` SHALL carry a `version` and a `metadata.digest`, both maintained by the generator. The digest SHALL be a `sha256:` hash over the paths and contents of the payload: the generated files, every file under `skills/` outside `references/`, the launcher `packages/knowledge/bin/knowledge-mcp`, `.claude-plugin/marketplace.json` when present, and `plugin.json` without its `version` and `digest`. The version SHALL move only when the digest moved.
 
 #### Scenario: The first run
 - **WHEN** `plugin.json` has no stored digest
@@ -100,6 +100,10 @@ The generator SHALL accept `--check` and nothing else: any other option prints `
 #### Scenario: Only the version and digest differ
 - **WHEN** nothing but `version` and `metadata.digest` of `plugin.json` changed
 - **THEN** the digest does not move
+
+#### Scenario: The knowledge launcher changes
+- **WHEN** only `packages/knowledge/bin/knowledge-mcp` changed
+- **THEN** the digest moves, the version takes a patch step, and the pre-commit hook regenerates the contract for a commit that stages that file
 
 ### Requirement: Minor and patch moves
 When the digest moved, the version SHALL go up by a minor step (`X.Y.Z` to `X.(Y+1).0`) if the structure of the contract changed, and by a patch step (`X.Y.(Z+1)`) otherwise. The structure is the new `contract.json` with every `summary` and `description` string removed at any depth, compared with the one on disk; a missing or unparseable file on disk is structural. The output says `plugin version <from> to <to>` and whether the move was minor or patch.

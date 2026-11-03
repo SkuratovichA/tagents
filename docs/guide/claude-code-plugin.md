@@ -25,9 +25,14 @@ The skill gives Claude the exact contract of `tagents-core`, `tagents-knowledge`
 
 The server gives every session search and read access to your markdown notes (`tagents-knowledge`). The plugin registers `packages/knowledge/bin/knowledge-mcp` for it.
 
-- It asks `tagents-knowledge serve` for the unix socket of **one shared knowledge server per environment** and joins the session to it with `nc -U`. That keeps a session at about 1.4 MB instead of a 30 MB node process.
-- The server starts on demand and exits after 10 minutes without a client.
-- If `serve` fails, a checkout predates it, or there is no `nc`, the script runs `tagents-knowledge mcp` as before.
+- It first asks `tagents-knowledge join` whether this machine has the Rust binary (`tagents-core`, installed by `tagents update` when a release matches the checkout). With the binary, the session's process **is** `tagents-core knowledge join`: it connects to **one shared Rust knowledge daemon per environment**, starting it when it is not running, and relays the session's input and output to it. There is no node process and no `nc` in the session.
+- Without the binary (none installed, a binary of another version, `TAGENTS_NO_NATIVE=1`), the wrapper answers `join` with exit code 69 before it starts any node, and the script asks `tagents-knowledge serve` for the unix socket of **one shared node knowledge server per environment** and joins the session to it with `nc -U`. A session then holds the `nc`, and the shared node server holds the index.
+- If `serve` fails, a checkout predates it, or there is no `nc`, the script runs `tagents-knowledge mcp`, a node server of the session's own.
+- If the binary is there and `join` fails with any code besides 0, 69 and 2, the script writes one line naming the code to stderr, which Claude Code keeps in the log of an MCP server, sets `TAGENTS_NO_NATIVE=1` for what it runs next, and falls back to the arrangement above, which node then answers.
+- To turn the Rust server off for one session, start it with `TAGENTS_NO_NATIVE=1` in its environment: the `tagents-knowledge` wrapper then names no binary, `join` exits 69 and `serve` and `mcp` run node. Set at install time, the variable leaves the wrapper without the binary altogether, one built by hand included.
+- Either daemon starts on demand and exits after 10 minutes without a client.
+- To see which program serves, run `tagents-knowledge join </dev/null; echo $?`: `0` is the Rust binary, `69` is the node arrangement. `footprint <pid>` on a session's process shows what it holds, and `ps -o command= -p <pid>` shows whether it is `tagents-core knowledge join` or `nc -U`. What the processes hold, measured, is in [What a knowledge session holds](../architecture/rust-core.md#what-a-knowledge-session-holds).
+- The launcher is part of the plugin, so it arrives with a plugin update: run `claude plugin marketplace update tagents` and then `claude plugin update tagents@tagents`, and restart Claude Code. A copy installed before keeps its old launcher, which reaches the same binary through the wrapper as `serve` and `nc -U`: the session then has the Rust daemon and an `nc` until the plugin is updated.
 - `tagents-knowledge` has to be on `$PATH`.
 
 ::: warning A hand-registered server appears twice

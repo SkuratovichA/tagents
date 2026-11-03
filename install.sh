@@ -73,8 +73,9 @@ xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/
 
 # A wrapper names the one file to run and passes everything through, stdin included, which is what a hook is fed on; an interpreter given by its absolute path is pinned, so the wrapper runs that file while it is executable and otherwise the interpreter of the same name on the caller's PATH. A native binary, when one is given, is run in place of the file, with the interpreter handed to it as TAGENTS_NODE and, when a word is given too, with that word before the arguments (tagents-mcp runs `tagents-core mcp`). When an argument is given as the sixth parameter, the binary is run only for the wrapper's arguments being exactly that one word, and every other call goes on to the file (tagents-notify runs `tagents-core notify run` for `run` and nothing else, so its other verbs stay with node).
 # A native binary is looked up in the tree and the wrapper cannot tell which source it was built from; fetch_native keeps the one it installed to the version of the checkout, and a binary built by hand goes stale after `tagents update` until the next `cargo build --release`.
-write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary] [word for the native binary] [the one argument the native binary is for]
-  dest=$1; target=$2; interp=${3:-}; native=${4:-}; word=${5:-}; only=${6:-}
+# tagents-knowledge has a rule of its own, given as the seventh and eighth parameters (its binary is also skipped at run time while TAGENTS_NO_NATIVE=1, so the node server is always one variable away): the first word the binary is for with any arguments after it (serve), and the sixth parameter then lists the words it is for as the only argument (join mcp). The eighth is the word whose call as the only argument exits 69 when it did not reach the binary, in every wrapper that names it, so a machine with no binary does not pay a node start for the launcher's probe (packages/knowledge/bin/knowledge-mcp).
+write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary] [word for the native binary] [the one argument the native binary is for] [first word it is for with any arguments] [word whose lone call exits 69 without the binary]
+  dest=$1; target=$2; interp=${3:-}; native=${4:-}; word=${5:-}; only=${6:-}; any=${7:-}; refuse=${8:-}
   if [ -L "$dest" ]; then
     rm -f "$dest"
   elif [ -e "$dest" ] && ! grep -q "$MARK" "$dest" 2>/dev/null; then
@@ -91,11 +92,18 @@ write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary] [word f
       *) runner=${interp:+$interp }; pin= ;;
     esac
     # Only a binary that exists now is named, so with none the file is the one this function always wrote. A binary that is gone by run time falls through to the node CLI below.
-    if [ -n "$native" ]; then
+    if [ -n "$native" ] && [ -n "$any" ]; then
+      alone=
+      for w in $only; do alone="${alone:+$alone || }[ \"\$1\" = $w ]"; done
+      # shellcheck disable=SC2016 # the text is the wrapper's, not this shell's
+      printf 'r="%s"\nif [ "${TAGENTS_NO_NATIVE:-}" != 1 ] && [ -f "$r" ] && [ -x "$r" ]; then\n  if [ "${1-}" = %s ] || { [ "$#" -eq 1 ] && { %s; }; }; then\n    %sexec "$r" %s"$@"\n  fi\nfi\n' "$native" "$any" "$alone" "$pin" "${word:+$word }"
+    elif [ -n "$native" ]; then
       guard=
       [ -z "$only" ] || guard="[ \"\$#\" -ne 1 ] || [ \"\$1\" != $only ] || "
       printf 'r="%s"\n[ ! -f "$r" ] || [ ! -x "$r" ] || %s{ %sexec "$r" %s"$@"; }\n' "$native" "$guard" "$pin" "${word:+$word }"
     fi
+    # shellcheck disable=SC2016
+    [ -z "$refuse" ] || printf '[ "$#" -ne 1 ] || [ "$1" != %s ] || exit 69\n' "$refuse"
     printf 'exec %s"%s" "$@"\n' "$runner" "$target"
   } > "$tmp"
   chmod 755 "$tmp"
@@ -176,7 +184,7 @@ check_and_place() {  # <dir> <archive> <version> <triple>
   expected=''
   read -r expected _ < "$dir/$archive.sha256" || true
   case $expected in
-    '' | *[!0-9a-f]*) warn "$archive.sha256 does not start with a SHA-256, so the prebuilt tagents-core was not installed"; return 1 ;;
+    '' | *[!0123456789abcdef]*) warn "$archive.sha256 does not start with a SHA-256, so the prebuilt tagents-core was not installed"; return 1 ;;
   esac
   [ "${#expected}" -eq 64 ] || { warn "$archive.sha256 does not start with a SHA-256, so the prebuilt tagents-core was not installed"; return 1; }
   actual=$(sha256_of "$dir/$archive")
@@ -288,14 +296,16 @@ install_commands() {
   case $node_bin in /*) ;; *) node_bin=node ;; esac
   for pair in tagents-core:core/dist/cli/main.js tagents-knowledge:knowledge/dist/cli/main.js tagents-notify:notify/dist/main.js tagents-mcp:mcp/dist/main.js; do
     cli=$TAGENTS_HOME/packages/${pair#*:}
-    native=; word=; only=
+    native=; word=; only=; any=; refuse=
     # tagents-core has a Rust front door that serves the verbs ported so far and hands every other word to the node CLI. tagents-mcp is its verb `mcp` and tagents-notify its verb `notify` for the argument `run` alone, so the three name the same binary. It is named here when fetch_native or a `cargo build --release` has put an executable binary in the tree; this function builds and fetches nothing.
-    case ${pair%%:*} in tagents-core|tagents-mcp|tagents-notify)
+    case ${pair%%:*} in tagents-core|tagents-mcp|tagents-notify|tagents-knowledge)
       rust_bin=$TAGENTS_HOME/target/release/tagents-core
       if [ -f "$rust_bin" ] && [ -x "$rust_bin" ]; then native=$rust_bin; fi
       case ${pair%%:*} in
         tagents-mcp) word=mcp ;;
         tagents-notify) word=notify; only=run ;;
+        # TAGENTS_NO_NATIVE=1 at install time leaves this wrapper with no binary even when a hand-built one of the right version is there; the wrapper tests the same variable at run time, which is how the launcher (and the owner) turns the Rust server off for one session.
+        tagents-knowledge) word=knowledge; only='join mcp'; any=serve; refuse='join'; [ "${TAGENTS_NO_NATIVE:-}" != 1 ] || native= ;;
       esac
       if [ -n "$word" ]; then
         # A binary older than the checkout does not serve the word and hands it to the node CLI. That does not know `mcp`, so a session would lose every tool of the plugin; and `notify run` would reach the plugin host of the node CLI, which runs the service only when the person's config names the plugin. fetch_native keeps the binary it installed at the checkout's version; one built by hand is asked once per install, and one that says another version, or cannot say, is not named, which leaves the node program. A checkout with no Cargo.toml has no version to compare and names the binary; a Cargo.toml whose version cannot be read names none.
@@ -307,7 +317,7 @@ install_commands() {
       fi ;;
     esac
     if [ -f "$cli" ]; then
-      write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin" "$native" "$word" "$only"
+      write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin" "$native" "$word" "$only" "$any" "$refuse"
     else
       warn "no $cli after the build, so ${pair%%:*} was not installed"
       SKIPPED=$((SKIPPED + 1))

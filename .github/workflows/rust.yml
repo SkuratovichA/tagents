@@ -40,6 +40,8 @@ on:
       - .github/scripts/core-release.sh
       - tests/release.sh
       - tests/install.sh
+      - tests/knowledge-launcher.sh
+      - packages/knowledge/bin/knowledge-mcp
       - install.sh
       - tests/rust-session-parity.sh
       - tests/rust-session-parity-driver.mts
@@ -84,6 +86,8 @@ on:
       - .github/scripts/core-release.sh
       - tests/release.sh
       - tests/install.sh
+      - tests/knowledge-launcher.sh
+      - packages/knowledge/bin/knowledge-mcp
       - install.sh
       - tests/rust-session-parity.sh
       - tests/rust-session-parity-driver.mts
@@ -152,6 +156,8 @@ jobs:
         run: bash tests/rust-plugin-parity.sh
       - name: Parity of the session verbs with the node ones, state and exit codes included
         run: bash tests/rust-session-parity.sh
+      - name: The program a session starts over a scratch install, with the built binary and the built node server
+        run: bash tests/knowledge-launcher.sh
 
   # A change to what the tagents-core binary is built from must raise the workspace version (docs/architecture/rust-core.md, "How a release is made"). Every such input is in the paths above, so a pull request that breaks the rule always runs this job. The history is deep because the gate compares with the merge base.
   release-path:
