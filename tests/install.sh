@@ -332,6 +332,14 @@ wrapper_bytes() {  # <node or empty> <target> — the pinned form when a node pa
     printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nexec node "%s" "$@"\n' "$2"
   fi
 }
+# The tagents-knowledge wrapper, spelled out: the node wrapper plus the line that answers the launcher's probe, and with a binary the rule in front of both. Pinned node only (every case here has one).
+knowledge_wrapper_bytes() {  # <node> <target> [native binary]
+  printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nn="%s"\n[ -x "$n" ] || n=node\n' "$1"
+  if [ -n "${3:-}" ]; then
+    printf 'r="%s"\nif [ -f "$r" ] && [ -x "$r" ]; then\n  if [ "${1-}" = serve ] || { [ "$#" -eq 1 ] && { [ "$1" = join ] || [ "$1" = mcp ]; }; }; then\n    TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" knowledge "$@"\n  fi\nfi\n' "$3"
+  fi
+  printf '[ "$#" -ne 1 ] || [ "$1" != join ] || exit 69\nexec "$n" "%s" "$@"\n' "$2"
+}
 same_bytes() {  # <name> <expected file> <actual file>
   if cmp -s "$2" "$3"; then pass=$((pass + 1)); printf '  ok   %s\n' "$1"; else
     fail=$((fail + 1)); printf '  FAIL %s\n       expected: %s\n       actual:   %s\n' "$1" "$(cat "$2")" "$(cat "$3")"; fi
@@ -342,12 +350,12 @@ mkorigin; fresh_env
 out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
 ok "an install with no Rust binary exits 0" 0 "$rc"
 wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/core/dist/cli/main.js" > "$TMP/expected-core"
-wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/knowledge/dist/cli/main.js" > "$TMP/expected-knowledge"
+knowledge_wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/knowledge/dist/cli/main.js" > "$TMP/expected-knowledge"
 wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/mcp/dist/main.js" > "$TMP/expected-mcp"
 wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/notify/dist/main.js" > "$TMP/expected-notify"
 printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nexec sh "%s" "$@"\n' "$TAGENTS_HOME/hooks/tmux-agent-state.sh" > "$TMP/expected-hook"
 same_bytes "with no binary, tagents-core is byte for byte what it always was" "$TMP/expected-core" "$TAGENTS_BIN/tagents-core"
-same_bytes "tagents-knowledge too" "$TMP/expected-knowledge" "$TAGENTS_BIN/tagents-knowledge"
+same_bytes "tagents-knowledge too, with the line that answers the launcher's probe" "$TMP/expected-knowledge" "$TAGENTS_BIN/tagents-knowledge"
 same_bytes "and tagents-mcp, which names no binary either" "$TMP/expected-mcp" "$TAGENTS_BIN/tagents-mcp"
 same_bytes "and tagents-notify, which names no binary either" "$TMP/expected-notify" "$TAGENTS_BIN/tagents-notify"
 same_bytes "and a hook wrapper" "$TMP/expected-hook" "$HOOKS_A/tmux-agent-state.sh"
@@ -401,7 +409,8 @@ ok "no arguments reach the node program" "node-c $notify_path" "$(env PATH=/usr/
 ok "run and an empty argument reach the node program" "node-c $notify_path run " "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-notify" run "")"
 ok "a single empty argument reaches the node program" "node-c $notify_path " "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-notify" "")"
 ok "tagents-mcp still hands the binary run: no test of its arguments" "rust node=$TMP/node-c/node mcp run" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" run)"
-same_bytes "tagents-knowledge does not change" "$TMP/expected-knowledge" "$TAGENTS_BIN/tagents-knowledge"
+knowledge_wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/knowledge/dist/cli/main.js" "$RUST_BIN" > "$TMP/expected-native-knowledge"
+same_bytes "with a binary, tagents-knowledge is byte for byte the text of the design" "$TMP/expected-native-knowledge" "$TAGENTS_BIN/tagents-knowledge"
 same_bytes "nor does a hook wrapper" "$TMP/expected-hook" "$HOOKS_A/tmux-agent-state.sh"
 # The wrapper's two guards are each pinned by a case only that guard catches, on the wrapper written for the real binary and without a reinstall.
 node_answer="node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b"
@@ -1038,6 +1047,90 @@ out=$(env -u CLAUDE_CONFIG_DIR HOME="$HOME_DIR" XDG_CONFIG_HOME="$HOME_DIR/.conf
 case $rc in 0|1) verdict=accepted ;; *) verdict="refused with status $rc" ;; esac
 ok "the real verb takes the arguments install.sh passes" accepted "$verdict"
 lacks "...without a word about an option" "option" "$out"
+
+# ---------------------------------------------------------------------------
+t "16. tagents-knowledge: the binary for serve, join and mcp, the node program for the rest, and exit 69 for a join that cannot reach the binary"
+# ---------------------------------------------------------------------------
+# A node that writes down every start: a join that reaches it has paid a node start for a question whose answer is no.
+mkdir -p "$TMP/node-rec"
+printf '#!/bin/sh\necho started >> "%s/node-starts"\necho "node-rec $*"\n' "$TMP" > "$TMP/node-rec/node"; chmod 755 "$TMP/node-rec/node"
+run_rec() { rm -f "$TMP/node-starts" "$CURL_LOG"; PATH="$TMP/curlspy:$TMP/node-rec:$PATH" run "$@"; }
+starts() { if [ -f "$TMP/node-starts" ]; then wc -l < "$TMP/node-starts" | tr -d ' '; else echo 0; fi; }
+kn() { env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-knowledge" "$@"; }
+knowledge_path=$TAGENTS_HOME/packages/knowledge/dist/cli/main.js
+
+# --- with the binary ----------------------------------------------------------
+fresh_native 0.1.0
+knowledge_path=$TAGENTS_HOME/packages/knowledge/dist/cli/main.js
+out=$(run_rec); rc=$?
+ok "an install with a binary exits 0" 0 "$rc"
+knowledge_wrapper_bytes "$TMP/node-rec/node" "$knowledge_path" "$RUST_BIN" > "$TMP/expected-kn-native"
+same_bytes "the wrapper with the binary is the text of the design" "$TMP/expected-kn-native" "$TAGENTS_BIN/tagents-knowledge"
+ok "join alone reaches the binary, with the pinned node" "native-core 0.1.0 knowledge join" "$(kn join)"
+ok "mcp alone reaches it" "native-core 0.1.0 knowledge mcp" "$(kn mcp)"
+ok "serve with no argument reaches it" "native-core 0.1.0 knowledge serve" "$(kn serve)"
+ok "serve with one argument reaches it" "native-core 0.1.0 knowledge serve --foreground" "$(kn serve --foreground)"
+ok "serve with several arguments reaches it" "native-core 0.1.0 knowledge serve --idle 30 --socket /p" "$(kn serve --idle 30 --socket /p)"
+ok "mcp extra reaches node" "node-rec $knowledge_path mcp extra" "$(kn mcp extra)"
+ok "join x reaches node" "node-rec $knowledge_path join x" "$(kn join x)"
+ok "search x reaches node" "node-rec $knowledge_path search x" "$(kn search x)"
+ok "no arguments reach node" "node-rec $knowledge_path" "$(kn)"
+ok "an empty argument reaches node" "node-rec $knowledge_path " "$(kn "")"
+ok "join and an empty argument reach node" "node-rec $knowledge_path join " "$(kn join "")"
+ok "serve is not matched as a prefix: servers reaches node" "node-rec $knowledge_path servers" "$(kn servers)"
+# The wrapper of tagents-notify keeps its bytes next to it.
+native_wrapper_bytes "$TMP/node-rec/node" "$RUST_BIN" notify "$TAGENTS_HOME/packages/notify/dist/main.js" run > "$TMP/expected-kn-notify"
+same_bytes "tagents-notify is the same bytes as before" "$TMP/expected-kn-notify" "$TAGENTS_BIN/tagents-notify"
+
+# --- the binary vanishes, or loses its executable bit ---------------------------
+rm -f "$RUST_BIN" "$TMP/node-starts"
+kn join >/dev/null; rc=$?
+ok "a vanished binary: join exits 69" 69 "$rc"
+ok "...and started no node" 0 "$(starts)"
+ok "...and said nothing" "" "$(kn join 2>&1)"
+ok "...serve runs node" "node-rec $knowledge_path serve --idle 30" "$(kn serve --idle 30)"
+ok "...mcp runs node" "node-rec $knowledge_path mcp" "$(kn mcp)"
+mkdir "$RUST_BIN"
+kn join >/dev/null; rc=$?
+ok "a directory where the binary was: join exits 69" 69 "$rc"
+rmdir "$RUST_BIN"
+printf '#!/bin/sh\necho native\n' > "$RUST_BIN"; chmod 644 "$RUST_BIN"
+rm -f "$TMP/node-starts"
+kn join >/dev/null; rc=$?
+ok "a binary without the executable bit: join exits 69" 69 "$rc"
+ok "...and started no node" 0 "$(starts)"
+ok "...serve runs node" "node-rec $knowledge_path serve" "$(kn serve)"
+ok "...mcp runs node" "node-rec $knowledge_path mcp" "$(kn mcp)"
+rm -f "$RUST_BIN" "$RUST_BIN.release"
+
+# --- no binary named: the node wrapper plus the join line ----------------------
+knowledge_wrapper_bytes "$TMP/node-rec/node" "$knowledge_path" > "$TMP/expected-kn-node"
+# another version of the binary
+printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.0.9"; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+TAGENTS_NO_NATIVE=1 run_rec >/dev/null
+same_bytes "a binary of another version is not named" "$TMP/expected-kn-node" "$TAGENTS_BIN/tagents-knowledge"
+rm -f "$TMP/node-starts"
+kn join >/dev/null; rc=$?
+ok "...and join exits 69" 69 "$rc"
+ok "...with no node started" 0 "$(starts)"
+ok "...and mcp runs node" "node-rec $knowledge_path mcp" "$(kn mcp)"
+# TAGENTS_NO_NATIVE=1 names no binary
+fresh_native 0.1.0
+TAGENTS_NO_NATIVE=1 run_rec >/dev/null
+same_bytes "TAGENTS_NO_NATIVE=1 names no binary" "$TMP/expected-kn-node" "$TAGENTS_BIN/tagents-knowledge"
+# a version with no release
+set_version 0.1.2; use_release 0.1.2
+run_rec >/dev/null
+same_bytes "a version with no release names no binary" "$TMP/expected-kn-node" "$TAGENTS_BIN/tagents-knowledge"
+rm -f "$TMP/node-starts"
+kn join >/dev/null; rc=$?
+ok "...and join exits 69 without a node start" "69 0" "$rc $(starts)"
+# a release that installs: the wrapper names it
+set_version 0.1.3; make_release 0.1.3 "$TRIPLE"; use_release 0.1.3
+run_rec >/dev/null
+knowledge_wrapper_bytes "$TMP/node-rec/node" "$knowledge_path" "$RUST_BIN" > "$TMP/expected-kn-native"
+same_bytes "a fetched binary of the checkout's version is named" "$TMP/expected-kn-native" "$TAGENTS_BIN/tagents-knowledge"
+ok "...and join reaches it" "native-core 0.1.3 knowledge join" "$(kn join)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
