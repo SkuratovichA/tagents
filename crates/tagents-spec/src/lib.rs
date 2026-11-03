@@ -370,6 +370,7 @@ mod tests {
                 "session prompt",
                 "session last",
                 "session list",
+                "session abort",
                 "sessions recent",
                 "sessions search",
                 "sessions show",
