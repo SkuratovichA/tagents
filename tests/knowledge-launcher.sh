@@ -15,9 +15,9 @@ ROOT=$(cd "$HERE/.." && pwd)
 scratch_guard knowledge-launcher.sh || exit 1
 LAUNCHER=${TAGENTS_LAUNCHER:-$ROOT/packages/knowledge/bin/knowledge-mcp}
 TMP=$(cd -P "$(mktemp -d "${TMPDIR:-/tmp}/tagents-launcher.XXXXXX")" && pwd -P) || exit 1
-# The daemons of this run live outside the scratch directory (their socket is under /tmp), but their command line names the scratch install or the scratch folder: only a process whose command contains this run's directory is signalled.
+# The daemons of this run live outside the scratch directory (their socket is under /tmp), but their command line or their environment names the scratch install or the scratch folder: only a process whose command or environment contains this run's directory is signalled.
 stop_scratch_daemons() {
-  ps -A -o pid=,command= | grep -F "$TMP/" | grep -v grep | awk '{print $1}' | while read -r p; do kill "$p" 2>/dev/null; done
+  ps -A -E -ww -o pid=,command= | grep -F "$TMP/" | grep -v grep | awk '{print $1}' | while read -r p; do kill "$p" 2>/dev/null; done
   sleep 0.3
 }
 # The node daemon is named by its socket and the pid file beside it, and the socket is derived from the scratch environment.
