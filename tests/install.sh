@@ -336,7 +336,7 @@ wrapper_bytes() {  # <node or empty> <target> — the pinned form when a node pa
 knowledge_wrapper_bytes() {  # <node> <target> [native binary]
   printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nn="%s"\n[ -x "$n" ] || n=node\n' "$1"
   if [ -n "${3:-}" ]; then
-    printf 'r="%s"\nif [ -f "$r" ] && [ -x "$r" ]; then\n  if [ "${1-}" = serve ] || { [ "$#" -eq 1 ] && { [ "$1" = join ] || [ "$1" = mcp ]; }; }; then\n    TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" knowledge "$@"\n  fi\nfi\n' "$3"
+    printf 'r="%s"\nif [ "${TAGENTS_NO_NATIVE:-}" != 1 ] && [ -f "$r" ] && [ -x "$r" ]; then\n  if [ "${1-}" = serve ] || { [ "$#" -eq 1 ] && { [ "$1" = join ] || [ "$1" = mcp ]; }; }; then\n    TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" knowledge "$@"\n  fi\nfi\n' "$3"
   fi
   printf '[ "$#" -ne 1 ] || [ "$1" != join ] || exit 69\nexec "$n" "%s" "$@"\n' "$2"
 }
@@ -1131,6 +1131,28 @@ run_rec >/dev/null
 knowledge_wrapper_bytes "$TMP/node-rec/node" "$knowledge_path" "$RUST_BIN" > "$TMP/expected-kn-native"
 same_bytes "a fetched binary of the checkout's version is named" "$TMP/expected-kn-native" "$TAGENTS_BIN/tagents-knowledge"
 ok "...and join reaches it" "native-core 0.1.3 knowledge join" "$(kn join)"
+
+# --- TAGENTS_NO_NATIVE=1 at run time: the way back to node, for one session -------
+rm -f "$TMP/node-starts"
+ok "run time TAGENTS_NO_NATIVE=1: serve reaches node" "node-rec $knowledge_path serve --idle 30" "$(TAGENTS_NO_NATIVE=1 kn serve --idle 30)"
+ok "...mcp reaches node" "node-rec $knowledge_path mcp" "$(TAGENTS_NO_NATIVE=1 kn mcp)"
+TAGENTS_NO_NATIVE=1 kn join >/dev/null; rc=$?
+ok "...a lone join exits 69" 69 "$rc"
+ok "...and a join with the variable set starts no node beyond the two above" 2 "$(starts)"
+ok "...the variable set to anything but 1 does not turn the binary off" "native-core 0.1.3 knowledge join" "$(TAGENTS_NO_NATIVE=0 kn join)"
+ok "...and unset, join reaches the binary again" "native-core 0.1.3 knowledge join" "$(kn join)"
+
+# --- TAGENTS_NO_NATIVE=1 at install time, over a binary built by hand -------------
+fresh_native 0.1.0
+TAGENTS_NO_NATIVE=1 run_rec >/dev/null   # the first install makes the tree; a directory made before it would be refused as not a tagents copy
+mkdir -p "$(dirname "$RUST_BIN")"
+printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.1.0"; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+run_rec >/dev/null
+knowledge_wrapper_bytes "$TMP/node-rec/node" "$knowledge_path" "$RUST_BIN" > "$TMP/expected-kn-native"
+same_bytes "an unmarked binary of the right version is named" "$TMP/expected-kn-native" "$TAGENTS_BIN/tagents-knowledge"
+TAGENTS_NO_NATIVE=1 run_rec >/dev/null
+same_bytes "...and TAGENTS_NO_NATIVE=1 at install time leaves the wrapper with no binary" "$TMP/expected-kn-node" "$TAGENTS_BIN/tagents-knowledge"
+ok "...the unmarked binary is still there, not ours to delete" yes "$([ -x "$RUST_BIN" ] && echo yes || echo no)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
