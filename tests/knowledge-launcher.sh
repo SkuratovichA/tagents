@@ -51,6 +51,7 @@ cat > "$STUBS/tagents-knowledge" <<'STUB'
 n=0
 if [ -f "$STUB_LOG" ]; then while read -r _; do n=$((n + 1)); done < "$STUB_LOG"; fi
 echo "$*" >> "$STUB_LOG"
+echo "$1=${TAGENTS_NO_NATIVE-unset}" >> "$STUB_DIR/envlog"
 input=
 while IFS= read -r line || [ -n "$line" ]; do input="$input$line"; done
 printf '%s' "$input" > "$STUB_DIR/stdin.$n"
@@ -80,7 +81,7 @@ trap 'kill $SOCK_PID 2>/dev/null; cleanup' EXIT INT TERM
 
 # <name> <path dir> <join code> <socket or empty> -> sets OUT, ERR, CALLS
 launch() {
-  : > "$TMP/calls"; rm -f "$TMP"/stdin.*
+  : > "$TMP/calls"; : > "$TMP/envlog"; rm -f "$TMP"/stdin.*
   OUT=$(printf 'hello' | env -i PATH="$2" STUB_LOG="$TMP/calls" STUB_DIR="$TMP" JOIN_CODE="$3" SERVE_SOCKET="$4" /bin/sh "$LAUNCHER" 2> "$TMP/err"); RC=$?
   ERR=$(cat "$TMP/err"); CALLS=$(tr '\n' '|' < "$TMP/calls")
 }
@@ -96,6 +97,7 @@ for code in 69 2; do
   ok "join exits $code, a socket printed, nc present: nc -U on the socket" "stub: nc -U $SOCK" "$OUT"
   ok "...nothing on stderr" "" "$ERR"
   ok "...the calls are the probe and serve" "join|serve|" "$CALLS"
+  ok "...and TAGENTS_NO_NATIVE is not set: this is not a failure" "join=unset|serve=unset|" "$(tr '\n' '|' < "$TMP/envlog")"
   launch "exit$code-nonc" "$NO_NC" "$code" "$SOCK"
   ok "join exits $code, no nc: the node server" "stub: mcp" "$OUT"
   ok "...nothing on stderr" "" "$ERR"
@@ -111,8 +113,10 @@ for code in 1 3 127 126 130; do
   launch "exit$code" "$STUBS" "$code" "$SOCK"
   ok "join exits $code: the old arrangement runs" "stub: nc -U $SOCK" "$OUT"
   ok "...with exactly one line on stderr, naming the code" "knowledge-mcp: tagents-knowledge join exited $code, using the node server (tagents-knowledge join </dev/null shows why)" "$ERR"
+  ok "...and the old arrangement runs with TAGENTS_NO_NATIVE=1, so the wrapper hands serve to node and not to the binary" "join=unset|serve=1|" "$(tr '\n' '|' < "$TMP/envlog")"
   launch "exit$code-nosock" "$STUBS" "$code" ""
   ok "join exits $code, no socket: the node server, with the same one line" "stub: mcp|knowledge-mcp: tagents-knowledge join exited $code, using the node server (tagents-knowledge join </dev/null shows why)" "$OUT|$ERR"
+  ok "...and mcp too sees TAGENTS_NO_NATIVE=1" "join=unset|serve=1|mcp=1|" "$(tr '\n' '|' < "$TMP/envlog")"
 done
 
 # No tagents-knowledge at all: the shell's 127 is a code like any other.
@@ -200,6 +204,8 @@ else
 
   # --- the binary -------------------------------------------------------------
   mkdir -p "$TAGENTS_HOME/target/release"; cp "$CORE" "$TAGENTS_HOME/target/release/tagents-core"; chmod 755 "$TAGENTS_HOME/target/release/tagents-core"
+  # the install now names the binary: TAGENTS_NO_NATIVE=1 at install time leaves the knowledge wrapper without one
+  unset TAGENTS_NO_NATIVE
   out=$(install); rc=$?
   ok "the install over a binary exits 0" 0 "$rc"
   rm -f "$TMP/node-starts"
@@ -214,6 +220,56 @@ else
   ok "...no process under it: no node, no nc" "" "$(pgrep -P "$SPID" | tr -d '\n')"
   ok "...nothing on stderr" "" "$(cat "$TMP/err.bin")"
   ok "...and ends when its input closes" gone=yes "$(end_session bin)"
+  stop_scratch_daemons
+  sleep 0.5
+
+  # --- the launcher of the plugin cache: the old two lines over the new wrapper ----
+  # A machine meets this first: the plugin cache keeps the old launcher until the plugin updates, and the wrapper is rewritten at the next `tagents update`. The two commands are those of 9af0ac1:packages/knowledge/bin/knowledge-mcp, verbatim; `serve` now reaches the Rust daemon and `nc -U` connects to it.
+  cat > "$TMP/old-launcher" <<'OLD'
+sock=$(tagents-knowledge serve 2>/dev/null) && [ -S "$sock" ] && command -v nc >/dev/null 2>&1 && exec nc -U "$sock"
+exec tagents-knowledge mcp
+OLD
+  SEARCH='{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"knowledge_search","arguments":{"query":"sqlite"}}}'
+  if ! command -v nc >/dev/null 2>&1; then
+    printf '  skip the old launcher over the new wrapper: this machine has no nc\n'
+  else
+    rm -f "$TMP/node-starts"
+    # one daemon serves the environment whichever argument list started it: this one is started with a short idle time, so that it leaving shows the session was counted out
+    osock=$(senv "$TAGENTS_BIN/tagents-knowledge" serve --idle 4 2>/dev/null)
+    ok "the Rust daemon is up and serve printed its socket" yes "$([ -S "$osock" ] && echo yes || echo no)"
+    odpid=$(cat "$osock.pid" 2>/dev/null)
+    SESSION_LAUNCHER=$TMP/old-launcher session old "$SEARCH"
+    ok "the old launcher: initialize and knowledge_search both got a reply" 2 "$(grep -c '"result"' "$TMP/out.old")"
+    ok "...and the search found a document of the fixtures" yes "$(grep -q 'deploy-runbook' "$TMP/out.old" && echo yes || echo no)"
+    cmd=$(ps -o command= -p "$SPID" 2>/dev/null)
+    case $cmd in "nc -U "*) got=nc ;; *) got="$cmd" ;; esac
+    ok "...through nc -U, the process the session started" nc "$got"
+    ok "...to the daemon the wrapper started in Rust, and no node was started" 0 "$(starts)"
+    ok "...which is alive while the session is connected" yes "$(kill -0 "$odpid" 2>/dev/null && echo yes || echo no)"
+    ok "...nothing on stderr" "" "$(cat "$TMP/err.old")"
+    ok "...and nc ends when the input closes" gone=yes "$(end_session old)"
+    for _ in $(seq 1 120); do kill -0 "$odpid" 2>/dev/null || break; sleep 0.2; done
+    ok "...and the daemon, with nobody connected, leaves after its idle time" no "$(kill -0 "$odpid" 2>/dev/null && echo yes || echo no)"
+    stop_scratch_daemons
+  fi
+
+  # --- a binary that fails the probe: the session is answered by node ---------------
+  # The wrapper is the real one and the binary a stub that says the right version and exits 1 on everything else.
+  want=$(sed -n 's/^version = "\(.*\)"/\1/p' "$ORIGIN/Cargo.toml" | head -n 1)
+  printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core %s"; exit 0; fi\necho "$*" >> "%s/stub-core-calls"\nexit 1\n' "$want" "$TMP" > "$TAGENTS_HOME/target/release/tagents-core"
+  chmod 755 "$TAGENTS_HOME/target/release/tagents-core"
+  out=$(install); rc=$?
+  ok "the install over a stub binary exits 0" 0 "$rc"
+  rm -f "$TMP/node-starts" "$TMP/stub-core-calls"
+  session failing
+  ok "a binary that fails the probe: the session got an initialize reply" yes "$(grep -q '"result"' "$TMP/out.failing" && echo yes || echo no)"
+  cmd=$(ps -o command= -p "$SPID" 2>/dev/null)
+  case $cmd in "nc -U "*) got=nc ;; *) got="$cmd" ;; esac
+  ok "...through nc -U, to a daemon of node" nc "$got"
+  ok "...node was started for serve" yes "$(grep -q ' serve' "$TMP/node-starts" && echo yes || echo no)"
+  ok "...and the stub binary was run for the probe alone" "knowledge join" "$(cat "$TMP/stub-core-calls")"
+  ok "...one line on stderr, naming the code" "knowledge-mcp: tagents-knowledge join exited 1, using the node server (tagents-knowledge join </dev/null shows why)" "$(cat "$TMP/err.failing")"
+  ok "...and ends when its input closes" gone=yes "$(end_session failing)"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

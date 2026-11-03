@@ -20,7 +20,9 @@ tagents-knowledge join </dev/null >/dev/null 2>&1; rc=$?
 case $rc in
   0) exec tagents-knowledge join ;;
   69 | 2) ;;
-  *) printf 'knowledge-mcp: tagents-knowledge join exited %s, using the node server (tagents-knowledge join </dev/null shows why)\n' "$rc" >&2 ;;
+  *) printf 'knowledge-mcp: tagents-knowledge join exited %s, using the node server (tagents-knowledge join </dev/null shows why)\n' "$rc" >&2
+     # The wrapper hands `serve` and `mcp` to the binary too, so the way out has to say so: with this variable it names no binary and they reach node.
+     TAGENTS_NO_NATIVE=1; export TAGENTS_NO_NATIVE ;;
 esac
 sock=$(tagents-knowledge serve 2>/dev/null) && [ -S "$sock" ] && command -v nc >/dev/null 2>&1 && exec nc -U "$sock"
 exec tagents-knowledge mcp
