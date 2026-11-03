@@ -38,9 +38,9 @@ export function plain(value: unknown): unknown {
 
 const scratchDirs: string[] = [];
 
-/** An empty directory that `cleanup` removes. */
+/** An empty directory that `cleanup` removes. Its real path: a process that changes into it reads its working directory back with the links resolved, and a path written through a link would not be the same text. */
 export function scratch(label: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `rkv-${label}-`));
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), `rkv-${label}-`)));
   scratchDirs.push(dir);
   return dir;
 }

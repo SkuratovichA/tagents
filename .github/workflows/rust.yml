@@ -18,6 +18,9 @@ on:
       - tests/rust-parity.sh
       - tests/rust-mcp-parity.sh
       - tests/rust-mcp-parity-driver.mts
+      - tests/lib/mcp-parity.sh
+      - tests/rust-knowledge-parity.sh
+      - tests/rust-knowledge-parity-driver.mts
       - tests/rust-notify-parity.sh
       - tests/rust-notify-parity-driver.mts
       - .node-version
@@ -31,6 +34,7 @@ on:
       - tests/rust-plugin-vectors/**
       - tests/rust-knowledge-vectors.mts
       - tests/rust-knowledge-vectors/**
+      - tests/rust-knowledge-embed.mts
       - .github/workflows/rust.yml
       - .github/workflows/release.yml
       - .github/scripts/core-release.sh
@@ -58,6 +62,9 @@ on:
       - tests/rust-parity.sh
       - tests/rust-mcp-parity.sh
       - tests/rust-mcp-parity-driver.mts
+      - tests/lib/mcp-parity.sh
+      - tests/rust-knowledge-parity.sh
+      - tests/rust-knowledge-parity-driver.mts
       - tests/rust-notify-parity.sh
       - tests/rust-notify-parity-driver.mts
       - .node-version
@@ -71,6 +78,7 @@ on:
       - tests/rust-plugin-vectors/**
       - tests/rust-knowledge-vectors.mts
       - tests/rust-knowledge-vectors/**
+      - tests/rust-knowledge-embed.mts
       - .github/workflows/rust.yml
       - .github/workflows/release.yml
       - .github/scripts/core-release.sh
@@ -128,10 +136,16 @@ jobs:
         run: |
           node tests/rust-session-vectors.mts
           git diff --exit-code crates/tagents-core/tests/fixtures/session-vectors.json
+      - name: The tool list and the two sentences the Rust knowledge server embeds are the ones node has, so a changed tool, description or text fails here until they are written again
+        run: |
+          node tests/rust-knowledge-embed.mts
+          git diff --exit-code crates/tagents-core/src/knowledge/tools.json crates/tagents-core/src/knowledge/texts.json
       - name: Parity with the node CLI, byte for byte
         run: bash tests/rust-parity.sh
       - name: Parity of the MCP server with the node one, byte for byte
         run: bash tests/rust-mcp-parity.sh
+      - name: Parity of the knowledge MCP server and its daemon with the node ones, transcripts compared byte for byte
+        run: bash tests/rust-knowledge-parity.sh
       - name: Parity of the notify daemon with the node one, byte for byte
         run: bash tests/rust-notify-parity.sh
       - name: Parity of plugin add and plugin remove with the node ones, files and exit codes included

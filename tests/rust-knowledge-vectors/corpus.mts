@@ -280,17 +280,22 @@ function fuzz(files: readonly CorpusFile[]): unknown {
     const marks = ['"', '""', '*', '-', '(', ')', 'OR', 'NOT', 'AND', 'NEAR', ':', '^', '+', ',', '{', '}', "'", '.', '\\', '%', '_'];
     const next = lcg(20261101);
     const pick = <T,>(list: readonly T[]): T => list[Math.floor(next() * list.length)] as T;
-    const cases = Array.from({ length: 170 }, () => {
+    const caseOf = (words: string[], limit: number | undefined): unknown => {
+      const hits = search(db, words, { now: clock, ...(limit === undefined ? {} : { limit }) });
+      return { words, ...(limit === undefined ? {} : { limit }), match: ftsQuery(words), hits: hits.map((h) => ({ ...h, path: relativize(h.path, run.folder) })) };
+    };
+    const drawn = Array.from({ length: 170 }, () => {
       const count = 1 + Math.floor(next() * 3);
       const words = Array.from({ length: count }, () => {
         const parts = Array.from({ length: 1 + Math.floor(next() * 3) }, () => (next() < 0.7 ? pick(pool) : pick(marks)));
         const joined = parts.join(next() < 0.6 ? ' ' : '');
         return next() < 0.25 ? `${joined}*` : joined;
       });
-      const limit = next() < 0.3 ? Math.floor(next() * 8) - 1 : undefined;
-      const hits = search(db, words, { now: clock, ...(limit === undefined ? {} : { limit }) });
-      return { words, ...(limit === undefined ? {} : { limit }), match: ftsQuery(words), hits: hits.map((h) => ({ ...h, path: relativize(h.path, run.folder) })) };
+      return caseOf(words, next() < 0.3 ? Math.floor(next() * 8) - 1 : undefined);
     });
+    // The tools take a limit from 1 to 50, so these reach only the library: the double is bound as it is, and a value SQLite cannot make an integer of is an error the search turns into no hits.
+    const limits = [0, -1, -0.5, 0.5, 1.5, 2, 1e300, -1e300, 1e19, 4611686018427387904, 9223372036854775808, 9007199254740993, 1e21];
+    const cases = [...drawn, ...limits.flatMap((limit) => [caseOf(['fox'], limit), caseOf(['deploy'], limit)])];
     return { files: files.map((f) => ({ name: f.name, text: f.text, mtimeSec: MTIME_SEC })), cases: plain(cases) };
   } finally {
     db.close();

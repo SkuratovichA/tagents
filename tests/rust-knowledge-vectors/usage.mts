@@ -54,6 +54,8 @@ const BATCHES: ReadonlyArray<{ readonly now: number; readonly events: readonly U
 function reportOptions(): ReportOptions[] {
   const byHand: ReportOptions[] = [
     {}, { sinceDays: 1 }, { sinceDays: 7 }, { sinceDays: 30 }, { sinceDays: 45 }, { sinceDays: 365 }, { sinceDays: 100000 }, { top: 1 }, { top: 3 }, { top: 100 },
+    // `slice(0, top)`: a fraction is cut off, a negative number counts from the end, and a number beyond the rows keeps them all. The tool takes a whole number from 1 up, so these reach only the library.
+    { top: 0 }, { top: -1 }, { top: -2 }, { top: -100 }, { top: 1.5 }, { top: -1.5 }, { top: 0.5 }, { top: -0.5 }, { top: 1e300 }, { top: -1e300 }, { top: 9007199254740992 },
     { type: 'note' }, { type: 'Note' }, { type: 'NOTE' }, { type: 'runbook' }, { type: '' }, { type: 'заметка' }, { type: 'ЗАМЕТКА' }, { type: 'none' },
     { all: true }, { all: true, type: 'note' }, { all: true, top: 100 }, { all: true, sinceDays: 1 },
     { candidates: true }, { candidates: true, minGets: 1, minDays: 1 }, { candidates: true, minGets: 2, minDays: 2 }, { candidates: true, minGets: 3, minDays: 1 }, { candidates: true, all: true, minGets: 1, minDays: 1 },

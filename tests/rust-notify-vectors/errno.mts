@@ -2,7 +2,7 @@
 import { getSystemErrorMap } from 'node:util';
 
 // The codes of `ERRNOS` in `crates/tagents-core/src/node.rs`, whose numbers are the same on Linux and macOS. The Rust test fails when the table and this list differ in either direction.
-const CODES = ['ENOENT', 'EIO', 'E2BIG', 'ENOEXEC', 'ENOMEM', 'EACCES', 'ENOTDIR', 'EISDIR', 'EMFILE', 'ETXTBSY'];
+const CODES = ['ENOENT', 'EIO', 'E2BIG', 'ENOEXEC', 'ENOMEM', 'EACCES', 'EEXIST', 'ENOTDIR', 'EISDIR', 'EMFILE', 'ETXTBSY'];
 
 export async function errnoVectors(): Promise<unknown> {
   const byCode = new Map([...getSystemErrorMap()].map(([, [code, message]]) => [code, message]));

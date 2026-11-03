@@ -144,9 +144,8 @@ impl Watch {
         answer.recv().map_err(|_| ended())?
     }
 
-    /// A full pipe means a wake is already waiting, and a closed one means the thread is gone: neither needs more.
     fn wake_thread(&self) {
-        let _ = rustix::io::write(&self.wake, &[1]);
+        wake(&self.wake);
     }
 }
 
@@ -210,19 +209,25 @@ fn run<T: From<Heard>>(
     }
 }
 
+/// Wakes whoever polls the other end of a pipe from `wake_pipe`. A full pipe means a wake is already waiting, and a closed one means the reader is gone: neither needs more.
+pub(crate) fn wake(pipe: &OwnedFd) {
+    let _ = rustix::io::write(pipe, &[1]);
+}
+
 /// Empties the wake pipe, which is non-blocking: it ends at the first read that finds nothing.
-fn drain(wake: &OwnedFd) {
+pub(crate) fn drain(wake: &OwnedFd) {
     let mut buf = [0; 64];
     while matches!(rustix::io::read(wake, &mut buf), Ok(n) if n > 0) {}
 }
 
+/// The two ends of a pipe that is non-blocking and close-on-exec, for a thread that polls its read end beside what else it waits for.
 #[cfg(target_os = "linux")]
-fn wake_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
+pub(crate) fn wake_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
     Ok(pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK)?)
 }
 
 #[cfg(target_os = "macos")]
-fn wake_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
+pub(crate) fn wake_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
     let (read, write) = pipe()?;
     for end in [&read, &write] {
         fcntl_setfd(end, FdFlags::CLOEXEC)?;

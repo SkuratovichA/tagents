@@ -1,0 +1,184 @@
+[
+  {
+    "name": "knowledge_search",
+    "title": "Search the knowledge base",
+    "description": "Full-text search over the owner's knowledge documents (Russian and English). Returns the matching sections as JSON: id, title, heading, score, snippet, path, type, description, status, stale. Documents with status deprecated come last. Read a whole section with knowledge_get.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "description": "words to look for; all of them must appear"
+        },
+        "tag": {
+          "description": "only documents carrying this tag",
+          "type": "string"
+        },
+        "type": {
+          "description": "only documents of this type (case-insensitive, for example Runbook)",
+          "type": "string"
+        },
+        "kind": {
+          "description": "deprecated alias of type",
+          "type": "string"
+        },
+        "limit": {
+          "description": "how many sections (default 10)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 50
+        }
+      },
+      "required": [
+        "query"
+      ]
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "knowledge_get",
+    "title": "Read one knowledge document",
+    "description": "The markdown of one document by id, or of a single \"## \" section when heading is given.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "document id, the filename stem"
+        },
+        "heading": {
+          "description": "a \"## \" heading inside that document; omit for the whole document",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "knowledge_list",
+    "title": "List the knowledge documents",
+    "description": "Every document as JSON: id, title, type, description, tags, status, stale, updated, path, headings. Documents with status deprecated come last.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "type": {
+          "description": "only this type (case-insensitive, for example Runbook)",
+          "type": "string"
+        },
+        "kind": {
+          "description": "deprecated alias of type",
+          "type": "string"
+        },
+        "tag": {
+          "description": "only documents carrying this tag",
+          "type": "string"
+        }
+      }
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "knowledge_usage",
+    "title": "Which knowledge documents are read",
+    "description": "What the knowledge documents are used for, as JSON rows, the most read first: id, type, status, gets (times the document or one of its sections was read), hits (times a search returned it), days (distinct UTC dates with a get inside the window), last (UTC date of the newest get, null when never read). Unread documents are listed with zeros. With candidates, only the documents read often enough on enough days to be worth turning into a skill. Looking at the numbers is not a read.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "since": {
+          "description": "the window, a whole number of days and a d, for example 30d (default 30d)",
+          "type": "string"
+        },
+        "top": {
+          "description": "how many rows (default 20)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "type": {
+          "description": "only documents of this type (case-insensitive, for example Runbook)",
+          "type": "string"
+        },
+        "all": {
+          "description": "also list the ids that have events but are no longer in the folder",
+          "type": "boolean"
+        },
+        "candidates": {
+          "description": "only the documents that are not deprecated and were read at least min_gets times on at least min_days dates",
+          "type": "boolean"
+        },
+        "min_gets": {
+          "description": "gets a candidate needs inside the window (default 5)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "min_days": {
+          "description": "UTC dates a candidate needs a get on inside the window (default 3)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "sessions_recent",
+    "title": "Recent Claude sessions on this machine",
+    "description": "The latest sessions across every Claude account on this machine, newest first — the same text the sessions CLI prints.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "limit": {
+          "description": "how many (default 15)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 50
+        }
+      }
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "sessions_search",
+    "title": "Find a Claude session",
+    "description": "Sessions whose project path or opening prompt contains every one of these words — the same text the sessions CLI prints.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "words": {
+          "type": "string",
+          "minLength": 1,
+          "description": "words that must all appear"
+        }
+      },
+      "required": [
+        "words"
+      ]
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  }
+]

@@ -230,10 +230,9 @@ test('opening the index waits for a write another process holds, and does not fa
     const file = path.join(root, 'index.sqlite');
     openDb(file).close();
     const { released } = await holdWriteLock(file, 400);
-    const started = Date.now();
     const db = openDb(file); // its first write needs the lock the holder has
     try {
-      assert.ok(Date.now() - started >= 100, 'the open returned before the holder let go');
+      // The row is visible only after the holder commits, so this is what says the open waited for it.
       assert.equal(int(db.prepare("select count(*) as n from meta where key = 'held'").get() ?? {}, 'n'), 1);
     } finally {
       db.close();

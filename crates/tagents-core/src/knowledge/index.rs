@@ -244,13 +244,39 @@ fn known_docs(db: &Connection) -> Result<HashMap<String, Known>, String> {
     rows.collect::<rusqlite::Result<_>>().map_err(sql)
 }
 
+/// The stats of a pass that would write nothing, read without the write lock: every file has a row with its modification time and every row has a file. `None` when anything differs, which the pass under the lock settles again from the rows it finds there.
+fn nothing_to_write(db: &Connection, files: &[String]) -> Result<Option<IndexStats>, String> {
+    let known = known_docs(db)?;
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut stats = IndexStats::default();
+    for file in files {
+        // A file that vanished between the listing and the stat.
+        let Ok(stat) = fs::metadata(file) else {
+            continue;
+        };
+        let id = stem_of(file);
+        if known
+            .get(&id)
+            .is_none_or(|row| row.mtime != node::mtime_ms_floor(&stat))
+        {
+            return Ok(None);
+        }
+        seen.insert(id);
+        stats.unchanged += 1;
+    }
+    Ok(known.keys().all(|id| seen.contains(id)).then_some(stats))
+}
+
 /// Bring the index in line with the folder.
 ///
 /// A file whose mtime is unchanged is not even read; one whose mtime moved is read and compared by hash, so `git checkout` (which rewrites mtimes and not content) costs a hash, not a reindex. Documents whose file is gone are dropped, and so is one that stopped parsing: it must not keep serving its last good text.
 ///
-/// The whole pass is one transaction that takes the write lock first, so another program's pass waits for this one instead of failing halfway, and a failure leaves the index as it was.
+/// A pass that writes is one transaction that takes the write lock first, so another program's pass waits for this one instead of failing halfway, and a failure leaves the index as it was. A pass that finds every file with its row and every row with its file writes nothing and takes no lock, so sessions that search at once over a folder nobody edited do not take turns.
 pub fn reindex(db: &mut Connection, dir: &str, full: bool) -> Result<IndexStats, String> {
     let files = list_files(dir)?;
+    if !full && let Some(stats) = nothing_to_write(db, &files)? {
+        return Ok(stats);
+    }
     let tx = db
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(sql)?;

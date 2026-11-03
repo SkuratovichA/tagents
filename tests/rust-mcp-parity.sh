@@ -8,7 +8,7 @@
 # Differences that are known and listed in docs/architecture/rust-core.md are not scenarios: the parameter-validation errors, a lone surrogate in a program's JSON, the echo of a request string with a lone surrogate (`unknown tool <name>` and the `id` of a request: Rust writes U+FFFD, node the escape), a second signal during the ending, objects and requests nested deeper than 128 levels, and the wording of start-up failures (only their exit codes are compared). The answers of calls that an ending stopped (stdin closed, a signal) are not compared either: node races its exit against writing them, the Rust server always writes them, and `rust_answers` pins that.
 # Tripwires assert on the node transcript alone, so a scenario that stopped provoking what it exists for fails here instead of passing for nothing.
 #
-# The helpers the parity suites share are in tests/lib/parity.sh. `cleanup`, `file`, `gone`, `quiet`, `jstr`, `norm`, `first_difference`, `play`, `must` and `must_before` stay here because they differ from those of tests/rust-notify-parity.sh: `cleanup` reads the `*.pid` files of the work directory, `file`, `gone` and `quiet` write this driver's shape of a step, `jstr` leaves a newline, a tab and a carriage return as they are, `norm` takes out the server's version, `first_difference` names the key of the line, `play` starts the two servers itself and takes a contract, and `must` and `must_before` word their failures in their own way.
+# The helpers the parity suites share are in tests/lib/parity.sh, and those this suite shares with tests/rust-knowledge-parity.sh alone are in tests/lib/mcp-parity.sh, whose header says why. `cleanup`, `norm` and `play` stay here because they differ from those of tests/rust-notify-parity.sh and tests/rust-knowledge-parity.sh: `cleanup` reads the `*.pid` files of the work directory, `norm` takes out the server's version, and `play` starts the two servers itself and takes a contract.
 #
 # PARITY_ONLY=<text> runs only the scenarios whose label holds the text, and PARITY_SHOW=<n> prints both transcripts of each, cut at n characters a line. Needs a built node server (pnpm build). Uses no real home, no tmux server, no network. bash 3.2.
 #   env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$(mktemp -d)" bash tests/rust-mcp-parity.sh
@@ -48,6 +48,8 @@ trap cleanup EXIT INT TERM
 
 pass=0; fail=0
 . "$HERE/lib/parity.sh"
+. "$HERE/lib/mcp-parity.sh"
+
 
 # ----------------------------------------------------------------- stubs ---
 # `tagents-fake` is the program of the fixture contract. Any verb but `emit` prints its argv, one word to a line, which is how a call shows the command line it stood for. `emit <kind> ...` does what the kind says.
@@ -62,6 +64,7 @@ case $kind in
   term) kill -15 $$ ;;
   json) printf '%s\n' '{"b":1,"a":[1,2.5,1e+21,0.000001,-3,1.5e-7,123456789012345680000,1e+100,5e-324,0.1],"s":"caf\u00e9 \ud83d\ude00 \u0001 \"q\" \\ \/ \b\f\n\r\t \u2028 \u007f <&>","n":null,"t":true,"f":false,"e":{},"l":[],"dup":1,"dup":2,"nested":{"z":{"y":[{"x":1}]}},"k\u00e9y":"v","":"empty key","a1":1}' ;;
   array) printf '%s\n' ' [ 1, {"a": null}, "x", [ ], { } ] ' ;;
+  intkeys) printf '%s\n' '{"b":1,"2":2,"10":3,"1":4,"01":5,"a":6}' ;;
   prefixed) printf "$1"; printf '{"a":1}\n' ;;
   text) printf 'plain text\n  with  spaces\r\nand a tab\t.\n'; printf 'h\303\251llo w\303\266rld \360\237\230\200 \342\202\254\n' ;;
   scalar) printf '%s\n' "$1" ;;
@@ -123,28 +126,6 @@ EMPTY=$TMP/empty.json
 printf '{"cli":{}}\n' > "$EMPTY"
 
 # -------------------------------------------------------------- scenarios ---
-# The steps of a script (`steps` is in tests/lib/parity.sh). Ids are plain numbers or strings written the way JSON writes them.
-req() { printf '{"send":{"jsonrpc":"2.0","id":%s,"method":"%s"%s}}' "$1" "$2" "${3:+,\"params\":$3}"; }          # <id> <method> [params]
-notify() { printf '{"send":{"jsonrpc":"2.0","method":"%s"%s}}' "$1" "${2:+,\"params\":$2}"; }                    # <method> [params]
-# A call is followed by the wait for its answer, so that the order of the answers does not depend on how two threads race: node answers calls that need no process in the order they came, the Rust server in the order their threads end. ASYNC=1 leaves the wait out, for the scenarios about calls in flight.
-call() {  # <id> <tool> [arguments]
-  printf '{"send":{"jsonrpc":"2.0","id":%s,"method":"tools/call","params":{"name":"%s"%s}}}' "$1" "$2" "${3:+,\"arguments\":$3}"
-  [ -n "${ASYNC:-}" ] || printf ',{"answered":[%s]}' "$1"
-}
-await() { local ids= i; for i in "$@"; do ids=${ids:+$ids,}$i; done; printf '{"answered":[%s]}' "$ids"; }
-file() { printf '{"file":"%s/%s"}' "$W" "$1"; }
-gone() { printf '{"gone":"%s/%s"}' "$W" "$1"; }
-touch_() { printf '{"touch":"%s/%s"}' "$W" "$1"; }
-quiet() { printf '{"quiet":%s}' "$1"; }
-close_() { printf '{"close":true}'; }
-signal() { printf '{"signal":"%s"}' "$1"; }
-jstr() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }   # the text as the inside of a JSON string
-# bash 3.2 brace-expands the comma list of a double-quoted JSON object inside a command substitution inside double quotes, so JSON with braces and commas is built in a function body or written in single quotes, never as "{\"a\":1,\"b\":2}" inside $( ).
-handshake() {
-  local version=${1:-2025-11-25} params
-  params="{\"protocolVersion\":\"$version\",\"capabilities\":{},\"clientInfo\":{\"name\":\"parity\",\"version\":\"0\"}}"
-  printf '%s,%s,%s' "$(req 1 initialize "$params")" "$(notify notifications/initialized)" "$(await 1)"
-}
 initialize_with_roots() {  # <protocol version>
   local params="{\"protocolVersion\":\"$1\",\"capabilities\":{\"roots\":{\"listChanged\":true}},\"clientInfo\":{\"name\":\"parity\",\"version\":\"0\"}}"
   req 1 initialize "$params"
@@ -155,7 +136,6 @@ ecall() {  # <id> <kind> [<a> [<b>]]: a call of fake_emit, its arguments as the 
   [ $# -ge 4 ] && args="$args,\"b\":\"$(jstr "$4")\""
   call "$1" fake_emit "$args}"
 }
-session() { steps "$(handshake)" "$@"; }   # a handshake, then the steps
 
 # What a transcript is compared after: the version a server reports is its own, in the start-up scenarios (LOOSE) the wording of stderr is too, and in the scenarios that end the server with calls in flight (ENDING) the answers of those calls are left out: node leaves as soon as the groups it stopped are gone, and whether the answer of a stopped call has been written by then depends on the order its promises settle in, so it answers some of them, none or all, from run to run. The Rust server writes every answer before it leaves, and `rust_answers` pins that.
 LOOSE=
@@ -167,25 +147,6 @@ norm() {  # <file>
   sed -e 's/"serverInfo":{"name":"tagents","version":"[^"]*"}/"serverInfo":{"name":"tagents","version":"-"}/' ${drop[@]+"${drop[@]}"} "$1"
 }
 
-# The first line the two transcripts differ at, the request it answers and a window of 160 characters at the first differing one.
-first_difference() {  # <node transcript> <rust transcript>
-  LC_ALL=C awk '
-    NR == FNR { node[FNR] = $0; nodes = FNR; next }
-    FNR > nodes && !shown { shown = 1; print "line " FNR " only in rust: " substr($0, 1, 160); next }
-    !shown && node[FNR] != $0 {
-      shown = 1
-      a = node[FNR]; b = $0
-      m = length(a) < length(b) ? length(a) : length(b)
-      for (i = 1; i <= m; i++) if (substr(a, i, 1) != substr(b, i, 1)) break
-      from = i > 60 ? i - 60 : 1
-      split(a, key, "\t")
-      print "line " FNR " (" key[1] "), first difference at character " i
-      print "node: " (from > 1 ? "..." : "") substr(a, from, 160)
-      print "rust: " (from > 1 ? "..." : "") substr(b, from, 160)
-    }
-    END { if (!shown && FNR < nodes) print "line " (FNR + 1) " only in node: " substr(node[FNR + 1], 1, 160) }
-  ' "$1" "$2"
-}
 
 # play <label> <script> [-- <server arguments>]; $EXTRA_ENV holds extra VAR=value words for the environment of the servers.
 EXTRA_ENV=()
@@ -217,16 +178,6 @@ play() {
   bad "$label: the transcripts differ" "$(first_difference "$TMP/transcript.node" "$TMP/transcript.rust" | sed '2,$s/^/       /')"
 }
 
-# A tripwire: the node transcript of the last scenario must hold the string (fixed, not a pattern).
-must() {  # <label> <needle>
-  [ -n "$RAN" ] || return 0
-  if grep -qF -- "$2" "$TMP/transcript.node"; then ok; else bad "tripwire $1: node did not say the string this scenario exists to provoke" "wanted: $2"; fi
-}
-# The first string comes before the second in the node transcript.
-must_before() {  # <label> <first> <second>
-  [ -n "$RAN" ] || return 0
-  if [ "$(grep -o -F -e "$2" -e "$3" "$TMP/transcript.node" | head -1)" = "$2" ]; then ok; else bad "tripwire $1: node did not list them in this order" "wanted $2 before $3"; fi
-}
 # The Rust server answered each of these requests.
 rust_answers() {  # <label> <id>...
   local label=$1 id
@@ -346,6 +297,8 @@ play "killed by a signal" "$(session "$(ecall 2 kill)" "$(ecall 3 term)" "$(awai
 play "JSON and text output" "$(session "$(ecall 2 json)" "$(ecall 3 array)" "$(ecall 4 text)" "$(ecall 5 both)" "$(ecall 6 empty)" "$(ecall 7 blank)" "$(await 2 3 4 5 6 7)")"
 must "JSON output is parsed" '\"a\": [\n      1,\n      2.5,\n      1e+21,\n      0.000001,'
 must "JSON duplicate key" '\"dup\": 2'
+play "JSON whose keys are integers" "$(session "$(ecall 2 intkeys)" "$(await 2)")"
+must "JSON integer keys come first" '\"1\": 4,\n    \"2\": 2,\n    \"10\": 3,\n    \"b\": 1,\n    \"01\": 5,\n    \"a\": 6'
 for prefix in '\n\t ' '\302\240' '\357\273\277' '\342\200\250' '\343\200\200' '\302\205' '\342\200\213' '\341\240\216' ''; do
   play "JSON after a prefix [$prefix]" "$(session "$(ecall 2 prefixed "$prefix")" "$(await 2)")"
   # The node server looks past JavaScript white space to see a `{`, and then hands JSON.parse the output as it is: only the white space of JSON (space, tab, line feed, carriage return) leaves a parsed value, any other leaves the text.

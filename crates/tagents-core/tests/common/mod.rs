@@ -7,6 +7,8 @@
 
 pub mod knowledge;
 pub mod rig;
+pub mod sessions;
+pub mod shared;
 
 /// The root of the checkout, where the contract, the fixtures and the node packages are.
 pub const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
@@ -14,6 +16,7 @@ pub const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 use std::{
     fs,
     io::{self, PipeWriter},
+    ops::Deref,
     path::{Path, PathBuf},
 };
 
@@ -28,6 +31,30 @@ pub fn scratch(name: &str) -> PathBuf {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+/// A scratch directory under `/tmp`, empty, for what is bound to a unix socket: an address holds about 100 bytes, which the paths of `scratch` (in the build directory of a checkout) can exceed. The name carries the process id, so two runs do not meet, and the directory is removed when the value is dropped.
+pub struct Short(PathBuf);
+
+impl Deref for Short {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for Short {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+pub fn short_scratch(name: &str) -> Short {
+    let dir = PathBuf::from(format!("/tmp/tk-{}-{name}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    Short(dir)
 }
 
 /// The write end of a pipe whose read end is gone: a child given it as stderr gets EPIPE on every write.

@@ -22,7 +22,7 @@ use tagents_core::knowledge::index::{
 use tagents_core::node;
 
 use common::{
-    knowledge::{rows, same_message, settings, vectors},
+    knowledge::{rows, same_message, settings, vectors, write_file},
     scratch,
 };
 
@@ -342,33 +342,118 @@ fn a_folder_that_cannot_be_read_is_an_error_and_changes_nothing() {
     );
 }
 
+/// A second connection that holds the write lock of the index for `hold`, started once it has the lock.
+fn hold_write_lock(file: &Path, hold: Duration) -> thread::JoinHandle<()> {
+    let (locked, wait) = mpsc::channel();
+    let file = file.to_path_buf();
+    let holder = thread::spawn(move || {
+        let other = Connection::open(file).unwrap();
+        other.execute_batch("begin immediate").unwrap();
+        locked.send(()).unwrap();
+        thread::sleep(hold);
+        other.execute_batch("commit").unwrap();
+    });
+    wait.recv().unwrap();
+    holder
+}
+
+const DOCUMENT: &str = "---\ntype: Note\ntitle: One\n---\n## Part\ntext\n";
+
 #[test]
-fn a_pass_waits_for_a_lock_another_connection_holds() {
+fn a_pass_with_something_to_write_waits_for_a_lock_another_connection_holds() {
     let dir = scratch("knowledge-index-lock");
     let folder = dir.join("folder");
     fs::create_dir(&folder).unwrap();
+    write_file(&folder, "one.md", DOCUMENT, 1_700_000_000);
     let file = dir.join("index.sqlite");
     let mut db = open_db(file.to_str().unwrap()).unwrap();
-    let (locked, wait) = mpsc::channel();
-    let holder = {
-        let file = file.clone();
-        thread::spawn(move || {
-            let other = Connection::open(file).unwrap();
-            other.execute_batch("begin immediate").unwrap();
-            locked.send(()).unwrap();
-            thread::sleep(Duration::from_millis(400));
-            other.execute_batch("commit").unwrap();
-        })
-    };
-    wait.recv().unwrap();
+    // The clock starts before the holder does, so a holder that starts late takes nothing from the hold, and the hold is far longer than the bound.
     let start = Instant::now();
-    reindex(&mut db, folder.to_str().unwrap(), false).unwrap();
+    let holder = hold_write_lock(&file, Duration::from_millis(1500));
+    let stats = reindex(&mut db, folder.to_str().unwrap(), false).unwrap();
     assert!(
         start.elapsed() >= Duration::from_millis(300),
         "the pass did not wait: {:?}",
         start.elapsed()
     );
+    assert_eq!(1, stats.added);
     holder.join().unwrap();
+}
+
+/// A pass over a folder the index already follows writes nothing, so it reads what is there instead of queueing behind a writer: two sessions that search at once would take turns otherwise.
+#[test]
+fn a_pass_over_an_unchanged_folder_does_not_wait_for_a_lock_another_connection_holds() {
+    let dir = scratch("knowledge-index-unchanged");
+    let folder = dir.join("folder");
+    fs::create_dir(&folder).unwrap();
+    write_file(&folder, "one.md", DOCUMENT, 1_700_000_000);
+    let file = dir.join("index.sqlite");
+    let mut db = open_db(file.to_str().unwrap()).unwrap();
+    reindex(&mut db, folder.to_str().unwrap(), false).unwrap();
+    let holder = hold_write_lock(&file, Duration::from_millis(1500));
+    let start = Instant::now();
+    let stats = reindex(&mut db, folder.to_str().unwrap(), false).unwrap();
+    let waited = start.elapsed();
+    holder.join().unwrap();
+    assert!(
+        waited < Duration::from_millis(500),
+        "the pass waited for the lock: {waited:?}"
+    );
+    assert_eq!(
+        (0, 0, 1, 0, 0),
+        (
+            stats.added,
+            stats.changed,
+            stats.unchanged,
+            stats.removed,
+            stats.errors.len()
+        )
+    );
+}
+
+/// Whatever differs between the folder and the rows is a write, and so is a pass that waits: a new file, a file with another time, a file that is gone.
+#[test]
+fn a_pass_over_a_folder_that_differs_waits_for_the_lock_and_writes() {
+    let dir = scratch("knowledge-index-differs");
+    let folder = dir.join("folder");
+    fs::create_dir(&folder).unwrap();
+    write_file(&folder, "one.md", DOCUMENT, 1_700_000_000);
+    write_file(&folder, "two.md", DOCUMENT, 1_700_000_000);
+    let file = dir.join("index.sqlite");
+    let mut db = open_db(file.to_str().unwrap()).unwrap();
+    let folder_s = folder.to_str().unwrap();
+    reindex(&mut db, folder_s, false).unwrap();
+    // What is done to the folder, as a function of the folder.
+    type Change = fn(&Path);
+    let steps: [(&str, Change); 3] = [
+        ("a new file", |folder| {
+            write_file(folder, "three.md", DOCUMENT, 1_700_000_000);
+        }),
+        ("another time", |folder| {
+            set_mtime(&folder.join("one.md"), 1_700_000_100);
+        }),
+        ("a file that is gone", |folder| {
+            fs::remove_file(folder.join("two.md")).unwrap();
+        }),
+    ];
+    for (what, change) in steps {
+        change(&folder);
+        let start = Instant::now();
+        let holder = hold_write_lock(&file, Duration::from_millis(1000));
+        reindex(&mut db, folder_s, false).unwrap();
+        let waited = start.elapsed();
+        holder.join().unwrap();
+        assert!(
+            waited >= Duration::from_millis(200),
+            "{what}: the pass did not wait: {waited:?}"
+        );
+        let again = reindex(&mut db, folder_s, false).unwrap();
+        assert_eq!(
+            (0, 0, 0),
+            (again.added, again.changed, again.removed),
+            "{what}: the pass left work"
+        );
+    }
 }
 
 #[test]

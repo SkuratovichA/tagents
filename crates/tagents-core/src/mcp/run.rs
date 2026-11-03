@@ -9,15 +9,15 @@ use std::process::Command;
 use std::time::Duration;
 
 use serde::Serialize;
-use serde_json::ser::{Formatter, PrettyFormatter};
-use serde_json::{Map, Number, Serializer, Value};
+use serde_json::{Map, Number, Value};
 
-use super::rpc::{CallResult, ToolEntry};
+use super::rpc::CallResult;
 use super::server::Tools;
 use super::tools::{Tool, argv_for};
 use crate::child::{self, Policy, Reason};
 use crate::ending::Stop;
 use crate::js;
+use crate::json::pretty;
 
 /// More than this many bytes of one stream is cut: a transcript or an index can be larger than any client will take.
 pub const MAX_STREAM: usize = 256 * 1024;
@@ -61,13 +61,24 @@ impl Runner {
 }
 
 impl Tools for Runner {
-    fn list(&self) -> Vec<ToolEntry> {
+    fn list(&self) -> Vec<Value> {
         self.tools.iter().map(Tool::entry).collect()
     }
 
-    fn call(&self, name: &str, args: &Map<String, Value>, stop: &Stop) -> Option<CallResult> {
+    /// A call without an `arguments` object is a call with none of them.
+    fn call(
+        &self,
+        name: &str,
+        args: Option<&Map<String, Value>>,
+        stop: &Stop,
+    ) -> Option<CallResult> {
         let tool = self.tools.iter().find(|tool| tool.name == name)?;
-        Some(call_tool(tool, args, &self.deps, stop))
+        Some(call_tool(
+            tool,
+            args.unwrap_or(&Map::new()),
+            &self.deps,
+            stop,
+        ))
     }
 }
 
@@ -119,76 +130,6 @@ fn finish(
         truncated: (stdout_cut || stderr_cut).then_some(true),
     };
     CallResult::text(pretty(&body), code.as_f64() != Some(0.0))
-}
-
-/// `JSON.stringify(body, null, 2)`. The body is strings, a number and a document that was just parsed: there is nothing in it to fail on.
-fn pretty(body: &Body) -> String {
-    let mut out = Vec::new();
-    let formatter = JsPretty(PrettyFormatter::new());
-    match body.serialize(&mut Serializer::with_formatter(&mut out, formatter)) {
-        Ok(()) => String::from_utf8_lossy(&out).into_owned(),
-        Err(e) => e.to_string(),
-    }
-}
-
-/// serde_json's pretty layout, which is the two-space one of `JSON.stringify`, with the numbers told as JavaScript tells them. A number reaches a formatter as the text the program wrote (`arbitrary_precision`), and the node server reads it into a double and writes that: `1.0` is `1`, `1E2` is `100`, `-0` is `0`, and what does not fit a double is `null`.
-struct JsPretty(PrettyFormatter<'static>);
-
-impl Formatter for JsPretty {
-    fn write_number_str<W: ?Sized + io::Write>(
-        &mut self,
-        writer: &mut W,
-        value: &str,
-    ) -> io::Result<()> {
-        match value.parse::<f64>() {
-            Ok(x) if x.is_finite() => writer.write_all(js::number_text(x).as_bytes()),
-            _ => writer.write_all(b"null"),
-        }
-    }
-
-    fn begin_array<W: ?Sized + io::Write>(&mut self, writer: &mut W) -> io::Result<()> {
-        self.0.begin_array(writer)
-    }
-
-    fn end_array<W: ?Sized + io::Write>(&mut self, writer: &mut W) -> io::Result<()> {
-        self.0.end_array(writer)
-    }
-
-    fn begin_array_value<W: ?Sized + io::Write>(
-        &mut self,
-        writer: &mut W,
-        first: bool,
-    ) -> io::Result<()> {
-        self.0.begin_array_value(writer, first)
-    }
-
-    fn end_array_value<W: ?Sized + io::Write>(&mut self, writer: &mut W) -> io::Result<()> {
-        self.0.end_array_value(writer)
-    }
-
-    fn begin_object<W: ?Sized + io::Write>(&mut self, writer: &mut W) -> io::Result<()> {
-        self.0.begin_object(writer)
-    }
-
-    fn end_object<W: ?Sized + io::Write>(&mut self, writer: &mut W) -> io::Result<()> {
-        self.0.end_object(writer)
-    }
-
-    fn begin_object_key<W: ?Sized + io::Write>(
-        &mut self,
-        writer: &mut W,
-        first: bool,
-    ) -> io::Result<()> {
-        self.0.begin_object_key(writer, first)
-    }
-
-    fn begin_object_value<W: ?Sized + io::Write>(&mut self, writer: &mut W) -> io::Result<()> {
-        self.0.begin_object_value(writer)
-    }
-
-    fn end_object_value<W: ?Sized + io::Write>(&mut self, writer: &mut W) -> io::Result<()> {
-        self.0.end_object_value(writer)
-    }
 }
 
 fn refusal(code: &Number, outcome: &str, message: &str) -> CallResult {

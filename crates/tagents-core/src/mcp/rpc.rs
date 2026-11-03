@@ -211,22 +211,12 @@ struct ErrorBody<'a> {
     message: &'a str,
 }
 
-/// A tool as `tools/list` tells it: the keys come in the SDK's order.
-#[derive(Serialize)]
-pub struct ToolEntry {
-    pub name: String,
-    pub description: String,
-    #[serde(rename = "inputSchema")]
-    pub input_schema: Value,
-    pub annotations: Value,
-}
-
-/// What a tool call answers: one text block, and whether the call failed.
+/// What a tool call answers: one text block, and whether the call failed. The plugin's server always says it (`isError` is a boolean there); the knowledge server leaves the flag out of an answer that did not fail, as the SDK's `McpServer` does.
 #[derive(Serialize)]
 pub struct CallResult {
     content: [TextBlock; 1],
-    #[serde(rename = "isError")]
-    is_error: bool,
+    #[serde(rename = "isError", skip_serializing_if = "Option::is_none")]
+    is_error: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -236,7 +226,22 @@ struct TextBlock {
 }
 
 impl CallResult {
+    /// An answer that says whether it failed, as the plugin's server does.
     pub fn text(text: String, is_error: bool) -> CallResult {
+        CallResult::new(text, Some(is_error))
+    }
+
+    /// An answer that did not fail, with no flag.
+    pub fn ok(text: String) -> CallResult {
+        CallResult::new(text, None)
+    }
+
+    /// An answer that failed.
+    pub fn fail(text: String) -> CallResult {
+        CallResult::new(text, Some(true))
+    }
+
+    fn new(text: String, is_error: Option<bool>) -> CallResult {
         CallResult {
             content: [TextBlock {
                 r#type: "text",
@@ -251,7 +256,7 @@ impl CallResult {
     }
 
     pub fn is_error(&self) -> bool {
-        self.is_error
+        self.is_error == Some(true)
     }
 }
 

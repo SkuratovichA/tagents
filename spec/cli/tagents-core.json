@@ -167,6 +167,37 @@
       "summary": "summaryNotifyRun",
       "impl": "rust",
       "effect": "serve"
+    },
+    {
+      "path": ["knowledge", "mcp"],
+      "positionals": [],
+      "options": {},
+      "required": [],
+      "summary": "summaryKnowledgeMcp",
+      "impl": "rust",
+      "effect": "serve"
+    },
+    {
+      "path": ["knowledge", "serve"],
+      "positionals": [],
+      "options": {
+        "idle": { "type": "string" },
+        "foreground": { "type": "boolean" },
+        "socket": { "type": "string" }
+      },
+      "required": [],
+      "summary": "summaryKnowledgeServe",
+      "impl": "rust",
+      "effect": "serve"
+    },
+    {
+      "path": ["knowledge", "join"],
+      "positionals": [],
+      "options": {},
+      "required": [],
+      "summary": "summaryKnowledgeJoin",
+      "impl": "rust",
+      "effect": "serve"
     }
   ]
 }
