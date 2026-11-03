@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: The plugin version follows what the plugin ships
-`.claude-plugin/plugin.json` SHALL carry a `version` and a `metadata.digest`, both maintained by the generator. The digest SHALL be a `sha256:` hash over the paths and contents of the payload: the generated files, every file under `skills/` outside `references/`, the files the plugin ships as they are and `plugin.json` starts (`packages/knowledge/bin/knowledge-mcp`), `.claude-plugin/marketplace.json` when present, and `plugin.json` without its `version` and `digest`. The version SHALL move only when the digest moved.
+`.claude-plugin/plugin.json` SHALL carry a `version` and a `metadata.digest`, both maintained by the generator. The digest SHALL be a `sha256:` hash over the paths and contents of the payload: the generated files, every file under `skills/` outside `references/`, the launcher `packages/knowledge/bin/knowledge-mcp`, `.claude-plugin/marketplace.json` when present, and `plugin.json` without its `version` and `digest`. The version SHALL move only when the digest moved.
 
 #### Scenario: The first run
 - **WHEN** `plugin.json` has no stored digest

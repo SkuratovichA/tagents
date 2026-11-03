@@ -61,15 +61,19 @@ The plugin manifest SHALL register an MCP server `knowledge`, started as the com
 - **THEN** its tools appear twice
 
 ### Requirement: The server entry falls back to a server of its own
-The script `packages/knowledge/bin/knowledge-mcp` SHALL join the session to the shared server of the `knowledge` capability: it runs `tagents-knowledge serve`, and when that prints a socket that exists and `nc` is available, it replaces itself with `nc -U` on that socket. Otherwise it SHALL run `tagents-knowledge mcp`, so `tagents-knowledge` must be on `PATH`.
+The script `packages/knowledge/bin/knowledge-mcp` SHALL join the session to the shared server of the `knowledge` capability. When `tagents-knowledge join` exits 0 on empty input it SHALL replace itself with `tagents-knowledge join`. After any other code it SHALL run `tagents-knowledge serve` and, when that prints an existing socket and `nc` is available, replace itself with `nc -U` on it, and else run `tagents-knowledge mcp`.
+
+#### Scenario: The native program is installed
+- **WHEN** `tagents-knowledge join` exits 0 on empty input
+- **THEN** the process the session started is `tagents-knowledge join`, nothing is written to standard error, and no node program and no `nc` runs
 
 #### Scenario: Shared server available
-- **WHEN** `tagents-knowledge serve` prints an existing socket and `nc` is on `PATH`
-- **THEN** the process the session started is `nc -U` on that socket
+- **WHEN** `join` exits 69 or 2, `tagents-knowledge serve` prints an existing socket and `nc` is on `PATH`
+- **THEN** the process the session started is `nc -U` on that socket, and nothing is written to standard error
 
 #### Scenario: No shared server
-- **WHEN** `serve` fails or is an unknown verb, or there is no `nc`
-- **THEN** the session gets `tagents-knowledge mcp` with the same tools
+- **WHEN** `join` exits 69 or 2 and `serve` fails or is an unknown verb, or there is no `nc`
+- **THEN** the session gets `tagents-knowledge mcp` with the same tools, and nothing is written to standard error
 
 ### Requirement: The plugin registers no hooks
 The plugin SHALL register no Claude Code hooks and no status line, because a plugin cannot set a status line. `tagents setup` registers the agent-state hook and the status line in the user's `settings.json` files, as the `claude-settings` capability specifies.
@@ -495,3 +499,66 @@ A failed or refused fetch, a version without a release and `TAGENTS_NO_NATIVE=1`
 #### Scenario: Native disabled over a binary built on the machine
 - **WHEN** the installer runs with `TAGENTS_NO_NATIVE=1` over a binary built on the machine, with no release marker
 - **THEN** the binary is not removed and the wrapper is written as it would be without the variable (`tests/install.sh` section 14, "a binary built by hand is not ours")
+
+### Requirement: The server entry names the failure of the native program
+After `tagents-knowledge join` exits with a code other than 0, 69 and 2, the script `packages/knowledge/bin/knowledge-mcp` SHALL write one line naming the code to its standard error before it runs the server that the requirement "The server entry falls back to a server of its own" names. After 0, 69 and 2 it SHALL write nothing.
+
+#### Scenario: The native program failed
+- **WHEN** `join` exits 1, 3 or 127
+- **THEN** exactly one line naming that code is written to standard error, and the session gets the shared server or `tagents-knowledge mcp`, as "The server entry falls back to a server of its own" says
+
+### Requirement: The tagents-knowledge command runs the native server for join, mcp and serve when the binary is installed
+When `$TAGENTS_HOME/target/release/tagents-core` is an executable file of the checkout's version at install time, the `tagents-knowledge` wrapper SHALL run it as `tagents-core knowledge <word>` for `join` or `mcp` alone and for `serve` with any arguments. Every other call, and every call once the binary is gone or not executable, SHALL run the node program, except that `join` alone then exits 69 and starts nothing. The pinned node is handed over as for `tagents-core`.
+
+#### Scenario: The binary is installed
+- **WHEN** the binary is installed and `tagents-knowledge join`, `mcp` or `serve` runs
+- **THEN** the binary receives `knowledge` and that word (`tests/install.sh`)
+
+#### Scenario: serve with options
+- **WHEN** `tagents-knowledge serve --idle 30` or `serve --foreground --socket P` runs over an installed binary
+- **THEN** the binary receives `knowledge serve` and the options, whole (`tests/install.sh`), and one daemon serves the environment whichever argument list started it: the socket is named after the seven variables and the binary and no argument (`crates/tagents-core/tests/knowledge_socket.rs`, `the_key_variables_are_the_seven_node_names`), and a launcher that finds a daemon started with `serve --idle 4` joins it (`tests/knowledge-launcher.sh`)
+
+#### Scenario: Any other arguments
+- **WHEN** `tagents-knowledge mcp extra`, `join x`, `search x` or no arguments runs over an installed binary
+- **THEN** the node program receives the arguments whole (`tests/install.sh`)
+
+#### Scenario: The binary vanishes after the install
+- **WHEN** the file is removed or loses its executable bit
+- **THEN** `serve` and `mcp` run the node program, and `join` exits 69 and starts no program (`tests/install.sh`)
+
+#### Scenario: A binary of another version
+- **WHEN** the binary in the tree says a version other than the checkout's, or cannot say
+- **THEN** the wrapper is written without it, as in the requirement below (`tests/install.sh`)
+
+### Requirement: The tagents-knowledge wrapper without a binary answers join with 69
+With no executable binary of the checkout's version at install time the installer SHALL write the `tagents-knowledge` wrapper with no line that names a binary: it exits 69 when its only argument is `join`, and otherwise `exec`s the node program with the wrapper's arguments. A failed or refused fetch, a version without a release and `TAGENTS_NO_NATIVE=1` SHALL each leave that wrapper, so no machine is without a knowledge server and a machine without the binary starts no node for the probe
+
+#### Scenario: No binary
+- **WHEN** the installer runs on a machine without the binary and `tagents-knowledge join` runs with a stub `node` on `PATH`
+- **THEN** it exits 69, the stub was not started, and `tagents-knowledge serve` runs the node program (`tests/install.sh`)
+
+#### Scenario: No release for the version
+- **WHEN** the installer runs on a copy whose version has no release
+- **THEN** the prebuilt binary is removed and `tagents-knowledge serve` runs the node program (`tests/install.sh`)
+
+### Requirement: A failed probe turns the Rust server off for the rest of the run
+After `tagents-knowledge join` exits with a code other than 0, 69 and 2, the script `packages/knowledge/bin/knowledge-mcp` SHALL set `TAGENTS_NO_NATIVE=1` in the environment of what it runs next. The `tagents-knowledge` wrapper hands `serve` and `mcp` to the binary as well as `join`, so without the variable the server that the line names would be the one that has just failed.
+
+#### Scenario: The native program failed
+- **WHEN** `join` exits 1, 3 or 127
+- **THEN** the later `serve` and `mcp` calls see `TAGENTS_NO_NATIVE=1`, and over the real wrapper with a binary that exits 1 the session is answered by node (`tests/knowledge-launcher.sh`)
+
+#### Scenario: The native program succeeded or is absent
+- **WHEN** `join` exits 0, 69 or 2
+- **THEN** the variable is not set by the script (`tests/knowledge-launcher.sh`)
+
+### Requirement: TAGENTS_NO_NATIVE=1 leaves the knowledge wrapper without the binary
+A `tagents-knowledge` wrapper that names the binary SHALL name none while `TAGENTS_NO_NATIVE=1` is in the environment of the call: `serve` and `mcp` run the node program and a lone `join` exits 69, which is the owner's way to turn the Rust server off for one session. The installer SHALL write the wrapper without the binary when `TAGENTS_NO_NATIVE=1`, over a binary built by hand too.
+
+#### Scenario: The variable at run time
+- **WHEN** a wrapper that names the binary runs with `TAGENTS_NO_NATIVE=1` in its environment
+- **THEN** `serve` and `mcp` run the node program and a lone `join` exits 69 starting no node (`tests/install.sh`)
+
+#### Scenario: The variable at install time over a binary built by hand
+- **WHEN** a binary of the checkout's version with no marker is in the tree and the installer runs with `TAGENTS_NO_NATIVE=1`
+- **THEN** the wrapper is written without it and the binary is left where it is (`tests/install.sh`)
