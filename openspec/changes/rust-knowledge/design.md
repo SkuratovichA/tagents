@@ -294,9 +294,9 @@ Decision: the dependency table of `docs/architecture/rust-core.md` and the comme
 
 | dependency | used by | reason | cost |
 |---|---|---|---|
-| `rusqlite` (feature `bundled`) | `knowledge::index`, `usage` | the index and the usage store are SQLite files that node reads and writes | `libsqlite3-sys` and the C source of SQLite; about 1.76 MB in a release binary and 15.8 to 22.3 s of a clean build on the probe; `musl-tools` on the musl runner; measured in task 16.2 |
-| `saphyr` | `knowledge::front_matter` | the front matter is YAML 1.2, as in the `yaml` package | measured in task 16.2 |
-| `sha2` | `knowledge::index`, `knowledge::socket` | the hash of a document and the key of a socket; the tree has no hash | measured in task 16.2 |
+| `rusqlite` (feature `bundled`) | `knowledge::index`, `usage` | the index and the usage store are SQLite files that node reads and writes | `libsqlite3-sys` and the C source of SQLite; about 1.76 MB in a release binary and 15.8 to 22.3 s of a clean build on the probe; `musl-tools` on the musl runner; clean build on aarch64-apple-darwin: the C compile 14.2 s and `rusqlite` 0.7 s of 33.3 s for the binary (task 16.2, `docs/architecture/rust-core.md`) |
+| `saphyr` | `knowledge::front_matter` | the front matter is YAML 1.2, as in the `yaml` package | 7 crates and `autocfg` at build time; 0.9 s of the same clean build (task 16.2) |
+| `sha2` | `knowledge::index`, `knowledge::socket` | the hash of a document and the key of a socket; the tree has no hash | 9 crates; 0.8 s of the same clean build (task 16.2) |
 | `rustix` feature `process` (already enabled) | `knowledge::socket` | the uid, in safe code | none |
 
 All are MIT or Apache-2.0 and the release workflow builds all three targets, so a failure on one shows in the dry run of the pull request that adds them.
@@ -316,7 +316,7 @@ Reason: the release path is built so that an install never runs a binary of anot
 ## Risks / Trade-offs
 
 - SQLite version difference (3.54.1 against node's 3.51.3): a change of the diacritics tables or of float evaluation could reorder equal ranks or fold a letter differently. Mitigation: the tokenizer sweep, the tie vectors and the suite; a node upgrade that moves a result shows as a diff of the vectors. Residual: a result the corpus does not hold.
-- The C compiler of the musl build: `musl-tools` is a new step of `release.yml`; x86_64 musl and the cross-built x86_64 macOS binary are unverified until the dry run, and a failure there stops the pull request, not a release.
+- The C compiler of the musl build: `musl-tools` is a new step of `release.yml`; x86_64 musl and the cross-built x86_64 macOS binary are built by the dry run of `release.yml` on a pull request, and a failure there stops the pull request, not a release; both pass (the open question below).
 - Binary size (about 1.76 MB on the probe) and a clean build that takes a third to half a minute longer.
 - `saphyr` against `yaml`: the known differences above are closed or listed, and anything the 41 cases did not find is found by the vectors' generated edge cases or not at all.
 - zod 4 and `util.parseArgs` words depend on the SDK and node versions: the vectors are regenerated in CI, so an upgrade of either shows as a diff.
@@ -337,6 +337,6 @@ Reason: the release path is built so that an install never runs a binary of anot
 
 ## Open Questions
 
-- Does the x86_64 musl build of the bundled SQLite pass in the release workflow, and what does a clean build cost there? Answered by the dry run of (a); a failure reopens the choice of engine form.
+- Does the x86_64 musl build of the bundled SQLite pass in the release workflow, and what does a clean build cost there? It passes. The `build (x86_64-unknown-linux-musl, ubuntu-latest, true)` job of the dry run on pull request #60 (run 41550044671, job 125635093480) took 1 m 58 s in all, and the `Build` step of run 41552652481 of `release.yml` for v0.6.5 took 70 s with a 4,365,880-byte binary. The cross-built x86_64 macOS binary passes the same way (job 125635093908 of the dry run, 1 m 56 s; `Build` step 64 s, 3,640,320 bytes). The choice of engine form stands.
 - Do `compile_options` of the bundled SQLite and node's differ in an option that changes a result? Answered by the probe test of task 4.4; a difference becomes a row of the known differences or a reason to set the option in the build.
-- What does a Rust server and a Rust daemon hold, by `footprint`, after the same search over the same five documents (node: 29 MB, probe: 80 KB)? Measured in task 16.1 and written into the pull request description.
+- What does a Rust server and a Rust daemon hold, by `footprint`, after the same search over the same five documents (node: 29 MB, probe: 80 KB)? A `join` holds 1024 KB and the Rust daemon 2128 KB; the node side holds 45 MB for the daemon, 44 to 45 MB for a `tagents-knowledge mcp` and 1296 KB for the `nc` of a session, on a scratch install over the five documents of `packages/knowledge/test/fixtures/knowledge` (task 16.1, measured on an Apple silicon laptop, `footprint <pid>` after one `knowledge_search`). The numbers and the commands are in the description of the pull request.

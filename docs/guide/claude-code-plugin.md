@@ -25,9 +25,12 @@ The skill gives Claude the exact contract of `tagents-core`, `tagents-knowledge`
 
 The server gives every session search and read access to your markdown notes (`tagents-knowledge`). The plugin registers `packages/knowledge/bin/knowledge-mcp` for it.
 
-- It asks `tagents-knowledge serve` for the unix socket of **one shared knowledge server per environment** and joins the session to it with `nc -U`. That keeps a session at about 1.4 MB instead of a 30 MB node process.
-- The server starts on demand and exits after 10 minutes without a client.
-- If `serve` fails, a checkout predates it, or there is no `nc`, the script runs `tagents-knowledge mcp` as before.
+- It first asks `tagents-knowledge join` whether this machine has the Rust binary (`tagents-core`, installed by `tagents update` when a release matches the checkout). With the binary, the session's process **is** `tagents-core knowledge join`: it connects to **one shared Rust knowledge daemon per environment**, starting it when it is not running, and relays the session's input and output to it. There is no node process and no `nc` in the session, and the process holds about 1 MB.
+- Without the binary (none installed, a binary of another version, `TAGENTS_NO_NATIVE=1`), the wrapper answers `join` with exit code 69 before it starts any node, and the script asks `tagents-knowledge serve` for the unix socket of **one shared node knowledge server per environment** and joins the session to it with `nc -U`. A session then holds the `nc`, about 1.3 MB, and the shared node server holds about 45 MB.
+- If `serve` fails, a checkout predates it, or there is no `nc`, the script runs `tagents-knowledge mcp`, a node server of the session's own of about 45 MB.
+- If the binary is there and `join` fails with any code besides 0, 69 and 2, the script writes one line naming the code to stderr, which Claude Code keeps in the log of an MCP server, and falls back to the arrangement above.
+- Either daemon starts on demand and exits after 10 minutes without a client.
+- To see which program serves, run `tagents-knowledge join </dev/null; echo $?`: `0` is the Rust binary, `69` is the node arrangement. `footprint <pid>` on a session's process shows what it holds, and `ps -o command= -p <pid>` shows whether it is `tagents-core knowledge join` or `nc -U`.
 - `tagents-knowledge` has to be on `$PATH`.
 
 ::: warning A hand-registered server appears twice
