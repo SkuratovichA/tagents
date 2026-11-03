@@ -184,7 +184,7 @@ check_and_place() {  # <dir> <archive> <version> <triple>
   expected=''
   read -r expected _ < "$dir/$archive.sha256" || true
   case $expected in
-    '' | *[!0-9a-f]*) warn "$archive.sha256 does not start with a SHA-256, so the prebuilt tagents-core was not installed"; return 1 ;;
+    '' | *[!0123456789abcdef]*) warn "$archive.sha256 does not start with a SHA-256, so the prebuilt tagents-core was not installed"; return 1 ;;
   esac
   [ "${#expected}" -eq 64 ] || { warn "$archive.sha256 does not start with a SHA-256, so the prebuilt tagents-core was not installed"; return 1; }
   actual=$(sha256_of "$dir/$archive")
