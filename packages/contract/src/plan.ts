@@ -14,7 +14,10 @@ export const SKILLS_DIR = 'skills';
 /** The directory the generator owns: a file in it that it did not produce is stray. */
 export const REFERENCES_DIR = 'skills/tagents/references';
 
-/** The files the plan looks at, by path relative to the repo root with POSIX separators: contract.json, both files of .claude-plugin and everything under skills/. */
+/** Files outside the generated ones that `plugin.json` starts or points at and that the plugin ships as they are. They are part of the digest, so a change to one reaches an installed copy as a new plugin version; a path named by `${CLAUDE_PLUGIN_ROOT}/` in `plugin.json` is generated, under skills/ or listed here. */
+export const SHIPPED_FILES = ['packages/knowledge/bin/knowledge-mcp'] as const;
+
+/** The files the plan looks at, by path relative to the repo root with POSIX separators: contract.json, both files of .claude-plugin, everything under skills/ and the SHIPPED_FILES. */
 export interface Disk {
   readonly files: ReadonlyMap<string, string | Uint8Array>;
 }
@@ -108,6 +111,10 @@ export function planGenerate(sources: Sources, disk: Disk, t: Translate = create
     ...[...disk.files]
       .filter(([path]) => path.startsWith(`${SKILLS_DIR}/`) && !path.startsWith(`${REFERENCES_DIR}/`))
       .map(([path, content]) => ({ path, content })),
+    ...SHIPPED_FILES.flatMap((path) => {
+      const content = disk.files.get(path);
+      return content === undefined ? [] : [{ path, content }];
+    }),
     { path: PLUGIN_FILE, content: stringifyJson(withoutOwnKeys(plugin, t)) },
   ];
   const marketplace = disk.files.get(MARKETPLACE_FILE);

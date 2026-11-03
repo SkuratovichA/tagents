@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createT, type Translate } from './i18n/index.ts';
 import { isMissing } from './missing.ts';
-import { CONTRACT_FILE, MARKETPLACE_FILE, PLUGIN_FILE, SKILLS_DIR, planGenerate, type Disk, type Plan } from './plan.ts';
+import { CONTRACT_FILE, MARKETPLACE_FILE, PLUGIN_FILE, SHIPPED_FILES, SKILLS_DIR, planGenerate, type Disk, type Plan } from './plan.ts';
 import { collectSources } from './sources.ts';
 
 /** The repo root: this file is `<root>/packages/contract/src/tree.ts`. */
@@ -35,7 +35,7 @@ export async function readDisk(root: string): Promise<Disk> {
       if (!isMissing(error)) throw error;
     }
   };
-  await Promise.all([CONTRACT_FILE, PLUGIN_FILE, MARKETPLACE_FILE, ...(await skillFiles(root))].map(add));
+  await Promise.all([CONTRACT_FILE, PLUGIN_FILE, MARKETPLACE_FILE, ...SHIPPED_FILES, ...(await skillFiles(root))].map(add));
   return { files };
 }
 
