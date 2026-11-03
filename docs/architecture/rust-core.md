@@ -315,7 +315,7 @@ Measured on 03.11.2026 on an Apple silicon laptop, on a scratch install (its own
 | The shared node daemon | `nc -U` | 1296 KB | `node ... serve` | 45 MB | 541 ms | 141, 158, 221 ms |
 | A node server of the session's own | `tagents-knowledge mcp` | 44 to 45 MB | none | none | not measured | 173, 217, 206 ms |
 
-The searched reply took 311 ms cold on Rust and 566 ms cold on node. The numbers are one machine on one afternoon, and the load on it varied: they say the order of magnitude, not a third digit. The commands are in the description of the pull request that made the binary the session's server.
+The searched reply took 311 ms cold on Rust and 566 ms cold on node. The numbers are one machine in one sitting, and the load on it varied: they say the order of magnitude, not a third digit. The commands are in the description of the pull request that made the binary the session's server.
 
 ## The parity suite
 
