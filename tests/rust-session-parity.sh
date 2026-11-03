@@ -89,11 +89,11 @@ pass=0; fail=0; skipped=0; rust_served=0; handed_over=0
 
 # --------------------------------------------------------------- scenario state ---
 # Set before a scenario, cleared after it by `reset`: the directory to run in (relative to the run), the locale, a setup run in the run's directory before the program (a shell command), the environment to add, the arguments, the stream whose reader went away (stdout or stderr), and whether what the stub left is out of the comparison.
-CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; KILL_RACES_STUB=; RAN=
-reset() { CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; KILL_RACES_STUB=; }
+CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; KILL_RACES_STUB=; RAN=; LIVE=; LIVE_PID=; ABORT_ARGS=()
+reset() { CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; KILL_RACES_STUB=; LIVE=; LIVE_PID=; ABORT_ARGS=(); }
 
-# The only differences allowed between the two programs: the id of a new reference, as long as it is a version 4 UUID, and how long a turn took.
-norm() { LC_ALL=C sed -E 's/"id": "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"/"id": "UUID4"/; s/"durationMs":( ?)[0-9]+/"durationMs":\1N/'; }
+# The only differences allowed between the two programs: the id of a new reference, as long as it is a version 4 UUID, how long a turn took, and the pid of the process a scenario started for `session abort` to stop (each run starts its own).
+norm() { LC_ALL=C sed -E 's/"id": "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"/"id": "UUID4"/; s/"durationMs":( ?)[0-9]+/"durationMs":\1N/; s/"pid": '"${LIVE_PID:-none}"'$/"pid": PID/'; }
 
 # The program under the environment of a run; ends in `exec`, so a subshell calls it.
 program() {
@@ -141,6 +141,21 @@ run_it() {  # <tag> <program words...>
       if until_true 10 stub_stopped "$LIVE_STUB"; then echo gone; else echo alive; fi > "$TMP/stub.$tag"
       kill -9 "$LIVE_STUB" 2> /dev/null; LIVE_STUB=
       norm < "$TMP/raw.$tag" > "$TMP/out.$tag"
+      ;;
+    abort)
+      # A turn that hangs, stopped by a second process of the same program: the hook's record of the turn is written once the stub says which process it is, as the hook does for a headless session.
+      ( program "$@" ) > "$TMP/raw.$tag" 2> "$TMP/err.$tag" &
+      local cli=$!
+      until_true 300 has_content "$RUN/rec/pid"
+      LIVE_PID=$(cat "$RUN/rec/pid"); LIVE_STUB=$LIVE_PID
+      [ -n "$LIVE_PID" ] || { echo "rust-session-parity: the stub of the turn did not say its pid" >&2; kill "$cli"; exit 2; }
+      printf '1700000100\tworking\tsid-aborted\t%s/work\t\td\t\t%s\n' "$RUN" "$LIVE_PID" > "$RUN/st/s-aborted.tsv"
+      ( ARGS=("${ABORT_ARGS[@]}"); program "$@" ) > "$TMP/abort-out.$tag" 2> "$TMP/abort-err.$tag"
+      local aborted=$?
+      wait "$cli"; echo $? > "$TMP/code.$tag"
+      { norm < "$TMP/raw.$tag"; printf -- '--- session abort: exit %s\n' "$aborted"; norm < "$TMP/abort-out.$tag"; } > "$TMP/out.$tag"
+      { cat "$TMP/err.$tag"; printf -- '--- session abort\n'; cat "$TMP/abort-err.$tag"; } > "$TMP/err.$tag.all"; mv "$TMP/err.$tag.all" "$TMP/err.$tag"
+      kill -9 "$LIVE_PID" 2> /dev/null; LIVE_STUB=
       ;;
     stall)
       rm -f "$TMP/fifo"; mkfifo "$TMP/fifo"
@@ -190,11 +205,38 @@ settle_record() {  # <tag>
   fi
 }
 
+# A process for `session abort` to stop, started by this suite and by nothing else: `@PID@` in a record stands for its pid, `@WRAP31@` for the pid plus 2^31 and `@WRAP32@` for the pid plus 2^32 (a number that wraps to it when it is cut to 31 or 32 bits). Nothing is ever signalled by name or by pattern, and no record names a pid this suite did not start or one that can exist (a pid above the largest a system makes, 2147483647, is the dead one).
+live_start() {
+  sleep 600 > /dev/null 2>&1 < /dev/null &
+  LIVE_PID=$!; LIVE_STUB=$LIVE_PID
+  disown "$LIVE_PID"
+  local f
+  for f in "$RUN"/st/*.tsv; do
+    [ -f "$f" ] || continue
+    sed -e "s/@PID@/$LIVE_PID/g" -e "s/@WRAP31@/$((2147483648 + LIVE_PID))/g" -e "s/@WRAP32@/$((4294967296 + LIVE_PID))/g" "$f" > "$f.new" && mv "$f.new" "$f"
+  done
+}
+# What became of the process, and the records as they were set up, so the two runs leave the same tree.
+live_end() {  # <tag>
+  if until_true 30 stub_stopped "$LIVE_PID"; then echo dead; else echo alive; fi > "$TMP/fate.$1"
+  kill -9 "$LIVE_PID" 2> /dev/null; LIVE_STUB=
+  live_unrecord
+}
+live_unrecord() {
+  local f
+  for f in "$RUN"/st/*.tsv; do
+    [ -f "$f" ] || continue
+    LC_ALL=C awk -F'\t' -v OFS='\t' -v p="$LIVE_PID" -v w1="$((2147483648 + LIVE_PID))" -v w2="$((4294967296 + LIVE_PID))" '{ if ($8 == p) $8 = "@PID@"; else if ($8 == w1) $8 = "@WRAP31@"; else if ($8 == w2) $8 = "@WRAP32@"; print }' "$f" > "$f.new" && mv "$f.new" "$f"
+  done
+}
+
 side() {  # <tag> <program words...>
   local tag=$1; shift
   rm -rf "$RUN"; chmod -R u+rwx "$RUN" 2> /dev/null
   cp -RPp "$TEMPLATE" "$RUN" || { echo "rust-session-parity: cannot copy the tree" >&2; exit 2; }
   if [ -n "$SETUP" ]; then ( cd "$RUN" && eval "$SETUP" ) || { echo "rust-session-parity: setup failed: $SETUP" >&2; exit 2; }; fi
+  LIVE_PID=
+  if [ -n "$LIVE" ]; then live_start; fi
   rm -f "$MARK" "$TMP/argv.$tag" "$TMP/stamps.$tag" "$TMP/stub.$tag"; : > "$TMP/caffeinate.$tag"
   date +%s > "$TMP/t0.$tag"
   if [ -n "$CLOSED" ]; then
@@ -210,6 +252,8 @@ side() {  # <tag> <program words...>
     run_it "$tag" "$@"
   fi
   if [ -e "$MARK" ]; then echo node > "$TMP/via.$tag"; else echo own > "$TMP/via.$tag"; fi
+  if [ -n "$LIVE" ]; then live_end "$tag"; fi
+  if [ "$MODE" = abort ]; then live_unrecord; fi
   settle_record "$tag"
   snapshot | norm > "$TMP/tree.$tag"
   chmod -R u+rwx "$RUN" 2> /dev/null
@@ -265,6 +309,12 @@ sc() {
   fi
   if [ "$needle" != - ] && ! grep -qF -- "$needle" "$TMP/out.node" "$TMP/err.node"; then
     bad "tripwire $label: node did not print what this scenario exists to provoke" "wanted: $needle" "stdout: $(head -c 200 "$TMP/out.node" | tr '\n' '|')" "stderr: $(head -c 200 "$TMP/err.node" | tr '\n' '|')"
+  fi
+  if [ -n "$LIVE" ]; then
+    local side_name
+    for side_name in node rust; do
+      [ "$(cat "$TMP/fate.$side_name")" = "$LIVE" ] && ok || bad "$label: after $side_name the process this scenario started was $(cat "$TMP/fate.$side_name"), it should be $LIVE"
+    done
   fi
   local starts=$STARTS
   if [ -z "$starts" ]; then if [ -n "$STUB$STUB_SH" ]; then starts=1; else starts=0; fi; fi
@@ -410,7 +460,7 @@ sc "session" node 2 - -- session
 sc "session-unknown-verb" node 2 'unknown command: session bogus' -- session bogus
 sc "session-unknown-verb-empty" node 2 - -- session ""
 sc "session-help" node 2 - -- session --help
-sc "session-abort" node 2 - -- session abort
+sc "session-abort" rust 2 'missing required option <ref>' -- session abort
 sc "session-open-uppercase" node 2 - -- session OPEN --cwd "$RUN/work"
 
 # ------------------------------------------------------------------- list ---
@@ -904,6 +954,82 @@ if [ -n "$RAN" ]; then for side_name in node rust; do
   [ "$(cat "$TMP/stub.$side_name")" = "gone with its line on stderr" ] && ok || late "prompt-stdout-not-read: on $side_name, with nobody reading stdout: $(cat "$TMP/stub.$side_name")"
 done; fi
 
+# ------------------------------------------------------------------ abort ---
+# The records name a process this suite started (`@PID@`, see live_start), and `LIVE` says what must have become of it: dead when the verb kills it, alive when it must not.
+# A reference to a record of the state: the id, the Claude session, and the rest of what the schema wants.
+ref_of() {  # <id> <claudeSessionId as JSON: "x" or null>
+  printf '{"id":"%s","claudeSessionId":%s,"transcript":null,"spec":{"kind":"claude","cwd":"%s/work","skipPermissions":false}}' "$1" "$2" "$RUN"
+}
+LIVE_ROW="$(row s-live 1700000100 working sid-live "$RUN/work" '' d '' @PID@)"
+
+t "abort: the process of a headless record"
+LIVE=dead; SETUP=$LIVE_ROW; sc "abort-live" rust 0 '"aborted": true' -- session abort s-live
+LIVE=dead; SETUP=$LIVE_ROW; sc "abort-by-claude-id" rust 0 '"id": "s-live"' -- session abort sid-live
+LIVE=dead; SETUP=$LIVE_ROW; sc "abort-by-a-prefix-of-the-claude-id" rust 0 '"id": "s-live"' -- session abort sid-li
+LIVE=dead; SETUP=$LIVE_ROW; sc "abort-by-a-reference" rust 0 '"id": "s-live"' -- session abort "$(ref_of s-live null)"
+LIVE=dead; SETUP=$LIVE_ROW; sc "abort-by-a-reference-padded" rust 0 '"id": "s-live"' -- session abort "  $(ref_of s-live null)"
+LIVE=dead; SETUP=$LIVE_ROW; sc "abort-by-a-reference-with-only-the-session" rust 0 '"id": "s-other"' -- session abort "$(ref_of s-other '"sid-live"')"
+LIVE=dead; SETUP=$LIVE_ROW; sc "abort-layout" rust 0 '  "pid": ' -- session abort s-live extra words
+LIVE=dead; SETUP="$LIVE_ROW$(row s-other 1700000200 working sid-other "$RUN/work" '' d '' 2147483647)"; sc "abort-leaves-the-other-records" rust 0 '"aborted": true' -- session abort s-live
+LIVE=dead; SETUP="$(row s-live 1700000100 working sid-live "$RUN/work" '' d '' @PID@ /log build 2 psid)"; sc "abort-twelve-columns" rust 0 '"aborted": true' -- session abort s-live
+LIVE=dead; SETUP="$(row s-live 1700000100 subdone sid-live "$RUN/work" '' d '' @PID@)"; sc "abort-a-reference-to-a-subdone-record" rust 0 '"aborted": true' -- session abort "$(ref_of s-live null)"
+LIVE=dead; SETUP="$(row s-live 1700000100 done sid-live "$RUN/work" '' d '' @PID@)"; sc "abort-a-record-that-is-done" rust 0 '"aborted": true' -- session abort s-live
+LIVE=dead; SETUP="$(row s-live 1700000100 working '' "$RUN/work" '' d '' @PID@)"; sc "abort-by-the-id-of-a-record-with-no-session" rust 0 '"aborted": true' -- session abort s-live
+LIVE=dead; SETUP="$(row s-live 1700000100 working sid-live "$RUN/work" '' d '' @PID@)$(rowraw s-broken 'garbage')$(rowraw s-empty '')$(row s-nan nan working sid-n /w '' d)"; sc "abort-broken-record" rust 0 '"aborted": true' -- session abort s-live
+SETUP="$(rowraw s-broken 'garbage')$(row s-six 1700000100 working sid-six /w '' d)"; sc "abort-broken-record-is-no-session" rust 1 'no session matches s-broken' -- session abort s-broken
+LIVE=alive; SETUP="$LIVE_ROW$(row s-sub 1700000300 subdone sid-sub "$RUN/work" '' d '' 2147483647)"; sc "abort-a-subdone-record-is-no-session" rust 1 'no session matches s-sub' -- session abort s-sub
+LIVE=dead; EXTRA=("TA_STATE_DIR=st"); SETUP=$LIVE_ROW; sc "abort-relative-state-directory" rust 0 '"aborted": true' -- session abort s-live
+
+t "abort: what is refused"
+LIVE=alive; SETUP="$(row 1 1700000100 working sid-pane "$RUN/work" '' d '' @PID@)"; sc "abort-pane" rust 3 'runs in a tmux pane' -- session abort 1
+LIVE=alive; SETUP="$(row 1 1700000100 working sid-pane "$RUN/work" '' d '' @PID@)"; sc "abort-pane-by-claude-id" rust 3 'runs in a tmux pane' -- session abort sid-pane
+LIVE=alive; SETUP="$(row 1 1700000100 working sid-pane "$RUN/work" '' d '' @PID@)"; sc "abort-pane-by-a-reference" rust 3 'runs in a tmux pane' -- session abort "$(ref_of 1 null)"
+LIVE=alive; SETUP="$(row 007 1700000100 working sid-pane "$RUN/work" '' d '' @PID@)"; sc "abort-pane-key-with-leading-zeros" rust 3 'runs in a tmux pane' -- session abort 007
+LIVE=alive; SETUP="$(row S-a 1700000100 working sid-pane "$RUN/work" '' d '' @PID@)"; sc "abort-a-key-that-is-not-a-key" rust 1 'no session matches S-a' -- session abort S-a
+LIVE=alive; SETUP="$(row 1 1700000100 working sid-pane "$RUN/work" '' d '' @PID@)"; sc "abort-pane-by-a-reference-with-an-s-key-and-the-session" rust 3 'runs in a tmux pane' -- session abort "$(ref_of s-x '"sid-pane"')"
+SETUP="$(row s-nopid 1700000100 working sid-nopid "$RUN/work" '' d '')"; sc "abort-no-pid" rust 3 'nothing is running for s-nopid' -- session abort s-nopid
+SETUP="$(row s-nopid 1700000100 working sid-nopid "$RUN/work" '' d)"; sc "abort-six-columns" rust 3 'nothing is running for s-nopid' -- session abort s-nopid
+SETUP="$(row s-p 1700000100 working sid-p "$RUN/work" '' d '' 2147483647)"; sc "abort-dead-pid" rust 3 'nothing is running for s-p' -- session abort s-p
+for bad_pid in 0 -5 1.5 abc 1e3 ' 7' 4294967296 4294967297 18446744073709551616 2147483648 4294967295; do
+  SETUP="$(row s-p 1700000100 working sid-p "$RUN/work" '' d '' "$bad_pid")"; sc "abort-pid-32bit-[$bad_pid]" rust 3 'nothing is running for s-p' -- session abort s-p
+done
+LIVE=alive; SETUP="$(row s-wrap 1700000100 working sid-wrap "$RUN/work" '' d '' @WRAP31@)"; sc "abort-pid-31-bits-over-a-live-process" rust 3 'nothing is running for s-wrap' -- session abort s-wrap
+LIVE=alive; SETUP="$(row s-wrap 1700000100 working sid-wrap "$RUN/work" '' d '' @WRAP32@)"; sc "abort-pid-32-bits-over-a-live-process" rust 3 'nothing is running for s-wrap' -- session abort s-wrap
+LIVE=alive; SETUP="$LIVE_ROW"; sc "abort-a-reference-to-no-record" rust 3 'nothing is running for' -- session abort "$(ref_of s-nobody '"sid-nobody"')"
+LIVE=alive; SETUP="$(row s-empty 1700000100 working '' "$RUN/work" '' d '' @PID@)"; sc "abort-null-session-never-matches-an-empty-one" rust 3 'nothing is running for' -- session abort "$(ref_of s-nobody null)"
+LIVE=dead; SETUP="$(row s-empty 1700000100 working '' "$RUN/work" '' d '' @PID@)"; sc "abort-empty-session-matches-an-empty-one" rust 0 '"id": "s-nobody"' -- session abort "$(ref_of s-nobody '""')"
+
+t "abort: the first record that matches"
+LIVE=alive; SETUP="$(row 1 1700000300 working sid-x "$RUN/work" '' d '' @PID@)$(row s-b 1700000100 working sid-b "$RUN/work" '' d '' @PID@)"; sc "abort-first-record-by-session-is-a-pane" rust 3 'runs in a tmux pane' -- session abort "$(ref_of s-b '"sid-x"')"
+LIVE=dead; SETUP="$(row s-b 1700000300 working sid-b "$RUN/work" '' d '' @PID@)$(row 1 1700000100 working sid-x "$RUN/work" '' d '' @PID@)"; sc "abort-first-record-by-key-is-headless" rust 0 '"id": "s-b"' -- session abort "$(ref_of s-b '"sid-x"')"
+LIVE=alive; SETUP="$(row s-a 1700000300 working sid-x "$RUN/work" '' d '' 2147483647)$(row s-b 1700000100 working sid-b "$RUN/work" '' d '' @PID@)"; sc "abort-first-record-by-session-has-a-dead-pid" rust 3 'nothing is running for' -- session abort "$(ref_of s-b '"sid-x"')"
+
+t "abort: no session"
+sc "abort-no-match" rust 1 'no session matches nobody' -- session abort nobody
+sc "abort-no-match-reference" rust 3 'nothing is running for {' -- session abort "$(ref_of s-nobody null)"
+sc "abort-bad-reference" rust 1 'no session matches {bad' -- session abort '{bad'
+sc "abort-bad-reference-schema" rust 1 'no session matches {"id":1}' -- session abort '{"id":1}'
+SETUP=$STATES; sc "abort-spaces-are-a-session-id" rust 1 'no session matches    ' -- session abort '   '
+sc "abort-empty-ref" rust 2 'missing required option <ref>' -- session abort ""
+sc "abort-a-reference-with-a-lone-surrogate-escape" node - - -- session abort '{"id":"\ud83d","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false}}'
+sc "abort-an-argument-that-is-not-utf8" node - - -- session abort $'\xff'
+sc "abort-option-like-ref" rust 1 'no session matches --help' -- session abort --help
+sc "abort-double-dash" rust 1 'no session matches --' -- session abort -- s-live
+
+t "abort: the languages"
+LOCALE=ru; sc "abort-missing-ref-ru" rust 2 'не хватает обязательного параметра <ref>' -- session abort
+LOCALE=ru; sc "abort-no-match-ru" rust 1 'сессия не найдена: nobody' -- session abort nobody
+LOCALE=ru; LIVE=alive; SETUP="$(row 1 1700000100 working sid-pane "$RUN/work" '' d '' @PID@)"; sc "abort-pane-ru" rust 3 'работает в панели tmux' -- session abort 1
+LOCALE=ru; SETUP="$(row s-nopid 1700000100 working sid-nopid "$RUN/work" '' d '')"; sc "abort-no-pid-ru" rust 3 'для s-nopid ничего не выполняется' -- session abort s-nopid
+LOCALE=ru; LIVE=dead; SETUP=$LIVE_ROW; sc "abort-live-ru" rust 0 '"aborted": true' -- session abort s-live
+EXTRA=("TAGENTS_LOCALE=RU"); SETUP="$(row s-nopid 1700000100 working sid-nopid "$RUN/work" '' d '')"; sc "abort-locale-is-exact" rust 3 'nothing is running for s-nopid' -- session abort s-nopid
+
+t "abort: a turn that session abort stops"
+# `session prompt` hangs in its stub; the hook's record of it carries the stub's pid, and `session abort` of the same program ends the stub. The turn ends as `exited` with SIGKILL, and the stub is gone.
+MODE=abort; ABORT_ARGS=(session abort s-aborted); STUB='{"hang":true}'; sc "prompt-aborted-by-abort" rust 1 '"signal": "SIGKILL"' -- session prompt "$(ref_spec)" go
+MODE=abort; ABORT_ARGS=(session abort sid-aborted); STUB='{"hang":true}'; sc "prompt-aborted-by-abort-with-the-session-id" rust 1 '"signal": "SIGKILL"' -- session prompt "$(ref_spec)" go
+MODE=abort; ABORT_ARGS=(session abort s-aborted); STUB='{"tools":["Bash"],"hang":true}'; sc "prompt-aborted-by-abort-with-events" rust 1 '"signal":"SIGKILL"' -- session prompt "$(ref_spec)" go --events
+
 # ------------------------------------------------------- a reader that went away ---
 t "a reader that went away: the exit code and the other stream stay"
 CLOSED=stdout; sc "closed-stdout-open" rust 0 - -- session open --cwd "$RUN/work"
@@ -916,6 +1042,8 @@ CLOSED=stdout; STUB=$ANSWER; sc "closed-stdout-prompt" rust 0 - -- session promp
 CLOSED=stdout; STUB='{"tools":["Bash"],"text":"hi","result":{}}'; sc "closed-stdout-prompt-events" rust 0 - -- session prompt "$(ref_spec)" go --events
 CLOSED=stdout; STUB='{"exitCode":3,"stderr":"boom\n"}'; sc "closed-stdout-prompt-failed" rust 1 'boom' -- session prompt "$(ref_spec)" go
 CLOSED=stderr; STUB='{"exitCode":3,"stderr":"boom\n"}'; sc "closed-stderr-prompt-failed" rust 1 'boom' -- session prompt "$(ref_spec)" go
+CLOSED=stdout; LIVE=dead; SETUP=$LIVE_ROW; sc "closed-stdout-abort" rust 0 - -- session abort s-live
+CLOSED=stderr; LIVE=alive; SETUP="$(row 1 1700000100 working sid-pane "$RUN/work" '' d '' @PID@)"; sc "closed-stderr-abort" rust 3 - -- session abort 1
 CLOSED=stderr; sc "closed-stderr-prompt-usage" rust 2 - -- session prompt
 CLOSED=stderr; sc "closed-stderr-prompt-enotdir" rust 1 - -- session prompt "$(ref_cwd "$RUN/tr/plain.jsonl")" go
 
