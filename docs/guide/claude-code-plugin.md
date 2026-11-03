@@ -32,6 +32,7 @@ The server gives every session search and read access to your markdown notes (`t
 - To turn the Rust server off for one session, start it with `TAGENTS_NO_NATIVE=1` in its environment: the `tagents-knowledge` wrapper then names no binary, `join` exits 69 and `serve` and `mcp` run node. Set at install time, the variable leaves the wrapper without the binary altogether, one built by hand included.
 - Either daemon starts on demand and exits after 10 minutes without a client.
 - To see which program serves, run `tagents-knowledge join </dev/null; echo $?`: `0` is the Rust binary, `69` is the node arrangement. `footprint <pid>` on a session's process shows what it holds, and `ps -o command= -p <pid>` shows whether it is `tagents-core knowledge join` or `nc -U`. What the processes hold, measured, is in [What a knowledge session holds](../architecture/rust-core.md#what-a-knowledge-session-holds).
+- The launcher is part of the plugin, so it arrives with a plugin update: run `claude plugin marketplace update tagents` and then `claude plugin update tagents@tagents`, and restart Claude Code. A copy installed before keeps its old launcher, which reaches the same binary through the wrapper as `serve` and `nc -U`: the session then has the Rust daemon and an `nc` until the plugin is updated.
 - `tagents-knowledge` has to be on `$PATH`.
 
 ::: warning A hand-registered server appears twice
