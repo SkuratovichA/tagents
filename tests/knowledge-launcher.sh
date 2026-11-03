@@ -10,9 +10,6 @@ set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
-# shellcheck source=tests/scratch-guard.sh
-. "$HERE/scratch-guard.sh"
-scratch_guard knowledge-launcher.sh || exit 1
 LAUNCHER=${TAGENTS_LAUNCHER:-$ROOT/packages/knowledge/bin/knowledge-mcp}
 TMP=$(cd -P "$(mktemp -d "${TMPDIR:-/tmp}/tagents-launcher.XXXXXX")" && pwd -P) || exit 1
 # The daemons of this run live outside the scratch directory (their socket is under /tmp), but their command line or their environment names the scratch install or the scratch folder: only a process whose command or environment contains this run's directory is signalled.
