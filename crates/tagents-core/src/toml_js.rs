@@ -3,6 +3,14 @@
 
 use toml::de::{DeFloat, DeInteger, DeTable, DeValue};
 
+/// The value under `key` of a table, as the key is written.
+pub fn get<'a, 'i>(table: &'a DeTable<'i>, key: &str) -> Option<&'a DeValue<'i>> {
+    table
+        .iter()
+        .find(|(name, _)| name.get_ref().as_ref() == key)
+        .map(|(_, value)| value.get_ref())
+}
+
 /// The largest integer a JavaScript number holds exactly, `Number.MAX_SAFE_INTEGER`.
 pub const MAX_SAFE_INTEGER: i128 = 9_007_199_254_740_991;
 /// The text node's TOML parser gives for an integer it cannot hold: it refuses it, and so does this reader.

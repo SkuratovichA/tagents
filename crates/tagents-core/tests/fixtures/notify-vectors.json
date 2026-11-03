@@ -26377,6 +26377,10 @@
       "message": "permission denied"
     },
     {
+      "code": "EEXIST",
+      "message": "file already exists"
+    },
+    {
       "code": "ENOTDIR",
       "message": "not a directory"
     },

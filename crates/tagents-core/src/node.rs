@@ -5,11 +5,13 @@
 
 use std::{
     ffi::OsString,
-    fs, io,
+    fs,
+    io::{self, Read},
     os::unix::{fs::MetadataExt, process::CommandExt},
     path::{Path, PathBuf},
     process::Command,
     sync::{Arc, atomic::AtomicBool},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use crate::js;
@@ -71,6 +73,51 @@ pub fn join(base: &str, name: &str) -> String {
         (true, false, false) => format!("/{body}"),
         (false, false, true) => format!("{body}/"),
         (false, false, false) => body,
+    }
+}
+
+/// `os.tmpdir()` on a Unix: the first of `TMPDIR`, `TMP` and `TEMP` that is set and not empty, else `/tmp`, with one trailing slash removed unless that is the whole path. The value is not trimmed, which is what node does.
+pub fn tmpdir(tmpdir: Option<&str>, tmp: Option<&str>, temp: Option<&str>) -> String {
+    let chosen = [tmpdir, tmp, temp]
+        .into_iter()
+        .flatten()
+        .find(|value| !value.is_empty())
+        .unwrap_or("/tmp");
+    match chosen.strip_suffix('/') {
+        Some(rest) if !rest.is_empty() => rest.to_owned(),
+        _ => chosen.to_owned(),
+    }
+}
+
+/// `Date.now()`.
+pub fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
+/// `path.dirname(p)`: everything before the last segment, `/` for a path with no more than a root segment and `.` for one with no directory, as node's POSIX implementation cuts it (a doubled slash before the last segment stays, as `a/` is what `a//b` gives).
+pub fn dirname(p: &str) -> String {
+    let bytes = p.as_bytes();
+    let Some(&first) = bytes.first() else {
+        return ".".to_owned();
+    };
+    let rooted = first == b'/';
+    let mut matched_slash = true;
+    let mut end = None;
+    for i in (1..bytes.len()).rev() {
+        if bytes[i] != b'/' {
+            matched_slash = false;
+        } else if !matched_slash {
+            end = Some(i);
+            break;
+        }
+    }
+    match end {
+        None if rooted => "/".to_owned(),
+        None => ".".to_owned(),
+        Some(1) if rooted => "//".to_owned(),
+        Some(end) => p[..end].to_owned(),
     }
 }
 
@@ -217,6 +264,11 @@ pub const ERRNOS: &[Errno] = &[
         message: "permission denied",
     },
     Errno {
+        number: 17,
+        code: "EEXIST",
+        message: "file already exists",
+    },
+    Errno {
         number: 20,
         code: "ENOTDIR",
         message: "not a directory",
@@ -253,6 +305,50 @@ pub fn io_message(err: &io::Error, syscall: &str, path: Option<&str>) -> String 
         Some(path) => format!("{code}: {message}, {syscall} '{path}'"),
         None => format!("{code}: {message}, {syscall}"),
     }
+}
+
+/// macOS fails an open with EINVAL when the path crosses a symlink that a rename is replacing; the daemon reads at an event of any name in the directory, so it can read during that rename (node does the same, `packages/notify/src/service.ts:312`, and retries as well, `READ_TRIES` in `packages/core/src/config-file.ts`). Three tries close the window.
+const OPEN_TRIES: u32 = 3;
+
+/// `open(file)`, tried again while it fails with EINVAL, `OPEN_TRIES` tries in all.
+fn open_with(
+    file: &str,
+    mut open: impl FnMut(&str) -> io::Result<fs::File>,
+) -> io::Result<fs::File> {
+    let mut tried = 1;
+    loop {
+        match open(file) {
+            Err(err)
+                if err.raw_os_error() == Some(rustix::io::Errno::INVAL.raw_os_error())
+                    && tried < OPEN_TRIES =>
+            {
+                tried += 1;
+            }
+            other => return other,
+        }
+    }
+}
+
+/// `fs.readFileSync(file, 'utf8')`: the text, `None` for `ENOENT`, and for any other failure the text node prints. Bytes that are not UTF-8 become U+FFFD, as node decodes them. `open` is `fs::File::open` in `load`, a parameter so a test can feed it errors.
+pub fn read_utf8_with(
+    file: &str,
+    open: impl FnMut(&str) -> io::Result<fs::File>,
+) -> Result<Option<String>, String> {
+    let mut handle = match open_with(file, open) {
+        Ok(handle) => handle,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(io_message(&err, "open", Some(file))),
+    };
+    let mut bytes = Vec::new();
+    handle
+        .read_to_end(&mut bytes)
+        .map_err(|err| io_message(&err, "read", None))?;
+    Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
+}
+
+/// `fs.readFileSync(file, 'utf8')` of the real file system.
+pub fn read_utf8(file: &str) -> Result<Option<String>, String> {
+    read_utf8_with(file, |path| fs::File::open(path))
 }
 
 /// `isExecutableFile`: a regular file this process may execute, a symlink followed. Answered by looking, never by running it.
@@ -384,6 +480,44 @@ mod tests {
             ("/a/.claude-x/", ".claude-x"),
         ] {
             assert_eq!(basename(path), want, "{path:?}");
+        }
+    }
+
+    #[test]
+    fn dirname_cuts_as_path_dirname_does() {
+        for (path, want) in [
+            ("/a/b", "/a"),
+            ("/a", "/"),
+            ("/", "/"),
+            ("a", "."),
+            ("a/b", "a"),
+            ("a//b", "a/"),
+            ("/a//b", "/a/"),
+            ("/a/b/", "/a"),
+            ("/a/b///", "/a"),
+            ("//a", "//"),
+            ("", "."),
+            ("..", "."),
+            ("/x/y/z.sqlite", "/x/y"),
+        ] {
+            assert_eq!(dirname(path), want, "{path:?}");
+        }
+    }
+
+    #[test]
+    fn tmpdir_takes_the_first_variable_that_is_not_empty_and_drops_one_slash() {
+        for (vars, want) in [
+            ([None, None, None], "/tmp"),
+            ([Some(""), Some(""), Some("")], "/tmp"),
+            ([Some("/a"), Some("/b"), Some("/c")], "/a"),
+            ([Some(""), Some("/b"), Some("/c")], "/b"),
+            ([None, Some(""), Some("/c/")], "/c"),
+            ([Some("/a//"), None, None], "/a/"),
+            ([Some("/"), None, None], "/"),
+            ([Some("  "), Some("/b"), None], "  "),
+            ([Some("rel/"), None, None], "rel"),
+        ] {
+            assert_eq!(tmpdir(vars[0], vars[1], vars[2]), want, "{vars:?}");
         }
     }
 
@@ -614,5 +748,75 @@ mod tests {
             format!("{} is not a file", dir.join("packages/other.js").display())
         );
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// An opener that gives the errors of `errors` one per call, then opens `file`; `calls` counts the calls.
+    fn opener<'a>(
+        errors: &'a [i32],
+        file: &'a Path,
+        calls: &'a std::cell::Cell<usize>,
+    ) -> impl FnMut(&str) -> io::Result<fs::File> + 'a {
+        move |_| {
+            let call = calls.get();
+            calls.set(call + 1);
+            match errors.get(call) {
+                Some(&number) => Err(io::Error::from_raw_os_error(number)),
+                None => fs::File::open(file),
+            }
+        }
+    }
+
+    const EINVAL: i32 = rustix::io::Errno::INVAL.raw_os_error();
+
+    #[test]
+    fn an_open_that_fails_with_einval_twice_is_tried_a_third_time() {
+        let scratch = crate::testing::Scratch::new();
+        let file = scratch.path().join("real.toml");
+        fs::write(&file, "click = \"goto\"\n").unwrap();
+        let calls = std::cell::Cell::new(0);
+        assert_eq!(
+            read_utf8_with("<file>", opener(&[EINVAL, EINVAL], &file, &calls)),
+            Ok(Some("click = \"goto\"\n".to_string()))
+        );
+        assert_eq!(calls.get(), 3);
+    }
+
+    #[test]
+    fn an_open_that_always_fails_with_einval_is_tried_three_times_and_reports_it() {
+        let calls = std::cell::Cell::new(0);
+        let err = io::Error::from_raw_os_error(EINVAL);
+        let expected = io_message(&err, "open", Some("<file>"));
+        assert_eq!(
+            read_utf8_with(
+                "<file>",
+                opener(&[EINVAL; 5], Path::new("/nowhere"), &calls)
+            ),
+            Err(expected)
+        );
+        assert_eq!(calls.get(), 3);
+    }
+
+    #[test]
+    fn an_open_that_fails_with_enoent_or_eacces_is_tried_once() {
+        let calls = std::cell::Cell::new(0);
+        let enoent = rustix::io::Errno::NOENT.raw_os_error();
+        assert_eq!(
+            read_utf8_with("<file>", opener(&[enoent], Path::new("/nowhere"), &calls)),
+            Ok(None)
+        );
+        assert_eq!(calls.get(), 1);
+
+        let calls = std::cell::Cell::new(0);
+        let eacces = rustix::io::Errno::ACCESS.raw_os_error();
+        let expected = io_message(
+            &io::Error::from_raw_os_error(eacces),
+            "open",
+            Some("<file>"),
+        );
+        assert_eq!(
+            read_utf8_with("<file>", opener(&[eacces], Path::new("/nowhere"), &calls)),
+            Err(expected)
+        );
+        assert_eq!(calls.get(), 1);
     }
 }

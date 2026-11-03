@@ -5,6 +5,7 @@
 // that leaves an MCP server running is a test that leaves an MCP server
 // running on the developer's machine forever.
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -432,4 +433,18 @@ test('a usage store that cannot be read is a tool error that names the file, and
   assert.equal(failed(read), false);
   assert.match(textOf(read), /^---\nid: mashina-karta/);
   assert.equal(fs.readFileSync(store, 'utf8'), garbage);
+});
+
+test('a client that closes its input ends the server with exit 0 and nothing on stderr', async (t) => {
+  const dir = tmpDir('mcp-eof');
+  t.after(() => removeDir(dir));
+  const docs = copyKnowledge(path.join(dir, 'docs'));
+  const r = spawnSync(NODE, [cliEntry(), 'mcp'], {
+    encoding: 'utf8',
+    input: '',
+    env: baseEnv({ TAGENTS_KNOWLEDGE_DIR: docs, TAGENTS_KNOWLEDGE_DB: path.join(dir, 'index.sqlite'), HOME: dir }),
+    timeout: 20_000,
+  });
+  assert.equal(r.stderr, '');
+  assert.equal(r.status, 0);
 });

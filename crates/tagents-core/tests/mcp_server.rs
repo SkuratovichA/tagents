@@ -11,16 +11,25 @@ use std::{
     ffi::{OsStr, OsString},
     fs,
     io::{BufRead, BufReader, Write},
+    net::Shutdown,
+    os::unix::net::UnixStream,
     path::{Path, PathBuf},
     process::{Child, ChildStdin, Command, ExitStatus, Stdio},
-    sync::mpsc::{self, Receiver},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+        mpsc::{self, Receiver},
+    },
     thread,
     time::{Duration, Instant},
 };
 
 use rustix::process::{Pid, Signal, kill_process};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
+use tagents_core::ending::Stop;
+use tagents_core::mcp::rpc::{CallResult, Out};
 use tagents_core::mcp::run::MAX_STREAM;
+use tagents_core::mcp::server::{Config, Identity, Sdk, Server, Tools};
 
 mod common;
 use common::{
@@ -646,4 +655,420 @@ fn calls_run_side_by_side_and_answer_in_the_order_they_finish() {
     assert_eq!(session.seen[0]["id"], json!(3));
     assert_eq!(call_body(&session.reply(3))["stdout"], json!("fast"));
     assert_eq!(call_body(&session.reply(2))["stdout"], json!("slow"));
+}
+
+// The loop as a library, the way the shared knowledge server uses it: a connection is a socket pair, its `Tools` value is its own, and the end of a connection is a function the loop is given.
+
+/// What a connection's tools answer: `probe` tells the client that shook hands and the arguments it got (`null` when the call had none), `hold` waits for its stop, `nope` is an error result and any other name is nobody's.
+#[derive(Default)]
+struct Probe {
+    client: Mutex<Option<String>>,
+    held: Mutex<Option<mpsc::Sender<()>>>,
+}
+
+impl Tools for Probe {
+    fn list(&self) -> Vec<Value> {
+        vec![json!({
+            "name": "probe",
+            "title": "Probe",
+            "description": "Says who shook hands.",
+            "inputSchema": {"type": "object"},
+            "execution": {"taskSupport": "forbidden"}
+        })]
+    }
+
+    fn connected(&self, client: &str) {
+        *self.client.lock().unwrap() = Some(client.to_owned());
+    }
+
+    fn call(
+        &self,
+        name: &str,
+        args: Option<&Map<String, Value>>,
+        stop: &Stop,
+    ) -> Option<CallResult> {
+        match name {
+            "probe" => Some(CallResult::text(
+                json!({"client": *self.client.lock().unwrap(), "arguments": args}).to_string(),
+                false,
+            )),
+            "hold" => {
+                let (tx, rx) = mpsc::channel();
+                stop.watch(move || {
+                    let _ = tx.send(());
+                });
+                if let Some(held) = self.held.lock().unwrap().take() {
+                    let _ = held.send(());
+                }
+                let _ = rx.recv();
+                Some(CallResult::text("stopped".into(), false))
+            }
+            "nope" => Some(CallResult::text(
+                "MCP error -32602: Tool nope not found".into(),
+                true,
+            )),
+            _ => None,
+        }
+    }
+}
+
+/// One connection to a `Server` of this process: the loop reads one end of a socket pair and writes it, the test is the client on the other end. `closed` counts the times the loop asked for the connection to be closed.
+struct Link {
+    client: UnixStream,
+    lines: BufReader<UnixStream>,
+    served: thread::JoinHandle<()>,
+    closed: Arc<AtomicUsize>,
+}
+
+impl Link {
+    fn open(identity: Identity, tools: Arc<dyn Tools>) -> Link {
+        let (client, server_end) = UnixStream::pair().unwrap();
+        client.set_read_timeout(Some(WAIT)).unwrap();
+        let closed = Arc::new(AtomicUsize::new(0));
+        let (reader, writer, ender) = (
+            server_end.try_clone().unwrap(),
+            server_end.try_clone().unwrap(),
+            server_end,
+        );
+        // The server reads in ticks, as the daemon does: a lost wakeup of a reader under load is found at the next tick.
+        common::shared::ticking(&reader);
+        let counted = Arc::clone(&closed);
+        let server = Server::new(
+            tools,
+            Out::new(writer),
+            Config {
+                identity,
+                kill_grace: Duration::from_millis(50),
+                shutdown_margin: Duration::from_millis(50),
+            },
+            move || {
+                counted.fetch_add(1, Ordering::SeqCst);
+                let _ = ender.shutdown(Shutdown::Both);
+            },
+        );
+        Link {
+            lines: BufReader::new(client.try_clone().unwrap()),
+            client,
+            served: thread::spawn(move || server.serve(common::shared::Ticks(&reader))),
+            closed,
+        }
+    }
+
+    fn send(&mut self, message: &Value) {
+        writeln!(self.client, "{message}").unwrap();
+    }
+
+    /// The next line the loop wrote, as the bytes it wrote.
+    fn raw(&mut self) -> String {
+        let mut line = String::new();
+        self.lines.read_line(&mut line).unwrap();
+        line
+    }
+
+    fn reply(&mut self) -> Value {
+        let line = self.raw();
+        serde_json::from_str(&line).unwrap_or_else(|e| panic!("not JSON: {line:?}: {e}"))
+    }
+
+    fn shake_hands(&mut self, client: &str) -> Value {
+        self.send(
+            &json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": "2025-06-18", "capabilities": {},
+            "clientInfo": {"name": client, "version": "0.0.0"}}}),
+        );
+        self.reply()
+    }
+
+    /// Whether `serve` has returned within `WAIT`.
+    fn ended(self) -> bool {
+        let ended = until(|| self.served.is_finished(), WAIT.as_millis() as u64);
+        if ended {
+            self.served.join().unwrap();
+        }
+        ended
+    }
+
+    /// The client goes away entirely: its descriptors close when `self` ends here, and what is left is what the caller watches, the count of closings and the loop's thread. Only that makes a write into the socket fail: after a `shutdown` of a peer that still holds its descriptor, a write succeeds on Darwin.
+    fn hang_up(self) -> (Arc<AtomicUsize>, thread::JoinHandle<()>) {
+        (self.closed, self.served)
+    }
+}
+
+const KNOWLEDGE: Identity = Identity {
+    name: "tagents-knowledge",
+    version: "9.9.9",
+    sdk: Sdk::McpServer,
+};
+
+#[test]
+fn the_identity_and_the_capabilities_of_the_handshake_are_the_configs() {
+    let mut knowledge = Link::open(KNOWLEDGE, Arc::new(Probe::default()));
+    let answer = knowledge.shake_hands("a-client");
+    assert_eq!(
+        answer["result"]["serverInfo"],
+        json!({"name": "tagents-knowledge", "version": "9.9.9"})
+    );
+    assert_eq!(
+        answer["result"]["capabilities"],
+        json!({"tools": {"listChanged": true}})
+    );
+
+    let mut plugin = Link::open(Identity::PLUGIN, Arc::new(Probe::default()));
+    let answer = plugin.shake_hands("a-client");
+    assert_eq!(
+        answer["result"]["serverInfo"],
+        json!({"name": "tagents", "version": env!("CARGO_PKG_VERSION")})
+    );
+    assert_eq!(answer["result"]["capabilities"], json!({"tools": {}}));
+}
+
+#[test]
+fn the_clients_name_reaches_the_tools_of_its_own_connection_at_initialize() {
+    let mut first = Link::open(KNOWLEDGE, Arc::new(Probe::default()));
+    let mut second = Link::open(KNOWLEDGE, Arc::new(Probe::default()));
+    first.shake_hands("claude-code");
+    second.shake_hands("codex");
+    for (link, name) in [(&mut first, "claude-code"), (&mut second, "codex")] {
+        link.send(&json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "probe"}}));
+        let body: Value = serde_json::from_str(
+            link.reply()["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            body["client"],
+            json!(name),
+            "each connection has its own tools"
+        );
+    }
+}
+
+#[test]
+fn a_list_entry_is_a_raw_value_and_goes_out_with_its_keys_in_the_order_it_has() {
+    let mut link = Link::open(KNOWLEDGE, Arc::new(Probe::default()));
+    link.shake_hands("a-client");
+    link.send(&json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}));
+    let line = link.raw();
+    assert!(
+        line.contains(
+            r#""tools":[{"name":"probe","title":"Probe","description":"Says who shook hands.","inputSchema":{"type":"object"},"execution":{"taskSupport":"forbidden"}}]"#
+        ),
+        "{line}"
+    );
+}
+
+#[test]
+fn a_call_without_an_arguments_object_reaches_the_tool_as_none_and_an_empty_object_as_one() {
+    let mut link = Link::open(KNOWLEDGE, Arc::new(Probe::default()));
+    link.shake_hands("a-client");
+    link.send(
+        &json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "probe"}}),
+    );
+    link.send(&json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "probe", "arguments": {}}}));
+    let mut arguments = std::collections::HashMap::new();
+    for _ in 0..2 {
+        let reply = link.reply();
+        let body: Value =
+            serde_json::from_str(reply["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+        arguments.insert(reply["id"].as_i64().unwrap(), body["arguments"].clone());
+    }
+    assert_eq!(arguments[&2], Value::Null);
+    assert_eq!(arguments[&3], json!({}));
+}
+
+#[test]
+fn a_result_for_an_unknown_tool_goes_out_as_a_result_and_none_is_still_a_protocol_failure() {
+    let mut link = Link::open(KNOWLEDGE, Arc::new(Probe::default()));
+    link.shake_hands("a-client");
+    link.send(
+        &json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "nope"}}),
+    );
+    let reply = link.reply();
+    assert_eq!(reply["result"]["isError"], json!(true));
+    assert_eq!(
+        reply["result"]["content"][0]["text"],
+        json!("MCP error -32602: Tool nope not found")
+    );
+    assert!(reply.get("error").is_none());
+
+    link.send(
+        &json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "ghost"}}),
+    );
+    let reply = link.reply();
+    assert_eq!(reply["error"]["code"], json!(-32602));
+    assert!(reply.get("result").is_none());
+}
+
+#[test]
+fn a_connection_whose_client_is_gone_is_closed_by_the_function_it_was_given_and_another_connection_goes_on()
+ {
+    let probe = Arc::new(Probe::default());
+    let (held_tx, held) = mpsc::channel();
+    *probe.held.lock().unwrap() = Some(held_tx);
+    let mut gone = Link::open(KNOWLEDGE, probe);
+    let mut other = Link::open(KNOWLEDGE, Arc::new(Probe::default()));
+    gone.shake_hands("a-client");
+    other.shake_hands("another-client");
+
+    gone.send(
+        &json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "hold"}}),
+    );
+    held.recv_timeout(WAIT).unwrap();
+    // The client goes away entirely: the loop stops the call, which answers into a socket nobody reads, and the connection is closed by the function the loop was given.
+    let (closed, served) = gone.hang_up();
+    assert!(
+        until(|| closed.load(Ordering::SeqCst) == 1, 5000),
+        "the connection was closed"
+    );
+    assert!(
+        until(|| served.is_finished(), 5000),
+        "the loop of the connection ended"
+    );
+
+    other.send(&json!({"jsonrpc": "2.0", "id": 2, "method": "ping"}));
+    assert_eq!(other.reply()["result"], json!({}));
+    assert_eq!(
+        other.closed.load(Ordering::SeqCst),
+        0,
+        "the other connection was not closed"
+    );
+}
+
+#[test]
+fn a_client_that_closes_only_its_write_side_still_gets_the_answer_in_flight_and_then_the_connection_ends()
+ {
+    let probe = Arc::new(Probe::default());
+    let (held_tx, held) = mpsc::channel();
+    *probe.held.lock().unwrap() = Some(held_tx);
+    let mut link = Link::open(KNOWLEDGE, probe);
+    link.shake_hands("a-client");
+    link.send(
+        &json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "hold"}}),
+    );
+    held.recv_timeout(WAIT).unwrap();
+    link.client.shutdown(Shutdown::Write).unwrap();
+    let reply = link.reply();
+    assert_eq!(reply["result"]["content"][0]["text"], json!("stopped"));
+    let closed = Arc::clone(&link.closed);
+    assert!(link.ended(), "the loop ended after the answer");
+    assert_eq!(
+        closed.load(Ordering::SeqCst),
+        0,
+        "an end of input is not a write failure"
+    );
+}
+
+/// What the SDK's `McpServer` answers when the params of a request do not fit its schema: `-32603` and the zod issues as JSON text, all of them, in the order of the schema's keys.
+fn zod_issues(issues: &[(&[&str], &str, &str)]) -> String {
+    let list: Vec<Value> = issues
+        .iter()
+        .map(|(path, expected, received)| {
+            json!({
+                "expected": expected,
+                "code": "invalid_type",
+                "path": path,
+                "message": format!("Invalid input: expected {expected}, received {received}"),
+            })
+        })
+        .collect();
+    serde_json::to_string_pretty(&list).unwrap()
+}
+
+#[test]
+fn a_request_whose_params_do_not_fit_is_refused_with_the_zod_issues_when_the_server_is_an_mcp_server()
+ {
+    let mut link = Link::open(KNOWLEDGE, Arc::new(Probe::default()));
+    let cases: Vec<(&str, Option<Value>, String)> = vec![
+        (
+            "initialize",
+            None,
+            zod_issues(&[(&["params"], "object", "undefined")]),
+        ),
+        (
+            "initialize",
+            Some(json!({})),
+            zod_issues(&[
+                (&["params", "protocolVersion"], "string", "undefined"),
+                (&["params", "capabilities"], "object", "undefined"),
+                (&["params", "clientInfo"], "object", "undefined"),
+            ]),
+        ),
+        (
+            "initialize",
+            Some(json!({"protocolVersion": "x", "capabilities": [], "clientInfo": 5})),
+            zod_issues(&[
+                (&["params", "capabilities"], "object", "array"),
+                (&["params", "clientInfo"], "object", "number"),
+            ]),
+        ),
+        (
+            "initialize",
+            Some(json!({"protocolVersion": "x", "capabilities": null, "clientInfo": {}})),
+            zod_issues(&[
+                (&["params", "capabilities"], "object", "null"),
+                (&["params", "clientInfo", "name"], "string", "undefined"),
+                (&["params", "clientInfo", "version"], "string", "undefined"),
+            ]),
+        ),
+        (
+            "initialize",
+            Some(
+                json!({"protocolVersion": "x", "capabilities": {}, "clientInfo": {"name": 5, "version": null}}),
+            ),
+            zod_issues(&[
+                (&["params", "clientInfo", "name"], "string", "number"),
+                (&["params", "clientInfo", "version"], "string", "null"),
+            ]),
+        ),
+        (
+            "tools/list",
+            Some(json!({"cursor": null})),
+            zod_issues(&[(&["params", "cursor"], "string", "null")]),
+        ),
+        (
+            "tools/call",
+            None,
+            zod_issues(&[(&["params"], "object", "undefined")]),
+        ),
+        (
+            "tools/call",
+            Some(json!({"arguments": 5})),
+            zod_issues(&[
+                (&["params", "name"], "string", "undefined"),
+                (&["params", "arguments"], "record", "number"),
+            ]),
+        ),
+        (
+            "tools/call",
+            Some(json!({"name": "probe", "arguments": []})),
+            zod_issues(&[(&["params", "arguments"], "record", "array")]),
+        ),
+    ];
+    for (i, (method, params, text)) in cases.iter().enumerate() {
+        let mut request = json!({"jsonrpc": "2.0", "id": i + 1, "method": method});
+        if let Some(params) = params {
+            request["params"] = params.clone();
+        }
+        link.send(&request);
+        let reply = link.reply();
+        assert_eq!(reply["error"]["code"], json!(-32603), "{method} {params:?}");
+        assert_eq!(
+            reply["error"]["message"],
+            json!(text),
+            "{method} {params:?}"
+        );
+    }
+}
+
+#[test]
+fn a_request_whose_params_do_not_fit_is_refused_in_a_sentence_when_the_server_is_the_plugins() {
+    let mut link = Link::open(Identity::PLUGIN, Arc::new(Probe::default()));
+    link.send(&json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}));
+    let reply = link.reply();
+    assert_eq!(reply["error"]["code"], json!(-32602));
+    assert_eq!(
+        reply["error"]["message"],
+        json!("Invalid params: protocolVersion must be a string")
+    );
 }

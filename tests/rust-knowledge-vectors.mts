@@ -8,6 +8,7 @@ import { corpusVectors } from './rust-knowledge-vectors/corpus.mts';
 import { docVectors } from './rust-knowledge-vectors/docs.mts';
 import { engineVectors } from './rust-knowledge-vectors/engine.mts';
 import { processVectors } from './rust-knowledge-vectors/process.mts';
+import { toolVectors } from './rust-knowledge-vectors/tools.mts';
 import { cleanup } from './rust-knowledge-vectors/util.mts';
 import { usageVectors } from './rust-knowledge-vectors/usage.mts';
 import { yamlVectors } from './rust-knowledge-vectors/yaml.mts';
@@ -38,6 +39,7 @@ try {
     corpus: await corpusVectors(),
     usage: await usageVectors(),
     process: await processVectors(),
+    tools: await toolVectors(),
     yaml: yamlVectors(),
   };
   fs.mkdirSync(path.dirname(out), { recursive: true });

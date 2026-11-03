@@ -16,6 +16,8 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
+use serde::Serialize;
+
 use crate::js;
 
 /// A parsed value. `parse` reads a lone surrogate escape as U+FFFD, which is how stdout would write it.
@@ -146,6 +148,17 @@ fn push_quoted(out: &mut String, text: &str) {
 /// `JSON.stringify(text.slice(0, n))`, with `n` in UTF-16 units. A cut between the two halves of a surrogate pair leaves the high half alone, which `quote_units` writes as an escape.
 pub fn quote_prefix16(text: &str, n: usize) -> String {
     quote_units(&text.encode_utf16().take(n).collect::<Vec<u16>>())
+}
+
+/// `JSON.stringify(value, null, 2)` of anything serde can write. The value goes through its JSON text and this parser, so that `stringify` is the one writer and a number and the order of the keys come out as JavaScript holds them. What is written is strings, numbers, and documents that were just parsed or built: there is nothing in it to fail on.
+pub(crate) fn pretty<T: Serialize + ?Sized>(value: &T) -> String {
+    match serde_json::to_string(value) {
+        Ok(text) => match parse(&text) {
+            Some(parsed) => stringify(&parsed, true),
+            None => text,
+        },
+        Err(e) => e.to_string(),
+    }
 }
 
 /// `JSON.parse(text)`, or `None` where it would throw.
@@ -911,5 +924,80 @@ mod tests {
             stringify(&exact("[\"\\ude00\"]"), true),
             "[\n  \"\\ude00\"\n]"
         );
+    }
+
+    /// The expected text is what node v22.23.1 printed for `JSON.stringify(JSON.parse(text), null, 2)` (02.11.2026). `pretty` takes any `Serialize` and `stringify` takes what this parser read: they are two ways to write the same text.
+    #[test]
+    fn pretty_and_stringify_write_what_json_stringify_writes() {
+        const TABLE: &[(&str, &str)] = &[
+            ("1.0", "1"),
+            ("1E2", "100"),
+            ("-0", "0"),
+            ("0.1", "0.1"),
+            ("-1.5e-7", "-1.5e-7"),
+            ("1e21", "1e+21"),
+            ("1e-7", "1e-7"),
+            ("123456789012345678901234567890", "1.2345678901234568e+29"),
+            ("9007199254740993", "9007199254740992"),
+            ("1.7976931348623157e308", "1.7976931348623157e+308"),
+            ("1e999", "null"),
+            ("-1e999", "null"),
+            (
+                "[1.0,[1E2,[-0,{\"a\":0.1}]]]",
+                "[\n  1,\n  [\n    100,\n    [\n      0,\n      {\n        \"a\": 0.1\n      }\n    ]\n  ]\n]",
+            ),
+            (
+                "{\"a\":{\"b\":[true,null,[]],\"c\":{}},\"d\":\"e\"}",
+                "{\n  \"a\": {\n    \"b\": [\n      true,\n      null,\n      []\n    ],\n    \"c\": {}\n  },\n  \"d\": \"e\"\n}",
+            ),
+            ("[]", "[]"),
+            ("{}", "{}"),
+            ("[[]]", "[\n  []\n]"),
+            ("[{}]", "[\n  {}\n]"),
+            ("{\"a\":[],\"b\":{}}", "{\n  \"a\": [],\n  \"b\": {}\n}"),
+            (
+                "\"\\\"\\\\\\/\\b\\f\\n\\r\\t\\u0001\\u001f\\u007f\\u2028\\u2029\"",
+                "\"\\\"\\\\/\\b\\f\\n\\r\\t\\u0001\\u001f\u{7f}\u{2028}\u{2029}\"",
+            ),
+            (
+                "\"café Привет 日本語 😀 \\ud83d\\ude00 \\u00e9\"",
+                "\"café Привет 日本語 😀 😀 é\"",
+            ),
+            ("{\"k\\n\\\"é😀\":\"v\"}", "{\n  \"k\\n\\\"é😀\": \"v\"\n}"),
+            (
+                "{\"b\":1,\"2\":2,\"10\":3,\"1\":4,\"01\":5,\"a\":6}",
+                "{\n  \"1\": 4,\n  \"2\": 2,\n  \"10\": 3,\n  \"b\": 1,\n  \"01\": 5,\n  \"a\": 6\n}",
+            ),
+            ("{\"a\":1,\"b\":2,\"a\":3}", "{\n  \"a\": 3,\n  \"b\": 2\n}"),
+            (
+                "{\"4294967294\":1,\"4294967295\":2,\"3\":3}",
+                "{\n  \"3\": 3,\n  \"4294967294\": 1,\n  \"4294967295\": 2\n}",
+            ),
+        ];
+        let mut wrong = Vec::new();
+        for (text, want) in TABLE {
+            let written = stringify(&ok(text), true);
+            let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+            let serialized = pretty(&parsed);
+            if written != *want || serialized != *want {
+                wrong.push((*text, *want, written, serialized));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "text, node, stringify, pretty: {wrong:#?}"
+        );
+    }
+
+    /// What reaches `pretty` as a number of Rust is written as the double JavaScript would hold.
+    #[test]
+    fn pretty_writes_a_number_of_rust_as_javascript_would() {
+        assert_eq!(pretty(&1.0_f64), "1");
+        assert_eq!(pretty(&-0.0_f64), "0");
+        assert_eq!(pretty(&1e21_f64), "1e+21");
+        assert_eq!(pretty(&f64::INFINITY), "null");
+        assert_eq!(pretty(&7_u8), "7");
+        assert_eq!(pretty(&u64::MAX), "18446744073709552000");
+        assert_eq!(pretty(&[1.5_f64]), "[\n  1.5\n]");
     }
 }

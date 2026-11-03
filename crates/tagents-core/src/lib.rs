@@ -16,6 +16,7 @@ pub mod mcp;
 pub mod messages;
 pub mod node;
 pub mod notify;
+pub mod parse_args;
 pub mod plugin;
 pub mod session;
 pub mod sessions;

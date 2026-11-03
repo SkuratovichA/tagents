@@ -8,7 +8,7 @@ use std::{collections::HashMap, fmt, path::Path, time::Duration};
 
 use rusqlite::{Connection, OpenFlags, TransactionBehavior, params};
 
-use crate::date::MS_PER_DAY;
+use crate::{date::MS_PER_DAY, js};
 
 use super::{
     index::{open_file, sql},
@@ -169,7 +169,8 @@ pub struct UsageRow {
 #[derive(Debug, Default, Clone)]
 pub struct ReportOptions {
     pub since_days: Option<i64>,
-    pub top: Option<i64>,
+    /// How many rows to keep, as `slice(0, top)` keeps them: a fraction is cut off and a negative number drops rows from the end.
+    pub top: Option<f64>,
     /// Keep the documents of this type, matched as `list` matches it; ids no longer in the folder are dropped.
     pub type_: Option<String>,
     /// Also list the ids that have events but are no longer in the folder.
@@ -275,7 +276,10 @@ fn join_rows(
             .then(b.hits.cmp(&a.hits))
             .then_with(|| a.id.encode_utf16().cmp(b.id.encode_utf16()))
     });
-    rows.truncate(usize::try_from(options.top.unwrap_or(DEFAULT_TOP)).unwrap_or(usize::MAX));
+    rows.truncate(js::slice_end(
+        options.top.unwrap_or(DEFAULT_TOP as f64),
+        rows.len(),
+    ));
     Ok(rows)
 }
 

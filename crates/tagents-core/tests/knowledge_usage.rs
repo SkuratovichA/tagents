@@ -60,7 +60,7 @@ fn row_json(row: &UsageRow) -> Value {
 fn options_of(value: &Value) -> ReportOptions {
     ReportOptions {
         since_days: value["sinceDays"].as_i64(),
-        top: value["top"].as_i64(),
+        top: value["top"].as_f64(),
         type_: value["type"].as_str().map(str::to_string),
         all: value["all"].as_bool().unwrap_or(false),
         candidates: value["candidates"].as_bool().unwrap_or(false),
@@ -141,7 +141,7 @@ fn every_report_of_the_vectors_has_the_rows_node_gives() {
     }
     drop(store);
     let all = reports["reports"].as_array().unwrap();
-    assert_eq!(119, all.len());
+    assert_eq!(130, all.len());
     let mut with_rows = 0;
     for report in all {
         let got = read_usage_rows(
@@ -159,7 +159,11 @@ fn every_report_of_the_vectors_has_the_rows_node_gives() {
         );
         with_rows += usize::from(!got.is_empty());
     }
-    assert!(with_rows >= 100, "{with_rows} of 119 reports had rows");
+    assert!(
+        with_rows >= 100,
+        "{with_rows} of {} reports had rows",
+        all.len()
+    );
 }
 
 #[test]

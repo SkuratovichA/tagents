@@ -147,6 +147,15 @@ const SDK_CASES: SdkCase[] = [
   call('knowledge_usage', { since: 5 }), call('knowledge_usage', { since: null }), call('knowledge_usage', { top: 0 }), call('knowledge_usage', { top: 1.5 }), call('knowledge_usage', { top: '3' }), call('knowledge_usage', { top: -2 }), call('knowledge_usage', { type: 5 }),
   call('knowledge_usage', { all: 'yes' }), call('knowledge_usage', { all: 1 }), call('knowledge_usage', { candidates: 1 }), call('knowledge_usage', { candidates: null }), call('knowledge_usage', { min_gets: 0 }), call('knowledge_usage', { min_days: -1 }),
   call('knowledge_usage', { min_gets: 1.5 }), call('knowledge_usage', { min_days: 'x' }), call('knowledge_usage', { since: 1, top: 0, type: 2, all: 3, candidates: 4, min_gets: 5.5, min_days: 0 }),
+  // the edges of the checks: a string that carries a length, numbers at and beyond the safe range, fractions below zero
+  call('knowledge_search', { query: { length: 0 } }), call('knowledge_search', { query: { length: 3 } }), call('knowledge_get', { id: { length: 0 }, heading: { length: 0 } }),
+  call('knowledge_search', { query: 'x', limit: 1e300 }), call('knowledge_search', { query: 'x', limit: -1.5 }), call('knowledge_search', { query: 'x', limit: -1e21 }), call('knowledge_search', { query: 'x', limit: 50 }), call('knowledge_search', { query: 'x', limit: 9007199254740991 }),
+  call('knowledge_usage', { top: 1e300 }), call('knowledge_usage', { top: 9007199254740992 }), call('knowledge_usage', { top: 9007199254740991 }), call('knowledge_usage', { min_gets: -1e21, min_days: 1e21 }), call('sessions_recent', { limit: 1e300 }), call('sessions_recent', { limit: -0.5 }),
+  // a value that carries a `length`: the minimum is compared as JavaScript compares `length >= 1`, with the coercion of `>=`
+  ...['2', 'abc', null, [], [3], true, false, -1, 1.5, {}, ' 2 ', '', '0x10', [1, 2], '1e0', 1, '1', '٣'].map((length) => call('knowledge_search', { query: { length } })),
+  // calls that pass the checks and fail in the tool, or answer over a folder with nothing in it
+  call('knowledge_get', { id: 'x' }), call('knowledge_get', { id: 'x', heading: 'h' }), call('knowledge_list', {}), call('knowledge_list', { type: '', kind: '', tag: '' }), call('knowledge_usage', {}), call('knowledge_usage', { since: '0d' }), call('knowledge_usage', { since: 'x' }), call('knowledge_usage', { since: '30d', top: 1, candidates: true, all: true }),
+  call('knowledge_search', { query: ' ' }), call('knowledge_search', { query: '*' }), call('knowledge_search', { query: 'x', extra: 1 }),
   // sessions_recent and sessions_search: only calls that fail, because a valid one reads the machine
   call('sessions_recent', { limit: 0 }), call('sessions_recent', { limit: 51 }), call('sessions_recent', { limit: 'a' }), call('sessions_recent', { limit: 1.5 }), call('sessions_recent', { limit: null }), call('sessions_recent', { limit: -1 }),
   call('sessions_search', {}), call('sessions_search', { words: '' }), call('sessions_search', { words: 5 }), call('sessions_search', { words: null }), call('sessions_search', { words: ['a'] }),
@@ -167,6 +176,9 @@ const SDK_CASES: SdkCase[] = [
   { name: 'knowledge_get with a string as arguments', params: { name: 'knowledge_get', arguments: 'x' } },
   { name: 'knowledge_search without an arguments object', params: { name: 'knowledge_search' } },
   { name: 'sessions_search without an arguments object', params: { name: 'sessions_search' } },
+  { name: 'knowledge_list without an arguments object', params: { name: 'knowledge_list' } },
+  { name: 'knowledge_usage without an arguments object', params: { name: 'knowledge_usage' } },
+  { name: 'sessions_recent without an arguments object', params: { name: 'sessions_recent' } },
   { name: 'sessions_search with a list as arguments', params: { name: 'sessions_search', arguments: [] } },
 ];
 

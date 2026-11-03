@@ -6,7 +6,6 @@ use serde_json::{Map, Number, Value, json};
 use tagents_spec::{Effect, OptionKind};
 
 use super::contract::{Command, Program};
-use super::rpc::ToolEntry;
 
 /// A verb's positional, read from `<x>`, `[x]`, `<x…>` or `[x…]`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,13 +43,14 @@ impl Tool {
         })
     }
 
-    pub fn entry(&self) -> ToolEntry {
-        ToolEntry {
-            name: self.name.clone(),
-            description: self.description.clone(),
-            input_schema: self.input_schema(),
-            annotations: self.annotations.clone(),
-        }
+    /// The entry of `tools/list`: the keys come in the SDK's order.
+    pub fn entry(&self) -> Value {
+        json!({
+            "name": self.name,
+            "description": self.description,
+            "inputSchema": self.input_schema(),
+            "annotations": self.annotations,
+        })
     }
 
     /// The code the program's exit table gives `name`, or `fallback` when the table has no such name.

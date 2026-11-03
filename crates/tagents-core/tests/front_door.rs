@@ -15,7 +15,7 @@ use std::{
     os::unix::{ffi::OsStrExt, process::ExitStatusExt},
     path::{Path, PathBuf},
     process::{Command, Output, Stdio},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime},
 };
 
 use rustix::process::{Pid, Signal, kill_process};
@@ -25,7 +25,9 @@ mod common;
 use common::{
     REPO, closed_pipe,
     rig::{Rig, until},
-    run, scratch, start, write_executable, writing,
+    run, scratch,
+    sessions::{seed_sessions, transcript},
+    start, write_executable, writing,
 };
 
 const BIN: &str = env!("CARGO_BIN_EXE_tagents-core");
@@ -43,50 +45,6 @@ fn stdout_text(out: &Output) -> String {
 }
 
 // ------------------------------------------------------------------ the fixtures ---
-
-/// `transcript()` in `packages/core/test/helpers.ts`: one meta turn, the prompt, padding past the 2000-byte floor, a superseded reply and the reply.
-fn transcript(prompt: &str, reply: &str) -> String {
-    let json = |s: &str| serde_json::to_string(s).unwrap();
-    let pad = "x".repeat(2400);
-    [
-        r#"{"type":"user","isMeta":true,"message":{"content":"<command-name>/init</command-name>"}}"#.to_owned(),
-        format!(r#"{{"type":"user","message":{{"content":{}}}}}"#, json(prompt)),
-        format!(r#"{{"type":"system","subtype":"pad","note":"{pad}"}}"#),
-        r#"{"type":"assistant","message":{"content":[{"type":"text","text":"first pass, superseded"}]}}"#.to_owned(),
-        format!(r#"{{"type":"assistant","message":{{"content":[{{"type":"text","text":{}}}]}}}}"#, json(reply)),
-        String::new(),
-    ]
-    .join("\n")
-}
-
-/// `seedSessions()` in `helpers.ts`: the two sessions every fixture was recorded from.
-fn seed_sessions(claude_home: &Path) {
-    for (slug, id, prompt, reply, at) in [
-        (
-            "-Users-demo-git-demo",
-            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-            "Fix the deploy script for the staging cluster",
-            "Deploy script fixed and staging is green.",
-            1_767_323_045, // 2026-01-02T03:04:05Z
-        ),
-        (
-            "-Users-demo-git-other-repo",
-            "ffffffff-1111-2222-3333-444444444444",
-            "Собери сводку по топикам за неделю",
-            "Сводка готова, отправил в «dev».",
-            1_770_091_506, // 2026-02-03T04:05:06Z
-        ),
-    ] {
-        let dir = claude_home.join("projects").join(slug);
-        fs::create_dir_all(&dir).unwrap();
-        let file = fs::File::create(dir.join(format!("{id}.jsonl"))).unwrap();
-        (&file)
-            .write_all(transcript(prompt, reply).as_bytes())
-            .unwrap();
-        file.set_modified(UNIX_EPOCH + Duration::from_secs(at))
-            .unwrap();
-    }
-}
 
 /// The binary with an environment of exactly the variables the node CLI's tests pin, and nothing of the caller's.
 fn sessions(home: &Path, args: &[&str]) -> Output {
@@ -432,7 +390,11 @@ fn a_verb_the_front_door_serves_is_not_forwarded() {
     fs::create_dir_all(config.join("plugins")).unwrap();
     fs::write(config.join("plugins/notify.toml"), "backend = \"none\"\n").unwrap();
     // Every verb the data file gives to Rust, run without its arguments: each answers on its own, and the node CLI never runs. `doctor` does start node, once, to ask it what it is, which is not the CLI: `reached_cli` looks for the CLI's script among the arguments the stub node was given.
-    for command in data_file().served_by(Implementation::Rust) {
+    // The three `knowledge` verbs are left to their own test: `serve` and `join` start a server that outlives the call, which this loop has no environment to keep inside the scratch directory.
+    for command in data_file()
+        .served_by(Implementation::Rust)
+        .filter(|c| c.path[0] != "knowledge")
+    {
         let _ = fs::remove_file(&checkout.argv);
         let out = run(checkout
             .command()
@@ -448,6 +410,57 @@ fn a_verb_the_front_door_serves_is_not_forwarded() {
             command.path
         );
     }
+}
+
+#[test]
+fn the_knowledge_verbs_are_served_and_every_other_word_after_knowledge_reaches_node() {
+    let checkout = Checkout::new("knowledge-verbs");
+    let home = checkout.root.join("home");
+    fs::create_dir_all(&home).unwrap();
+    // No `packages/core/dist`: the only way a verb can answer is by being served here.
+    fs::remove_file(checkout.root.join("packages/core/dist/cli/main.js")).unwrap();
+    let knowledge = |args: &[&str]| {
+        let mut command = checkout.command();
+        command
+            .env("HOME", &home)
+            .env("TMPDIR", &home)
+            .env("TAGENTS_CONFIG_DIR", home.join("config"))
+            .args(["knowledge"])
+            .args(args);
+        command
+    };
+    // `mcp` ignores the words after it and ends with its input.
+    let out = run_with_stdin(knowledge(&["mcp", "--whatever"]), "");
+    assert_eq!(
+        (Some(0), ""),
+        (out.status.code(), &*String::from_utf8_lossy(&out.stderr))
+    );
+    // The other two refuse what node refuses, with exit 2: `join` with the usage line, `serve` with the sentence of its parser.
+    let out = run(&mut knowledge(&["join", "x"]));
+    assert_eq!(Some(2), out.status.code());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("usage: tagents-core knowledge"));
+    let out = run(&mut knowledge(&["serve", "--bogus"]));
+    assert_eq!(Some(2), out.status.code());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--bogus"));
+    // Every other word goes to the node CLI, which this checkout lacks: the front door's own line, exit 2.
+    let out = run(&mut knowledge(&["search", "x"]));
+    assert_eq!(Some(2), out.status.code());
+    assert!(
+        String::from_utf8_lossy(&out.stderr)
+            .contains("cannot find packages/core/dist/cli/main.js:")
+    );
+    assert!(!checkout.argv.exists());
+}
+
+#[test]
+fn knowledge_search_reaches_the_node_cli_with_its_arguments() {
+    let checkout = Checkout::new("knowledge-search");
+    let out = run(checkout.command().args(["knowledge", "search", "x"]));
+    assert_eq!(Some(0), out.status.code());
+    assert_eq!(
+        ["arg=knowledge", "arg=search", "arg=x"],
+        checkout.recorded()[4..]
+    );
 }
 
 #[test]

@@ -219,6 +219,18 @@ test('a daemon nobody ever connects to also leaves', async (t) => {
   await waitFor('the daemon to leave', () => !alive(pid), 6000);
 });
 
+test('an idle time longer than a timer can count is no idle time of one millisecond', async (t) => {
+  const world = newWorld(t);
+  // 2147484 seconds is past 2**31 - 1 milliseconds, which setTimeout turns into 1.
+  const served = runCli(['serve', '--idle', '2147484'], world.env());
+  assert.equal(served.code, 0, served.stderr);
+  const pid = await onlyDaemon(world);
+  await sleep(1500);
+  assert.ok(alive(pid), 'the daemon is still there with nobody connected');
+  process.kill(pid, 'SIGTERM');
+  await waitFor('the daemon to stop on SIGTERM', () => !alive(pid), 6000);
+});
+
 test('serve prints the same socket while the daemon lives, and rejects a bad --idle', async (t) => {
   const world = newWorld(t);
   const first = runCli(['serve'], world.env());

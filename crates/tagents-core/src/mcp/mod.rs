@@ -12,55 +12,23 @@ pub mod server;
 pub mod tools;
 
 use std::collections::HashMap;
-use std::ffi::OsString;
-use std::io;
-use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use std::ffi::{OsStr, OsString};
+use std::io::{self, Read};
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use crate::ending;
 use crate::sessions::exit;
+use crate::{ending, parse_args};
 use rpc::Out;
 use run::{KILL_GRACE, RunDeps, Runner};
-use server::{Config, SHUTDOWN_MARGIN, Server};
+use server::{Config, Identity, SHUTDOWN_MARGIN, Server, Tools};
 
 const USAGE: &str = "usage: tagents-core mcp --contract <contract.json>\n";
 
-/// `util.parseArgs` of node with `{ contract: { type: 'string' } }` and `strict: true`: `--contract <file>` and `--contract=<file>`, the last one winning, and nothing else. A value that starts with a dash is not taken from the next word (`--contract=-x` is how to give one), and a word that is not an option is an error. `None` is a usage error, whether the words are wrong or there is no `--contract` among them.
+/// `util.parseArgs` of node with `{ contract: { type: 'string' } }` and `strict: true`: `--contract <file>` and `--contract=<file>`, the last one winning, and nothing else (`parse_args`).
 fn contract_arg(args: &[OsString]) -> Option<OsString> {
-    let mut contract = None;
-    let mut words = args.iter();
-    while let Some(word) = words.next() {
-        let bytes = word.as_bytes();
-        if bytes == b"--" {
-            // What follows the terminator is positional, and a positional is an error.
-            return if words.next().is_some() {
-                None
-            } else {
-                contract
-            };
-        }
-        let long = bytes.strip_prefix(b"--")?;
-        let (name, inline) = match long.iter().position(|b| *b == b'=') {
-            Some(at) => (&long[..at], Some(&long[at + 1..])),
-            None => (long, None),
-        };
-        if name != b"contract" {
-            return None;
-        }
-        let value = match inline {
-            Some(value) => OsString::from_vec(value.to_vec()),
-            None => {
-                let next = words.next()?;
-                if next.as_bytes().len() >= 2 && next.as_bytes()[0] == b'-' {
-                    return None;
-                }
-                next.clone()
-            }
-        };
-        contract = Some(value);
-    }
-    contract
+    let parsed = parse_args::parse(args, &[("contract", parse_args::Kind::Text)]).ok()?;
+    parsed.text("contract").map(OsStr::to_os_string)
 }
 
 /// The server: serves the contract's tools on stdin and stdout until the client goes away. The result is the exit code, of a failure to start or of the ending.
@@ -85,23 +53,32 @@ fn serve(path: &OsString) -> Result<(), String> {
     let env: HashMap<OsString, OsString> = std::env::vars_os().collect();
     let runner = Arc::new(Runner::new(tools, RunDeps::standard(env)));
     let config = Config {
+        identity: Identity::PLUGIN,
         kill_grace: KILL_GRACE,
         shutdown_margin: SHUTDOWN_MARGIN,
     };
-    let server = Server::new(runner, Out::new(io::stdout()), config, || {
+    serve_stdio(runner, config, io::stdin().lock())
+}
+
+/// Serve `tools` to the client on `input` and this process's stdout until the input ends. The client may also go away by a signal: the calls in flight are stopped first, then the process leaves.
+pub(crate) fn serve_stdio(
+    tools: Arc<dyn Tools>,
+    config: Config,
+    input: impl Read,
+) -> Result<(), String> {
+    let server = Server::new(tools, Out::new(io::stdout()), config, || {
         std::process::exit(i32::from(exit::OK))
     });
-
-    // The client may also go away by a signal: the calls in flight are stopped first, then the process leaves.
     let ending = Arc::clone(&server);
     ending::on_signals(move |_| ending.end_and_exit()).map_err(|e| e.to_string())?;
-
-    server.serve(io::stdin().lock());
+    server.serve(input);
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::ffi::OsStringExt;
+
     use super::*;
 
     fn arg(words: &[&str]) -> Option<String> {

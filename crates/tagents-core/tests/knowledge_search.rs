@@ -73,7 +73,14 @@ fn the_expression_and_the_hits_of_the_fuzzed_searches_are_node_s() {
     let fuzz = &vectors()["corpus"]["fuzz"];
     let (db, folder) = index_of("knowledge-search-fuzz", &fuzz["files"]);
     let cases = fuzz["cases"].as_array().unwrap();
-    assert_eq!(170, cases.len());
+    assert_eq!(196, cases.len());
+    // The limits the tools never send (they take 1 to 50): node binds the double it floors, and SQLite makes an integer of it or refuses.
+    for limit in [1e300, 1e19, 0.5, 0.0, -1.0] {
+        assert!(
+            cases.iter().any(|c| c["limit"].as_f64() == Some(limit)),
+            "no case with the limit {limit}"
+        );
+    }
     let mut with_hits = 0;
     for case in cases {
         let words: Vec<&str> = case["words"]
@@ -106,7 +113,8 @@ fn the_expression_and_the_hits_of_the_fuzzed_searches_are_node_s() {
     // A fuzz that finds nothing proves nothing.
     assert!(
         with_hits >= 20,
-        "{with_hits} of 170 searches found something"
+        "{with_hits} of {} searches found something",
+        cases.len()
     );
 }
 

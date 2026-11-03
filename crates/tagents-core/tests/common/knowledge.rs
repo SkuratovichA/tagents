@@ -2,6 +2,7 @@
 
 use std::{
     fs,
+    path::Path,
     sync::OnceLock,
     time::{Duration, SystemTime},
 };
@@ -35,19 +36,34 @@ pub fn same_message(got: &str, want: &str) -> bool {
     got == want
 }
 
+/// One file of a vector written into `folder`, with the modification time the vector gives it.
+pub fn write_file(folder: &Path, name: &str, text: &str, mtime_sec: u64) {
+    let path = folder.join(name);
+    fs::write(&path, text).unwrap();
+    let handle = fs::File::options().write(true).open(&path).unwrap();
+    handle
+        .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(mtime_sec))
+        .unwrap();
+}
+
+/// The files of a vector written into `folder`, which is made when it is not there.
+pub fn write_files(folder: &Path, files: &Value) {
+    fs::create_dir_all(folder).unwrap();
+    for file in files.as_array().unwrap() {
+        write_file(
+            folder,
+            file["name"].as_str().unwrap(),
+            file["text"].as_str().unwrap(),
+            file["mtimeSec"].as_u64().unwrap(),
+        );
+    }
+}
+
 /// A folder of the vector's files with the times they were written at, and an index over it.
 pub fn index_of(name: &str, files: &Value) -> (Connection, String) {
     let dir = scratch(name);
     let folder = dir.join("folder");
-    fs::create_dir(&folder).unwrap();
-    for file in files.as_array().unwrap() {
-        let path = folder.join(file["name"].as_str().unwrap());
-        fs::write(&path, file["text"].as_str().unwrap()).unwrap();
-        let handle = fs::File::options().write(true).open(&path).unwrap();
-        let mtime =
-            SystemTime::UNIX_EPOCH + Duration::from_secs(file["mtimeSec"].as_u64().unwrap());
-        handle.set_modified(mtime).unwrap();
-    }
+    write_files(&folder, files);
     let folder = folder.to_str().unwrap().to_string();
     let mut db = open_db(dir.join("index.sqlite").to_str().unwrap()).unwrap();
     reindex(&mut db, &folder, false).unwrap();

@@ -20,6 +20,9 @@ export const en = {
     '  doctor',
     '  mcp --contract F   (Rust binary only)',
     '  notify run   (the notification service: the Rust binary serves it and hands over to node when it cannot start)',
+    '  knowledge mcp   (the knowledge server of one session on stdin and stdout: Rust binary only)',
+    '  knowledge serve [--idle S] [--foreground] [--socket P]   (the shared knowledge server: Rust binary only)',
+    '  knowledge join   (a session joined to the shared knowledge server: Rust binary only)',
     '  <plugin> <command> [args]   a configured plugin’s own verb (plugin list names them)',
     '',
     'reserved: session · sessions · plugin · doctor · help — a core verb always wins',
@@ -74,4 +77,7 @@ export const en = {
   summaryDoctor: 'prints the node version, the state directory, the config file and whether claude is on PATH',
   summaryMcp: 'serves the tools of a contract file to an MCP client over stdin and stdout until the client closes them',
   summaryNotifyRun: 'runs the notification service in this process until a signal stops it: it follows the event stream of the agents and posts a notice for each turn that ends, each question and each permission prompt',
+  summaryKnowledgeMcp: 'serves the six knowledge tools to an MCP client over stdin and stdout in this process until the client closes them',
+  summaryKnowledgeServe: 'prints the socket of the shared knowledge server of this environment and starts that server when nothing answers; with --foreground it is the server itself',
+  summaryKnowledgeJoin: 'connects stdin and stdout to the shared knowledge server, starting it when none runs, and serves in this process when none can be started',
 } as const;

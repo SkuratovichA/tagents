@@ -266,6 +266,49 @@
           "required": [],
           "summary": "runs the notification service in this process until a signal stops it: it follows the event stream of the agents and posts a notice for each turn that ends, each question and each permission prompt",
           "effect": "serve"
+        },
+        {
+          "path": [
+            "knowledge",
+            "mcp"
+          ],
+          "positionals": [],
+          "options": {},
+          "required": [],
+          "summary": "serves the six knowledge tools to an MCP client over stdin and stdout in this process until the client closes them",
+          "effect": "serve"
+        },
+        {
+          "path": [
+            "knowledge",
+            "serve"
+          ],
+          "positionals": [],
+          "options": {
+            "idle": {
+              "type": "string"
+            },
+            "foreground": {
+              "type": "boolean"
+            },
+            "socket": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "summary": "prints the socket of the shared knowledge server of this environment and starts that server when nothing answers; with --foreground it is the server itself",
+          "effect": "serve"
+        },
+        {
+          "path": [
+            "knowledge",
+            "join"
+          ],
+          "positionals": [],
+          "options": {},
+          "required": [],
+          "summary": "connects stdin and stdout to the shared knowledge server, starting it when none runs, and serves in this process when none can be started",
+          "effect": "serve"
         }
       ]
     },
@@ -1252,7 +1295,7 @@
     }
   },
   "api": {
-    "@tagents/core": "sha256:20a0c28f900b0c6dc51dcec2d22cf12c473a791477727e1215ac9097de4133fd",
+    "@tagents/core": "sha256:f324d6593853bc27d41788210c4bc2f69e7a1103c211f727c2a6f23257d36f87",
     "@tagents/knowledge": "sha256:63465226fcb49e8f6a20867948332ff35da600f4a020fa9701ef88730f5c2d8a",
     "@tagents/notify": "sha256:9fd35c43c5dd7262667bfdd48944a46e39551f1e7441438455c7859a39f8fb7e",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"

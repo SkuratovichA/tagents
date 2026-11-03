@@ -102,6 +102,7 @@ fn lifecycle(
 }
 
 /// The best sections for the words, best first. A limit that is not above zero means the default, and one with a fraction is floored.
+/// The floored limit is bound as the double it is, as node binds it: SQLite makes an integer of it when it can, and a value beyond the range of an integer is an error, which is no hits.
 /// An expression FTS5 refuses is an empty result, not a failure, and so is any other failure of the query: the node program catches them all.
 pub fn search(
     db: &Connection,
@@ -115,12 +116,12 @@ pub fn search(
         return Vec::new();
     }
     let limit = match limit {
-        Some(limit) if limit > 0.0 => limit.floor() as i64,
-        _ => DEFAULT_LIMIT,
+        Some(limit) if limit > 0.0 => Value::Real(limit.floor()),
+        _ => Value::Integer(DEFAULT_LIMIT),
     };
     let (filter, mut params) = filter_sql(filters);
     params.insert(0, Value::Text(match_));
-    params.push(Value::Integer(limit));
+    params.push(limit);
     let sql = format!(
         "select docs.id, docs.title, docs.path, docs.type, docs.description, docs.status, docs.stale_after, chunks.heading,
                 bm25(chunks_fts, 0.0, {HEADING_WEIGHT}, {BODY_WEIGHT}) as rank,

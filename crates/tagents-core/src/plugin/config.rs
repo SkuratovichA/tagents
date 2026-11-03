@@ -9,7 +9,10 @@ use std::{fs, io, path::Path};
 use toml::de::{DeTable, DeValue};
 
 use super::HandOver;
-use crate::{js, node, toml_js};
+use crate::{
+    js, node,
+    toml_js::{self, get},
+};
 
 /// What `add` did.
 #[derive(Debug, PartialEq, Eq)]
@@ -141,13 +144,6 @@ fn parse(text: &str) -> Result<DeTable<'_>, HandOver> {
         return Err(HandOver);
     }
     Ok(table)
-}
-
-fn get<'a, 'i>(table: &'a DeTable<'i>, key: &str) -> Option<&'a DeValue<'i>> {
-    table
-        .iter()
-        .find(|(name, _)| name.get_ref().as_ref() == key)
-        .map(|(_, value)| value.get_ref())
 }
 
 /// The `plugins` table of a document: `None` when there is none, a refusal when it is not a table (`TomlDoc` in `plugin-config.ts`).

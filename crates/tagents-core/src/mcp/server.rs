@@ -13,14 +13,112 @@ use serde_json::{Map, Value, json};
 
 use super::rpc::{
     CallResult, Framer, INTERNAL_ERROR, INVALID_PARAMS, Id, Incoming, METHOD_NOT_FOUND,
-    Notification, Out, Request, ToolEntry, parse,
+    Notification, Out, Request, parse,
 };
 use crate::ending::Stop;
 use crate::sync::locked;
 
-/// What the server is called, and the version it tells: the workspace's, which the node server's constant `0.1.0` never followed.
-pub const SERVER_NAME: &str = "tagents";
-pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Which class of the node SDK a server answers as. They differ in what the handshake announces and in how a request whose params do not fit the schema is refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sdk {
+    /// `Server`, which `packages/mcp` is built on: `tools: {}`, and a refusal is `-32602` with a sentence.
+    Server,
+    /// `McpServer`, which the knowledge server is built on: `tools.listChanged`, and a refusal is `-32603` carrying the zod issues as JSON text.
+    McpServer,
+}
+
+/// What a server tells a client at `initialize`: its name, its version and the SDK class it answers as. The version is the workspace's, which the node servers' constant `0.1.0` never followed.
+#[derive(Clone, Copy, Debug)]
+pub struct Identity {
+    pub name: &'static str,
+    pub version: &'static str,
+    pub sdk: Sdk,
+}
+
+impl Identity {
+    /// The plugin's server, `packages/mcp`.
+    pub const PLUGIN: Identity = Identity {
+        name: "tagents",
+        version: env!("CARGO_PKG_VERSION"),
+        sdk: Sdk::Server,
+    };
+
+    /// The knowledge server, `packages/knowledge`: the node one answers as `tagents-knowledge` over the SDK's `McpServer`.
+    pub const KNOWLEDGE: Identity = Identity {
+        name: "tagents-knowledge",
+        version: env!("CARGO_PKG_VERSION"),
+        sdk: Sdk::McpServer,
+    };
+
+    fn capabilities(&self) -> Value {
+        match self.sdk {
+            Sdk::Server => json!({"tools": {}}),
+            Sdk::McpServer => json!({"tools": {"listChanged": true}}),
+        }
+    }
+}
+
+/// One place where the params of a request do not fit its schema, which zod 4 calls an `invalid_type` issue: what was expected at `path` and what came. `plain` is the same thing as `Sdk::Server` words it.
+struct Issue {
+    path: &'static [&'static str],
+    expected: &'static str,
+    received: &'static str,
+    plain: &'static str,
+}
+
+/// The zod word for what `value` is, `None` being a key that is not there.
+pub(crate) fn received(value: Option<&Value>) -> &'static str {
+    match value {
+        None => "undefined",
+        Some(Value::Null) => "null",
+        Some(Value::Bool(_)) => "boolean",
+        Some(Value::Number(_)) => "number",
+        Some(Value::String(_)) => "string",
+        Some(Value::Array(_)) => "array",
+        Some(Value::Object(_)) => "object",
+    }
+}
+
+/// `None` when `value` is a string; the issue of `path` otherwise.
+fn string_at(
+    value: Option<&Value>,
+    path: &'static [&'static str],
+    plain: &'static str,
+) -> Option<Issue> {
+    (!matches!(value, Some(Value::String(_)))).then(|| Issue {
+        path,
+        expected: "string",
+        received: received(value),
+        plain,
+    })
+}
+
+/// `None` when `value` is an object; the issue of `path` otherwise.
+fn object_at(
+    value: Option<&Value>,
+    path: &'static [&'static str],
+    plain: &'static str,
+) -> Option<Issue> {
+    (!matches!(value, Some(Value::Object(_)))).then(|| Issue {
+        path,
+        expected: "object",
+        received: received(value),
+        plain,
+    })
+}
+
+/// What the SDK's `McpServer` writes for a failed parse: `JSON.stringify(issues, null, 2)`, which is what a `ZodError` has for its message.
+fn zod_text(issues: &[Issue]) -> String {
+    let list = issues.iter().map(|issue| {
+        json!({
+            "expected": issue.expected,
+            "code": "invalid_type",
+            "path": issue.path,
+            "message": format!("Invalid input: expected {}, received {}", issue.expected, issue.received),
+        })
+    });
+    format!("{:#}", Value::Array(list.collect()))
+}
 
 /// The protocol versions the SDK supports (`SUPPORTED_PROTOCOL_VERSIONS` of `@modelcontextprotocol/sdk/types.js`), newest first. A client that asks for another gets the first. `tests/rust-mcp-parity.sh` reads the list from the SDK and pins this one to it.
 pub const PROTOCOL_VERSIONS: [&str; 5] = [
@@ -36,9 +134,17 @@ pub const SHUTDOWN_MARGIN: Duration = Duration::from_millis(2000);
 
 /// What the loop needs of a server's tools; the verbs behind them are none of its business.
 pub trait Tools: Send + Sync + 'static {
-    fn list(&self) -> Vec<ToolEntry>;
-    /// `None`: no tool of that name. `stop` says when the client cancels the request or the server closes.
-    fn call(&self, name: &str, args: &Map<String, Value>, stop: &Stop) -> Option<CallResult>;
+    /// The entries of `tools/list`, as the JSON the client reads, keys in the order they are to be written.
+    fn list(&self) -> Vec<Value>;
+    /// Hands over the name the client gave at `initialize`, before the answer goes out. A connection has a `Tools` value of its own, so the name is its client's.
+    fn connected(&self, _client: &str) {}
+    /// `None`: no tool of that name. `args` is `None` when the request carried no `arguments`, which a tool may tell from an empty object. `stop` says when the client cancels the request or the server closes.
+    fn call(
+        &self,
+        name: &str,
+        args: Option<&Map<String, Value>>,
+        stop: &Stop,
+    ) -> Option<CallResult>;
 }
 
 /// The calls in flight. A call is cancelled by the id its request had, and stopped by the ending whatever its id was, so the two are kept apart: an id can be sent twice while the first request is running, and the later one is the one a cancellation names.
@@ -158,6 +264,7 @@ impl Registry {
 
 #[derive(Clone, Copy)]
 pub struct Config {
+    pub identity: Identity,
     /// What a stopped call has to leave on SIGTERM before it is killed.
     pub kill_grace: Duration,
     pub shutdown_margin: Duration,
@@ -190,12 +297,7 @@ struct ServerInfo {
 
 #[derive(Serialize)]
 struct Listed {
-    tools: Vec<ToolEntry>,
-}
-
-/// A reason a request's params are refused, in the words of the answer.
-fn invalid(reason: &str) -> String {
-    format!("Invalid params: {reason}")
+    tools: Vec<Value>,
 }
 
 impl Server {
@@ -286,9 +388,12 @@ impl Server {
     fn request(self: &Arc<Self>, request: Request) -> io::Result<()> {
         let Request { id, method, params } = request;
         match method.as_str() {
-            "initialize" => match initialize(params.as_ref()) {
-                Ok(result) => self.out.success(&id, result),
-                Err(reason) => self.out.failure(&id, INVALID_PARAMS, &invalid(&reason)),
+            "initialize" => match initialize(&self.config.identity, params.as_ref()) {
+                Ok((result, client)) => {
+                    self.tools.connected(client);
+                    self.out.success(&id, result)
+                }
+                Err(issues) => self.refuse(&id, &issues),
             },
             "ping" => self.out.success(&id, json!({})),
             "tools/list" => match params.as_ref().and_then(|p| p.get("cursor")) {
@@ -298,33 +403,40 @@ impl Server {
                         tools: self.tools.list(),
                     },
                 ),
-                Some(_) => {
-                    self.out
-                        .failure(&id, INVALID_PARAMS, &invalid("cursor must be a string"))
+                cursor => {
+                    let issue = string_at(cursor, &["params", "cursor"], "cursor must be a string");
+                    self.refuse(&id, &Vec::from_iter(issue))
                 }
             },
             "tools/call" => match call_params(params) {
                 Ok((name, args)) => self.start_call(id, name, args),
-                Err(reason) => self.out.failure(&id, INVALID_PARAMS, &invalid(reason)),
+                Err(issues) => self.refuse(&id, &issues),
             },
             _ => self.out.failure(&id, METHOD_NOT_FOUND, "Method not found"),
         }
     }
 
+    /// The answer to a request whose params do not fit: in the words of the SDK class the server answers as.
+    fn refuse(&self, id: &Id, issues: &[Issue]) -> io::Result<()> {
+        match self.config.identity.sdk {
+            Sdk::Server => {
+                let reason = issues.first().map_or("params do not fit", |i| i.plain);
+                self.out
+                    .failure(id, INVALID_PARAMS, &format!("Invalid params: {reason}"))
+            }
+            Sdk::McpServer => self.out.failure(id, INTERNAL_ERROR, &zod_text(issues)),
+        }
+    }
+
     /// Runs the call on a thread of its own, so that a slow call never holds a fast one, and answers when it ends.
-    fn start_call(
-        self: &Arc<Self>,
-        id: Id,
-        name: String,
-        args: Map<String, Value>,
-    ) -> io::Result<()> {
+    fn start_call(self: &Arc<Self>, id: Id, name: String, args: Arguments) -> io::Result<()> {
         let (serial, stop) = self.calls.begin(&id);
         let server = Arc::clone(self);
         let reply_id = id.clone();
         let spawned = std::thread::Builder::new()
             .name("tagents-call".into())
             .spawn(move || {
-                let result = server.tools.call(&name, &args, &stop);
+                let result = server.tools.call(&name, args.as_ref(), &stop);
                 if !server.calls.settle(serial) {
                     return;
                 }
@@ -355,52 +467,112 @@ impl Server {
     }
 }
 
-/// The result of `initialize`: the version the client asked for when the SDK supports it, the newest otherwise.
-fn initialize(params: Option<&Map<String, Value>>) -> Result<Initialized, String> {
-    let params = params.ok_or("params are required")?;
-    let requested = params
-        .get("protocolVersion")
-        .and_then(Value::as_str)
-        .ok_or("protocolVersion must be a string")?;
-    if !params.get("capabilities").is_some_and(Value::is_object) {
-        return Err("capabilities must be an object".into());
+/// The result of `initialize`, and the name of the client that asked: the version it asked for when the SDK supports it, the newest otherwise. What does not fit is every issue the schema finds, in the order of its keys; the optional fields of `capabilities` and `clientInfo` are not looked into.
+fn initialize<'a>(
+    identity: &Identity,
+    params: Option<&'a Map<String, Value>>,
+) -> Result<(Initialized, &'a str), Vec<Issue>> {
+    let params = params.ok_or_else(missing_params)?;
+    let info = params.get("clientInfo").and_then(Value::as_object);
+    let client_fields = |key: &str| info.and_then(|info| info.get(key));
+    if let (
+        Some(Value::String(requested)),
+        Some(Value::Object(_)),
+        Some(Value::String(name)),
+        Some(Value::String(_)),
+    ) = (
+        params.get("protocolVersion"),
+        params.get("capabilities"),
+        client_fields("name"),
+        client_fields("version"),
+    ) {
+        let protocol_version = PROTOCOL_VERSIONS
+            .into_iter()
+            .find(|v| v == requested)
+            .unwrap_or(PROTOCOL_VERSIONS[0]);
+        let initialized = Initialized {
+            protocol_version,
+            capabilities: identity.capabilities(),
+            server_info: ServerInfo {
+                name: identity.name,
+                version: identity.version,
+            },
+        };
+        return Ok((initialized, name));
     }
-    let client = params
-        .get("clientInfo")
-        .and_then(Value::as_object)
-        .ok_or("clientInfo must be an object")?;
-    if !client.get("name").is_some_and(Value::is_string)
-        || !client.get("version").is_some_and(Value::is_string)
-    {
-        return Err("clientInfo needs a name and a version, both strings".into());
-    }
-    let protocol_version = PROTOCOL_VERSIONS
-        .into_iter()
-        .find(|v| *v == requested)
-        .unwrap_or(PROTOCOL_VERSIONS[0]);
-    Ok(Initialized {
-        protocol_version,
-        capabilities: json!({"tools": {}}),
-        server_info: ServerInfo {
-            name: SERVER_NAME,
-            version: SERVER_VERSION,
-        },
-    })
+    const CLIENT: &str = "clientInfo needs a name and a version, both strings";
+    let client = match info {
+        Some(_) => vec![
+            string_at(
+                client_fields("name"),
+                &["params", "clientInfo", "name"],
+                CLIENT,
+            ),
+            string_at(
+                client_fields("version"),
+                &["params", "clientInfo", "version"],
+                CLIENT,
+            ),
+        ],
+        None => vec![object_at(
+            params.get("clientInfo"),
+            &["params", "clientInfo"],
+            "clientInfo must be an object",
+        )],
+    };
+    Err([
+        string_at(
+            params.get("protocolVersion"),
+            &["params", "protocolVersion"],
+            "protocolVersion must be a string",
+        ),
+        object_at(
+            params.get("capabilities"),
+            &["params", "capabilities"],
+            "capabilities must be an object",
+        ),
+    ]
+    .into_iter()
+    .chain(client)
+    .flatten()
+    .collect())
 }
 
-/// The tool a `tools/call` names and its arguments; a call without `arguments` has none.
-fn call_params(
-    params: Option<Map<String, Value>>,
-) -> Result<(String, Map<String, Value>), &'static str> {
-    let mut params = params.ok_or("params are required")?;
-    let Some(Value::String(name)) = params.remove("name") else {
-        return Err("name must be a string");
-    };
-    match params.remove("arguments") {
-        None => Ok((name, Map::new())),
-        Some(Value::Object(args)) => Ok((name, args)),
-        Some(_) => Err("arguments must be an object"),
+/// The `arguments` of a `tools/call`: `None` when the request carried none, which is not an empty object.
+type Arguments = Option<Map<String, Value>>;
+
+/// The tool a `tools/call` names and its arguments; what does not fit is every issue the schema finds, `name` first.
+fn call_params(params: Option<Map<String, Value>>) -> Result<(String, Arguments), Vec<Issue>> {
+    let mut params = params.ok_or_else(missing_params)?;
+    match (params.remove("name"), params.remove("arguments")) {
+        (Some(Value::String(name)), None) => Ok((name, None)),
+        (Some(Value::String(name)), Some(Value::Object(args))) => Ok((name, Some(args))),
+        (name, arguments) => Err([
+            string_at(name.as_ref(), &["params", "name"], "name must be a string"),
+            match arguments {
+                None | Some(Value::Object(_)) => None,
+                Some(_) => Some(Issue {
+                    path: &["params", "arguments"],
+                    expected: "record",
+                    received: received(arguments.as_ref()),
+                    plain: "arguments must be an object",
+                }),
+            },
+        ]
+        .into_iter()
+        .flatten()
+        .collect()),
     }
+}
+
+/// A request that came without `params`, to a method that needs them.
+fn missing_params() -> Vec<Issue> {
+    vec![Issue {
+        path: &["params"],
+        expected: "object",
+        received: "undefined",
+        plain: "params are required",
+    }]
 }
 
 #[cfg(test)]
@@ -412,6 +584,8 @@ mod tests {
 
     use super::*;
 
+    const SERVER_VERSION: &str = Identity::PLUGIN.version;
+
     /// What the fake tools do, by name: `echo` answers its arguments, `slow` waits for its stop and says so, `quick` answers at once.
     struct Fake {
         started: mpsc::SyncSender<String>,
@@ -419,20 +593,25 @@ mod tests {
     }
 
     impl Tools for Fake {
-        fn list(&self) -> Vec<ToolEntry> {
-            vec![ToolEntry {
-                name: "echo".into(),
-                description: "Echoes.".into(),
-                input_schema: json!({"type": "object"}),
-                annotations: json!({"readOnlyHint": true}),
-            }]
+        fn list(&self) -> Vec<Value> {
+            vec![json!({
+                "name": "echo",
+                "description": "Echoes.",
+                "inputSchema": {"type": "object"},
+                "annotations": {"readOnlyHint": true},
+            })]
         }
 
-        fn call(&self, name: &str, args: &Map<String, Value>, stop: &Stop) -> Option<CallResult> {
+        fn call(
+            &self,
+            name: &str,
+            args: Option<&Map<String, Value>>,
+            stop: &Stop,
+        ) -> Option<CallResult> {
             self.counter.fetch_add(1, Ordering::SeqCst);
             match name {
                 "echo" => Some(CallResult::text(
-                    Value::Object(args.clone()).to_string(),
+                    Value::Object(args.cloned().unwrap_or_default()).to_string(),
                     false,
                 )),
                 "slow" => {
@@ -530,6 +709,7 @@ mod tests {
             });
             let (feed, rx) = mpsc::channel();
             let config = Config {
+                identity: Identity::PLUGIN,
                 kill_grace: Duration::from_millis(50),
                 shutdown_margin,
             };
@@ -871,6 +1051,7 @@ mod tests {
         });
         let (exited_tx, exited) = mpsc::channel();
         let config = Config {
+            identity: Identity::PLUGIN,
             kill_grace: Duration::from_millis(50),
             shutdown_margin: Duration::from_millis(50),
         };

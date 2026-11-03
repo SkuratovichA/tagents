@@ -137,7 +137,7 @@ test('the node read and the Rust daemon\'s read make the same number of tries at
   };
   assert.equal(
     tries('packages/core/src/config-file.ts', /^const READ_TRIES = (\d+);/m),
-    tries('crates/tagents-core/src/notify/options.rs', /^const OPEN_TRIES: u32 = (\d+);/m),
+    tries('crates/tagents-core/src/node.rs', /^const OPEN_TRIES: u32 = (\d+);/m),
   );
 });
 

@@ -8,13 +8,12 @@ use std::{
     ffi::{OsStr, OsString},
     io::Write,
     process::ExitCode,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use tagents_spec::Spec;
 
 use crate::{
-    doctor, mcp, node,
+    doctor, knowledge, mcp, node,
     notify::service,
     plugin, session,
     sessions::{self, Output},
@@ -72,6 +71,8 @@ const GROUPS: &[Group] = &[
 const MCP: &str = "mcp";
 /// The verb that runs the notification service in this process until a signal stops it. It has an arm of its own because it runs until stopped, and it matches both words and nothing after them: the rest of `notify` (`install`, `status`, and a `run` with an argument) is the node CLI's.
 const NOTIFY_RUN: &[&str] = &["notify", "run"];
+/// The first word of the knowledge verbs, which stream or run until stopped, so they have an arm of their own. Only the words `knowledge::VERBS` names are served; every other word after `knowledge` is the node CLI's.
+const KNOWLEDGE: &str = "knowledge";
 /// The verbs served apart from the groups.
 const STREAMING: &[&[&str]] = &[&[MCP], NOTIFY_RUN];
 
@@ -84,6 +85,7 @@ pub fn served_spec() -> Result<String, String> {
             .iter()
             .flat_map(|g| g.verbs)
             .chain(STREAMING)
+            .chain(knowledge::VERBS)
             .any(|verb| verb.iter().copied().eq(c.path.iter().map(String::as_str)))
     });
     let mut text = serde_json::to_string_pretty(&spec).map_err(|e| e.to_string())?;
@@ -91,17 +93,11 @@ pub fn served_spec() -> Result<String, String> {
     Ok(text)
 }
 
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
-}
-
 fn context() -> Context {
     Context {
         home: node::homedir(),
         claude_homes: node::env_text("CLAUDE_HOMES"),
-        now_ms: now_ms(),
+        now_ms: node::now_ms(),
     }
 }
 
@@ -121,10 +117,15 @@ pub(crate) fn emit_stderr(text: &str) {
     best_effort(&mut std::io::stderr().lock(), text);
 }
 
-/// Write what was produced: stdout, then stderr, and the exit code that goes with it.
-fn emit(out: &Output) -> ExitCode {
+/// Write what was produced: stdout, then stderr.
+pub(crate) fn print(out: &Output) {
     emit_stdout(&out.stdout);
     emit_stderr(&out.stderr);
+}
+
+/// Write what was produced, and the exit code that goes with it.
+fn emit(out: &Output) -> ExitCode {
+    print(out);
     ExitCode::from(out.code)
 }
 
@@ -182,6 +183,13 @@ pub fn run(args: Vec<OsString>) -> ExitCode {
     }
     if args.iter().eq(NOTIFY_RUN) {
         return service::run();
+    }
+    if first == Some(KNOWLEDGE)
+        && args
+            .get(1)
+            .is_some_and(|verb| knowledge::VERBS.iter().any(|v| verb.to_str() == Some(v[1])))
+    {
+        return knowledge::run(&args[1..]);
     }
     let served = first
         .and_then(|first| GROUPS.iter().find(|g| g.word == first))

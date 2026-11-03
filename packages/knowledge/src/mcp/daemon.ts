@@ -170,6 +170,9 @@ function fault(what: string, e: unknown): void {
   }
 }
 
+/** The longest delay `setTimeout` takes: a longer one fires after 1 ms. */
+const LONGEST_TIMER_MS = 2 ** 31 - 1;
+
 /**
  * Listen on the socket and serve until nothing has been connected for `idleMs`, or a signal arrives.
  * Resolves 'taken' at once when another daemon already holds the socket.
@@ -189,7 +192,7 @@ export async function runDaemon(o: DaemonOptions): Promise<'served' | 'taken'> {
   // One shot, set when the last connection closes and cleared by the next one: nothing polls.
   const arm = (): void => {
     disarm();
-    if (!stopping) idleTimer = setTimeout(stop, o.idleMs);
+    if (!stopping) idleTimer = setTimeout(stop, Math.min(o.idleMs, LONGEST_TIMER_MS));
   };
 
   const server = net.createServer((conn) => {

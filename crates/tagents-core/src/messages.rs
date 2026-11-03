@@ -42,6 +42,14 @@ impl Texts {
         })
     }
 
+    /// The catalogue in `text`, read in `locale`: the texts of a program that has a file of its own beside the bundled one.
+    pub fn from_json(locale: Locale, text: &str) -> Result<Texts, serde_json::Error> {
+        Ok(Texts {
+            locale,
+            messages: Messages::parse(text)?,
+        })
+    }
+
     /// The text of `key` with each `{{name}}` that `vars` names filled in; one that it does not name stays as typed.
     pub fn t(&self, key: &str, vars: &[(&str, &str)]) -> String {
         let table = match self.locale {

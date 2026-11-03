@@ -268,5 +268,9 @@ export async function runMcp(env: NodeJS.ProcessEnv = process.env): Promise<void
   await server.connect(transport);
   await new Promise<void>((resolve) => {
     transport.onclose = resolve;
+    // The transport only closes when it is told to: an input that ends would leave the event loop empty and node would end the process with exit 13 and a warning.
+    process.stdin.once('end', () => {
+      void transport.close();
+    });
   });
 }

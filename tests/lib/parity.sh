@@ -1,4 +1,4 @@
-# tests/lib/parity.sh — the helpers of the parity suites (tests/rust-parity.sh, tests/rust-mcp-parity.sh, tests/rust-notify-parity.sh, tests/rust-plugin-parity.sh and tests/rust-session-parity.sh).
+# tests/lib/parity.sh — the helpers of the parity suites (tests/rust-parity.sh, tests/rust-mcp-parity.sh, tests/rust-knowledge-parity.sh, tests/rust-notify-parity.sh, tests/rust-plugin-parity.sh and tests/rust-session-parity.sh).
 #
 # A helper is here when it is byte for byte the same in two or more suites. One that differs stays in its suite, whose header names the difference.
 # The suite sources this file after it has set `pass` and `fail` to 0, beside the counters of its own. The rest of what a helper reads comes from the suite that calls it: `snapshot` reads `RUN`, `sc_user` calls the suite's `reset` and `sc` and counts into `skipped`, and `must_not` reads `RAN` and `$TMP/transcript.node`, which the suite's `play` leaves.

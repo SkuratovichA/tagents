@@ -27696,6 +27696,950 @@
               "path": "<dir>/zeta-long.md"
             }
           ]
+        },
+        {
+          "words": [
+            "fox"
+          ],
+          "limit": 0,
+          "match": "\"fox\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.979,
+              "snippet": "the same heading again with a [fox]",
+              "path": "<dir>/bbb-tie.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "aaa-tie-one",
+              "title": "Tie one",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/aaa-tie-one.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "aaa-tie-two",
+              "title": "Tie two",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/aaa-tie-two.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/bbb-tie.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "deploy"
+          ],
+          "limit": 0,
+          "match": "\"deploy\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Deploy steps",
+              "score": 3.102,
+              "snippet": "run [deploy].sh then verify the [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "",
+              "score": 2.175,
+              "snippet": "Preamble about [deploy].",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "draft",
+              "stale": false,
+              "id": "deploy-draft",
+              "title": "Deploy draft",
+              "heading": "Notes",
+              "score": 2.063,
+              "snippet": "[deploy] draft notes",
+              "path": "<dir>/deploy-draft.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Rollback",
+              "score": 1.712,
+              "snippet": "rollback is the reverse of a [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "Superseded",
+              "status": "deprecated",
+              "stale": false,
+              "id": "old-deploy",
+              "title": "Old deploy",
+              "heading": "Deploy",
+              "score": 3.135,
+              "snippet": "[deploy] [deploy] [deploy] [deploy] [deploy] everything with the [deploy] script",
+              "path": "<dir>/old-deploy.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "fox"
+          ],
+          "limit": -1,
+          "match": "\"fox\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.979,
+              "snippet": "the same heading again with a [fox]",
+              "path": "<dir>/bbb-tie.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "aaa-tie-one",
+              "title": "Tie one",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/aaa-tie-one.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "aaa-tie-two",
+              "title": "Tie two",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/aaa-tie-two.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/bbb-tie.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "deploy"
+          ],
+          "limit": -1,
+          "match": "\"deploy\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Deploy steps",
+              "score": 3.102,
+              "snippet": "run [deploy].sh then verify the [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "",
+              "score": 2.175,
+              "snippet": "Preamble about [deploy].",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "draft",
+              "stale": false,
+              "id": "deploy-draft",
+              "title": "Deploy draft",
+              "heading": "Notes",
+              "score": 2.063,
+              "snippet": "[deploy] draft notes",
+              "path": "<dir>/deploy-draft.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Rollback",
+              "score": 1.712,
+              "snippet": "rollback is the reverse of a [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "Superseded",
+              "status": "deprecated",
+              "stale": false,
+              "id": "old-deploy",
+              "title": "Old deploy",
+              "heading": "Deploy",
+              "score": 3.135,
+              "snippet": "[deploy] [deploy] [deploy] [deploy] [deploy] everything with the [deploy] script",
+              "path": "<dir>/old-deploy.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "fox"
+          ],
+          "limit": -0.5,
+          "match": "\"fox\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.979,
+              "snippet": "the same heading again with a [fox]",
+              "path": "<dir>/bbb-tie.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "aaa-tie-one",
+              "title": "Tie one",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/aaa-tie-one.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "aaa-tie-two",
+              "title": "Tie two",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/aaa-tie-two.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/bbb-tie.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "deploy"
+          ],
+          "limit": -0.5,
+          "match": "\"deploy\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Deploy steps",
+              "score": 3.102,
+              "snippet": "run [deploy].sh then verify the [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "",
+              "score": 2.175,
+              "snippet": "Preamble about [deploy].",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "draft",
+              "stale": false,
+              "id": "deploy-draft",
+              "title": "Deploy draft",
+              "heading": "Notes",
+              "score": 2.063,
+              "snippet": "[deploy] draft notes",
+              "path": "<dir>/deploy-draft.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Rollback",
+              "score": 1.712,
+              "snippet": "rollback is the reverse of a [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "Superseded",
+              "status": "deprecated",
+              "stale": false,
+              "id": "old-deploy",
+              "title": "Old deploy",
+              "heading": "Deploy",
+              "score": 3.135,
+              "snippet": "[deploy] [deploy] [deploy] [deploy] [deploy] everything with the [deploy] script",
+              "path": "<dir>/old-deploy.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "fox"
+          ],
+          "limit": 0.5,
+          "match": "\"fox\"",
+          "hits": []
+        },
+        {
+          "words": [
+            "deploy"
+          ],
+          "limit": 0.5,
+          "match": "\"deploy\"",
+          "hits": []
+        },
+        {
+          "words": [
+            "fox"
+          ],
+          "limit": 1.5,
+          "match": "\"fox\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.979,
+              "snippet": "the same heading again with a [fox]",
+              "path": "<dir>/bbb-tie.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "deploy"
+          ],
+          "limit": 1.5,
+          "match": "\"deploy\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Deploy steps",
+              "score": 3.102,
+              "snippet": "run [deploy].sh then verify the [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "fox"
+          ],
+          "limit": 2,
+          "match": "\"fox\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.979,
+              "snippet": "the same heading again with a [fox]",
+              "path": "<dir>/bbb-tie.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "aaa-tie-one",
+              "title": "Tie one",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/aaa-tie-one.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "deploy"
+          ],
+          "limit": 2,
+          "match": "\"deploy\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Deploy steps",
+              "score": 3.102,
+              "snippet": "run [deploy].sh then verify the [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "",
+              "score": 2.175,
+              "snippet": "Preamble about [deploy].",
+              "path": "<dir>/deploy-guide.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "fox"
+          ],
+          "limit": 1e+300,
+          "match": "\"fox\"",
+          "hits": []
+        },
+        {
+          "words": [
+            "deploy"
+          ],
+          "limit": 1e+300,
+          "match": "\"deploy\"",
+          "hits": []
+        },
+        {
+          "words": [
+            "fox"
+          ],
+          "limit": -1e+300,
+          "match": "\"fox\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.979,
+              "snippet": "the same heading again with a [fox]",
+              "path": "<dir>/bbb-tie.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "aaa-tie-one",
+              "title": "Tie one",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/aaa-tie-one.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "aaa-tie-two",
+              "title": "Tie two",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/aaa-tie-two.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/bbb-tie.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "deploy"
+          ],
+          "limit": -1e+300,
+          "match": "\"deploy\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Deploy steps",
+              "score": 3.102,
+              "snippet": "run [deploy].sh then verify the [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "",
+              "score": 2.175,
+              "snippet": "Preamble about [deploy].",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "draft",
+              "stale": false,
+              "id": "deploy-draft",
+              "title": "Deploy draft",
+              "heading": "Notes",
+              "score": 2.063,
+              "snippet": "[deploy] draft notes",
+              "path": "<dir>/deploy-draft.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Rollback",
+              "score": 1.712,
+              "snippet": "rollback is the reverse of a [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "Superseded",
+              "status": "deprecated",
+              "stale": false,
+              "id": "old-deploy",
+              "title": "Old deploy",
+              "heading": "Deploy",
+              "score": 3.135,
+              "snippet": "[deploy] [deploy] [deploy] [deploy] [deploy] everything with the [deploy] script",
+              "path": "<dir>/old-deploy.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "fox"
+          ],
+          "limit": 10000000000000000000,
+          "match": "\"fox\"",
+          "hits": []
+        },
+        {
+          "words": [
+            "deploy"
+          ],
+          "limit": 10000000000000000000,
+          "match": "\"deploy\"",
+          "hits": []
+        },
+        {
+          "words": [
+            "fox"
+          ],
+          "limit": 4611686018427388000,
+          "match": "\"fox\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.979,
+              "snippet": "the same heading again with a [fox]",
+              "path": "<dir>/bbb-tie.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "aaa-tie-one",
+              "title": "Tie one",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/aaa-tie-one.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "aaa-tie-two",
+              "title": "Tie two",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/aaa-tie-two.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/bbb-tie.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "deploy"
+          ],
+          "limit": 4611686018427388000,
+          "match": "\"deploy\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Deploy steps",
+              "score": 3.102,
+              "snippet": "run [deploy].sh then verify the [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "",
+              "score": 2.175,
+              "snippet": "Preamble about [deploy].",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "draft",
+              "stale": false,
+              "id": "deploy-draft",
+              "title": "Deploy draft",
+              "heading": "Notes",
+              "score": 2.063,
+              "snippet": "[deploy] draft notes",
+              "path": "<dir>/deploy-draft.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Rollback",
+              "score": 1.712,
+              "snippet": "rollback is the reverse of a [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "Superseded",
+              "status": "deprecated",
+              "stale": false,
+              "id": "old-deploy",
+              "title": "Old deploy",
+              "heading": "Deploy",
+              "score": 3.135,
+              "snippet": "[deploy] [deploy] [deploy] [deploy] [deploy] everything with the [deploy] script",
+              "path": "<dir>/old-deploy.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "fox"
+          ],
+          "limit": 9223372036854776000,
+          "match": "\"fox\"",
+          "hits": []
+        },
+        {
+          "words": [
+            "deploy"
+          ],
+          "limit": 9223372036854776000,
+          "match": "\"deploy\"",
+          "hits": []
+        },
+        {
+          "words": [
+            "fox"
+          ],
+          "limit": 9007199254740992,
+          "match": "\"fox\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.979,
+              "snippet": "the same heading again with a [fox]",
+              "path": "<dir>/bbb-tie.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "aaa-tie-one",
+              "title": "Tie one",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/aaa-tie-one.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "aaa-tie-two",
+              "title": "Tie two",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/aaa-tie-two.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "",
+              "status": "stable",
+              "stale": false,
+              "id": "bbb-tie",
+              "title": "Tie three",
+              "heading": "Tied",
+              "score": 1.824,
+              "snippet": "the quick brown [fox] jumps over the lazy dog",
+              "path": "<dir>/bbb-tie.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "deploy"
+          ],
+          "limit": 9007199254740992,
+          "match": "\"deploy\"",
+          "hits": [
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Deploy steps",
+              "score": 3.102,
+              "snippet": "run [deploy].sh then verify the [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "",
+              "score": 2.175,
+              "snippet": "Preamble about [deploy].",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Note",
+              "description": "",
+              "status": "draft",
+              "stale": false,
+              "id": "deploy-draft",
+              "title": "Deploy draft",
+              "heading": "Notes",
+              "score": 2.063,
+              "snippet": "[deploy] draft notes",
+              "path": "<dir>/deploy-draft.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "How to ship",
+              "status": "stable",
+              "stale": false,
+              "id": "deploy-guide",
+              "title": "Deploy guide",
+              "heading": "Rollback",
+              "score": 1.712,
+              "snippet": "rollback is the reverse of a [deploy]",
+              "path": "<dir>/deploy-guide.md"
+            },
+            {
+              "type": "Runbook",
+              "description": "Superseded",
+              "status": "deprecated",
+              "stale": false,
+              "id": "old-deploy",
+              "title": "Old deploy",
+              "heading": "Deploy",
+              "score": 3.135,
+              "snippet": "[deploy] [deploy] [deploy] [deploy] [deploy] everything with the [deploy] script",
+              "path": "<dir>/old-deploy.md"
+            }
+          ]
+        },
+        {
+          "words": [
+            "fox"
+          ],
+          "limit": 1e+21,
+          "match": "\"fox\"",
+          "hits": []
+        },
+        {
+          "words": [
+            "deploy"
+          ],
+          "limit": 1e+21,
+          "match": "\"deploy\"",
+          "hits": []
         }
       ]
     }
@@ -30800,6 +31744,321 @@
         {
           "options": {
             "top": 100
+          },
+          "rows": [
+            {
+              "id": "alpha",
+              "type": "Note",
+              "status": "stable",
+              "gets": 9,
+              "hits": 3,
+              "days": 7,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "beta",
+              "type": "Runbook",
+              "status": "stable",
+              "gets": 6,
+              "hits": 2,
+              "days": 4,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "delta",
+              "type": "Note",
+              "status": "draft",
+              "gets": 4,
+              "hits": 0,
+              "days": 3,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "epsilon",
+              "type": "Заметка",
+              "status": "stable",
+              "gets": 3,
+              "hits": 1,
+              "days": 2,
+              "last": "2026-10-29"
+            },
+            {
+              "id": "gamma",
+              "type": "Runbook",
+              "status": "deprecated",
+              "gets": 1,
+              "hits": 1,
+              "days": 1,
+              "last": "2026-10-21"
+            },
+            {
+              "id": "unread",
+              "type": "Note",
+              "status": "stable",
+              "gets": 0,
+              "hits": 0,
+              "days": 0,
+              "last": null
+            }
+          ]
+        },
+        {
+          "options": {
+            "top": 0
+          },
+          "rows": []
+        },
+        {
+          "options": {
+            "top": -1
+          },
+          "rows": [
+            {
+              "id": "alpha",
+              "type": "Note",
+              "status": "stable",
+              "gets": 9,
+              "hits": 3,
+              "days": 7,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "beta",
+              "type": "Runbook",
+              "status": "stable",
+              "gets": 6,
+              "hits": 2,
+              "days": 4,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "delta",
+              "type": "Note",
+              "status": "draft",
+              "gets": 4,
+              "hits": 0,
+              "days": 3,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "epsilon",
+              "type": "Заметка",
+              "status": "stable",
+              "gets": 3,
+              "hits": 1,
+              "days": 2,
+              "last": "2026-10-29"
+            },
+            {
+              "id": "gamma",
+              "type": "Runbook",
+              "status": "deprecated",
+              "gets": 1,
+              "hits": 1,
+              "days": 1,
+              "last": "2026-10-21"
+            }
+          ]
+        },
+        {
+          "options": {
+            "top": -2
+          },
+          "rows": [
+            {
+              "id": "alpha",
+              "type": "Note",
+              "status": "stable",
+              "gets": 9,
+              "hits": 3,
+              "days": 7,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "beta",
+              "type": "Runbook",
+              "status": "stable",
+              "gets": 6,
+              "hits": 2,
+              "days": 4,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "delta",
+              "type": "Note",
+              "status": "draft",
+              "gets": 4,
+              "hits": 0,
+              "days": 3,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "epsilon",
+              "type": "Заметка",
+              "status": "stable",
+              "gets": 3,
+              "hits": 1,
+              "days": 2,
+              "last": "2026-10-29"
+            }
+          ]
+        },
+        {
+          "options": {
+            "top": -100
+          },
+          "rows": []
+        },
+        {
+          "options": {
+            "top": 1.5
+          },
+          "rows": [
+            {
+              "id": "alpha",
+              "type": "Note",
+              "status": "stable",
+              "gets": 9,
+              "hits": 3,
+              "days": 7,
+              "last": "2026-10-31"
+            }
+          ]
+        },
+        {
+          "options": {
+            "top": -1.5
+          },
+          "rows": [
+            {
+              "id": "alpha",
+              "type": "Note",
+              "status": "stable",
+              "gets": 9,
+              "hits": 3,
+              "days": 7,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "beta",
+              "type": "Runbook",
+              "status": "stable",
+              "gets": 6,
+              "hits": 2,
+              "days": 4,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "delta",
+              "type": "Note",
+              "status": "draft",
+              "gets": 4,
+              "hits": 0,
+              "days": 3,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "epsilon",
+              "type": "Заметка",
+              "status": "stable",
+              "gets": 3,
+              "hits": 1,
+              "days": 2,
+              "last": "2026-10-29"
+            },
+            {
+              "id": "gamma",
+              "type": "Runbook",
+              "status": "deprecated",
+              "gets": 1,
+              "hits": 1,
+              "days": 1,
+              "last": "2026-10-21"
+            }
+          ]
+        },
+        {
+          "options": {
+            "top": 0.5
+          },
+          "rows": []
+        },
+        {
+          "options": {
+            "top": -0.5
+          },
+          "rows": []
+        },
+        {
+          "options": {
+            "top": 1e+300
+          },
+          "rows": [
+            {
+              "id": "alpha",
+              "type": "Note",
+              "status": "stable",
+              "gets": 9,
+              "hits": 3,
+              "days": 7,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "beta",
+              "type": "Runbook",
+              "status": "stable",
+              "gets": 6,
+              "hits": 2,
+              "days": 4,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "delta",
+              "type": "Note",
+              "status": "draft",
+              "gets": 4,
+              "hits": 0,
+              "days": 3,
+              "last": "2026-10-31"
+            },
+            {
+              "id": "epsilon",
+              "type": "Заметка",
+              "status": "stable",
+              "gets": 3,
+              "hits": 1,
+              "days": 2,
+              "last": "2026-10-29"
+            },
+            {
+              "id": "gamma",
+              "type": "Runbook",
+              "status": "deprecated",
+              "gets": 1,
+              "hits": 1,
+              "days": 1,
+              "last": "2026-10-21"
+            },
+            {
+              "id": "unread",
+              "type": "Note",
+              "status": "stable",
+              "gets": 0,
+              "hits": 0,
+              "days": 0,
+              "last": null
+            }
+          ]
+        },
+        {
+          "options": {
+            "top": -1e+300
+          },
+          "rows": []
+        },
+        {
+          "options": {
+            "top": 9007199254740992
           },
           "rows": [
             {
@@ -39225,6 +40484,916 @@
         }
       },
       {
+        "name": "knowledge_search {\"query\":{\"length\":0}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": 0
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query\nToo small: expected unknown to be >=1 at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":3}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": 3
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_get {\"id\":{\"length\":0},\"heading\":{\"length\":0}}",
+        "params": {
+          "name": "knowledge_get",
+          "arguments": {
+            "id": {
+              "length": 0
+            },
+            "heading": {
+              "length": 0
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_get: Invalid input: expected string, received object at id\nToo small: expected unknown to be >=1 at id\nInvalid input: expected string, received object at heading"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":\"x\",\"limit\":1e+300}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": "x",
+            "limit": 1e+300
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Too big: expected int to be <=9007199254740991 at limit\nToo big: expected number to be <=50 at limit"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":\"x\",\"limit\":-1.5}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": "x",
+            "limit": -1.5
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected int, received number at limit"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":\"x\",\"limit\":-1e+21}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": "x",
+            "limit": -1e+21
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Too small: expected int to be >=-9007199254740991 at limit\nToo small: expected number to be >0 at limit"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":\"x\",\"limit\":50}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": "x",
+            "limit": 50
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "nothing matches \"x\""
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":\"x\",\"limit\":9007199254740991}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": "x",
+            "limit": 9007199254740991
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Too big: expected number to be <=50 at limit"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_usage {\"top\":1e+300}",
+        "params": {
+          "name": "knowledge_usage",
+          "arguments": {
+            "top": 1e+300
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_usage: Too big: expected int to be <=9007199254740991 at top"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_usage {\"top\":9007199254740992}",
+        "params": {
+          "name": "knowledge_usage",
+          "arguments": {
+            "top": 9007199254740992
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_usage: Too big: expected int to be <=9007199254740991 at top"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_usage {\"top\":9007199254740991}",
+        "params": {
+          "name": "knowledge_usage",
+          "arguments": {
+            "top": 9007199254740991
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "[]"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "knowledge_usage {\"min_gets\":-1e+21,\"min_days\":1e+21}",
+        "params": {
+          "name": "knowledge_usage",
+          "arguments": {
+            "min_gets": -1e+21,
+            "min_days": 1e+21
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_usage: Too small: expected int to be >=-9007199254740991 at min_gets\nToo small: expected number to be >0 at min_gets\nToo big: expected int to be <=9007199254740991 at min_days"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "sessions_recent {\"limit\":1e+300}",
+        "params": {
+          "name": "sessions_recent",
+          "arguments": {
+            "limit": 1e+300
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool sessions_recent: Too big: expected int to be <=9007199254740991 at limit\nToo big: expected number to be <=50 at limit"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "sessions_recent {\"limit\":-0.5}",
+        "params": {
+          "name": "sessions_recent",
+          "arguments": {
+            "limit": -0.5
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool sessions_recent: Invalid input: expected int, received number at limit"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":\"2\"}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": "2"
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":\"abc\"}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": "abc"
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query\nToo small: expected unknown to be >=1 at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":null}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": null
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query\nToo small: expected unknown to be >=1 at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":[]}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": []
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query\nToo small: expected unknown to be >=1 at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":[3]}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": [
+                3
+              ]
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":true}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": true
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":false}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": false
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query\nToo small: expected unknown to be >=1 at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":-1}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": -1
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query\nToo small: expected unknown to be >=1 at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":1.5}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": 1.5
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":{}}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": {}
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query\nToo small: expected unknown to be >=1 at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":\" 2 \"}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": " 2 "
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":\"\"}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": ""
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query\nToo small: expected unknown to be >=1 at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":\"0x10\"}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": "0x10"
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":[1,2]}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": [
+                1,
+                2
+              ]
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query\nToo small: expected unknown to be >=1 at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":\"1e0\"}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": "1e0"
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":1}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": 1
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":\"1\"}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": "1"
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":{\"length\":\"٣\"}}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": {
+              "length": "٣"
+            }
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_search: Invalid input: expected string, received object at query\nToo small: expected unknown to be >=1 at query"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_get {\"id\":\"x\"}",
+        "params": {
+          "name": "knowledge_get",
+          "arguments": {
+            "id": "x"
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "no document with id \"x\""
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_get {\"id\":\"x\",\"heading\":\"h\"}",
+        "params": {
+          "name": "knowledge_get",
+          "arguments": {
+            "id": "x",
+            "heading": "h"
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "no document with id \"x\""
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_list {}",
+        "params": {
+          "name": "knowledge_list",
+          "arguments": {}
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "[]"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "knowledge_list {\"type\":\"\",\"kind\":\"\",\"tag\":\"\"}",
+        "params": {
+          "name": "knowledge_list",
+          "arguments": {
+            "type": "",
+            "kind": "",
+            "tag": ""
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "[]"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "knowledge_usage {}",
+        "params": {
+          "name": "knowledge_usage",
+          "arguments": {}
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "[]"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "knowledge_usage {\"since\":\"0d\"}",
+        "params": {
+          "name": "knowledge_usage",
+          "arguments": {
+            "since": "0d"
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "since must be a positive whole number of days followed by d, such as 30d"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_usage {\"since\":\"x\"}",
+        "params": {
+          "name": "knowledge_usage",
+          "arguments": {
+            "since": "x"
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "since must be a positive whole number of days followed by d, such as 30d"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_usage {\"since\":\"30d\",\"top\":1,\"candidates\":true,\"all\":true}",
+        "params": {
+          "name": "knowledge_usage",
+          "arguments": {
+            "since": "30d",
+            "top": 1,
+            "candidates": true,
+            "all": true
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "[]"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":\" \"}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": " "
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "nothing matches \" \""
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":\"*\"}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": "*"
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "nothing matches \"*\""
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "knowledge_search {\"query\":\"x\",\"extra\":1}",
+        "params": {
+          "name": "knowledge_search",
+          "arguments": {
+            "query": "x",
+            "extra": 1
+          }
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "nothing matches \"x\""
+              }
+            ]
+          }
+        }
+      },
+      {
         "name": "sessions_recent {\"limit\":0}",
         "params": {
           "name": "sessions_recent",
@@ -39712,6 +41881,57 @@
         }
       },
       {
+        "name": "knowledge_list without an arguments object",
+        "params": {
+          "name": "knowledge_list"
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_list: Invalid input: expected object, received undefined"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "knowledge_usage without an arguments object",
+        "params": {
+          "name": "knowledge_usage"
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool knowledge_usage: Invalid input: expected object, received undefined"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
+        "name": "sessions_recent without an arguments object",
+        "params": {
+          "name": "sessions_recent"
+        },
+        "response": {
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "MCP error -32602: Input validation error: Invalid arguments for tool sessions_recent: Invalid input: expected object, received undefined"
+              }
+            ],
+            "isError": true
+          }
+        }
+      },
+      {
         "name": "sessions_search with a list as arguments",
         "params": {
           "name": "sessions_search",
@@ -39723,6 +41943,1101 @@
             "message": "[\n  {\n    \"expected\": \"record\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"params\",\n      \"arguments\"\n    ],\n    \"message\": \"Invalid input: expected record, received array\"\n  }\n]"
           }
         }
+      }
+    ]
+  },
+  "tools": {
+    "scenarios": [
+      {
+        "name": "no folder is named",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_search",
+              "args": {
+                "query": "alpha"
+              }
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          },
+          {
+            "call": {
+              "tool": "knowledge_get",
+              "args": {
+                "id": "alpha"
+              }
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          },
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          },
+          {
+            "call": {
+              "tool": "knowledge_usage",
+              "args": {}
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          }
+        ]
+      },
+      {
+        "name": "the folder is not there",
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": "<dir>/nowhere"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_search",
+              "args": {
+                "query": "alpha"
+              }
+            },
+            "isError": true,
+            "text": "knowledge directory <dir>/nowhere does not exist"
+          },
+          {
+            "call": {
+              "tool": "knowledge_get",
+              "args": {
+                "id": "alpha"
+              }
+            },
+            "isError": true,
+            "text": "knowledge directory <dir>/nowhere does not exist"
+          },
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "knowledge directory <dir>/nowhere does not exist"
+          },
+          {
+            "call": {
+              "tool": "knowledge_usage",
+              "args": {}
+            },
+            "isError": true,
+            "text": "knowledge directory <dir>/nowhere does not exist"
+          }
+        ]
+      },
+      {
+        "name": "the folder is a file",
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": "<dir>/a-file"
+        },
+        "extra": {
+          "a-file": "x"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_search",
+              "args": {
+                "query": "alpha"
+              }
+            },
+            "isError": true,
+            "text": "knowledge directory <dir>/a-file cannot be read"
+          },
+          {
+            "call": {
+              "tool": "knowledge_get",
+              "args": {
+                "id": "alpha"
+              }
+            },
+            "isError": true,
+            "text": "knowledge directory <dir>/a-file cannot be read"
+          },
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "knowledge directory <dir>/a-file cannot be read"
+          },
+          {
+            "call": {
+              "tool": "knowledge_usage",
+              "args": {}
+            },
+            "isError": true,
+            "text": "knowledge directory <dir>/a-file cannot be read"
+          }
+        ]
+      },
+      {
+        "name": "a blank variable names nothing",
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": " \t"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          }
+        ]
+      },
+      {
+        "name": "a byte order mark is blank",
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": "﻿"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          }
+        ]
+      },
+      {
+        "name": "the config names a folder beside it",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "[knowledge]\ndir = \"docs\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/config/docs/alpha.md\",\n    \"headings\": [\n      \"One\"\n    ]\n  }\n]"
+          }
+        ]
+      },
+      {
+        "name": "the config names a folder under the home",
+        "folder": "notes",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "[knowledge]\ndir = \"~/notes\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/notes/alpha.md\",\n    \"headings\": [\n      \"One\"\n    ]\n  }\n]"
+          }
+        ]
+      },
+      {
+        "name": "the config names the home",
+        "folder": ".",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "[knowledge]\ndir = \"~\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/alpha.md\",\n    \"headings\": [\n      \"One\"\n    ]\n  }\n]"
+          }
+        ]
+      },
+      {
+        "name": "the config names an absolute folder",
+        "folder": "abs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "[knowledge]\ndir = \"<dir>/abs\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/abs/alpha.md\",\n    \"headings\": [\n      \"One\"\n    ]\n  }\n]"
+          }
+        ]
+      },
+      {
+        "name": "the config says more than the folder",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "[other]\nx = 1\n[knowledge]\nmode = \"x\"\ndir = \"docs\"\n[plugins.p]\nfrom = \"x\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/config/docs/alpha.md\",\n    \"headings\": [\n      \"One\"\n    ]\n  }\n]"
+          }
+        ]
+      },
+      {
+        "name": "the config names the folder with a dotted key",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "knowledge.dir = \"docs\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/config/docs/alpha.md\",\n    \"headings\": [\n      \"One\"\n    ]\n  }\n]"
+          }
+        ]
+      },
+      {
+        "name": "an empty folder name is none",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "[knowledge]\ndir = \"\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          }
+        ]
+      },
+      {
+        "name": "a folder name that is not a string is none",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "[knowledge]\ndir = 5\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          }
+        ]
+      },
+      {
+        "name": "a folder name that is a list is none",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "[knowledge]\ndir = [\"docs\"]\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          }
+        ]
+      },
+      {
+        "name": "a knowledge that is not a table is none",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "knowledge = \"docs\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          }
+        ]
+      },
+      {
+        "name": "a knowledge that is a list is none",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "knowledge = []\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          }
+        ]
+      },
+      {
+        "name": "a knowledge without a folder is none",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "[knowledge]\nother = \"docs\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          }
+        ]
+      },
+      {
+        "name": "a config that is not TOML is none",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "[knowledge\ndir = \"docs\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          }
+        ]
+      },
+      {
+        "name": "an integer beyond the safe range makes the whole config none",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "big = 9007199254740993\n[knowledge]\ndir = \"docs\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          }
+        ]
+      },
+      {
+        "name": "a safe integer is fine",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "big = 9007199254740991\n[knowledge]\ndir = \"docs\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/config/docs/alpha.md\",\n    \"headings\": [\n      \"One\"\n    ]\n  }\n]"
+          }
+        ]
+      },
+      {
+        "name": "a duplicate key is none",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "[knowledge]\ndir = \"docs\"\ndir = \"docs\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in <dir>/config/config.toml"
+          }
+        ]
+      },
+      {
+        "name": "a config that starts with a byte order mark",
+        "folder": "config/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "﻿[knowledge]\ndir = \"docs\"\n",
+        "env": {},
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/config/docs/alpha.md\",\n    \"headings\": [\n      \"One\"\n    ]\n  }\n]"
+          }
+        ]
+      },
+      {
+        "name": "the variable wins over the config",
+        "folder": "env-docs",
+        "files": [
+          {
+            "name": "beta.md",
+            "text": "---\ntype: Note\ntitle: Beta\n---\n## Two\nbeta second section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "config": "[knowledge]\ndir = \"docs\"\n",
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": "<dir>/env-docs"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"beta\",\n    \"title\": \"Beta\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/env-docs/beta.md\",\n    \"headings\": [\n      \"Two\"\n    ]\n  }\n]"
+          }
+        ]
+      },
+      {
+        "name": "a variable with a tilde",
+        "folder": "under-home",
+        "files": [
+          {
+            "name": "beta.md",
+            "text": "---\ntype: Note\ntitle: Beta\n---\n## Two\nbeta second section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": "~/under-home"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"beta\",\n    \"title\": \"Beta\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/under-home/beta.md\",\n    \"headings\": [\n      \"Two\"\n    ]\n  }\n]"
+          }
+        ]
+      },
+      {
+        "name": "a variable that is relative to the working directory",
+        "folder": "cwd/rel-docs",
+        "files": [
+          {
+            "name": "beta.md",
+            "text": "---\ntype: Note\ntitle: Beta\n---\n## Two\nbeta second section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": "rel-docs"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"beta\",\n    \"title\": \"Beta\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/cwd/rel-docs/beta.md\",\n    \"headings\": [\n      \"Two\"\n    ]\n  }\n]"
+          },
+          {
+            "ls": "cwd",
+            "entries": [
+              "rel-docs"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "a document edited between two calls is read at the second",
+        "folder": "docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          },
+          {
+            "name": "beta.md",
+            "text": "---\ntype: Note\ntitle: Beta\n---\n## Two\nbeta second section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": "<dir>/docs"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_search",
+              "args": {
+                "query": "alpha"
+              }
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"heading\": \"One\",\n    \"score\": 0,\n    \"snippet\": \"[alpha] first section\",\n    \"path\": \"<dir>/docs/alpha.md\"\n  }\n]"
+          },
+          {
+            "call": {
+              "tool": "knowledge_get",
+              "args": {
+                "id": "alpha",
+                "heading": "One"
+              }
+            },
+            "isError": false,
+            "text": "## One\n\nalpha first section\n"
+          },
+          {
+            "write": {
+              "name": "alpha.md",
+              "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha edited section\n\n## Added\nalpha new heading\n",
+              "mtimeSec": 1700000010
+            }
+          },
+          {
+            "call": {
+              "tool": "knowledge_search",
+              "args": {
+                "query": "alpha"
+              }
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"heading\": \"One\",\n    \"score\": 0,\n    \"snippet\": \"[alpha] edited section\",\n    \"path\": \"<dir>/docs/alpha.md\"\n  },\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"heading\": \"Added\",\n    \"score\": 0,\n    \"snippet\": \"[alpha] new heading\",\n    \"path\": \"<dir>/docs/alpha.md\"\n  }\n]"
+          },
+          {
+            "call": {
+              "tool": "knowledge_get",
+              "args": {
+                "id": "alpha"
+              }
+            },
+            "isError": false,
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha edited section\n\n## Added\nalpha new heading\n"
+          },
+          {
+            "call": {
+              "tool": "knowledge_get",
+              "args": {
+                "id": "alpha",
+                "heading": "Added"
+              }
+            },
+            "isError": false,
+            "text": "## Added\n\nalpha new heading\n"
+          },
+          {
+            "write": {
+              "name": "gamma.md",
+              "text": "---\ntype: Note\ntitle: Gamma\n---\n## Three\nalpha gamma shared word\n",
+              "mtimeSec": 1700000020
+            }
+          },
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/docs/alpha.md\",\n    \"headings\": [\n      \"One\",\n      \"Added\"\n    ]\n  },\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"beta\",\n    \"title\": \"Beta\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/docs/beta.md\",\n    \"headings\": [\n      \"Two\"\n    ]\n  },\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"gamma\",\n    \"title\": \"Gamma\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/docs/gamma.md\",\n    \"headings\": [\n      \"Three\"\n    ]\n  }\n]"
+          },
+          {
+            "call": {
+              "tool": "knowledge_search",
+              "args": {
+                "query": "gamma"
+              }
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"gamma\",\n    \"title\": \"Gamma\",\n    \"heading\": \"Three\",\n    \"score\": 0.79,\n    \"snippet\": \"alpha [gamma] shared word\",\n    \"path\": \"<dir>/docs/gamma.md\"\n  }\n]"
+          },
+          {
+            "remove": "beta.md"
+          },
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/docs/alpha.md\",\n    \"headings\": [\n      \"One\",\n      \"Added\"\n    ]\n  },\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"gamma\",\n    \"title\": \"Gamma\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/docs/gamma.md\",\n    \"headings\": [\n      \"Three\"\n    ]\n  }\n]"
+          },
+          {
+            "call": {
+              "tool": "knowledge_get",
+              "args": {
+                "id": "beta"
+              }
+            },
+            "isError": true,
+            "text": "no document with id \"beta\""
+          },
+          {
+            "write": {
+              "name": "beta.md",
+              "text": "---\ntype: Note\ntitle: Beta again\n---\n## Two\nbeta is back\n",
+              "mtimeSec": 1700000030
+            }
+          },
+          {
+            "call": {
+              "tool": "knowledge_get",
+              "args": {
+                "id": "beta"
+              }
+            },
+            "isError": false,
+            "text": "---\ntype: Note\ntitle: Beta again\n---\n## Two\nbeta is back\n"
+          },
+          {
+            "call": {
+              "tool": "knowledge_usage",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"id\": \"alpha\",\n    \"type\": \"Note\",\n    \"status\": \"stable\",\n    \"gets\": 3,\n    \"hits\": 2,\n    \"days\": 1,\n    \"last\": \"2026-10-31\"\n  },\n  {\n    \"id\": \"beta\",\n    \"type\": \"Note\",\n    \"status\": \"stable\",\n    \"gets\": 1,\n    \"hits\": 0,\n    \"days\": 1,\n    \"last\": \"2026-10-31\"\n  },\n  {\n    \"id\": \"gamma\",\n    \"type\": \"Note\",\n    \"status\": \"stable\",\n    \"gets\": 0,\n    \"hits\": 1,\n    \"days\": 0,\n    \"last\": null\n  }\n]"
+          }
+        ]
+      },
+      {
+        "name": "a path that starts with file: is a path",
+        "folder": "docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": "<dir>/docs",
+          "TAGENTS_KNOWLEDGE_DB": "file:rel.db"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_search",
+              "args": {
+                "query": "alpha"
+              }
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"heading\": \"One\",\n    \"score\": 0,\n    \"snippet\": \"[alpha] first section\",\n    \"path\": \"<dir>/docs/alpha.md\"\n  }\n]"
+          },
+          {
+            "ls": "cwd",
+            "entries": [
+              "file:rel.db",
+              "knowledge-usage.sqlite"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "the index and the store with a tilde and a relative path",
+        "folder": "docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": "<dir>/docs",
+          "TAGENTS_KNOWLEDGE_DB": "~/idx/index.sqlite",
+          "TAGENTS_KNOWLEDGE_USAGE_DB": "rel/usage.sqlite"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_search",
+              "args": {
+                "query": "alpha"
+              }
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"heading\": \"One\",\n    \"score\": 0,\n    \"snippet\": \"[alpha] first section\",\n    \"path\": \"<dir>/docs/alpha.md\"\n  }\n]"
+          },
+          {
+            "call": {
+              "tool": "knowledge_usage",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"id\": \"alpha\",\n    \"type\": \"Note\",\n    \"status\": \"stable\",\n    \"gets\": 0,\n    \"hits\": 1,\n    \"days\": 0,\n    \"last\": null\n  }\n]"
+          },
+          {
+            "ls": "cwd",
+            "entries": [
+              "rel"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "the index is in the config directory unless named",
+        "folder": "docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": "<dir>/docs"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_search",
+              "args": {
+                "query": "alpha"
+              }
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"heading\": \"One\",\n    \"score\": 0,\n    \"snippet\": \"[alpha] first section\",\n    \"path\": \"<dir>/docs/alpha.md\"\n  }\n]"
+          },
+          {
+            "ls": "config",
+            "entries": [
+              "knowledge-usage.sqlite",
+              "knowledge.sqlite"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "the store is beside the index in use",
+        "folder": "docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": "<dir>/docs",
+          "TAGENTS_KNOWLEDGE_DB": "<dir>/db/index.sqlite"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_get",
+              "args": {
+                "id": "alpha"
+              }
+            },
+            "isError": false,
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n"
+          },
+          {
+            "ls": "db",
+            "entries": [
+              "index.sqlite",
+              "knowledge-usage.sqlite"
+            ]
+          },
+          {
+            "ls": "config",
+            "entries": []
+          }
+        ]
+      },
+      {
+        "name": "the config directory comes from XDG_CONFIG_HOME",
+        "folder": "docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "env": {
+          "TAGENTS_CONFIG_DIR": null,
+          "XDG_CONFIG_HOME": "<dir>/xdg",
+          "TAGENTS_KNOWLEDGE_DIR": "<dir>/docs"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_get",
+              "args": {
+                "id": "alpha"
+              }
+            },
+            "isError": false,
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n"
+          }
+        ]
+      },
+      {
+        "name": "the config is read from the config directory of the variable",
+        "folder": "xdg/tagents/docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "env": {
+          "TAGENTS_CONFIG_DIR": null,
+          "XDG_CONFIG_HOME": "<dir>/xdg"
+        },
+        "extra": {
+          "xdg/tagents/config.toml": "[knowledge]\ndir = \"docs\"\n"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/xdg/tagents/docs/alpha.md\",\n    \"headings\": [\n      \"One\"\n    ]\n  }\n]"
+          }
+        ]
+      },
+      {
+        "name": "the index cannot be opened",
+        "folder": "docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": "<dir>/docs",
+          "TAGENTS_KNOWLEDGE_DB": "<dir>/a-file/index.sqlite"
+        },
+        "extra": {
+          "a-file": "x"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_search",
+              "args": {
+                "query": "alpha"
+              }
+            },
+            "isError": true,
+            "text": "EEXIST: file already exists, mkdir '<dir>/a-file'"
+          },
+          {
+            "call": {
+              "tool": "knowledge_get",
+              "args": {
+                "id": "alpha"
+              }
+            },
+            "isError": true,
+            "text": "EEXIST: file already exists, mkdir '<dir>/a-file'"
+          },
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": true,
+            "text": "EEXIST: file already exists, mkdir '<dir>/a-file'"
+          },
+          {
+            "call": {
+              "tool": "knowledge_usage",
+              "args": {}
+            },
+            "isError": true,
+            "text": "EEXIST: file already exists, mkdir '<dir>/a-file'"
+          }
+        ]
+      },
+      {
+        "name": "the usage store is not a database",
+        "folder": "docs",
+        "files": [
+          {
+            "name": "alpha.md",
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n",
+            "mtimeSec": 1700000000
+          }
+        ],
+        "env": {
+          "TAGENTS_KNOWLEDGE_DIR": "<dir>/docs",
+          "TAGENTS_KNOWLEDGE_USAGE_DB": "<dir>/usage.sqlite"
+        },
+        "extra": {
+          "usage.sqlite": "this is not a database file, it is longer than a header would be"
+        },
+        "steps": [
+          {
+            "call": {
+              "tool": "knowledge_get",
+              "args": {
+                "id": "alpha"
+              }
+            },
+            "isError": false,
+            "text": "---\ntype: Note\ntitle: Alpha\n---\n## One\nalpha first section\n"
+          },
+          {
+            "call": {
+              "tool": "knowledge_usage",
+              "args": {}
+            },
+            "isError": true,
+            "text": "the usage store <dir>/usage.sqlite cannot be read: file is not a database"
+          },
+          {
+            "call": {
+              "tool": "knowledge_list",
+              "args": {}
+            },
+            "isError": false,
+            "text": "[\n  {\n    \"type\": \"Note\",\n    \"description\": \"\",\n    \"status\": \"stable\",\n    \"stale\": false,\n    \"id\": \"alpha\",\n    \"title\": \"Alpha\",\n    \"tags\": [],\n    \"updated\": \"-\",\n    \"path\": \"<dir>/docs/alpha.md\",\n    \"headings\": [\n      \"One\"\n    ]\n  }\n]"
+          }
+        ]
       }
     ]
   },

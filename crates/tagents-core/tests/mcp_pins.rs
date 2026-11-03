@@ -155,8 +155,14 @@ fn the_core_program_of_the_contract_is_the_one_the_spec_describes() {
         .collect();
     assert_eq!(
         serving,
-        ["mcp", "notify run"],
-        "the verbs that serve are the MCP server and the notify service"
+        [
+            "mcp",
+            "notify run",
+            "knowledge mcp",
+            "knowledge serve",
+            "knowledge join"
+        ],
+        "the verbs that serve are the MCP server, the notify service and the three knowledge servers"
     );
 }
 

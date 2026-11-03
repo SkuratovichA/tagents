@@ -9,6 +9,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 ### Added
 
 - `tagents --version` (and `-V`) prints the workspace version and the short commit of the copy ([#54](https://github.com/SkuratovichA/tagents/pull/54)).
+- `tagents-core knowledge mcp`, `knowledge serve` and `knowledge join` are the knowledge MCP server, its shared daemon and the relay a session runs in front of it, in the Rust binary: the same six tools, index and usage store as the node server, with a session that costs a relay and not a node process; a differential suite compares every answer with the node server's, and the other `knowledge` verbs stay with the node CLI ([#60](https://github.com/SkuratovichA/tagents/pull/60)).
 - `tusage` is a report in a terminal: `--by` tables of dollars nested by account, project, session, day, week, month, hour, agent, model and workflow, `--account` and `--project` filters, sessions shown by the name they have in tagents, one session by day with `--session <name> --by day,model`, tables that fit the terminal width, and a summary with dollars and the week by account ([#52](https://github.com/SkuratovichA/tagents/pull/52)).
 - `tagents setup` registers the state hook and the status line in `settings.json`, and the installer runs it ([#36](https://github.com/SkuratovichA/tagents/pull/36)).
 - `tagents-core mcp`, the plugin's MCP server, runs in the prebuilt Rust binary when the installer has put one on the machine ([#38](https://github.com/SkuratovichA/tagents/pull/38)).
@@ -26,6 +27,8 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 
 - The installer no longer prints curl's `404` above its own `no prebuilt tagents-core` line; any other download failure still shows curl's message ([#54](https://github.com/SkuratovichA/tagents/pull/54)).
 - On tmux below 3.8 the cursor no longer jumps around the cockpit's viewport at every frame of an agent; tmux 3.8 or newer keeps it steady ([#55](https://github.com/SkuratovichA/tagents/pull/55)).
+- The Rust MCP server writes the integer keys of a program's JSON output first and in ascending order, as `JSON.stringify` and the node server do.
+- A knowledge MCP server whose input ends exits with 0, where node ended it with exit 13 and a warning about an unsettled await. A shared daemon started with an `--idle` longer than a timer counts (2147484 seconds or more) no longer leaves after a millisecond: the node one clamps it to the longest timer, 2^31 - 1 ms (about 24.8 days), and the Rust one waits the whole time.
 - An edit of the file a symlinked `plugins/notify.toml` points at takes effect at the next event in the options directory every time, where on macOS it sometimes took effect at once, and the node and Rust services follow the same rule ([#49](https://github.com/SkuratovichA/tagents/pull/49)).
 - `plugin add` and `plugin remove` keep a symlinked `config.toml` a symlink and edit the file it points at, where they replaced the link with a regular file ([#50](https://github.com/SkuratovichA/tagents/pull/50)).
 - `plugin add` and `plugin remove` stop with the error when `config.toml` cannot be read for any reason but being absent, where they treated it as empty and wrote a config over what could not be read ([#50](https://github.com/SkuratovichA/tagents/pull/50)).
