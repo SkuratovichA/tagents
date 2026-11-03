@@ -93,7 +93,7 @@ pnpm exec openspec show refresher      # one of them
 pnpm spec:check                        # every spec and change validates (CI runs this too)
 ```
 
-`LEARNING.md` stays: it records mistakes and how they were fixed, which a spec does not.
+Mistakes and how they were fixed go to the knowledge base, because a spec does not record them.
 
 ## Working on this documentation
 
