@@ -27,6 +27,7 @@ stop_scratch_daemons() {
   for p in $(scratch_pids); do kill "$p" 2>/dev/null; done
   sleep 0.3
   for p in $(scratch_pids); do kill -9 "$p" 2>/dev/null; done
+  for _ in $(seq 1 20); do [ -z "$(scratch_pids)" ] && break; sleep 0.1; done
 }
 cleanup() {
   stop_scratch_daemons
@@ -178,13 +179,38 @@ else
     SPID=$!
     for _ in $(seq 1 100); do [ "$(grep -c '"result"' "$TMP/out.$lab" 2>/dev/null)" -ge "$want" ] && break; sleep 0.1; done
   }
-  # the session ends by itself when its input closes
+  # Does this nc end when its input closes? Asked of nc itself, not of the system's name: a closed input against a listening unix socket either ends it within a bound or does not. netcat-openbsd of Debian does not without -N; the nc of macOS does.
+  NC_ENDS=unknown
+  if command -v nc >/dev/null 2>&1; then
+    nc -lU "$TMP/ncprobe.sock" >/dev/null 2>&1 &
+    lpid=$!
+    for _ in $(seq 1 30); do [ -S "$TMP/ncprobe.sock" ] && break; sleep 0.1; done
+    ( : | nc -U "$TMP/ncprobe.sock" >/dev/null 2>&1 ) &
+    ppid=$!
+    for _ in $(seq 1 20); do kill -0 "$ppid" 2>/dev/null || break; sleep 0.1; done
+    if kill -0 "$ppid" 2>/dev/null; then NC_ENDS=no; else NC_ENDS=yes; fi
+    kill "$ppid" "$lpid" 2>/dev/null; pkill -P "$ppid" 2>/dev/null; wait "$ppid" "$lpid" 2>/dev/null
+    rm -f "$TMP/ncprobe.sock"
+  fi
+  # the session ends by itself when its input closes: `join` does on every system
   end_session() {  # <label>
     : > "$TMP/close.$1"
     for _ in $(seq 1 100); do kill -0 "$SPID" 2>/dev/null || break; sleep 0.1; done
     if kill -0 "$SPID" 2>/dev/null; then echo gone=no; kill "$SPID" 2>/dev/null; else echo gone=yes; fi
-    wait 2>/dev/null
+    wait "$SPID" 2>/dev/null
   }
+  # a session whose last program is nc: where nc ends at end of input it is gone, and where it does not (netcat-openbsd without -N) it is still there until the signal a client sends after closing stdin, SIGTERM, and then gone. Prints what happened, and ncexpect is what NC_ENDS says should happen.
+  end_nc_session() {  # <label>
+    : > "$TMP/close.$1"
+    for i in $(seq 1 100); do kill -0 "$SPID" 2>/dev/null || break; [ "$NC_ENDS" = no ] && [ "$i" -ge 20 ] && break; sleep 0.1; done
+    if kill -0 "$SPID" 2>/dev/null; then
+      printf 'there'; kill -TERM "$SPID" 2>/dev/null
+      for _ in $(seq 1 50); do kill -0 "$SPID" 2>/dev/null || break; sleep 0.1; done
+      if kill -0 "$SPID" 2>/dev/null; then printf ',survived-TERM'; kill -9 "$SPID" 2>/dev/null; else printf ',gone-after-TERM'; fi
+    else printf 'gone'; fi
+    wait "$SPID" 2>/dev/null
+  }
+  ncexpect() { if [ "$NC_ENDS" = no ]; then echo "there,gone-after-TERM"; else echo gone; fi; }
 
   # --- no binary ------------------------------------------------------------
   senv "$TAGENTS_BIN/tagents-knowledge" join </dev/null >/dev/null 2>&1; rc=$?
@@ -198,7 +224,7 @@ else
   ok "...after a serve that the wrapper handed to node" yes "$(grep -q ' serve' "$TMP/node-starts" && echo yes || echo no)"
   ok "...and no join was started" 0 "$(grep -c ' join' "$TMP/node-starts")"
   ok "...nothing on stderr" "" "$(cat "$TMP/err.nobin")"
-  ok "...and ends when its input closes" gone=yes "$(end_session nobin)"
+  ok "...and the session ends: at end of input where nc does (here: $NC_ENDS), at SIGTERM where it does not" "$(ncexpect)" "$(end_nc_session nobin)"
   stop_scratch_daemons
   sleep 0.5
 
@@ -247,7 +273,7 @@ OLD
     ok "...to the daemon the wrapper started in Rust, and no node was started" 0 "$(starts)"
     ok "...which is alive while the session is connected" yes "$(kill -0 "$odpid" 2>/dev/null && echo yes || echo no)"
     ok "...nothing on stderr" "" "$(cat "$TMP/err.old")"
-    ok "...and nc ends when the input closes" gone=yes "$(end_session old)"
+    ok "...and the session ends: at end of input where nc does (here: $NC_ENDS), at SIGTERM where it does not" "$(ncexpect)" "$(end_nc_session old)"
     for _ in $(seq 1 120); do kill -0 "$odpid" 2>/dev/null || break; sleep 0.2; done
     ok "...and the daemon, with nobody connected, leaves after its idle time" no "$(kill -0 "$odpid" 2>/dev/null && echo yes || echo no)"
     stop_scratch_daemons
@@ -269,7 +295,7 @@ OLD
   ok "...node was started for serve" yes "$(grep -q ' serve' "$TMP/node-starts" && echo yes || echo no)"
   ok "...and the stub binary was run for the probe alone" "knowledge join" "$(cat "$TMP/stub-core-calls")"
   ok "...one line on stderr, naming the code" "knowledge-mcp: tagents-knowledge join exited 1, using the node server (tagents-knowledge join </dev/null shows why)" "$(cat "$TMP/err.failing")"
-  ok "...and ends when its input closes" gone=yes "$(end_session failing)"
+  ok "...and the session ends: at end of input where nc does (here: $NC_ENDS), at SIGTERM where it does not" "$(ncexpect)" "$(end_nc_session failing)"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

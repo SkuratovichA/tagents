@@ -13,7 +13,7 @@
 #   2   a wrapper from before this arrangement, whose node program does not know `join`: the old arrangement, silently, at the price of one node start until the next `tagents update`.
 #   any other code (1, 3, 126, 127, a signal): the binary was there and failed, or there is no tagents-knowledge at all. One line names the code on stderr, which Claude Code keeps in the log of an MCP server, TAGENTS_NO_NATIVE=1 is set for what runs next, and the old arrangement runs. The wrapper hands `serve` and `mcp` to the binary as well as `join`, so without the variable the old arrangement would start the program that has just failed; with it the wrapper names no binary and node answers. A person sets the same variable to turn the Rust server off for one session.
 #
-# `exec` so that the last program IS the process Claude started: closing its stdin ends the connection, and killing it needs no shell in between.
+# `exec` so that the last program IS the process Claude started, and signalling it needs no shell in between. `join` ends when its stdin closes. `nc` ends then too on macOS, but the netcat-openbsd of Debian without -N does not: there it ends at the SIGTERM a client sends after closing stdin, and the daemon counts the session out then.
 #
 # The old arrangement is the way out: a checkout that predates `serve` prints "unknown command" and exits 2, a machine without a usable `nc` has nothing to exec, and a daemon that cannot start leaves no socket. In each the session still gets its own server.
 tagents-knowledge join </dev/null >/dev/null 2>&1; rc=$?
