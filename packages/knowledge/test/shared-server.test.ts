@@ -171,7 +171,8 @@ test('the bridge falls back to a server of its own when `tagents-knowledge serve
     `exec ${JSON.stringify(NODE)} ${JSON.stringify(cliEntry())} "$@"`,
   ]);
   await session(world, async () => undefined, { PATH: `${fake}:${world.env()['PATH'] ?? ''}` });
-  assert.deepEqual(fs.readFileSync(log, 'utf8').trim().split('\n'), ['serve', 'mcp']);
+  // the first call is the launcher's probe: the node program does not know `join`, so it answers 2 and the launcher goes on, silently
+  assert.deepEqual(fs.readFileSync(log, 'utf8').trim().split('\n'), ['join', 'serve', 'mcp']);
   assert.deepEqual(daemonPids(world), [], 'no daemon was started');
 });
 
