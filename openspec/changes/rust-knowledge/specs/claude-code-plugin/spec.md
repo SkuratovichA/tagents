@@ -33,7 +33,7 @@ When `$TAGENTS_HOME/target/release/tagents-core` is an executable file of the ch
 
 #### Scenario: serve with options
 - **WHEN** `tagents-knowledge serve --idle 30` or `serve --foreground --socket P` runs over an installed binary
-- **THEN** the binary receives `knowledge serve` and the options, whole, and one daemon serves the environment whichever argument list started it (`tests/install.sh`)
+- **THEN** the binary receives `knowledge serve` and the options, whole (`tests/install.sh`), and one daemon serves the environment whichever argument list started it: the socket is named after the seven variables and the binary and no argument (`crates/tagents-core/tests/knowledge_socket.rs`, `the_key_variables_are_the_seven_node_names`), and a launcher that finds a daemon started with `serve --idle 4` joins it (`tests/knowledge-launcher.sh`)
 
 #### Scenario: Any other arguments
 - **WHEN** `tagents-knowledge mcp extra`, `join x`, `search x` or no arguments runs over an installed binary
@@ -48,7 +48,7 @@ When `$TAGENTS_HOME/target/release/tagents-core` is an executable file of the ch
 - **THEN** the wrapper is written without it, as in the requirement below (`tests/install.sh`)
 
 ### Requirement: The tagents-knowledge wrapper without a binary answers join with 69
-With no executable binary of the checkout's version at install time the installer SHALL write the `tagents-knowledge` wrapper with no line that names a binary: it exits 69 when its only argument is `join`, and otherwise `exec`s the node program with the wrapper's arguments. A failed or refused fetch, a version without a release and `TAGENTS_NO_NATIVE=1` SHALL each leave that wrapper, so no machine is without a knowledge server and a machine without the binary starts no node for the probe.
+With no executable binary of the checkout's version at install time the installer SHALL write the `tagents-knowledge` wrapper with no line that names a binary: it exits 69 when its only argument is `join`, and otherwise `exec`s the node program with the wrapper's arguments. A failed or refused fetch, a version without a release and `TAGENTS_NO_NATIVE=1` SHALL each leave that wrapper, so no machine is without a knowledge server and a machine without the binary starts no node for the probe
 
 #### Scenario: No binary
 - **WHEN** the installer runs on a machine without the binary and `tagents-knowledge join` runs with a stub `node` on `PATH`
@@ -57,3 +57,25 @@ With no executable binary of the checkout's version at install time the installe
 #### Scenario: No release for the version
 - **WHEN** the installer runs on a copy whose version has no release
 - **THEN** the prebuilt binary is removed and `tagents-knowledge serve` runs the node program (`tests/install.sh`)
+
+### Requirement: A failed probe turns the Rust server off for the rest of the run
+After `tagents-knowledge join` exits with a code other than 0, 69 and 2, the script `packages/knowledge/bin/knowledge-mcp` SHALL set `TAGENTS_NO_NATIVE=1` in the environment of what it runs next. The `tagents-knowledge` wrapper hands `serve` and `mcp` to the binary as well as `join`, so without the variable the server that the line names would be the one that has just failed.
+
+#### Scenario: The native program failed
+- **WHEN** `join` exits 1, 3 or 127
+- **THEN** the later `serve` and `mcp` calls see `TAGENTS_NO_NATIVE=1`, and over the real wrapper with a binary that exits 1 the session is answered by node (`tests/knowledge-launcher.sh`)
+
+#### Scenario: The native program succeeded or is absent
+- **WHEN** `join` exits 0, 69 or 2
+- **THEN** the variable is not set by the script (`tests/knowledge-launcher.sh`)
+
+### Requirement: TAGENTS_NO_NATIVE=1 leaves the knowledge wrapper without the binary
+A `tagents-knowledge` wrapper that names the binary SHALL name none while `TAGENTS_NO_NATIVE=1` is in the environment of the call: `serve` and `mcp` run the node program and a lone `join` exits 69, which is the owner's way to turn the Rust server off for one session. The installer SHALL write the wrapper without the binary when `TAGENTS_NO_NATIVE=1`, over a binary built by hand too.
+
+#### Scenario: The variable at run time
+- **WHEN** a wrapper that names the binary runs with `TAGENTS_NO_NATIVE=1` in its environment
+- **THEN** `serve` and `mcp` run the node program and a lone `join` exits 69 starting no node (`tests/install.sh`)
+
+#### Scenario: The variable at install time over a binary built by hand
+- **WHEN** a binary of the checkout's version with no marker is in the tree and the installer runs with `TAGENTS_NO_NATIVE=1`
+- **THEN** the wrapper is written without it and the binary is left where it is (`tests/install.sh`)

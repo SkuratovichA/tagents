@@ -305,6 +305,18 @@ A connection reads its input in ticks of 500 ms. A reader that waits for the end
 
 The dependencies are listed with the others in "Rules for the Rust code".
 
+### What a knowledge session holds
+
+Measured on 03.11.2026 on an Apple silicon laptop, on a scratch install (its own `HOME`, `TAGENTS_HOME`, `TMPDIR` and knowledge folder) over the five documents of `packages/knowledge/test/fixtures/knowledge`, with the release binary and one `knowledge_search` for `sqlite` through the launcher of the plugin. The memory is `footprint <pid>` after that search. The first reply is the time from the client starting the launcher to the answer of `initialize`, and the three warm figures are three runs with the daemon already up.
+
+| Arrangement | The session's process | Footprint | The daemon | Footprint | First reply, cold | First reply, warm |
+|---|---|---|---|---|---|---|
+| The Rust binary | `tagents-core knowledge join` | 1024 KB | `tagents-core knowledge serve` | 2128 KB | 304 ms | 34, 26, 22 ms (12 ms for `join` alone) |
+| The shared node daemon | `nc -U` | 1296 KB | `node ... serve` | 45 MB | 541 ms | 141, 158, 221 ms |
+| A node server of the session's own | `tagents-knowledge mcp` | 44 to 45 MB | none | none | not measured | 173, 217, 206 ms |
+
+The searched reply took 311 ms cold on Rust and 566 ms cold on node. The numbers are one machine on one afternoon, and the load on it varied: they say the order of magnitude, not a third digit. The commands are in the description of the pull request that made the binary the session's server.
+
 ## The parity suite
 
 `tests/rust-parity.sh` builds a seeded home (`tests/rust-parity-seed.mts`: the two sessions of `packages/core/test/fixtures/sessions/` and several hundred more made so that JavaScript and a naive port disagree), runs `node packages/core/dist/cli/main.js` and the Rust binary on it under the same environment, and passes a case only when stdout, stderr and the exit code are identical. Besides these node-against-Rust cases the suite packages the debug binary with `core-release.sh package`, serves it as a `file://` release in a sandbox and checks that the installer accepts its `--version` line.

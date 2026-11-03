@@ -1,6 +1,6 @@
 // One knowledge server for every session that has the same environment.
 //
-// `runMcp` (server.ts) is one node process per Claude session: about 30 MB resident each, started and stopped with the session. This file is the other arrangement. A daemon listens on a unix socket and gives every connection its own MCP server over the same stdio framing; a session reaches it through `nc -U` (bin/knowledge-mcp), which costs a few hundred kilobytes.
+// `runMcp` (server.ts) is one node process per Claude session: about 45 MB (`footprint`) each, started and stopped with the session. This file is the other arrangement. A daemon listens on a unix socket and gives every connection its own MCP server over the same stdio framing; a session reaches it through `nc -U` (bin/knowledge-mcp), which costs a few hundred kilobytes.
 //
 //   ensureDaemon  — what `tagents-knowledge serve` does: find the daemon for this environment, or start one detached, and say where it listens.
 //   runDaemon     — what `serve --foreground` does, and what ensureDaemon starts: listen, serve, and leave after a quiet spell.

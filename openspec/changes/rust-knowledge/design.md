@@ -192,7 +192,7 @@ The wrapper also owns the answer to the launcher's probe. Whatever the binary's 
 
 ```sh
 r="/home/u/.tagents/target/release/tagents-core"
-if [ -f "$r" ] && [ -x "$r" ]; then
+if [ "${TAGENTS_NO_NATIVE:-}" != 1 ] && [ -f "$r" ] && [ -x "$r" ]; then
   if [ "${1-}" = serve ] || { [ "$#" -eq 1 ] && { [ "$1" = join ] || [ "$1" = mcp ]; }; }; then
     TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" knowledge "$@"
   fi
@@ -201,7 +201,7 @@ fi
 exec "$n" "/home/u/.tagents/packages/knowledge/dist/cli/main.js" "$@"
 ```
 
-With no binary named (none at install time, another version, `TAGENTS_NO_NATIVE=1`, no release) the first block is absent and the last two lines remain. A binary that is gone by run time falls to the same two lines: `serve` and `mcp` run node, `join` exits 69.
+With no binary named (none at install time, another version, `TAGENTS_NO_NATIVE=1` at install time, no release) the first block is absent and the last two lines remain; `TAGENTS_NO_NATIVE=1` at install time leaves it so even over a binary built by hand of the right version. A binary that is gone by run time falls to the same two lines: `serve` and `mcp` run node, `join` exits 69. So does `TAGENTS_NO_NATIVE=1` in the environment of the call: the wrapper tests it at run time, which is how the launcher turns the Rust server off for the rest of its own run, and how a person does it for one session.
 
 Why only these words: the wrapper is where a wrong guess costs, the plugin and the launcher call these three, and every other call stays on the oracle until its own change. A binary of another version is not named, because an older binary hands `knowledge` to the node core CLI, which does not know it.
 
@@ -212,7 +212,8 @@ tagents-knowledge join </dev/null >/dev/null 2>&1; rc=$?
 case $rc in
   0) exec tagents-knowledge join ;;
   69 | 2) ;;  # 69: the wrapper has no binary. 2: a wrapper from before this arrangement, whose node program does not know `join`
-  *) printf 'knowledge-mcp: tagents-knowledge join exited %s, using the node server (tagents-knowledge join </dev/null shows why)\n' "$rc" >&2 ;;
+  *) printf 'knowledge-mcp: tagents-knowledge join exited %s, using the node server (tagents-knowledge join </dev/null shows why)\n' "$rc" >&2
+     TAGENTS_NO_NATIVE=1; export TAGENTS_NO_NATIVE ;;  # the wrapper hands serve and mcp to the binary too: without this the "node server" below would be the one that just failed
 esac
 sock=$(tagents-knowledge serve 2>/dev/null) && [ -S "$sock" ] && command -v nc >/dev/null 2>&1 && exec nc -U "$sock"
 exec tagents-knowledge mcp
@@ -224,7 +225,7 @@ Rejected: a launcher that names the binary's path (it would skip the version che
 
 ### Which CLI verbs move
 
-Only `mcp`, `serve` and `join`. The server is what costs a start and 29 MB per session; the read verbs run once per command a person types, and a node start there is a tenth of a second. Moving them needs the argument parsing of each, the English and Russian tables, and for `lint` and `toc` the whole link and index rules, each with a parity surface of its own. What this change builds (the index, the search, the usage store, the document reader, the dates) is what `index`, `search`, `show`, `list` and `usage` run on, so those later changes are the CLI and its texts. `lint` and `toc` need the document rules only and wait for the same reason.
+Only `mcp`, `serve` and `join`. The server is what costs a start and, by `footprint`, about 45 MB per session (task 16.1); the read verbs run once per command a person types, and a node start there is a tenth of a second. Moving them needs the argument parsing of each, the English and Russian tables, and for `lint` and `toc` the whole link and index rules, each with a parity surface of its own. What this change builds (the index, the search, the usage store, the document reader, the dates) is what `index`, `search`, `show`, `list` and `usage` run on, so those later changes are the CLI and its texts. `lint` and `toc` need the document rules only and wait for the same reason.
 
 ### The front matter: `saphyr` and a converter
 
