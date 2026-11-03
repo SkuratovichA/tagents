@@ -114,7 +114,7 @@ pub fn read_lock(file: &str) -> Option<LockContent> {
 }
 
 /// `isAlive` of `packages/core/src/pid.ts`: signal 0 reaches the process, or is refused because it belongs to somebody else. A pid that does not fit a `pid_t` names no process here.
-fn is_alive(pid: u64) -> bool {
+pub(crate) fn is_alive(pid: u64) -> bool {
     let Some(pid) = i32::try_from(pid).ok().and_then(Pid::from_raw) else {
         return false;
     };

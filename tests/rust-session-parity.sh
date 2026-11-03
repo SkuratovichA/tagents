@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# tests/rust-session-parity.sh — `tagents-core session open`, `session list`, `session last` and `session prompt` print and leave what the node CLI prints and leaves, and `session prompt` starts what it starts.
+# tests/rust-session-parity.sh — `tagents-core session open`, `session list`, `session last`, `session prompt` and `session abort` print and leave what the node CLI prints and leaves, `session prompt` starts what it starts, and `session abort` kills what it kills.
 #
 # Every scenario runs twice, `node packages/core/dist/cli/main.js <args>` and `target/debug/tagents-core <args>` (or $TAGENTS_CORE_BIN), each on its own pristine copy of the same tree at the same path (so no output can tell the two apart by where it ran), under `env -i` with a scratch HOME, TMPDIR, state directory and config directory, and a PATH that holds nothing but a symbolic link to the real node, a stub `claude` and a stub `caffeinate`. It passes only when stdout, stderr, the exit code and the whole tree afterwards (every path, its mode, its link target or the checksum of its bytes) are the same. What is normalised is the `id` that `session open` makes, which must be a version 4 UUID to be normalised at all.
 # The stub `claude` is the fakeClaude of packages/core/src/testkit.ts, written by tests/rust-session-parity-driver.mts, and records what it was started with into rec/ of the tree; the stub `caffeinate` records its arguments there too. The three verbs of this suite start no process, so a scenario also fails when anything was recorded.
@@ -80,8 +80,8 @@ done
 
 if [ -z "$SELF_TEST" ]; then
   # The first check, before any scenario: the binary says it serves the four verbs. A build with no `session` verb would hand every scenario to node and pass them all.
-  "$RUST" --spec | "$NODE" -e 'const s = JSON.parse(require("fs").readFileSync(0, "utf8")); const has = (p) => s.commands.some((c) => c.path.join(" ") === p); process.exit(has("session open") && has("session prompt") && has("session list") && has("session last") ? 0 : 1)' \
-    || { echo "rust-session-parity: $RUST does not serve session open, session prompt, session list and session last (--spec)" >&2; exit 2; }
+  "$RUST" --spec | "$NODE" -e 'const s = JSON.parse(require("fs").readFileSync(0, "utf8")); const has = (p) => s.commands.some((c) => c.path.join(" ") === p); process.exit(has("session open") && has("session prompt") && has("session list") && has("session last") && has("session abort") ? 0 : 1)' \
+    || { echo "rust-session-parity: $RUST does not serve session open, session prompt, session list, session last and session abort (--spec)" >&2; exit 2; }
 fi
 
 pass=0; fail=0; skipped=0; rust_served=0; handed_over=0

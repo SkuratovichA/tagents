@@ -81,7 +81,7 @@ pub(super) fn usage(stderr: String) -> Output {
 }
 
 /// `json(value)` of `cli/exit.ts`: two-space layout and a newline.
-fn printed(value: &Value) -> Output {
+pub(super) fn printed(value: &Value) -> Output {
     Output::out(format!("{}\n", json::stringify(value, true)))
 }
 

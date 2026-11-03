@@ -629,7 +629,7 @@ fn a_plugin_argument_that_is_not_utf8_is_forwarded_whole_not_decoded_lossily() {
 
 #[test]
 fn the_session_calls_node_keeps_reach_it_with_their_arguments() {
-    // `session` is a group that serves some of its verbs and hands the rest to node: a bare `session`, an unknown verb, a verb node keeps (`abort`) and a served verb whose arguments the grammar does not read (`open --bogus`, `prompt --bogus`), each with every argument as it was typed and nothing written before.
+    // `session` is a group that serves some of its verbs and hands the rest to node: a bare `session`, an unknown verb and a served verb whose arguments the grammar does not read (`open --bogus`, `prompt --bogus`), each with every argument as it was typed and nothing written before.
     let checkout = Checkout::new("session-declines");
     for args in [
         &["session"][..],
@@ -638,8 +638,6 @@ fn the_session_calls_node_keeps_reach_it_with_their_arguments() {
         &["session", "open", "--bogus"],
         &["session", "prompt", "--bogus"],
         &["session", "prompt", "s-1", "two words", "--timeout"],
-        &["session", "abort"],
-        &["session", "abort", "s-1"],
     ] {
         let _ = fs::remove_file(&checkout.argv);
         let out = run(checkout
@@ -667,7 +665,12 @@ fn the_session_calls_node_keeps_reach_it_with_their_arguments() {
 fn a_session_argument_that_is_not_utf8_is_forwarded_whole_not_decoded_lossily() {
     // A cwd or a reference that is not UTF-8 is node's to read: a lossy decoding would look at another directory or session than the one that was typed. The group is registered with `lossy_args: false`, so the call must arrive at node unchanged.
     let checkout = Checkout::new("session-bytes");
-    for words in [&["open", "--cwd"][..], &["last"], &["list", "--label"]] {
+    for words in [
+        &["open", "--cwd"][..],
+        &["last"],
+        &["list", "--label"],
+        &["abort"],
+    ] {
         let _ = fs::remove_file(&checkout.argv);
         let out = run(checkout
             .command()
