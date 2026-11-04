@@ -1,8 +1,10 @@
 //! Starting the child of a turn, as the driver's `spawn` starts it (design D4), and what a failure to start it becomes (design D5).
 //!
-//! On Linux `Command` ends in the `execvp` that libuv's child ends in, and the `PATH` it reads is the child's. On macOS libuv walks that `PATH` itself, with one `posix_spawn` per entry, and `Command` with a bare name goes through the libc's `execvp`. So on macOS this file walks `PATH` the way libuv does and gives `Command` each file by its absolute path. A relative path is left to node: `Command` runs it through another route, because `posix_spawn` reports a program it did start as missing when a relative path meets a working directory.
+//! On Linux `Command` ends in the `execvp` that libuv's child ends in, and the `PATH` it reads is the child's. On macOS libuv walks that `PATH` itself, with one `posix_spawn` per entry, and `Command` with a bare name goes through the libc's `execvp`. So on macOS this file walks `PATH` the way libuv does and gives `Command` each file by its absolute path. A relative path is resolved against the working directory of the child before it is given to `Command`.
 //!
-//! `ENOEXEC` never reaches `Command` on macOS: the libc's `posix_spawnp` answers it by running the file through `/bin/sh`, where libuv's `posix_spawn` reports it and node has the words. So a file that could get that answer is left to node before it is started, by reading what the kernel reads (see `kernel_may_refuse`). On Linux both programs meet the same libc rule, or the binary's libc reports the errno and the call goes to node.
+//! `ENOEXEC` never reaches `Command` on macOS: the libc's `posix_spawnp` answers it by running the file through `/bin/sh`, where libuv's `posix_spawn` reports it. So a file that could get that answer is reported as `spawn ENOEXEC` before it is started, by reading what the kernel reads (see `kernel_may_refuse`). A relative path is resolved against the working directory of the child, where libuv's forked child changes directory before it spawns.
+//!
+//! What `spawn` reports is worded as node words it: the codes node delivers as the `error` event are `Failed`, every other code is thrown (`failure`).
 
 use std::io;
 #[cfg(target_os = "macos")]
@@ -23,8 +25,6 @@ pub enum Start {
     Failed(String),
     /// What `spawn` throws: this message alone on stderr, and no outcome.
     Thrown(String),
-    /// A failure node has the words for, and nothing has run.
-    HandOver,
 }
 
 /// The child, whichever file it ends up running: its name stays the name as given, in no process group of its own.
@@ -61,12 +61,29 @@ fn attempt(invocation: &Invocation, file: &str) -> io::Result<Child> {
     spawn_uninterrupted(&mut command(invocation, file))
 }
 
-/// `spawn`'s two ways of failing, and what is node's to word.
+/// `spawn`'s two ways of failing: libuv delivers `UV_EACCES`, `UV_EAGAIN`, `UV_EMFILE`, `UV_ENFILE` and `UV_ENOENT` as the `error` event of the child, and node throws every other code from the call itself. An error without a name in the table is worded as Rust words it.
 fn failure(program: &str, error: &io::Error) -> Start {
+    let again = [
+        rustix::io::Errno::AGAIN.raw_os_error(),
+        rustix::io::Errno::NFILE.raw_os_error(),
+    ];
+    if error
+        .raw_os_error()
+        .is_some_and(|number| again.contains(&number))
+    {
+        let code = if error.raw_os_error() == Some(again[0]) {
+            "EAGAIN"
+        } else {
+            "ENFILE"
+        };
+        return Start::Failed(format!("spawn {program} {code}"));
+    }
     match node::errno(error).map(|errno| errno.code) {
-        Some(code @ ("ENOENT" | "EACCES")) => Start::Failed(format!("spawn {program} {code}")),
-        Some("ENOTDIR") => Start::Thrown("spawn ENOTDIR".to_owned()),
-        _ => Start::HandOver,
+        Some(code @ ("ENOENT" | "EACCES" | "EMFILE")) => {
+            Start::Failed(format!("spawn {program} {code}"))
+        }
+        Some(code) => Start::Thrown(format!("spawn {code}")),
+        None => Start::Thrown(format!("spawn {error}")),
     }
 }
 
@@ -158,21 +175,27 @@ pub fn start(invocation: &Invocation) -> Start {
     let mut denied = None;
     let mut last = None;
     for file in files {
-        if !file.starts_with('/') || kernel_may_refuse(&file) {
-            return Start::HandOver;
+        let file = if file.starts_with('/') || invocation.cwd.is_empty() {
+            file
+        } else {
+            node::resolve(&invocation.cwd, &file)
+        };
+        if kernel_may_refuse(&file) {
+            return Start::Thrown("spawn ENOEXEC".to_owned());
         }
         match attempt(invocation, &file) {
             Ok(child) => return Start::Started(child),
             Err(error) => match node::errno(&error).map(|errno| errno.code) {
                 Some("EACCES") => denied = Some(error),
                 Some("ENOENT" | "ENOTDIR") => last = Some(error),
-                _ => return Start::HandOver,
+                _ => return failure(program, &error),
             },
         }
     }
-    denied
-        .or(last)
-        .map_or(Start::HandOver, |error| failure(program, &error))
+    denied.or(last).map_or_else(
+        || Start::Failed(format!("spawn {program} ENOENT")),
+        |error| failure(program, &error),
+    )
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -351,19 +374,22 @@ mod tests {
     }
 
     #[test]
-    fn another_errno_is_a_hand_over() {
+    fn another_errno_is_thrown_by_its_code() {
         let scratch = Scratch::new();
         let looping = scratch.path().join("loop");
         fs::create_dir_all(&looping).unwrap();
         std::os::unix::fs::symlink("claude", looping.join("claude")).unwrap();
         let start = start(&invocation("claude", &text(&looping), ""));
-        assert!(matches!(start, Start::HandOver), "{start:?}");
+        assert!(
+            matches!(&start, Start::Thrown(m) if m == "spawn ELOOP"),
+            "{start:?}"
+        );
     }
 
     /// The files the kernel of macOS refuses, which `Command` would run through `/bin/sh`.
     #[cfg(target_os = "macos")]
     #[test]
-    fn a_file_the_kernel_refuses_is_a_hand_over_on_macos() {
+    fn a_file_the_kernel_refuses_is_enoexec_on_macos() {
         let scratch = Scratch::new();
         let script = scratch.path().join("script");
         gate::write_executable(&script, "#!/bin/sh\n");
@@ -388,7 +414,10 @@ mod tests {
             let _ = fs::remove_file(&file);
             gate::write_executable(&file, content);
             let start = start(&invocation("claude", &text(&bin), ""));
-            assert!(matches!(start, Start::HandOver), "{content}: {start:?}");
+            assert!(
+                matches!(&start, Start::Thrown(m) if m == "spawn ENOEXEC"),
+                "{content}: {start:?}"
+            );
         }
     }
 
@@ -431,7 +460,7 @@ mod tests {
     /// A file that may be run and not read cannot be looked at, so it is not proven to be a program.
     #[cfg(target_os = "macos")]
     #[test]
-    fn a_program_that_cannot_be_read_is_a_hand_over_on_macos() {
+    fn a_program_that_cannot_be_read_is_enoexec_on_macos() {
         use rustix::process::geteuid;
         if geteuid().is_root() {
             return;
@@ -445,12 +474,15 @@ mod tests {
             &text(&scratch.path().join("bin")),
             "",
         ));
-        assert!(matches!(start, Start::HandOver), "{start:?}");
+        assert!(
+            matches!(&start, Start::Thrown(m) if m == "spawn ENOEXEC"),
+            "{start:?}"
+        );
     }
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn a_relative_path_is_left_to_node_once_it_is_reached_on_macos() {
+    fn a_relative_path_is_taken_against_the_directory_of_the_child_on_macos() {
         let scratch = Scratch::new();
         gate::write_executable(&scratch.path().join("good/claude"), WITNESS);
         for (program, path) in [
@@ -461,7 +493,7 @@ mod tests {
         ] {
             let start = start(&invocation(program, path, ""));
             assert!(
-                matches!(start, Start::HandOver),
+                matches!(start, Start::Failed(_)),
                 "{program} on {path}: {start:?}"
             );
         }

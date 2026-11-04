@@ -553,3 +553,30 @@ fn a_u_feff_at_both_ends_of_the_ps_answer_is_trimmed_and_one_alone_is_an_empty_a
     );
     assert_eq!(gated(stub(&dir, &format!("echo '{bom}'")), 1), None);
 }
+
+#[test]
+fn a_lock_that_is_not_ours_is_left_where_it_is() {
+    let scratch = Scratch::new();
+    let file = format!("{}/{LOCK_FILE}", scratch.dir());
+    // pid 1 is never this test.
+    fs::write(&file, "1\n").unwrap();
+    let lock = Lock::new(file.clone());
+    let log = crate::notify::log::RecordingLog::new();
+    lock.release(&log);
+    assert!(fs::exists(&file).unwrap());
+    assert_eq!(log.lines(), Vec::<String>::new());
+}
+
+#[test]
+fn a_lock_that_cannot_be_released_is_a_line() {
+    let log = crate::notify::log::RecordingLog::new();
+    Lock::new("/s/notify.lock".into()).release_with(&log, |_| {
+        Err("EACCES: permission denied, unlink '/s/notify.lock'".into())
+    });
+    assert_eq!(
+        log.lines(),
+        [
+            "could not release the lock /s/notify.lock EACCES: permission denied, unlink '/s/notify.lock'"
+        ]
+    );
+}

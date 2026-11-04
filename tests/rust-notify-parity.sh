@@ -3,10 +3,10 @@
 # tests/rust-notify-parity.sh — `tagents-core notify run` leaves what the node notify daemon (packages/notify) leaves.
 #
 # Every scenario runs twice through tests/rust-notify-parity-driver.mts, once against `node packages/notify/dist/main.js run` and once against `target/debug/tagents-core notify run` (or $TAGENTS_CORE_BIN), under the same `env -i` environment and on the same scratch state, and passes only when the two transcripts are byte for byte the same once the timestamps and the pids are replaced. A transcript is the daemon's stderr lines (the notify service writes everything there, and nothing to stdout), how it ended, what the stub helper app recorded (its arguments and its stdin, in order), what the tmux shim was asked, and what is left in the state directory (the names in it, the size of the events file, whose the lock is).
-# No real program runs: the scratch has its own HOME, TA_STATE_DIR, TAGENTS_CONFIG_DIR, TAGENTS_LOCALE and TMUX_TMPDIR (and TAGENTS_NODE, which is how a Rust daemon that hands over to the node service finds node under `env -i`), PATH is a directory of stubs followed by /usr/bin:/bin (a `tmux` shim that answers what the scenario sets and never starts a server, and a `tagents`), and TA_NOTIFY_APP is a stub helper app that records its arguments and its stdin and answers what the scenario sets. The click action a notice carries is never run. Nothing under the real $HOME, no tmux server, no LaunchAgent, no real helper app and no network is reached, and nothing is started through launchd.
+# No real program runs: the scratch has its own HOME, TA_STATE_DIR, TAGENTS_CONFIG_DIR, TAGENTS_LOCALE and TMUX_TMPDIR (and TAGENTS_NODE, which a front door that forwards to the node CLI would need to find node under `env -i`), PATH is a directory of stubs followed by /usr/bin:/bin (a `tmux` shim that answers what the scenario sets and never starts a server, and a `tagents`), and TA_NOTIFY_APP is a stub helper app that records its arguments and its stdin and answers what the scenario sets. The click action a notice carries is never run. Nothing under the real $HOME, no tmux server, no LaunchAgent, no real helper app and no network is reached, and nothing is started through launchd.
 # The notices go to the `log` backend (`backend = "log"` in the options file) wherever the scenario is about the engine, so that a scenario runs on both systems; the scenarios about the helper (`backend = "macos"`) run on macOS only, because `pickPlatform` returns the helper only on darwin, and the suite counts them as skipped elsewhere.
 # Every wait is for a condition (the `started` line, a line the daemon writes, a file) and is bounded: a wait that runs out is a `timeout` line of the transcript, and in the node transcript it fails the scenario as a defect of the suite. A fixed pause is used only where the point is that nothing happens, and the scenario says so.
-# Differences that are known and listed in docs/architecture/rust-core.md are not scenarios: a file that is not TOML (the reason after `Invalid TOML document:` is the parser's own, so the documents here are all TOML the schema refuses), a document one TOML parser accepts and the other refuses, a prompt that arrives during a post after the deadline of the same session passed during that post, a stop during a failing start, a failed watch, an options file without read permission, `plugins` being a regular file, the operating system's text inside a line for an error number the two systems do not share, the spawn failure text of the helper for an error other than ENOENT and EACCES, a SIGKILL at a deadline reaching the whole group, and a helper that writes more than 1 MiB. The one known difference that cannot be left out of a scenario, the `handing over to the node service: <why>` line the Rust daemon writes before it becomes node when its start fails, is dropped from the transcript of the scenario about a start that cannot take the state directory (HANDOVER=1), with a comment there.
+# Differences that are known and listed in docs/architecture/rust-core.md are not scenarios: a file that is not TOML (the reason after `Invalid TOML document:` is the parser's own, so the documents here are all TOML the schema refuses), a document one TOML parser accepts and the other refuses, a prompt that arrives during a post after the deadline of the same session passed during that post, a stop during a failing start, a failed watch, an options file without read permission, `plugins` being a regular file, the operating system's text inside a line for an error number the two systems do not share, the spawn failure text of the helper for an error other than ENOENT and EACCES, a SIGKILL at a deadline reaching the whole group, and a helper that writes more than 1 MiB. The one known difference that cannot be left out of a scenario, the line of a start that fails (`the notify service stopped: <why>` of node, `could not start: <why>` after a time stamp of the daemon), is read as node's in the scenario about it.
 # Tripwires assert on the node transcript alone, so a scenario that stopped provoking what it exists for fails here instead of passing for nothing.
 #
 # The helpers the parity suites share are in tests/lib/parity.sh. `cleanup`, `file`, `gone`, `quiet`, `jstr`, `norm`, `first_difference`, `play`, `must` and `must_before` stay here because they differ from those of tests/rust-mcp-parity.sh: `cleanup` reads daemon.pids and the stubs' pids, `file`, `gone` and `quiet` write this driver's shape of a step, `jstr` also escapes a newline, a tab and a carriage return, `norm` takes out the time, the process id and the scratch path, `first_difference` names only the line, `play` goes through `run_side` and fails a node run whose wait ran out, and `must` and `must_before` word their failures in their own way. `row` stays because it writes a step for the driver, where the `row` of tests/rust-session-parity.sh writes a setup command.
@@ -140,7 +140,7 @@ chmod +x "$SHIM"/* "$APP/Contents/MacOS/tagents-notify"
 # What a scenario sets before `play` and `play` puts back: the options file, whether there is a config directory and a plugins directory, whether the options file is there, whether the state directory can be made, the locale (`-` leaves TAGENTS_LOCALE unset), the extra environment, the script `tagents` of a click, whether the helper app is there and whether it can be run.
 DEFAULT_OPTS='backend = "log"'
 reset_scenario() {
-  OPTS=$DEFAULT_OPTS; NOCONFIG=; NOPLUGINS=; NOFILE=; BLOCKSTATE=; HANDOVER=; LOCALE=en; NOAPP=; NOEXEC=
+  OPTS=$DEFAULT_OPTS; NOCONFIG=; NOPLUGINS=; NOFILE=; BLOCKSTATE=; FAILED_START=; LOCALE=en; NOAPP=; NOEXEC=
   CLICK_SCRIPT=/parity/bin/tagents
   EXTRA_ENV=()
 }
@@ -199,12 +199,12 @@ sentinel() { printf '%s,%s' "$(ev Stop $SENTINEL_KEY)" "$(expect "notice turn_do
 sentinel_permission() { printf '%s,%s' "$(ev Notification $SENTINEL_KEY sub=permission_prompt text=sentinel)" "$(expect "notice permission $SENTINEL_KEY ")"; }
 sentinel_end() { printf '%s,%s' "$(ev SessionEnd $SENTINEL_KEY)" "$(expect "notice session_end $SENTINEL_KEY ")"; }
 
-# What a transcript is compared after: the time of a line, the pid a service names itself by (the holder of a lock is said as its role by the driver), the scratch directory (the one path both daemons work in, which differs from run to run), and in the scenario about a start that cannot take the state directory (HANDOVER) the one line only the Rust daemon writes: it hands over to node, and from there on the lines are node's own (design.md, "Where the two are known to differ", the third item).
-HANDOVER=
+# What a transcript is compared after: the time of a line, the pid a service names itself by (the holder of a lock is said as its role by the driver), the scratch directory (the one path both daemons work in, which differs from run to run), and in the scenario about a start that cannot take the state directory (FAILED_START) the line of the failure, which the two write in their own frame.
+FAILED_START=
 norm() {  # <file>
-  local ts='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z' drop=()
-  [ -z "$HANDOVER" ] || drop+=(-e "/^stderr${TAB}TS handing over to the node service: /d")
-  sed -E -e "s/^((second-)?stderr${TAB})$ts /\\1TS /" -e 's/ started pid [0-9]+ backend / started pid PID backend /' -e "s#$TMP#TMP#g" ${drop[@]+"${drop[@]}"} "$1"
+  local ts='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z' fix=()
+  [ -z "$FAILED_START" ] || fix+=(-e "s/^stderr${TAB}$ts could not start: /stderr${TAB}the notify service stopped: /")
+  sed -E ${fix[@]+"${fix[@]}"} -e "s/^((second-)?stderr${TAB})$ts /\\1TS /" -e 's/ started pid [0-9]+ backend / started pid PID backend /' -e "s#$TMP#TMP#g" "$1"
 }
 
 # The first line the two transcripts differ at and a window of 160 characters at the first differing character.
@@ -303,7 +303,7 @@ must_before() {  # <label> <first> <second>
 }
 
 # ------------------------------------------------------------ first check ---
-# A daemon that is only the front door's forward to the node CLI would pass every scenario by being node. So before any scenario the Rust side is started once: it must say `started pid <its own pid>` (the node CLI, with no notify plugin in the scratch config, never writes that line) and the process must be the Rust binary, not `node` (what exec_node leaves, and what a hand-over to node leaves too).
+# A daemon that is only the front door's forward to the node CLI would pass every scenario by being node. So before any scenario the Rust side is started once: it must say `started pid <its own pid>` (the node CLI, with no notify plugin in the scratch config, never writes that line) and the process must be the Rust binary, not `node` (what exec_node leaves).
 # The Rust daemon on a scratch of its own, started by the driver's verb with no node daemon beside it, and the driver's report: the first check and the resource checks, where node's numbers are not the reference.
 alone() {  # <driver verb>
   rm -rf "$RUN"; mkdir -p "$RUN/home" "$RUN/rec" "$RUN/tmux" "$RUN/config/plugins"
@@ -323,13 +323,13 @@ first_check() {
   [ "$OS" = Linux ] && want=${want:0:15}
   if [ "$started" != yes ]; then
     printf "rust-notify-parity: FIRST CHECK FAILED: \`%s notify run\` never said it had started.\n" "$RUST"
-    printf "  The front door hands a verb with no arm to the node CLI (crates/tagents-core/src/front_door.rs, the \`None => exec_node\` arm), so a binary without the \`notify\` arm ends here, and so does a daemon that fails to start. What it did:\n"
+    printf "  The front door hands a verb with no arm to the node CLI (crates/tagents-core/src/front_door.rs, the \`None => exec_node\` arm), so a binary without the \`notify\` arm ends here. What it did:\n"
     printf '%s\n' "$report" | sed 's/^/    /'
     return 1
   fi
   if [ "$image" != "$want" ] || [ "$claimed" != "$pid" ]; then
     printf "rust-notify-parity: FIRST CHECK FAILED: the process \`%s notify run\` started is \`%s\` and says it is pid %s (it was started as pid %s), not the Rust binary \`%s\`.\n" "$RUST" "$image" "$claimed" "$pid" "$want"
-    printf "  That is the node CLI the front door forwards to when the \`notify\` arm is missing, or a hand-over to the node service: comparing it with the node daemon would compare node with node.\n"
+    printf "  That is the node CLI the front door forwards to when the \`notify\` arm is missing: comparing it with the node daemon would compare node with node.\n"
     printf '%s\n' "$report" | sed 's/^/    /'
     return 1
   fi
@@ -1124,8 +1124,8 @@ OPTS='backend = "none"'
 play "backend none: nothing to post, and the daemon leaves" "$(steps "$(start exit)")"
 must "none" 'backend none: nothing to post; exiting'
 BLOCKSTATE=1
-HANDOVER=1
-# A start that fails is the node CLI's own message and exit code 1. The Rust daemon hands such a start over to the node service, and says so on a line only it writes (the HANDOVER line, taken out of the transcripts), so the node service's message is what the scenario compares.
+FAILED_START=1
+# A start that fails writes one line and exits 1, the code launchd retries. Node's line is `the notify service stopped: <why>` on the bare stream; the daemon's is `could not start: <why>` after its time stamp, which the comparison reads as node's.
 play "start: the state directory cannot be made" "$(steps "$(start exit)")"
 must "state: the message" "stderr	the notify service stopped: ENOTDIR: not a directory, mkdir 'TMP/run/blocker/state'"
 must "state: the exit code" 'exit 1'

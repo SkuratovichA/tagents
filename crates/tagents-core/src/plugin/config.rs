@@ -2,17 +2,25 @@
 //!
 //! The file is the owner's, with comments and spacing of their own, so the edit is a splice of text and the parser only answers questions. `add` appends `[plugins.KEY]` behind one blank line; `remove` cuts the section and its subsections out by their header lines. Both parse the result before writing and refuse it unless it holds what was meant.
 //!
-//! Nothing here words an error. A call that node would fail on (a syntax error, `plugins` that is not a table, an edit that does not parse or did not take, a config that cannot be read, a link that leads nowhere, a write that fails) and a call this code cannot prove identical (a config that is not UTF-8, a key `__proto__`) is a `HandOver` made before anything is written, and the node CLI then says what is wrong. The vectors in `tests/fixtures/plugin-vectors.json` hold every document of the corpus with the text node left, or with the hand-over where node threw.
+//! An edit that cannot be made fails with the line node throws: the TOML parser's message after the file name (the parser's words are the Rust parser's), the fixed texts of `plugin-config.ts`, or the system's text for a read, a stat, a make-directory, a write or a rename that failed. A failure is a `Fault` made before anything is written. The vectors in `tests/fixtures/plugin-vectors.json` hold every document of the corpus with the text node left, or with the failure where node threw.
 
 use std::{fs, io, path::Path};
 
 use toml::de::{DeTable, DeValue};
 
-use super::HandOver;
 use crate::{
-    js, node,
+    js, json, node,
     toml_js::{self, get},
 };
+
+/// A failed edit, as the line node prints for it (exit 1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fault(pub String);
+
+/// The line for a system call that failed.
+fn system(err: &io::Error, syscall: &str, path: &str) -> Fault {
+    Fault(node::io_message(err, syscall, Some(path)))
+}
 
 /// What `add` did.
 #[derive(Debug, PartialEq, Eq)]
@@ -58,14 +66,14 @@ pub fn toml_key(name: &str) -> Option<String> {
 }
 
 /// Add `key` under `plugins`.
-pub fn add(file: &str, key: &str, from: &str) -> Result<Added, HandOver> {
+pub fn add(file: &str, key: &str, from: &str) -> Result<Added, Fault> {
     let target = write_target(file)?;
     let text = read_text(file)?;
-    let before = parse(&text)?;
-    if plugins_of(&before)?.is_some_and(|plugins| get(plugins, key).is_some()) {
+    let before = parse(file, &text, "")?;
+    if plugins_of(file, &before, "")?.is_some_and(|plugins| get(plugins, key).is_some()) {
         return Ok(Added::Exists);
     }
-    let section = section(key, from)?;
+    let section = section(file, key, from)?;
     let head = if text.is_empty() || text.ends_with('\n') {
         text.clone()
     } else {
@@ -74,12 +82,12 @@ pub fn add(file: &str, key: &str, from: &str) -> Result<Added, HandOver> {
     let blank = if head.is_empty() { "" } else { "\n" };
     let next = format!("{head}{blank}{section}");
 
-    let after = parse(&next)?;
-    let took = plugins_of(&after)?
+    let after = parse(file, &next, EDIT)?;
+    let took = plugins_of(file, &after, EDIT)?
         .and_then(|plugins| get(plugins, key))
         .is_some_and(|entry| from_of(entry) == Some(from));
     if !took {
-        return Err(HandOver);
+        return Err(Fault(format!("{file}: the edit did not take")));
     }
     save(
         &target,
@@ -91,19 +99,18 @@ pub fn add(file: &str, key: &str, from: &str) -> Result<Added, HandOver> {
 }
 
 /// Drop `key` from `plugins`.
-pub fn remove(file: &str, key: &str) -> Result<Removed, HandOver> {
-    // Node's schema check drops this one key from `plugins`, so node cannot see it there.
-    if key == "__proto__" {
-        return Err(HandOver);
-    }
+pub fn remove(file: &str, key: &str) -> Result<Removed, Fault> {
     let target = write_target(file)?;
     let text = read_text(file)?;
     if text.is_empty() {
         return Ok(Removed::Absent);
     }
-    let before = parse(&text)?;
-    let listed = |plugins: Option<&DeTable<'_>>| plugins.is_some_and(|p| get(p, key).is_some());
-    let before_plugins = plugins_of(&before)?;
+    let before = parse(file, &text, "")?;
+    // Node's schema check drops the key `__proto__` from `plugins`, so node never sees it there.
+    let listed = |plugins: Option<&DeTable<'_>>| {
+        key != "__proto__" && plugins.is_some_and(|p| get(p, key).is_some())
+    };
+    let before_plugins = plugins_of(file, &before, "")?;
     if !listed(before_plugins) {
         return Ok(Removed::Absent);
     }
@@ -111,15 +118,20 @@ pub fn remove(file: &str, key: &str) -> Result<Removed, HandOver> {
     let lines: Vec<&str> = text.split_inclusive('\n').collect();
     let next = cut_sections(&lines, key).concat();
 
-    let after = parse(&next)?;
-    let after_plugins = plugins_of(&after)?;
+    let after = parse(file, &next, EDIT)?;
+    let after_plugins = plugins_of(file, &after, EDIT)?;
     if listed(after_plugins) {
-        return Err(HandOver);
+        let shown = toml_key(key).unwrap_or_else(|| json::quote(key));
+        return Err(Fault(format!(
+            "{file}: {key} is not written as a [plugins.{shown}] section, so it cannot be removed here — remove it by hand"
+        )));
     }
     let rest_is_the_same = same_table(Some(&before), Some(&after), Some("plugins"))
         && same_table(before_plugins, after_plugins, Some(key));
     if !rest_is_the_same {
-        return Err(HandOver);
+        return Err(Fault(format!(
+            "{file}: removing {key} would change something else, so nothing was written"
+        )));
     }
     save(
         &target,
@@ -131,27 +143,46 @@ pub fn remove(file: &str, key: &str) -> Result<Removed, HandOver> {
 }
 
 /// The text of the section an entry is written as (`tomlEntry`).
-fn section(key: &str, from: &str) -> Result<String, HandOver> {
-    let written = toml_string(from).ok_or(HandOver)?;
-    let key = toml_key(key).ok_or(HandOver)?;
+fn section(file: &str, key: &str, from: &str) -> Result<String, Fault> {
+    let unwritable = |value: &str| {
+        Fault(format!(
+            "{file}: {} has a control character or a lone surrogate in it, which cannot be written in a config tagents reads",
+            json::quote(value)
+        ))
+    };
+    let written = toml_string(from).ok_or_else(|| unwritable(from))?;
+    let key = toml_key(key).ok_or_else(|| unwritable(key))?;
     Ok(format!("[plugins.{key}]\nfrom = {written}\n"))
 }
 
-/// The document parsed the way node's parser reads it: a syntax error, and an integer beyond what a JavaScript number holds, are refused.
-fn parse(text: &str) -> Result<DeTable<'_>, HandOver> {
-    let table = DeTable::parse(text).map_err(|_| HandOver)?.into_inner();
+/// What `parseTomlFile` says before its message when the text is the edit.
+const EDIT: &str = "the edit would not parse: ";
+
+/// The document parsed the way node's parser reads it: a syntax error, and an integer beyond what a JavaScript number holds, are refused, with the file and the parser's message (`parseTomlFile`). The words of the message are the Rust parser's.
+fn parse<'a>(file: &str, text: &'a str, what: &str) -> Result<DeTable<'a>, Fault> {
+    let table = DeTable::parse(text)
+        .map_err(|err| Fault(format!("{file}: {what}{}", err.message())))?
+        .into_inner();
     if toml_js::table_holds_lossy_integer(&table) {
-        return Err(HandOver);
+        return Err(Fault(format!(
+            "{file}: {what}integer out of the range of a JavaScript number"
+        )));
     }
     Ok(table)
 }
 
 /// The `plugins` table of a document: `None` when there is none, a refusal when it is not a table (`TomlDoc` in `plugin-config.ts`).
-fn plugins_of<'a, 'i>(doc: &'a DeTable<'i>) -> Result<Option<&'a DeTable<'i>>, HandOver> {
+fn plugins_of<'a, 'i>(
+    file: &str,
+    doc: &'a DeTable<'i>,
+    what: &str,
+) -> Result<Option<&'a DeTable<'i>>, Fault> {
     match get(doc, "plugins") {
         None => Ok(None),
         Some(DeValue::Table(plugins)) => Ok(Some(plugins)),
-        Some(_) => Err(HandOver),
+        Some(_) => Err(Fault(format!(
+            "{file}: {what}plugins must be a table of tables"
+        ))),
     }
 }
 
@@ -287,42 +318,49 @@ fn same_table(a: Option<&DeTable<'_>>, b: Option<&DeTable<'_>>, skip: Option<&st
         })
 }
 
-/// The file an edit of `file` replaces: `file` itself, or the file a symbolic link at that path ends in, so that a config kept in a dotfiles repository stays a link. A path with nothing at it is not a link. Any other failure, and a link that leads nowhere or in a loop, is node's to word (`writeTarget`).
-fn write_target(file: &str) -> Result<String, HandOver> {
+/// The file an edit of `file` replaces: `file` itself, or the file a symbolic link at that path ends in, so that a config kept in a dotfiles repository stays a link. A path with nothing at it is not a link. Any other failure, and a link that leads nowhere or in a loop, is the system's error (`writeTarget`).
+fn write_target(file: &str) -> Result<String, Fault> {
     match fs::symlink_metadata(file) {
-        Ok(meta) if meta.file_type().is_symlink() => node::realpath(file).map_err(|_| HandOver),
+        Ok(meta) if meta.file_type().is_symlink() => {
+            // `realpathSync` stats a link before it reads it.
+            fs::metadata(file).map_err(|err| system(&err, "stat", file))?;
+            node::realpath(file).map_err(|err| system(&err, "stat", file))
+        }
         Ok(_) => Ok(file.to_owned()),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(file.to_owned()),
-        Err(_) => Err(HandOver),
+        Err(err) => Err(system(&err, "lstat", file)),
     }
 }
 
-/// The config's text, empty when there is no config yet. Every other failure to read it, and a text that is not UTF-8, is a hand-over: an edit of a config that could not be read would replace it, and node reads bad bytes as U+FFFD and writes that back (`readText`).
-fn read_text(file: &str) -> Result<String, HandOver> {
-    match fs::read(file) {
-        Ok(bytes) => String::from_utf8(bytes).map_err(|_| HandOver),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(String::new()),
-        Err(_) => Err(HandOver),
-    }
+/// The config's text, empty when there is no config yet. Every other failure to read it is the system's error: an edit of a config that could not be read would replace it. Bytes that are not UTF-8 are read as U+FFFD and written back so (`readText`).
+fn read_text(file: &str) -> Result<String, Fault> {
+    node::read_utf8(file)
+        .map(Option::unwrap_or_default)
+        .map_err(Fault)
 }
 
-/// Replace `target` with `text`: the directory made if it is not there, the text written to `<target>.<pid>.tmp` and renamed over it (`save` and `writeAtomic`). A write or a rename that fails removes the temporary file and hands the call over, so the directory is as node finds it. `write` and `rename` are `fs::write` and `fs::rename`, parameters so a test can make either fail.
+/// Replace `target` with `text`: the directory made if it is not there, the text written to `<target>.<pid>.tmp` and renamed over it (`save` and `writeAtomic`). A write or a rename that fails removes the temporary file and is the system's error. `write` and `rename` are `fs::write` and `fs::rename`, parameters so a test can make either fail.
 fn save(
     target: &str,
     text: &str,
     write: impl FnOnce(&str, &str) -> io::Result<()>,
     rename: impl FnOnce(&str, &str) -> io::Result<()>,
-) -> Result<(), HandOver> {
+) -> Result<(), Fault> {
     if let Some(dir) = Path::new(target).parent() {
-        fs::create_dir_all(dir).map_err(|_| HandOver)?;
+        let dir = dir.display().to_string();
+        fs::create_dir_all(&dir).map_err(|err| system(&err, "mkdir", &dir))?;
     }
     let temporary = format!("{target}.{}.tmp", std::process::id());
-    if write(&temporary, text)
-        .and_then(|()| rename(&temporary, target))
-        .is_err()
-    {
+    let fault = write(&temporary, text)
+        .map_err(|err| system(&err, "open", &temporary))
+        .and_then(|()| {
+            rename(&temporary, target)
+                .map_err(|err| system(&err, "rename", &format!("{temporary}' -> '{target}")))
+        })
+        .err();
+    if let Some(fault) = fault {
         let _ = fs::remove_file(&temporary);
-        return Err(HandOver);
+        return Err(fault);
     }
     Ok(())
 }
@@ -367,14 +405,14 @@ mod tests {
             },
             |a, b| fs::rename(a, b),
         );
-        assert_eq!(torn, Err(HandOver));
+        assert!(torn.is_err());
         let unrenamed = save(
             &file,
             "new\n",
             |p, t| fs::write(p, t),
             |_, _| Err(io::Error::other("busy")),
         );
-        assert_eq!(unrenamed, Err(HandOver));
+        assert!(unrenamed.is_err());
 
         assert_eq!(listing(scratch.dir()), ["config.toml"]);
         assert_eq!(fs::read_to_string(&file).unwrap(), "keep = 1\n");
@@ -444,13 +482,13 @@ mod tests {
         let scratch = Scratch::new();
         let file = config_in(&scratch);
         symlink("missing.toml", &file).unwrap();
-        assert_eq!(add(&file, "k", "pkg"), Err(HandOver));
-        assert_eq!(remove(&file, "k"), Err(HandOver));
+        assert!(add(&file, "k", "pkg").is_err());
+        assert!(remove(&file, "k").is_err());
         assert_eq!(listing(scratch.dir()), ["config.toml"]);
 
         fs::remove_file(&file).unwrap();
         symlink("config.toml", &file).unwrap();
-        assert_eq!(add(&file, "k", "pkg"), Err(HandOver));
+        assert!(add(&file, "k", "pkg").is_err());
         assert_eq!(listing(scratch.dir()), ["config.toml"]);
     }
 
@@ -468,9 +506,9 @@ mod tests {
         symlink("link1", &file).unwrap();
 
         // The kernel may follow 40 links, as on Linux, so the limit of `realpath` is what hands this over there.
-        assert_eq!(write_target(&file), Err(HandOver));
-        assert_eq!(add(&file, "new", "pkg"), Err(HandOver));
-        assert_eq!(remove(&file, "old"), Err(HandOver));
+        assert!(write_target(&file).is_err());
+        assert!(add(&file, "new", "pkg").is_err());
+        assert!(remove(&file, "old").is_err());
         assert_eq!(
             fs::read_to_string(&real).unwrap(),
             "[plugins.old]\nfrom = \"pkg\"\n"
@@ -488,8 +526,8 @@ mod tests {
         // A directory in the config's place.
         let file = config_in(&scratch);
         fs::create_dir(&file).unwrap();
-        assert_eq!(add(&file, "k", "pkg"), Err(HandOver));
-        assert_eq!(remove(&file, "k"), Err(HandOver));
+        assert!(add(&file, "k", "pkg").is_err());
+        assert!(remove(&file, "k").is_err());
         assert!(fs::metadata(&file).unwrap().is_dir());
         assert_eq!(listing(scratch.dir()), ["config.toml"]);
         fs::remove_dir(&file).unwrap();
@@ -500,8 +538,8 @@ mod tests {
         }
         fs::write(&file, "[plugins.k]\nfrom = \"x\"\n").unwrap();
         fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).unwrap();
-        assert_eq!(add(&file, "other", "pkg"), Err(HandOver));
-        assert_eq!(remove(&file, "k"), Err(HandOver));
+        assert!(add(&file, "other", "pkg").is_err());
+        assert!(remove(&file, "k").is_err());
         fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
         assert_eq!(
             fs::read_to_string(&file).unwrap(),
@@ -511,15 +549,14 @@ mod tests {
     }
 
     #[test]
-    fn a_config_that_is_not_utf8_is_node_s() {
+    fn a_config_that_is_not_utf8_is_read_with_the_replacement_character() {
         let scratch = Scratch::new();
         let file = config_in(&scratch);
         fs::write(&file, b"# \xff\n[plugins.k]\nfrom = \"x\"\n").unwrap();
-        assert_eq!(add(&file, "other", "pkg"), Err(HandOver));
-        assert_eq!(remove(&file, "k"), Err(HandOver));
+        assert_eq!(add(&file, "other", "pkg"), Ok(Added::Written));
         assert_eq!(
-            fs::read(&file).unwrap(),
-            b"# \xff\n[plugins.k]\nfrom = \"x\"\n"
+            fs::read_to_string(&file).unwrap(),
+            "# \u{FFFD}\n[plugins.k]\nfrom = \"x\"\n\n[plugins.other]\nfrom = \"pkg\"\n"
         );
     }
 
@@ -541,9 +578,9 @@ mod tests {
 
     #[test]
     fn a_zero_and_a_negative_zero_are_not_the_same_value_and_an_integer_is_its_float() {
-        let zero = parse("z = 0.0\n").unwrap();
-        let negative = parse("z = -0.0\n").unwrap();
-        let integer = parse("z = 0\n").unwrap();
+        let zero = parse("f", "z = 0.0\n", "").unwrap();
+        let negative = parse("f", "z = -0.0\n", "").unwrap();
+        let integer = parse("f", "z = 0\n", "").unwrap();
         assert!(!same_table(Some(&zero), Some(&negative), None));
         assert!(same_table(Some(&zero), Some(&integer), None));
     }

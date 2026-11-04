@@ -600,8 +600,8 @@ fn the_plugin_calls_node_keeps_reach_it_with_their_arguments() {
 }
 
 #[test]
-fn a_plugin_argument_that_is_not_utf8_is_forwarded_whole_not_decoded_lossily() {
-    // `plugin add` and `plugin remove` are served here, and a name or path that is not UTF-8 is node's to read: a lossy decoding would write a different key or `from` than node does. The group is registered with `lossy_args: false`, so the call must arrive at node unchanged, and before anything is written.
+fn a_plugin_argument_that_is_not_utf8_is_read_lossily_and_never_reaches_node() {
+    // A name or path that is not UTF-8 is decoded with U+FFFD for each bad byte, as node decodes `process.argv`, and the call is answered here.
     let checkout = Checkout::new("plugin-bytes");
     for verb in ["add", "remove"] {
         let _ = fs::remove_file(&checkout.argv);
@@ -612,24 +612,15 @@ fn a_plugin_argument_that_is_not_utf8_is_forwarded_whole_not_decoded_lossily() {
             .arg("plugin")
             .arg(verb)
             .arg(OsStr::from_bytes(b"\xff\xfe")));
-        assert_eq!(out.status.code(), Some(0), "{verb}");
-        let recorded = fs::read(&checkout.argv).unwrap();
-        let expected = format!("arg=plugin\narg={verb}\narg=");
-        assert!(
-            recorded.ends_with(&[expected.as_bytes(), b"\xff\xfe\n"].concat()),
-            "{verb}: {:?}",
-            String::from_utf8_lossy(&recorded)
-        );
-        assert!(
-            !checkout.root.join("config").exists(),
-            "{verb} wrote before it handed over"
-        );
+        assert!(!checkout.argv.exists(), "{verb} reached node");
+        let said = String::from_utf8_lossy(&[out.stdout, out.stderr].concat()).into_owned();
+        assert!(said.contains("\u{fffd}\u{fffd}"), "{verb}: {said}");
     }
 }
 
 #[test]
-fn the_session_calls_node_keeps_reach_it_with_their_arguments() {
-    // `session` is a group that serves some of its verbs and hands the rest to node: a bare `session`, an unknown verb and a served verb whose arguments the grammar does not read (`open --bogus`, `prompt --bogus`), each with every argument as it was typed and nothing written before.
+fn no_session_call_reaches_node() {
+    // A bare `session`, an unknown verb and a served verb whose arguments do not parse are answered here, with node's usage exit and nothing written.
     let checkout = Checkout::new("session-declines");
     for args in [
         &["session"][..],
@@ -646,31 +637,19 @@ fn the_session_calls_node_keeps_reach_it_with_their_arguments() {
             .env("TAGENTS_CONFIG_DIR", checkout.root.join("config"))
             .args(args)
             .current_dir(&checkout.root));
-        assert_eq!(out.status.code(), Some(0), "{args:?}");
-        let recorded = checkout.recorded();
-        let expected: Vec<String> = args.iter().map(|a| format!("arg={a}")).collect();
-        assert_eq!(
-            recorded[3..],
-            [vec![format!("arg={}", checkout.cli())], expected].concat()[..],
-            "{args:?}"
-        );
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        assert!(!checkout.argv.exists(), "{args:?} reached node");
         assert!(
             !checkout.root.join("state").exists(),
-            "{args:?} wrote before it handed over"
+            "{args:?} wrote before it failed"
         );
     }
 }
 
 #[test]
-fn a_session_argument_that_is_not_utf8_is_forwarded_whole_not_decoded_lossily() {
-    // A cwd or a reference that is not UTF-8 is node's to read: a lossy decoding would look at another directory or session than the one that was typed. The group is registered with `lossy_args: false`, so the call must arrive at node unchanged.
+fn a_session_argument_that_is_not_utf8_is_read_lossily_and_never_reaches_node() {
     let checkout = Checkout::new("session-bytes");
-    for words in [
-        &["open", "--cwd"][..],
-        &["last"],
-        &["list", "--label"],
-        &["abort"],
-    ] {
+    for words in [&["last"][..], &["list", "--label"], &["abort"]] {
         let _ = fs::remove_file(&checkout.argv);
         let out = run(checkout
             .command()
@@ -679,23 +658,8 @@ fn a_session_argument_that_is_not_utf8_is_forwarded_whole_not_decoded_lossily() 
             .arg("session")
             .args(words)
             .arg(OsStr::from_bytes(b"\xff\xfe")));
-        assert_eq!(out.status.code(), Some(0), "{words:?}");
-        let recorded = fs::read(&checkout.argv).unwrap();
-        let typed: String = words.iter().map(|w| format!("arg={w}\n")).collect();
-        let expected = [
-            format!("arg=session\n{typed}arg=").as_bytes(),
-            b"\xff\xfe\n",
-        ]
-        .concat();
-        assert!(
-            recorded.ends_with(&expected),
-            "{words:?}: {:?}",
-            String::from_utf8_lossy(&recorded)
-        );
-        assert!(
-            !checkout.root.join("state").exists(),
-            "{words:?} wrote before it handed over"
-        );
+        assert!(!checkout.argv.exists(), "{words:?} reached node");
+        assert_ne!(out.status.code(), Some(127), "{words:?}");
     }
 }
 
@@ -750,39 +714,22 @@ fn a_node_that_cannot_run_is_exit_127_or_126() {
 }
 
 #[test]
-fn a_session_call_for_node_with_no_node_gets_the_front_doors_error() {
+fn a_session_call_needs_no_node() {
     let checkout = Checkout::new("session-no-node");
     for args in [
         &["session"][..],
         &["session", "bogus"],
         &["session", "open", "--bogus"],
-        // A child's `PATH` begins with the directory of node, so a turn is node's to run, and with no node nothing runs it.
-        &["session", "prompt", "s-1", "go"],
     ] {
-        let pinned = run(checkout
+        let out = run(checkout
             .command()
             .env("TAGENTS_NODE", checkout.root.join("no-such-node"))
-            .args(args));
-        assert_eq!(pinned.status.code(), Some(127), "{args:?}");
-        assert_eq!(pinned.stdout, b"", "{args:?}");
-        let said = String::from_utf8_lossy(&pinned.stderr);
-        assert!(
-            said.starts_with("tagents-core: cannot run ") && said.contains("no-such-node"),
-            "{args:?}: {said}"
-        );
-
-        let on_path = run(checkout
-            .command()
-            .env_remove("TAGENTS_NODE")
             .env("PATH", checkout.root.join("no-such-directory"))
             .args(args));
-        assert_eq!(on_path.status.code(), Some(127), "{args:?}");
-        assert_eq!(on_path.stdout, b"", "{args:?}");
-        let said = String::from_utf8_lossy(&on_path.stderr);
-        assert!(
-            said.starts_with("tagents-core: cannot run node: "),
-            "{args:?}: {said}"
-        );
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        let said = String::from_utf8_lossy(&out.stderr);
+        assert!(!said.contains("cannot run"), "{args:?}: {said}");
+        assert!(!checkout.argv.exists(), "{args:?}");
     }
 }
 

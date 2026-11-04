@@ -2,7 +2,8 @@
 //!
 //! A verb the data file marks `impl: "rust"` is served here; every other word (an unported verb, help, a plugin's verb, a word nobody knows) is handed to the node CLI with the same arguments, environment and stdio, and the exit code is the node CLI's own, because the process is replaced, not waited for.
 //! The dispatch is by the first word, so a group of verbs is served wholly by one program: `sessions` and its misspellings behave as they always did, in either implementation.
-//! A group may decline: `Group::run` answers `None` for a call it cannot prove identical to node's (a verb that stays with node, an unknown verb, an argument outside what the group parses), and `None` is the same hand-over as a word nobody serves, made before the group has written anything.
+//! A group answers every call of its verbs, with `Some`. Only `plugin` may decline, with `None`, for what stays with node: `plugin list`, a bare `plugin` and a word of a plugin. An argument that is not UTF-8 is read with U+FFFD for each bad byte, as the node CLI's `process.argv` does.
+//! No word, `help`, `--help` and `-h` print the usage line.
 
 use std::{
     ffi::{OsStr, OsString},
@@ -13,7 +14,9 @@ use std::{
 use tagents_spec::Spec;
 
 use crate::{
-    doctor, knowledge, mcp, node,
+    doctor, knowledge, mcp,
+    messages::Locale,
+    node,
     notify::service,
     plugin, session,
     sessions::{self, Output},
@@ -32,8 +35,6 @@ const VERSION_LINE: &str = concat!("tagents-core ", env!("CARGO_PKG_VERSION"), "
 struct Group {
     word: &'static str,
     verbs: &'static [&'static [&'static str]],
-    /// `true` reads an argument that is not UTF-8 with U+FFFD for each bad byte, as the node CLI's `process.argv` does. `false` hands such a call to node whole, because a group that works on paths must not look at a file other than the one that was typed.
-    lossy_args: bool,
     /// `None` hands the call to the node CLI. It is returned before anything is written.
     run: fn(&[String], &Context) -> Option<Output>,
 }
@@ -42,28 +43,22 @@ const GROUPS: &[Group] = &[
     Group {
         word: "sessions",
         verbs: sessions::VERBS,
-        lossy_args: true,
         run: |argv, cx| Some(sessions::run(argv, cx)),
     },
     Group {
         word: "plugin",
         verbs: plugin::VERBS,
-        lossy_args: false,
         run: |argv, _| plugin::run(argv),
     },
     Group {
         word: "session",
         verbs: session::VERBS,
-        // A cwd or a reference is a path or an id that must not be read as another one.
-        lossy_args: false,
-        run: |argv, _| session::run(argv),
+        run: |argv, _| Some(session::run(argv)),
     },
     Group {
         word: "doctor",
         verbs: doctor::VERBS,
-        // It reads no argument, so a byte that is not UTF-8 changes nothing.
-        lossy_args: true,
-        run: |_, _| doctor::run(),
+        run: |_, _| Some(doctor::run()),
     },
 ];
 
@@ -73,6 +68,8 @@ const MCP: &str = "mcp";
 const NOTIFY_RUN: &[&str] = &["notify", "run"];
 /// The first word of the knowledge verbs, which stream or run until stopped, so they have an arm of their own. Only the words `knowledge::VERBS` names are served; every other word after `knowledge` is the node CLI's.
 const KNOWLEDGE: &str = "knowledge";
+/// The words that ask for the usage line.
+const HELP: &[&str] = &["help", "--help", "-h"];
 /// The verbs served apart from the groups.
 const STREAMING: &[&[&str]] = &[&[MCP], NOTIFY_RUN];
 
@@ -154,6 +151,23 @@ fn exec_node(relative: &str, args: &[OsString]) -> ExitCode {
     }
 }
 
+/// The usage line, with the exit code of asking for it (`help`) and of forgetting to (no word).
+fn usage(forgotten: bool) -> Output {
+    let texts = match sessions::texts(Locale::current()) {
+        Ok(texts) => texts,
+        Err(out) => return out,
+    };
+    Output {
+        stdout: format!("{}\n", texts.t("usage", &[])),
+        stderr: String::new(),
+        code: if forgotten {
+            sessions::exit::USAGE
+        } else {
+            sessions::exit::OK
+        },
+    }
+}
+
 /// The program: `args` are the words after its name.
 pub fn run(args: Vec<OsString>) -> ExitCode {
     if args.len() == 1 && args[0] == OsStr::new(VERSION_FLAG) {
@@ -191,9 +205,11 @@ pub fn run(args: Vec<OsString>) -> ExitCode {
     {
         return knowledge::run(&args[1..]);
     }
+    if args.is_empty() || first.is_some_and(|word| HELP.contains(&word)) {
+        return emit(&usage(args.is_empty()));
+    }
     let served = first
         .and_then(|first| GROUPS.iter().find(|g| g.word == first))
-        .filter(|group| group.lossy_args || args.iter().all(|a| a.to_str().is_some()))
         .and_then(|group| {
             let rest: Vec<String> = args[1..]
                 .iter()

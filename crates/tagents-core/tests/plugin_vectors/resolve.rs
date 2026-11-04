@@ -1,4 +1,4 @@
-//! The `resolve` section of the plugin vectors: the tree of packages is laid out in a scratch directory, `plugin::resolve::resolve` answers each argument as node's `resolvePluginPackage` did, or hands the call over where the design lists the class; and the name, `path.resolve` and `path.relative` twins give node's answers.
+//! The `resolve` section of the plugin vectors: the tree of packages is laid out in a scratch directory, `plugin::resolve::resolve` answers each argument as node's `resolvePluginPackage` did; and the name, `path.resolve` and `path.relative` twins give node's answers.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -33,7 +33,7 @@ fn lay_out(tree: &Value, root: &Path) {
 }
 
 #[test]
-fn every_argument_resolves_as_node_resolved_it_or_is_handed_over() {
+fn every_argument_resolves_as_node_resolved_it() {
     let vectors = section("resolve");
     let root = common::scratch("plugin-vectors-tree")
         .canonicalize()
@@ -42,7 +42,7 @@ fn every_argument_resolves_as_node_resolved_it_or_is_handed_over() {
     lay_out(&vectors["tree"], &root);
     let env = Env {
         home: format!("{root_text}/home"),
-        node_flags: false,
+        node_path: vec![],
     };
     let cases = vectors["cases"].as_array().unwrap();
     assert!(cases.len() > 60, "the vector file lost its cases");
@@ -54,10 +54,6 @@ fn every_argument_resolves_as_node_resolved_it_or_is_handed_over() {
             "{:?} from {} (node: {})",
             case["spec"], case["cwd"], case["result"]
         );
-        if case["handOver"] == true {
-            assert_eq!(answer, Err(Failure::HandOver), "{what}");
-            continue;
-        }
         let result = &case["result"];
         let text = |key: &str| result[key].as_str().unwrap().replace("<root>", root_text);
         let want = if result["ok"] == true {
@@ -77,28 +73,6 @@ fn every_argument_resolves_as_node_resolved_it_or_is_handed_over() {
         };
         assert_eq!(answer, want, "{what}");
     }
-}
-
-#[test]
-fn a_node_option_or_the_symlink_flag_hands_every_bare_name_over() {
-    let vectors = section("resolve");
-    let root = common::scratch("plugin-vectors-tree-flags")
-        .canonicalize()
-        .unwrap();
-    let root_text = root.to_str().unwrap();
-    lay_out(&vectors["tree"], &root);
-    let env = Env {
-        home: format!("{root_text}/home"),
-        node_flags: true,
-    };
-    let cwd = format!("{root_text}/proj/a/b");
-    assert_eq!(
-        resolve::resolve("plain", &cwd, &env),
-        Err(Failure::HandOver)
-    );
-    // A directory is resolved without the module algorithm, which no flag reaches.
-    let dir = format!("{root_text}/pkgs/plain");
-    assert!(resolve::resolve(&dir, &cwd, &env).is_ok());
 }
 
 #[test]

@@ -290,10 +290,32 @@ pub const ERRNOS: &[Errno] = &[
     },
 ];
 
+/// The errors a path can raise whose numbers are not the same on Linux and macOS, with the numbers of the system this is built for.
+const SYSTEM_ERRNOS: &[Errno] = &[
+    Errno {
+        number: rustix::io::Errno::LOOP.raw_os_error(),
+        code: "ELOOP",
+        message: "too many symbolic links encountered",
+    },
+    Errno {
+        number: rustix::io::Errno::NAMETOOLONG.raw_os_error(),
+        code: "ENAMETOOLONG",
+        message: "name too long",
+    },
+    Errno {
+        number: rustix::io::Errno::PERM.raw_os_error(),
+        code: "EPERM",
+        message: "operation not permitted",
+    },
+];
+
 /// The table's entry for the error's number, `None` for an error without one or one the table does not name.
 pub fn errno(err: &io::Error) -> Option<&'static Errno> {
     let number = err.raw_os_error()?;
-    ERRNOS.iter().find(|e| e.number == number)
+    ERRNOS
+        .iter()
+        .chain(SYSTEM_ERRNOS)
+        .find(|e| e.number == number)
 }
 
 /// The text of the `Error` node throws for a failed syscall: `EACCES: permission denied, open '/x'`. An error the table does not name prints what Rust says.

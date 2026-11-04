@@ -19,8 +19,33 @@ use crate::ending::Stop;
 use crate::js;
 use crate::node;
 use crate::notify::clock::{Clock, SystemClock};
+use crate::notify::log::Log;
 
 pub const LOCK_FILE: &str = "notify.lock";
+
+/// The service's lock file. It can be made before the lock is taken: `release` unlinks the file only while it names this process.
+pub struct Lock(String);
+
+impl Lock {
+    pub fn new(file: String) -> Lock {
+        Lock(file)
+    }
+
+    pub fn file(&self) -> &str {
+        &self.0
+    }
+
+    /// `releaseQuietly`: a failure is a line, never an error.
+    pub fn release(&self, log: &dyn Log) {
+        self.release_with(log, release_lock);
+    }
+
+    fn release_with(&self, log: &dyn Log, release: impl FnOnce(&str) -> Result<(), String>) {
+        if let Err(why) = release(&self.0) {
+            log.line(&["could not release the lock", &self.0, &why]);
+        }
+    }
+}
 
 /// Every pass through the lock loop costs one, the takeover pass included.
 const LOCK_TRIES: usize = 3;
@@ -225,7 +250,7 @@ fn remove(file: &str) -> Result<(), String> {
     }
 }
 
-/// Takes the lock, or says who holds it. `Err` is the text of the failure as node words it, which the service hands over with.
+/// Takes the lock, or says who holds it. `Err` is the text of the failure as node words it, which the service logs.
 pub fn take_lock(file: &str, deps: &LockDeps) -> Result<LockResult, String> {
     sweep_temp_locks(file);
     for _ in 0..LOCK_TRIES {

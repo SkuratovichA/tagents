@@ -254,7 +254,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": null,
@@ -263,7 +263,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": null,
@@ -272,42 +272,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": null,
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": null,
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": null,
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": null,
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": null,
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "empty",
@@ -316,7 +316,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
@@ -325,7 +325,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
@@ -334,42 +334,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "only-comment",
@@ -378,7 +378,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "# hi\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-comment",
@@ -387,7 +387,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "# hi\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-comment",
@@ -396,42 +396,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "# hi\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-comment",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-comment",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-comment",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-comment",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-comment",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "bom",
@@ -440,7 +440,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "﻿a = 1\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom",
@@ -449,7 +449,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "﻿a = 1\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom",
@@ -458,42 +458,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "﻿a = 1\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "crlf",
@@ -502,7 +502,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = 1\r\n[plugins.x]\r\nfrom = \"p\"\r\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf",
@@ -510,7 +510,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf",
@@ -519,7 +519,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "a = 1\r\n[plugins.x]\r\nfrom = \"p\"\r\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf",
@@ -527,35 +527,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "a = 1\r\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "lone-cr",
@@ -564,7 +564,7 @@
         "from": "/p/new",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: each key-value declaration must be followed by an end-of-line\n\n1:  a = 1\r[plugins.x]\rfrom = \"p\"\r\n         ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "lone-cr",
@@ -573,7 +573,7 @@
         "from": "/p/x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: each key-value declaration must be followed by an end-of-line\n\n1:  a = 1\r[plugins.x]\rfrom = \"p\"\r\n         ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "lone-cr",
@@ -582,7 +582,7 @@
         "from": "/p/a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: each key-value declaration must be followed by an end-of-line\n\n1:  a = 1\r[plugins.x]\rfrom = \"p\"\r\n         ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "lone-cr",
@@ -590,7 +590,7 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: each key-value declaration must be followed by an end-of-line\n\n1:  a = 1\r[plugins.x]\rfrom = \"p\"\r\n         ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "lone-cr",
@@ -598,7 +598,7 @@
         "key": "y",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: each key-value declaration must be followed by an end-of-line\n\n1:  a = 1\r[plugins.x]\rfrom = \"p\"\r\n         ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "lone-cr",
@@ -606,7 +606,7 @@
         "key": "a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: each key-value declaration must be followed by an end-of-line\n\n1:  a = 1\r[plugins.x]\rfrom = \"p\"\r\n         ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "lone-cr",
@@ -614,7 +614,7 @@
         "key": "nothing",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: each key-value declaration must be followed by an end-of-line\n\n1:  a = 1\r[plugins.x]\rfrom = \"p\"\r\n         ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "lone-cr",
@@ -622,7 +622,7 @@
         "key": "__proto__",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: each key-value declaration must be followed by an end-of-line\n\n1:  a = 1\r[plugins.x]\rfrom = \"p\"\r\n         ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dotted",
@@ -631,7 +631,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "plugins.x.from = \"p\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dotted",
@@ -639,7 +639,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dotted",
@@ -648,7 +648,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "plugins.x.from = \"p\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dotted",
@@ -656,35 +656,35 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: x is not written as a [plugins.x] section, so it cannot be removed here — remove it by hand",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dotted",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dotted",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dotted",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dotted",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "dup-key",
@@ -693,7 +693,7 @@
         "from": "/p/new",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n1:  a = 1\n2:  a = 2\n    ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-key",
@@ -702,7 +702,7 @@
         "from": "/p/x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n1:  a = 1\n2:  a = 2\n    ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-key",
@@ -711,7 +711,7 @@
         "from": "/p/a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n1:  a = 1\n2:  a = 2\n    ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-key",
@@ -719,7 +719,7 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n1:  a = 1\n2:  a = 2\n    ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-key",
@@ -727,7 +727,7 @@
         "key": "y",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n1:  a = 1\n2:  a = 2\n    ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-key",
@@ -735,7 +735,7 @@
         "key": "a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n1:  a = 1\n2:  a = 2\n    ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-key",
@@ -743,7 +743,7 @@
         "key": "nothing",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n1:  a = 1\n2:  a = 2\n    ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-key",
@@ -751,7 +751,7 @@
         "key": "__proto__",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n1:  a = 1\n2:  a = 2\n    ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-table",
@@ -760,7 +760,7 @@
         "from": "/p/new",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n2:  x = 1\n3:  [a]\n     ^\n4:  y = 2\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-table",
@@ -769,7 +769,7 @@
         "from": "/p/x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n2:  x = 1\n3:  [a]\n     ^\n4:  y = 2\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-table",
@@ -778,7 +778,7 @@
         "from": "/p/a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n2:  x = 1\n3:  [a]\n     ^\n4:  y = 2\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-table",
@@ -786,7 +786,7 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n2:  x = 1\n3:  [a]\n     ^\n4:  y = 2\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-table",
@@ -794,7 +794,7 @@
         "key": "y",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n2:  x = 1\n3:  [a]\n     ^\n4:  y = 2\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-table",
@@ -802,7 +802,7 @@
         "key": "a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n2:  x = 1\n3:  [a]\n     ^\n4:  y = 2\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-table",
@@ -810,7 +810,7 @@
         "key": "nothing",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n2:  x = 1\n3:  [a]\n     ^\n4:  y = 2\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dup-table",
@@ -818,7 +818,7 @@
         "key": "__proto__",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: trying to redefine an already defined table or value\n\n2:  x = 1\n3:  [a]\n     ^\n4:  y = 2\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "header-comment",
@@ -827,7 +827,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.x] # c\nfrom = \"p\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-comment",
@@ -835,7 +835,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-comment",
@@ -844,7 +844,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.x] # c\nfrom = \"p\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-comment",
@@ -852,35 +852,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-comment",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-comment",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-comment",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-comment",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "tab-ws",
@@ -889,7 +889,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.x]\n\tfrom = \"p\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "tab-ws",
@@ -897,7 +897,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "tab-ws",
@@ -906,7 +906,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.x]\n\tfrom = \"p\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "tab-ws",
@@ -914,35 +914,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "tab-ws",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "tab-ws",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "tab-ws",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "tab-ws",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "unicode-key",
@@ -951,7 +951,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.\"éè\"]\nfrom = \"p\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-key",
@@ -960,7 +960,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "[plugins.\"éè\"]\nfrom = \"p\"\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-key",
@@ -969,42 +969,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.\"éè\"]\nfrom = \"p\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-key",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-key",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-key",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-key",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-key",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "dates",
@@ -1013,7 +1013,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "d = 1979-05-27T07:32:00Z\nl = 1979-05-27\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dates",
@@ -1022,7 +1022,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "d = 1979-05-27T07:32:00Z\nl = 1979-05-27\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dates",
@@ -1031,42 +1031,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "d = 1979-05-27T07:32:00Z\nl = 1979-05-27\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dates",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dates",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dates",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dates",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dates",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "time-noseconds",
@@ -1075,7 +1075,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "t = 07:32\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "time-noseconds",
@@ -1084,7 +1084,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "t = 07:32\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "time-noseconds",
@@ -1093,42 +1093,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "t = 07:32\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "time-noseconds",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "time-noseconds",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "time-noseconds",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "time-noseconds",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "time-noseconds",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "bigint",
@@ -1137,7 +1137,7 @@
         "from": "/p/new",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: integer value cannot be represented losslessly\n\n1:  a = 9007199254740993\n        ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "bigint",
@@ -1146,7 +1146,7 @@
         "from": "/p/x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: integer value cannot be represented losslessly\n\n1:  a = 9007199254740993\n        ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "bigint",
@@ -1155,7 +1155,7 @@
         "from": "/p/a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: integer value cannot be represented losslessly\n\n1:  a = 9007199254740993\n        ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "bigint",
@@ -1163,7 +1163,7 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: integer value cannot be represented losslessly\n\n1:  a = 9007199254740993\n        ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "bigint",
@@ -1171,7 +1171,7 @@
         "key": "y",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: integer value cannot be represented losslessly\n\n1:  a = 9007199254740993\n        ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "bigint",
@@ -1179,7 +1179,7 @@
         "key": "a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: integer value cannot be represented losslessly\n\n1:  a = 9007199254740993\n        ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "bigint",
@@ -1187,7 +1187,7 @@
         "key": "nothing",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: integer value cannot be represented losslessly\n\n1:  a = 9007199254740993\n        ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "bigint",
@@ -1195,7 +1195,7 @@
         "key": "__proto__",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: integer value cannot be represented losslessly\n\n1:  a = 9007199254740993\n        ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "overflow",
@@ -1204,7 +1204,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = 1e400\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "overflow",
@@ -1213,7 +1213,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "a = 1e400\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "overflow",
@@ -1222,42 +1222,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "a = 1e400\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "overflow",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "overflow",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "overflow",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "overflow",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "overflow",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "esc-e",
@@ -1266,7 +1266,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = \"\\e\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-e",
@@ -1275,7 +1275,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "a = \"\\e\"\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-e",
@@ -1284,42 +1284,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "a = \"\\e\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-e",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-e",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-e",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-e",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-e",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "esc-x",
@@ -1328,7 +1328,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = \"\\x41\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-x",
@@ -1337,7 +1337,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "a = \"\\x41\"\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-x",
@@ -1346,42 +1346,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "a = \"\\x41\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-x",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-x",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-x",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-x",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "esc-x",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "ctrl-del",
@@ -1390,7 +1390,7 @@
         "from": "/p/new",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"xy\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "ctrl-del",
@@ -1399,7 +1399,7 @@
         "from": "/p/x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"xy\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "ctrl-del",
@@ -1408,7 +1408,7 @@
         "from": "/p/a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"xy\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "ctrl-del",
@@ -1416,7 +1416,7 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"xy\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "ctrl-del",
@@ -1424,7 +1424,7 @@
         "key": "y",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"xy\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "ctrl-del",
@@ -1432,7 +1432,7 @@
         "key": "a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"xy\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "ctrl-del",
@@ -1440,7 +1440,7 @@
         "key": "nothing",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"xy\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "ctrl-del",
@@ -1448,7 +1448,7 @@
         "key": "__proto__",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"xy\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul",
@@ -1457,7 +1457,7 @@
         "from": "/p/new",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"x\u0000y\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul",
@@ -1466,7 +1466,7 @@
         "from": "/p/x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"x\u0000y\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul",
@@ -1475,7 +1475,7 @@
         "from": "/p/a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"x\u0000y\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul",
@@ -1483,7 +1483,7 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"x\u0000y\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul",
@@ -1491,7 +1491,7 @@
         "key": "y",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"x\u0000y\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul",
@@ -1499,7 +1499,7 @@
         "key": "a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"x\u0000y\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul",
@@ -1507,7 +1507,7 @@
         "key": "nothing",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"x\u0000y\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul",
@@ -1515,7 +1515,7 @@
         "key": "__proto__",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in strings\n\n1:  a = \"x\u0000y\"\n          ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul-comment",
@@ -1524,7 +1524,7 @@
         "from": "/p/new",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in comments\n\n1:  # x\u0000y\n       ^\n2:  a = 1\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul-comment",
@@ -1533,7 +1533,7 @@
         "from": "/p/x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in comments\n\n1:  # x\u0000y\n       ^\n2:  a = 1\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul-comment",
@@ -1542,7 +1542,7 @@
         "from": "/p/a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in comments\n\n1:  # x\u0000y\n       ^\n2:  a = 1\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul-comment",
@@ -1550,7 +1550,7 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in comments\n\n1:  # x\u0000y\n       ^\n2:  a = 1\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul-comment",
@@ -1558,7 +1558,7 @@
         "key": "y",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in comments\n\n1:  # x\u0000y\n       ^\n2:  a = 1\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul-comment",
@@ -1566,7 +1566,7 @@
         "key": "a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in comments\n\n1:  # x\u0000y\n       ^\n2:  a = 1\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul-comment",
@@ -1574,7 +1574,7 @@
         "key": "nothing",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in comments\n\n1:  # x\u0000y\n       ^\n2:  a = 1\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "nul-comment",
@@ -1582,7 +1582,7 @@
         "key": "__proto__",
         "outcome": "error",
         "error": "<dir>/config.toml: Invalid TOML document: control characters are not allowed in comments\n\n1:  # x\u0000y\n       ^\n2:  a = 1\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "invalid-utf8-comment",
@@ -1591,7 +1591,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "# caf�\na = 1\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "invalid-utf8-comment",
@@ -1600,7 +1600,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "# caf�\na = 1\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "invalid-utf8-comment",
@@ -1609,42 +1609,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "# caf�\na = 1\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "invalid-utf8-comment",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "invalid-utf8-comment",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "invalid-utf8-comment",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "invalid-utf8-comment",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "invalid-utf8-comment",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "inline-newline",
@@ -1653,7 +1653,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = {\nb = 1,\nc = 2,\n}\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "inline-newline",
@@ -1662,7 +1662,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "a = {\nb = 1,\nc = 2,\n}\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "inline-newline",
@@ -1671,42 +1671,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "a = {\nb = 1,\nc = 2,\n}\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "inline-newline",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "inline-newline",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "inline-newline",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "inline-newline",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "inline-newline",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "multiline-array-header-lookalike",
@@ -1715,7 +1715,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "x = [\n[1],\n[2]\n]\n[plugins.y]\nfrom = \"p\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "multiline-array-header-lookalike",
@@ -1724,7 +1724,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "x = [\n[1],\n[2]\n]\n[plugins.y]\nfrom = \"p\"\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "multiline-array-header-lookalike",
@@ -1733,14 +1733,14 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "x = [\n[1],\n[2]\n]\n[plugins.y]\nfrom = \"p\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "multiline-array-header-lookalike",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "multiline-array-header-lookalike",
@@ -1748,28 +1748,28 @@
         "key": "y",
         "outcome": "removed",
         "text": "x = [\n[1],\n[2]\n]\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "multiline-array-header-lookalike",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "multiline-array-header-lookalike",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "multiline-array-header-lookalike",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "plugins-string",
@@ -1778,7 +1778,7 @@
         "from": "/p/new",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-string",
@@ -1787,7 +1787,7 @@
         "from": "/p/x",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-string",
@@ -1796,7 +1796,7 @@
         "from": "/p/a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-string",
@@ -1804,7 +1804,7 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-string",
@@ -1812,7 +1812,7 @@
         "key": "y",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-string",
@@ -1820,7 +1820,7 @@
         "key": "a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-string",
@@ -1828,7 +1828,7 @@
         "key": "nothing",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-string",
@@ -1836,7 +1836,7 @@
         "key": "__proto__",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-array",
@@ -1845,7 +1845,7 @@
         "from": "/p/new",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-array",
@@ -1854,7 +1854,7 @@
         "from": "/p/x",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-array",
@@ -1863,7 +1863,7 @@
         "from": "/p/a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-array",
@@ -1871,7 +1871,7 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-array",
@@ -1879,7 +1879,7 @@
         "key": "y",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-array",
@@ -1887,7 +1887,7 @@
         "key": "a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-array",
@@ -1895,7 +1895,7 @@
         "key": "nothing",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-array",
@@ -1903,7 +1903,7 @@
         "key": "__proto__",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-aot",
@@ -1912,7 +1912,7 @@
         "from": "/p/new",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-aot",
@@ -1921,7 +1921,7 @@
         "from": "/p/x",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-aot",
@@ -1930,7 +1930,7 @@
         "from": "/p/a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-aot",
@@ -1938,7 +1938,7 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-aot",
@@ -1946,7 +1946,7 @@
         "key": "y",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-aot",
@@ -1954,7 +1954,7 @@
         "key": "a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-aot",
@@ -1962,7 +1962,7 @@
         "key": "nothing",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-aot",
@@ -1970,7 +1970,7 @@
         "key": "__proto__",
         "outcome": "error",
         "error": "<dir>/config.toml: plugins must be a table of tables",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-inline",
@@ -1979,7 +1979,7 @@
         "from": "/p/new",
         "outcome": "error",
         "error": "<dir>/config.toml: the edit would not parse: Invalid TOML document: trying to redefine an already defined table or value\n\n3:  [plugins.new]\n     ^\n4:  from = \"/p/new\"\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-inline",
@@ -1987,7 +1987,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "plugins-inline",
@@ -1996,7 +1996,7 @@
         "from": "/p/a.b",
         "outcome": "error",
         "error": "<dir>/config.toml: the edit would not parse: Invalid TOML document: trying to redefine an already defined table or value\n\n3:  [plugins.\"a.b\"]\n     ^\n4:  from = \"/p/a.b\"\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-inline",
@@ -2004,35 +2004,35 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: x is not written as a [plugins.x] section, so it cannot be removed here — remove it by hand",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "plugins-inline",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "plugins-inline",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "plugins-inline",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "plugins-inline",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "aligned-comments",
@@ -2041,7 +2041,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "# tagents config\n# the plugins I use\n\n[plugins.x]   # telegram\nfrom = \"/p/x\"   # where it lives\n\n[other]\nkey      = \"value\"    # aligned\nlonger_k = 2\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "aligned-comments",
@@ -2049,7 +2049,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "aligned-comments",
@@ -2058,7 +2058,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "# tagents config\n# the plugins I use\n\n[plugins.x]   # telegram\nfrom = \"/p/x\"   # where it lives\n\n[other]\nkey      = \"value\"    # aligned\nlonger_k = 2\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "aligned-comments",
@@ -2066,35 +2066,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "# tagents config\n# the plugins I use\n\n[other]\nkey      = \"value\"    # aligned\nlonger_k = 2\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "aligned-comments",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "aligned-comments",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "aligned-comments",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "aligned-comments",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "no-final-newline",
@@ -2103,7 +2103,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = 1\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline",
@@ -2111,7 +2111,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline",
@@ -2120,7 +2120,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "a = 1\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline",
@@ -2128,35 +2128,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "a = 1\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
@@ -2165,7 +2165,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
@@ -2174,7 +2174,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
@@ -2183,42 +2183,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "only-blank-lines",
@@ -2227,7 +2227,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "\n\n   \n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-blank-lines",
@@ -2236,7 +2236,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "\n\n   \n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-blank-lines",
@@ -2245,42 +2245,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "\n\n   \n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-blank-lines",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-blank-lines",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-blank-lines",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-blank-lines",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "only-blank-lines",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "other-sections",
@@ -2289,7 +2289,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[server]\nport = 1\n[server.tls]\non = true\n[plugins.x]\nfrom = \"/p/x\"\n[plugins.x.opts]\na = 1\n[plugins.y]\nfrom = \"/p/y\"\n[tail]\nz = 1\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "other-sections",
@@ -2297,7 +2297,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "other-sections",
@@ -2306,7 +2306,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[server]\nport = 1\n[server.tls]\non = true\n[plugins.x]\nfrom = \"/p/x\"\n[plugins.x.opts]\na = 1\n[plugins.y]\nfrom = \"/p/y\"\n[tail]\nz = 1\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "other-sections",
@@ -2314,7 +2314,7 @@
         "key": "x",
         "outcome": "removed",
         "text": "[server]\nport = 1\n[server.tls]\non = true\n[plugins.y]\nfrom = \"/p/y\"\n[tail]\nz = 1\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "other-sections",
@@ -2322,28 +2322,28 @@
         "key": "y",
         "outcome": "removed",
         "text": "[server]\nport = 1\n[server.tls]\non = true\n[plugins.x]\nfrom = \"/p/x\"\n[plugins.x.opts]\na = 1\n[tail]\nz = 1\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "other-sections",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "other-sections",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "other-sections",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
@@ -2352,7 +2352,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
@@ -2360,7 +2360,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
@@ -2369,7 +2369,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
@@ -2377,35 +2377,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "a = 1\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "two-blank-lines-before",
@@ -2414,7 +2414,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = 1\n\n\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "two-blank-lines-before",
@@ -2422,7 +2422,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "two-blank-lines-before",
@@ -2431,7 +2431,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "a = 1\n\n\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "two-blank-lines-before",
@@ -2439,35 +2439,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "a = 1\n\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "two-blank-lines-before",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "two-blank-lines-before",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "two-blank-lines-before",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "two-blank-lines-before",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "blank-line-after-entry",
@@ -2476,7 +2476,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\n\n[b]\nk = 1\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "blank-line-after-entry",
@@ -2484,7 +2484,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "blank-line-after-entry",
@@ -2493,7 +2493,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\n\n[b]\nk = 1\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "blank-line-after-entry",
@@ -2501,35 +2501,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "[b]\nk = 1\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "blank-line-after-entry",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "blank-line-after-entry",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "blank-line-after-entry",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "blank-line-after-entry",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "comment-above-next-header",
@@ -2538,7 +2538,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\n# about y\n[plugins.y]\nfrom = \"/p/y\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-next-header",
@@ -2546,7 +2546,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-next-header",
@@ -2555,7 +2555,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\n# about y\n[plugins.y]\nfrom = \"/p/y\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-next-header",
@@ -2563,7 +2563,7 @@
         "key": "x",
         "outcome": "removed",
         "text": "# about y\n[plugins.y]\nfrom = \"/p/y\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-next-header",
@@ -2571,28 +2571,28 @@
         "key": "y",
         "outcome": "removed",
         "text": "[plugins.x]\nfrom = \"/p/x\"\n# about y\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-next-header",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-next-header",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-next-header",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "comment-above-header",
@@ -2601,7 +2601,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = 1\n# about x\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-header",
@@ -2609,7 +2609,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-header",
@@ -2618,7 +2618,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "a = 1\n# about x\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-header",
@@ -2626,35 +2626,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "a = 1\n# about x\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-header",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-header",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-header",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-above-header",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "comment-lines-with-blank-between",
@@ -2663,7 +2663,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\n# one\n\n# two\n[plugins.y]\nfrom = \"/p/y\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-lines-with-blank-between",
@@ -2671,7 +2671,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-lines-with-blank-between",
@@ -2680,7 +2680,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\n# one\n\n# two\n[plugins.y]\nfrom = \"/p/y\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-lines-with-blank-between",
@@ -2688,7 +2688,7 @@
         "key": "x",
         "outcome": "removed",
         "text": "# two\n[plugins.y]\nfrom = \"/p/y\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-lines-with-blank-between",
@@ -2696,28 +2696,28 @@
         "key": "y",
         "outcome": "removed",
         "text": "[plugins.x]\nfrom = \"/p/x\"\n# one\n\n# two\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-lines-with-blank-between",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-lines-with-blank-between",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "comment-lines-with-blank-between",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "indented-header",
@@ -2726,7 +2726,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "  [plugins.x]\n  from = \"/p/x\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "indented-header",
@@ -2734,7 +2734,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "indented-header",
@@ -2743,7 +2743,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "  [plugins.x]\n  from = \"/p/x\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "indented-header",
@@ -2751,35 +2751,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "indented-header",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "indented-header",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "indented-header",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "indented-header",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "header-spaces-and-quotes",
@@ -2788,7 +2788,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[ plugins . \"x\" ]\nfrom = \"/p/x\"\n['plugins'.'y']\nfrom = \"/p/y\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-spaces-and-quotes",
@@ -2796,7 +2796,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-spaces-and-quotes",
@@ -2805,7 +2805,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[ plugins . \"x\" ]\nfrom = \"/p/x\"\n['plugins'.'y']\nfrom = \"/p/y\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-spaces-and-quotes",
@@ -2813,7 +2813,7 @@
         "key": "x",
         "outcome": "removed",
         "text": "['plugins'.'y']\nfrom = \"/p/y\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-spaces-and-quotes",
@@ -2821,28 +2821,28 @@
         "key": "y",
         "outcome": "removed",
         "text": "[ plugins . \"x\" ]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-spaces-and-quotes",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-spaces-and-quotes",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-spaces-and-quotes",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "array-of-tables-entry",
@@ -2851,7 +2851,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[[plugins.x]]\nfrom = \"/p/x\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "array-of-tables-entry",
@@ -2859,7 +2859,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "array-of-tables-entry",
@@ -2868,7 +2868,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[[plugins.x]]\nfrom = \"/p/x\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "array-of-tables-entry",
@@ -2876,35 +2876,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "array-of-tables-entry",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "array-of-tables-entry",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "array-of-tables-entry",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "array-of-tables-entry",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "inline-entry",
@@ -2913,7 +2913,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins]\nx = { from = \"/p/x\" }\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "inline-entry",
@@ -2921,7 +2921,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "inline-entry",
@@ -2930,7 +2930,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins]\nx = { from = \"/p/x\" }\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "inline-entry",
@@ -2938,35 +2938,35 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: x is not written as a [plugins.x] section, so it cannot be removed here — remove it by hand",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "inline-entry",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "inline-entry",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "inline-entry",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "inline-entry",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "dotted-under-plugins",
@@ -2975,7 +2975,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins]\nx.from = \"/p/x\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dotted-under-plugins",
@@ -2983,7 +2983,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dotted-under-plugins",
@@ -2992,7 +2992,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins]\nx.from = \"/p/x\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dotted-under-plugins",
@@ -3000,35 +3000,35 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: x is not written as a [plugins.x] section, so it cannot be removed here — remove it by hand",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "dotted-under-plugins",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dotted-under-plugins",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dotted-under-plugins",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "dotted-under-plugins",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "plugins-header-only",
@@ -3037,7 +3037,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins]\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "plugins-header-only",
@@ -3046,7 +3046,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "[plugins]\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "plugins-header-only",
@@ -3055,42 +3055,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins]\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "plugins-header-only",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "plugins-header-only",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "plugins-header-only",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "plugins-header-only",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "plugins-header-only",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "quoted-key",
@@ -3099,7 +3099,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.\"a.b\"]\nfrom = \"/p/ab\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "quoted-key",
@@ -3108,7 +3108,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "[plugins.\"a.b\"]\nfrom = \"/p/ab\"\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "quoted-key",
@@ -3116,21 +3116,21 @@
         "key": "a.b",
         "from": "/p/a.b",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "quoted-key",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "quoted-key",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "quoted-key",
@@ -3138,21 +3138,21 @@
         "key": "a.b",
         "outcome": "removed",
         "text": "",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "quoted-key",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "quoted-key",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "literal-string-from",
@@ -3161,7 +3161,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = '/p/x'\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "literal-string-from",
@@ -3169,7 +3169,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "literal-string-from",
@@ -3178,7 +3178,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = '/p/x'\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "literal-string-from",
@@ -3186,35 +3186,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "literal-string-from",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "literal-string-from",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "literal-string-from",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "literal-string-from",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "unicode-from",
@@ -3223,7 +3223,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/é😀\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-from",
@@ -3231,7 +3231,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-from",
@@ -3240,7 +3240,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/é😀\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-from",
@@ -3248,35 +3248,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-from",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-from",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-from",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "unicode-from",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "crlf-entry-at-end",
@@ -3285,7 +3285,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = 1\r\n\r\n[plugins.x]\r\nfrom = \"/p/x\"\r\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-entry-at-end",
@@ -3293,7 +3293,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-entry-at-end",
@@ -3302,7 +3302,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "a = 1\r\n\r\n[plugins.x]\r\nfrom = \"/p/x\"\r\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-entry-at-end",
@@ -3310,35 +3310,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "a = 1\r\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-entry-at-end",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-entry-at-end",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-entry-at-end",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-entry-at-end",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "crlf-no-final-newline",
@@ -3347,7 +3347,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = 1\r\n[plugins.x]\r\nfrom = \"/p/x\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-no-final-newline",
@@ -3355,7 +3355,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-no-final-newline",
@@ -3364,7 +3364,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "a = 1\r\n[plugins.x]\r\nfrom = \"/p/x\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-no-final-newline",
@@ -3372,35 +3372,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "a = 1\r\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-no-final-newline",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-no-final-newline",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-no-final-newline",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "crlf-no-final-newline",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "bom-entry",
@@ -3409,7 +3409,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "﻿[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom-entry",
@@ -3417,7 +3417,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom-entry",
@@ -3426,7 +3426,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "﻿[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom-entry",
@@ -3434,35 +3434,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom-entry",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom-entry",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom-entry",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "bom-entry",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "trailing-white-space",
@@ -3471,7 +3471,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "x = 1   \n   \n[plugins.x]  \nfrom = \"/p/x\"\n   \n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "trailing-white-space",
@@ -3479,7 +3479,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "trailing-white-space",
@@ -3488,7 +3488,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "x = 1   \n   \n[plugins.x]  \nfrom = \"/p/x\"\n   \n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "trailing-white-space",
@@ -3496,35 +3496,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "x = 1   \n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "trailing-white-space",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "trailing-white-space",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "trailing-white-space",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "trailing-white-space",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "nan-inf-and-zero",
@@ -3533,7 +3533,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "n = nan\ni = inf\nz = -0.0\nm = -nan\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "nan-inf-and-zero",
@@ -3541,7 +3541,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "nan-inf-and-zero",
@@ -3550,7 +3550,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "n = nan\ni = inf\nz = -0.0\nm = -nan\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "nan-inf-and-zero",
@@ -3558,35 +3558,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "n = nan\ni = inf\nz = -0.0\nm = -nan\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "nan-inf-and-zero",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "nan-inf-and-zero",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "nan-inf-and-zero",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "nan-inf-and-zero",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "numbers-in-other-tables",
@@ -3595,7 +3595,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = 1_000\nb = 0x1F\nc = 1e3\nd = [1, 2.5, \"s\"]\n[plugins.x]\nfrom = \"/p/x\"\n[t]\ne = { k = 0o17 }\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "numbers-in-other-tables",
@@ -3603,7 +3603,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "numbers-in-other-tables",
@@ -3612,7 +3612,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "a = 1_000\nb = 0x1F\nc = 1e3\nd = [1, 2.5, \"s\"]\n[plugins.x]\nfrom = \"/p/x\"\n[t]\ne = { k = 0o17 }\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "numbers-in-other-tables",
@@ -3620,35 +3620,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "a = 1_000\nb = 0x1F\nc = 1e3\nd = [1, 2.5, \"s\"]\n[t]\ne = { k = 0o17 }\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "numbers-in-other-tables",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "numbers-in-other-tables",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "numbers-in-other-tables",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "numbers-in-other-tables",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "many-entries",
@@ -3657,7 +3657,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.y]\nfrom = \"/p/y\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/ab\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "many-entries",
@@ -3665,7 +3665,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "many-entries",
@@ -3673,7 +3673,7 @@
         "key": "a.b",
         "from": "/p/a.b",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "many-entries",
@@ -3681,7 +3681,7 @@
         "key": "x",
         "outcome": "removed",
         "text": "[plugins.y]\nfrom = \"/p/y\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/ab\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "many-entries",
@@ -3689,7 +3689,7 @@
         "key": "y",
         "outcome": "removed",
         "text": "[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/ab\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "many-entries",
@@ -3697,21 +3697,21 @@
         "key": "a.b",
         "outcome": "removed",
         "text": "[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.y]\nfrom = \"/p/y\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "many-entries",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "many-entries",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "proto-key-in-plugins",
@@ -3720,7 +3720,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.__proto__]\nfrom = \"/p\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-in-plugins",
@@ -3729,7 +3729,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "[plugins.__proto__]\nfrom = \"/p\"\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-in-plugins",
@@ -3738,42 +3738,42 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.__proto__]\nfrom = \"/p\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-in-plugins",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-in-plugins",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-in-plugins",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-in-plugins",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-in-plugins",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "proto-key-at-top",
@@ -3782,7 +3782,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "__proto__ = 1\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-at-top",
@@ -3790,7 +3790,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-at-top",
@@ -3799,7 +3799,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "__proto__ = 1\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-at-top",
@@ -3807,35 +3807,35 @@
         "key": "x",
         "outcome": "removed",
         "text": "__proto__ = 1\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-at-top",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-at-top",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-at-top",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "proto-key-at-top",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-under-entry",
@@ -3844,7 +3844,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\nnote = \"\"\"\n[plugins.y]\nfrom = \"/q\"\n\"\"\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-under-entry",
@@ -3852,7 +3852,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-under-entry",
@@ -3861,7 +3861,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\nnote = \"\"\"\n[plugins.y]\nfrom = \"/q\"\n\"\"\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-under-entry",
@@ -3869,35 +3869,35 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: the edit would not parse: Invalid TOML document: illegal quoted key: multiline strings are not allowed\n\n2:  from = \"/q\"\n3:  \"\"\"\n    ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "header-lookalike-in-string-under-entry",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-under-entry",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-under-entry",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-under-entry",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-elsewhere",
@@ -3906,7 +3906,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[misc]\ntext = \"\"\"\n[plugins.x]\n\"\"\"\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-elsewhere",
@@ -3914,7 +3914,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-elsewhere",
@@ -3923,7 +3923,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[misc]\ntext = \"\"\"\n[plugins.x]\n\"\"\"\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-elsewhere",
@@ -3931,35 +3931,35 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: the edit would not parse: Invalid TOML document: unfinished string\n\n1:  [misc]\n2:  text = \"\"\"\n           ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "header-lookalike-in-string-elsewhere",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-elsewhere",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-elsewhere",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-elsewhere",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-then-real",
@@ -3968,7 +3968,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[misc]\ntext = \"\"\"\n[plugins.x]\nfrom = \"/q\"\n\"\"\"\n[plugins.y]\nfrom = \"/p/y\"\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-then-real",
@@ -3977,7 +3977,7 @@
         "from": "/p/x",
         "outcome": "added",
         "text": "[misc]\ntext = \"\"\"\n[plugins.x]\nfrom = \"/q\"\n\"\"\"\n[plugins.y]\nfrom = \"/p/y\"\n\n[plugins.x]\nfrom = \"/p/x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-then-real",
@@ -3986,14 +3986,14 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[misc]\ntext = \"\"\"\n[plugins.x]\nfrom = \"/q\"\n\"\"\"\n[plugins.y]\nfrom = \"/p/y\"\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-then-real",
         "verb": "remove",
         "key": "x",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-then-real",
@@ -4001,28 +4001,28 @@
         "key": "y",
         "outcome": "removed",
         "text": "[misc]\ntext = \"\"\"\n[plugins.x]\nfrom = \"/q\"\n\"\"\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-then-real",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-then-real",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-string-then-real",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "header-lookalike-in-array",
@@ -4031,7 +4031,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\nlist = [\n[1],\n[2]\n]\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-array",
@@ -4039,7 +4039,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-array",
@@ -4048,7 +4048,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\nlist = [\n[1],\n[2]\n]\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-array",
@@ -4056,35 +4056,35 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: the edit would not parse: Invalid TOML document: illegal character in key\n\n1:  [2]\n2:  ]\n    ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "header-lookalike-in-array",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-array",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-array",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-in-array",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "header-lookalike-line-of-numbers",
@@ -4093,7 +4093,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\nlist = [\n  [1, 2],\n  [3]\n]\n\n[plugins.new]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-line-of-numbers",
@@ -4101,7 +4101,7 @@
         "key": "x",
         "from": "/p/x",
         "outcome": "exists",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-line-of-numbers",
@@ -4110,7 +4110,7 @@
         "from": "/p/a.b",
         "outcome": "added",
         "text": "[plugins.x]\nfrom = \"/p/x\"\nlist = [\n  [1, 2],\n  [3]\n]\n\n[plugins.\"a.b\"]\nfrom = \"/p/a.b\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-line-of-numbers",
@@ -4118,35 +4118,35 @@
         "key": "x",
         "outcome": "error",
         "error": "<dir>/config.toml: the edit would not parse: Invalid TOML document: illegal character in key\n\n1:    [3]\n2:  ]\n    ^\n",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "header-lookalike-line-of-numbers",
         "verb": "remove",
         "key": "y",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-line-of-numbers",
         "verb": "remove",
         "key": "a.b",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-line-of-numbers",
         "verb": "remove",
         "key": "nothing",
         "outcome": "absent",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "header-lookalike-line-of-numbers",
         "verb": "remove",
         "key": "__proto__",
         "outcome": "absent",
-        "handOver": true
+        "threw": false
       },
       {
         "document": "empty",
@@ -4155,7 +4155,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "[plugins.fresh]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
@@ -4164,7 +4164,7 @@
         "from": "/p/with \"quote\"",
         "outcome": "added",
         "text": "[plugins.fresh]\nfrom = \"/p/with \\\"quote\\\"\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
@@ -4173,7 +4173,7 @@
         "from": "/p/back\\slash",
         "outcome": "added",
         "text": "[plugins.fresh]\nfrom = \"/p/back\\\\slash\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
@@ -4182,7 +4182,7 @@
         "from": "C:\\Users\\x",
         "outcome": "added",
         "text": "[plugins.fresh]\nfrom = \"C:\\\\Users\\\\x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
@@ -4191,7 +4191,7 @@
         "from": "/p/it's",
         "outcome": "added",
         "text": "[plugins.fresh]\nfrom = \"/p/it's\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
@@ -4200,7 +4200,7 @@
         "from": "/p/é😀",
         "outcome": "added",
         "text": "[plugins.fresh]\nfrom = \"/p/é😀\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
@@ -4209,7 +4209,7 @@
         "from": "/p/ line-separator",
         "outcome": "added",
         "text": "[plugins.fresh]\nfrom = \"/p/ line-separator\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
@@ -4218,7 +4218,7 @@
         "from": "",
         "outcome": "added",
         "text": "[plugins.fresh]\nfrom = \"\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "empty",
@@ -4227,7 +4227,7 @@
         "from": "/p/tab\tchar",
         "outcome": "error",
         "error": "<dir>/config.toml: \"/p/tab\\tchar\" has a control character or a lone surrogate in it, which cannot be written in a config tagents reads",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "empty",
@@ -4236,7 +4236,7 @@
         "from": "/p/new\nline",
         "outcome": "error",
         "error": "<dir>/config.toml: \"/p/new\\nline\" has a control character or a lone surrogate in it, which cannot be written in a config tagents reads",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "empty",
@@ -4245,7 +4245,7 @@
         "from": "/p/delchar",
         "outcome": "error",
         "error": "<dir>/config.toml: \"/p/delchar\" has a control character or a lone surrogate in it, which cannot be written in a config tagents reads",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "empty",
@@ -4254,7 +4254,7 @@
         "from": "/p/nul\u0000char",
         "outcome": "error",
         "error": "<dir>/config.toml: \"/p/nul\\u0000char\" has a control character or a lone surrogate in it, which cannot be written in a config tagents reads",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "no-final-newline-plain",
@@ -4263,7 +4263,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.fresh]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
@@ -4272,7 +4272,7 @@
         "from": "/p/with \"quote\"",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.fresh]\nfrom = \"/p/with \\\"quote\\\"\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
@@ -4281,7 +4281,7 @@
         "from": "/p/back\\slash",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.fresh]\nfrom = \"/p/back\\\\slash\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
@@ -4290,7 +4290,7 @@
         "from": "C:\\Users\\x",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.fresh]\nfrom = \"C:\\\\Users\\\\x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
@@ -4299,7 +4299,7 @@
         "from": "/p/it's",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.fresh]\nfrom = \"/p/it's\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
@@ -4308,7 +4308,7 @@
         "from": "/p/é😀",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.fresh]\nfrom = \"/p/é😀\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
@@ -4317,7 +4317,7 @@
         "from": "/p/ line-separator",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.fresh]\nfrom = \"/p/ line-separator\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
@@ -4326,7 +4326,7 @@
         "from": "",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.fresh]\nfrom = \"\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "no-final-newline-plain",
@@ -4335,7 +4335,7 @@
         "from": "/p/tab\tchar",
         "outcome": "error",
         "error": "<dir>/config.toml: \"/p/tab\\tchar\" has a control character or a lone surrogate in it, which cannot be written in a config tagents reads",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "no-final-newline-plain",
@@ -4344,7 +4344,7 @@
         "from": "/p/new\nline",
         "outcome": "error",
         "error": "<dir>/config.toml: \"/p/new\\nline\" has a control character or a lone surrogate in it, which cannot be written in a config tagents reads",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "no-final-newline-plain",
@@ -4353,7 +4353,7 @@
         "from": "/p/delchar",
         "outcome": "error",
         "error": "<dir>/config.toml: \"/p/delchar\" has a control character or a lone surrogate in it, which cannot be written in a config tagents reads",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "no-final-newline-plain",
@@ -4362,7 +4362,7 @@
         "from": "/p/nul\u0000char",
         "outcome": "error",
         "error": "<dir>/config.toml: \"/p/nul\\u0000char\" has a control character or a lone surrogate in it, which cannot be written in a config tagents reads",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "last-entry-after-add",
@@ -4371,7 +4371,7 @@
         "from": "/p/new",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.fresh]\nfrom = \"/p/new\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
@@ -4380,7 +4380,7 @@
         "from": "/p/with \"quote\"",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.fresh]\nfrom = \"/p/with \\\"quote\\\"\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
@@ -4389,7 +4389,7 @@
         "from": "/p/back\\slash",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.fresh]\nfrom = \"/p/back\\\\slash\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
@@ -4398,7 +4398,7 @@
         "from": "C:\\Users\\x",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.fresh]\nfrom = \"C:\\\\Users\\\\x\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
@@ -4407,7 +4407,7 @@
         "from": "/p/it's",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.fresh]\nfrom = \"/p/it's\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
@@ -4416,7 +4416,7 @@
         "from": "/p/é😀",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.fresh]\nfrom = \"/p/é😀\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
@@ -4425,7 +4425,7 @@
         "from": "/p/ line-separator",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.fresh]\nfrom = \"/p/ line-separator\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
@@ -4434,7 +4434,7 @@
         "from": "",
         "outcome": "added",
         "text": "a = 1\n\n[plugins.x]\nfrom = \"/p/x\"\n\n[plugins.fresh]\nfrom = \"\"\n",
-        "handOver": false
+        "threw": false
       },
       {
         "document": "last-entry-after-add",
@@ -4443,7 +4443,7 @@
         "from": "/p/tab\tchar",
         "outcome": "error",
         "error": "<dir>/config.toml: \"/p/tab\\tchar\" has a control character or a lone surrogate in it, which cannot be written in a config tagents reads",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "last-entry-after-add",
@@ -4452,7 +4452,7 @@
         "from": "/p/new\nline",
         "outcome": "error",
         "error": "<dir>/config.toml: \"/p/new\\nline\" has a control character or a lone surrogate in it, which cannot be written in a config tagents reads",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "last-entry-after-add",
@@ -4461,7 +4461,7 @@
         "from": "/p/delchar",
         "outcome": "error",
         "error": "<dir>/config.toml: \"/p/delchar\" has a control character or a lone surrogate in it, which cannot be written in a config tagents reads",
-        "handOver": true
+        "threw": true
       },
       {
         "document": "last-entry-after-add",
@@ -4470,7 +4470,7 @@
         "from": "/p/nul\u0000char",
         "outcome": "error",
         "error": "<dir>/config.toml: \"/p/nul\\u0000char\" has a control character or a lone surrogate in it, which cannot be written in a config tagents reads",
-        "handOver": true
+        "threw": true
       }
     ],
     "strings": [
@@ -4971,8 +4971,7 @@
           "from": "<root>/pkgs/plain",
           "packageName": "plain-pkg",
           "entry": "<root>/pkgs/plain/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/plain",
@@ -4983,8 +4982,7 @@
           "from": "<root>/pkgs/plain",
           "packageName": "plain-pkg",
           "entry": "<root>/pkgs/plain/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "../../../pkgs/plain/",
@@ -4995,8 +4993,7 @@
           "from": "<root>/pkgs/plain",
           "packageName": "plain-pkg",
           "entry": "<root>/pkgs/plain/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "../../../pkgs/../pkgs/plain",
@@ -5007,8 +5004,7 @@
           "from": "<root>/pkgs/plain",
           "packageName": "plain-pkg",
           "entry": "<root>/pkgs/plain/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs//plain/./",
@@ -5019,8 +5015,7 @@
           "from": "<root>/pkgs/plain",
           "packageName": "plain-pkg",
           "entry": "<root>/pkgs/plain/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "../../node_modules/linked",
@@ -5031,8 +5026,7 @@
           "from": "<root>/proj/node_modules/linked",
           "packageName": "real-linked",
           "entry": "<root>/proj/node_modules/linked/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/proj/node_modules/linked",
@@ -5043,8 +5037,7 @@
           "from": "<root>/proj/node_modules/linked",
           "packageName": "real-linked",
           "entry": "<root>/proj/node_modules/linked/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": ".",
@@ -5055,8 +5048,7 @@
           "from": "<root>/pkgs/plain",
           "packageName": "plain-pkg",
           "entry": "<root>/pkgs/plain/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "./",
@@ -5067,8 +5059,7 @@
           "from": "<root>/pkgs/plain",
           "packageName": "plain-pkg",
           "entry": "<root>/pkgs/plain/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "..",
@@ -5079,8 +5070,7 @@
           "from": "<root>/pkgs/plain",
           "packageName": "plain-pkg",
           "entry": "<root>/pkgs/plain/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": ".",
@@ -5089,8 +5079,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "<root>/proj/a/b/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "..",
@@ -5099,8 +5088,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "<root>/proj/a/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "~",
@@ -5109,8 +5097,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "<root>/home/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "~/",
@@ -5119,8 +5106,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "<root>/home/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "~/home-pkg",
@@ -5131,8 +5117,7 @@
           "from": "<root>/home/home-pkg",
           "packageName": "home-pkg",
           "entry": "<root>/home/home-pkg/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "~//home-pkg/",
@@ -5143,8 +5128,7 @@
           "from": "<root>/home/home-pkg",
           "packageName": "home-pkg",
           "entry": "<root>/home/home-pkg/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "~x",
@@ -5153,8 +5137,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "<root>/proj/a/b/~x/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "./nothing",
@@ -5163,8 +5146,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "<root>/proj/a/b/nothing/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "../../../pkgs/plain/package.json",
@@ -5173,8 +5155,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "<root>/pkgs/plain/package.json/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "/",
@@ -5183,8 +5164,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "/../..",
@@ -5193,8 +5173,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../tmp-does-not-exist",
@@ -5203,8 +5182,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "/tmp-does-not-exist/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/no-name",
@@ -5215,8 +5193,7 @@
           "from": "<root>/pkgs/no-name",
           "packageName": "no-name",
           "entry": "<root>/pkgs/no-name/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/empty-name",
@@ -5225,8 +5202,7 @@
           "ok": false,
           "problem": "bad-manifest",
           "detail": "<root>/pkgs/empty-name/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/name-number",
@@ -5235,8 +5211,7 @@
           "ok": false,
           "problem": "bad-manifest",
           "detail": "<root>/pkgs/name-number/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/scoped-name",
@@ -5247,8 +5222,7 @@
           "from": "<root>/pkgs/scoped-name",
           "packageName": "@tagents/plugin-telegram",
           "entry": "<root>/pkgs/scoped-name/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/prefixed-name",
@@ -5259,8 +5233,7 @@
           "from": "<root>/pkgs/prefixed-name",
           "packageName": "tagents-plugin-wiki",
           "entry": "<root>/pkgs/prefixed-name/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/api2",
@@ -5269,8 +5242,7 @@
           "ok": false,
           "problem": "bad-manifest",
           "detail": "<root>/pkgs/api2/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/api-1-0",
@@ -5281,8 +5253,7 @@
           "from": "<root>/pkgs/api-1-0",
           "packageName": "api-1-0",
           "entry": "<root>/pkgs/api-1-0/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/api-string",
@@ -5291,8 +5262,7 @@
           "ok": false,
           "problem": "bad-manifest",
           "detail": "<root>/pkgs/api-string/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/no-tagents",
@@ -5301,8 +5271,7 @@
           "ok": false,
           "problem": "bad-manifest",
           "detail": "<root>/pkgs/no-tagents/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/not-json",
@@ -5311,8 +5280,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "<root>/pkgs/not-json/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/bom-manifest",
@@ -5321,8 +5289,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "<root>/pkgs/bom-manifest/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/manifest-array",
@@ -5331,8 +5298,7 @@
           "ok": false,
           "problem": "bad-manifest",
           "detail": "<root>/pkgs/manifest-array/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/manifest-null",
@@ -5341,8 +5307,7 @@
           "ok": false,
           "problem": "bad-manifest",
           "detail": "<root>/pkgs/manifest-null/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/empty-entry",
@@ -5351,8 +5316,7 @@
           "ok": false,
           "problem": "bad-manifest",
           "detail": "<root>/pkgs/empty-entry/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/entry-number",
@@ -5361,8 +5325,7 @@
           "ok": false,
           "problem": "bad-manifest",
           "detail": "<root>/pkgs/entry-number/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/no-entry",
@@ -5371,8 +5334,7 @@
           "ok": false,
           "problem": "no-entry",
           "detail": "<root>/pkgs/no-entry/src/missing.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/dangling-entry",
@@ -5381,8 +5343,7 @@
           "ok": false,
           "problem": "no-entry",
           "detail": "<root>/pkgs/dangling-entry/src/gone.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/dir-entry",
@@ -5393,8 +5354,7 @@
           "from": "<root>/pkgs/dir-entry",
           "packageName": "dir-entry",
           "entry": "<root>/pkgs/dir-entry/src"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/with-exports",
@@ -5405,8 +5365,7 @@
           "from": "<root>/pkgs/with-exports",
           "packageName": "with-exports",
           "entry": "<root>/pkgs/with-exports/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/no-manifest",
@@ -5415,8 +5374,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "<root>/pkgs/no-manifest/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/manifest-is-dir",
@@ -5425,8 +5383,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "<root>/pkgs/manifest-is-dir/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "<root>/pkgs/real-linked",
@@ -5437,8 +5394,7 @@
           "from": "<root>/pkgs/real-linked",
           "packageName": "real-linked",
           "entry": "<root>/pkgs/real-linked/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "plain",
@@ -5449,8 +5405,7 @@
           "from": "plain",
           "packageName": "plain-in-nm",
           "entry": "<root>/proj/node_modules/plain/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "@sc/plugin-x",
@@ -5461,8 +5416,7 @@
           "from": "@sc/plugin-x",
           "packageName": "@sc/plugin-x",
           "entry": "<root>/proj/node_modules/@sc/plugin-x/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "no-name-nm",
@@ -5473,8 +5427,7 @@
           "from": "no-name-nm",
           "packageName": "no-name-nm",
           "entry": "<root>/proj/node_modules/no-name-nm/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "null-exports",
@@ -5485,8 +5438,7 @@
           "from": "null-exports",
           "packageName": "null-exports",
           "entry": "<root>/proj/node_modules/null-exports/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "no-tagents-nm",
@@ -5495,8 +5447,7 @@
           "ok": false,
           "problem": "bad-manifest",
           "detail": "<root>/proj/node_modules/no-tagents-nm/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "api2-nm",
@@ -5505,8 +5456,7 @@
           "ok": false,
           "problem": "bad-manifest",
           "detail": "<root>/proj/node_modules/api2-nm/package.json"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "no-entry-nm",
@@ -5515,8 +5465,7 @@
           "ok": false,
           "problem": "no-entry",
           "detail": "<root>/proj/node_modules/no-entry-nm/src/missing.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "linked",
@@ -5527,8 +5476,7 @@
           "from": "linked",
           "packageName": "real-linked",
           "entry": "<root>/pkgs/real-linked/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "shadow",
@@ -5539,8 +5487,7 @@
           "from": "shadow",
           "packageName": "shadow-near",
           "entry": "<root>/proj/a/node_modules/shadow/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "hollow",
@@ -5551,8 +5498,7 @@
           "from": "hollow",
           "packageName": "hollow-far",
           "entry": "<root>/proj/node_modules/hollow/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "dirjson",
@@ -5563,8 +5509,7 @@
           "from": "dirjson",
           "packageName": "dirjson-far",
           "entry": "<root>/proj/node_modules/dirjson/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "plain",
@@ -5575,8 +5520,7 @@
           "from": "plain",
           "packageName": "plain-in-nm",
           "entry": "<root>/proj/node_modules/plain/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "plain",
@@ -5587,8 +5531,7 @@
           "from": "plain",
           "packageName": "plain-in-nm",
           "entry": "<root>/proj/node_modules/plain/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "selfnoexp",
@@ -5599,8 +5542,7 @@
           "from": "selfnoexp",
           "packageName": "selfnoexp-in-nm",
           "entry": "<root>/selfnoexp/node_modules/selfnoexp/src/plugin.ts"
-        },
-        "handOver": false
+        }
       },
       {
         "spec": "exports-with-package-json",
@@ -5611,9 +5553,7 @@
           "from": "exports-with-package-json",
           "packageName": "exports-with-package-json",
           "entry": "<root>/proj/node_modules/exports-with-package-json/src/plugin.ts"
-        },
-        "handOver": true,
-        "reason": "the package has an exports key"
+        }
       },
       {
         "spec": "exports-without-package-json",
@@ -5622,9 +5562,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "exports-without-package-json"
-        },
-        "handOver": true,
-        "reason": "the package has an exports key"
+        }
       },
       {
         "spec": "bad-json",
@@ -5633,9 +5571,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "bad-json"
-        },
-        "handOver": true,
-        "reason": "the manifest in node_modules is not JSON, so its exports are unknown"
+        }
       },
       {
         "spec": "selfref",
@@ -5646,9 +5582,7 @@
           "from": "selfref",
           "packageName": "selfref",
           "entry": "<root>/selfref/src/plugin.ts"
-        },
-        "handOver": true,
-        "reason": "the nearest package.json names the package and has exports, which node resolves first"
+        }
       },
       {
         "spec": "not-installed",
@@ -5657,9 +5591,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "not-installed"
-        },
-        "handOver": true,
-        "reason": "the name is not found by the walk of node_modules, and node goes on to the global folders"
+        }
       },
       {
         "spec": "plain",
@@ -5668,9 +5600,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "plain"
-        },
-        "handOver": true,
-        "reason": "the name is not found by the walk of node_modules, and node goes on to the global folders"
+        }
       },
       {
         "spec": "plain/package.json",
@@ -5679,9 +5609,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "plain/package.json"
-        },
-        "handOver": true,
-        "reason": "the name is not name or @scope/name"
+        }
       },
       {
         "spec": "plain/src",
@@ -5690,9 +5618,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "plain/src"
-        },
-        "handOver": true,
-        "reason": "the name is not name or @scope/name"
+        }
       },
       {
         "spec": "_underscore",
@@ -5703,9 +5629,7 @@
           "from": "_underscore",
           "packageName": "_underscore",
           "entry": "<root>/proj/node_modules/_underscore/src/plugin.ts"
-        },
-        "handOver": true,
-        "reason": "the name is not name or @scope/name"
+        }
       },
       {
         "spec": "a b",
@@ -5714,9 +5638,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "a b"
-        },
-        "handOver": true,
-        "reason": "the name is not name or @scope/name"
+        }
       },
       {
         "spec": "@sc",
@@ -5725,9 +5647,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "@sc"
-        },
-        "handOver": true,
-        "reason": "the name is not name or @scope/name"
+        }
       },
       {
         "spec": "@sc/",
@@ -5736,9 +5656,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "@sc/"
-        },
-        "handOver": true,
-        "reason": "the name is not name or @scope/name"
+        }
       },
       {
         "spec": "@/x",
@@ -5747,9 +5665,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "@/x"
-        },
-        "handOver": true,
-        "reason": "the name is not name or @scope/name"
+        }
       },
       {
         "spec": "@sc/a/b",
@@ -5758,9 +5674,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "@sc/a/b"
-        },
-        "handOver": true,
-        "reason": "the name is not name or @scope/name"
+        }
       },
       {
         "spec": "",
@@ -5769,9 +5683,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": ""
-        },
-        "handOver": true,
-        "reason": "an empty name"
+        }
       },
       {
         "spec": "naïve",
@@ -5780,9 +5692,7 @@
           "ok": false,
           "problem": "not-found",
           "detail": "naïve"
-        },
-        "handOver": true,
-        "reason": "the name is not name or @scope/name"
+        }
       }
     ],
     "names": [

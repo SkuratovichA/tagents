@@ -1,4 +1,4 @@
-//! `session prompt`: one turn of `claude`, as `session()` of `packages/core/src/cli/main.ts` and `ClaudeHeadlessDriver.prompt` serve it. A verb that starts a child hands the call over for what the read verbs answer themselves (design D2): an environment that is not UTF-8 and a machine with no node, because the child's environment is built from the one and its `PATH` begins with the directory of the other.
+//! `session prompt`: one turn of `claude`, as `session()` of `packages/core/src/cli/main.ts` and `ClaudeHeadlessDriver.prompt` serve it. The child's environment is built from this process's, with what is not UTF-8 read lossily, and its `PATH` begins with the directory of the node the front door would run (none, on a machine with no node).
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -6,13 +6,13 @@ use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{self, Sender};
 use std::time::{Duration, Instant};
 
-use crate::args::{Grammar, Parsed};
 use crate::child::spawn_thread;
 use crate::front_door::{emit_stderr, emit_stdout};
 use crate::js;
 use crate::messages::Texts;
 use crate::node;
 use crate::notify::clock::{Clock, SystemClock};
+use crate::parse_args::{Grammar, Kind, Parsed};
 use crate::session::command::{self, Invocation};
 use crate::session::outcome::Outcome;
 use crate::session::read::{Setting, usage};
@@ -23,9 +23,11 @@ use crate::session::turn::{self, DEFAULT_TIMEOUT_MS, Turn};
 use crate::sessions::{Output, exit};
 
 pub(crate) const PROMPT: Grammar = Grammar {
-    strings: &["timeout", "warn-before"],
-    flags: &["events"],
-    multiple: &[],
+    options: &[
+        ("timeout", Kind::Text),
+        ("warn-before", Kind::Text),
+        ("events", Kind::Flag),
+    ],
     positionals: true,
 };
 
@@ -40,17 +42,21 @@ struct Machine {
 }
 
 impl Machine {
-    /// This process's, or `None` for the two classes that go to node.
-    fn current(setting: &Setting) -> Option<Machine> {
-        let parent = command::parent_environment(std::env::vars_os())?;
+    /// This process's.
+    fn current(setting: &Setting) -> Machine {
+        let parent = command::parent_environment(std::env::vars_os());
         let interpreter = node::interpreter();
         let path = parent.get("PATH").map_or("", String::as_str);
-        let node_dir = command::node_directory(interpreter.to_str()?, &setting.cwd, path)?;
-        Some(Machine {
+        let node_dir = command::node_directory(
+            &interpreter.to_string_lossy(),
+            setting.cwd.as_deref().unwrap_or("/"),
+            path,
+        );
+        Machine {
             parent,
             node_dir,
             home: node::homedir(),
-        })
+        }
     }
 }
 
@@ -102,10 +108,13 @@ impl Stdout {
     }
 }
 
-/// `session prompt <ref-json-or-id> <text>`. `None` hands the call to node, before anything has run.
-pub fn prompt(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
-    let parsed = PROMPT.parse(args)?;
-    let machine = Machine::current(setting)?;
+/// `session prompt <ref-json-or-id> <text>`.
+pub fn prompt(args: &[String], setting: &Setting, texts: &Texts) -> Output {
+    let parsed = match PROMPT.parse(args) {
+        Ok(parsed) => parsed,
+        Err(err) => return Output::refused_args(&err),
+    };
+    let machine = Machine::current(setting);
     // Under a caller that left SIGCHLD ignored Linux reaps the child itself, waiting for it finds nothing, and a good turn reads as a failure, where node sets its dispositions back when it starts. A handler that only sets a flag is the safe form of not ignoring it, and exec sets it back to the default for the child and for node; a failed registration leaves what was inherited.
     let _ = signal_hook::flag::register(
         signal_hook::consts::SIGCHLD,
@@ -115,31 +124,25 @@ pub fn prompt(args: &[String], setting: &Setting, texts: &Texts) -> Option<Outpu
 }
 
 fn answer(
-    parsed: &Parsed<'_>,
+    parsed: &Parsed,
     setting: &Setting,
     texts: &Texts,
     machine: &Machine,
     stdout: impl FnMut(&str) + Send + 'static,
     stderr: impl FnOnce(&str),
-) -> Option<Output> {
-    let raw_ref = parsed.positionals.first().filter(|raw| !raw.is_empty());
-    let (Some(raw_ref), Some(text)) = (raw_ref, parsed.positionals.get(1)) else {
-        return Some(usage(
-            texts.t("missingOption", &[("option", "<ref> <text>")]),
-        ));
+) -> Output {
+    let words = parsed.words();
+    let raw_ref = words.first().copied().filter(|raw| !raw.is_empty());
+    let (Some(raw_ref), Some(text)) = (raw_ref, words.get(1).copied()) else {
+        return usage(texts.t("missingOption", &[("option", "<ref> <text>")]));
     };
     if js::trim(text).is_empty() {
-        return Some(usage(texts.t("noPrompt", &[])));
+        return usage(texts.t("noPrompt", &[]));
     }
     let reference = match reference::resolve(raw_ref, &setting.state_dir) {
         Resolved::Ref(reference) => reference,
-        Resolved::HandOver => return None,
         Resolved::NoMatch => {
-            return Some(Output {
-                stdout: String::new(),
-                stderr: format!("{}\n", texts.t("badRef", &[("ref", raw_ref)])),
-                code: exit::ERROR,
-            });
+            return Output::line(exit::ERROR, &texts.t("badRef", &[("ref", raw_ref)]));
         }
     };
     let invocation = Invocation::of(
@@ -148,12 +151,28 @@ fn answer(
         &machine.parent,
         &machine.node_dir,
         &machine.home,
-    )?;
+    );
     let events = parsed.flag("events");
     let limit = limit_ms(parsed.value("timeout"));
-    // What may fail without a word comes before the child: nothing has run, so node can still answer.
-    let out = Stdout::start(stdout).ok()?;
-    let watch = Watch::start().ok()?;
+    // What may fail without a word comes before the child, so that nothing has run when it does.
+    let out = match Stdout::start(stdout) {
+        Ok(out) => out,
+        Err(why) => {
+            return Output::line(
+                exit::ERROR,
+                &format!("tagents-core: cannot start a thread: {why}"),
+            );
+        }
+    };
+    let watch = match Watch::start() {
+        Ok(watch) => watch,
+        Err(why) => {
+            return Output::line(
+                exit::ERROR,
+                &format!("tagents-core: cannot watch the child: {why}"),
+            );
+        }
+    };
     // Read before the spawn, as node reads `startedAt`: what the start of the child costs counts towards the limit and `durationMs`.
     let (started, started_ms) = (Instant::now(), SystemClock.now_ms());
     match spawn::start(&invocation) {
@@ -174,28 +193,23 @@ fn answer(
             }
             turn::linger(&mut turn, &mut world);
             out.written(None);
-            Some(Output {
+            Output {
                 stdout: String::new(),
                 stderr: String::new(),
                 code: outcome.exit_code(),
-            })
+            }
         }
         Start::Failed(detail) => {
             let outcome = Outcome::SpawnFailed(detail);
-            Some(Output {
+            Output {
                 stdout: outcome.document(events),
                 stderr: outcome
                     .error_line()
                     .map_or_else(String::new, |line| format!("{line}\n")),
                 code: outcome.exit_code(),
-            })
+            }
         }
-        Start::Thrown(message) => Some(Output {
-            stdout: String::new(),
-            stderr: format!("{message}\n"),
-            code: exit::ERROR,
-        }),
-        Start::HandOver => None,
+        Start::Thrown(message) => Output::line(exit::ERROR, &message),
     }
 }
 
@@ -209,7 +223,7 @@ mod tests {
 
     fn setting(state_dir: &str) -> Setting {
         Setting {
-            cwd: "/base".to_owned(),
+            cwd: Some("/base".to_owned()),
             state_dir: state_dir.to_owned(),
             locale: Locale::En,
         }
@@ -228,7 +242,7 @@ mod tests {
     }
 
     /// The answer of a call, with what was written while it ran: stdout, then stderr.
-    fn call(args: &[&str], path: &str) -> (Option<Output>, String, String) {
+    fn call(args: &[&str], path: &str) -> (Output, String, String) {
         let args = words(args);
         let parsed = PROMPT.parse(&args).unwrap();
         let (out, err) = (
@@ -255,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn the_grammar_hands_over_what_node_words() {
+    fn the_grammar_words_what_node_words() {
         for args in [
             &["--bogus", "r", "t"][..],
             &["r", "t", "--timeout"],
@@ -263,7 +277,7 @@ mod tests {
             &["r", "t", "--events=x"],
             &["r", "-x"],
         ] {
-            assert!(PROMPT.parse(&words(args)).is_none(), "{args:?}");
+            assert!(PROMPT.parse(&words(args)).is_err(), "{args:?}");
         }
     }
 
@@ -272,7 +286,6 @@ mod tests {
         let missing = "missing required option <ref> <text>\n";
         for args in [&[][..], &["r"], &["", "t"]] {
             let (output, _, _) = call(args, "/usr/bin");
-            let output = output.unwrap();
             assert_eq!(
                 (output.stderr.as_str(), output.code),
                 (missing, exit::USAGE)
@@ -280,12 +293,10 @@ mod tests {
         }
         for text in ["", " \n\t "] {
             let (output, _, _) = call(&["nobody", text], "/usr/bin");
-            let output = output.unwrap();
             assert_eq!(output.stderr, "nothing to say: the prompt text is empty\n");
             assert_eq!(output.code, exit::USAGE);
         }
         let (output, _, _) = call(&["nobody", "t"], "/usr/bin");
-        let output = output.unwrap();
         assert_eq!(output.stderr, "no session matches nobody\n");
         assert_eq!(output.code, exit::ERROR);
     }
@@ -295,7 +306,6 @@ mod tests {
         let scratch = Scratch::new();
         let cwd = scratch.path().to_str().unwrap();
         let (output, out, err) = call(&[&reference(cwd), "t", "--events"], "/no/such");
-        let output = output.unwrap();
         assert_eq!(
             output.stdout,
             "{\"kind\":\"spawn-failed\",\"detail\":\"spawn claude ENOENT\"}\n"
@@ -307,14 +317,13 @@ mod tests {
         let file = scratch.path().join("a-file");
         std::fs::write(&file, "x").unwrap();
         let (output, _, _) = call(&[&reference(file.to_str().unwrap()), "t"], "/usr/bin:/bin");
-        let output = output.unwrap();
         assert_eq!(output.stdout, "");
         assert_eq!(output.stderr, "spawn ENOTDIR\n");
         assert_eq!(output.code, exit::ERROR);
     }
 
     #[test]
-    fn a_failure_node_words_is_a_hand_over() {
+    fn a_failure_without_a_name_in_the_table_is_worded_by_its_code() {
         let scratch = Scratch::new();
         let looping = scratch.path().join("loop");
         std::fs::create_dir_all(&looping).unwrap();
@@ -323,7 +332,8 @@ mod tests {
             &[&reference(scratch.path().to_str().unwrap()), "t"],
             looping.to_str().unwrap(),
         );
-        assert_eq!(output, None);
+        assert_eq!(output.stderr, "spawn ELOOP\n");
+        assert_eq!(output.code, exit::ERROR);
         assert_eq!((out.as_str(), err.as_str()), ("", ""));
     }
 
@@ -337,7 +347,6 @@ mod tests {
         let cwd = scratch.path().to_str().unwrap();
         let path = scratch.path().join("bin");
         let (output, out, err) = call(&[&reference(cwd), "t", "--events"], path.to_str().unwrap());
-        let output = output.unwrap();
         assert_eq!(output.stdout, "");
         assert_eq!(output.stderr, "");
         assert_eq!(output.code, exit::ERROR);
@@ -375,8 +384,7 @@ mod tests {
         );
         let cwd = scratch.path().to_str().unwrap().to_owned();
         let path = format!("{}:/usr/bin:/bin", scratch.path().join("bin").display());
-        let turn =
-            std::thread::spawn(move || call(&[&reference(&cwd), "t"], &path).0.unwrap().code);
+        let turn = std::thread::spawn(move || call(&[&reference(&cwd), "t"], &path).0.code);
         let given_up = Instant::now() + Duration::from_secs(30);
         while !scratch.path().join("started").exists() {
             assert!(Instant::now() < given_up, "the child did not start");

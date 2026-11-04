@@ -93,7 +93,7 @@ fn a_signal_during_start_writes_nothing_trips_the_stop_and_leaves_its_name_for_t
     assert_eq!(rig.log.lines(), Vec::<String>::new());
     assert!(
         rig.stop.is_stopped(),
-        "a start that fails after it sees the stop and does not hand over"
+        "a start that fails after it sees the stop ends as a stop ends it"
     );
     assert!(matches!(messages.try_recv(), Ok(Message::Stop)));
     assert_eq!(rig.gate.settled(), Some("SIGINT"));

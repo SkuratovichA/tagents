@@ -18,7 +18,7 @@
 //! - stopping while a post is in flight: `serve::stopping_precedes_the_notice_of_a_post_in_flight`, `serve::the_watch_closes_first_and_the_lock_goes_last`
 //! - drain() resolves only after the post in flight has settled: not applicable: `engine.stop()` runs after the loop, which runs each message to the end, so a drain with a post in flight does not exist; the engine's own `stopping::a_stop_tripped_in_the_middle_of_a_post_lets_that_post_land_and_drops_the_events_behind_it`
 //! - a stream that will not close: `serve::a_feed_that_will_not_close_is_a_line_and_the_lock_is_still_released`
-//! - a lock that cannot be removed: `hand_over::a_lock_that_cannot_be_released_is_a_line`
+//! - a lock that cannot be removed: `lock::a_lock_that_cannot_be_released_is_a_line`
 //!
 //! Cases of the Rust service that node's file does not have: the signal thread and the start gate (`gate`), a watch that ends after `started` (`serve::a_watch_that_ends_behind_a_post_in_flight_...`), the exit codes, the line bytes and the choice of the `tagents` script (`start`).
 

@@ -4,7 +4,7 @@
 //!
 //! `StartGate` decides which thread writes `stopping`. A signal that comes while start runs is only remembered, as node remembers it (`packages/core/src/service.ts:131-137`): when the start succeeds the main thread writes the line after `started`, and when it fails no `stopping` line is written at all.
 //!
-//! A step before `started` that fails is handed to the node service (`hand_over`); a failure after it is not: an exec there would lose the events queued in the engine and its record of the cache notices it already sent.
+//! A step before `started` that fails writes its line, closes what the start opened, releases the lock and exits 1, which launchd retries (`fail`); a stop that was requested wins and ends the process as a stop ends it.
 //!
 //! The node cases of `service.test.ts` (35), `main.test.ts` (6) and `options.test.ts` and the Rust test or suite scenario that covers each are listed in `docs/architecture/rust-core.md`.
 
@@ -28,8 +28,9 @@ use crate::{
         engine::{self, Engine, EngineDeps},
         events::Arming,
         feed::FollowerFeed,
-        hand_over::{Lock, hand_over},
-        lock::{LOCK_FILE, LockDeps, LockHolder, LockResult, boot_ms, ps_process_start, take_lock},
+        lock::{
+            LOCK_FILE, Lock, LockDeps, LockHolder, LockResult, boot_ms, ps_process_start, take_lock,
+        },
         log::{Log, StderrLog},
         options::{self, Backend, Loaded, Options},
         phrases, platform, state,
@@ -468,6 +469,25 @@ fn leave(why: &str, lock: &Lock, log: &dyn Log) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// The exit of a start that failed, which launchd retries.
+const FAILED: u8 = 1;
+
+/// What a failed start does, given `why` it failed. `close` closes the follower and the watches the start opened, and runs on every path. A stop that was requested wins, before or during the close: the lock is released, the exit is 0 and no line is written; otherwise the line is written first, because it states the intent of a close that can take long.
+fn fail(why: &str, stop: &Stop, lock: &Lock, log: &dyn Log, close: impl FnOnce()) -> ExitCode {
+    if stop.is_stopped() {
+        close();
+        lock.release(log);
+        return ExitCode::SUCCESS;
+    }
+    log.line(&["could not start:", why]);
+    close();
+    lock.release(log);
+    if stop.is_stopped() {
+        return ExitCode::SUCCESS;
+    }
+    ExitCode::from(FAILED)
+}
+
 /// The last line of a start, which says the lock, the stream, the engine and the watchers are all up.
 fn log_started(log: &dyn Log, pid: u32, backend: &str, options_file: &str, state: &str) {
     log.line(&[
@@ -478,7 +498,7 @@ fn log_started(log: &dyn Log, pid: u32, backend: &str, options_file: &str, state
     ]);
 }
 
-/// The verb: serves until a signal or the end of the watch, and returns the exit code. Returns only after the node service could not be handed to, or when it ends.
+/// The verb: serves until a signal or the end of the watch, and returns the exit code.
 pub fn run() -> ExitCode {
     let log: Arc<dyn Log> = Arc::new(StderrLog);
     let stop = Stop::default();
@@ -493,15 +513,15 @@ pub fn run() -> ExitCode {
     let dir = state::state_dir();
     let lock = Lock::new(node::join(&dir, LOCK_FILE));
     // A step of the start that fails before anything is open to close.
-    let fail = |why: &str| hand_over(why, &stop, &lock, &*log, || {});
+    let failed = |why: &str| fail(why, &stop, &lock, &*log, || {});
 
     // Signals first, so that a signal during start is remembered.
     let on_signal = signalling.clone();
     if let Err(err) = ending::on_signals(move |name| on_signal.signal(name)) {
-        return fail(&err.to_string());
+        return failed(&err.to_string());
     }
     if let Err(err) = fs::create_dir_all(&dir) {
-        return fail(&node::io_message(&err, "mkdir", Some(&dir)));
+        return failed(&node::io_message(&err, "mkdir", Some(&dir)));
     }
     let pid = std::process::id();
     let deps = LockDeps {
@@ -513,7 +533,7 @@ pub fn run() -> ExitCode {
         process_start: &ps_process_start,
     };
     match take_lock(lock.file(), &deps) {
-        Err(why) => return fail(&why),
+        Err(why) => return failed(&why),
         Ok(LockResult::Held { holder }) => {
             log.line(&[&format!(
                 "another notify service holds {} (pid {holder}); exiting",
@@ -539,7 +559,7 @@ pub fn run() -> ExitCode {
 
     let watch = match Watch::start::<Message>(sender) {
         Ok(watch) => watch,
-        Err(err) => return fail(&node::io_message(&err, "watch", None)),
+        Err(err) => return failed(&node::io_message(&err, "watch", None)),
     };
     let slot = WatchSlot(RefCell::new(Some(watch)));
     let env: Vec<(String, String)> = std::env::vars_os()
@@ -565,7 +585,7 @@ pub fn run() -> ExitCode {
         stop: stop.clone(),
     });
     if let Err(why) = engine.start() {
-        return hand_over(&why, &stop, &lock, &*log, || {
+        return fail(&why, &stop, &lock, &*log, || {
             slot.close();
             drain(&mut engine, &*log);
         });

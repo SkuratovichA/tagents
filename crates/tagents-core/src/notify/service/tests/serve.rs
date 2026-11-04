@@ -217,8 +217,8 @@ fn a_watch_that_ends_behind_a_post_in_flight_is_served_after_the_queued_wake_and
         "the queued wake is served first and the reason is the last line"
     );
     assert!(
-        !rig.log.has("handing over"),
-        "a failure after started is never handed over: the events queued in the engine would be lost"
+        !rig.log.has("could not start"),
+        "a failure after started is not a failed start"
     );
     assert!(!rig.events_on(), "the stream is off");
     assert!(!rig.lock_held(), "the lock is released");

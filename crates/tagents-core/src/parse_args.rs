@@ -1,20 +1,17 @@
-//! `util.parseArgs` of node with `strict: true` and `allowPositionals: false`, for options that take a text or are a flag and have no short form: what a verb that has options and no positionals reads its command line with.
+//! `util.parseArgs` of node with `strict: true`, for options that take a text, take several, or are a flag and have no short form: what every verb with options reads its command line with, whether it takes positionals or not.
 //!
-//! The errors are the ones node throws, in its words, at the first word that earns one: an option that is not listed, a text option with nothing after it, a text option whose next word looks like an option (`--idle -5` is refused, `--idle=-5` is not), a flag given a value, and any positional, which includes everything after a `--`. A lone `-` and a word like `-abc` are positionals, because no short option exists that they could be. A text option takes the word after it whatever it is, so `--idle --` names `--` as the value of `--idle` and is refused as ambiguous.
-//!
-//! `crate::args` is the other reader of a command line, for a verb that hands the node CLI a call it does not read: it words no error, takes UTF-8 text only and reads positionals. What it reads is read here the same way, which a test in this file holds.
+//! The errors are the ones node throws, in its words, at the first word that earns one: an option that is not listed, a text option with nothing after it, a text option whose next word looks like an option (`--idle -5` is refused, `--idle=-5` is not), a flag given a value, and, where the verb takes no positionals, any positional, which includes everything after a `--`. A word that starts with one dash and has a second character is a short option, which no verb here has: `-abc` is the unknown option `-a`, node reading a short group one UTF-16 unit at a time. A lone `-` is a positional. A text option takes the word after it whatever it is, so `--idle --` names `--` as the value of `--idle` and is refused as ambiguous. Where the verb takes positionals, an unknown option's error carries node's hint about `--`.
 
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 
-use crate::js;
-
-/// What an option is: it takes a text, or it is there or not.
+/// What an option is: it takes a text (a repeated one keeps the last), it takes a text and keeps every one given, or it is there or not.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Text,
+    Many,
     Flag,
 }
 
@@ -31,20 +28,53 @@ impl fmt::Display for ParseError {
     }
 }
 
-/// The values of a command line that was read without an error. A text option given twice has its last value, as node's does.
+/// The values of a command line that was read without an error.
 #[derive(Debug, Default)]
 pub struct Parsed {
-    texts: HashMap<&'static str, OsString>,
+    texts: HashMap<&'static str, Vec<OsString>>,
     flags: Vec<&'static str>,
+    positionals: Vec<OsString>,
 }
 
 impl Parsed {
+    /// The value of a text option: the last one given.
     pub fn text(&self, name: &str) -> Option<&OsStr> {
-        self.texts.get(name).map(OsString::as_os_str)
+        self.texts.get(name)?.last().map(OsString::as_os_str)
+    }
+
+    /// Every value of an option, in the order given.
+    pub fn texts(&self, name: &str) -> impl Iterator<Item = &OsStr> {
+        self.texts
+            .get(name)
+            .into_iter()
+            .flatten()
+            .map(OsString::as_os_str)
     }
 
     pub fn flag(&self, name: &str) -> bool {
         self.flags.contains(&name)
+    }
+
+    pub fn positionals(&self) -> &[OsString] {
+        &self.positionals
+    }
+
+    /// `text` as a `&str`, for a command line that is UTF-8 already.
+    pub fn value(&self, name: &str) -> Option<&str> {
+        self.text(name)?.to_str()
+    }
+
+    /// `texts` as `&str`s, for a command line that is UTF-8 already.
+    pub fn values(&self, name: &str) -> Vec<&str> {
+        self.texts(name).filter_map(OsStr::to_str).collect()
+    }
+
+    /// `positionals` as `&str`s, for a command line that is UTF-8 already.
+    pub fn words(&self) -> Vec<&str> {
+        self.positionals
+            .iter()
+            .filter_map(|word| word.to_str())
+            .collect()
     }
 }
 
@@ -57,37 +87,72 @@ fn looks_like_an_option(word: &[u8]) -> bool {
     word.len() > 1 && word[0] == b'-'
 }
 
-/// The command line `args` against `options`.
-pub fn parse(args: &[OsString], options: &Options) -> Result<Parsed, ParseError> {
+/// What a verb reads: its options and whether it takes positionals.
+#[derive(Clone, Copy, Debug)]
+pub struct Grammar {
+    pub options: &'static Options,
+    pub positionals: bool,
+}
+
+impl Grammar {
+    pub fn parse<S: AsRef<OsStr>>(&self, args: &[S]) -> Result<Parsed, ParseError> {
+        read(args, self.options, self.positionals)
+    }
+}
+
+/// The command line `args` against `options`, for a verb that takes no positionals.
+pub fn parse<S: AsRef<OsStr>>(args: &[S], options: &Options) -> Result<Parsed, ParseError> {
+    read(args, options, false)
+}
+
+/// The command line `args` against `options`, for a verb that takes positionals.
+pub fn parse_with_positionals<S: AsRef<OsStr>>(
+    args: &[S],
+    options: &Options,
+) -> Result<Parsed, ParseError> {
+    read(args, options, true)
+}
+
+fn read<S: AsRef<OsStr>>(
+    args: &[S],
+    options: &Options,
+    positionals: bool,
+) -> Result<Parsed, ParseError> {
     let mut parsed = Parsed::default();
-    let mut words = args.iter();
+    let mut words = args.iter().map(AsRef::as_ref);
     while let Some(word) = words.next() {
         let bytes = word.as_bytes();
         if bytes == b"--" {
-            return match words.next() {
-                Some(positional) => Err(positional_error(positional.as_bytes())),
-                None => Ok(parsed),
-            };
-        }
-        // `--name`, `--name=value`: a name of nothing (`--=x`) is a name that is not listed.
-        let Some(long) = bytes.strip_prefix(b"--").filter(|rest| !rest.is_empty()) else {
-            // `-x`: a dash and one UTF-16 unit, which is a short option that no verb here has.
-            if bytes.first() == Some(&b'-') && js::len16(&lossy(&bytes[1..])) == 1 {
-                return Err(unknown(bytes));
+            for rest in words.by_ref() {
+                if !positionals {
+                    return Err(positional_error(rest.as_bytes()));
+                }
+                parsed.positionals.push(rest.to_owned());
             }
-            return Err(positional_error(bytes));
+            return Ok(parsed);
+        }
+        let Some(long) = bytes.strip_prefix(b"--") else {
+            if looks_like_an_option(bytes) {
+                return Err(unknown(&short(bytes), positionals));
+            }
+            if !positionals {
+                return Err(positional_error(bytes));
+            }
+            parsed.positionals.push(word.to_owned());
+            continue;
         };
+        // `--name`, `--name=value`: a name of nothing (`--=x`) makes the whole word the name.
         let (name, inline) = match long.iter().position(|b| *b == b'=') {
-            Some(at) => (&long[..at], Some(&long[at + 1..])),
-            None => (long, None),
+            Some(at) if at > 0 => (&long[..at], Some(&long[at + 1..])),
+            _ => (long, None),
         };
-        let raw = &bytes[..2 + name.len()];
+        let raw = lossy(&bytes[..2 + name.len()]);
         let Some((listed, kind)) = options
             .iter()
             .find(|(listed, _)| listed.as_bytes() == name)
             .copied()
         else {
-            return Err(unknown(raw));
+            return Err(unknown(&raw, positionals));
         };
         match (kind, inline) {
             (Kind::Flag, Some(_)) => {
@@ -100,32 +165,60 @@ pub fn parse(args: &[OsString], options: &Options) -> Result<Parsed, ParseError>
                     parsed.flags.push(listed);
                 }
             }
-            (Kind::Text, Some(value)) => {
-                parsed
-                    .texts
-                    .insert(listed, OsString::from_vec(value.to_vec()));
+            (Kind::Text | Kind::Many, Some(value)) => {
+                keep(
+                    &mut parsed,
+                    listed,
+                    kind,
+                    OsString::from_vec(value.to_vec()),
+                );
             }
-            (Kind::Text, None) => {
+            (Kind::Text | Kind::Many, None) => {
                 let Some(next) = words.next() else {
                     return Err(ParseError(format!(
                         "Option '--{listed} <value>' argument missing"
                     )));
                 };
                 if looks_like_an_option(next.as_bytes()) {
-                    let raw = lossy(raw);
                     return Err(ParseError(format!(
                         "Option '{raw}' argument is ambiguous.\nDid you forget to specify the option argument for '{raw}'?\nTo specify an option argument starting with a dash use '{raw}=-XYZ'."
                     )));
                 }
-                parsed.texts.insert(listed, next.clone());
+                keep(&mut parsed, listed, kind, next.to_owned());
             }
         }
     }
     Ok(parsed)
 }
 
-fn unknown(raw: &[u8]) -> ParseError {
-    ParseError(format!("Unknown option '{}'", lossy(raw)))
+fn keep(parsed: &mut Parsed, name: &'static str, kind: Kind, value: OsString) {
+    let values = parsed.texts.entry(name).or_default();
+    if kind == Kind::Text {
+        values.clear();
+    }
+    values.push(value);
+}
+
+/// The short option a word names: a dash and the first UTF-16 unit after it, a half of a pair printing as U+FFFD.
+fn short(bytes: &[u8]) -> String {
+    let text = lossy(&bytes[1..]);
+    let first = text.chars().next().unwrap_or(char::REPLACEMENT_CHARACTER);
+    let unit = if first.len_utf16() == 2 {
+        char::REPLACEMENT_CHARACTER
+    } else {
+        first
+    };
+    format!("-{unit}")
+}
+
+fn unknown(raw: &str, positionals: bool) -> ParseError {
+    if positionals {
+        ParseError(format!(
+            "Unknown option '{raw}'. To specify a positional argument starting with a '-', place it at the end of the command after '--', as in '-- \"{raw}\""
+        ))
+    } else {
+        ParseError(format!("Unknown option '{raw}'"))
+    }
 }
 
 fn positional_error(word: &[u8]) -> ParseError {
@@ -138,21 +231,32 @@ fn positional_error(word: &[u8]) -> ParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::args::Grammar;
+    use crate::plugin::{ADD, NEW, REMOVE};
+    use crate::session::prompt::PROMPT;
+    use crate::session::read::{LIST, OPEN};
+    use tagents_spec::{OptionKind, Spec};
 
     const OPTIONS: &Options = &[
         ("idle", Kind::Text),
         ("foreground", Kind::Flag),
         ("socket", Kind::Text),
+        ("state", Kind::Many),
     ];
 
     fn read(words: &[&str]) -> Result<Parsed, String> {
-        let words: Vec<OsString> = words.iter().map(OsString::from).collect();
-        parse(&words, OPTIONS).map_err(|e| e.to_string())
+        parse(words, OPTIONS).map_err(|e| e.to_string())
+    }
+
+    fn read_positionals(words: &[&str]) -> Result<Parsed, String> {
+        parse_with_positionals(words, OPTIONS).map_err(|e| e.to_string())
     }
 
     fn refused(words: &[&str]) -> String {
         read(words).expect_err("refused")
+    }
+
+    fn refused_with_positionals(words: &[&str]) -> String {
+        read_positionals(words).expect_err("refused")
     }
 
     #[test]
@@ -174,11 +278,31 @@ mod tests {
     }
 
     #[test]
+    fn a_many_option_keeps_every_value_in_order() {
+        let parsed = read(&["--state", "a", "--state=b", "--idle", "1"]).unwrap();
+        assert_eq!(parsed.values("state"), ["a", "b"]);
+        assert_eq!(parsed.value("state"), Some("b"));
+        assert!(read(&[]).unwrap().values("state").is_empty());
+    }
+
+    #[test]
+    fn positionals_are_kept_where_the_verb_takes_them() {
+        let parsed =
+            read_positionals(&["a", "--idle", "5", "-", "b", "--", "--idle", "-x"]).unwrap();
+        assert_eq!(parsed.words(), ["a", "-", "b", "--idle", "-x"]);
+        assert_eq!(parsed.value("idle"), Some("5"));
+        assert!(read_positionals(&[]).unwrap().words().is_empty());
+        assert_eq!(read_positionals(&[""]).unwrap().words(), [""]);
+    }
+
+    #[test]
     fn an_error_is_worded_as_node_words_it() {
         assert_eq!(refused(&["--unknown=1"]), "Unknown option '--unknown'");
         assert_eq!(refused(&["-i", "5"]), "Unknown option '-i'");
         assert_eq!(refused(&["-é"]), "Unknown option '-é'");
-        assert_eq!(refused(&["--=x"]), "Unknown option '--'");
+        assert_eq!(refused(&["-abc"]), "Unknown option '-a'");
+        assert_eq!(refused(&["-😀"]), "Unknown option '-\u{FFFD}'");
+        assert_eq!(refused(&["--=x"]), "Unknown option '--=x'");
         assert_eq!(
             refused(&["--idle"]),
             "Option '--idle <value>' argument missing"
@@ -191,7 +315,7 @@ mod tests {
             refused(&["--socket", "--idle"]),
             "Option '--socket' argument is ambiguous.\nDid you forget to specify the option argument for '--socket'?\nTo specify an option argument starting with a dash use '--socket=-XYZ'."
         );
-        for word in ["extra", "-", "-abc", "-😀", ""] {
+        for word in ["extra", "-", ""] {
             assert_eq!(
                 refused(&[word]),
                 format!(
@@ -202,6 +326,24 @@ mod tests {
         assert_eq!(
             refused(&["--", "--idle"]),
             "Unexpected argument '--idle'. This command does not take positional arguments"
+        );
+    }
+
+    #[test]
+    fn an_unknown_option_of_a_verb_with_positionals_carries_the_hint() {
+        let hint = |name: &str| {
+            format!(
+                "Unknown option '{name}'. To specify a positional argument starting with a '-', place it at the end of the command after '--', as in '-- \"{name}\""
+            )
+        };
+        assert_eq!(refused_with_positionals(&["--zz"]), hint("--zz"));
+        assert_eq!(refused_with_positionals(&["--zz=1"]), hint("--zz"));
+        assert_eq!(refused_with_positionals(&["-x"]), hint("-x"));
+        assert_eq!(refused_with_positionals(&["-abc"]), hint("-a"));
+        assert_eq!(refused_with_positionals(&["--=x"]), hint("--=x"));
+        assert_eq!(
+            refused_with_positionals(&["--idle"]),
+            "Option '--idle <value>' argument missing"
         );
     }
 
@@ -217,61 +359,44 @@ mod tests {
         );
     }
 
-    /// `Grammar` answers `None` for a call it hands to node, so only what it does read has to read the same here.
+    /// The tables are copies of the `options` in `spec/cli/tagents-core.json`, as `PARSED` of `packages/core/src/cli/spec.ts` is on the node side, where `sameOptions` holds it to the file.
     #[test]
-    fn what_the_grammar_of_args_reads_is_read_here_the_same_way() {
-        const GRAMMAR: Grammar = Grammar {
-            strings: &["idle", "socket"],
-            flags: &["foreground"],
-            multiple: &[],
-            positionals: false,
-        };
-        let lines: &[&[&str]] = &[
-            &[],
-            &["--"],
-            &["--idle", "5"],
-            &["--idle=5"],
-            &["--idle="],
-            &["--idle", "5", "--idle", "6"],
-            &["--idle=5", "--idle", "6", "--socket=/a"],
-            &["--foreground"],
-            &["--foreground", "--foreground"],
-            &["--foreground", "--"],
-            &["--socket", "/a", "--foreground", "--idle", "1"],
-            &["--idle", "-"],
-            &["--idle", "-1"],
-            &["--idle"],
-            &["--idle", "--foreground"],
-            &["--foreground=1"],
-            &["--nope"],
-            &["--nope=1"],
-            &["--=x"],
-            &["-"],
-            &["-x"],
-            &["x"],
-            &["--", "x"],
-        ];
-        let mut read_by_both = 0;
-        for line in lines {
-            let words: Vec<String> = line.iter().map(|word| (*word).to_owned()).collect();
-            let Some(theirs) = GRAMMAR.parse(&words) else {
-                continue;
-            };
-            let ours = read(line).unwrap_or_else(|error| panic!("{line:?}: {error}"));
-            for name in ["idle", "socket"] {
-                assert_eq!(
-                    ours.text(name),
-                    theirs.value(name).map(OsStr::new),
-                    "{line:?}: {name}"
-                );
-            }
+    fn every_grammar_is_the_options_of_its_command_in_the_data_file() {
+        let spec = Spec::bundled().unwrap();
+        for (verb, grammar) in [
+            ("session open", OPEN),
+            ("session list", LIST),
+            ("session prompt", PROMPT),
+            ("plugin add", ADD),
+            ("plugin remove", REMOVE),
+            ("plugin new", NEW),
+        ] {
+            let command = spec
+                .commands
+                .iter()
+                .find(|command| command.path.join(" ") == verb)
+                .unwrap_or_else(|| panic!("{verb} is not in the data file"));
+            let wanted: Vec<(&str, OptionKind, bool)> = command
+                .options
+                .iter()
+                .map(|(name, shape)| (name.as_str(), shape.kind, shape.multiple.unwrap_or(false)))
+                .collect();
+            let mut read: Vec<(&str, OptionKind, bool)> = grammar
+                .options
+                .iter()
+                .map(|(name, kind)| match kind {
+                    Kind::Text => (*name, OptionKind::String, false),
+                    Kind::Many => (*name, OptionKind::String, true),
+                    Kind::Flag => (*name, OptionKind::Boolean, false),
+                })
+                .collect();
+            read.sort_by_key(|(name, _, _)| *name);
+            assert_eq!(read, wanted, "{verb}");
             assert_eq!(
-                ours.flag("foreground"),
-                theirs.flag("foreground"),
-                "{line:?}"
+                grammar.positionals,
+                !command.positionals.is_empty(),
+                "{verb}: positionals"
             );
-            read_by_both += 1;
         }
-        assert_eq!(read_by_both, 11);
     }
 }

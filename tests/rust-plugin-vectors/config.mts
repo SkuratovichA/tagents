@@ -1,12 +1,12 @@
 // The config section of the plugin vectors: what node's `addPluginEntry` and `removePluginEntry` do to each document of the corpus, and what `tomlString` and `tomlKey` write.
 //
-// Each case runs in a directory of its own, so the error texts carry a path that is written `<dir>` here. `handOver` is the rule of design D3 applied to what node did: the Rust verbs print only the catalogue's lines, so every case in which node threw is one the Rust code must hand to node before it writes, and so is a document that is not UTF-8 (node reads it with U+FFFD for each bad byte and writes that back) and the name `__proto__` (node's schema check drops that key from `plugins`, so `remove` cannot see it).
+// Each case runs in a directory of its own, so the error texts carry a path that is written `<dir>` here. `threw` marks a case in which node threw: the Rust verbs must fail as well, and write nothing.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { tomlKey, tomlString } from '../../packages/core/src/config-file.ts';
 import { addPluginEntry, removePluginEntry } from '../../packages/core/src/plugin-config.ts';
-import { type Document, bytesOf, documents, validUtf8 } from './corpus.mts';
+import { type Document, bytesOf, documents } from './corpus.mts';
 
 interface ConfigCase {
   /** The corpus document the file holds, or null for no file at all (and no directory above it). */
@@ -20,7 +20,7 @@ interface ConfigCase {
   readonly error?: string;
   /** The file's text after the call, when it was written. */
   readonly text?: string;
-  readonly handOver: boolean;
+  readonly threw: boolean;
 }
 
 const ADD_KEYS = ['new', 'x', 'a.b'];
@@ -53,11 +53,10 @@ function run(doc: Document | null, verb: 'add' | 'remove', key: string, from: st
   try {
     const outcome = verb === 'add' ? addPluginEntry(file, key, from) : removePluginEntry(file, key);
     const written = outcome === 'added' || outcome === 'removed';
-    const handOver = (doc !== null && !validUtf8(doc)) || (verb === 'remove' && key === '__proto__');
-    return { ...base, outcome, ...(written ? { text: fs.readFileSync(file, 'utf8') } : {}), handOver };
+    return { ...base, outcome, ...(written ? { text: fs.readFileSync(file, 'utf8') } : {}), threw: false };
   } catch (e) {
     const error = (e instanceof Error ? e.message : String(e)).split(dir).join('<dir>');
-    return { ...base, outcome: 'error', error, handOver: true };
+    return { ...base, outcome: 'error', error, threw: true };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

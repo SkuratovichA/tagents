@@ -32,17 +32,13 @@ fn kill(pid: u32) -> bool {
         .is_some_and(|pid| kill_process(pid, Signal::KILL).is_ok())
 }
 
-pub fn abort(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
+pub fn abort(args: &[String], setting: &Setting, texts: &Texts) -> Output {
     let Some(raw) = args.first().filter(|raw| !raw.is_empty()) else {
-        return Some(usage(texts.t("missingOption", &[("option", "<ref>")])));
+        return usage(texts.t("missingOption", &[("option", "<ref>")]));
     };
     let reference = match reference::resolve(raw, &setting.state_dir) {
-        Resolved::HandOver => return None,
         Resolved::NoMatch => {
-            return Some(Output::fail(format!(
-                "{}\n",
-                texts.t("badRef", &[("ref", raw)])
-            )));
+            return Output::fail(format!("{}\n", texts.t("badRef", &[("ref", raw)])));
         }
         Resolved::Ref(reference) => *reference,
     };
@@ -55,20 +51,20 @@ pub fn abort(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output
         });
     // A pane's key is its number and a session without a pane is keyed `s-<sid>`: the pid belongs to the second kind.
     if row.as_ref().is_some_and(|row| !row.key.starts_with("s-")) {
-        return Some(refused(texts, "abortPaneAgent", raw));
+        return refused(texts, "abortPaneAgent", raw);
     }
     let Some(pid) = row
         .and_then(|row| row.pid)
         .filter(|pid| is_alive(u64::from(*pid)))
         .filter(|pid| kill(*pid))
     else {
-        return Some(refused(texts, "nothingToAbort", raw));
+        return refused(texts, "nothingToAbort", raw);
     };
-    Some(printed(&Value::Object(vec![
+    printed(&Value::Object(vec![
         ("aborted".to_owned(), Value::Bool(true)),
         ("id".to_owned(), Value::String(reference.id)),
         ("pid".to_owned(), Value::Number(f64::from(pid))),
-    ])))
+    ]))
 }
 
 #[cfg(test)]
@@ -103,9 +99,9 @@ mod tests {
         .unwrap();
     }
 
-    fn run(state: &Scratch, words: &[&str]) -> Option<Output> {
+    fn run(state: &Scratch, words: &[&str]) -> Output {
         let setting = Setting {
-            cwd: "/base".to_owned(),
+            cwd: Some("/base".to_owned()),
             state_dir: state.dir().to_owned(),
             locale: Locale::En,
         };
@@ -143,7 +139,7 @@ mod tests {
         let state = Scratch::new();
         let child = sleeper();
         record(&state, "s-a", 1, "sid-a", &child.id().to_string());
-        let output = run(&state, &["s-a"]).unwrap();
+        let output = run(&state, &["s-a"]);
         assert_eq!(output.code, exit::OK);
         assert_eq!(
             output.stdout,
@@ -161,17 +157,12 @@ mod tests {
         let state = Scratch::new();
         let child = sleeper();
         record(&state, "s-a", 1, "sid-a", &child.id().to_string());
-        let output = run(&state, &[&reference("other", r#""sid-a""#)]).unwrap();
+        let output = run(&state, &[&reference("other", r#""sid-a""#)]);
         assert!(output.stdout.contains("\"id\": \"other\""), "{output:?}");
         assert!(killed(child));
         let child = sleeper();
         record(&state, "s-a", 1, "sid-a", &child.id().to_string());
-        assert!(
-            run(&state, &["sid-a"])
-                .unwrap()
-                .stdout
-                .contains("\"id\": \"s-a\"")
-        );
+        assert!(run(&state, &["sid-a"]).stdout.contains("\"id\": \"s-a\""));
         assert!(killed(child));
     }
 
@@ -180,7 +171,7 @@ mod tests {
         let state = Scratch::new();
         let child = sleeper();
         record(&state, "1", 1, "sid-a", &child.id().to_string());
-        let output = run(&state, &["1"]).unwrap();
+        let output = run(&state, &["1"]);
         assert!(refusal(&output, "abortPaneAgent", "1"), "{output:?}");
         assert!(alive(child));
     }
@@ -189,11 +180,11 @@ mod tests {
     fn no_pid_and_a_dead_pid_have_nothing_to_stop() {
         let state = Scratch::new();
         record(&state, "s-a", 1, "sid-a", "");
-        let output = run(&state, &["s-a"]).unwrap();
+        let output = run(&state, &["s-a"]);
         assert!(refusal(&output, "nothingToAbort", "s-a"), "{output:?}");
         // The largest pid there is, which no system hands to a process.
         record(&state, "s-a", 1, "sid-a", "2147483647");
-        let output = run(&state, &["s-a"]).unwrap();
+        let output = run(&state, &["s-a"]);
         assert!(refusal(&output, "nothingToAbort", "s-a"), "{output:?}");
     }
 
@@ -204,7 +195,7 @@ mod tests {
         let pid = u64::from(child.id());
         for beyond in [pid + (1 << 31), pid + (1 << 32)] {
             record(&state, "s-a", 1, "sid-a", &beyond.to_string());
-            let output = run(&state, &["s-a"]).unwrap();
+            let output = run(&state, &["s-a"]);
             assert!(refusal(&output, "nothingToAbort", "s-a"), "{output:?}");
         }
         assert!(alive(child));
@@ -223,9 +214,9 @@ mod tests {
         let state = Scratch::new();
         let child = sleeper();
         record(&state, "s-a", 1, "", &child.id().to_string());
-        let output = run(&state, &[&reference("s-x", "null")]).unwrap();
+        let output = run(&state, &[&reference("s-x", "null")]);
         assert!(output.code == exit::REFUSED, "{output:?}");
-        let output = run(&state, &[&reference("s-x", r#""""#)]).unwrap();
+        let output = run(&state, &[&reference("s-x", r#""""#)]);
         assert_eq!(output.code, exit::OK, "{output:?}");
         assert!(killed(child));
     }
@@ -238,14 +229,14 @@ mod tests {
         // Newest first: the pane that holds the session comes before the headless record that holds the key.
         record(&state, "1", 3, "sid-x", &pid);
         record(&state, "s-b", 1, "sid-b", &pid);
-        let output = run(&state, &[&reference("s-b", r#""sid-x""#)]).unwrap();
+        let output = run(&state, &[&reference("s-b", r#""sid-x""#)]);
         assert!(
             refusal(&output, "abortPaneAgent", &reference("s-b", r#""sid-x""#)),
             "{output:?}"
         );
         // And the other way round.
         record(&state, "s-b", 5, "sid-b", &pid);
-        let output = run(&state, &[&reference("s-b", r#""sid-x""#)]).unwrap();
+        let output = run(&state, &[&reference("s-b", r#""sid-x""#)]);
         assert_eq!(output.code, exit::OK, "{output:?}");
         assert!(killed(child));
     }
@@ -255,16 +246,18 @@ mod tests {
         let state = Scratch::new();
         let child = sleeper();
         record(&state, "s-a", 1, "sid-a", &child.id().to_string());
-        let output = run(&state, &["nobody"]).unwrap();
+        let output = run(&state, &["nobody"]);
         assert_eq!(output.code, exit::ERROR);
         assert_eq!(output.stderr, "no session matches nobody\n");
         let who = reference("s-none", r#""sid-none""#);
-        let output = run(&state, &[&who]).unwrap();
+        let output = run(&state, &[&who]);
         assert!(refusal(&output, "nothingToAbort", &who), "{output:?}");
-        assert_eq!(run(&state, &[]).unwrap().code, exit::USAGE);
-        assert_eq!(run(&state, &[""]).unwrap().code, exit::USAGE);
+        assert_eq!(run(&state, &[]).code, exit::USAGE);
+        assert_eq!(run(&state, &[""]).code, exit::USAGE);
         let lone = reference(r"\ud83d", "null");
-        assert_eq!(run(&state, &[&lone]), None);
+        let unusable = run(&state, &[&lone]);
+        assert_eq!(unusable.code, exit::ERROR);
+        assert_eq!(unusable.stderr, format!("no session matches {lone}\n"));
         assert!(alive(child));
     }
 }

@@ -1,6 +1,6 @@
 // The reference section of the session vectors: what `parseSessionRef` makes of the text of a reference, and whether the Rust code may answer a call that holds it.
 //
-// `parsed` is `JSON.stringify` of what node returned, or null when it returned null. `handOver` is the rule of design D2 for a reference: the Rust verbs print only what they can prove equal to node's, so a reference node accepts but whose strings cannot be rebuilt byte for byte from what the Rust reader holds (a lone surrogate in a key, or in a string the schema keeps (it becomes an argument, an environment entry, a path, or the id a verb prints); a NUL; a `spec.env` entry that `spawn` refuses; an empty `bin`, or a relative `bin` with a slash in it) is one the call goes to node with. A reference node does not accept is not handed over: both programs say `no session matches`.
+// `parsed` is `JSON.stringify` of what node returned, or null when it returned null. `unusable` marks a reference the Rust verbs word as one they do not know (`badRef`): a reference node accepts but whose strings cannot be rebuilt byte for byte from what the Rust reader holds (a lone surrogate in a key, or in a string the schema keeps (it becomes an argument, an environment entry, a path, or the id a verb prints); a NUL; a `spec.env` entry that `spawn` refuses; an empty `bin`, or a relative `bin` with a slash in it) is one the binary cannot hold or act on. A reference node does not accept is `invalid` in both programs, and both say `no session matches`.
 import { parseSessionRef } from '../../packages/core/src/session-ref.ts';
 
 const SPEC = { kind: 'claude', cwd: '/work', skipPermissions: false };
@@ -73,7 +73,7 @@ const TEXTS: string[] = [
   raw(`{"kind":"claude","cwd":"/work","skipPermissions":false,"env":{"A":"x","A":5}}`),
   raw(`{"kind":"claude","cwd":"/work","skipPermissions":false,"__proto__":{"kind":"other"}}`),
   raw(`{"kind":"claude","cwd":"/work","skipPermissions":false,"constructor":1}`),
-  // The classes of hand-over.
+  // The classes of unusable reference.
   raw(`{"kind":"claude","cwd":"/work","skipPermissions":false,"label":"${LONE}"}`),
   raw(`{"kind":"claude","cwd":"/work${LONE}","skipPermissions":false}`),
   raw(`{"kind":"claude","cwd":"/work","skipPermissions":false,"disallowedTools":["a","${LONE}"]}`),
@@ -123,7 +123,7 @@ function keyHasLoneSurrogate(value: unknown): boolean {
 }
 
 /** D2, for a reference that node accepted. `document` is what JSON.parse made of the text, for the keys the schema drops. */
-function handOver(text: string, parsed: ReturnType<typeof parseSessionRef>): boolean {
+function unusable(text: string, parsed: ReturnType<typeof parseSessionRef>): boolean {
   if (parsed === null) return false;
   const document: unknown = JSON.parse(text);
   if (keyHasLoneSurrogate(document)) return true;
@@ -141,7 +141,7 @@ export function referenceVectors(): unknown {
   return {
     cases: TEXTS.map((text) => {
       const parsed = parseSessionRef(text);
-      return { text, parsed: parsed === null ? null : JSON.stringify(parsed), handOver: handOver(text, parsed) };
+      return { text, parsed: parsed === null ? null : JSON.stringify(parsed), unusable: unusable(text, parsed) };
     }),
   };
 }

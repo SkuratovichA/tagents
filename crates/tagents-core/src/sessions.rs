@@ -6,6 +6,7 @@
 
 use crate::{
     date, js,
+    messages::{Locale, Texts},
     transcripts::{self, Context, Failure, SessionRow},
 };
 
@@ -60,6 +61,24 @@ impl Output {
             code: exit::ERROR,
         }
     }
+
+    /// A line on stderr (the newline is added) and the code that says it was not done.
+    pub(crate) fn line(code: u8, line: &str) -> Self {
+        Self {
+            code,
+            ..Self::fail(format!("{line}\n"))
+        }
+    }
+
+    /// What `main()` prints for a command line that `parseArgs` refuses: its message, and the usage code.
+    pub(crate) fn refused_args(err: &crate::parse_args::ParseError) -> Self {
+        Self::line(exit::USAGE, &err.to_string())
+    }
+}
+
+/// The bundled table in the language of `locale`. It loads, a test checks it, so a failure here is a binary that was built wrong: it says so on stderr.
+pub(crate) fn texts(locale: Locale) -> Result<Texts, Output> {
+    Texts::load(locale).map_err(|err| Output::line(exit::ERROR, &format!("tagents-core: {err}")))
 }
 
 /// `sessions(argv)` in `main.ts`, with the `catch` of `main()` around it: a failure prints its message and exits 1.
