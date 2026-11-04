@@ -91,6 +91,8 @@ sc() {
   if [ -n "$ONLY" ] && [[ $label != *"$ONLY"* ]]; then reset; return; fi
   side node "$NODE" "$CORE_JS"
   if [ -n "$SELF_TEST" ]; then side rust "$NODE" "$CORE_JS"; else side rust "$RUST"; fi
+  # With node on both sides there is no binary to word anything itself, so the two are compared in full.
+  if [ -n "$SELF_TEST" ]; then OWN_ERR=; OWN_CODE=; fi
 
   local what=()
   # A call the binary refuses with a code of its own (OWN_CODE) is one node carries out or words otherwise, so what it printed and left behind is not compared.
