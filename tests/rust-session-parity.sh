@@ -1017,9 +1017,12 @@ LIVE=alive; SETUP="$(row 1 1700000100 working sid-pane "$RUN/work" '' d '' @PID@
 SETUP="$(row s-nopid 1700000100 working sid-nopid "$RUN/work" '' d '')"; sc "abort-no-pid" rust 3 'nothing is running for s-nopid' -- session abort s-nopid
 SETUP="$(row s-nopid 1700000100 working sid-nopid "$RUN/work" '' d)"; sc "abort-six-columns" rust 3 'nothing is running for s-nopid' -- session abort s-nopid
 SETUP="$(row s-p 1700000100 working sid-p "$RUN/work" '' d '' 2147483647)"; sc "abort-dead-pid" rust 3 'nothing is running for s-p' -- session abort s-p
-for bad_pid in 0 -5 1.5 abc 1e3 ' 7' 4294967296 4294967297 18446744073709551616 2147483648 4294967295; do
+# A number that reads as a whole pid gets a real SIGKILL from both programs, so a record may name only a process its scenario started: never write a small number or a spelling of one (`1e3` is pid 1000, ` 7` is pid 7).
+for bad_pid in 0 -5 1.5 abc 4294967296 4294967297 18446744073709551616 2147483648 4294967295; do
   SETUP="$(row s-p 1700000100 working sid-p "$RUN/work" '' d '' "$bad_pid")"; sc "abort-pid-32bit-[$bad_pid]" rust 3 'nothing is running for s-p' -- session abort s-p
 done
+LIVE=dead; SETUP="$(row s-p 1700000100 working sid-p "$RUN/work" '' d '' @PID@e0)"; sc "abort-pid-in-exponent-form" rust 0 '"aborted": true' -- session abort s-p
+LIVE=dead; SETUP="$(row s-p 1700000100 working sid-p "$RUN/work" '' d '' ' @PID@')"; sc "abort-pid-with-a-leading-space" rust 0 '"aborted": true' -- session abort s-p
 LIVE=alive; SETUP="$(row s-wrap 1700000100 working sid-wrap "$RUN/work" '' d '' @WRAP31@)"; sc "abort-pid-31-bits-over-a-live-process" rust 3 'nothing is running for s-wrap' -- session abort s-wrap
 LIVE=alive; SETUP="$(row s-wrap 1700000100 working sid-wrap "$RUN/work" '' d '' @WRAP32@)"; sc "abort-pid-32-bits-over-a-live-process" rust 3 'nothing is running for s-wrap' -- session abort s-wrap
 LIVE=alive; SETUP="$LIVE_ROW"; sc "abort-a-reference-to-no-record" rust 3 'nothing is running for' -- session abort "$(ref_of s-nobody '"sid-nobody"')"
