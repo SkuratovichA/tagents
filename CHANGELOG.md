@@ -21,6 +21,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 - `tagents-core session open`, `session list` and `session last` run in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback ([#58](https://github.com/SkuratovichA/tagents/pull/58)).
 - `tagents-core session prompt` runs in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback ([#61](https://github.com/SkuratovichA/tagents/pull/61)).
 - `tagents-core session abort` runs in the prebuilt Rust binary when the installer has put one on the machine, and node stays the fallback ([#63](https://github.com/SkuratovichA/tagents/pull/63)).
+- `tagents-core` answers every call of `session`, `sessions`, `doctor`, `plugin add`, `plugin remove`, `plugin new` and `notify run` itself and starts the node CLI only for `plugin list`, a bare `plugin` and words it does not serve: a reference it cannot hold is `no session matches`, a TOML refusal keeps node's frame with the Rust parser's words, a failed notify start is logged and exits 1, and `tagents-core`, `help`, `--help` and `-h` print the usage line.
 
 ### Removed
 
