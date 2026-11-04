@@ -232,7 +232,13 @@ fn found(spec: &str, cwd: &str, env: &Env) -> Option<String> {
 
 /// The package in the global folder `pnpm root -g` names, when pnpm answers and the folder is there.
 fn global(spec: &str) -> Option<String> {
-    let out = std::process::Command::new("pnpm")
+    global_from("pnpm", spec)
+}
+
+/// `global` with the program that answers `root -g`, so a test can stand one in.
+fn global_from(pnpm: &str, spec: &str) -> Option<String> {
+    crate::child::wait_for_children();
+    let out = std::process::Command::new(pnpm)
         .args(["root", "-g"])
         .stdin(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -260,4 +266,49 @@ fn ancestors(cwd: &str) -> Vec<String> {
 
 fn last_segment(dir: &str) -> &str {
     dir.rsplit('/').next().unwrap_or("")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::fs::PermissionsExt;
+
+    use super::*;
+    use crate::testing::Scratch;
+
+    /// A `pnpm` that runs `body` and a global folder holding the package `pkg`.
+    fn stub(scratch: &Scratch, body: &str) -> String {
+        let program = scratch.path().join("pnpm");
+        fs::write(&program, format!("#!/bin/sh\n{body}\n")).expect("write the stub");
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("chmod the stub");
+        program.display().to_string()
+    }
+
+    fn global_folder(scratch: &Scratch) -> String {
+        let root = scratch.sub("global");
+        fs::create_dir_all(root.join("pkg")).expect("make the package folder");
+        fs::write(root.join("pkg").join(MANIFEST), "{}").expect("write the manifest");
+        root.display().to_string()
+    }
+
+    #[test]
+    fn a_package_in_the_folder_pnpm_names_is_found() {
+        let scratch = Scratch::new();
+        let root = global_folder(&scratch);
+        let pnpm = stub(&scratch, &format!("echo '{root}'"));
+        assert_eq!(global_from(&pnpm, "pkg"), Some(format!("{root}/pkg")));
+        assert_eq!(global_from(&pnpm, "other"), None);
+    }
+
+    #[test]
+    fn a_pnpm_that_fails_finds_nothing() {
+        let scratch = Scratch::new();
+        let root = global_folder(&scratch);
+        let pnpm = stub(&scratch, &format!("echo '{root}'; exit 1"));
+        assert_eq!(global_from(&pnpm, "pkg"), None);
+    }
+
+    #[test]
+    fn a_missing_pnpm_finds_nothing() {
+        assert_eq!(global_from("/nonexistent/pnpm", "pkg"), None);
+    }
 }

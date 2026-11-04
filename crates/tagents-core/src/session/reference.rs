@@ -1,6 +1,6 @@
 //! The reference a session verb takes and prints: `SessionRefSchema` and `parseSessionRef` of `packages/core/src/session-ref.ts`, `resolveRef` of `cli/main.ts`, and `list` of `ClaudeHeadlessDriver` that `resolveRef` and `session list` share.
 //!
-//! A reference node accepts but whose strings cannot be rebuilt byte for byte from what this reader holds, or that the binary cannot act on, is `Read::Unusable`: a lone surrogate in a key or in a string the schema keeps, a NUL in one, a `spec.env` entry that `spawn` refuses, an empty `bin` and a relative `bin` with a slash in it. A verb words it as a reference it does not know (`badRef`); no `session open` writes one. A reference the schema refuses is `Read::Invalid`, which both programs word the same way, so the schema decides before this does.
+//! A reference node accepts but whose strings cannot be rebuilt byte for byte from what this reader holds, or that the binary cannot act on, is `Read::Unusable`: a lone surrogate in a key or in a string the schema keeps, a NUL in one, a `spec.env` entry that `spawn` refuses, an empty `bin`. A verb words it as a reference it does not know (`badRef`); no `session open` writes one. A reference the schema refuses is `Read::Invalid`, which both programs word the same way, so the schema decides before this does.
 
 use crate::js;
 use crate::json::{self, Value};
@@ -122,7 +122,7 @@ impl Reader {
         };
         let bin = self.optional(spec, "bin")?;
         if let Some(bin) = &bin {
-            self.unusable |= bin.is_empty() || (!bin.starts_with('/') && bin.contains('/'));
+            self.unusable |= bin.is_empty();
         }
         let log_file = self.optional(spec, "logFile")?;
         Some(Spec {
@@ -359,13 +359,13 @@ mod tests {
             r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"env":{"":"1"}}"#.to_owned(),
             r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"env":{"A=B":"1"}}"#.to_owned(),
             r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":""}"#.to_owned(),
-            r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":"a/b"}"#.to_owned(),
         ] {
             assert_eq!(read(&doc(&spec)), Read::Unusable, "{spec}");
         }
         for spec in [
             r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":"claude"}"#,
             r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":"/a/b"}"#,
+            r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":"a/b"}"#,
             r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"extra":"\ud83d"}"#,
         ] {
             // A field the schema drops is not read again; only a key with a lone half is.

@@ -121,6 +121,25 @@ pub fn dirname(p: &str) -> String {
     }
 }
 
+/// What `process.cwd()` throws in a directory that was removed.
+pub const GONE_CWD: &str = "ENOENT: no such file or directory, uv_cwd";
+
+/// `process.cwd()`, with U+FFFD for a byte that is not UTF-8; `None` when the directory is gone.
+pub fn current_dir() -> Option<String> {
+    std::env::current_dir()
+        .ok()
+        .map(|dir| dir.to_string_lossy().into_owned())
+}
+
+/// `path.resolve(path)` in the working directory `cwd`: a relative path needs it, and where it is gone node throws, so the error is the line it prints.
+pub fn resolve_in(cwd: Option<&str>, path: &str) -> Result<String, &'static str> {
+    match cwd {
+        Some(cwd) => Ok(resolve(cwd, path)),
+        None if path.starts_with('/') => Ok(resolve("/", path)),
+        None => Err(GONE_CWD),
+    }
+}
+
 /// `path.resolve(base, path)` for an absolute `base`: `path` itself when it is absolute, else below `base`; normalised, with no trailing slash but the root's.
 pub fn resolve(base: &str, path: &str) -> String {
     let full = match path {

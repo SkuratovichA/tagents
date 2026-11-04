@@ -54,7 +54,7 @@ A suite SHALL run each scenario on the node CLI and on the binary, on copies of 
 ## ADDED Requirements
 
 ### Requirement: What the binary cannot hold is read lossily or refused
-An argument or an environment entry that is not UTF-8 SHALL be decoded as node decodes it, with U+FFFD for each bad byte. A reference that holds a lone surrogate, a NUL, an empty `bin`, a relative `bin` with a slash or an environment name with `=` SHALL give `badRef` and exit 1 on `last` and `prompt`, and `abort` SHALL do the same. A SIGCHLD ignored at the start of `session prompt` SHALL NOT stop the verb.
+An argument or an environment entry that is not UTF-8 SHALL be decoded as node decodes it, with U+FFFD for each bad byte. A reference that holds a lone surrogate, a NUL, an empty `bin` or an environment name with `=` SHALL give `badRef` and exit 1 on `last` and `prompt`, and `abort` SHALL do the same. A SIGCHLD ignored at the start of `session prompt` SHALL NOT stop the verb.
 
 #### Scenario: An argument that is not UTF-8
 - **WHEN** `session list --label` runs with an argument that is not valid UTF-8

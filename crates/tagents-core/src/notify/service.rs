@@ -387,7 +387,7 @@ fn end(daemon: Daemon<'_>, ending: Ending) -> ExitCode {
     code
 }
 
-/// The watch the engine's follower and the options watch arm through, which the service can close while they still hold it: closing joins the watch thread and closes its descriptors, which the node service that a failed start is handed to must not inherit.
+/// The watch the engine's follower and the options watch arm through, which the service can close while they still hold it: closing joins the watch thread and closes its descriptors.
 struct WatchSlot(RefCell<Option<Watch>>);
 
 impl WatchSlot {

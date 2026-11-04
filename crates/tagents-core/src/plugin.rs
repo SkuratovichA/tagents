@@ -54,9 +54,7 @@ impl Setting {
     /// The setting of this process.
     pub fn current() -> Setting {
         Setting {
-            cwd: std::env::current_dir()
-                .ok()
-                .map(|dir| dir.to_string_lossy().into_owned()),
+            cwd: node::current_dir(),
             file: config_file(),
             locale: Locale::current(),
             env: resolve::Env::current(),
@@ -83,7 +81,7 @@ pub fn serve(argv: &[String], setting: &Setting) -> Option<Output> {
     };
     // `plugin(argv, io, t, cwd = process.cwd())` reads the directory before it looks at the verb.
     let Some(cwd) = setting.cwd.as_deref() else {
-        return Some(Output::line(exit::ERROR, GONE_CWD));
+        return Some(Output::line(exit::ERROR, node::GONE_CWD));
     };
     Some(match verb.as_str() {
         "add" => add(args, cwd, setting, &texts),
@@ -91,9 +89,6 @@ pub fn serve(argv: &[String], setting: &Setting) -> Option<Output> {
         _ => new(args, cwd, setting, &texts),
     })
 }
-
-/// What `process.cwd()` throws in a directory that was removed.
-pub const GONE_CWD: &str = "ENOENT: no such file or directory, uv_cwd";
 
 /// The options of the three verbs.
 pub(crate) const ADD: Grammar = Grammar {

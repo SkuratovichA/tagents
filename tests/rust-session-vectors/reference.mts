@@ -1,6 +1,6 @@
 // The reference section of the session vectors: what `parseSessionRef` makes of the text of a reference, and whether the Rust code may answer a call that holds it.
 //
-// `parsed` is `JSON.stringify` of what node returned, or null when it returned null. `unusable` marks a reference the Rust verbs word as one they do not know (`badRef`): a reference node accepts but whose strings cannot be rebuilt byte for byte from what the Rust reader holds (a lone surrogate in a key, or in a string the schema keeps (it becomes an argument, an environment entry, a path, or the id a verb prints); a NUL; a `spec.env` entry that `spawn` refuses; an empty `bin`, or a relative `bin` with a slash in it) is one the binary cannot hold or act on. A reference node does not accept is `invalid` in both programs, and both say `no session matches`.
+// `parsed` is `JSON.stringify` of what node returned, or null when it returned null. `unusable` marks a reference the Rust verbs word as one they do not know (`badRef`): a reference node accepts but whose strings cannot be rebuilt byte for byte from what the Rust reader holds (a lone surrogate in a key, or in a string the schema keeps (it becomes an argument, an environment entry, a path, or the id a verb prints); a NUL; a `spec.env` entry that `spawn` refuses; or an empty `bin`) is one the binary cannot hold or act on. A reference node does not accept is `invalid` in both programs, and both say `no session matches`.
 import { parseSessionRef } from '../../packages/core/src/session-ref.ts';
 
 const SPEC = { kind: 'claude', cwd: '/work', skipPermissions: false };
@@ -132,7 +132,7 @@ function unusable(text: string, parsed: ReturnType<typeof parseSessionRef>): boo
   const env = Object.entries(spec.env ?? {});
   if ([...kept, ...env.flat()].some((s) => hasLoneSurrogate(s) || s.includes('\u0000'))) return true;
   if (env.some(([name]) => name === '' || name.includes('='))) return true;
-  if (spec.bin !== undefined && (spec.bin === '' || (!spec.bin.startsWith('/') && spec.bin.includes('/')))) return true;
+  if (spec.bin === '') return true;
   // A string of a field the schema drops is not read again, so it decides nothing.
   return false;
 }

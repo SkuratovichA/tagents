@@ -28,21 +28,15 @@ impl Setting {
     /// The setting of this process.
     pub fn current() -> Setting {
         Setting {
-            cwd: std::env::current_dir()
-                .ok()
-                .map(|dir| dir.to_string_lossy().into_owned()),
+            cwd: node::current_dir(),
             state_dir: state_dir(),
             locale: Locale::current(),
         }
     }
 
-    /// `path.resolve(path)`: a relative path needs the working directory, and where that is gone node throws.
+    /// `path.resolve(path)`; where the working directory is gone and the path is relative, node's line.
     pub(super) fn resolve(&self, path: &str) -> Result<String, Output> {
-        match &self.cwd {
-            Some(cwd) => Ok(node::resolve(cwd, path)),
-            None if path.starts_with('/') => Ok(node::resolve("/", path)),
-            None => Err(Output::line(exit::ERROR, crate::plugin::GONE_CWD)),
-        }
+        node::resolve_in(self.cwd.as_deref(), path).map_err(|line| Output::line(exit::ERROR, line))
     }
 }
 

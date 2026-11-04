@@ -1,8 +1,6 @@
 //! `session prompt`: one turn of `claude`, as `session()` of `packages/core/src/cli/main.ts` and `ClaudeHeadlessDriver.prompt` serve it. The child's environment is built from this process's, with what is not UTF-8 read lossily, and its `PATH` begins with the directory of the node the front door would run (none, on a machine with no node).
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{self, Sender};
 use std::time::{Duration, Instant};
 
@@ -115,11 +113,7 @@ pub fn prompt(args: &[String], setting: &Setting, texts: &Texts) -> Output {
         Err(err) => return Output::refused_args(&err),
     };
     let machine = Machine::current(setting);
-    // Under a caller that left SIGCHLD ignored Linux reaps the child itself, waiting for it finds nothing, and a good turn reads as a failure, where node sets its dispositions back when it starts. A handler that only sets a flag is the safe form of not ignoring it, and exec sets it back to the default for the child and for node; a failed registration leaves what was inherited.
-    let _ = signal_hook::flag::register(
-        signal_hook::consts::SIGCHLD,
-        Arc::new(AtomicBool::new(false)),
-    );
+    crate::child::wait_for_children();
     answer(&parsed, setting, texts, &machine, emit_stdout, emit_stderr)
 }
 
@@ -158,10 +152,7 @@ fn answer(
     let out = match Stdout::start(stdout) {
         Ok(out) => out,
         Err(why) => {
-            return Output::line(
-                exit::ERROR,
-                &format!("tagents-core: cannot start a thread: {why}"),
-            );
+            return Output::line(exit::ERROR, &format!("tagents-core: {why}"));
         }
     };
     let watch = match Watch::start() {
@@ -215,7 +206,7 @@ fn answer(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
     use super::*;
     use crate::messages::Locale;

@@ -235,6 +235,8 @@ side() {  # <tag> <program words...>
   rm -rf "$RUN"; chmod -R u+rwx "$RUN" 2> /dev/null
   cp -RPp "$TEMPLATE" "$RUN" || { echo "rust-session-parity: cannot copy the tree" >&2; exit 2; }
   if [ -n "$SETUP" ]; then ( cd "$RUN" && eval "$SETUP" ) || { echo "rust-session-parity: setup failed: $SETUP" >&2; exit 2; }; fi
+  # The tree as it stands just before the call, for a call the binary must have left alone.
+  if [ -n "$OWN_CODE" ]; then snapshot | norm > "$TMP/pre.$tag"; fi
   LIVE_PID=
   if [ -n "$LIVE" ]; then live_start; fi
   rm -f "$MARK" "$TMP/argv.$tag" "$TMP/stamps.$tag" "$TMP/stub.$tag"; : > "$TMP/caffeinate.$tag"
@@ -260,7 +262,7 @@ side() {  # <tag> <program words...>
 }
 
 # A scenario: `sc <label> <via> <node's exit code, or - for any> <text node prints, or -> -- <the words after the program name>`.
-# `OWN_ERR='<text>'` says the binary's stderr must hold that text and is not compared with node's; `OWN_CODE=<n>` says its exit code is n and is not compared, and neither are its stdout and the tree it leaves. They are for the scenarios in which the design words a line or picks a code of its own, each listed in "Where the two are known to differ" of docs/architecture/rust-core.md.
+# `OWN_ERR='<text>'` says the binary's stderr must hold that text and is not compared with node's; `OWN_CODE=<n>` says its exit code is n and is not compared with node's, and the binary prints nothing on stdout and leaves the tree as it was just before the call. They are for the scenarios in which the design words a line or picks a code of its own, each listed in "Where the two are known to differ" of docs/architecture/rust-core.md.
 # <via> is who must answer on the Rust side: rust or node, or any where the harness has no way to tell.
 sc() {
   local label=$1 via=$2 want=$3 needle=$4; shift 5
@@ -282,7 +284,12 @@ sc() {
 
   local what=()
   # A call the binary refuses with a code of its own (OWN_CODE) is one node carries out or words otherwise, so what it printed and left behind is not compared.
-  [ -z "$OWN_CODE" ] && { cmp -s "$TMP/out.node" "$TMP/out.rust" || what+=(stdout); }
+  if [ -z "$OWN_CODE" ]; then
+    cmp -s "$TMP/out.node" "$TMP/out.rust" || what+=(stdout)
+  else
+    # Refused with a code of its own, the binary answers nothing and changes nothing: a refusal that also ran the call would print its answer and leave its marks.
+    [ -z "$(grep -av '^--- session abort' "$TMP/out.rust")" ] || what+=("stdout (it should be empty)")
+  fi
   if [ -n "$OWN_ERR" ]; then
     grep -qF -- "$OWN_ERR" "$TMP/err.rust" || what+=("stderr (it should hold: $OWN_ERR)")
   else
@@ -293,7 +300,11 @@ sc() {
   else
     cmp -s "$TMP/code.node" "$TMP/code.rust" || what+=("exit code")
   fi
-  [ -z "$OWN_CODE" ] && { cmp -s "$TMP/tree.node" "$TMP/tree.rust" || what+=(tree); }
+  if [ -z "$OWN_CODE" ]; then
+    cmp -s "$TMP/tree.node" "$TMP/tree.rust" || what+=(tree)
+  else
+    cmp -s "$TMP/pre.rust" "$TMP/tree.rust" || what+=("tree (it should be as before the call)")
+  fi
   if [ ${#what[@]} -ne 0 ]; then
     bad "$label: differs in ${what[*]}" \
       "args: $(printf '%q ' "${ARGS[@]}")" \
@@ -871,7 +882,7 @@ EXTRA=("PATH=/usr/bin:/bin"); STUB=$ANSWER; sc "prompt-bin-absolute" rust 0 '"ki
 SETUP='mkdir tmp/p && cp "$BIN/claude" tmp/p/claude2'; EXTRA=("PATH=$RUN/tmp/p:/usr/bin:/bin"); STUB=$ANSWER; sc "prompt-bin-bare" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec ',"bin":"claude2"')" go
 sc "prompt-bin-bare-missing" rust 1 'spawn nope ENOENT' -- session prompt "$(ref_spec ',"bin":"nope"')" go
 # A relative `bin` with a slash is a reference the binary cannot act on (`reference.rs`): `badRef`, exit 1, where node runs the file below the working directory.
-SETUP='cp "$BIN/claude" work/c'; STUB=$ANSWER; STARTS=-; OWN_CODE=1 OWN_ERR='no session matches' sc "prompt-bin-relative" rust - - -- session prompt "$(ref_spec ',"bin":"./c"')" go
+SETUP='cp "$BIN/claude" work/c'; STUB=$ANSWER; sc "prompt-bin-relative" rust - - -- session prompt "$(ref_spec ',"bin":"./c"')" go
 SETUP='cp "$BIN/claude" work/claude'; EXTRA=("PATH=.:/usr/bin:/bin"); STUB=$ANSWER; STARTS=-; sc "prompt-path-with-a-relative-entry" rust - - -- session prompt "$(ref_spec)" go
 SETUP='cp "$BIN/claude" work/claude'; STUB=$ANSWER; STARTS=-; sc "prompt-path-of-the-spec-empty" rust - - -- session prompt "$(ref_spec ',"env":{"PATH":""}')" go
 # A text file with the mode of a program.

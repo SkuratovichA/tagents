@@ -435,13 +435,13 @@ mod tests {
         };
         assert!(matches!(of(r#""bin":"/b""#), reference::Read::Ref(_)));
         assert!(matches!(of(r#""bin":"b""#), reference::Read::Ref(_)));
+        assert!(matches!(of(r#""bin":"./b""#), reference::Read::Ref(_)));
         for extra in [
             r#""env":{"A=B":"v"}"#,
             r#""env":{"":"v"}"#,
             r#""env":{"A\u0000B":"v"}"#,
             r#""env":{"A":"v\u0000"}"#,
             r#""bin":"""#,
-            r#""bin":"./b""#,
             r#""bin":"a\u0000b""#,
             r#""model":"a\u0000b""#,
             r#""disallowedTools":["a\u0000b"]"#,

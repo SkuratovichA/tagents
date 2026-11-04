@@ -72,6 +72,7 @@ side() {  # <tag> <program words...>
   rm -rf "$RUN"; chmod -R u+rwx "$RUN" 2> /dev/null
   cp -RPp "$TEMPLATE" "$RUN" || { echo "rust-plugin-parity: cannot copy the tree" >&2; exit 2; }
   if [ -n "$SETUP" ]; then ( cd "$RUN" && eval "$SETUP" ) || { echo "rust-plugin-parity: setup failed: $SETUP" >&2; exit 2; }; fi
+  if [ -n "$OWN_CODE" ]; then snapshot | norm > "$TMP/pre.$tag"; fi
   rm -f "$MARK"
   ( cd "$RUN/$CWD" && exec env -i "PATH=$BIN:/usr/bin:/bin" "HOME=$RUN/home" "TAGENTS_CONFIG_DIR=$RUN/$CFGDIR" "TAGENTS_LOCALE=$LOCALE" \
       "TAGENTS_NODE=$SHIM/node" "PARITY_MARK=$MARK" "PARITY_REAL_NODE=$NODE" "${EXTRA[@]}" "$@" "${ARGS[@]}" ) 2> "$TMP/err.$tag.raw" | norm > "$TMP/out.$tag"
@@ -83,7 +84,7 @@ side() {  # <tag> <program words...>
 }
 
 # A scenario: `sc <label> <via> <node's exit code, or - for any> <text node prints, or -> -- <the words after the program name>`.
-# `OWN_ERR='<text>'` says the binary's stderr must hold that text and is not compared with node's; `OWN_CODE=<n>` says its exit code is n and is not compared, and neither are its stdout and the tree it leaves. They are for the scenarios in which the design words a line or picks a code of its own, each listed in "Where the two are known to differ" of docs/architecture/rust-core.md.
+# `OWN_ERR='<text>'` says the binary's stderr must hold that text and is not compared with node's; `OWN_CODE=<n>` says its exit code is n and is not compared with node's, and the binary prints nothing on stdout and leaves the tree as it was just before the call. They are for the scenarios in which the design words a line or picks a code of its own, each listed in "Where the two are known to differ" of docs/architecture/rust-core.md.
 # <via> is who must answer on the Rust side: rust, node, or any.
 sc() {
   local label=$1 via=$2 want=$3 needle=$4; shift 5
@@ -96,7 +97,12 @@ sc() {
 
   local what=()
   # A call the binary refuses with a code of its own (OWN_CODE) is one node carries out or words otherwise, so what it printed and left behind is not compared.
-  [ -z "$OWN_CODE" ] && { cmp -s "$TMP/out.node" "$TMP/out.rust" || what+=(stdout); }
+  if [ -z "$OWN_CODE" ]; then
+    cmp -s "$TMP/out.node" "$TMP/out.rust" || what+=(stdout)
+  else
+    # Refused with a code of its own, the binary answers nothing and changes nothing: a refusal that also ran the call would print its answer and leave its marks.
+    [ -z "$(grep -av '^--- session abort' "$TMP/out.rust")" ] || what+=("stdout (it should be empty)")
+  fi
   if [ -n "$OWN_ERR" ]; then
     grep -qF -- "$OWN_ERR" "$TMP/err.rust" || what+=("stderr (it should hold: $OWN_ERR)")
   else
@@ -107,7 +113,11 @@ sc() {
   else
     cmp -s "$TMP/code.node" "$TMP/code.rust" || what+=("exit code")
   fi
-  [ -z "$OWN_CODE" ] && { cmp -s "$TMP/tree.node" "$TMP/tree.rust" || what+=(tree); }
+  if [ -z "$OWN_CODE" ]; then
+    cmp -s "$TMP/tree.node" "$TMP/tree.rust" || what+=(tree)
+  else
+    cmp -s "$TMP/pre.rust" "$TMP/tree.rust" || what+=("tree (it should be as before the call)")
+  fi
   if [ ${#what[@]} -ne 0 ]; then
     bad "$label: differs in ${what[*]}" \
       "args: $(printf '%q ' "${ARGS[@]}")" \

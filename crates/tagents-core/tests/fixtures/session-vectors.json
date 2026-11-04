@@ -962,12 +962,12 @@
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"./claude\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"./claude\"}}",
-        "unusable": true
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"bin/claude\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"bin/claude\"}}",
-        "unusable": true
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"/abs/claude\"}}",
@@ -977,7 +977,7 @@
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"../claude\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"../claude\"}}",
-        "unusable": true
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"a\\u0000b\"}}",
