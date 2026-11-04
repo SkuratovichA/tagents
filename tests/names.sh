@@ -578,5 +578,65 @@ case "$(qof "$ROOT/none.args")" in
   *)  pass=$((pass+1)); printf '  ok   %s\n' "an unlabelled agent is seeded with its displayed name" ;;
 esac
 
+# ---------------------------------------------------------------------------
+t "one agent has one name, whichever of its two keys named it"
+# ---------------------------------------------------------------------------
+# An agent renaming itself knows $TMUX_PANE, so --label reaches here with a pane id for a session that has an id too. The row reads the session's label first and the pane's second; a label left under the pane is then either hidden behind an older name or missed by a dialog that asks for one key only.
+lab()     { awk -F'\t' -v k="${1:-}" '$1 == k { print $2; exit }' "$STATE/labels.tsv" 2>/dev/null; }
+onrow()   { run --list 2>/dev/null | grep -c -- "${1:-}"; }
+
+RP=$(newagent tatest-work 'title-of-byp' sid-byp)
+run --label "$RP" 'named-by-its-pane' >/dev/null 2>&1
+ok "a name given by pane id lands on the session"  "named-by-its-pane" "$(lab sid-byp)"
+ok "...and the pane keeps no copy of it"           ""                  "$(lab "$RP")"
+ok "...the row shows it"                           1                   "$(onrow named-by-its-pane)"
+ok "...the window takes it"                        "named-by-its-pane" "$(wname "$RP")"
+askrename "$ROOT/byp.args" sid-byp FZFRC=130
+ok "...and the dialog opens on it, not on the title" "named-by-its-pane" "$(qof "$ROOT/byp.args")"
+
+RP=$(newagent tatest-work 'title-of-old' sid-old)
+run --label sid-old 'the-older-name' >/dev/null 2>&1
+run --label "$RP" 'the-newer-name' >/dev/null 2>&1
+ok "a pane id replaces the name the session already had" "the-newer-name" "$(lab sid-old)"
+ok "...the row follows"                                  1                "$(onrow the-newer-name)"
+ok "...and the older name is gone from the row"          0                "$(onrow the-older-name)"
+askrename "$ROOT/old.args" sid-old FZFRC=130
+ok "...and from the dialog"                              "the-newer-name" "$(qof "$ROOT/old.args")"
+
+run --label "$RP" '' >/dev/null 2>&1
+ok "an empty name by pane id clears the session's label" "" "$(lab sid-old)"
+ok "...so the row goes back to the title"                1  "$(onrow title-of-old)"
+
+# Named before its first hook event: the row had no session id then, so the label is under the pane, and it stays the name the row shows after the record gains an id.
+RP=$(newagent tatest-work 'title-of-early' sid-early)
+printf '%s\tnamed-early\n' "$RP" >>"$STATE/labels.tsv"
+ok "a label under the pane is the name on the row" 1 "$(onrow named-early)"
+askrename "$ROOT/early.args" sid-early FZFRC=130
+ok "...the dialog opens on it"                     "named-early" "$(qof "$ROOT/early.args")"
+ok "...the kill dialog names the agent by it"      1 "$(run --ask-kill "$RP" sid-early </dev/null 2>/dev/null | grep -c named-early)"
+ok "...the preview heading names it by it"         1 "$(run --ask-preview "$RP" working </dev/null 2>/dev/null | grep -c named-early)"
+
+askrename "$ROOT/early2.args" sid-early
+ok "answering the dialog moves the name to the session" "named-early" "$(lab sid-early)"
+ok "...and leaves nothing under the pane"               ""            "$(lab "$RP")"
+
+# A leftover under the pane would come back as the name the moment the session's label is cleared, where the contract promises the title.
+RP=$(newagent tatest-work 'title-of-stale' sid-stale)
+printf 'sid-stale\tcurrent\n%s\tleftover\n' "$RP" >>"$STATE/labels.tsv"
+run --label sid-stale '' >/dev/null 2>&1
+ok "clearing by session id takes the pane's leftover too" "" "$(lab "$RP")"
+ok "...so the row goes back to the title"                 1  "$(onrow title-of-stale)"
+
+# The session's label wins, as on the row, and only the pane's own key is answered for it.
+RP=$(newagent tatest-work 'title-of-both' sid-both)
+printf 'sid-both\tby-session\n%s\tby-pane\n' "$RP" >>"$STATE/labels.tsv"
+askrename "$ROOT/both.args" sid-both FZFRC=130
+ok "the session's label beats the pane's in the dialog" "by-session" "$(qof "$ROOT/both.args")"
+
+# No record yet: there is no session to name, and the pane is at least stable while it lives.
+NP=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" "exec '$BIN/claude' 600" 2>/dev/null)
+run --label "$NP" 'no-record-yet' >/dev/null 2>&1
+ok "a pane with no record keeps the name itself" "no-record-yet" "$(lab "$NP")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

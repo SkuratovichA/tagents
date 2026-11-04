@@ -122,7 +122,7 @@ preview_name() {  # <pane>
   IFS="$US" read -r sid dir tr lbl < <(
     LC_ALL=C awk -F"$TAB" -v OFS="$US" 'NR==1 { print $3, $4, $5, $10; exit }' \
         "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)
-  nm=$(label_of "${sid:-$pane}")
+  nm=$(label_for "$sid" "$pane")
   if [ -z "$nm" ]; then
     nm=$(untitle_of "$(tmux display -p -t "$pane" '#{pane_title}' 2>/dev/null)")
     # tmux default pane title is the host name, which names nothing.

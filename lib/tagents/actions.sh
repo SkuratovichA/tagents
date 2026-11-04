@@ -132,7 +132,7 @@ ask_kill() {  # the confirmation itself — normally the body of the popup
   # The same name the row shows, worked out the same way: an explicit label
   # first, then the pane title with Claude Code leading glyph stripped, then the
   # project. A title that is just the hostname is tmux default and names nothing.
-  nm=$(label_of "${sid:-$pane}")
+  nm=$(label_for "$sid" "$pane")
   dir=$(LC_ALL=C awk -F"$TAB" 'NR==1 { print $4 }' "$STATE_DIR/${pane#%}.tsv" 2>/dev/null)
   if [ "$alive" = 1 ]; then
     [ -z "$dir" ] && dir=$(tmux display -p -t "$pane" '#{pane_current_path}' 2>/dev/null)
