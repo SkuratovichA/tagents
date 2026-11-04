@@ -53,7 +53,7 @@ ask_profile() {  # <new|pick|resume> <args…>
       sub="$(tilde_of "$root") · session $sess"
       note="whatever the rules in $(tilde_of "$CONFIG_FILE") say · esc cancels" ;;
     resume)
-      nm=$(label_of "${sid:-$pane}")
+      nm=$(label_for "$sid" "$pane")
       [ -n "$nm" ] || nm=$(basename "${dir:-?}")
       hdr="resume $nm as…"
       sub="$(tilde_of "$dir") · session ${sid:-?}"

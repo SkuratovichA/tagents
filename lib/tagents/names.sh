@@ -13,12 +13,12 @@
 # the pane moving, being joined into another window, or the session being resumed.
 LABELS="$STATE_DIR/labels.tsv"
 
-set_label() {
-  local keyv=$1 name=$2 tmpf
+set_label() {  # <key> <name> [<the agent's other key, whose label this one replaces>]
+  local keyv=$1 name=$2 other=${3:-} tmpf
   [ -z "$keyv" ] && return 1
   mkdir -p "$STATE_DIR" 2>/dev/null
   tmpf="$STATE_DIR/.labels.$$"
-  { [ -e "$LABELS" ] && LC_ALL=C awk -F"$TAB" -v k="$keyv" '$1 != k' "$LABELS"; } >"$tmpf" 2>/dev/null
+  { [ -e "$LABELS" ] && LC_ALL=C awk -F"$TAB" -v k="$keyv" -v o="$other" '$1 != k && $1 != o' "$LABELS"; } >"$tmpf" 2>/dev/null
   [ -n "$name" ] && printf '%s\t%s\n' "$keyv" "$name" >>"$tmpf"
   mv -f "$tmpf" "$LABELS" 2>/dev/null || rm -f "$tmpf"
   signal_ev   # labels are drawn, and the file is not a tmux event
@@ -28,6 +28,14 @@ label_of() {
   local keyv=$1
   [ -e "$LABELS" ] || return 0
   LC_ALL=C awk -F"$TAB" -v k="$keyv" '$1 == k { print $2; exit }' "$LABELS"
+}
+
+# THE LABEL OF ONE AGENT, in the order its row and the sweep read it: the one typed for the session, else the one typed for the pane. A label stays under the pane when the agent was named before its first hook event, and a dialog that asks for `${sid:-$pane}` misses it and opens on the pane title while the row shows the name.
+label_for() {  # <sid> <pane>
+  local nm=
+  [ -n "${1:-}" ] && nm=$(label_of "$1")
+  [ -n "$nm" ] || nm=$(label_of "${2:-}")
+  printf '%s' "$nm"
 }
 
 # THE NAME A TITLE GIVES, in shell — the same rule untitle() applies in list()
@@ -99,18 +107,27 @@ panes_for_sid() {  # <sid>
 
 pane_for_sid() { panes_for_sid "$1" | head -1 | cut -f1; }
 
+# THE ONE WAY A NAME IS GIVEN, from ctrl-r and from --label alike. A pane whose record names a session files the name under that session, because a label under the pane sits behind any label the session already has: an agent renaming itself by $TMUX_PANE moved its window and left its row and the dialog on the older name. The pane's own entry goes with it, or clearing the name would bring that entry back instead of the title.
+name_agent() {  # <sid or pane> <pane, when known> <name>
+  local keyv=$1 pane=$2 name=$3 sid=
+  case "$keyv" in
+    %[0-9]*) IFS="$US" read -r sid _ < <(rec_row "$keyv"); keyv=${sid:-$keyv} ;;
+  esac
+  set_label "$keyv" "$name" "$pane"
+  [ -n "$pane" ] && name_window "$pane" "$name"
+  return 0
+}
+
 # The --label entry point: same as ctrl-r, for scripts and for naming an agent from
 # somewhere other than the dashboard.
 label_cmd() {
   local keyv=$1 name=${2:-} pane
   [ -n "$keyv" ] || { echo "tagents --label: need a session id or pane id" >&2; return 2; }
-  set_label "$keyv" "$name"
   case "$keyv" in
     %[0-9]*) pane=$keyv ;;
     *)       pane=$(pane_for_sid "$keyv") ;;
   esac
-  [ -n "$pane" ] && name_window "$pane" "$name"
-  return 0
+  name_agent "$keyv" "$pane" "$name"
 }
 
 # The dashboard is one way to find an agent; the tmux status bar is the other,
@@ -374,7 +391,7 @@ ask_rename() {  # the prompt itself — normally the body of the popup
   # with; fzf has --query, and --print-query hands it straight back, so the
   # dialog opens on the current name with the cursor at the end of it. Its list
   # is empty on purpose — there is nothing to pick here, only a line to type.
-  cur=$(label_of "$keyv")
+  cur=$(label_for "$keyv" "$pane")
   [ -n "$cur" ] || cur=$(preview_name "$pane")
   if [ -t 0 ]; then
     name=$(fzf --print-query --query "$cur" --layout=reverse --height=100% \
@@ -397,6 +414,5 @@ empty clears it · esc cancels" </dev/null)
     printf '\033[90mempty clears it · ctrl-c cancels\033[0m\n> '
     IFS= read -r -t 300 name || return 0
   fi
-  set_label "$keyv" "$name"
-  name_window "$pane" "$name"
+  name_agent "$keyv" "$pane" "$name"
 }

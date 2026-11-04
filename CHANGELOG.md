@@ -37,6 +37,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 - `plugin add` and `plugin remove` stop with the error when `config.toml` cannot be read for any reason but being absent, where they treated it as empty and wrote a config over what could not be read ([#50](https://github.com/SkuratovichA/tagents/pull/50)).
 - A knowledge document with CRLF line endings keeps its last front-matter value as written, where the carriage return of the line break stayed on it: the title of such a file no longer ends with `\r` in the index and in the search results ([#51](https://github.com/SkuratovichA/tagents/pull/51)).
 - The output of the Claude child of a headless session is decoded as a stream, so a character whose bytes arrive in two reads is one character in the outcome's text and detail, where it was two replacement characters ([#58](https://github.com/SkuratovichA/tagents/pull/58)).
+- A name given with `tagents --label <pane id>` lands on the agent's session, so the row and the `ctrl-r` dialog show it where they stayed on the older name or the pane title, and clearing a name goes back to the title where a label left under the pane came back ([#66](https://github.com/SkuratovichA/tagents/pull/66)).
 
 ## [0.1.0] - 2026-10-29
 
