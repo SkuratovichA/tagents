@@ -1,6 +1,6 @@
 // The resolution section of the plugin vectors: what node's `resolvePluginPackage` answers for each argument and working directory on the tree of `tree.mts`, `defaultPluginName`, and the `path.resolve` and `path.relative` the Rust twins stand for.
 //
-// A case is run with HOME set to `<root>/home` and with no `pnpm` on PATH, so node's last resort (`pnpm root -g`) finds nothing. `handOver` is design D5 applied: the Rust resolution answers a directory argument in full and a bare name only when a walk of `node_modules` finds it and nothing in the package or the environment can make node's answer differ (an `exports` key, a name that is not `name` or `@scope/name`, a package.json above the working directory that names the package and has `exports`); everything else is node's, and each such case says why.
+// A case is run with HOME set to `<root>/home` and with no `pnpm` on PATH, so node's last resort (`pnpm root -g`) finds nothing. The Rust resolution must answer each case as node does.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,17 +12,12 @@ interface Case {
   readonly spec: string;
   /** The working directory, relative to the root. */
   readonly cwd: string;
-  /** Why the Rust verb hands the call to node, when it does. */
-  readonly handOver?: string;
 }
 
 const CWD = 'proj/a/b';
 const byPath = (spec: string, cwd = CWD): Case => ({ spec, cwd });
-const byName = (spec: string, cwd = CWD, handOver?: string): Case => ({ spec, cwd, ...(handOver === undefined ? {} : { handOver }) });
+const byName = (spec: string, cwd = CWD): Case => ({ spec, cwd });
 
-const NOT_FOUND = 'the name is not found by the walk of node_modules, and node goes on to the global folders';
-const EXPORTS = 'the package has an exports key';
-const GRAMMAR = 'the name is not name or @scope/name';
 
 const cases: readonly Case[] = [
   // A directory.
@@ -89,22 +84,22 @@ const cases: readonly Case[] = [
   byName('plain', 'proj/node_modules/plain/src'),
   byName('plain', 'proj'),
   byName('selfnoexp', 'selfnoexp/a'),
-  byName('exports-with-package-json', CWD, EXPORTS),
-  byName('exports-without-package-json', CWD, EXPORTS),
-  byName('bad-json', CWD, 'the manifest in node_modules is not JSON, so its exports are unknown'),
-  byName('selfref', 'selfref/a', 'the nearest package.json names the package and has exports, which node resolves first'),
-  byName('not-installed', CWD, NOT_FOUND),
-  byName('plain', 'home', NOT_FOUND),
-  byName('plain/package.json', CWD, GRAMMAR),
-  byName('plain/src', CWD, GRAMMAR),
-  byName('_underscore', CWD, GRAMMAR),
-  byName('a b', CWD, GRAMMAR),
-  byName('@sc', CWD, GRAMMAR),
-  byName('@sc/', CWD, GRAMMAR),
-  byName('@/x', CWD, GRAMMAR),
-  byName('@sc/a/b', CWD, GRAMMAR),
-  byName('', CWD, 'an empty name'),
-  byName('naïve', CWD, GRAMMAR),
+  byName('exports-with-package-json', CWD),
+  byName('exports-without-package-json', CWD),
+  byName('bad-json', CWD),
+  byName('selfref', 'selfref/a'),
+  byName('not-installed', CWD),
+  byName('plain', 'home'),
+  byName('plain/package.json', CWD),
+  byName('plain/src', CWD),
+  byName('_underscore', CWD),
+  byName('a b', CWD),
+  byName('@sc', CWD),
+  byName('@sc/', CWD),
+  byName('@/x', CWD),
+  byName('@sc/a/b', CWD),
+  byName('', CWD),
+  byName('naïve', CWD),
 ];
 
 /** Run node's resolution for each case; `<root>` in a path of the answer is the tree's root. */
@@ -125,7 +120,7 @@ export function resolveVectors(): unknown {
       const result = answer.ok
         ? { ok: true, dir: norm(answer.pkg.dir), from: norm(answer.pkg.from), packageName: answer.pkg.packageName, entry: norm(answer.pkg.entry) }
         : { ok: false, problem: answer.problem, detail: norm(answer.detail) };
-      return { spec: c.spec, cwd: c.cwd, result, handOver: c.handOver !== undefined, ...(c.handOver === undefined ? {} : { reason: c.handOver }) };
+      return { spec: c.spec, cwd: c.cwd, result };
     });
     return {
       tree,

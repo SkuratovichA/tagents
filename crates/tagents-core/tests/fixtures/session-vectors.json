@@ -527,477 +527,477 @@
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":true}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":true}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"a\",\"model\":\"opus\",\"effort\":\"high\",\"systemPromptFile\":\"/p\",\"mcpConfig\":\"/m\",\"disallowedTools\":[\"Bash\",\"Edit\"],\"env\":{\"A\":\"1\",\"B\":\"\"},\"bin\":\"/usr/bin/claude\",\"logFile\":\"/l\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"a\",\"model\":\"opus\",\"effort\":\"high\",\"systemPromptFile\":\"/p\",\"mcpConfig\":\"/m\",\"disallowedTools\":[\"Bash\",\"Edit\"],\"env\":{\"A\":\"1\",\"B\":\"\"},\"bin\":\"/usr/bin/claude\",\"logFile\":\"/l\"}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"configDir\":null}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"configDir\":null}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"configDir\":\"/acct\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"configDir\":\"/acct\"}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"configDir\":\"\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"configDir\":\"\"}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"\"}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"disallowedTools\":[]}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"disallowedTools\":[]}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{}}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":\"abc\",\"transcript\":\"/t.jsonl\",\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":\"abc\",\"transcript\":\"/t.jsonl\",\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"extra\":1,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"extra\":{\"a\":1}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "  {\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}\n",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "\n\t{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "null",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "[]",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "\"text\"",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\"}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":null}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":[]}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"other\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":5,\"skipPermissions\":false}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"cwd\":\"/work\",\"kind\":\"claude\"}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":\"yes\"}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":0}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":null}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":null}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":5}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"configDir\":5}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"disallowedTools\":\"Bash\"}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"disallowedTools\":[\"Bash\",5]}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":[]}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":1}}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":null}}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":5}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"logFile\":null}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":5,\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":null,\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":5,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":5,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}} {\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"a\",\"id\":\"b\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"b\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"cwd\":\"/other\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/other\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"__proto__\":{\"a\":1},\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"__proto__\":\"1\",\"A\":\"b\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"b\"}}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"b\",\"A\":\"c\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"c\"}}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"2\":\"b\",\"1\":\"c\",\"A\":\"d\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"1\":\"c\",\"2\":\"b\",\"A\":\"d\"}}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"__proto__\":5,\"A\":\"b\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"b\"}}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":5,\"A\":\"x\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"x\"}}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"x\",\"A\":5}}}",
         "parsed": null,
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"__proto__\":{\"kind\":\"other\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"constructor\":1}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"\\ud83d\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"\\ud83d\"}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\\ud83d\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\\ud83d\",\"skipPermissions\":false}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"disallowedTools\":[\"a\",\"\\ud83d\"]}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"disallowedTools\":[\"a\",\"\\ud83d\"]}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"\\ud83d\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"\\ud83d\"}}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"\\ud83d\":\"a\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"\\ud83d\":\"a\"}}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"\\ud83d\\ude00\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"😀\"}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"\\ud83d\\ude00\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"😀\"}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"extra\":{\"\\ud83d\":1}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"extra\":\"\\ud83d\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"\\ud83d\":1,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"extra\":\"\\ud83d\",\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"\\ud83d\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"\\ud83d\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":\"\\ud83d\",\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":\"\\ud83d\",\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":\"/t\\ud83d\",\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":\"/t\\ud83d\",\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"a\\u0000b\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"a\\u0000b\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":\"a\\u0000b\",\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":\"a\\u0000b\",\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":\"/t\\u0000.jsonl\",\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":\"/t\\u0000.jsonl\",\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/wo\\u0000rk\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/wo\\u0000rk\",\"skipPermissions\":false}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"a\\u0000b\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"a\\u0000b\"}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"model\":\"a\\u0000b\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"model\":\"a\\u0000b\"}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\\u0000B\":\"1\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\\u0000B\":\"1\"}}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"a\\u0000b\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"a\\u0000b\"}}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"\":\"1\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"\":\"1\"}}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A=B\":\"1\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A=B\":\"1\"}}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"=\":\"1\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"=\":\"1\"}}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"a=b\"}}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"env\":{\"A\":\"a=b\"}}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"\"}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"claude\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"claude\"}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"./claude\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"./claude\"}}",
-        "handOver": true
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"bin/claude\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"bin/claude\"}}",
-        "handOver": true
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"/abs/claude\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"/abs/claude\"}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"../claude\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"../claude\"}}",
-        "handOver": true
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"a\\u0000b\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"bin\":\"a\\u0000b\"}}",
-        "handOver": true
+        "unusable": true
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"relative\",\"skipPermissions\":false}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"relative\",\"skipPermissions\":false}}",
-        "handOver": false
+        "unusable": false
       },
       {
         "text": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"é😀\"}}",
         "parsed": "{\"id\":\"r1\",\"claudeSessionId\":null,\"transcript\":null,\"spec\":{\"kind\":\"claude\",\"cwd\":\"/work\",\"skipPermissions\":false,\"label\":\"é😀\"}}",
-        "handOver": false
+        "unusable": false
       }
     ]
   },

@@ -1,15 +1,15 @@
 //! `session open`, `session list` and `session last`: the three verbs that start no process, as the node CLI's `session()` serves them.
 //!
-//! Each answers only what it can prove identical to node and returns `None` otherwise, before anything is read or written: an argument outside the grammar of `args`, a reference given as JSON that the Rust reader cannot rebuild (`reference::Read::HandOver`), a working directory that is gone or not UTF-8, random bytes that cannot be read.
+//! Each answers every call: a command line outside the grammar of `parse_args` is refused in node's words, a reference the binary cannot hold is a `badRef`, a working directory that is not UTF-8 is read with U+FFFD, and one that is gone fails where node fails, at the first relative path.
 
 use std::{fs, io::Read};
 
 use crate::{
-    args::Grammar,
     json::{self, Value},
     messages::{Locale, Texts},
     node,
     notify::state::{RowState, read_agent_state, state_dir},
+    parse_args::{Grammar, Kind},
     session::reference::{self, Resolved},
     sessions::{Output, exit},
     transcripts,
@@ -17,49 +17,47 @@ use crate::{
 
 /// What a call depends on besides its arguments.
 pub struct Setting {
-    /// `process.cwd()`.
-    pub cwd: String,
+    /// `process.cwd()`, with U+FFFD for a byte that is not UTF-8; `None` when the directory is gone.
+    pub cwd: Option<String>,
     /// `stateDir()`.
     pub state_dir: String,
     pub locale: Locale,
 }
 
 impl Setting {
-    /// The setting of this process. `None` when the working directory is gone or is not UTF-8: node would fail on the one and read the other with U+FFFD.
-    pub fn current() -> Option<Setting> {
-        let cwd = std::env::current_dir()
-            .ok()?
-            .into_os_string()
-            .into_string()
-            .ok()?;
-        Some(Setting {
-            cwd,
+    /// The setting of this process.
+    pub fn current() -> Setting {
+        Setting {
+            cwd: node::current_dir(),
             state_dir: state_dir(),
             locale: Locale::current(),
-        })
+        }
+    }
+
+    /// `path.resolve(path)`; where the working directory is gone and the path is relative, node's line.
+    pub(super) fn resolve(&self, path: &str) -> Result<String, Output> {
+        node::resolve_in(self.cwd.as_deref(), path).map_err(|line| Output::line(exit::ERROR, line))
     }
 }
 
 pub(crate) const OPEN: Grammar = Grammar {
-    strings: &[
-        "cwd",
-        "label",
-        "model",
-        "effort",
-        "resume",
-        "system-prompt-file",
-        "mcp-config",
-        "config-dir",
+    options: &[
+        ("cwd", Kind::Text),
+        ("label", Kind::Text),
+        ("model", Kind::Text),
+        ("effort", Kind::Text),
+        ("resume", Kind::Text),
+        ("system-prompt-file", Kind::Text),
+        ("mcp-config", Kind::Text),
+        ("config-dir", Kind::Text),
+        ("no-config-dir", Kind::Flag),
+        ("skip-permissions", Kind::Flag),
     ],
-    flags: &["no-config-dir", "skip-permissions"],
-    multiple: &[],
     positionals: false,
 };
 
 pub(crate) const LIST: Grammar = Grammar {
-    strings: &["label"],
-    flags: &[],
-    multiple: &["state"],
+    options: &[("label", Kind::Text), ("state", Kind::Many)],
     positionals: false,
 };
 
@@ -73,11 +71,7 @@ const STATES: [(&str, RowState); 5] = [
 ];
 
 pub(super) fn usage(stderr: String) -> Output {
-    Output {
-        stdout: String::new(),
-        stderr: format!("{stderr}\n"),
-        code: exit::USAGE,
-    }
+    Output::line(exit::USAGE, &stderr)
 }
 
 /// `json(value)` of `cli/exit.ts`: two-space layout and a newline.
@@ -90,16 +84,15 @@ fn text(s: &str) -> Value {
 }
 
 /// A version 4 id (RFC 4122) from 16 bytes of the system's random source, as `randomUUID()` makes it.
-fn random_id() -> Option<String> {
+fn random_id() -> Result<String, String> {
     let mut bytes = [0u8; 16];
     fs::File::open("/dev/urandom")
-        .ok()?
-        .read_exact(&mut bytes)
-        .ok()?;
+        .and_then(|mut source| source.read_exact(&mut bytes))
+        .map_err(|err| format!("tagents-core: cannot read random bytes: {err}"))?;
     bytes[6] = bytes[6] & 0x0f | 0x40;
     bytes[8] = bytes[8] & 0x3f | 0x80;
     let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    Some(format!(
+    Ok(format!(
         "{}-{}-{}-{}-{}",
         &hex[..8],
         &hex[8..12],
@@ -110,20 +103,30 @@ fn random_id() -> Option<String> {
 }
 
 /// `session open …`: the reference of a session that has not started.
-pub fn open(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
-    let parsed = OPEN.parse(args)?;
+pub fn open(args: &[String], setting: &Setting, texts: &Texts) -> Output {
+    let parsed = match OPEN.parse(args) {
+        Ok(parsed) => parsed,
+        Err(err) => return Output::refused_args(&err),
+    };
     let Some(cwd) = parsed.value("cwd").filter(|cwd| !cwd.is_empty()) else {
-        return Some(usage(texts.t("missingOption", &[("option", "--cwd")])));
+        return usage(texts.t("missingOption", &[("option", "--cwd")]));
     };
     let config_dir = parsed.value("config-dir");
     let no_config_dir = parsed.flag("no-config-dir");
     if config_dir.is_some() && no_config_dir {
-        return Some(usage(texts.t(
+        return usage(texts.t(
             "unknownOption",
             &[("option", "--config-dir + --no-config-dir")],
-        )));
+        ));
     }
-    let id = random_id()?;
+    let cwd = match setting.resolve(cwd) {
+        Ok(cwd) => cwd,
+        Err(out) => return out,
+    };
+    let id = match random_id() {
+        Ok(id) => id,
+        Err(line) => return Output::line(exit::ERROR, &line),
+    };
     let resume = parsed.value("resume");
     // `ref.transcript` of the driver: the first row of the session that names a transcript.
     let transcript = resume.filter(|id| !id.is_empty()).and_then(|id| {
@@ -134,7 +137,7 @@ pub fn open(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output>
     });
     let mut spec = vec![
         ("kind".to_owned(), text("claude")),
-        ("cwd".to_owned(), text(&node::resolve(&setting.cwd, cwd))),
+        ("cwd".to_owned(), text(&cwd)),
         (
             "skipPermissions".to_owned(),
             Value::Bool(parsed.flag("skip-permissions")),
@@ -157,7 +160,7 @@ pub fn open(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output>
     if let Some(dir) = config_dir {
         spec.push(("configDir".to_owned(), text(dir)));
     }
-    Some(printed(&Value::Object(vec![
+    printed(&Value::Object(vec![
         ("id".to_owned(), text(&id)),
         (
             "claudeSessionId".to_owned(),
@@ -168,12 +171,15 @@ pub fn open(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output>
             transcript.as_deref().map_or(Value::Null, text),
         ),
         ("spec".to_owned(), Value::Object(spec)),
-    ])))
+    ]))
 }
 
 /// `session list …`: the references of the sessions the hook knows about.
-pub fn list(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
-    let parsed = LIST.parse(args)?;
+pub fn list(args: &[String], setting: &Setting, texts: &Texts) -> Output {
+    let parsed = match LIST.parse(args) {
+        Ok(parsed) => parsed,
+        Err(err) => return Output::refused_args(&err),
+    };
     let wanted = parsed.values("state");
     let bad: Vec<&str> = wanted
         .iter()
@@ -182,7 +188,7 @@ pub fn list(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output>
         .collect();
     if !bad.is_empty() {
         let option = format!("--state {}", bad.join(","));
-        return Some(usage(texts.t("unknownOption", &[("option", &option)])));
+        return usage(texts.t("unknownOption", &[("option", &option)]));
     }
     let states: Vec<RowState> = STATES
         .iter()
@@ -190,23 +196,19 @@ pub fn list(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output>
         .map(|(_, state)| *state)
         .collect();
     let refs = reference::listed(&setting.state_dir, parsed.value("label"), &states);
-    Some(printed(&Value::Array(
+    printed(&Value::Array(
         refs.iter().map(reference::Reference::to_value).collect(),
-    )))
+    ))
 }
 
 /// `session last <ref>`: the last thing the session said, and when its transcript last changed.
-pub fn last(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output> {
+pub fn last(args: &[String], setting: &Setting, texts: &Texts) -> Output {
     let Some(raw) = args.first().filter(|raw| !raw.is_empty()) else {
-        return Some(usage(texts.t("missingOption", &[("option", "<ref>")])));
+        return usage(texts.t("missingOption", &[("option", "<ref>")]));
     };
     let reference = match reference::resolve(raw, &setting.state_dir) {
-        Resolved::HandOver => return None,
         Resolved::NoMatch => {
-            return Some(Output::fail(format!(
-                "{}\n",
-                texts.t("badRef", &[("ref", raw)])
-            )));
+            return Output::fail(format!("{}\n", texts.t("badRef", &[("ref", raw)])));
         }
         Resolved::Ref(reference) => *reference,
     };
@@ -218,26 +220,26 @@ pub fn last(args: &[String], setting: &Setting, texts: &Texts) -> Option<Output>
             .map(|row| row.transcript)
     });
     let Some(file) = file.filter(|file| !file.is_empty()) else {
-        return Some(printed(&Value::Null));
+        return printed(&Value::Null);
     };
     // `lastAssistant`: a file that cannot be stat'd is no answer, one that cannot be read is a failure.
     let Ok(meta) = fs::metadata(&file) else {
-        return Some(printed(&Value::Null));
+        return printed(&Value::Null);
     };
     let at = node::mtime_ms_exact(&meta);
     let reply = match transcripts::last_assistant_reply(&file, |line| {
         json::parse_exact(line).map(|exact| exact.value)
     }) {
         Ok(reply) => reply,
-        Err(failure) => return Some(Output::fail(format!("{failure}\n"))),
+        Err(failure) => return Output::fail(format!("{failure}\n")),
     };
     if matches!(&reply, Value::String(text) if text.is_empty()) {
-        return Some(printed(&Value::Null));
+        return printed(&Value::Null);
     }
-    Some(printed(&Value::Object(vec![
+    printed(&Value::Object(vec![
         ("text".to_owned(), reply),
         ("at".to_owned(), Value::Number(at)),
-    ])))
+    ]))
 }
 
 #[cfg(test)]
@@ -252,7 +254,7 @@ mod tests {
     fn fixture() -> (Scratch, Setting, Texts) {
         let state = Scratch::new();
         let setting = Setting {
-            cwd: "/base/dir".to_owned(),
+            cwd: Some("/base/dir".to_owned()),
             state_dir: state.path().to_str().unwrap().to_owned(),
             locale: Locale::En,
         };
@@ -288,8 +290,7 @@ mod tests {
             ]),
             &setting,
             &texts,
-        )
-        .unwrap();
+        );
         assert_eq!(out.code, 0);
         let id = json_of(&out)["id"].as_str().unwrap().to_owned();
         assert_eq!(id.len(), 36);
@@ -308,27 +309,25 @@ mod tests {
             &args(&["--no-config-dir", "--config-dir", "/a"]),
             &setting,
             &texts,
-        )
-        .unwrap();
+        );
         assert_eq!(
             (missing.code, missing.stderr.as_str()),
             (2, "missing required option --cwd\n")
         );
-        let empty = open(&args(&["--cwd", ""]), &setting, &texts).unwrap();
+        let empty = open(&args(&["--cwd", ""]), &setting, &texts);
         assert_eq!(empty.code, 2);
         let both = open(
             &args(&["--cwd", "/w", "--no-config-dir", "--config-dir", "/a"]),
             &setting,
             &texts,
-        )
-        .unwrap();
+        );
         assert_eq!(both.code, 2);
         assert!(
             both.stderr.contains("--config-dir + --no-config-dir"),
             "{}",
             both.stderr
         );
-        let null = open(&args(&["--cwd", "/w", "--no-config-dir"]), &setting, &texts).unwrap();
+        let null = open(&args(&["--cwd", "/w", "--no-config-dir"]), &setting, &texts);
         assert!(null.stdout.contains("\"configDir\": null"));
         for bad in [
             &["--cwd"][..],
@@ -336,7 +335,11 @@ mod tests {
             &["--cwd", "/w", "extra"],
             &["--cwd=/w", "--skip-permissions=1"],
         ] {
-            assert_eq!(open(&args(bad), &setting, &texts), None, "{bad:?}");
+            assert_eq!(
+                open(&args(bad), &setting, &texts).code,
+                exit::USAGE,
+                "{bad:?}"
+            );
         }
     }
 
@@ -348,9 +351,9 @@ mod tests {
             "1700000000\tdone\tsid\t/w\t/t/sid.jsonl\tdetail\n",
         )
         .unwrap();
-        let out = open(&args(&["--cwd", "/w", "--resume", "sid"]), &setting, &texts).unwrap();
+        let out = open(&args(&["--cwd", "/w", "--resume", "sid"]), &setting, &texts);
         assert_eq!(json_of(&out)["transcript"], "/t/sid.jsonl");
-        let none = open(&args(&["--cwd", "/w", "--resume", ""]), &setting, &texts).unwrap();
+        let none = open(&args(&["--cwd", "/w", "--resume", ""]), &setting, &texts);
         assert_eq!(json_of(&none)["claudeSessionId"], "");
         assert!(json_of(&none)["transcript"].is_null());
     }
@@ -378,7 +381,7 @@ mod tests {
     fn list_filters_and_refuses_an_unknown_state() {
         let (state, setting, texts) = fixture();
         rows(&state);
-        let all = list(&[], &setting, &texts).unwrap();
+        let all = list(&[], &setting, &texts);
         let ids: Vec<String> = json_of(&all)
             .as_array()
             .unwrap()
@@ -386,25 +389,23 @@ mod tests {
             .map(|r| r["id"].as_str().unwrap().to_owned())
             .collect();
         assert_eq!(ids, ["s-a", "s-b"]);
-        let done = list(&args(&["--state", "done"]), &setting, &texts).unwrap();
+        let done = list(&args(&["--state", "done"]), &setting, &texts);
         assert_eq!(json_of(&done).as_array().unwrap().len(), 1);
         let two = list(
             &args(&["--state", "done", "--state=working"]),
             &setting,
             &texts,
-        )
-        .unwrap();
+        );
         assert_eq!(json_of(&two).as_array().unwrap().len(), 2);
         let bad = list(
             &args(&["--state", "done", "--state", "x", "--state", "subdone"]),
             &setting,
             &texts,
-        )
-        .unwrap();
+        );
         assert_eq!(bad.code, 2);
         assert!(bad.stderr.contains("--state x,subdone"), "{}", bad.stderr);
-        assert_eq!(list(&args(&["extra"]), &setting, &texts), None);
-        let none = list(&args(&["--label", "nobody"]), &setting, &texts).unwrap();
+        assert_eq!(list(&args(&["extra"]), &setting, &texts).code, exit::USAGE);
+        let none = list(&args(&["--label", "nobody"]), &setting, &texts);
         assert_eq!(none.stdout, "[]\n");
     }
 
@@ -430,7 +431,7 @@ mod tests {
             ],
         );
         let quoted = serde_json::to_string(&file).unwrap();
-        let out = last(&args(&[&reference_to(&quoted, "null")]), &setting, &texts).unwrap();
+        let out = last(&args(&[&reference_to(&quoted, "null")]), &setting, &texts);
         assert_eq!(out.code, 0);
         assert!(
             out.stdout
@@ -439,28 +440,21 @@ mod tests {
             out.stdout
         );
         let missing = reference_to("\"/no/such/file\"", "null");
-        assert_eq!(
-            last(&args(&[&missing]), &setting, &texts).unwrap().stdout,
-            "null\n"
-        );
+        assert_eq!(last(&args(&[&missing]), &setting, &texts).stdout, "null\n");
         let no_transcript = reference_to("null", "null");
         assert_eq!(
-            last(&args(&[&no_transcript]), &setting, &texts)
-                .unwrap()
-                .stdout,
+            last(&args(&[&no_transcript]), &setting, &texts).stdout,
             "null\n"
         );
         let empty_path = reference_to("\"\"", "\"x\"");
         assert_eq!(
-            last(&args(&[&empty_path]), &setting, &texts)
-                .unwrap()
-                .stdout,
+            last(&args(&[&empty_path]), &setting, &texts).stdout,
             "null\n"
         );
         let blank = transcript(&state, &["{}"]);
         let blank_ref = reference_to(&serde_json::to_string(&blank).unwrap(), "null");
         assert_eq!(
-            last(&args(&[&blank_ref]), &setting, &texts).unwrap().stdout,
+            last(&args(&[&blank_ref]), &setting, &texts).stdout,
             "null\n"
         );
     }
@@ -477,19 +471,19 @@ mod tests {
             format!("1\tdone\tsid\t/w\t{file}\td\n"),
         )
         .unwrap();
-        let by_row = last(&args(&["sid"]), &setting, &texts).unwrap();
+        let by_row = last(&args(&["sid"]), &setting, &texts);
         assert!(
             by_row.stdout.contains("\"text\": \"yes\""),
             "{}",
             by_row.stdout
         );
-        let by_json = last(&args(&[&reference_to("null", "\"sid\"")]), &setting, &texts).unwrap();
+        let by_json = last(&args(&[&reference_to("null", "\"sid\"")]), &setting, &texts);
         assert_eq!(by_json.stdout, by_row.stdout);
         // An empty transcript path in the reference is an answer, so the row of the session is not asked.
-        let empty = last(&args(&[&reference_to("\"\"", "\"sid\"")]), &setting, &texts).unwrap();
+        let empty = last(&args(&[&reference_to("\"\"", "\"sid\"")]), &setting, &texts);
         assert_eq!(empty.stdout, "null\n");
         let dir = serde_json::to_string(state.path().to_str().unwrap()).unwrap();
-        let broken = last(&args(&[&reference_to(&dir, "null")]), &setting, &texts).unwrap();
+        let broken = last(&args(&[&reference_to(&dir, "null")]), &setting, &texts);
         assert_eq!((broken.code, broken.stdout.as_str()), (1, ""));
         assert!(broken.stderr.contains("EISDIR"), "{}", broken.stderr);
     }
@@ -497,15 +491,21 @@ mod tests {
     #[test]
     fn last_refuses_a_missing_or_unknown_reference_and_hands_over_what_it_cannot_read() {
         let (_state, setting, texts) = fixture();
-        let missing = last(&[], &setting, &texts).unwrap();
+        let missing = last(&[], &setting, &texts);
         assert_eq!(
             (missing.code, missing.stderr.as_str()),
             (2, "missing required option <ref>\n")
         );
-        let unknown = last(&args(&["nothing"]), &setting, &texts).unwrap();
+        let unknown = last(&args(&["nothing"]), &setting, &texts);
         assert_eq!(unknown.code, 1);
         assert!(unknown.stderr.contains("nothing"), "{}", unknown.stderr);
         let lone = r#"{"id":"r","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w\ud83d","skipPermissions":false}}"#;
-        assert_eq!(last(&args(&[lone]), &setting, &texts), None);
+        let lone = last(&args(&[lone]), &setting, &texts);
+        assert_eq!(lone.code, 1);
+        assert!(
+            lone.stderr.starts_with("no session matches "),
+            "{}",
+            lone.stderr
+        );
     }
 }

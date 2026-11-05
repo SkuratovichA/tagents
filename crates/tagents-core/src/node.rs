@@ -121,6 +121,25 @@ pub fn dirname(p: &str) -> String {
     }
 }
 
+/// What `process.cwd()` throws in a directory that was removed.
+pub const GONE_CWD: &str = "ENOENT: no such file or directory, uv_cwd";
+
+/// `process.cwd()`, with U+FFFD for a byte that is not UTF-8; `None` when the directory is gone.
+pub fn current_dir() -> Option<String> {
+    std::env::current_dir()
+        .ok()
+        .map(|dir| dir.to_string_lossy().into_owned())
+}
+
+/// `path.resolve(path)` in the working directory `cwd`: a relative path needs it, and where it is gone node throws, so the error is the line it prints.
+pub fn resolve_in(cwd: Option<&str>, path: &str) -> Result<String, &'static str> {
+    match cwd {
+        Some(cwd) => Ok(resolve(cwd, path)),
+        None if path.starts_with('/') => Ok(resolve("/", path)),
+        None => Err(GONE_CWD),
+    }
+}
+
 /// `path.resolve(base, path)` for an absolute `base`: `path` itself when it is absolute, else below `base`; normalised, with no trailing slash but the root's.
 pub fn resolve(base: &str, path: &str) -> String {
     let full = match path {
@@ -290,10 +309,32 @@ pub const ERRNOS: &[Errno] = &[
     },
 ];
 
+/// The errors a path can raise whose numbers are not the same on Linux and macOS, with the numbers of the system this is built for.
+const SYSTEM_ERRNOS: &[Errno] = &[
+    Errno {
+        number: rustix::io::Errno::LOOP.raw_os_error(),
+        code: "ELOOP",
+        message: "too many symbolic links encountered",
+    },
+    Errno {
+        number: rustix::io::Errno::NAMETOOLONG.raw_os_error(),
+        code: "ENAMETOOLONG",
+        message: "name too long",
+    },
+    Errno {
+        number: rustix::io::Errno::PERM.raw_os_error(),
+        code: "EPERM",
+        message: "operation not permitted",
+    },
+];
+
 /// The table's entry for the error's number, `None` for an error without one or one the table does not name.
 pub fn errno(err: &io::Error) -> Option<&'static Errno> {
     let number = err.raw_os_error()?;
-    ERRNOS.iter().find(|e| e.number == number)
+    ERRNOS
+        .iter()
+        .chain(SYSTEM_ERRNOS)
+        .find(|e| e.number == number)
 }
 
 /// The text of the `Error` node throws for a failed syscall: `EACCES: permission denied, open '/x'`. An error the table does not name prints what Rust says.

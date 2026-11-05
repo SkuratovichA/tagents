@@ -49,6 +49,47 @@ fn leaving_says_why_releases_the_lock_and_exits_0() {
 }
 
 #[test]
+fn a_failed_start_says_why_closes_releases_the_lock_and_exits_1() {
+    let (rig, _messages) = Rig::new();
+    let closed = std::cell::Cell::new(false);
+    let code = fail(
+        "EISDIR: illegal operation on a directory",
+        &rig.stop,
+        &rig.lock,
+        &rig.log,
+        || {
+            closed.set(true);
+        },
+    );
+    assert_eq!(code, ExitCode::from(1));
+    assert!(closed.get());
+    assert_eq!(
+        rig.log.lines(),
+        ["could not start: EISDIR: illegal operation on a directory"]
+    );
+    assert!(!rig.lock_held());
+}
+
+#[test]
+fn a_stop_that_was_requested_wins_over_a_failed_start() {
+    let (rig, _messages) = Rig::new();
+    rig.stop.stop();
+    let code = fail("why", &rig.stop, &rig.lock, &rig.log, || {});
+    assert_eq!(code, ExitCode::SUCCESS);
+    assert_eq!(rig.log.lines(), Vec::<String>::new());
+    assert!(!rig.lock_held());
+}
+
+#[test]
+fn a_stop_that_lands_during_the_close_of_a_failed_start_exits_0() {
+    let (rig, _messages) = Rig::new();
+    let code = fail("why", &rig.stop, &rig.lock, &rig.log, || rig.stop.stop());
+    assert_eq!(code, ExitCode::SUCCESS);
+    assert_eq!(rig.log.lines(), ["could not start: why"]);
+    assert!(!rig.lock_held());
+}
+
+#[test]
 fn started_is_the_line_that_says_what_is_in_force() {
     let log = RecordingLog::new();
     for state in ["found", "not found", "invalid"] {

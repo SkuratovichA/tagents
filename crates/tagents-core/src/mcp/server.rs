@@ -457,11 +457,8 @@ impl Server {
             Ok(_) => Ok(()),
             Err(e) => {
                 self.calls.finish(serial);
-                self.out.failure(
-                    &id,
-                    INTERNAL_ERROR,
-                    &format!("could not start a thread for the call: {e}"),
-                )
+                self.out
+                    .failure(&id, INTERNAL_ERROR, &crate::child::thread_failure(&e))
             }
         }
     }

@@ -111,7 +111,7 @@ fn bytes_that_are_not_utf8_decode_as_node_decodes_them() {
 }
 
 #[test]
-fn a_reference_reads_as_node_reads_it_or_is_handed_over() {
+fn a_reference_reads_as_node_reads_it_or_is_unusable() {
     let reference = section("reference");
     let cases = reference["cases"].as_array().unwrap();
     let (mut accepted, mut refused, mut handed) = (0, 0, 0);
@@ -120,16 +120,16 @@ fn a_reference_reads_as_node_reads_it_or_is_handed_over() {
         match (
             reference::read(document),
             &case["parsed"],
-            &case["handOver"],
+            &case["unusable"],
         ) {
             (Read::Invalid, Value::Null, Value::Bool(false)) => refused += 1,
-            (Read::HandOver, Value::String(_), Value::Bool(true)) => handed += 1,
+            (Read::Unusable, Value::String(_), Value::Bool(true)) => handed += 1,
             (Read::Ref(got), Value::String(want), Value::Bool(false)) => {
                 assert_eq!(json::stringify(&got.to_value(), false), *want, "{document}");
                 accepted += 1;
             }
             (got, want, hand) => {
-                panic!("{document}: Rust read {got:?}, node gave {want} (hand over {hand})")
+                panic!("{document}: Rust read {got:?}, node gave {want} (unusable {hand})")
             }
         }
     }

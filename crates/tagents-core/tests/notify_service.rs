@@ -1,6 +1,6 @@
-//! `tagents-core notify run` as a process: the start, the stop, and the hand-over of a start that failed to the node service.
+//! `tagents-core notify run` as a process: the start, the stop, and the ending of a start that failed.
 //!
-//! Each test makes a root of its own, as `front_door.rs` does (`target/debug/tagents-core` three levels below the directory that holds `packages/notify/dist/main.js`), with a stub in place of the node service that writes down its pid, its arguments and the lock it found. The service runs with `env_clear` and a scratch `HOME`, state directory, config directory and tmux directory, so nothing of the machine's own is read or written, and the log backend, which posts nothing.
+//! Each test makes a root of its own that holds a copy of the binary. The service runs with `env_clear` and a scratch `HOME`, state directory, config directory and tmux directory, so nothing of the machine's own is read or written, and the log backend, which posts nothing.
 //! A signal that has to land during the start is sent while the service waits to read its options, which is a FIFO until the test fills it.
 
 // Test code: a failed unwrap here is the failure report.
@@ -19,20 +19,16 @@ use std::{
 use rustix::process::{Pid, Signal, kill_process};
 
 mod common;
-use common::{rig::until, run, scratch, start, write_executable, writing};
+use common::{rig::until, run, scratch, start, writing};
 
 const BIN: &str = env!("CARGO_BIN_EXE_tagents-core");
 /// Long enough for a start to finish on a loaded machine.
 const WAIT_MS: u64 = 20_000;
 const LOG_BACKEND: &str = "backend = \"log\"\n";
 
-/// A stub of the node service: what it was given and the lock it found, then the exit code the test asked for.
-const STUB_NODE: &str = "#!/bin/sh\n{ printf 'pid=%s\\n' \"$$\"; printf 'lock=%s\\n' \"$(cat \"$TA_STATE_DIR/notify.lock\")\"; printf 'arg=%s\\n' \"$@\"; } > \"$HANDED\"\nexit \"${STUB_EXIT:-0}\"\n";
-
-/// A directory of a test's own that holds a copy of the binary where a checkout has it, the stub, and the state and config the service runs on.
+/// A directory of a test's own that holds a copy of the binary, and the state and config the service runs on.
 struct Fake {
     root: PathBuf,
-    node: PathBuf,
 }
 
 impl Fake {
@@ -44,14 +40,10 @@ impl Fake {
             let _writing = writing();
             fs::copy(BIN, &bin).unwrap();
         }
-        fs::create_dir_all(root.join("packages/notify/dist")).unwrap();
-        fs::write(root.join("packages/notify/dist/main.js"), "// stub\n").unwrap();
-        let node = root.join("node");
-        write_executable(&node, STUB_NODE);
         for dir in ["state", "home", "tmux"] {
             fs::create_dir_all(root.join(dir)).unwrap();
         }
-        Fake { root, node }
+        Fake { root }
     }
 
     /// A fake with the log backend: the service runs and posts nothing.
@@ -77,10 +69,6 @@ impl Fake {
         self.plugins().join("notify.toml")
     }
 
-    fn handed(&self) -> PathBuf {
-        self.root.join("handed")
-    }
-
     /// `notify.toml` as `text`, put in place whole: a service woken in the middle of a truncating write reads an empty file and reloads.
     fn options(&self, text: &str) {
         fs::create_dir_all(self.plugins()).unwrap();
@@ -89,7 +77,7 @@ impl Fake {
         fs::rename(next, self.options_file()).unwrap();
     }
 
-    /// A state directory whose events file cannot be followed: the follower's start fails, which is the failure a hand-over answers.
+    /// A state directory whose events file cannot be followed: the follower's start fails, which is a failure of the start.
     fn break_follower(&self) {
         fs::create_dir_all(self.state().join("events.tsv")).unwrap();
     }
@@ -103,8 +91,6 @@ impl Fake {
             .env("TAGENTS_CONFIG_DIR", self.root.join("config"))
             .env("TMUX_TMPDIR", self.root.join("tmux"))
             .env("PATH", "/usr/bin:/bin")
-            .env("TAGENTS_NODE", &self.node)
-            .env("HANDED", self.handed())
             .args(["notify", "run"]);
         command
     }
@@ -119,12 +105,6 @@ impl Fake {
                 .stderr(stderr),
         );
         Running { child, log }
-    }
-
-    /// What the stub wrote down, or `None` when it never ran.
-    fn handed_over(&self) -> Option<Vec<String>> {
-        let text = fs::read_to_string(self.handed()).ok()?;
-        Some(text.lines().map(str::to_owned).collect())
     }
 
     fn append_event(&self, line: &str) {
@@ -233,12 +213,8 @@ fn waiting_for_options(fake: &Fake) -> (Running, impl FnOnce(&'static str)) {
     (running, supply)
 }
 
-fn stub_pid(handed: &[String]) -> &str {
-    handed[0].strip_prefix("pid=").unwrap()
-}
-
 #[test]
-fn a_stop_during_a_failing_start_ends_the_process_and_does_not_exec() {
+fn a_stop_during_a_failing_start_ends_the_process_as_a_stop_ends_it() {
     let fake = Fake::new("service-stop-failing-start");
     fake.break_follower();
     let (mut running, fill) = waiting_for_options(&fake);
@@ -246,8 +222,7 @@ fn a_stop_during_a_failing_start_ends_the_process_and_does_not_exec() {
     fill(LOG_BACKEND);
     let status = running.exit();
     assert_eq!(status.code(), Some(0), "{}", running.log());
-    assert_eq!(fake.handed_over(), None, "the node service was not exec'd");
-    assert!(!running.has("handing over"), "{}", running.log());
+    assert!(!running.has("could not start"), "{}", running.log());
     assert!(!fake.lock().exists(), "the lock is released");
 }
 
@@ -284,77 +259,28 @@ fn a_signal_during_a_start_that_succeeds_logs_started_and_then_stopping() {
 }
 
 #[test]
-fn a_failed_follower_start_hands_over() {
+fn a_failed_follower_start_writes_the_line_exits_1_and_releases_the_lock() {
     let fake = Fake::logging("service-follower-fails");
     fake.break_follower();
     let mut running = fake.spawn();
-    // The stub is the node service: it ran in this process (the pid is kept) with the arguments node's `run` takes.
     let status = running.exit();
-    assert_eq!(
-        status.code(),
-        Some(0),
-        "the exit is the node service's: {}",
-        running.log()
-    );
-    let handed = fake.handed_over().expect("the stub did not run");
-    assert_eq!(stub_pid(&handed), running.pid().to_string());
-    assert_eq!(
-        handed[2..],
-        [
-            format!("arg={}/packages/notify/dist/main.js", fake.root.display()),
-            "arg=run".to_owned()
-        ]
-    );
-    let lines = running.lines();
+    assert_eq!(status.code(), Some(1), "{}", running.log());
     assert!(
-        lines.iter().any(
-            |line| line.starts_with("handing over to the node service: ")
-                && line.contains("events.tsv")
-        ),
+        running
+            .lines()
+            .iter()
+            .any(|line| line.starts_with("could not start: ") && line.contains("events.tsv")),
         "{}",
         running.log()
     );
     assert!(!running.has("started"));
-}
-
-#[test]
-fn the_lock_still_names_the_pid_after_the_exec() {
-    let fake = Fake::logging("service-lock-after-exec");
-    fake.break_follower();
-    let mut running = fake.spawn();
-    running.exit();
-    let handed = fake.handed_over().expect("the stub did not run");
-    let lock = handed[1].strip_prefix("lock=").unwrap();
-    assert_eq!(
-        lock.split_whitespace().next(),
-        Some(stub_pid(&handed)),
-        "the stub found the lock naming its own pid, which is the service's: {lock:?}"
-    );
-}
-
-#[test]
-fn an_exec_that_fails_writes_the_line_and_exits_1_with_the_lock_released() {
-    let mut fake = Fake::logging("service-exec-fails");
-    fake.break_follower();
-    fake.node = fake.root.join("no-such-node");
-    let mut running = fake.spawn();
-    assert_eq!(running.exit().code(), Some(1), "{}", running.log());
-    let lines = running.lines();
-    let last = format!(
-        "could not hand over to the node service: ENOENT: no such file or directory, exec '{}'",
-        fake.node.display()
-    );
-    assert_eq!(lines.last(), Some(&last), "{}", running.log());
-    assert!(running.has("handing over to the node service: "));
     assert!(!fake.lock().exists(), "the lock is released");
-    assert_eq!(fake.handed_over(), None);
 }
 
 #[test]
-fn an_exec_that_fails_with_stderr_a_closed_pipe_exits_1_and_is_not_killed_by_sigpipe() {
-    let mut fake = Fake::logging("service-exec-fails-closed-stderr");
+fn a_failed_start_with_stderr_a_closed_pipe_exits_1_and_is_not_killed_by_sigpipe() {
+    let fake = Fake::logging("service-start-fails-closed-stderr");
     fake.break_follower();
-    fake.node = fake.root.join("no-such-node");
     let mut child = start(
         fake.command()
             .stdin(Stdio::null())
@@ -376,30 +302,6 @@ fn an_exec_that_fails_with_stderr_a_closed_pipe_exits_1_and_is_not_killed_by_sig
     assert_eq!(status.code(), Some(1), "{status:?}");
 }
 
-#[test]
-fn a_missing_main_js_writes_the_same_line_exits_1_releases_the_lock_and_prints_no_cannot_find_line()
-{
-    let fake = Fake::logging("service-no-main-js");
-    fake.break_follower();
-    let main = fake.root.join("packages/notify/dist/main.js");
-    fs::remove_file(&main).unwrap();
-    let mut running = fake.spawn();
-    assert_eq!(running.exit().code(), Some(1), "{}", running.log());
-    assert_eq!(
-        running.lines().last(),
-        Some(&format!(
-            "could not hand over to the node service: {} is not a file",
-            main.display()
-        ))
-    );
-    assert!(
-        !running.log().contains("tagents-core: cannot find"),
-        "{}",
-        running.log()
-    );
-    assert!(!fake.lock().exists());
-}
-
 /// Whether this process may read a directory it has no read permission on: root may.
 fn is_root() -> bool {
     rustix::process::geteuid().is_root()
@@ -415,7 +317,7 @@ impl Drop for Restore {
 }
 
 #[test]
-fn a_failed_options_watch_does_not_hand_over() {
+fn a_failed_options_watch_is_not_a_failed_start() {
     if is_root() {
         // libtest captures `eprintln!` of a passing test; a write to the stderr handle is shown.
         let _ = writeln!(
@@ -431,10 +333,9 @@ fn a_failed_options_watch_does_not_hand_over() {
     let mut running = fake.spawn();
     assert!(running.says("started pid "), "{}", running.log());
     assert!(running.has("options watch failed "), "{}", running.log());
-    assert!(!running.has("handing over"), "{}", running.log());
+    assert!(!running.has("could not start"), "{}", running.log());
     running.signal(Signal::TERM);
     assert_eq!(running.exit().code(), Some(0));
-    assert_eq!(fake.handed_over(), None, "the node service was not exec'd");
 }
 
 #[test]

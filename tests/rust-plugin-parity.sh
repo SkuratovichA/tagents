@@ -25,7 +25,6 @@ RUST=${TAGENTS_CORE_BIN:-$REPO/target/debug/tagents-core}
 MATERIALISE="$HERE/rust-plugin-vectors/materialise.mts"
 SELF_TEST=${PARITY_SELF_TEST:-}
 ONLY=${PARITY_ONLY:-}
-SWEEP_FLOOR=150
 
 [ -n "$NODE" ] && [ -x "$NODE" ] || { echo "rust-plugin-parity: no node to run (set TAGENTS_NODE)" >&2; exit 2; }
 [ -f "$CORE_JS" ] || { echo "rust-plugin-parity: $CORE_JS is not built; run: pnpm install && pnpm build" >&2; exit 2; }
@@ -57,13 +56,13 @@ if [ -z "$SELF_TEST" ]; then
     || { echo "rust-plugin-parity: $RUST does not serve plugin add, plugin remove, plugin new and doctor (--spec)" >&2; exit 2; }
 fi
 
-pass=0; fail=0; skipped=0; rust_served=0; handed_over=0; sweep_served=0; sweep_total=0
+pass=0; fail=0; skipped=0; rust_served=0; handed_over=0
 . "$HERE/lib/parity.sh"
 
 # --------------------------------------------------------------- scenario state ---
 # Set before a scenario, cleared after it by `reset`: the directory to run in (relative to the run), the locale, a setup run in the run's directory before the program (a shell command), the environment to add, the config directory (relative to the run), and the arguments.
 CWD=; LOCALE=en; SETUP=; CFGDIR=cfg; EXTRA=(); ARGS=()
-reset() { CWD=; LOCALE=en; SETUP=; CFGDIR=cfg; EXTRA=(); ARGS=(); }
+reset() { OWN_ERR=; OWN_CODE=; CWD=; LOCALE=en; SETUP=; CFGDIR=cfg; EXTRA=(); ARGS=(); }
 
 # The only difference allowed between the two programs: the process id in `<config>.<pid>.tmp`.
 norm() { sed -E 's/\.[0-9]+\.tmp/.PID.tmp/g'; }
@@ -73,6 +72,7 @@ side() {  # <tag> <program words...>
   rm -rf "$RUN"; chmod -R u+rwx "$RUN" 2> /dev/null
   cp -RPp "$TEMPLATE" "$RUN" || { echo "rust-plugin-parity: cannot copy the tree" >&2; exit 2; }
   if [ -n "$SETUP" ]; then ( cd "$RUN" && eval "$SETUP" ) || { echo "rust-plugin-parity: setup failed: $SETUP" >&2; exit 2; }; fi
+  if [ -n "$OWN_CODE" ]; then snapshot | norm > "$TMP/pre.$tag"; fi
   rm -f "$MARK"
   ( cd "$RUN/$CWD" && exec env -i "PATH=$BIN:/usr/bin:/bin" "HOME=$RUN/home" "TAGENTS_CONFIG_DIR=$RUN/$CFGDIR" "TAGENTS_LOCALE=$LOCALE" \
       "TAGENTS_NODE=$SHIM/node" "PARITY_MARK=$MARK" "PARITY_REAL_NODE=$NODE" "${EXTRA[@]}" "$@" "${ARGS[@]}" ) 2> "$TMP/err.$tag.raw" | norm > "$TMP/out.$tag"
@@ -84,6 +84,7 @@ side() {  # <tag> <program words...>
 }
 
 # A scenario: `sc <label> <via> <node's exit code, or - for any> <text node prints, or -> -- <the words after the program name>`.
+# `OWN_ERR='<text>'` says the binary's stderr must hold that text and is not compared with node's; `OWN_CODE=<n>` says its exit code is n and is not compared with node's, and the binary prints nothing on stdout and leaves the tree as it was just before the call. They are for the scenarios in which the design words a line or picks a code of its own, each listed in "Where the two are known to differ" of docs/architecture/rust-core.md.
 # <via> is who must answer on the Rust side: rust, node, or any.
 sc() {
   local label=$1 via=$2 want=$3 needle=$4; shift 5
@@ -91,12 +92,32 @@ sc() {
   if [ -n "$ONLY" ] && [[ $label != *"$ONLY"* ]]; then reset; return; fi
   side node "$NODE" "$CORE_JS"
   if [ -n "$SELF_TEST" ]; then side rust "$NODE" "$CORE_JS"; else side rust "$RUST"; fi
+  # With node on both sides there is no binary to word anything itself, so the two are compared in full.
+  if [ -n "$SELF_TEST" ]; then OWN_ERR=; OWN_CODE=; fi
 
   local what=()
-  cmp -s "$TMP/out.node" "$TMP/out.rust" || what+=(stdout)
-  cmp -s "$TMP/err.node" "$TMP/err.rust" || what+=(stderr)
-  cmp -s "$TMP/code.node" "$TMP/code.rust" || what+=("exit code")
-  cmp -s "$TMP/tree.node" "$TMP/tree.rust" || what+=(tree)
+  # A call the binary refuses with a code of its own (OWN_CODE) is one node carries out or words otherwise, so what it printed and left behind is not compared.
+  if [ -z "$OWN_CODE" ]; then
+    cmp -s "$TMP/out.node" "$TMP/out.rust" || what+=(stdout)
+  else
+    # Refused with a code of its own, the binary answers nothing and changes nothing: a refusal that also ran the call would print its answer and leave its marks.
+    [ -z "$(grep -av '^--- session abort' "$TMP/out.rust")" ] || what+=("stdout (it should be empty)")
+  fi
+  if [ -n "$OWN_ERR" ]; then
+    grep -qF -- "$OWN_ERR" "$TMP/err.rust" || what+=("stderr (it should hold: $OWN_ERR)")
+  else
+    cmp -s "$TMP/err.node" "$TMP/err.rust" || what+=(stderr)
+  fi
+  if [ -n "$OWN_CODE" ]; then
+    [ "$(cat "$TMP/code.rust")" = "$OWN_CODE" ] || what+=("exit code (it should be $OWN_CODE)")
+  else
+    cmp -s "$TMP/code.node" "$TMP/code.rust" || what+=("exit code")
+  fi
+  if [ -z "$OWN_CODE" ]; then
+    cmp -s "$TMP/tree.node" "$TMP/tree.rust" || what+=(tree)
+  else
+    cmp -s "$TMP/pre.rust" "$TMP/tree.rust" || what+=("tree (it should be as before the call)")
+  fi
   if [ ${#what[@]} -ne 0 ]; then
     bad "$label: differs in ${what[*]}" \
       "args: $(printf '%q ' "${ARGS[@]}")" \
@@ -120,7 +141,6 @@ sc() {
   if [ -z "$SELF_TEST" ]; then
     local answered; answered=$(cat "$TMP/via.rust")
     if [ "$answered" = node ]; then handed_over=$((handed_over + 1)); else rust_served=$((rust_served + 1)); fi
-    if [ "$via" = any ]; then sweep_total=$((sweep_total + 1)); [ "$answered" = own ] && sweep_served=$((sweep_served + 1)); fi
     case "$via:$answered" in
       rust:node) bad "$label: the binary handed this call to node, it should answer it" ;;
       node:own) bad "$label: the binary answered this call, the design hands it to node" ;;
@@ -189,8 +209,8 @@ LOCALE=; sc "add a directory, a blank locale is English" rust 0 "added plain-pkg
 
 t "add: the packages of the tree, by directory (a sweep)"
 for d in $(ls "$TEMPLATE/pkgs"); do
-  sc "add pkgs/$d" any - - -- plugin add "./pkgs/$d"
-  LOCALE=ru; sc "add pkgs/$d (ru)" any - - -- plugin add "./pkgs/$d"
+  sc "add pkgs/$d" rust - - -- plugin add "./pkgs/$d"
+  LOCALE=ru; sc "add pkgs/$d (ru)" rust - - -- plugin add "./pkgs/$d"
 done
 
 t "add: the names"
@@ -232,29 +252,27 @@ CWD=proj/a/b; sc "add the nearest node_modules wins" rust 0 "added shadow-near" 
 CWD=proj/a/b; sc "add a directory with no manifest is skipped for the next one" rust 0 "added hollow-far" -- plugin add hollow
 CWD=proj/a/b; sc "add a directory named package.json is skipped for the next one" rust 0 "added dirjson-far" -- plugin add dirjson
 CWD=proj/a/b; sc "add a link into the tree" rust 0 "added real-linked" -- plugin add linked
-CWD=proj/a/b; sc "add a package with exports: null" any 0 - -- plugin add null-exports
-CWD=proj/a/b; sc "add a package whose exports allow package.json" node 0 "added" -- plugin add exports-with-package-json
-CWD=proj/a/b; sc "add a package whose exports do not allow package.json" node 1 - -- plugin add exports-without-package-json
-CWD=proj/a/b; sc "add a package whose manifest is not JSON" any - - -- plugin add bad-json
+CWD=proj/a/b; sc "add a package with exports: null" rust 0 - -- plugin add null-exports
+CWD=proj/a/b; sc "add a package whose exports allow package.json" rust 0 "added" -- plugin add exports-with-package-json
+CWD=proj/a/b; sc "add a package whose exports do not allow package.json" rust 1 - -- plugin add exports-without-package-json
+CWD=proj/a/b; sc "add a package whose manifest is not JSON" rust - - -- plugin add bad-json
 CWD=proj/a/b; sc "add a package that is not a plugin" rust 3 - -- plugin add no-tagents-nm
 CWD=proj/a/b; sc "add a package of api 2" rust 3 - -- plugin add api2-nm
 CWD=proj/a/b; sc "add a package whose entry is missing" rust 3 - -- plugin add no-entry-nm
-CWD=proj/a/b; sc "add a package nobody has" node 1 - -- plugin add no-such-package-anywhere
-CWD=proj/a/b; sc "add a package whose name starts with an underscore" node - - -- plugin add _underscore
-CWD=proj/a/b; sc "add a subpath of a package" node - - -- plugin add plain/package.json
-CWD=proj/a/b; sc "add a name in capitals (the disk's case is not the typed one on a case-insensitive volume)" any - - -- plugin add PLAIN
-CWD=proj/a/b; sc "add a package with no name in capitals" any - - -- plugin add NO-NAME-NM
+CWD=proj/a/b; sc "add a package nobody has" rust 1 - -- plugin add no-such-package-anywhere
+CWD=proj/a/b; sc "add a package whose name starts with an underscore" rust - - -- plugin add _underscore
+CWD=proj/a/b; sc "add a subpath of a package" rust - - -- plugin add plain/package.json
+CWD=proj/a/b; sc "add a name in capitals (the disk's case is not the typed one on a case-insensitive volume)" rust - - -- plugin add PLAIN
+CWD=proj/a/b; sc "add a package with no name in capitals" rust - - -- plugin add NO-NAME-NM
 CWD=proj/a/b; LOCALE=ru; sc "add a package, in Russian" rust 0 plain-in-nm -- plugin add plain
-CWD=selfref/a; sc "add the package the working directory is in, which has exports (self-reference)" node - - -- plugin add selfref
+CWD=selfref/a; sc "add the package the working directory is in, which has exports (self-reference)" rust - - -- plugin add selfref
 CWD=selfnoexp/a; sc "add the package the working directory is in, with no exports" rust 0 "added selfnoexp-in-nm" -- plugin add selfnoexp
 
-t "add: what node's flags change"
-SETUP='printf "const M = require(\"module\"); const o = M._resolveFilename; M._resolveFilename = function (r, ...a) { return r === \"plain/package.json\" ? process.env.HOME + \"/../pkgs/plain/package.json\" : o.call(this, r, ...a); };\n" > hook.cjs'
-CWD=proj/a/b; EXTRA=("NODE_OPTIONS=--require=$RUN/hook.cjs"); sc "add plain under a --require hook that redirects it" node 0 "added plain-pkg" -- plugin add plain
-CWD=proj/a/b; EXTRA=("NODE_OPTIONS=--no-warnings"); sc "add plain under NODE_OPTIONS" node 0 "added plain-in-nm" -- plugin add plain
-CWD=proj/a/b; EXTRA=("NODE_PRESERVE_SYMLINKS=1"); sc "add a link under NODE_PRESERVE_SYMLINKS" node 0 "added" -- plugin add linked
+t "add: what node's flags do not change (a --require hook is the one thing they do, which the binary does not run)"
+CWD=proj/a/b; EXTRA=("NODE_OPTIONS=--no-warnings"); sc "add plain under NODE_OPTIONS" rust 0 "added plain-in-nm" -- plugin add plain
+CWD=proj/a/b; EXTRA=("NODE_PRESERVE_SYMLINKS=1"); sc "add a link under NODE_PRESERVE_SYMLINKS" rust 0 "added" -- plugin add linked
 CWD=proj/a/b; EXTRA=("NODE_OPTIONS=--no-warnings"); sc "add a directory under NODE_OPTIONS" rust 0 "added plain-pkg" -- plugin add ../../../pkgs/plain
-CWD=proj/a/b; EXTRA=("NODE_PATH=$RUN/pkgs"); sc "add a package only NODE_PATH has" node 0 "added no-name" -- plugin add no-name
+CWD=proj/a/b; EXTRA=("NODE_PATH=$RUN/pkgs"); sc "add a package only NODE_PATH has" rust 0 "added no-name" -- plugin add no-name
 CWD=proj/a/b; EXTRA=("NODE_PATH=$RUN/pkgs"); sc "add a package node_modules has, with NODE_PATH set (node_modules is searched first)" rust 0 "added plain-in-nm" -- plugin add plain
 
 # ----------------------------------------------------------- the config file ---
@@ -273,22 +291,22 @@ SETUP='mkdir -p cfg; printf "[plugins.keep]\nfrom = \"/k\"\n" > cfg/config.toml;
 SETUP='mkdir -p cfg dotfiles; printf "[plugins.keep]\nfrom = \"/k\"\n" > dotfiles/tagents.toml; ln -s ../dotfiles/tagents.toml cfg/config.toml'; sc "add: a config that is a link stays one" rust 0 "added plain-pkg" -- plugin add ./pkgs/plain
 SETUP='mkdir -p cfg dotfiles; printf "[plugins.plain-pkg]\nfrom = \"/p\"\n[plugins.keep]\nfrom = \"/k\"\n" > dotfiles/tagents.toml; ln -s ../dotfiles/tagents.toml cfg/config.toml'; sc "remove: a config that is a link stays one" rust 0 "removed plain-pkg" -- plugin remove plain-pkg
 SETUP='mkdir -p cfg dotfiles; printf "[plugins.keep]\nfrom = \"/k\"\n" > dotfiles/tagents.toml; ln -s ../dotfiles/tagents.toml cfg/config.toml; ln -s cfg/config.toml link-to-link'; CFGDIR=cfg; sc "add: a link in front of the link" rust 0 - -- plugin add ./pkgs/plain
-SETUP='mkdir -p cfg; ln -s missing.toml cfg/config.toml'; sc "add: a link that leads nowhere" node 1 - -- plugin add ./pkgs/plain
-SETUP='mkdir -p cfg; ln -s missing.toml cfg/config.toml'; sc "remove: a link that leads nowhere" node 1 - -- plugin remove x
-SETUP='mkdir -p cfg; ln -s config.toml cfg/config.toml'; sc "add: a link to itself" node 1 - -- plugin add ./pkgs/plain
-SETUP='mkdir -p cfg; ln -s b cfg/a; ln -s a cfg/b; ln -s a cfg/config.toml'; sc "remove: a loop of links" node 1 - -- plugin remove x
-SETUP='mkdir -p cfg dotfiles/dir; ln -s ../dotfiles/dir cfg/config.toml'; sc "add: a link to a directory" node 1 - -- plugin add ./pkgs/plain
-SETUP='mkdir -p cfg/config.toml'; sc "add: a directory where the config is" node 1 - -- plugin add ./pkgs/plain
-SETUP='mkdir -p cfg/config.toml'; sc "remove: a directory where the config is" node 1 - -- plugin remove x
-SETUP='mkdir -p cfg; printf "[plugins.x]\nfrom = \"/p\"\n" > cfg/config.toml; chmod 000 cfg/config.toml'; sc_user "add: a config nobody may read" node 1 - -- plugin add ./pkgs/plain
-SETUP='mkdir -p cfg; printf "[plugins.x]\nfrom = \"/p\"\n" > cfg/config.toml; chmod 000 cfg/config.toml'; sc_user "remove: a config nobody may read" node 1 - -- plugin remove x
-SETUP='mkdir -p cfg; printf "[plugins.x]\nfrom = \"/p\"\n" > cfg/config.toml; chmod 555 cfg'; sc_user "add: a directory nobody may write in" node 1 - -- plugin add ./pkgs/plain
-SETUP='mkdir -p cfg; printf "[plugins.x]\nfrom = \"/p\"\n" > cfg/config.toml; chmod 555 cfg'; sc_user "remove: a directory nobody may write in" node 1 - -- plugin remove x
-SETUP='mkdir -p cfg; printf "# caf\xe9\n[plugins.x]\nfrom = \"/p\"\n" > cfg/config.toml'; sc "add: a config that is not UTF-8" node 0 - -- plugin add ./pkgs/plain
-SETUP='mkdir -p cfg; printf "# caf\xe9\n[plugins.x]\nfrom = \"/p\"\n" > cfg/config.toml'; sc "remove: a config that is not UTF-8" node 0 - -- plugin remove x
-SETUP='mkdir -p cfg; printf "[plugins\n" > cfg/config.toml'; sc "add: a config that is not TOML" node 1 - -- plugin add ./pkgs/plain
-SETUP='mkdir -p cfg; printf "plugins = 3\n" > cfg/config.toml'; sc "add: plugins that is not a table" node 1 - -- plugin add ./pkgs/plain
-SETUP='mkdir -p cfg; printf "plugins = 3\n" > cfg/config.toml'; sc "remove: plugins that is not a table" node 1 - -- plugin remove x
+SETUP='mkdir -p cfg; ln -s missing.toml cfg/config.toml'; sc "add: a link that leads nowhere" rust 1 - -- plugin add ./pkgs/plain
+SETUP='mkdir -p cfg; ln -s missing.toml cfg/config.toml'; sc "remove: a link that leads nowhere" rust 1 - -- plugin remove x
+SETUP='mkdir -p cfg; ln -s config.toml cfg/config.toml'; sc "add: a link to itself" rust 1 - -- plugin add ./pkgs/plain
+SETUP='mkdir -p cfg; ln -s b cfg/a; ln -s a cfg/b; ln -s a cfg/config.toml'; sc "remove: a loop of links" rust 1 - -- plugin remove x
+SETUP='mkdir -p cfg dotfiles/dir; ln -s ../dotfiles/dir cfg/config.toml'; sc "add: a link to a directory" rust 1 - -- plugin add ./pkgs/plain
+SETUP='mkdir -p cfg/config.toml'; sc "add: a directory where the config is" rust 1 - -- plugin add ./pkgs/plain
+SETUP='mkdir -p cfg/config.toml'; sc "remove: a directory where the config is" rust 1 - -- plugin remove x
+SETUP='mkdir -p cfg; printf "[plugins.x]\nfrom = \"/p\"\n" > cfg/config.toml; chmod 000 cfg/config.toml'; sc_user "add: a config nobody may read" rust 1 - -- plugin add ./pkgs/plain
+SETUP='mkdir -p cfg; printf "[plugins.x]\nfrom = \"/p\"\n" > cfg/config.toml; chmod 000 cfg/config.toml'; sc_user "remove: a config nobody may read" rust 1 - -- plugin remove x
+SETUP='mkdir -p cfg; printf "[plugins.x]\nfrom = \"/p\"\n" > cfg/config.toml; chmod 555 cfg'; sc_user "add: a directory nobody may write in" rust 1 - -- plugin add ./pkgs/plain
+SETUP='mkdir -p cfg; printf "[plugins.x]\nfrom = \"/p\"\n" > cfg/config.toml; chmod 555 cfg'; sc_user "remove: a directory nobody may write in" rust 1 - -- plugin remove x
+SETUP='mkdir -p cfg; printf "# caf\xe9\n[plugins.x]\nfrom = \"/p\"\n" > cfg/config.toml'; sc "add: a config that is not UTF-8" rust 0 - -- plugin add ./pkgs/plain
+SETUP='mkdir -p cfg; printf "# caf\xe9\n[plugins.x]\nfrom = \"/p\"\n" > cfg/config.toml'; sc "remove: a config that is not UTF-8" rust 0 - -- plugin remove x
+SETUP='mkdir -p cfg; printf "[plugins\n" > cfg/config.toml'; OWN_ERR="$RUN/cfg/config.toml: "; sc "add: a config that is not TOML" rust 1 - -- plugin add ./pkgs/plain
+SETUP='mkdir -p cfg; printf "plugins = 3\n" > cfg/config.toml'; sc "add: plugins that is not a table" rust 1 - -- plugin add ./pkgs/plain
+SETUP='mkdir -p cfg; printf "plugins = 3\n" > cfg/config.toml'; sc "remove: plugins that is not a table" rust 1 - -- plugin remove x
 
 t "remove"
 sc "remove: no config" rust 3 "not listed" -- plugin remove x
@@ -318,13 +336,13 @@ from = "/q"
 '); sc "remove: a key with a dot" rust 0 "removed a.b" -- plugin remove a.b
 SETUP=$(text '[plugins.__proto__]
 from = "/p"
-'); sc "remove: __proto__" node - - -- plugin remove __proto__
+'); sc "remove: __proto__" rust - - -- plugin remove __proto__
 sc "remove: no name" rust 2 "missing required option <name>" -- plugin remove
 LOCALE=ru; sc "remove: no name, in Russian" rust 2 - -- plugin remove
 sc "remove: -- and no name" rust 2 "missing required option" -- plugin remove --
-sc "remove: an option" node 2 - -- plugin remove --name x
-sc "remove: a short option" node 2 - -- plugin remove -x
-sc "remove: an option and a name" node 2 - -- plugin remove x --json
+sc "remove: an option" rust 2 - -- plugin remove --name x
+sc "remove: a short option" rust 2 - -- plugin remove -x
+sc "remove: an option and a name" rust 2 - -- plugin remove x --json
 SETUP=$(text '# top comment
 
 [plugins.x]
@@ -344,7 +362,7 @@ a = 1
 '); sc "remove: the blank lines around an entry" rust 0 "removed y" -- plugin remove y
 
 t "add: weird directories (what the escaping of from has to carry)"
-# A control character cannot be written into the config (config-file.ts UNWRITABLE): node refuses and the binary hands the call over, so the three directories with one are node's and the rest are served here.
+# A control character cannot be written into the config (config-file.ts UNWRITABLE): node refuses with its line, and so does the binary.
 WEIRD_SETUP='mkdir -p "pkgs/$WEIRD/src"; cp pkgs/plain/package.json "pkgs/$WEIRD/"; cp pkgs/plain/src/plugin.ts "pkgs/$WEIRD/src/"'
 for d in 'q"uote' 'back\slash' "it's" 'é😀' 'a b' '[x]' '#hash'; do
   export WEIRD=$d; SETUP=$WEIRD_SETUP
@@ -352,16 +370,24 @@ for d in 'q"uote' 'back\slash' "it's" 'é😀' 'a b' '[x]' '#hash'; do
 done
 for d in "$(printf 'tab\there')" "$(printf 'new\nline')" "$(printf 'del\177x')"; do
   export WEIRD=$d; SETUP=$WEIRD_SETUP
-  sc "add a directory with a control character ($(printf '%s' "$d" | od -An -c | tr -s ' ' | head -c 24))" node 1 - -- plugin add "./pkgs/$d" --name w
+  sc "add a directory with a control character ($(printf '%s' "$d" | od -An -c | tr -s ' ' | head -c 24))" rust 1 - -- plugin add "./pkgs/$d" --name w
 done
 
 # ------------------------------------------------------------ the corpus ---
 t "add and remove: every document of the corpus (a sweep)"
 for f in "$CORPUS"/*.toml; do
   n=$(basename "$f" .toml)
-  SETUP=$(doc "$n"); sc "add into $n" any - - -- plugin add ./pkgs/plain
-  SETUP=$(doc "$n"); sc "remove x from $n" any - - -- plugin remove x
-  SETUP=$(doc "$n"); sc "remove plain-pkg from $n" any - - -- plugin remove plain-pkg
+  # The TOML parsers word what they refuse in their own words; the file and the frame are node's (rule 2 of the design). `parse_words` says which verbs of the document meet such a refusal.
+  parse_words=; frame="$RUN/cfg/config.toml: "
+  case "$n" in
+    bigint | ctrl-del | dup-key | dup-table | lone-cr | nul | nul-comment) parse_words="add remove" ;;
+    plugins-inline) parse_words=add; frame="$RUN/cfg/config.toml: the edit would not parse: " ;;
+    header-lookalike-in-array | header-lookalike-in-string-elsewhere | header-lookalike-in-string-under-entry | header-lookalike-line-of-numbers) parse_words=remove; frame="$RUN/cfg/config.toml: the edit would not parse: " ;;
+  esac
+  own() { case " $parse_words " in *" $1 "*) OWN_ERR=$frame ;; esac; }
+  own add; SETUP=$(doc "$n"); sc "add into $n" rust - - -- plugin add ./pkgs/plain
+  own remove; SETUP=$(doc "$n"); sc "remove x from $n" rust - - -- plugin remove x
+  case "$n" in header-lookalike-*) ;; *) own remove ;; esac; SETUP=$(doc "$n"); sc "remove plain-pkg from $n" rust - - -- plugin remove plain-pkg
 done
 
 # ------------------------------------------------------------------- new ---
@@ -395,14 +421,14 @@ SETUP='mkdir -p busy; echo mine > busy/package.json'; sc "new into a directory t
 sc "new --dir= in a working directory that holds files" rust 3 "exists and is not empty" -- plugin new demo --dir=
 SETUP='mkdir -p busy; echo mine > busy/f'; LOCALE=ru; sc "new into a directory that holds a file, in Russian" rust 3 "существует и не пуст" -- plugin new demo --dir busy
 SETUP='mkdir -p real; echo mine > real/f; ln -s real link'; sc "new into a link to a directory that holds a file" rust 3 "exists and is not empty" -- plugin new demo --dir link
-SETUP='echo mine > afile'; sc "new into a directory that is a file" node 1 "ENOTDIR" -- plugin new demo --dir afile
-SETUP='echo mine > afile'; sc "new below a file" node 1 - -- plugin new demo --dir afile/below
-SETUP='ln -s nowhere dangling'; sc "new into a link to nowhere" node - - -- plugin new demo --dir dangling
+SETUP='echo mine > afile'; sc "new into a directory that is a file" rust 1 "ENOTDIR" -- plugin new demo --dir afile
+SETUP='echo mine > afile'; sc "new below a file" rust 1 - -- plugin new demo --dir afile/below
+SETUP='ln -s nowhere dangling'; sc "new into a link to nowhere" rust - - -- plugin new demo --dir dangling
 
 t "new: a directory the user cannot write to"
-SETUP='mkdir -p ro; chmod 555 ro'; sc_user "new below a directory that is not writable" node 1 "EACCES" -- plugin new demo --dir ro/pl
-SETUP='mkdir -p ro; chmod 555 ro'; sc_user "new into an empty directory that is not writable" node 1 "EACCES" -- plugin new demo --dir ro
-SETUP='mkdir -p ro; chmod 000 ro'; sc_user "new into a directory that cannot be listed" node 1 "EACCES" -- plugin new demo --dir ro
+SETUP='mkdir -p ro; chmod 555 ro'; sc_user "new below a directory that is not writable" rust 1 "EACCES" -- plugin new demo --dir ro/pl
+SETUP='mkdir -p ro; chmod 555 ro'; sc_user "new into an empty directory that is not writable" rust 1 "EACCES" -- plugin new demo --dir ro
+SETUP='mkdir -p ro; chmod 000 ro'; sc_user "new into a directory that cannot be listed" rust 1 "EACCES" -- plugin new demo --dir ro
 
 t "new: the name"
 sc "new with no name" rust 2 "missing required option <name>" -- plugin new
@@ -553,26 +579,22 @@ SETUP=$(text '[plugins.x]
 from = "/nowhere"
 '); sc "plugin list with a plugin that is not there" node 1 - -- plugin list
 sc "plugin bogus" node 2 - -- plugin bogus
-sc "plugin add --bogus" node 2 - -- plugin add --bogus ./pkgs/plain
-sc "plugin add --name with no value" node 2 - -- plugin add ./pkgs/plain --name
-sc "plugin add --name followed by an option" node 2 - -- plugin add ./pkgs/plain --name --x
-sc "plugin add -n" node 2 - -- plugin add -n x ./pkgs/plain
-sc "plugin add --json" node 2 - -- plugin add ./pkgs/plain --json
-sc "plugin add --no-name" node 2 - -- plugin add ./pkgs/plain --no-name
-sc "plugin add -h" node 2 - -- plugin add -h
-sc "plugin add --help" node 2 - -- plugin add --help
-sc "plugin remove -h" node 2 - -- plugin remove -h
-sc "plugin add an argument that is not UTF-8" node - - -- plugin add $'\xff'
-sc "plugin add --name an argument that is not UTF-8" node - - -- plugin add ./pkgs/plain --name $'\xff'
-sc "plugin remove an argument that is not UTF-8" node - - -- plugin remove $'\xff'
+sc "plugin add --bogus" rust 2 - -- plugin add --bogus ./pkgs/plain
+sc "plugin add --name with no value" rust 2 - -- plugin add ./pkgs/plain --name
+sc "plugin add --name followed by an option" rust 2 - -- plugin add ./pkgs/plain --name --x
+sc "plugin add -n" rust 2 - -- plugin add -n x ./pkgs/plain
+sc "plugin add --json" rust 2 - -- plugin add ./pkgs/plain --json
+sc "plugin add --no-name" rust 2 - -- plugin add ./pkgs/plain --no-name
+sc "plugin add -h" rust 2 - -- plugin add -h
+sc "plugin add --help" rust 2 - -- plugin add --help
+sc "plugin remove -h" rust 2 - -- plugin remove -h
+sc "plugin add an argument that is not UTF-8" rust - - -- plugin add $'\xff'
+sc "plugin add --name an argument that is not UTF-8" rust - - -- plugin add ./pkgs/plain --name $'\xff'
+sc "plugin remove an argument that is not UTF-8" rust - - -- plugin remove $'\xff'
 
 printf '\nrust-plugin-parity: %d passed, %d failed, %d skipped' "$pass" "$fail" "$skipped"
 if [ -z "$SELF_TEST" ]; then
-  printf '; answered by the binary: %d, handed to node: %d; of the %d sweep runs, the binary answered %d\n' "$rust_served" "$handed_over" "$sweep_total" "$sweep_served"
-  if [ -z "$ONLY" ] && [ "$sweep_served" -lt "$SWEEP_FLOOR" ]; then
-    printf '  FAIL the binary answered only %d of the sweep runs, fewer than the %d it is expected to (everything handed to node?)\n' "$sweep_served" "$SWEEP_FLOOR"
-    fail=$((fail + 1))
-  fi
+  printf '; answered by the binary: %d, by node: %d\n' "$rust_served" "$handed_over"
 else
   printf ' (self test: node on both sides)\n'
 fi

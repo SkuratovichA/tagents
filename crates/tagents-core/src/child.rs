@@ -160,12 +160,28 @@ fn group_of(child: &Child) -> Option<Pid> {
     Pid::from_raw(i32::try_from(child.id()).ok()?)
 }
 
+/// Makes the wait for a child work under a caller that left SIGCHLD ignored: Linux reaps the child itself then, waiting for it finds nothing (ECHILD), and a good run reads as a failure, where node sets its dispositions back when it starts. A handler that only sets a flag is the safe form of not ignoring it, exec sets it back to the default for what is started, and a failed registration leaves what was inherited. Once per process.
+pub(crate) fn wait_for_children() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let _ = signal_hook::flag::register(
+            signal_hook::consts::SIGCHLD,
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        );
+    });
+}
+
+/// The words for a thread the system refused to start, which every caller that can report it uses.
+pub(crate) fn thread_failure(error: &std::io::Error) -> String {
+    format!("cannot start a thread: {error}")
+}
+
 pub(crate) fn spawn_thread(name: &str, work: impl FnOnce() + Send + 'static) -> Result<(), String> {
     std::thread::Builder::new()
         .name(name.into())
         .spawn(work)
         .map(drop)
-        .map_err(|e| format!("could not start a thread for the call: {e}"))
+        .map_err(|e| thread_failure(&e))
 }
 
 /// Reads a pipe to its end. The first `cap` bytes are kept; once the call is over the thread lets go of the pipe at the next byte it reads, so a process that outlived the call gets EPIPE as it would from a pipe that was destroyed.

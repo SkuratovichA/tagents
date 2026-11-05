@@ -1,4 +1,4 @@
-//! The `config` section of the plugin vectors: each document of the corpus is written to a scratch directory, `plugin::config::add` or `remove` is run on it, and the file must come out as node's `addPluginEntry` or `removePluginEntry` left it. A call node threw on (or one whose file Rust does not read as node does) must be handed over, with the directory as it was.
+//! The `config` section of the plugin vectors: each document of the corpus is written to a scratch directory, `plugin::config::add` or `remove` is run on it, and the file must come out as node's `addPluginEntry` or `removePluginEntry` left it. A call node threw on fails here as well, with the directory as it was.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -55,7 +55,7 @@ fn snapshot(dir: &Path) -> BTreeMap<PathBuf, Option<Vec<u8>>> {
 }
 
 #[test]
-fn every_document_gives_the_text_node_gave_or_is_handed_over() {
+fn every_document_gives_the_text_node_gave_or_fails_as_node_did() {
     let config = section("config");
     let documents = &config["documents"];
     let cases = config["cases"].as_array().unwrap();
@@ -90,9 +90,9 @@ fn every_document_gives_the_text_node_gave_or_is_handed_over() {
             "{n}: {verb} {key:?} on {} (node: {})",
             case["document"], case["outcome"]
         );
-        if case["handOver"] == true {
+        if case["threw"] == true {
             assert!(outcome.is_err(), "{what}: answered {outcome:?}");
-            assert_eq!(snapshot(&dir), before, "{what}: wrote before handing over");
+            assert_eq!(snapshot(&dir), before, "{what}: wrote before it failed");
             continue;
         }
         assert_eq!(outcome, Ok(case["outcome"].as_str().unwrap()), "{what}");

@@ -1,6 +1,6 @@
 //! `buildArgs` and `childEnv` of `packages/core/src/claude-driver.ts`, and what node takes from its own process to make them: the argv and the environment of the child of `session prompt` (design D4).
 //!
-//! What `spawn` would refuse is not worded here: a value that cannot be an argument or an environment entry hands the call to node before anything is started (design D2), and so does an environment Rust cannot rebuild entry for entry and a machine with no node to name.
+//! What node reads lossily this reads lossily: an environment entry whose value is not UTF-8 holds U+FFFD, and one whose name is not UTF-8 or starts with `=` is not in `process.env`.
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -68,7 +68,8 @@ pub fn environment(
     let wanted = inherited.split(':').filter(|entry| !entry.is_empty());
     let mut entries: Vec<&str> = Vec::new();
     for entry in [node_dir, local_bin.as_str()].into_iter().chain(wanted) {
-        if !entries.contains(&entry) {
+        // No node to name leaves the directory empty; node's own `PATH` then begins with the empty string, which the filter of the others drops.
+        if !entry.is_empty() && !entries.contains(&entry) {
             entries.push(entry);
         }
     }
@@ -87,32 +88,38 @@ pub fn environment(
     env
 }
 
-/// `{...process.env}` of this process, or `None` when node would not read the same entries: a name or a value that is not UTF-8 (the child's environment is built from it, entry for entry), or a name that starts with `=`, which `process.env` cannot read back. A name written twice is the first one, which is the value `getenv` gives.
+/// `{...process.env}` of this process: a value that is not UTF-8 is read with U+FFFD, and an entry whose name is not UTF-8 or starts with `=` is left out, as `process.env` leaves it out. A name written twice is the first one, which is the value `getenv` gives.
 pub fn parent_environment(
     vars: impl IntoIterator<Item = (OsString, OsString)>,
-) -> Option<BTreeMap<String, String>> {
+) -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
     for (name, value) in vars {
-        let (name, value) = (name.into_string().ok()?, value.into_string().ok()?);
+        let Ok(name) = name.into_string() else {
+            continue;
+        };
         if name.starts_with('=') {
-            return None;
+            continue;
         }
-        env.entry(name).or_insert(value);
+        env.entry(name)
+            .or_insert_with(|| value.to_string_lossy().into_owned());
     }
-    Some(env)
+    env
 }
 
-/// `path.dirname(process.execPath)` as far as Rust can tell: the directory of the real path of the node the front door would run (`node::interpreter`). `None` when there is no such file: the call goes to the front door, which words that.
-pub fn node_directory(interpreter: &str, cwd: &str, path_var: &str) -> Option<String> {
-    let file = if interpreter.contains('/') {
-        let file = node::resolve(cwd, interpreter);
-        node::is_executable_file(&file).then_some(file)?
-    } else {
-        node::resolve(cwd, &node::find_on_path(interpreter, path_var)?)
+/// `path.dirname(process.execPath)` as far as Rust can tell: the directory of the real path of the node the front door would run (`node::interpreter`). Empty when there is no such file, so that the `PATH` of the child has no directory for it.
+pub fn node_directory(interpreter: &str, cwd: &str, path_var: &str) -> String {
+    let found = || {
+        let file = if interpreter.contains('/') {
+            let file = node::resolve(cwd, interpreter);
+            node::is_executable_file(&file).then_some(file)?
+        } else {
+            node::resolve(cwd, &node::find_on_path(interpreter, path_var)?)
+        };
+        let real = node::realpath(&file).ok()?;
+        let (directory, _) = real.rsplit_once('/')?;
+        Some(if directory.is_empty() { "/" } else { directory }.to_owned())
     };
-    let real = node::realpath(&file).ok()?;
-    let (directory, _) = real.rsplit_once('/')?;
-    Some(if directory.is_empty() { "/" } else { directory }.to_owned())
+    found().unwrap_or_default()
 }
 
 /// What `session prompt` starts.
@@ -127,30 +134,21 @@ pub struct Invocation {
 }
 
 impl Invocation {
-    /// The child of a turn, or `None` for a NUL anywhere in it, which `spawn` refuses. The rest of what it refuses cannot come through here: `reference::read` hands over the name of an environment entry and an empty `bin`, and a state row has neither.
+    /// The child of a turn. What `spawn` refuses cannot come through here: `reference::read` calls a reference with a NUL, a bad environment name or an empty `bin` unusable, and a state row has none of them.
     pub fn of(
         reference: &Reference,
         text: &str,
         parent: &BTreeMap<String, String>,
         node_dir: &str,
         home: &str,
-    ) -> Option<Invocation> {
+    ) -> Invocation {
         let spec = &reference.spec;
-        let invocation = Invocation {
+        Invocation {
             program: spec.bin.clone().unwrap_or_else(|| "claude".to_owned()),
             args: args(spec, text, reference.claude_session_id.as_deref()),
             env: environment(spec, parent, node_dir, home),
             cwd: spec.cwd.clone(),
-        };
-        let clean = |value: &str| !value.contains('\0');
-        let fine = clean(&invocation.program)
-            && clean(&invocation.cwd)
-            && invocation.args.iter().all(|arg| clean(arg))
-            && invocation
-                .env
-                .iter()
-                .all(|(name, value)| clean(name) && clean(value));
-        fine.then_some(invocation)
+        }
     }
 }
 
@@ -339,7 +337,7 @@ mod tests {
     }
 
     #[test]
-    fn an_environment_rust_cannot_rebuild_is_handed_over() {
+    fn an_environment_that_is_not_utf8_is_read_lossily() {
         let vars = |entries: Vec<(Vec<u8>, Vec<u8>)>| {
             parent_environment(
                 entries
@@ -347,16 +345,19 @@ mod tests {
                     .map(|(k, v)| (OsString::from_vec(k), OsString::from_vec(v))),
             )
         };
-        assert!(vars(vec![(b"A".to_vec(), b"1".to_vec())]).is_some());
-        assert!(vars(vec![(b"A".to_vec(), b"\xff".to_vec())]).is_none());
-        assert!(vars(vec![(b"\xff".to_vec(), b"1".to_vec())]).is_none());
-        assert!(vars(vec![(b"=A".to_vec(), b"1".to_vec())]).is_none());
+        assert_eq!(vars(vec![(b"A".to_vec(), b"1".to_vec())])["A"], "1");
+        assert_eq!(
+            vars(vec![(b"A".to_vec(), b"\xff".to_vec())])["A"],
+            "\u{fffd}"
+        );
+        // A name that is not UTF-8 is lost, as is a name that starts with `=`: neither can be a variable of the child.
+        assert!(vars(vec![(b"\xff".to_vec(), b"1".to_vec())]).is_empty());
+        assert!(vars(vec![(b"=A".to_vec(), b"1".to_vec())]).is_empty());
         // `getenv` finds the first of a name written twice.
         let twice = vars(vec![
             (b"A".to_vec(), b"1".to_vec()),
             (b"A".to_vec(), b"2".to_vec()),
-        ])
-        .unwrap();
+        ]);
         assert_eq!(twice["A"], "1");
     }
 
@@ -375,24 +376,15 @@ mod tests {
         let want = format!("{root}/real");
         let links_dir = links.to_str().unwrap();
         // Named by a path, a symbolic link followed; found on PATH; relative to the working directory.
-        assert_eq!(
-            node_directory(&format!("{links_dir}/node"), "/", "").as_deref(),
-            Some(want.as_str())
-        );
-        assert_eq!(
-            node_directory("node", "/", links_dir).as_deref(),
-            Some(want.as_str())
-        );
-        assert_eq!(
-            node_directory("links/node", &root, "").as_deref(),
-            Some(want.as_str())
-        );
+        assert_eq!(node_directory(&format!("{links_dir}/node"), "/", ""), want);
+        assert_eq!(node_directory("node", "/", links_dir), want);
+        assert_eq!(node_directory("links/node", &root, ""), want);
         // Nothing to name.
-        assert_eq!(node_directory("node", "/", ""), None);
-        assert_eq!(node_directory("node", "/", "/no/such/dir"), None);
-        assert_eq!(node_directory("/no/such/node", "/", ""), None);
-        assert_eq!(node_directory(&format!("{root}/real/plain"), "/", ""), None);
-        assert_eq!(node_directory(&format!("{root}/real"), "/", ""), None);
+        assert_eq!(node_directory("node", "/", ""), "");
+        assert_eq!(node_directory("node", "/", "/no/such/dir"), "");
+        assert_eq!(node_directory("/no/such/node", "/", ""), "");
+        assert_eq!(node_directory(&format!("{root}/real/plain"), "/", ""), "");
+        assert_eq!(node_directory(&format!("{root}/real"), "/", ""), "");
     }
 
     fn reference_of(spec_value: Spec, resume: Option<&str>) -> Reference {
@@ -414,8 +406,7 @@ mod tests {
             &parent(&[]),
             "/n",
             "/h",
-        )
-        .unwrap();
+        );
         assert_eq!(invocation.program, "/b");
         assert_eq!(invocation.cwd, "");
         assert_eq!(invocation.args.last().map(String::as_str), Some("go"));
@@ -428,33 +419,14 @@ mod tests {
                 "/n",
                 "/h"
             )
-            .unwrap()
             .program,
             "claude"
         );
     }
 
+    /// What `reference::read` refuses before an invocation is made: a reference the binary cannot act on is worded as one it does not know.
     #[test]
-    fn a_nul_from_a_state_row_hands_the_call_over() {
-        let call =
-            |reference: Reference| Invocation::of(&reference, "go", &parent(&[]), "/n", "/h");
-        assert!(call(reference_of(spec(""), None)).is_some());
-        // A state row is not checked where it is read, and each of its fields that reaches the child comes through here.
-        assert!(call(reference_of(spec(""), Some("a\0b"))).is_none());
-        let mut bad = spec("");
-        bad.cwd = "/a\0b".to_owned();
-        assert!(call(reference_of(bad, None)).is_none());
-        let mut bad = spec("");
-        bad.label = Some("a\0b".to_owned());
-        assert!(call(reference_of(bad, None)).is_none());
-        let mut bad = spec("");
-        bad.config_dir = Some(Some("a\0b".to_owned()));
-        assert!(call(reference_of(bad, None)).is_none());
-    }
-
-    /// What `reference::read` hands over before an invocation is made: the classes of design D2 that have their own words in node.
-    #[test]
-    fn a_reference_with_a_value_spawn_refuses_is_handed_over_when_it_is_read() {
+    fn a_reference_with_a_value_spawn_refuses_is_unusable_when_it_is_read() {
         let of = |extra: &str| {
             let text = format!(
                 r#"{{"id":"s","claudeSessionId":null,"transcript":null,"spec":{{"kind":"claude","cwd":"/w","skipPermissions":false,{extra}}}}}"#
@@ -463,18 +435,18 @@ mod tests {
         };
         assert!(matches!(of(r#""bin":"/b""#), reference::Read::Ref(_)));
         assert!(matches!(of(r#""bin":"b""#), reference::Read::Ref(_)));
+        assert!(matches!(of(r#""bin":"./b""#), reference::Read::Ref(_)));
         for extra in [
             r#""env":{"A=B":"v"}"#,
             r#""env":{"":"v"}"#,
             r#""env":{"A\u0000B":"v"}"#,
             r#""env":{"A":"v\u0000"}"#,
             r#""bin":"""#,
-            r#""bin":"./b""#,
             r#""bin":"a\u0000b""#,
             r#""model":"a\u0000b""#,
             r#""disallowedTools":["a\u0000b"]"#,
         ] {
-            assert_eq!(of(extra), reference::Read::HandOver, "{extra}");
+            assert_eq!(of(extra), reference::Read::Unusable, "{extra}");
         }
     }
 

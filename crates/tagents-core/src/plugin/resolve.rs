@@ -1,10 +1,9 @@
-//! Finding the package `plugin add` was given: the twin of `resolvePluginPackage` in `packages/core/src/plugin-config.ts`, for the cases it can prove identical.
+//! Finding the package `plugin add` was given: the twin of `resolvePluginPackage` in `packages/core/src/plugin-config.ts`.
 //!
-//! A directory argument (it starts with `.` or `~`, or is absolute) is resolved here in full. A bare name is node's `require.resolve('<name>/package.json')`, which has a long tail (`exports`, `NODE_PATH`, the global folders, `--require` hooks, self-reference), so it is resolved here only when a walk of the `node_modules` directories finds the package and nothing makes node's answer differ; every other name is a `Failure::HandOver`, and the node CLI resolves it. Nothing here reads more of the package than its `package.json`, and nothing imports it.
+//! A directory argument (it starts with `.` or `~`, or is absolute) is resolved in full. A bare name is node's `require.resolve('<name>/package.json')` from the working directory, then the global folder `pnpm root -g` names. The resolution walks the `node_modules` directories up from the working directory, then `NODE_PATH` and the two folders in the home directory, and honours the `exports` of the package it meets (the `./package.json` key, a pattern key with one `*`) and the self-reference of a package to its own name. It does not run `--require` hooks and does not know the `lib/node` folder of the node installation. A name it cannot find is `Failure::NotFound`, which is what node says when neither lookup finds it. Nothing here reads more of the package than its `package.json`, and nothing imports it.
 
 use std::fs;
 
-use super::HandOver;
 use crate::{
     json::{self, Value},
     node,
@@ -14,17 +13,23 @@ use crate::{
 pub struct Env {
     /// `os.homedir()`.
     pub home: String,
-    /// `NODE_OPTIONS` or `NODE_PRESERVE_SYMLINKS` is set: a `--require` hook or the symlink flag changes what `require.resolve` finds.
-    pub node_flags: bool,
+    /// The directories of `NODE_PATH`, in order.
+    pub node_path: Vec<String>,
 }
 
 impl Env {
     pub fn current() -> Env {
         Env {
             home: node::homedir(),
-            node_flags: ["NODE_OPTIONS", "NODE_PRESERVE_SYMLINKS"]
-                .iter()
-                .any(|name| std::env::var_os(name).is_some()),
+            node_path: std::env::var("NODE_PATH")
+                .map(|paths| {
+                    paths
+                        .split(':')
+                        .filter(|dir| !dir.is_empty())
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default(),
         }
     }
 }
@@ -45,20 +50,12 @@ pub struct Package {
 /// Why a package could not be added. The text is the file or spec the message names.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Failure {
-    /// Nothing was found at a path (an error, exit 1).
+    /// Nothing was found at a path or under a name (an error, exit 1).
     NotFound(String),
     /// Something is there and is not a plugin: the manifest does not qualify (a refusal, exit 3).
     BadManifest(String),
     /// The manifest names an entry file that does not exist (a refusal, exit 3).
     NoEntry(String),
-    /// Node answers this one.
-    HandOver,
-}
-
-impl From<HandOver> for Failure {
-    fn from(_: HandOver) -> Failure {
-        Failure::HandOver
-    }
 }
 
 const MANIFEST: &str = "package.json";
@@ -69,11 +66,14 @@ pub fn resolve(spec: &str, cwd: &str, env: &Env) -> Result<Package, Failure> {
     let dir = if by_path {
         node::resolve(cwd, &expand_tilde(spec, &env.home))
     } else {
-        locate_by_name(spec, cwd, env)?
+        match locate_by_name(spec, cwd, env) {
+            Some(dir) => dir,
+            None => return Err(Failure::NotFound(spec.to_owned())),
+        }
     };
 
     let manifest_file = node::join(&dir, MANIFEST);
-    let manifest = match read_json(&manifest_file)? {
+    let manifest = match read_json(&manifest_file) {
         Some(manifest) => manifest,
         None if by_path => return Err(Failure::NotFound(manifest_file)),
         None => return Err(Failure::BadManifest(manifest_file)),
@@ -124,92 +124,135 @@ fn qualifies(manifest: &Value) -> Option<(Option<&str>, &str)> {
     }
 }
 
-/// The JSON in `file`: `None` when it cannot be read or is not JSON, a hand-over when the bytes are not UTF-8 (node reads them with U+FFFD and may still parse them).
-fn read_json(file: &str) -> Result<Option<Value>, HandOver> {
-    match fs::read(file) {
-        Ok(bytes) => Ok(json::parse(
-            &String::from_utf8(bytes).map_err(|_| HandOver)?,
-        )),
-        Err(_) => Ok(None),
-    }
+/// The JSON in `file`: `None` when it cannot be read or is not JSON. Bytes that are not UTF-8 are read with U+FFFD, as node reads them.
+fn read_json(file: &str) -> Option<Value> {
+    json::parse(&String::from_utf8_lossy(&fs::read(file).ok()?))
 }
 
-/// The JSON object in `file`; a hand-over when it cannot be read, is not JSON or is not an object, since node would fail on it or read it differently.
-fn read_object(file: &str) -> Result<Value, HandOver> {
-    read_json(file)?
-        .filter(|value| matches!(value, Value::Object(_)))
-        .ok_or(HandOver)
+/// The JSON object in `file`, or `None` when it cannot be read, is not JSON or is not an object.
+fn read_object(file: &str) -> Option<Value> {
+    read_json(file).filter(|value| matches!(value, Value::Object(_)))
 }
 
-/// A package name as npm writes one, `name` or `@scope/name`: letters, digits and `._~-`, a segment never empty and never starting with `.` or `_`. A request outside it can be a subpath, a builtin or an import, which `require.resolve` reads differently.
-fn is_package_name(spec: &str) -> bool {
-    let segment = |s: &str| {
-        !s.is_empty()
-            && !s.starts_with(['.', '_'])
-            && s.bytes()
-                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'~' | b'-'))
+/// A package name as npm writes one, split off `spec`: `name` or `@scope/name`, and what follows it.
+fn split_package(spec: &str) -> (&str, &str) {
+    let mut slashes = spec.match_indices('/').map(|(at, _)| at);
+    let end = if spec.starts_with('@') {
+        slashes.nth(1)
+    } else {
+        slashes.next()
     };
-    match spec.strip_prefix('@') {
-        Some(scoped) => scoped
-            .split_once('/')
-            .is_some_and(|(scope, name)| segment(scope) && segment(name)),
-        None => segment(spec),
+    match end {
+        Some(at) => (&spec[..at], &spec[at..]),
+        None => (spec, ""),
     }
 }
 
-/// The real directory of the package `spec` names, found by walking the `node_modules` directories from `cwd` up, as `require.resolve('<spec>/package.json')` does before it goes to the global folders. A hand-over when anything else could decide.
-fn locate_by_name(spec: &str, cwd: &str, env: &Env) -> Result<String, Failure> {
-    if env.node_flags || !is_package_name(spec) || names_itself(spec, cwd)? {
-        return Err(Failure::HandOver);
-    }
-    let manifest = ancestors(cwd)
-        .into_iter()
-        .filter(|dir| last_segment(dir) != "node_modules")
-        .map(|dir| {
-            node::join(
-                &node::join(&dir, "node_modules"),
-                &format!("{spec}/{MANIFEST}"),
-            )
+/// Does `exports` of a package let `subpath` (`./package.json`) through: the key is listed, or a pattern key with one `*` matches it, and its target is not `null`. A package whose `exports` is a string, an array or conditions names `.` only.
+fn exported(exports: &Value, subpath: &str) -> bool {
+    let Value::Object(entries) = exports else {
+        return false;
+    };
+    entries.iter().any(|(key, target)| {
+        *target != Value::Null
+            && (key == subpath
+                || key.split_once('*').is_some_and(|(head, tail)| {
+                    !tail.contains('*')
+                        && subpath.len() >= head.len() + tail.len()
+                        && subpath.starts_with(head)
+                        && subpath.ends_with(tail)
+                }))
+    })
+}
+
+/// The real directory of the package `spec` names, found as `require.resolve('<spec>/package.json')` finds it from `cwd`, then in the global folder of pnpm; `None` where node finds nothing or throws.
+fn locate_by_name(spec: &str, cwd: &str, env: &Env) -> Option<String> {
+    found(spec, cwd, env).or_else(|| global(spec))
+}
+
+fn found(spec: &str, cwd: &str, env: &Env) -> Option<String> {
+    let (package, rest) = split_package(spec);
+    let subpath = format!(".{rest}/{MANIFEST}");
+    let wanted = format!("{spec}/{MANIFEST}");
+    let exports_allow = |root: &str| -> Option<bool> {
+        let manifest = read_object(&node::join(root, MANIFEST))?;
+        Some(match manifest.get("exports") {
+            None | Some(Value::Null) => true,
+            Some(exports) => exported(exports, &subpath),
         })
-        .find(|file| fs::metadata(file).is_ok_and(|meta| meta.is_file()))
-        .ok_or(HandOver)?;
+    };
 
-    // A package with `exports` is resolved by them, and node may refuse what the file system has.
-    let package = read_object(&manifest)?;
-    if package
-        .get("exports")
-        .is_some_and(|exports| *exports != Value::Null)
-    {
-        return Err(Failure::HandOver);
-    }
-    let real = node::realpath(&manifest).map_err(|_| HandOver)?;
-    match real.rsplit_once('/') {
-        Some(("", _)) => Ok("/".to_owned()),
-        Some((dir, _)) => Ok(dir.to_owned()),
-        None => Err(Failure::HandOver),
-    }
-}
-
-/// Does the nearest `package.json` at or above `cwd` (the package scope) carry the name that `spec` begins, with an `exports` key? Node then resolves `spec` as a reference to that package, before any `node_modules`. The scope ends at a directory named `node_modules`. A package.json that cannot be read or is not an object is a hand-over, as node would fail on it.
-fn names_itself(spec: &str, cwd: &str) -> Result<bool, HandOver> {
+    // The package the working directory is in, when it carries `exports` and the name: a reference to itself comes before every `node_modules`.
     for dir in ancestors(cwd) {
         if last_segment(&dir) == "node_modules" {
-            return Ok(false);
+            break;
         }
         let file = node::join(&dir, MANIFEST);
         if !fs::metadata(&file).is_ok_and(|meta| meta.is_file()) {
             continue;
         }
-        let package = read_object(&file)?;
-        let named = match package.get("name") {
-            Some(Value::String(name)) => {
-                format!("{spec}/{MANIFEST}").starts_with(&format!("{name}/"))
-            }
-            _ => false,
-        };
-        return Ok(package.get("exports").is_some() && named);
+        let manifest = read_object(&file)?;
+        let named = matches!(manifest.get("name"), Some(Value::String(name)) if name == package);
+        if named
+            && manifest
+                .get("exports")
+                .is_some_and(|exports| *exports != Value::Null)
+        {
+            return exports_allow(&dir)?.then_some(dir);
+        }
+        break;
     }
-    Ok(false)
+
+    let modules = ancestors(cwd)
+        .into_iter()
+        .filter(|dir| last_segment(dir) != "node_modules")
+        .map(|dir| node::join(&dir, "node_modules"));
+    let folders = env.node_path.iter().cloned().chain([
+        node::join(&env.home, ".node_modules"),
+        node::join(&env.home, ".node_libraries"),
+    ]);
+    for folder in modules.chain(folders) {
+        let manifest = node::join(&folder, &wanted);
+        if !fs::metadata(&manifest).is_ok_and(|meta| meta.is_file()) {
+            continue;
+        }
+        // A package with `exports` is resolved by them, and a name they leave out is an error.
+        if !exports_allow(&node::join(&folder, package))? {
+            return None;
+        }
+        let real = node::realpath(&manifest).ok()?;
+        return match real.rsplit_once('/') {
+            Some(("", _)) => Some("/".to_owned()),
+            Some((dir, _)) => Some(dir.to_owned()),
+            None => None,
+        };
+    }
+    None
+}
+
+/// The package in the global folder `pnpm root -g` names, when pnpm answers and the folder is there.
+fn global(spec: &str) -> Option<String> {
+    global_from("pnpm", spec)
+}
+
+/// `global` with the program that answers `root -g`, so a test can stand one in.
+fn global_from(pnpm: &str, spec: &str) -> Option<String> {
+    crate::child::wait_for_children();
+    let out = std::process::Command::new(pnpm)
+        .args(["root", "-g"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()
+        .filter(|out| out.status.success())?;
+    let root = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+    if root.is_empty() || !std::path::Path::new(&root).exists() {
+        return None;
+    }
+    let dir = node::join(&root, spec);
+    fs::metadata(node::join(&dir, MANIFEST))
+        .is_ok_and(|meta| meta.is_file())
+        .then_some(dir)
 }
 
 /// `cwd` and each directory above it, nearest first, ending at the root.
@@ -223,4 +266,49 @@ fn ancestors(cwd: &str) -> Vec<String> {
 
 fn last_segment(dir: &str) -> &str {
     dir.rsplit('/').next().unwrap_or("")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::fs::PermissionsExt;
+
+    use super::*;
+    use crate::testing::Scratch;
+
+    /// A `pnpm` that runs `body` and a global folder holding the package `pkg`.
+    fn stub(scratch: &Scratch, body: &str) -> String {
+        let program = scratch.path().join("pnpm");
+        fs::write(&program, format!("#!/bin/sh\n{body}\n")).expect("write the stub");
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).expect("chmod the stub");
+        program.display().to_string()
+    }
+
+    fn global_folder(scratch: &Scratch) -> String {
+        let root = scratch.sub("global");
+        fs::create_dir_all(root.join("pkg")).expect("make the package folder");
+        fs::write(root.join("pkg").join(MANIFEST), "{}").expect("write the manifest");
+        root.display().to_string()
+    }
+
+    #[test]
+    fn a_package_in_the_folder_pnpm_names_is_found() {
+        let scratch = Scratch::new();
+        let root = global_folder(&scratch);
+        let pnpm = stub(&scratch, &format!("echo '{root}'"));
+        assert_eq!(global_from(&pnpm, "pkg"), Some(format!("{root}/pkg")));
+        assert_eq!(global_from(&pnpm, "other"), None);
+    }
+
+    #[test]
+    fn a_pnpm_that_fails_finds_nothing() {
+        let scratch = Scratch::new();
+        let root = global_folder(&scratch);
+        let pnpm = stub(&scratch, &format!("echo '{root}'; exit 1"));
+        assert_eq!(global_from(&pnpm, "pkg"), None);
+    }
+
+    #[test]
+    fn a_missing_pnpm_finds_nothing() {
+        assert_eq!(global_from("/nonexistent/pnpm", "pkg"), None);
+    }
 }

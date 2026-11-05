@@ -1,6 +1,6 @@
 //! The reference a session verb takes and prints: `SessionRefSchema` and `parseSessionRef` of `packages/core/src/session-ref.ts`, `resolveRef` of `cli/main.ts`, and `list` of `ClaudeHeadlessDriver` that `resolveRef` and `session list` share.
 //!
-//! A reference node accepts but whose strings cannot be rebuilt byte for byte from what this reader holds is not answered (`Read::HandOver`, design D2): a lone surrogate in a key or in a string the schema keeps, a NUL in one, a `spec.env` entry that `spawn` refuses, an empty `bin` and a relative `bin` with a slash in it. A reference the schema refuses is `Read::Invalid`, which both programs word the same way, so the schema decides before the hand-over does.
+//! A reference node accepts but whose strings cannot be rebuilt byte for byte from what this reader holds, or that the binary cannot act on, is `Read::Unusable`: a lone surrogate in a key or in a string the schema keeps, a NUL in one, a `spec.env` entry that `spawn` refuses, an empty `bin`. A verb words it as a reference it does not know (`badRef`); no `session open` writes one. A reference the schema refuses is `Read::Invalid`, which both programs word the same way, so the schema decides before this does.
 
 use crate::js;
 use crate::json::{self, Value};
@@ -39,8 +39,8 @@ pub struct Reference {
 pub enum Read {
     /// `parseSessionRef` gives `null`.
     Invalid,
-    /// Node accepts it and this reader cannot reproduce what node does with it.
-    HandOver,
+    /// Node accepts it and this reader cannot hold it or act on it.
+    Unusable,
     Ref(Box<Reference>),
 }
 
@@ -48,13 +48,12 @@ pub enum Read {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Resolved {
     Ref(Box<Reference>),
-    HandOver,
     NoMatch,
 }
 
 /// Reads the strings of a document and notes the ones the Rust side cannot rebuild.
 struct Reader {
-    hand_over: bool,
+    unusable: bool,
 }
 
 impl Reader {
@@ -63,12 +62,12 @@ impl Reader {
         let text = match value {
             Value::String(text) => text.clone(),
             Value::Units(units) => {
-                self.hand_over = true;
+                self.unusable = true;
                 String::from_utf16_lossy(units)
             }
             _ => return None,
         };
-        self.hand_over |= text.contains('\0');
+        self.unusable |= text.contains('\0');
         Some(text)
     }
 
@@ -123,7 +122,7 @@ impl Reader {
         };
         let bin = self.optional(spec, "bin")?;
         if let Some(bin) = &bin {
-            self.hand_over |= bin.is_empty() || (!bin.starts_with('/') && bin.contains('/'));
+            self.unusable |= bin.is_empty();
         }
         let log_file = self.optional(spec, "logFile")?;
         Some(Spec {
@@ -150,7 +149,7 @@ impl Reader {
                 continue;
             }
             let value = self.text(value)?;
-            self.hand_over |= name.is_empty() || name.contains('=') || name.contains('\0');
+            self.unusable |= name.is_empty() || name.contains('=') || name.contains('\0');
             kept.push((name.to_owned(), value));
         }
         Some(kept)
@@ -173,15 +172,15 @@ impl Reader {
     }
 }
 
-/// `parseSessionRef(text)`, with the calls this reader leaves to node told apart.
+/// `parseSessionRef(text)`, with the references it cannot use told apart.
 pub fn read(text: &str) -> Read {
     let Some(exact) = json::parse_exact(text) else {
         return Read::Invalid;
     };
-    let mut reader = Reader { hand_over: false };
+    let mut reader = Reader { unusable: false };
     match reader.reference(&exact.value) {
         None => Read::Invalid,
-        Some(_) if exact.lone_key || reader.hand_over => Read::HandOver,
+        Some(_) if exact.lone_key || reader.unusable => Read::Unusable,
         Some(reference) => Read::Ref(Box::new(reference)),
     }
 }
@@ -191,7 +190,7 @@ pub fn resolve(raw: &str, state_dir: &str) -> Resolved {
     if js::trim(raw).starts_with('{') {
         return match read(raw) {
             Read::Ref(reference) => Resolved::Ref(reference),
-            Read::HandOver => Resolved::HandOver,
+            Read::Unusable => Resolved::NoMatch,
             Read::Invalid => Resolved::NoMatch,
         };
     }
@@ -340,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn the_schema_decides_before_the_hand_over() {
+    fn the_schema_decides_before_the_unusable() {
         let lone = r#"\ud83d"#;
         let bad = doc(&format!(
             r#"{{"kind":"claude","cwd":"/w","skipPermissions":0,"label":"{lone}"}}"#
@@ -360,13 +359,13 @@ mod tests {
             r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"env":{"":"1"}}"#.to_owned(),
             r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"env":{"A=B":"1"}}"#.to_owned(),
             r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":""}"#.to_owned(),
-            r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":"a/b"}"#.to_owned(),
         ] {
-            assert_eq!(read(&doc(&spec)), Read::HandOver, "{spec}");
+            assert_eq!(read(&doc(&spec)), Read::Unusable, "{spec}");
         }
         for spec in [
             r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":"claude"}"#,
             r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":"/a/b"}"#,
+            r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":"a/b"}"#,
             r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"extra":"\ud83d"}"#,
         ] {
             // A field the schema drops is not read again; only a key with a lone half is.
@@ -467,7 +466,7 @@ mod tests {
                 &doc(r#"{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":""}"#),
                 path
             ),
-            Resolved::HandOver
+            Resolved::NoMatch
         );
     }
 }

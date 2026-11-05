@@ -90,7 +90,7 @@ pass=0; fail=0; skipped=0; rust_served=0; handed_over=0
 # --------------------------------------------------------------- scenario state ---
 # Set before a scenario, cleared after it by `reset`: the directory to run in (relative to the run), the locale, a setup run in the run's directory before the program (a shell command), the environment to add, the arguments, the stream whose reader went away (stdout or stderr), and whether what the stub left is out of the comparison.
 CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; KILL_RACES_STUB=; RAN=; LIVE=; LIVE_PID=; ABORT_ARGS=()
-reset() { CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; KILL_RACES_STUB=; LIVE=; LIVE_PID=; ABORT_ARGS=(); }
+reset() { OWN_ERR=; OWN_CODE=; CWD=; LOCALE=en; SETUP=; EXTRA=(); UNDER=(); ARGS=(); CLOSED=; STUB=; STUB_SH=; STARTS=; HAS=; HAS_NOT=; AWAKE=; WAIT_FOR=; CHILD_NODE_DIR=; MODE=; SIGNAL=; KILL_RACES_STUB=; LIVE=; LIVE_PID=; ABORT_ARGS=(); }
 
 # The only differences allowed between the two programs: the id of a new reference, as long as it is a version 4 UUID, how long a turn took, and the pid of the process a scenario started for `session abort` to stop (each run starts its own).
 norm() { LC_ALL=C sed -E 's/"id": "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"/"id": "UUID4"/; s/"durationMs":( ?)[0-9]+/"durationMs":\1N/; s/"pid": '"${LIVE_PID:-none}"'$/"pid": PID/'; }
@@ -235,6 +235,8 @@ side() {  # <tag> <program words...>
   rm -rf "$RUN"; chmod -R u+rwx "$RUN" 2> /dev/null
   cp -RPp "$TEMPLATE" "$RUN" || { echo "rust-session-parity: cannot copy the tree" >&2; exit 2; }
   if [ -n "$SETUP" ]; then ( cd "$RUN" && eval "$SETUP" ) || { echo "rust-session-parity: setup failed: $SETUP" >&2; exit 2; }; fi
+  # The tree as it stands just before the call, for a call the binary must have left alone.
+  if [ -n "$OWN_CODE" ]; then snapshot | norm > "$TMP/pre.$tag"; fi
   LIVE_PID=
   if [ -n "$LIVE" ]; then live_start; fi
   rm -f "$MARK" "$TMP/argv.$tag" "$TMP/stamps.$tag" "$TMP/stub.$tag"; : > "$TMP/caffeinate.$tag"
@@ -260,6 +262,7 @@ side() {  # <tag> <program words...>
 }
 
 # A scenario: `sc <label> <via> <node's exit code, or - for any> <text node prints, or -> -- <the words after the program name>`.
+# `OWN_ERR='<text>'` says the binary's stderr must hold that text and is not compared with node's; `OWN_CODE=<n>` says its exit code is n and is not compared with node's, and the binary prints nothing on stdout and leaves the tree as it was just before the call. They are for the scenarios in which the design words a line or picks a code of its own, each listed in "Where the two are known to differ" of docs/architecture/rust-core.md.
 # <via> is who must answer on the Rust side: rust or node, or any where the harness has no way to tell.
 sc() {
   local label=$1 via=$2 want=$3 needle=$4; shift 5
@@ -276,12 +279,32 @@ sc() {
   fi
   side node "$NODE" "$CORE_JS"
   if [ -n "$SELF_TEST" ]; then side rust "$NODE" "$CORE_JS"; else side rust "$RUST"; fi
+  # With node on both sides there is no binary to word anything itself, so the two are compared in full.
+  if [ -n "$SELF_TEST" ]; then OWN_ERR=; OWN_CODE=; fi
 
   local what=()
-  cmp -s "$TMP/out.node" "$TMP/out.rust" || what+=(stdout)
-  cmp -s "$TMP/err.node" "$TMP/err.rust" || what+=(stderr)
-  cmp -s "$TMP/code.node" "$TMP/code.rust" || what+=("exit code")
-  cmp -s "$TMP/tree.node" "$TMP/tree.rust" || what+=(tree)
+  # A call the binary refuses with a code of its own (OWN_CODE) is one node carries out or words otherwise, so what it printed and left behind is not compared.
+  if [ -z "$OWN_CODE" ]; then
+    cmp -s "$TMP/out.node" "$TMP/out.rust" || what+=(stdout)
+  else
+    # Refused with a code of its own, the binary answers nothing and changes nothing: a refusal that also ran the call would print its answer and leave its marks.
+    [ -z "$(grep -av '^--- session abort' "$TMP/out.rust")" ] || what+=("stdout (it should be empty)")
+  fi
+  if [ -n "$OWN_ERR" ]; then
+    grep -qF -- "$OWN_ERR" "$TMP/err.rust" || what+=("stderr (it should hold: $OWN_ERR)")
+  else
+    cmp -s "$TMP/err.node" "$TMP/err.rust" || what+=(stderr)
+  fi
+  if [ -n "$OWN_CODE" ]; then
+    [ "$(cat "$TMP/code.rust")" = "$OWN_CODE" ] || what+=("exit code (it should be $OWN_CODE)")
+  else
+    cmp -s "$TMP/code.node" "$TMP/code.rust" || what+=("exit code")
+  fi
+  if [ -z "$OWN_CODE" ]; then
+    cmp -s "$TMP/tree.node" "$TMP/tree.rust" || what+=(tree)
+  else
+    cmp -s "$TMP/pre.rust" "$TMP/tree.rust" || what+=("tree (it should be as before the call)")
+  fi
   if [ ${#what[@]} -ne 0 ]; then
     bad "$label: differs in ${what[*]}" \
       "args: $(printf '%q ' "${ARGS[@]}")" \
@@ -383,7 +406,7 @@ sc "open-value-with-control-characters" rust 0 '\u0007' -- session open --cwd "$
 sc "open-value-with-separator" rust 0 $'\xe2\x80\xa8' -- session open --cwd "$RUN/work" --label $'a\xe2\x80\xa8b'
 sc "open-value-looks-like-id" rust 0 '"label": "123"' -- session open --cwd "$RUN/work" --label 123
 sc "open-value-starts-with-dash-inline" rust 0 '"label": "-x"' -- session open --cwd "$RUN/work" --label=-x
-sc "open-value-is-a-lone-dash" node 0 '"label": "-"' -- session open --cwd "$RUN/work" --label -
+sc "open-value-is-a-lone-dash" rust 0 '"label": "-"' -- session open --cwd "$RUN/work" --label -
 sc "open-value-is-double-dash-inline" rust 0 '"label": "--"' -- session open --cwd "$RUN/work" --label=--
 
 t "open: the account"
@@ -436,32 +459,37 @@ SETUP="$(row 5 1700000100 working '' "$RUN/work" "$PLAIN" detail)"; sc "open-res
 LOCALE=ru; SETUP=$ROW_T; sc "open-ru" rust 0 "\"transcript\": \"$PLAIN\"" -- session open --cwd "$RUN/work" --resume sid-1
 
 t "open: what node answers itself"
-sc "open-unknown-option" node 2 - -- session open --cwd "$RUN/work" --bogus
-sc "open-unknown-option-with-value" node 2 - -- session open --cwd "$RUN/work" --bogus value
-sc "open-unknown-inline-option" node 2 - -- session open --cwd "$RUN/work" --bogus=1
-sc "open-option-without-value" node 2 - -- session open --cwd
-sc "open-option-without-value-last" node 2 - -- session open --cwd "$RUN/work" --label
-sc "open-value-starts-with-dash" node 2 - -- session open --cwd -x
-sc "open-value-starts-with-dashes" node 2 - -- session open --cwd "$RUN/work" --label --model
-sc "open-short-option" node 2 - -- session open -c "$RUN/work"
-sc "open-short-flag" node 2 - -- session open --cwd "$RUN/work" -s
-sc "open-positional" node 2 - -- session open "$RUN/work"
-sc "open-positional-after-options" node 2 - -- session open --cwd "$RUN/work" extra
-sc "open-flag-with-value" node 2 - -- session open --cwd "$RUN/work" --skip-permissions=1
-sc "open-no-config-dir-with-value" node 2 - -- session open --cwd "$RUN/work" --no-config-dir=x
-sc "open-negated-flag" node 2 - -- session open --cwd "$RUN/work" --no-skip-permissions
-sc "open-help" node 2 - -- session open --help
+sc "open-unknown-option" rust 2 - -- session open --cwd "$RUN/work" --bogus
+sc "open-unknown-option-with-value" rust 2 - -- session open --cwd "$RUN/work" --bogus value
+sc "open-unknown-inline-option" rust 2 - -- session open --cwd "$RUN/work" --bogus=1
+sc "open-option-without-value" rust 2 - -- session open --cwd
+sc "open-option-without-value-last" rust 2 - -- session open --cwd "$RUN/work" --label
+sc "open-value-starts-with-dash" rust 2 - -- session open --cwd -x
+sc "open-value-starts-with-dashes" rust 2 - -- session open --cwd "$RUN/work" --label --model
+sc "open-short-option" rust 2 - -- session open -c "$RUN/work"
+sc "open-short-flag" rust 2 - -- session open --cwd "$RUN/work" -s
+sc "open-positional" rust 2 - -- session open "$RUN/work"
+sc "open-positional-after-options" rust 2 - -- session open --cwd "$RUN/work" extra
+sc "open-flag-with-value" rust 2 - -- session open --cwd "$RUN/work" --skip-permissions=1
+sc "open-no-config-dir-with-value" rust 2 - -- session open --cwd "$RUN/work" --no-config-dir=x
+sc "open-negated-flag" rust 2 - -- session open --cwd "$RUN/work" --no-skip-permissions
+sc "open-help" rust 2 - -- session open --help
 sc "open-double-dash-ends-the-options" rust 0 "\"cwd\": \"$RUN/work\"" -- session open --cwd "$RUN/work" --
-sc "open-double-dash-positional" node 2 - -- session open --cwd "$RUN/work" -- x
-sc "open-lone-dash-is-a-positional" node 2 - -- session open --cwd "$RUN/work" -
-sc "open-an-argument-that-is-not-utf8" node - - -- session open --cwd "$RUN/work" --label $'\xff'
-sc "open-a-cwd-that-is-not-utf8" node - - -- session open --cwd $'/x\xff'
-sc "session" node 2 - -- session
-sc "session-unknown-verb" node 2 'unknown command: session bogus' -- session bogus
-sc "session-unknown-verb-empty" node 2 - -- session ""
-sc "session-help" node 2 - -- session --help
+sc "open-double-dash-positional" rust 2 - -- session open --cwd "$RUN/work" -- x
+sc "open-lone-dash-is-a-positional" rust 2 - -- session open --cwd "$RUN/work" -
+sc "open-an-argument-that-is-not-utf8" rust - - -- session open --cwd "$RUN/work" --label $'\xff'
+sc "open-a-cwd-that-is-not-utf8" rust - - -- session open --cwd $'/x\xff'
+sc "session" rust 2 - -- session
+sc "session-unknown-verb" rust 2 'unknown command: session bogus' -- session bogus
+sc "session-unknown-verb-empty" rust 2 - -- session ""
+sc "session-help" rust 2 - -- session --help
+# The four ways to ask the program for its usage: no word is a mistake, the other three are a request.
+sc "usage-no-word" rust 2 - --
+sc "usage-help" rust 0 - -- help
+sc "usage-dash-dash-help" rust 0 - -- --help
+sc "usage-dash-h" rust 0 - -- -h
 sc "session-abort" rust 2 'missing required option <ref>' -- session abort
-sc "session-open-uppercase" node 2 - -- session OPEN --cwd "$RUN/work"
+sc "session-open-uppercase" rust 2 - -- session OPEN --cwd "$RUN/work"
 
 # ------------------------------------------------------------------- list ---
 t "list: the state"
@@ -550,15 +578,15 @@ SETUP="$(row 1 1700000100 working sid-1 /w '' d)$(row 2 1700000200 working sid-2
 SETUP="$(row 1 1700000100 working sid-1 /w '' d)"'chmod 000 st/1.tsv'; sc_user "list-unreadable-record" rust 0 '[]' -- session list
 SETUP="$STATES"'chmod 000 st'; sc_user "list-unreadable-state-directory" rust 0 '[]' -- session list
 SETUP="$(row 1 1700000100 working sid-1 /w '' d)"'ln -s ../outside st/2.tsv; ln -s 1.tsv st/3.tsv'; sc "list-links" rust 0 'sid-1' -- session list
-sc "list-positional" node 2 - -- session list x
-sc "list-unknown-option" node 2 - -- session list --bogus
-sc "list-option-without-value" node 2 - -- session list --label
-sc "list-state-without-value" node 2 - -- session list --state
-sc "list-value-starts-with-dash" node 2 - -- session list --label -x
-sc "list-short-option" node 2 - -- session list -l x
+sc "list-positional" rust 2 - -- session list x
+sc "list-unknown-option" rust 2 - -- session list --bogus
+sc "list-option-without-value" rust 2 - -- session list --label
+sc "list-state-without-value" rust 2 - -- session list --state
+sc "list-value-starts-with-dash" rust 2 - -- session list --label -x
+sc "list-short-option" rust 2 - -- session list -l x
 SETUP="$(row 1 1700000100 working sid-1 /w '' d)"; sc "list-double-dash-ends-the-options" rust 0 'sid-1' -- session list --
-sc "list-double-dash-positional" node 2 - -- session list -- x
-sc "list-an-argument-that-is-not-utf8" node - - -- session list --label $'\xff'
+sc "list-double-dash-positional" rust 2 - -- session list -- x
+sc "list-an-argument-that-is-not-utf8" rust - - -- session list --label $'\xff'
 EXTRA=("TA_STATE_DIR="); SETUP="mkdir -p home/.claude/agent-state; $(row 1 1700000100 working sid-1 /w '' d | sed 's#st/#home/.claude/agent-state/#')"; sc "list-empty-state-variable-means-the-default" rust 0 'sid-1' -- session list
 EXTRA=("TA_STATE_DIR=   "); SETUP="mkdir -p home/.claude/agent-state; $(row 1 1700000100 working sid-1 /w '' d | sed 's#st/#home/.claude/agent-state/#')"; sc "list-blank-state-variable-means-the-default" rust 0 'sid-1' -- session list
 EXTRA=("TA_STATE_DIR=st"); SETUP="$(row 1 1700000100 working sid-1 /w '' d)"; sc "list-relative-state-directory" rust 0 'sid-1' -- session list
@@ -635,7 +663,7 @@ SETUP="$(row 5 1700000100 subdone sid-1 "$RUN/work" "$PLAIN" d)"; sc "last-a-sub
 SETUP="$(row 5 1700000100 working sid-1 "$RUN/work" "$PLAIN" d)"; sc "last-id-is-case-sensitive" rust 1 'no session matches SID-1' -- session last SID-1
 SETUP="$(row 5 1700000100 working sid-1 "$RUN/work" "$PLAIN" d)"; sc "last-id-with-a-trailing-space" rust 1 'no session matches sid-1 ' -- session last 'sid-1 '
 SETUP="$(row 5 1700000100 working 'é😀x' "$RUN/work" "$PLAIN" d)"; sc "last-prefix-is-unicode" rust 0 'the last reply' -- session last 'é😀'
-SETUP="$(row 5 1700000100 working 'é😀x' "$RUN/work" "$PLAIN" d)"; sc "last-prefix-is-half-an-emoji" node 1 $'no session matches \xef\xbf\xbd' -- session last $'\xf0\x9f'
+SETUP="$(row 5 1700000100 working 'é😀x' "$RUN/work" "$PLAIN" d)"; sc "last-prefix-is-half-an-emoji" rust 1 $'no session matches \xef\xbf\xbd' -- session last $'\xf0\x9f'
 SETUP="$(row 5 1700000100 working sid-1 "$RUN/work" "$PLAIN" d)"; sc "last-id-looks-like-an-option" rust 0 'the last reply' -- session last sid-1 --bogus
 SETUP="$(row 5 1700000100 working -x "$RUN/work" "$PLAIN" d)"; sc "last-id-is-an-option-looking-session" rust 0 'the last reply' -- session last -x
 SETUP="$(row 5 1700000100 working sid-1 "$RUN/work" "$PLAIN" d)"; sc "last-id-and-more-words" rust 0 'the last reply' -- session last sid-1 more words
@@ -659,13 +687,13 @@ LOCALE=ru; sc "last-missing-ref-ru" rust 2 'не хватает обязател
 sc "last-missing-ref" rust 2 'missing required option <ref>' -- session last
 sc "last-empty-ref" rust 2 'missing required option <ref>' -- session last ""
 sc "last-unknown-ref" rust 1 'no session matches nobody' -- session last nobody
-sc "last-an-argument-that-is-not-utf8" node - - -- session last $'\xff'
-sc "last-a-reference-with-a-lone-surrogate-escape" node - - -- session last '{"id":"\ud83d","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false}}'
-sc "last-a-reference-with-a-lone-surrogate-escape-in-a-key" node - - -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false},"\ud83d":1}'
-sc "last-a-reference-with-a-lone-surrogate-in-the-transcript" node - - -- session last '{"id":"r1","claudeSessionId":null,"transcript":"/t\ud83d.jsonl","spec":{"kind":"claude","cwd":"/w","skipPermissions":false}}'
-sc "last-a-reference-with-a-nul" node - - -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w\u0000","skipPermissions":false}}'
-sc "last-a-reference-with-an-empty-bin" node - - -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":""}}'
-sc "last-a-reference-with-a-bad-env-name" node - - -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false,"env":{"A=B":"1"}}}'
+sc "last-an-argument-that-is-not-utf8" rust - - -- session last $'\xff'
+OWN_CODE=1 OWN_ERR='no session matches' sc "last-a-reference-with-a-lone-surrogate-escape" rust - - -- session last '{"id":"\ud83d","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false}}'
+OWN_CODE=1 OWN_ERR='no session matches' sc "last-a-reference-with-a-lone-surrogate-escape-in-a-key" rust - - -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false},"\ud83d":1}'
+OWN_CODE=1 OWN_ERR='no session matches' sc "last-a-reference-with-a-lone-surrogate-in-the-transcript" rust - - -- session last '{"id":"r1","claudeSessionId":null,"transcript":"/t\ud83d.jsonl","spec":{"kind":"claude","cwd":"/w","skipPermissions":false}}'
+OWN_CODE=1 OWN_ERR='no session matches' sc "last-a-reference-with-a-nul" rust - - -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w\u0000","skipPermissions":false}}'
+OWN_CODE=1 OWN_ERR='no session matches' sc "last-a-reference-with-an-empty-bin" rust - - -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false,"bin":""}}'
+OWN_CODE=1 OWN_ERR='no session matches' sc "last-a-reference-with-a-bad-env-name" rust - - -- session last '{"id":"r1","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false,"env":{"A=B":"1"}}}'
 
 # ------------------------------------------------------------ prompt: the helpers ---
 # The reference of a turn in `work`, with more keys of the spec when given, and the same with a working directory of its own.
@@ -680,10 +708,8 @@ line() { piece "$1"$'\n'; }
 text_event() { printf '{"type":"assistant","message":{"content":[{"type":"text","text":"%s"}]}}' "$1"; }
 RESULT='{"type":"result","is_error":false,"result":"done","session_id":"s-9","total_cost_usd":0.5,"num_turns":2,"duration_ms":7}'
 ANSWER='{"text":"hi","result":{"text":"done"}}'
-# Who answers on this platform when the program is reached through a relative path: macOS's posix_spawn has its own rules for it, so the binary leaves it to node, and elsewhere both programs end in the same execvp.
-if [ "$(uname)" = Darwin ]; then ONLY_NODE_HERE=node; else ONLY_NODE_HERE=rust; fi
-# Who answers a file with no `#!`: macOS refuses to run it and the binary hands that errno over. Elsewhere it depends on the libc of the binary: glibc's execvp runs it through /bin/sh as node's does, the release's musl refuses and hands over. The bytes are the same either way.
-if [ "$(uname)" = Darwin ]; then NO_SHEBANG=node; else NO_SHEBANG=any; fi
+# A program reached through a relative PATH entry or a relative interpreter: the bytes are the same as node's wherever the system resolves it the same way.
+# A file with no `#!`: the system's own answer, which both programs report the same way.
 
 # ------------------------------------------------------------- prompt: the words ---
 t "prompt: the arguments of the child"
@@ -710,13 +736,13 @@ STUB=$ANSWER; HAS='"last wins"'; sc "prompt-extra-words-are-ignored" rust 0 '"ki
 STUB=$ANSWER; sc "prompt-options-before-the-words" rust 0 '{"kind":"ok"' -- session prompt --events --timeout 60000 --warn-before 1 "$(ref_spec)" go
 STUB=$ANSWER; sc "prompt-options-after-the-words" rust 0 '{"kind":"ok"' -- session prompt "$(ref_spec)" go --events --timeout=60000
 STUB=$ANSWER; sc "prompt-warn-before-prints-nothing" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go --warn-before abc
-sc "prompt-unknown-option" node 2 'Unknown option' -- session prompt "$(ref_spec)" go --bogus
-sc "prompt-dash-text-without-the-separator" node 2 - -- session prompt "$(ref_spec)" "-x go"
-sc "prompt-events-with-a-value" node 2 '--events' -- session prompt "$(ref_spec)" go --events=x
-sc "prompt-timeout-with-no-value" node 2 '--timeout' -- session prompt "$(ref_spec)" go --timeout
-sc "prompt-timeout-that-looks-like-an-option" node 2 '--timeout' -- session prompt "$(ref_spec)" go --timeout -5
-STUB=$ANSWER; HAS=$'"a\xef\xbf\xbdb"'; STARTS=1; sc "prompt-argument-not-utf8" node 0 '"kind": "ok"' -- session prompt "$(ref_spec)" $'a\xffb'
-sc "prompt-reference-not-utf8" node 1 $'no session matches \xef\xbf\xbd' -- session prompt $'\xff' go
+sc "prompt-unknown-option" rust 2 'Unknown option' -- session prompt "$(ref_spec)" go --bogus
+sc "prompt-dash-text-without-the-separator" rust 2 - -- session prompt "$(ref_spec)" "-x go"
+sc "prompt-events-with-a-value" rust 2 '--events' -- session prompt "$(ref_spec)" go --events=x
+sc "prompt-timeout-with-no-value" rust 2 '--timeout' -- session prompt "$(ref_spec)" go --timeout
+sc "prompt-timeout-that-looks-like-an-option" rust 2 '--timeout' -- session prompt "$(ref_spec)" go --timeout -5
+STUB=$ANSWER; HAS=$'"a\xef\xbf\xbdb"'; STARTS=1; sc "prompt-argument-not-utf8" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" $'a\xffb'
+sc "prompt-reference-not-utf8" rust 1 $'no session matches \xef\xbf\xbd' -- session prompt $'\xff' go
 
 # ------------------------------------------------------- prompt: the environment ---
 t "prompt: the environment of the child"
@@ -738,13 +764,13 @@ SETUP='mkdir tmp/nodes && ln -s "$SHIM/node" tmp/nodes/node'; EXTRA=("TAGENTS_NO
 # The way the binary runs on a machine: node is found on PATH through a link, and the directory of its real path comes first. No shim can stand in here, so who answered cannot be told.
 EXTRA=("TAGENTS_NODE=" "PATH=$NODE_DIR:$BIN:/usr/bin:/bin"); CHILD_NODE_DIR=$NODE_DIR; STUB=$ANSWER; HAS="\"PATH\": \"<node-dir>:$RUN/home/.local/bin:$BIN:/usr/bin:/bin\""; sc "prompt-node-real-directory-comes-once" any 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
 EXTRA=("TAGENTS_NODE="); CHILD_NODE_DIR=$NODE_DIR; STUB=$ANSWER; HAS="\"PATH\": \"<node-dir>:$RUN/home/.local/bin:$BIN:/usr/bin:/bin\""; sc "prompt-node-real-through-a-link" any 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
-EXTRA=($'BAD=\xff'); STUB=$ANSWER; HAS=$'"BAD": "\xef\xbf\xbd"'; sc "prompt-env-not-utf8" node 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
-EXTRA=($'B\xffD=1'); STUB=$ANSWER; sc "prompt-env-name-not-utf8" node 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
-STUB=$ANSWER; HAS='"A": "B=1"'; sc "prompt-bad-env-name" node 0 '"kind": "ok"' -- session prompt "$(ref_spec ',"env":{"A=B":"1"}')" go
-STUB=$ANSWER; sc "prompt-lone-surrogate-in-the-reference" node 0 '"kind": "ok"' -- session prompt "$(ref_spec ',"model":"\ud83d"')" go
-sc "prompt-nul-in-the-cwd" node 1 'null bytes' -- session prompt "$(ref_cwd '/w\u0000')" go
-sc "prompt-nul-in-an-env-value" node 1 'null bytes' -- session prompt "$(ref_spec ',"env":{"A":"x\u0000y"}')" go
-sc "prompt-empty-bin" node 1 'empty' -- session prompt "$(ref_spec ',"bin":""')" go
+EXTRA=($'BAD=\xff'); STUB=$ANSWER; HAS=$'"BAD": "\xef\xbf\xbd"'; sc "prompt-env-not-utf8" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
+EXTRA=($'B\xffD=1'); STUB=$ANSWER; sc "prompt-env-name-not-utf8" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
+OWN_CODE=1 OWN_ERR='no session matches' STARTS=-; STUB=$ANSWER; sc "prompt-bad-env-name" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec ',"env":{"A=B":"1"}')" go
+OWN_CODE=1 OWN_ERR='no session matches' STARTS=-; STUB=$ANSWER; sc "prompt-lone-surrogate-in-the-reference" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec ',"model":"\ud83d"')" go
+OWN_ERR='no session matches' sc "prompt-nul-in-the-cwd" rust 1 'null bytes' -- session prompt "$(ref_cwd '/w\u0000')" go
+OWN_ERR='no session matches' sc "prompt-nul-in-an-env-value" rust 1 'null bytes' -- session prompt "$(ref_spec ',"env":{"A":"x\u0000y"}')" go
+OWN_ERR='no session matches' sc "prompt-empty-bin" rust 1 'empty' -- session prompt "$(ref_spec ',"bin":""')" go
 
 t "prompt: the working directory of the child"
 STUB=$ANSWER; HAS="\"cwd\": \"$RUN/work\""; sc "prompt-cwd-of-the-spec" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
@@ -818,7 +844,7 @@ t "prompt: a caller that left SIGCHLD ignored"
 IGNORING_SIGCHLD=(perl -e '$SIG{CHLD}="IGNORE"; exec @ARGV')
 UNDER=("${IGNORING_SIGCHLD[@]}"); STUB=$ANSWER; sc "prompt-sigchld-ignored" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
 UNDER=("${IGNORING_SIGCHLD[@]}"); STUB_SH='exit 3'; sc "prompt-sigchld-ignored-exit-code" rust 1 '"code": 3' -- session prompt "$(ref_spec)" go
-UNDER=("${IGNORING_SIGCHLD[@]}"); SETUP='mkdir tmp/p && ln -s claude tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); sc "prompt-sigchld-ignored-handed-over" node 1 'spawn ELOOP' -- session prompt "$(ref_spec)" go
+UNDER=("${IGNORING_SIGCHLD[@]}"); SETUP='mkdir tmp/p && ln -s claude tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); sc "prompt-sigchld-ignored-loop-in-path" rust 1 'spawn ELOOP' -- session prompt "$(ref_spec)" go
 # A handler interrupts what blocks: SIGCHLD again and again through a turn, and no line may be lost to it.
 STUB_SH="i=0; while [ \"\$i\" -lt 200 ]; do kill -s CHLD \"\$PPID\"; printf '%s\n' '$(text_event word)'; i=\$((i + 1)); done; printf '%s\n' '$RESULT'"; sc "prompt-sigchld-again-and-again" rust 0 '{"kind":"ok"' -- session prompt "$(ref_spec)" go --events
 
@@ -855,20 +881,20 @@ sc "prompt-bin-missing" rust 1 "spawn $RUN/nope ENOENT" -- session prompt "$(ref
 EXTRA=("PATH=/usr/bin:/bin"); STUB=$ANSWER; sc "prompt-bin-absolute" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec ",\"bin\":\"$BIN/claude\"")" go
 SETUP='mkdir tmp/p && cp "$BIN/claude" tmp/p/claude2'; EXTRA=("PATH=$RUN/tmp/p:/usr/bin:/bin"); STUB=$ANSWER; sc "prompt-bin-bare" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec ',"bin":"claude2"')" go
 sc "prompt-bin-bare-missing" rust 1 'spawn nope ENOENT' -- session prompt "$(ref_spec ',"bin":"nope"')" go
-# A relative `bin` with a slash is the reader's to hand over on every platform (`reference.rs`), before any of this.
-SETUP='cp "$BIN/claude" work/c'; STUB=$ANSWER; STARTS=-; sc "prompt-bin-relative" node - - -- session prompt "$(ref_spec ',"bin":"./c"')" go
-SETUP='cp "$BIN/claude" work/claude'; EXTRA=("PATH=.:/usr/bin:/bin"); STUB=$ANSWER; STARTS=-; sc "prompt-path-with-a-relative-entry" "$ONLY_NODE_HERE" - - -- session prompt "$(ref_spec)" go
-SETUP='cp "$BIN/claude" work/claude'; STUB=$ANSWER; STARTS=-; sc "prompt-path-of-the-spec-empty" "$ONLY_NODE_HERE" - - -- session prompt "$(ref_spec ',"env":{"PATH":""}')" go
+# A relative `bin` with a slash is a reference the binary cannot act on (`reference.rs`): `badRef`, exit 1, where node runs the file below the working directory.
+SETUP='cp "$BIN/claude" work/c'; STUB=$ANSWER; sc "prompt-bin-relative" rust - - -- session prompt "$(ref_spec ',"bin":"./c"')" go
+SETUP='cp "$BIN/claude" work/claude'; EXTRA=("PATH=.:/usr/bin:/bin"); STUB=$ANSWER; STARTS=-; sc "prompt-path-with-a-relative-entry" rust - - -- session prompt "$(ref_spec)" go
+SETUP='cp "$BIN/claude" work/claude'; STUB=$ANSWER; STARTS=-; sc "prompt-path-of-the-spec-empty" rust - - -- session prompt "$(ref_spec ',"env":{"PATH":""}')" go
 # A text file with the mode of a program.
-SETUP='mkdir tmp/p && printf "echo not-a-script\n" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STARTS=-; sc "prompt-no-shebang" "$NO_SHEBANG" - - -- session prompt "$(ref_spec)" go
-SETUP='mkdir tmp/p && : > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STARTS=-; sc "prompt-empty-program" "$NO_SHEBANG" - - -- session prompt "$(ref_spec)" go
-SETUP='mkdir tmp/p && printf "#!\n" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STARTS=-; sc "prompt-interpreter-line-empty" "$NO_SHEBANG" - - -- session prompt "$(ref_spec)" go
-SETUP='mkdir tmp/p && printf "#!/bin/sh\necho from-the-script\n" > tmp/p/wrap && printf "#!%s\n" "$RUN/tmp/p/wrap" > tmp/p/claude && chmod +x tmp/p/wrap tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STARTS=-; sc "prompt-interpreter-is-a-script" "$NO_SHEBANG" - - -- session prompt "$(ref_spec)" go
-SETUP='mkdir tmp/p && printf "#!./nope\n" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STUB=$ANSWER; STARTS=-; sc "prompt-interpreter-relative" "$ONLY_NODE_HERE" - - -- session prompt "$(ref_spec)" go
+SETUP='mkdir tmp/p && printf "echo not-a-script\n" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STARTS=-; sc "prompt-no-shebang" rust - - -- session prompt "$(ref_spec)" go
+SETUP='mkdir tmp/p && : > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STARTS=-; sc "prompt-empty-program" rust - - -- session prompt "$(ref_spec)" go
+SETUP='mkdir tmp/p && printf "#!\n" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STARTS=-; sc "prompt-interpreter-line-empty" rust - - -- session prompt "$(ref_spec)" go
+SETUP='mkdir tmp/p && printf "#!/bin/sh\necho from-the-script\n" > tmp/p/wrap && printf "#!%s\n" "$RUN/tmp/p/wrap" > tmp/p/claude && chmod +x tmp/p/wrap tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STARTS=-; sc "prompt-interpreter-is-a-script" rust - - -- session prompt "$(ref_spec)" go
+SETUP='mkdir tmp/p && printf "#!./nope\n" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STUB=$ANSWER; STARTS=-; if [ "$(uname)" = Darwin ]; then OWN_CODE=1 OWN_ERR='spawn ENOEXEC'; fi; sc "prompt-interpreter-relative" rust - - -- session prompt "$(ref_spec)" go
 SETUP='mkdir tmp/p && printf "#!/no/such/program\n" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:/usr/bin:/bin"); sc "prompt-interpreter-missing" rust 1 'spawn claude ENOENT' -- session prompt "$(ref_spec)" go
 SETUP='mkdir tmp/p && printf "#!/no/such/program\n" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); STUB=$ANSWER; sc "prompt-interpreter-missing-first" rust 0 '"kind": "ok"' -- session prompt "$(ref_spec)" go
 SETUP='mkdir tmp/p && printf x > tmp/f && printf "#!%s\n" "$RUN/tmp/f/program" > tmp/p/claude && chmod +x tmp/p/claude'; EXTRA=("PATH=/no/such:$RUN/tmp/p"); sc "prompt-interpreter-under-a-file" rust 1 'spawn ENOTDIR' -- session prompt "$(ref_spec)" go
-SETUP='mkdir tmp/p && ln -s claude tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); sc "prompt-symlink-loop-first" node 1 'spawn ELOOP' -- session prompt "$(ref_spec)" go
+SETUP='mkdir tmp/p && ln -s claude tmp/p/claude'; EXTRA=("PATH=$RUN/tmp/p:$BIN:/usr/bin:/bin"); sc "prompt-symlink-loop-first" rust 1 'spawn ELOOP' -- session prompt "$(ref_spec)" go
 SETUP='printf x > tmp/f'; EXTRA=("PATH=/usr/bin:/bin:$RUN/tmp/f"); sc "prompt-path-ends-with-a-file" rust 1 'spawn ENOTDIR' -- session prompt "$(ref_spec)" go
 SETUP='printf x > tmp/f'; EXTRA=("PATH=$RUN/tmp/f:/usr/bin:/bin"); sc "prompt-path-starts-with-a-file" rust 1 'spawn claude ENOENT' -- session prompt "$(ref_spec)" go
 LOCALE=ru; sc "prompt-spawn-failed-in-russian" rust 1 'spawn claude ENOENT' -- session prompt "$(ref_cwd "$RUN/nope")" go
@@ -888,16 +914,17 @@ sc "prompt-ref-not-json" rust 1 'no session matches {bad' -- session prompt '{ba
 sc "prompt-ref-bad-schema" rust 1 'no session matches {"id":1}' -- session prompt '{"id":1}' go
 
 if [ -z "$SELF_TEST" ] && { [ -z "$ONLY" ] || [[ prompt-no-node == *"$ONLY"* ]]; }; then
-  # No node at all: the call has to go to node, so the front door says it cannot, with its own words, and the stub is not started. Node has no part to compare with.
+  # No node at all, or a pinned node that is not there: the binary does not need it, so the call runs and the stub is started. Node has no part to compare with.
   t "prompt: no node on the machine"
   rm -rf "$RUN"; cp -RPp "$TEMPLATE" "$RUN"
   no_node_err=$(cd "$RUN" && env -i "PATH=$RUN/tmp" "HOME=$RUN/home" "TMPDIR=$RUN/tmp" "TA_STATE_DIR=$RUN/st" TA_KEEP_AWAKE=0 "$RUST" session prompt "$(ref_spec ",\"bin\":\"$BIN/claude\"")" go 2>&1 < /dev/null); no_node_code=$?
-  if [ "$no_node_code" != 127 ] || [[ $no_node_err != "tagents-core: cannot run node"* ]] || [ -n "$(ls -A "$RUN/rec")" ]; then
-    bad "prompt-no-node: no node should give the front door's own error, exit 127, and start nothing" "exit $no_node_code" "$no_node_err" "rec: $(ls -A "$RUN/rec" | tr '\n' ' ')"
+  if [[ $no_node_err != *'"kind": "exited"'* ]] || [[ $no_node_err == *"cannot run"* ]] || [ -z "$(ls -A "$RUN/rec")" ]; then
+    bad "prompt-no-node: the call needs no node, so it runs and starts the stub" "exit $no_node_code" "$no_node_err" "rec: $(ls -A "$RUN/rec" | tr '\n' ' ')"
   else ok; fi
+  rm -rf "$RUN/rec"/*
   no_node_err=$(cd "$RUN" && env -i "PATH=$RUN/tmp" "HOME=$RUN/home" "TMPDIR=$RUN/tmp" "TA_STATE_DIR=$RUN/st" "TAGENTS_NODE=$RUN/tmp/no-such-node" TA_KEEP_AWAKE=0 "$RUST" session prompt "$(ref_spec ",\"bin\":\"$BIN/claude\"")" go 2>&1 < /dev/null); no_node_code=$?
-  if [ "$no_node_code" != 127 ] || [[ $no_node_err != "tagents-core: cannot run $RUN/tmp/no-such-node"* ]] || [ -n "$(ls -A "$RUN/rec")" ]; then
-    bad "prompt-no-node-pinned: a pinned node that is not there should give the front door's own error, exit 127, and start nothing" "exit $no_node_code" "$no_node_err" "rec: $(ls -A "$RUN/rec" | tr '\n' ' ')"
+  if [[ $no_node_err != *'"kind": "exited"'* ]] || [[ $no_node_err == *"cannot run"* ]] || [ -z "$(ls -A "$RUN/rec")" ]; then
+    bad "prompt-no-node-pinned: a pinned node that is not there is not needed either" "exit $no_node_code" "$no_node_err" "rec: $(ls -A "$RUN/rec" | tr '\n' ' ')"
   else ok; fi
 fi
 
@@ -990,9 +1017,12 @@ LIVE=alive; SETUP="$(row 1 1700000100 working sid-pane "$RUN/work" '' d '' @PID@
 SETUP="$(row s-nopid 1700000100 working sid-nopid "$RUN/work" '' d '')"; sc "abort-no-pid" rust 3 'nothing is running for s-nopid' -- session abort s-nopid
 SETUP="$(row s-nopid 1700000100 working sid-nopid "$RUN/work" '' d)"; sc "abort-six-columns" rust 3 'nothing is running for s-nopid' -- session abort s-nopid
 SETUP="$(row s-p 1700000100 working sid-p "$RUN/work" '' d '' 2147483647)"; sc "abort-dead-pid" rust 3 'nothing is running for s-p' -- session abort s-p
-for bad_pid in 0 -5 1.5 abc 1e3 ' 7' 4294967296 4294967297 18446744073709551616 2147483648 4294967295; do
+# A number that reads as a whole pid gets a real SIGKILL from both programs, so a record may name only a process its scenario started: never write a small number or a spelling of one (`1e3` is pid 1000, ` 7` is pid 7).
+for bad_pid in 0 -5 1.5 abc 4294967296 4294967297 18446744073709551616 2147483648 4294967295; do
   SETUP="$(row s-p 1700000100 working sid-p "$RUN/work" '' d '' "$bad_pid")"; sc "abort-pid-32bit-[$bad_pid]" rust 3 'nothing is running for s-p' -- session abort s-p
 done
+LIVE=dead; SETUP="$(row s-p 1700000100 working sid-p "$RUN/work" '' d '' @PID@e0)"; sc "abort-pid-in-exponent-form" rust 0 '"aborted": true' -- session abort s-p
+LIVE=dead; SETUP="$(row s-p 1700000100 working sid-p "$RUN/work" '' d '' ' @PID@')"; sc "abort-pid-with-a-leading-space" rust 0 '"aborted": true' -- session abort s-p
 LIVE=alive; SETUP="$(row s-wrap 1700000100 working sid-wrap "$RUN/work" '' d '' @WRAP31@)"; sc "abort-pid-31-bits-over-a-live-process" rust 3 'nothing is running for s-wrap' -- session abort s-wrap
 LIVE=alive; SETUP="$(row s-wrap 1700000100 working sid-wrap "$RUN/work" '' d '' @WRAP32@)"; sc "abort-pid-32-bits-over-a-live-process" rust 3 'nothing is running for s-wrap' -- session abort s-wrap
 LIVE=alive; SETUP="$LIVE_ROW"; sc "abort-a-reference-to-no-record" rust 3 'nothing is running for' -- session abort "$(ref_of s-nobody '"sid-nobody"')"
@@ -1011,8 +1041,8 @@ sc "abort-bad-reference" rust 1 'no session matches {bad' -- session abort '{bad
 sc "abort-bad-reference-schema" rust 1 'no session matches {"id":1}' -- session abort '{"id":1}'
 SETUP=$STATES; sc "abort-spaces-are-a-session-id" rust 1 'no session matches    ' -- session abort '   '
 sc "abort-empty-ref" rust 2 'missing required option <ref>' -- session abort ""
-sc "abort-a-reference-with-a-lone-surrogate-escape" node - - -- session abort '{"id":"\ud83d","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false}}'
-sc "abort-an-argument-that-is-not-utf8" node - - -- session abort $'\xff'
+OWN_CODE=1 OWN_ERR='no session matches' sc "abort-a-reference-with-a-lone-surrogate-escape" rust - - -- session abort '{"id":"\ud83d","claudeSessionId":null,"transcript":null,"spec":{"kind":"claude","cwd":"/w","skipPermissions":false}}'
+sc "abort-an-argument-that-is-not-utf8" rust - - -- session abort $'\xff'
 sc "abort-option-like-ref" rust 1 'no session matches --help' -- session abort --help
 sc "abort-double-dash" rust 1 'no session matches --' -- session abort -- s-live
 

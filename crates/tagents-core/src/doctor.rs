@@ -17,10 +17,10 @@ use crate::{
     ending::{self, Stop},
     host::config_file,
     json::{self, Value},
-    messages::{Locale, Texts},
+    messages::Locale,
     node,
     notify::state::{read_agent_state, state_dir},
-    sessions::Output,
+    sessions::{self, Output, exit},
 };
 
 /// The verbs this module serves, as the words after the program name. `tagents-core --spec` prints them and a test pins them to `impl: "rust"` in the data file.
@@ -61,26 +61,31 @@ impl Setting {
     }
 }
 
-/// `doctor` of this process. `None` hands the call to node.
+/// `doctor` of this process.
 ///
 /// A signal stops the question to node, which runs in a group of its own that the terminal's Ctrl-C does not reach, and ends the call as it ends node's: with nothing printed and the status a shell reports for a program that signal killed.
-pub fn run() -> Option<Output> {
+pub fn run() -> Output {
     let stop = Stop::default();
     let signalled = Arc::new(OnceLock::new());
     let (trip, said) = (stop.clone(), Arc::clone(&signalled));
     // Before anything starts, so that a signal during the question is heard.
-    ending::on_signals(move |name| {
+    let listening = ending::on_signals(move |name| {
         let _ = said.set(name);
         trip.stop();
-    })
-    .ok()?;
+    });
+    if let Err(why) = listening {
+        return Output::line(
+            exit::ERROR,
+            &format!("tagents-core: cannot listen for signals: {why}"),
+        );
+    }
     let output = serve(&Setting::current(), &stop);
     match signalled.get() {
-        Some(name) => Some(Output {
+        Some(name) => Output {
             stdout: String::new(),
             stderr: String::new(),
             code: killed_by(name),
-        }),
+        },
         None => output,
     }
 }
@@ -95,9 +100,11 @@ fn killed_by(name: &str) -> u8 {
 }
 
 /// `run` in a given setting, with `stop` to give up on node.
-pub fn serve(setting: &Setting, stop: &Stop) -> Option<Output> {
-    // The bundled catalogue is checked by a test, so it loads; if it ever did not, node words the call.
-    let texts = Texts::load(setting.locale).ok()?;
+pub fn serve(setting: &Setting, stop: &Stop) -> Output {
+    let texts = match sessions::texts(setting.locale) {
+        Ok(texts) => texts,
+        Err(out) => return out,
+    };
     let node = match identity(&setting.node, setting.deadline, stop) {
         Some((version, path)) => texts.t("doctorNode", &[("version", &version), ("path", &path)]),
         None => texts.t("doctorNodeMissing", &[]),
@@ -122,9 +129,7 @@ pub fn serve(setting: &Setting, stop: &Stop) -> Option<Output> {
     let claude =
         node::find_on_path("claude", &setting.path).unwrap_or_else(|| texts.t("missing", &[]));
     let claude = texts.t("doctorClaude", &[("status", &claude)]);
-    Some(Output::out(format!(
-        "{node}\n{state}\n{config}\n{claude}\n"
-    )))
+    Output::out(format!("{node}\n{state}\n{config}\n{claude}\n"))
 }
 
 /// The `process.version` and `process.execPath` of `node`, or `None` when it cannot be asked.
@@ -200,7 +205,7 @@ mod tests {
     /// What `serve` printed and the exit code; the spawn is under the fork gate because the stub was written under it.
     fn answer(setting: &Setting) -> (Vec<String>, u8) {
         let _forking = forking();
-        let out = serve(setting, &Stop::default()).unwrap();
+        let out = serve(setting, &Stop::default());
         assert_eq!(out.stderr, "", "doctor writes nothing to stderr");
         assert!(out.stdout.ends_with('\n'));
         (

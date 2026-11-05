@@ -60,7 +60,7 @@ pub fn on_signals(f: impl FnOnce(&'static str) + Send + 'static) -> io::Result<(
             }
         })
         .map(drop)
-        .map_err(|e| io::Error::new(e.kind(), format!("cannot start a thread: {e}")))
+        .map_err(|e| io::Error::new(e.kind(), crate::child::thread_failure(&e)))
 }
 
 #[cfg(test)]
