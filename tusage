@@ -276,7 +276,7 @@ EXTRACT='
         (if $cc then ($cc.ephemeral_1h_input_tokens // 0) else 0 end),
         ($u.cache_read_input_tokens // 0), ($u.output_tokens // 0), 0 ]
   elif .type == "system" and .subtype == "compact_boundary" and .uuid != null and .agentId == null
-       and ((.compactMetadata.postTokens // 0) | type == "number" and . > 0) then
+       and ((.compactMetadata.postTokens? // 0) | type == "number" and . > 0) then
     [ .uuid, ts, (.sessionId // "-"), (.agentId // "-"), "-", "-", "<synthetic>",
       0, 0, 0, 0, 0, .compactMetadata.postTokens ]
   else empty end
@@ -365,6 +365,9 @@ stat_all() {  # <in: one path per line> <out>
 
 # facts rows: bucket, project-slug, sid, agentid, agenttype, kind, model,
 #             reqs, in, cw5, cw1h, cr, out, maxctx, lastctx
+# A row can have no requests (reqs 0): it is a compaction, and its lastctx is
+# what the compaction left. A reader that counts days, projects, lines or the
+# time of the last request skips such a row.
 #
 # maxctx is the largest context of any request in the bucket; lastctx is the
 # context of the NEWEST request of the bucket's session and agent, by timestamp.
@@ -402,6 +405,7 @@ fold_rows() {  # <project-slug> <carried ids> <origin> <facts out> <sessions out
       -v ff="$4" -v mf="$5" '
     BEGIN { n = split(seen0, carry, ","); for (i = 1; i <= n; i++) if (carry[i] != "") seen[carry[i]] = 1 }
     {
+      if ($13 + 0 && origin != "main") next   # a compaction of an agent transcript is not read, whatever the record says
       id = $1
       if (id in seen) next
       seen[id] = 1
@@ -692,6 +696,7 @@ update() {
 # facts columns: 1 bucket 2 slug 3 sid 4 agentid 5 agenttype 6 kind 7 model
 #                8 reqs 9 in 10 cw5 11 cw1h 12 cr 13 out 14 maxctx 15 lastctx
 # (15 is absent from rows an older version wrote; see fold_rows)
+# A row with 0 reqs is a compaction, whose lastctx is what it left.
 
 # A calendar day as an epoch: its midnight, or the given time of day, at the UTC offset daykey buckets rows with (today's, in the awk below), so the first and the last row of a window are the days it names even across a change of the clocks. BSD date wants the format spelt out and GNU date parses the text, so each is tried in that order, in UTC; the round trip through the date rejects a day that does not exist, which both would otherwise roll into the next month (2026-02-30).
 day_epoch() {
@@ -1416,7 +1421,7 @@ session_list() {  # <text> <hit ids, one per line> [labels file] [titles file]
   [ -n "$tit" ] && [ -e "$tit" ] && set -- "$@" "$tit"
   { printf '%s\n' "$hits" | LC_ALL=C sort | sed 's/^/H\t/'; account_map | sed 's/^/A\t/'; } |
   LC_ALL=C awk -F"$TAB" -v facts="$FACTS" -v lab="$lab" -v tit="$tit" -v tz="$(date +%z)" "$AWK_DAY$AWK_NAME"'
-    FILENAME == facts { if ($3 in HIT) { d = daykey($1 + 0); if (!(($3, d) in SEEN)) { SEEN[$3, d] = 1; DAYS[$3]++ } }; next }
+    FILENAME == facts { if ($8 + 0 > 0 && $3 in HIT) { d = daykey($1 + 0); if (!(($3, d) in SEEN)) { SEEN[$3, d] = 1; DAYS[$3]++ } }; next }
     $1 == "H" { HIT[$2] = 1; ORDER[++n] = $2; next }
     $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
     END {
@@ -1802,7 +1807,7 @@ report_by() {  # <the --by list> <cut> <upto>
 
 # sid, cost, reqs, ctx, last_ts, slug, subagent_cost, live_subagents, cost_5h,
 #   model, usd, usd_5h, usd_subagent, unpriced
-# ctx is the context of the session's newest main-chain request (agent id "-"), the number that says "this session is fat, compact it". It is not the largest context of the last hour, which answers a different question: "how big did this chat get". After a /compact that would keep showing the size from before the compaction for up to an hour, and a subagent's own large context could show as the session's. A session that has made no main-chain request in the window reports 0. The newest request is the one of the newest bucket, and of the later row when two rows share a bucket; a row from an index that predates the lastctx column falls back to its maxctx (see fold_rows).
+# ctx is the context of the session's newest main-chain request (agent id "-"), or what a compaction left when that is newer, the number that says "this session is fat, compact it". It is not the largest context of the last hour, which answers a different question: "how big did this chat get". After a /compact that would keep showing the size from before the compaction for up to an hour, and a subagent's own large context could show as the session's. A session that has made no main-chain request in the window reports 0. The newest request is the one of the newest bucket, and of the later row when two rows share a bucket; a row from an index that predates the lastctx column falls back to its maxctx (see fold_rows).
 #
 # `model` is the session's CURRENT model — the one the newest row was billed at,
 # which is what a status line should show. The dollar figures are emphatically
@@ -1833,7 +1838,7 @@ sessions() {
         v = (NF >= 15) ? $15 + 0 : $14 + 0
         if (v > 0 && $1 + 0 >= XB[s]) { XB[s] = $1 + 0; X[s] = v }
       }
-      if ($1 + 0 > L[s]) L[s] = $1 + 0
+      if ($8 + 0 > 0 && $1 + 0 > L[s]) L[s] = $1 + 0   # the time of the last request, which a row of no requests is not
       # The newest row that actually spent something wins the model column, so a
       # mid-session /model shows up at once — but the placeholder never does.
       if (c > 0 && $1 + 0 >= LM[s]) { LM[s] = $1 + 0; MDL[s] = $7 }
@@ -1870,6 +1875,7 @@ daily() {
     $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
     $1 + 0 < cut { next }
     upto > 0 && $1 + 0 > upto { next }
+    $8 + 0 == 0 { next }   # a row of no requests is a compaction, which counts no day
     {
       a = ($3 in ACC) ? ACC[$3] : "?"
       k = daystr(daykey($1)) SUBSEP a
@@ -1894,7 +1900,7 @@ burn() {   # what the last 5h cost, for the tmux status bar
   LC_ALL=C awk -F"$TAB" -v cut="$(( $(date +%s) - 18000 ))" -v prices="$(prices_arg)" "$AWK_PRICE"'
     function human(x) { if (x >= 1e6) return sprintf("%.1fM", x/1e6)
                         if (x >= 1e3) return sprintf("%.0fk", x/1e3); return sprintf("%d", x) }
-    $1 + 0 >= cut {
+    $8 + 0 > 0 && $1 + 0 >= cut {
       c = $9 + 1.25*$10 + 2.0*$11 + 0.1*$12 + 5*$13; T += c; S[$3] += c
       d = usd($7, $1 + 0, $9,$10,$11,$12,$13); if (d > 0) TD += d
     }
@@ -1912,7 +1918,7 @@ session_detail() {
   slug=$(LC_ALL=C awk -F"$TAB" -v k="$sid" '$1 == k { print $2; exit }' "$META" 2>/dev/null)
   printf '\033[1m%s\033[0m  %s\n' "$sid" "$(origin_dir "$sid" "$slug")"
   LC_ALL=C awk -F"$TAB" -v k="$sid" -v prices="$(prices_arg)" "$AWK_FMT$AWK_PRICE"'
-    $3 ~ "^" k {
+    $3 ~ "^" k && $8 + 0 > 0 {
       a = ($4 == "-" ? "· main" : ($6 ~ /^wf:/ ? "⑂ " $6 : "⑂ " $5 ($6 == "bg" ? " (bg)" : "")))
       REQ[a] += $8; IN[a] += $9; C5[a] += $10; C1[a] += $11; CR[a] += $12; OUT[a] += $13
       if (!(a in seen)) { seen[a] = 1; ord[++n] = a }
@@ -1954,6 +1960,7 @@ summary() {
     BEGIN { R = "\033[0m"; DIM = "\033[90m"; B = "\033[1m" }
     $1 == "P" { pdir[$2] = $3; next }
     $1 == "A" { ACC[$2] = ($3 == "" ? "?" : $3); next }
+    $8 + 0 == 0 { next }   # a row of no requests is a compaction, which is no spend and no line
     {
       c = cost($9,$10,$11,$12,$13); age = now - ($1 + 0)
       # A request on an unrated model is a hole in the bill only when it spent something: the zero-token "<synthetic>" placeholder is not one.
