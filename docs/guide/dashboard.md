@@ -25,7 +25,7 @@ Sessions are grouped by project. Each group has a header, and each session is a 
 | time | how long since **you** last typed into that session. It doubles as the clock of the one-hour prompt cache, see [States and order](./states#the-clock-the-rows-are-sorted-on) |
 | badge | one or two characters naming the Claude login the session is on |
 | name | the label you gave it with `ctrl-r`, else the title the session gave itself |
-| context | how much context the session is holding (`71k`) |
+| context | how much context the session is holding (`71k`). Right after a compaction it is what the compacted messages take, and the next answer adds the system prompt and the tools |
 | cost | what the session has spent, see [Cost](./cost) |
 | model | the model the session is set to now |
 | account | the full name of the login, when there is room for it |
