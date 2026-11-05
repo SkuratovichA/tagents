@@ -484,7 +484,7 @@ has "the two that cannot be run from here are still listed" "ctrl-q" "$TABLE"
 has "...both of them"                                       "esc"    "$TABLE"
 # The verb column exactly as the spec has it (dashboard-keys, "Table of keys"): the spec's order, a leading colon on what the list runs itself, :none on the ? line and :quit on the esc line.
 ok "the verbs come in the spec's order, then the esc line" \
-   "open beside new pick shell goto send rename undock kill :tree :order :preview :refresh :columns :usage :closed :none :quit :quit" \
+   "open beside new pick shell goto send rename dir undock kill :tree :order :preview :refresh :columns :usage :closed :none :quit :quit" \
    "$(run --keys | cut -f2 | paste -s -d ' ' -)"
 
 has "the ? line describes the cockpit's keys" "cockpit" "$(run --keys | LC_ALL=C awk -F'\t' '$2 == ":none"')"
@@ -1196,6 +1196,17 @@ ok "picking :order in the ? window creates the marker" yes "$([ -e "$OST/.order-
 has "...and rings the list" "reload-sync(" "$(cat "$ROOT/curl.log" 2>/dev/null)"
 pick_order
 ok "picking it again removes the marker" no "$([ -e "$OST/.order-window" ] && echo yes || echo no)"
+
+# PICKING dir IN THE ? WINDOW asks for a directory on the popup's own terminal, saves it for the session of the row and rings the list.
+DSESS=$(tm display-message -p -t "$A" '#{session_name}')
+DDIR="$ROOT/dir-saved"; mkdir -p "$DDIR"
+: >"$ROOT/curl.log"; rm -f "$OST/session-dirs.tsv"
+printf '%s\n' "$DDIR" | env TMUX="$TMUXV" PATH="$CURLBIN:$PATH" TA_STATE_DIR="$OST" TA_MODE=popup FZF_DEFAULT_OPTS="--exact --filter=directory" \
+  bash "$TA" --ask-keys 4242 "$A" working sid-live "$REPO" >/dev/null 2>&1
+ok "picking dir in the ? window saves the directory for the session of the row" "$(printf '%s\t%s' "$DSESS" "$DDIR")" "$(cat "$OST/session-dirs.tsv" 2>/dev/null)"
+has "...and rings the list" "reload-sync(" "$(cat "$ROOT/curl.log" 2>/dev/null)"
+has "the ? window lists ctrl-d" "ctrl-d	dir	the directory new agents of this session start in" "$KT"
+rm -f "$OST/session-dirs.tsv"
 
 rm -f "$ONW"
 tm kill-pane -t "$C2" 2>/dev/null; tm kill-window -t "$Z1" 2>/dev/null; tm kill-window -t "$Z2" 2>/dev/null

@@ -64,7 +64,7 @@ refresh_changed() {  # <marker> <overlay config path> [strict] — 0 when someth
   # counting it again would post two reloads for every event. Only a file newer
   # than the marker is a change there.
   if [ -n "$strict" ]; then
-    for f in "$STATE_DIR"/[0-9]*.tsv "$STATE_DIR"/s-*.tsv "$LABELS" "$ORIGINS" "$COLS_FILE" \
+    for f in "$STATE_DIR"/[0-9]*.tsv "$STATE_DIR"/s-*.tsv "$LABELS" "$SESSION_DIRS" "$ORIGINS" "$COLS_FILE" \
              "$STATE_DIR/.flat" "$STATE_DIR/.order-window" "$STATE_DIR/sub" "$STATE_DIR"/sub/* \
              "$STATE_DIR/model" "$STATE_DIR"/model/*.tsv \
              "$STATE_DIR/prompt" "$STATE_DIR"/prompt/* "$CONFIG_FILE" "$ovl"; do
@@ -72,7 +72,7 @@ refresh_changed() {  # <marker> <overlay config path> [strict] — 0 when someth
     done
     return 1
   fi
-  for f in "$STATE_DIR"/[0-9]*.tsv "$STATE_DIR"/s-*.tsv "$LABELS" "$ORIGINS" "$COLS_FILE" \
+  for f in "$STATE_DIR"/[0-9]*.tsv "$STATE_DIR"/s-*.tsv "$LABELS" "$SESSION_DIRS" "$ORIGINS" "$COLS_FILE" \
            "$STATE_DIR/.flat" "$STATE_DIR/.order-window" "$STATE_DIR/sub" "$STATE_DIR"/sub/* \
            "$STATE_DIR/model" "$STATE_DIR"/model/*.tsv \
            "$STATE_DIR/prompt" "$STATE_DIR"/prompt/* "$CONFIG_FILE" "$ovl"; do

@@ -24,6 +24,7 @@ shell ctrl-a K_SHELL
 goto ctrl-g K_GOTO
 send ctrl-e K_SEND
 rename ctrl-r K_RENAME
+dir ctrl-d K_DIR
 undock ctrl-u K_UNDOCK
 kill ctrl-x K_KILL
 tree ctrl-t K_TREE
@@ -165,6 +166,7 @@ keys_table() {  # key<TAB>verb<TAB>what it does
 "$K_GOTO${TAB}goto${TAB}go to the agent where it lives: the terminal leaves the dashboard" \
 "$K_SEND${TAB}send${TAB}send a line straight into it" \
 "$K_RENAME${TAB}rename${TAB}rename this agent — an empty name restores its title" \
+"$K_DIR${TAB}dir${TAB}the directory new agents of this session start in" \
 "$K_UNDOCK${TAB}undock${TAB}break a joined chat out into a window of its own" \
 "$K_KILL${TAB}kill${TAB}kill this agent, asking first; a closed row is forgotten; on a dimmed row it closes the window, asking first" \
 "$K_TREE${TAB}:tree${TAB}tree or flat" \

@@ -242,7 +242,7 @@ open_chat() {  # <open_agent|open_beside> <pane> <sid> <dir>
 
 # Every key runs through here as a short-lived child of fzf, so fzf itself never has to exit and restart. That is what keeps the list from repainting on each action — execute-silent does not touch the screen. LINE (optional) is the text of the line under the cursor: a group header has the ▾ in it, and enter and ctrl-g on the header of a session show the session instead of acting on the header's stand-in row.
 act() {
-  local what=${1:-} pane=${2:-} state=${3:-} sid=${4:-} dir=${5:-} line=${6:-} hdr=0 sess
+  local what=${1:-} pane=${2:-} state=${3:-} sid=${4:-} dir=${5:-} line=${6:-} hdr=0 sess saved nsess
   case "$line" in *▾*) hdr=1 ;; esac
   # A HEADLESS ROW IS NOT A PANE, so every verb that selects, focuses, types into or renames one has nothing to act on: the agent is a `claude -p` some daemon started, with no terminal anywhere. tmux answers "can't find pane %s-<id>" to all of them, and every one of those calls is silenced, so without this the key simply did nothing and said nothing about why. `open` on a CLOSED headless row was worse than nothing: it would have gone to resume_agent and started a fresh claude in a new window, which is not that agent coming back. ctrl-v is the one key that still works, and is what the notice points at: the popup follows the session's log. kill is deliberately left alone — ask_kill already reads a pane-less key as "forget this record", which is the only thing that can be done to such a row. Resuming the CONVERSATION is still possible where it belongs, in the closed-sessions browser (ctrl-y), which offers it once the session has actually ended.
   case "$pane" in
@@ -293,8 +293,12 @@ act() {
     rename) rename_agent "$pane" "$sid" ;;
     # ctrl-v in the list: a modal, not a column taken off the list.
     preview) preview_window "$pane" "$state" ;;
-    new)    new_agent "$dir" "" "$(row_session "$pane")" ;;
-    pick)   new_agent_pick "$dir" "$(row_session "$pane")" ;;
+    # A session with a saved default directory starts its agents exactly there; none saved, or one gone from disk, and the row's directory is lifted to its repository root as it always was. A row with no session (headless, closed) reads nothing.
+    new)    nsess=$(row_session "$pane"); saved=$(session_dir "$nsess")
+            if [ -n "$saved" ]; then new_agent "$saved" "" "$nsess" exact; else new_agent "$dir" "" "$nsess"; fi ;;
+    pick)   nsess=$(row_session "$pane"); saved=$(session_dir "$nsess")
+            if [ -n "$saved" ]; then new_agent_pick "$saved" "$nsess" exact; else new_agent_pick "$dir" "$nsess"; fi ;;
+    dir)    set_session_dir "$pane" "$dir" ;;
     shell)  new_shell "$dir" "$(row_session "$pane")" ;;
     undock) undock "$pane" ;;
     kill)   kill_agent "$pane" "$sid" ;;

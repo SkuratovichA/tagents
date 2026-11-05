@@ -325,8 +325,11 @@ collect() {
   tmux list-windows -a -F "W|@|#{window_id}|@|#{session_name}|@|#{window_index}|@|#{?#{@tagents_cockpit},1,0}|@|#{==:#{window_id},#{@tagents_viewport_window}}|@|#{window_name}" 2>/dev/null |
     LC_ALL=C awk -v OFS="$TAB" '{ n = split($0, a, "\\|@\\|"); if (a[5] == 1) next; t = a[7]; for (i = 8; i <= n; i++) t = t "|@|" a[i]; print a[1], a[2], a[3], a[4], a[6], t }'
   # G and not S: the S records are the state files.
+  # The fourth field is the directory saved for the session (session-dirs.tsv), read by the awk that is here anyway.
   tmux list-sessions -F "G|@|#{session_name}|@|#{session_path}|@|#{?#{@tagents_cockpit},1,0}" 2>/dev/null |
-    LC_ALL=C awk -v OFS="$TAB" '{ n = split($0, a, "\\|@\\|"); if (a[4] != 1) print a[1], a[2], a[3] }'
+    LC_ALL=C awk -v OFS="$TAB" -v sd="$SESSION_DIRS" '
+      BEGIN { while ((getline l < sd) > 0) if (split(l, b, "\t") >= 2) saved[b[1]] = b[2] }
+      { n = split($0, a, "\\|@\\|"); if (a[4] != 1) print a[1], a[2], a[3], saved[a[2]] }'
   live_panes | sed "s/^/L${TAB}/"
   dir_roots
   [ -e "$LABELS" ] && LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '{ print "N", $1, $2 }' "$LABELS"

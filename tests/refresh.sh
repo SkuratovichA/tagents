@@ -707,9 +707,10 @@ act 10 'echo 200 >"$RF_STATE/prompt/9"'
 act 11 'echo "x = 2" >"$RF_CFG"'
 act 12 'echo "y = 2" >"${RF_CFG%.toml}.ovlhost.toml"'
 act 13 ': >"$RF_STATE/.order-window"'
-go 14
-ok "state file, s- file, origins, labels, cols, .flat, sub, model, prompt, config, overlay and the order marker each reload on their own wake, and the wake after is quiet" \
-   "1 2 3 4 5 6 7 8 9 10 11 12 13" "$(reloads)"
+act 14 'printf "work\t/tmp\n" >"$RF_STATE/session-dirs.tsv"'
+go 15
+ok "state file, s- file, origins, labels, cols, .flat, sub, model, prompt, config, overlay, the order marker and the saved session directories each reload on their own wake, and the wake after is quiet" \
+   "1 2 3 4 5 6 7 8 9 10 11 12 13 14" "$(reloads)"
 rm -f "$OVLF"
 unset TA_HOST
 

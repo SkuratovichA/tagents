@@ -177,6 +177,7 @@ dash() {
   kb "$K_BESIDE"  "execute-silent($SELF --act beside {1} {3} {4} {5})$after"
   kb "$K_RENAME"  "$ask($SELF --act rename {1} {3} {4})"
   kb f2           "$ask($SELF --act rename {1} {3} {4})"
+  kb "$K_DIR"     "$ask($SELF --act dir {1} {3} {4} {5})"
   kb "$K_UNDOCK"  "execute-silent($SELF --act undock {1})+reload-sync($SELF --list)"
   kb "$K_KILL"    "$ask($SELF --act kill {1} {3} {4})"
   kb "$K_NEW"     "$ask($SELF --act new {1} {3} {4} {5})$after"

@@ -293,6 +293,13 @@
             "ctrl-r"
           ]
         },
+        "dir": {
+          "$ref": "#/$defs/key",
+          "description": "Set the directory new agents of this session start in. Default ctrl-d.",
+          "examples": [
+            "ctrl-d"
+          ]
+        },
         "undock": {
           "$ref": "#/$defs/key",
           "description": "Break a joined chat out into a window of its own. Default ctrl-u.",
