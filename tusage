@@ -263,24 +263,24 @@ command -v jq >/dev/null 2>&1 || { echo "tusage: jq is required" >&2; exit 1; }
 # Absolute paths are used everywhere below for exactly that reason.
 
 EXTRACT='
-  select(.type == "assistant" and (.message.usage != null))
-  | .message.usage as $u
-  | ($u.cache_creation // null) as $cc
-  | [ (.requestId // .message.id // "-"),
-      ((.timestamp // "") | if . == "" then 0
-         else (sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601? // 0) end),
-      (.sessionId // "-"),
-      (.agentId // "-"),
-      (.attributionAgent // "-"),
-      (.sessionKind // "-"),
-      (.message.model // "-"),
-      ($u.input_tokens // 0),
-      (if $cc then ($cc.ephemeral_5m_input_tokens // 0)
-               else ($u.cache_creation_input_tokens // 0) end),
-      (if $cc then ($cc.ephemeral_1h_input_tokens // 0) else 0 end),
-      ($u.cache_read_input_tokens // 0),
-      ($u.output_tokens // 0)
-    ] | @tsv'
+  def ts: (.timestamp // "") | if . == "" then 0
+    else (sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601? // 0) end;
+  if .type == "assistant" and (.message.usage != null) then
+    .message.usage as $u
+    | ($u.cache_creation // null) as $cc
+    | [ (.requestId // .message.id // "-"), ts, (.sessionId // "-"), (.agentId // "-"),
+        (.attributionAgent // "-"), (.sessionKind // "-"), (.message.model // "-"),
+        ($u.input_tokens // 0),
+        (if $cc then ($cc.ephemeral_5m_input_tokens // 0)
+                 else ($u.cache_creation_input_tokens // 0) end),
+        (if $cc then ($cc.ephemeral_1h_input_tokens // 0) else 0 end),
+        ($u.cache_read_input_tokens // 0), ($u.output_tokens // 0), 0 ]
+  elif .type == "system" and .subtype == "compact_boundary" and .uuid != null
+       and ((.compactMetadata.postTokens // 0) | type == "number" and . > 0) then
+    [ .uuid, ts, (.sessionId // "-"), (.agentId // "-"), "-", "-", "<synthetic>",
+      0, 0, 0, 0, 0, .compactMetadata.postTokens ]
+  else empty end
+  | @tsv'
 
 # Bytes of a file that end in a complete line, out of its first <size>. A
 # transcript being appended to right now usually has a partial last line;
@@ -378,6 +378,14 @@ stat_all() {  # <in: one path per line> <out>
 # A request with no context at all never counts as the newest — it is not a
 # request that says anything about the size of the chat.
 #
+# A compact_boundary record (13th column, postTokens, 0 for a request) is the
+# newest size of the chat the moment it is written, since no assistant record
+# follows a compaction until the next turn. It is no request (R is not counted),
+# says nothing about the model (mdl is not set) and is no peak (X is not raised);
+# its model is the zero-token "<synthetic>" every reader already prices at
+# nothing. postTokens leaves out the system prompt and the tool schemas, so the
+# figure is a lower bound until the next request replaces it.
+#
 # THE TWO FORMATS. facts.tsv is append-only and is trimmed, never rewritten, so
 # rows written before this column existed keep 14 fields for as long as they
 # live. A reader tells them apart by NF: a row with 15 fields has a lastctx, a
@@ -406,13 +414,15 @@ fold_rows() {  # <project-slug> <carried ids> <origin> <facts out> <sessions out
       k = b SUBSEP $3 SUBSEP $4 SUBSEP who SUBSEP kind SUBSEP $7
       if (!(k in R)) { order[++m] = k }
       ctx = $8 + $9 + $10 + $11
-      R[k]++; I[k] += $8; C5[k] += $9; C1[k] += $10; CR[k] += $11; O[k] += $12
+      after = $13 + 0                     # what a compaction left; 0 for a request
+      R[k] += (after ? 0 : 1); I[k] += $8; C5[k] += $9; C1[k] += $10; CR[k] += $11; O[k] += $12
       if (ctx > X[k]) X[k] = ctx
       g = b SUBSEP $3 SUBSEP $4; G[k] = g
-      if (ctx > 0 && (!(g in LT) || $2 + 0 >= LT[g])) { LT[g] = $2 + 0; LX[g] = ctx }
+      size = after ? after : ctx
+      if (size > 0 && (!(g in LT) || $2 + 0 >= LT[g])) { LT[g] = $2 + 0; LX[g] = size }
       if (!($3 in fts) || $2 < fts[$3]) fts[$3] = $2
       if (!($3 in lts) || $2 > lts[$3]) lts[$3] = $2
-      mdl[$3] = $7
+      if (!after) mdl[$3] = $7            # a session takes the model of what answered it
     }
     END {
       for (i = 1; i <= m; i++) {

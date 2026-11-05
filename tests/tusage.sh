@@ -665,6 +665,102 @@ ok "an old index takes the next request without a rebuild" 40000 "$(lctx $S1)"
 ok "...the new row has the new format, the old rows are left alone" "14 15" \
    "$(awk -F"$TAB" -v s=$S1 '$3 == s { print NF }' "$TU_STATE/facts.tsv" | sort -un | tr '\n' ' ' | sed 's/ $//')"
 
+# ---------------------------------------------------------------------------
+t "10b. a compaction sets the session's context to what it left, at once"
+# A /compact writes a system record, compact_boundary, and no assistant record
+# until the next turn. The record carries postTokens, what the compacted
+# messages take; it is no request, says nothing about the model, and costs
+# nothing.
+# ---------------------------------------------------------------------------
+cpfresh() {  # <name>: an empty index and projects tree of its own
+  export TU_STATE="$ROOT/cp/$1/usage" TU_PROJECTS="$ROOT/cp/$1/projects"
+  mkdir -p "$TU_STATE" "$TU_PROJECTS/-cp-proj"
+}
+cbd() {  # <sid> <epoch> <compactMetadata json, or "-" for none> [<agentId>]
+  local meta="" who=""
+  [ "$3" != "-" ] && meta=",\"compactMetadata\":$3"
+  [ -n "${4:-}" ] && who=",\"agentId\":\"$4\""
+  printf '{"type":"system","subtype":"compact_boundary","uuid":"u-%s-%s","sessionId":"%s","timestamp":"%s","isSidechain":false,"parentUuid":null%s%s}\n' \
+    "$1" "$2" "$1" "$(isoof "$2")" "$who" "$meta"
+}
+cmeta() { printf '{"trigger":"%s","preTokens":210216,"postTokens":%s,"cumulativeDroppedTokens":1,"durationMs":1}' "${2:-manual}" "$1"; }
+cpf() { echo "$TU_PROJECTS/-cp-proj/$1.jsonl"; }
+cpup() { bash "$TU" --update >/dev/null 2>&1; }
+sess() {  # <sid> <field...> -> those fields of --sessions, tab-joined
+  local s=$1; shift
+  bash "$TU" --no-update --sessions --since 30d 2>/dev/null | awk -F"$TAB" -v s="$s" -v f="$*" '$1 == s {
+    n = split(f, a, " "); o = ""; for (i = 1; i <= n; i++) o = o (i > 1 ? "\t" : "") $(a[i]); print o }'
+}
+SC=c1c1c1c1-2222-3333-4444-555555555555
+
+cpfresh one
+{ lrec $SC r1 $((T2 + 10)) 200000; cbd $SC $((T2 + 100)) "$(cmeta 20000)"; } >"$(cpf $SC)"
+cpup
+ok "a boundary after a request: the context is what the compaction left" 20000 "$(ctx_of $SC)"
+
+lrec $SC r2 $((T2 + 200)) 90000 >>"$(cpf $SC)"; cpup
+ok "the next request replaces it, in the same bucket" 90000 "$(ctx_of $SC)"
+cpfresh one2
+{ lrec $SC r1 $((T2 + 10)) 200000; cbd $SC $((T2 + 100)) "$(cmeta 20000)"; lrec $SC r2 $((T2 + 310)) 90000; } >"$(cpf $SC)"
+cpup
+ok "...and in a later bucket" 90000 "$(ctx_of $SC)"
+
+cpfresh pass
+lrec $SC r1 $((T2 + 10)) 200000 >"$(cpf $SC)"; cpup
+ok "the request alone is 200000" 200000 "$(ctx_of $SC)"
+cbd $SC $((T2 + 100)) "$(cmeta 20000)" >>"$(cpf $SC)"; cpup
+ok "a boundary read in a later --update pass: 20000" 20000 "$(ctx_of $SC)"
+
+cpfresh plain
+{ lrec $SC r1 $((T2 + 10)) 200000; lrec $SC r2 $((T2 + 20)) 5000; } >"$(cpf $SC)"; cpup
+PLAIN=$(sess $SC 2 3 10 11 14)
+cpfresh withb
+{ lrec $SC r1 $((T2 + 10)) 200000; lrec $SC r2 $((T2 + 20)) 5000; cbd $SC $((T2 + 30)) "$(cmeta 20000)"; } >"$(cpf $SC)"; cpup
+ok "with a boundary: cost, requests, model, dollars and unpriced are the same" "$PLAIN" "$(sess $SC 2 3 10 11 14)"
+ok "...and the model is the real one" "claude-opus-5" "$(sess $SC 10)"
+ok "...and the session keeps the real model in the index too" "claude-opus-5" \
+   "$(awk -F"$TAB" -v s=$SC '$1 == s { print $5 }' "$TU_STATE/sessions.tsv")"
+ok "...and the context is the boundary's" 20000 "$(ctx_of $SC)"
+
+for bad in 'none:-' 'zero:{"trigger":"manual","postTokens":0}' 'string:{"trigger":"manual","postTokens":"20000"}'; do
+  cpfresh "bad-${bad%%:*}"
+  { lrec $SC r1 $((T2 + 10)) 200000; cbd $SC $((T2 + 100)) "${bad#*:}"; } >"$(cpf $SC)"; cpup
+  ok "a boundary with ${bad%%:*} postTokens leaves the context alone" "200000:1" "$(sess $SC 4 3 | tr '\t' ':')"
+done
+
+cpfresh agent
+mkdir -p "$TU_PROJECTS/-cp-proj/$SC/subagents"
+lrec $SC r1 $((T2 + 10)) 200000 >"$(cpf $SC)"
+cbd $SC $((T2 + 100)) "$(cmeta 20000)" ag1 >"$TU_PROJECTS/-cp-proj/$SC/subagents/agent-ag1.jsonl"; cpup
+ok "a boundary of a subagent does not touch the main chain's context" 200000 "$(ctx_of $SC)"
+
+cpfresh synth
+{ lrec $SC r1 $((T2 + 10)) 200000; cbd $SC $((T2 + 100)) "$(cmeta 20000)"; lrec $SC r2 $((T2 + 200)) 0 "" "<synthetic>"; } >"$(cpf $SC)"; cpup
+ok "a zero-token placeholder after the boundary does not replace it" 20000 "$(ctx_of $SC)"
+
+for trig in manual auto; do
+  cpfresh "trig-$trig"
+  { lrec $SC r1 $((T2 + 10)) 200000; cbd $SC $((T2 + 100)) "$(cmeta 20000 $trig)"; } >"$(cpf $SC)"; cpup
+  ok "a $trig compaction sets the context" 20000 "$(ctx_of $SC)"
+done
+
+# Every report, with and without the boundary: the same bytes. --sessions
+# differs in its context field by design, so that field is blanked.
+cpfresh rep-a; lrec $SC r1 $((T2 + 10)) 200000 >"$(cpf $SC)"; cpup
+RA=$TU_STATE
+cpfresh rep-b; { lrec $SC r1 $((T2 + 10)) 200000; cbd $SC $((T2 + 100)) "$(cmeta 20000)"; } >"$(cpf $SC)"; cpup
+RB=$TU_STATE
+rep() {  # <state> <args...>
+  local st=$1; shift
+  TU_STATE=$st TU_PROJECTS="$ROOT/cp/$([ "$st" = "$RA" ] && echo rep-a || echo rep-b)/projects" bash "$TU" --no-update --color never "$@" 2>&1 |
+    awk -F"$TAB" -v OFS="$TAB" '{ if ($0 ~ /^[0-9a-f]+-/ && NF > 10 && $4 ~ /^[0-9]+$/) $4 = "-"; print }'
+}
+for mode in "" "--by day" "--by account,project,session,agent,model" "--by session --breakdown" "--by model --breakdown" "--by hour" "--tsv --by session" "--json" "--daily" "--burn" "--sessions --since 30d" "--session $SC" "--compact"; do
+  A=$(rep "$RA" $mode); B=$(rep "$RB" $mode)
+  ok "report '${mode:-summary}' is the same with the boundary" "$A" "$B"
+  [ -n "$A" ] || { fail=$((fail + 1)); printf '  FAIL report %s printed nothing\n' "${mode:-summary}"; }
+done
+
 export TU_STATE="$SAVE_STATE" TU_PROJECTS="$SAVE_PROJ"
 export TU_ACCOUNTS="$SAVE_ACCT" TU_ACCOUNT_RULES="$SAVE_RULES"
 
