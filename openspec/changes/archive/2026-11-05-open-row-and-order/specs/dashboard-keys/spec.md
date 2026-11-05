@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: The default keys
-The dashboard SHALL bind by default: `enter` and double-click open; `ctrl-s` join beside; `ctrl-n` new; `ctrl-p` pick the account; `ctrl-a` shell; `ctrl-g` goto; `ctrl-e` send; `ctrl-r` and `F2` rename; `ctrl-u` break out; `ctrl-x` kill; `ctrl-t` tree or flat; `ctrl-o` window order or last message; `ctrl-v` preview; `ctrl-l` refresh; `ctrl-w` columns; `$` usage; `ctrl-y` closed sessions; `?` the keys window; `ctrl-q` quit. Every key acts on the row the cursor is on. The verbs `beside` and `undock` keep their names.
+The dashboard SHALL bind by default: `enter` and double-click open; `ctrl-s` join beside; `ctrl-n` new; `ctrl-p` pick the account; `ctrl-a` shell; `ctrl-g` goto; `ctrl-e` send; `ctrl-r` and `F2` rename; `ctrl-u` break out; `ctrl-x` kill; `ctrl-t` tree or flat; `ctrl-o` order; `ctrl-v` preview; `ctrl-l` refresh; `ctrl-w` columns; `$` usage; `ctrl-y` closed sessions; `?` the keys window; `ctrl-q` quit. Every key acts on the row the cursor is on. The verbs `beside` and `undock` keep their names.
 
 #### Scenario: Table of keys
 - **WHEN** the user runs `tagents --keys`
