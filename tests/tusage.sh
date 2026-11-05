@@ -748,7 +748,9 @@ done
 # differs in its context field by design, so that field is blanked.
 cpfresh rep-a; lrec $SC r1 $((T2 + 10)) 200000 >"$(cpf $SC)"; cpup
 RA=$TU_STATE
-cpfresh rep-b; { lrec $SC r1 $((T2 + 10)) 200000; cbd $SC $((T2 + 100)) "$(cmeta 20000)"; } >"$(cpf $SC)"; cpup
+cpfresh rep-b; { lrec $SC r1 $((T2 + 10)) 200000; cbd $SC $((T2 + 100)) "$(cmeta 20000)"; } >"$(cpf $SC)"
+mkdir -p "$TU_PROJECTS/-cp-proj/$SC/subagents"
+cbd $SC $((T2 + 100)) "$(cmeta 5000)" ag1 >"$TU_PROJECTS/-cp-proj/$SC/subagents/agent-ag1.jsonl"; cpup
 RB=$TU_STATE
 rep() {  # <state> <args...>
   local st=$1; shift

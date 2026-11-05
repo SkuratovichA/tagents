@@ -275,7 +275,7 @@ EXTRACT='
                  else ($u.cache_creation_input_tokens // 0) end),
         (if $cc then ($cc.ephemeral_1h_input_tokens // 0) else 0 end),
         ($u.cache_read_input_tokens // 0), ($u.output_tokens // 0), 0 ]
-  elif .type == "system" and .subtype == "compact_boundary" and .uuid != null
+  elif .type == "system" and .subtype == "compact_boundary" and .uuid != null and .agentId == null
        and ((.compactMetadata.postTokens // 0) | type == "number" and . > 0) then
     [ .uuid, ts, (.sessionId // "-"), (.agentId // "-"), "-", "-", "<synthetic>",
       0, 0, 0, 0, 0, .compactMetadata.postTokens ]
@@ -384,7 +384,9 @@ stat_all() {  # <in: one path per line> <out>
 # says nothing about the model (mdl is not set) and is no peak (X is not raised);
 # its model is the zero-token "<synthetic>" every reader already prices at
 # nothing. postTokens leaves out the system prompt and the tool schemas, so the
-# figure is a lower bound until the next request replaces it.
+# figure is a lower bound until the next request replaces it. A subagent keeps
+# its own transcript and its compaction is not read: only the main chain has a
+# figure on the dashboard, and it would add an empty row to the reports by agent.
 #
 # THE TWO FORMATS. facts.tsv is append-only and is trimmed, never rewritten, so
 # rows written before this column existed keep 14 fields for as long as they
@@ -2065,7 +2067,7 @@ json() {
   have_index || { echo '{"error":"no data"}'; return 1; }
   LC_ALL=C awk -F"$TAB" -v cut="${1:-0}" -v upto="${2:-0}" '
     function cost(i,c5,c1,cr,o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
-    $1 + 0 >= cut && (upto == 0 || $1 + 0 <= upto) { C[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += cost($9,$10,$11,$12,$13)
+    $8 + 0 > 0 && $1 + 0 >= cut && (upto == 0 || $1 + 0 <= upto) { C[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += cost($9,$10,$11,$12,$13)
                     R[$2 SUBSEP $3 SUBSEP ($4=="-"?"main":$5)] += $8 }
     END { printf "["; first = 1
       for (k in C) { split(k, a, SUBSEP)
