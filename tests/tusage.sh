@@ -757,7 +757,12 @@ rep() {  # <state> <args...>
 }
 for mode in "" "--by day" "--by account,project,session,agent,model" "--by session --breakdown" "--by model --breakdown" "--by hour" "--tsv --by session" "--json" "--daily" "--burn" "--sessions --since 30d" "--session $SC" "--compact"; do
   A=$(rep "$RA" $mode); B=$(rep "$RB" $mode)
-  ok "report '${mode:-summary}' is the same with the boundary" "$A" "$B"
+  case "$mode" in
+    ""|--compact)  # these list each session with its context, which is what the boundary changes
+      A=$(printf '%s\n' "$A" | sed -E 's/ req  ctx +[0-9.]+[kM]/ req  ctx X/'); B=$(printf '%s\n' "$B" | sed -E 's/ req  ctx +[0-9.]+[kM]/ req  ctx X/')
+      ok "report '${mode:-summary}' is the same with the boundary, only the session context figure may differ" "$A" "$B" ;;
+    *) ok "report '${mode:-summary}' is the same with the boundary" "$A" "$B" ;;
+  esac
   [ -n "$A" ] || { fail=$((fail + 1)); printf '  FAIL report %s printed nothing\n' "${mode:-summary}"; }
 done
 

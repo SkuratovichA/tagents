@@ -1512,6 +1512,7 @@ by_aggregate() {  # <dimensions, comma list> <cut> <upto> table|tsv
     $1 + 0 < cut { next }
     upto > 0 && $1 + 0 > upto { next }
     WFONLY && $6 !~ /^wf:/ { next }
+    $8 + 0 == 0 { next }   # a row of no requests is a compaction, which says how big a chat is and which no report counts
     {
       d = usd($7, $1 + 0, $9, $10, $11, $12, $13)
       u = 0

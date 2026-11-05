@@ -4,7 +4,7 @@ A `compact_boundary` record of a transcript has the keys `type: "system"`, `subt
 
 ## Decisions
 
-- The extractor emits the boundary as a row of the same shape as a request, with a 13th column that holds `postTokens` (0 for a request) and the model `<synthetic>`. Every reader of the index already treats that zero-token placeholder as spending nothing, so no reader needs a new case.
+- The extractor emits the boundary as a row of the same shape as a request, with a 13th column that holds `postTokens` (0 for a request) and the model `<synthetic>`. Every reader of the index already treats that zero-token placeholder as spending nothing, so no reader needs a new case beyond one: a report skips a row of no requests, so that its model lists stay as they were.
 - `fold_rows` counts no request for such a row, does not let it set the session's model, does not raise the peak, and lets it be the newest size of its chat by timestamp, a later request replacing it.
 - `sessions()` is unchanged: the later bucket wins, and inside one bucket the later row of the append-only file wins.
 - A boundary is read only when `postTokens` is a number above zero and the record has a `uuid`; anything else is ignored, as it was.
