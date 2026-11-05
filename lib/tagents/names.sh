@@ -14,13 +14,9 @@
 LABELS="$STATE_DIR/labels.tsv"
 
 set_label() {  # <key> <name> [<the agent's other key, whose label this one replaces>]
-  local keyv=$1 name=$2 other=${3:-} tmpf
+  local keyv=$1 name=$2 other=${3:-}
   [ -z "$keyv" ] && return 1
-  mkdir -p "$STATE_DIR" 2>/dev/null
-  tmpf="$STATE_DIR/.labels.$$"
-  { [ -e "$LABELS" ] && LC_ALL=C awk -F"$TAB" -v k="$keyv" -v o="$other" '$1 != k && $1 != o' "$LABELS"; } >"$tmpf" 2>/dev/null
-  [ -n "$name" ] && printf '%s\t%s\n' "$keyv" "$name" >>"$tmpf"
-  mv -f "$tmpf" "$LABELS" 2>/dev/null || rm -f "$tmpf"
+  tsv_put "$LABELS" "$keyv" "$name" "$other" || true
   signal_ev   # labels are drawn, and the file is not a tmux event
 }
 

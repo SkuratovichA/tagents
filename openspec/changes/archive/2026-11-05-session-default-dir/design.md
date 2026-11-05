@@ -19,7 +19,7 @@ Rejected: keying by session id (`$1`, `#{session_id}`) because a tmux server res
 ## Limits
 
 - A renamed session loses its directory, since the key is the name.
-- A closed row has no session, so `ctrl-d` on it only says so; so does a headless row.
+- A row whose pane is gone has no session, so `ctrl-d` on it only says so; so does a headless row. A closed row whose pane still exists is filed under its session and takes the key.
 - A window made by hand with `prefix c` does not go through tagents and does not read it.
 - The awk cannot test a directory, so the header keeps showing a saved path that was removed from disk while `ctrl-n` falls back to the row's directory.
 - A tab or a newline inside a saved path would corrupt the file; the dialog does not guard against it, since neither can be typed into it.

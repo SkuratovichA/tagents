@@ -183,46 +183,48 @@ SESSION_DIRS="$STATE_DIR/session-dirs.tsv"
 session_dir() {  # <session>
   local d
   [ -n "${1:-}" ] && [ -s "$SESSION_DIRS" ] || return 0
-  d=$(LC_ALL=C awk -F"$TAB" -v s="$1" '$1 == s { print $2; exit }' "$SESSION_DIRS" 2>/dev/null)
+  d=$(S=$1 LC_ALL=C awk -F"$TAB" '$1 == ENVIRON["S"] { d = $2 } END { print d }' "$SESSION_DIRS" 2>/dev/null)
   [ -n "$d" ] && [ -d "$d" ] && printf '%s' "$d"
   return 0
 }
 
-# Saves <dir> for <session>, replacing what was there; with no <dir> the session is forgotten. Rewritten through a temp file as set_label does, and the list is rung, because the file is drawn in the group header and is not a tmux event.
+# Saves <dir> for <session>, replacing what was there; with no <dir> the session is forgotten. Non-zero when the file could not be written. The list is rung either way, because the file is drawn in the group header and is not a tmux event.
 session_dir_set() {  # <session> [dir]
-  local tmp="$SESSION_DIRS.$$"
-  mkdir -p "$STATE_DIR" 2>/dev/null
-  { [ ! -s "$SESSION_DIRS" ] || LC_ALL=C awk -F"$TAB" -v s="$1" '$1 != s' "$SESSION_DIRS"
-    [ -z "${2:-}" ] || printf '%s\t%s\n' "$1" "$2"; } >"$tmp" && mv -f "$tmp" "$SESSION_DIRS" || rm -f "$tmp"
+  local rc=0
+  tsv_put "$SESSION_DIRS" "$1" "${2:-}" || rc=1
   signal_ev
+  return $rc
 }
 
-# ctrl-d: the dialog that sets it, normally the body of a popup and inline when there is none. <row dir> is what `.` means.
+# ctrl-d: the dialog that sets it, normally the body of a popup and inline when there is none. <row dir> is what `.` means, and what a relative answer is relative to; nothing after this needs the cwd it was started in.
 ask_dir() {  # <session> <the row's directory>
   local sess=${1:-} row=${2:-} text now abs
+  if [ -d "$row" ]; then cd "$row" || true; fi
   now=$(session_dir "$sess")
   printf '\033[1mdefault directory of %s\033[0m\n' "$sess"
   if [ -n "$now" ]; then printf 'now: %s\n' "$(tilde_of "$now")"
   else printf 'now: none, a new agent starts where the row under the cursor works\n'; fi
-  printf '\033[90ma path · . is this row · - forgets it · empty line cancels · tab completes\033[0m\n> '
-  # -e so that Tab completes a path; on a standard input that is no terminal it changes nothing.
-  IFS= read -e -r -t 300 text || return 0
+  printf '\033[90ma path from this row · . is this row · - forgets it · empty line cancels · tab completes\033[0m\n'
+  # -e so that Tab completes a path; on a standard input that is no terminal it changes nothing, and so does -p, which prints nothing there. No -r: readline quotes a space as `my\ dir`, and plain read takes that backslash off again.
+  # shellcheck disable=SC2162
+  IFS= read -e -t 300 -p '> ' text || return 0
   case $text in
     '') return 0 ;;
-    -) session_dir_set "$sess"; notice "tagents: $sess has no default directory now"; return 0 ;;
-    .) text=$row ;;
+    -) session_dir_set "$sess" || { notice "tagents: could not save the directory of $sess"; return 1; }
+       notice "tagents: $sess has no default directory now"; return 0 ;;
+    .) [ -n "$row" ] || { notice "tagents: this row has no directory"; return 1; }; text=$row ;;
   esac
   abs=$(abs_dir "$(cfg_expand_dir "$text")") || { notice "tagents: $text is not a directory"; return 1; }
-  session_dir_set "$sess" "$abs"
+  session_dir_set "$sess" "$abs" || { notice "tagents: could not save the directory of $sess"; return 1; }
   notice "tagents: new agents of $sess start in $(tilde_of "$abs")"
 }
 
-# The key's entry: the session of the row under the cursor, or a notice when the row has none (a headless row, a closed one).
+# The key's entry: the session of the row under the cursor, or a notice when the row has none (a headless row, a row whose pane is gone).
 set_session_dir() {  # <pane> <the row's directory>
   local sess
   sess=$(row_session "${1:-}")
   [ -n "$sess" ] || { notice "tagents: this row belongs to no tmux session"; return 0; }
-  prompt 8 --ask-dir "$sess" "${2:-}" && return 0
+  prompt 11 --ask-dir "$sess" "${2:-}" && return 0
   ask_dir "$sess" "${2:-}"
 }
 

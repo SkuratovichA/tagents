@@ -110,7 +110,7 @@ All three also work on a session header with no row under it, which is how you o
 
 `ctrl-d` saves a default directory for the session under the cursor. The dialog takes a path (`~` and relative names work, and `Tab` completes), `.` for the directory of the row under the cursor, `-` to forget it, and an empty line to cancel. With one saved, `ctrl-n` and `ctrl-p` on any row of that session start the agent exactly there, with no lift to the repository root. With none saved, or when the saved one is gone from disk, they work as described above. The header shows the saved path in the normal colour, where the path tmux reports is dim.
 
-The directory is kept by session name, so a renamed session loses it. `tagents --new`, `--window`, `ctrl-a`, the MCP tools and a resumed chat do not read it, and neither do windows you open by hand with `prefix c`. A headless row and a closed row belong to no session, so `ctrl-d` on them only says so. A saved path that was removed from disk still shows in the header while `ctrl-n` falls back.
+The directory is kept by session name, so a renamed session loses it. `tagents --new`, `--window`, `ctrl-a`, the MCP tools and a resumed chat do not read it, and neither do windows you open by hand with `prefix c`. A headless row and a row whose pane is gone belong to no session, so `ctrl-d` on them only says so; a closed row whose pane still exists is filed under its session and takes it. A saved path that was removed from disk still shows in the header while `ctrl-n` falls back.
 
 ### Closing things
 

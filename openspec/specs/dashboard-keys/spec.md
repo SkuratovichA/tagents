@@ -10,7 +10,7 @@ The dashboard SHALL bind by default: `enter` and double-click open; `ctrl-s` bes
 
 #### Scenario: Table of keys
 - **WHEN** the user runs `tagents --keys`
-- **THEN** it prints one `key<TAB>verb<TAB>description` line per bound verb in the order open, beside, new, pick, shell, goto, send, rename, dir, undock, kill, tree, order, preview, refresh, columns, usage, closed, keys, quit, followed by an `esc` line
+- **THEN** it prints one `key<TAB>verb<TAB>description` line per bound verb in the order open, beside, new, pick, shell, goto, send, rename, undock, kill, tree, preview, refresh, columns, usage, closed, keys, quit, order, dir, followed by an `esc` line
 - **AND** in the verb column a verb the list runs itself carries a leading colon (`:tree`, `:order`, `:preview`, `:refresh`, `:columns`, `:usage`, `:closed`, `:quit`), the `keys` line's verb is `:none`, and the `esc` line's verb is `:quit`
 
 #### Scenario: Header of a session acts on the session

@@ -11,7 +11,7 @@
 
 ## Impact
 
-- Specs: `chat-launch` gets one ADDED requirement and one MODIFIED, `dashboard-keys` two MODIFIED, `dashboard-list` one MODIFIED.
+- Specs: `chat-launch` gets one ADDED requirement and one MODIFIED, `dashboard-keys` two MODIFIED, `dashboard-list` one MODIFIED, `dashboard-popup` one MODIFIED.
 - Code: `lib/tagents/launch.sh`, `actions.sh`, `state.sh`, `list.sh`, `refresh.sh`, `keys.sh`, `dash.sh`, `tagents`.
 - Config: `keys.dir`, in the schema and in `config.example.toml`.
 - State: `session-dirs.tsv` in the state directory.

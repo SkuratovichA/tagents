@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: A session can have a default directory
-`ctrl-d` SHALL ask for a directory and save it under the name of the tmux session of the row under the cursor; `.` takes the directory of the row, `-` forgets it, and an empty line cancels. A name that is no directory SHALL be refused and change nothing. A row with no tmux session, a headless or a closed row, SHALL only say so. Only `ctrl-n` and `ctrl-p` read it.
+`ctrl-d` SHALL ask for a directory and save it under the name of the tmux session of the row under the cursor; `.` takes the directory of the row, `-` forgets it, and an empty line cancels. A name that is no directory SHALL be refused and change nothing. A row whose pane is gone, and a headless row, belong to no tmux session and SHALL only say so. Only `ctrl-n` and `ctrl-p` read it.
 
 #### Scenario: Saved and used
 - **WHEN** `~/app/packages/client` is saved for session `work` and the user presses `ctrl-n` on a row of `work` whose directory is elsewhere
@@ -28,7 +28,7 @@
 - **THEN** none of them starts in the saved directory
 
 #### Scenario: A row without a session
-- **WHEN** the user presses `ctrl-d` on a headless row or a closed row
+- **WHEN** the user presses `ctrl-d` on a headless row or on a row whose pane is gone
 - **THEN** `tagents: this row belongs to no tmux session` is shown and nothing is saved
 
 ## MODIFIED Requirements

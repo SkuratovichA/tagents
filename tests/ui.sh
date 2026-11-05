@@ -484,7 +484,7 @@ has "the two that cannot be run from here are still listed" "ctrl-q" "$TABLE"
 has "...both of them"                                       "esc"    "$TABLE"
 # The verb column exactly as the spec has it (dashboard-keys, "Table of keys"): the spec's order, a leading colon on what the list runs itself, :none on the ? line and :quit on the esc line.
 ok "the verbs come in the spec's order, then the esc line" \
-   "open beside new pick shell goto send rename dir undock kill :tree :order :preview :refresh :columns :usage :closed :none :quit :quit" \
+   "open beside new pick shell goto send rename undock kill :tree :preview :refresh :columns :usage :closed :none :quit :order dir :quit" \
    "$(run --keys | cut -f2 | paste -s -d ' ' -)"
 
 has "the ? line describes the cockpit's keys" "cockpit" "$(run --keys | LC_ALL=C awk -F'\t' '$2 == ":none"')"
@@ -756,6 +756,18 @@ has "...and --keys says the order verb is unbound" "# keys.order: ctrl-o is take
 KT=$(env TMUX="$TMUXV" TA_CONFIG="$KCFG" bash "$TA" --keys)
 has "...and --keys says the same"     "ctrl-o${TAB}:closed" "$KT"
 hasnt "...and lists no borrow"        "borrow" "$KT"
+
+# A NEW DEFAULT NEVER TAKES A KEY SOMEBODY CONFIGURED: dir and order come after quit in the defaults, so a config that gives their key to quit keeps it there.
+for QK in ctrl-d ctrl-o; do
+  printf '[keys]\nquit = "%s"\n' "$QK" >"$ROOT/keys-quit.toml"
+  KQ=$(env TMUX="$TMUXV" TA_CONFIG="$ROOT/keys-quit.toml" bash "$TA" --keys); KQRC=$?
+  ok "quit = $QK: --keys succeeded and printed" 1 "$([ "$KQRC" = 0 ] && [ -n "$KQ" ] && echo 1 || echo 0)"
+  has "quit = $QK: $QK is the quit key" "$QK${TAB}:quit" "$KQ"
+  case $QK in ctrl-d) V=dir ;; *) V=order ;; esac
+  has "quit = $QK: --keys says $V is unbound" "# keys.$V: $QK is taken already — $V is unbound" "$KQ"
+  hasnt "quit = $QK: $V has no line" "${TAB}$V${TAB}" "$KQ"
+  hasnt "quit = $QK: $V has no line either as :$V" "${TAB}:$V${TAB}" "$KQ"
+done
 
 # A KEY FZF DOES NOT KNOW WOULD STOP IT STARTING, so it never reaches fzf: the
 # default is kept and the reason is said out loud.
