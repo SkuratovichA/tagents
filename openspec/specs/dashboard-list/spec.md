@@ -277,6 +277,10 @@ The context column SHALL show the session's live context size as a token count (
 - **WHEN** a session's context is 150000, 250000 and 700000 tokens
 - **THEN** the figures are grey, yellow and bold red respectively
 
+#### Scenario: Right after a compaction
+- **WHEN** a session of 209k is compacted and no request has been answered since
+- **THEN** the column shows what the compaction left, which is a lower bound because it leaves out the system prompt and the tool schemas, and the next answer replaces it with the size of its own request
+
 ### Requirement: The cost column marks what is an estimate
 The cost column SHALL show the session's total in dollars: two decimals below $10, one decimal from $10, none from $100, `k` from $1000, `<$.01` for a nonzero amount below one cent, and a blank for nothing. The figure Claude Code reports through the status line SHALL be shown bare; a figure priced from the transcript SHALL be prefixed with `~`, and suffixed with `?` when part of it ran on an unpriced model.
 

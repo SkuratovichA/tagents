@@ -188,6 +188,14 @@ The session-to-account map SHALL be rebuilt whenever the account list or the rul
 - **WHEN** a session holds a $5.00 and a $25.00 request on opus-5, and a calibration factor is stored for its account
 - **THEN** its row has 14 fields and its dollars field is `30.000000`
 
+#### Scenario: A compaction sets the context at once
+- **WHEN** a session's newest request had a context of 200000 tokens and a `compact_boundary` record with `postTokens` 20000 follows it on the main chain
+- **THEN** the context size field is `20000`, the request count, the model, the cost units and the dollars are those of the session without the record, and the next request replaces the figure with its own context
+
+#### Scenario: A record that is no compaction of the chat
+- **WHEN** a `compact_boundary` record has no `compactMetadata`, a `postTokens` of 0 or not a number, or belongs to a subagent
+- **THEN** the main chain's context size is the one of its newest request
+
 ### Requirement: Cost units and the breakdown reports
 `tusage --by <dimensions>` SHALL print the window's spend grouped by the comma-separated dimensions, then a total. The dimensions are `account`, `project`, `session`, `day`, `week`, `month`, `hour`, `agent`, `model` and `workflow`, and a report that names `workflow` covers only workflow agents. With no index it SHALL print `no data yet — run 'tusage --rebuild'` on standard error and exit 1.
 
