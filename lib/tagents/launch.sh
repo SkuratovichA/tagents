@@ -176,6 +176,58 @@ launch_session() {  # <root> -> session name
   printf '%s\n' "$sess"
 }
 
+# THE DIRECTORY NEW AGENTS OF A SESSION START IN, saved per session NAME: names come back after a restart and ids do not. One line per session, the name, a tab, the directory. Only `ctrl-n` and `ctrl-p` read it; `--new`, `--window`, `ctrl-a` and the MCP tools take the directory they are given.
+SESSION_DIRS="$STATE_DIR/session-dirs.tsv"
+
+# The directory saved for <session>, printed when there is one and it is still on disk. A directory that is gone is as good as none saved, and the line stays for when it comes back.
+session_dir() {  # <session>
+  local d
+  [ -n "${1:-}" ] && [ -s "$SESSION_DIRS" ] || return 0
+  d=$(S=$1 LC_ALL=C awk -F"$TAB" '$1 == ENVIRON["S"] { d = $2 } END { print d }' "$SESSION_DIRS" 2>/dev/null)
+  [ -n "$d" ] && [ -d "$d" ] && printf '%s' "$d"
+  return 0
+}
+
+# Saves <dir> for <session>, replacing what was there; with no <dir> the session is forgotten. Non-zero when the file could not be written. The list is rung either way, because the file is drawn in the group header and is not a tmux event.
+session_dir_set() {  # <session> [dir]
+  local rc=0
+  tsv_put "$SESSION_DIRS" "$1" "${2:-}" || rc=1
+  signal_ev
+  return $rc
+}
+
+# ctrl-d: the dialog that sets it, normally the body of a popup and inline when there is none. <row dir> is what `.` means, and what a relative answer is relative to; nothing after this needs the cwd it was started in.
+ask_dir() {  # <session> <the row's directory>
+  local sess=${1:-} row=${2:-} text now abs
+  if [ -d "$row" ]; then cd "$row" || true; fi
+  now=$(session_dir "$sess")
+  printf '\033[1mdefault directory of %s\033[0m\n' "$sess"
+  if [ -n "$now" ]; then printf 'now: %s\n' "$(tilde_of "$now")"
+  else printf 'now: none, a new agent starts where the row under the cursor works\n'; fi
+  printf '\033[90ma path from this row · . is this row · - forgets it · empty line cancels · tab completes\033[0m\n'
+  # -e so that Tab completes a path; on a standard input that is no terminal it changes nothing, and so does -p, which prints nothing there. No -r: readline quotes a space as `my\ dir`, and plain read takes that backslash off again.
+  # shellcheck disable=SC2162
+  IFS= read -e -t 300 -p '> ' text || return 0
+  case $text in
+    '') return 0 ;;
+    -) session_dir_set "$sess" || { notice "tagents: could not save the directory of $sess"; return 1; }
+       notice "tagents: $sess has no default directory now"; return 0 ;;
+    .) [ -n "$row" ] || { notice "tagents: this row has no directory"; return 1; }; text=$row ;;
+  esac
+  abs=$(abs_dir "$(cfg_expand_dir "$text")") || { notice "tagents: $text is not a directory"; return 1; }
+  session_dir_set "$sess" "$abs" || { notice "tagents: could not save the directory of $sess"; return 1; }
+  notice "tagents: new agents of $sess start in $(tilde_of "$abs")"
+}
+
+# The key's entry: the session of the row under the cursor, or a notice when the row has none (a headless row, a row whose pane is gone).
+set_session_dir() {  # <pane> <the row's directory>
+  local sess
+  sess=$(row_session "${1:-}")
+  [ -n "$sess" ] || { notice "tagents: this row belongs to no tmux session"; return 0; }
+  prompt 11 --ask-dir "$sess" "${2:-}" && return 0
+  ask_dir "$sess" "${2:-}"
+}
+
 # The one place a window is created, for a chat and a shell alike; prints the new pane id, its status is tmux's. -d so the window is not selected as a side effect of being created; -c always, because a window made from a command client starts in the caller's directory without it; no command means tmux's default shell; `--` ends tmux's own options, so a command that starts with a dash is the command and not a flag.
 # The last resort session does not exist yet (no tmux server running, or none with a session): it is created with the window as its first. Any other name that is gone is a session killed under the caller, and it stays gone.
 new_pane_window() {  # <session> <dir> [cmd]
@@ -193,9 +245,9 @@ launch_refusal() {  # <message>
   notice "$1"
 }
 
-# ctrl-n: start a fresh Claude for the project under the cursor, as a new window of <session> (the group the cursor is in). With no session given (`tagents --new`, or the cursor on the group `no window`) the session that owns the project, else the client's, else the current. The directory is normalised to the repo root, so a session started from ~/repo/packages/client makes the new agent a sibling in ~/repo rather than burying it in a subdirectory the tree would file separately.
-new_agent() {  # <dir> [profile] [session]
-  local dir=${1:-} prof=${2:-} sess=${3:-} root abs
+# ctrl-n: start a fresh Claude for the project under the cursor, as a new window of <session> (the group the cursor is in). With no session given (`tagents --new`, or the cursor on the group `no window`) the session that owns the project, else the client's, else the current. The directory is normalised to the repo root, so a session started from ~/repo/packages/client makes the new agent a sibling in ~/repo rather than burying it in a subdirectory the tree would file separately. The one exception is a caller that passes `exact`: ctrl-n and ctrl-p do when the session has a saved default directory, and that directory is where the agent starts, with no lift.
+new_agent() {  # <dir> [profile] [session] [exact]
+  local dir=${1:-} prof=${2:-} sess=${3:-} exact=${4:-} root abs
   [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
   abs=$(abs_dir "$dir") || { launch_refusal "tagents: $dir is not a directory"; return 1; }
   dir=$abs
@@ -206,6 +258,7 @@ new_agent() {  # <dir> [profile] [session]
     return 1
   fi
   root=$(repo_root "$dir") || root=$dir
+  [ -z "$exact" ] || root=$dir
   [ -n "$sess" ] || sess=$(launch_session "$root")
   # The session name is worked out first because a rule may match on it: an agent for a project that lives in the "work" tmux session is a work agent whatever its directory looks like.
   [ -n "$prof" ] || prof=$(profile_for "$root" "$sess") || prof=""
@@ -223,8 +276,8 @@ new_agent() {  # <dir> [profile] [session]
 }
 
 # ctrl-p: the same thing, but always asking. A rule is a default, not a verdict — one agent in a personal repo that has to run on the work account is an ordinary request, and there is no other way to make it.
-new_agent_pick() {  # <dir> [session]
-  local dir=${1:-} sess=${2:-} root
+new_agent_pick() {  # <dir> [session] [exact]
+  local dir=${1:-} sess=${2:-} exact=${3:-} root
   [ -n "$dir" ] && [ "$dir" != "(unknown)" ] || dir=$(pwd 2>/dev/null)
   [ -d "$dir" ] || { notice "tagents: $dir is not a directory"; return 1; }
   # Asked before anything is created: with nothing to choose between, a window out of nowhere for a dialog that cannot open would be for no reason.
@@ -233,6 +286,7 @@ new_agent_pick() {  # <dir> [session]
     return 0
   fi
   root=$(repo_root "$dir") || root=$dir
+  [ -z "$exact" ] || root=$dir
   [ -n "$sess" ] || sess=$(launch_session "$root")
   prompt "$(ask_height)" --ask-profile pick "$root" "$sess" && return 0
   ask_profile pick "$root" "$sess"

@@ -38,7 +38,7 @@ In popup mode `esc` SHALL close the list. When fzf exits for any reason in popup
 - **THEN** the popup closes and the dashboard process ends
 
 ### Requirement: A completed action closes the popup
-In popup mode these keys SHALL close the list once their action has been issued: `enter`, double-click, `ctrl-s`, `ctrl-g`, `ctrl-e`, `ctrl-n`, `ctrl-p`, `ctrl-a`, `ctrl-y` and `?`. The keys that change the list or a record instead — `ctrl-r`, `F2`, `ctrl-u`, `ctrl-x`, `ctrl-t`, `ctrl-o`, `ctrl-l`, `ctrl-w`, `$`, `ctrl-v` — SHALL leave the popup open.
+In popup mode these keys SHALL close the list once their action has been issued: `enter`, double-click, `ctrl-s`, `ctrl-g`, `ctrl-e`, `ctrl-n`, `ctrl-p`, `ctrl-a`, `ctrl-y` and `?`. The keys that change the list or a record instead — `ctrl-r`, `F2`, `ctrl-d`, `ctrl-u`, `ctrl-x`, `ctrl-t`, `ctrl-o`, `ctrl-l`, `ctrl-w`, `$`, `ctrl-v` — SHALL leave the popup open.
 
 #### Scenario: Go to an agent
 - **WHEN** the user presses `ctrl-g` in a popup list

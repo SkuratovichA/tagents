@@ -118,6 +118,8 @@ list() {
     # A group key is s:<session> or w: (the trailing group of rows without a window). A session group shows the session path, the other none.
     function gname(g) { return (g == "w:") ? "no window" : substr(g, 3) }
     function gpathof(g) { return (g == "w:") ? "" : spath[substr(g, 3)] }
+    # A path the person saved for the session is drawn in the normal colour, the one tmux reports stays dim.
+    function gpathcol(g) { return (g != "w:" && ssaved[substr(g, 3)]) ? "" : DIM }
     # The header stands in for the first printed row. By the last message: open chats, then dimmed windows, then closed rows, a chat last typed into first. In window order: open chats and dimmed windows together by window number and pane index, then closed rows by their age.
     function standin(g, grk, cls, age, key, st, sid, dr) {
       if (!(g in ghave) || grk < grank[g] ||
@@ -383,7 +385,7 @@ list() {
     }
     $1=="P" { alive[$2]=1; loc[$2]=$3; title[$2]=$4; path[$2]=$5; pwin[$2]=$6; psb[$2]=$7 + 0; ppi[$2]=$8 + 0; next }
     $1=="W" { nwin++; wlist[nwin]=$2; wsess[$2]=$3; wix[$2]=$4 + 0; wshown[$2]=$5 + 0; wnm[$2]=$6; next }
-    $1=="G" { spath[$2]=$3; next }
+    $1=="G" { spath[$2]=($4 != "" ? $4 : $3); ssaved[$2]=($4 != ""); next }
     $1=="L" { live[$2]=1; next }
     $1=="R" { root[$2]=$3; next }
     $1=="N" { lab[$2]=$3; next }
@@ -749,7 +751,7 @@ list() {
           # their own section rather than being mixed in.
           # The full path is the first thing to drop: the basename already says
           # which project it is, and the header must never be the widest line.
-          gpath = (cols >= 92 && gpathof(g) != "") ? sprintf("  %s%s%s", DIM, tilde(gpathof(g)), R) : ""
+          gpath = (cols >= 92 && gpathof(g) != "") ? sprintf("  %s%s%s", gpathcol(g), tilde(gpathof(g)), R) : ""
           # The five-hour total is money like any other, so it goes when the cost
           # column goes: hiding the dollars on the rows and leaving them on the
           # header would be hiding nothing at all. Built before the sprintf

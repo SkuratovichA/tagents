@@ -375,6 +375,10 @@ printf '[keys]\norder = "alt-o"\n' >"$TMP/order.toml"
 ok "keys.order is a key of the config: --check has nothing to say" "" "$(ck "$TMP/order.toml")"
 contains "...and it moves the order key" "alt-o${TAB}:order${TAB}rows in window order, or by your last message" \
          "$(TA_CONFIG="$TMP/order.toml" bash "$TA" --keys 2>&1)"
+printf '[keys]\ndir = "alt-d"\n' >"$TMP/dir.toml"
+ok "keys.dir is a key of the config: --check has nothing to say" "" "$(ck "$TMP/dir.toml")"
+contains "...and it moves the dir key" "alt-d${TAB}dir${TAB}the directory new agents of this session start in" \
+         "$(TA_CONFIG="$TMP/dir.toml" bash "$TA" --keys 2>&1)"
 out=$(TA_CONFIG=/nonexistent/config.toml bash "$TA" --check 2>/dev/null); rc=$?
 ok "no config at all is not a problem: nothing, exit 0" "0" "$rc$out"
 

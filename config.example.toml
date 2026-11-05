@@ -107,6 +107,7 @@ closed = "ctrl-y"
 # goto = "ctrl-g"     # go to the agent where it lives
 # send = "ctrl-e"     # send a line straight into it
 # rename = "ctrl-r"   # name this agent (f2 stays an alias either way)
+# dir = "ctrl-d"      # the directory new agents of this session start in
 # undock = "ctrl-u"   # break a joined chat out into a window of its own
 # kill = "ctrl-x"     # kill this agent, asking first
 # tree = "ctrl-t"     # tree or flat

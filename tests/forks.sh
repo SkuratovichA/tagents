@@ -113,6 +113,14 @@ starts() {  # <prog> <verb…>
 settle() { PATH="$SHIM:$PATH" "$TA" "$@" >/dev/null 2>&1; sleep 1; }
 
 # ---------------------------------------------------------------------------
+t "--list: awk starts do not grow with the saved session directories"
+fresh; settle --list; a=$(starts awk --list)
+fresh; for i in 1 2 3; do printf 'sess%s\t/tmp\n' "$i" >>"$STATE/session-dirs.tsv"; done; settle --list; b=$(starts awk --list)
+fresh; for i in $(seq 1 40); do printf 'sess%s\t/tmp\n' "$i" >>"$STATE/session-dirs.tsv"; done; settle --list; c=$(starts awk --list)
+ok "3 saved directories start as many awk as none" "$a" "$b"
+ok "40 saved directories start as many awk as none" "$a" "$c"
+ok "...and the runs did start some awk (a silent shim cannot pass)" 1 "$([ "${a:-0}" -ge 1 ] && echo 1 || echo 0)"
+
 t "--list: awk starts do not grow with the records in model/"
 fresh; add_models 2;  settle --list; a=$(starts awk --list)
 fresh; add_models 40; settle --list; b=$(starts awk --list)

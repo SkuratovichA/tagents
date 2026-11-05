@@ -106,6 +106,12 @@ A window with no chat in it is listed as a dimmed row, and `enter` on it selects
 
 All three also work on a session header with no row under it, which is how you open the first window there. Which account an agent starts on is decided by your [configuration](./accounts).
 
+#### A directory for a session
+
+`ctrl-d` saves a default directory for the session under the cursor. The dialog takes a path (`~` and relative names work, and `Tab` completes), `.` for the directory of the row under the cursor, `-` to forget it, and an empty line to cancel. With one saved, `ctrl-n` and `ctrl-p` on any row of that session start the agent exactly there, with no lift to the repository root. With none saved, or when the saved one is gone from disk, they work as described above. The header shows the saved path in the normal colour, where the path tmux reports is dim.
+
+The directory is kept by session name, so a renamed session loses it. `tagents --new`, `--window`, `ctrl-a`, the MCP tools and a resumed chat do not read it, and neither do windows you open by hand with `prefix c`. A headless row and a row whose pane is gone belong to no session, so `ctrl-d` on them only says so; a closed row whose pane still exists is filed under its session and takes it. A saved path that was removed from disk still shows in the header while `ctrl-n` falls back.
+
 ### Closing things
 
 Closing a chat's pane or window is plain tmux: there are no seats and no placeholders, so `prefix+x` and `prefix+&` need no binding of tagents' own.

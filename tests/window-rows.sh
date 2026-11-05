@@ -1108,5 +1108,271 @@ ok "A leftover viewport shell: a busy pane with that title is left running" yes 
 ok "A leftover viewport shell: a live viewport is left" yes "$(paneok "$LVV")"
 tm kill-session -t =tatest-lv
 
+
+# ---------------------------------------------------------------------------------------------------------------------------------
+t "SD a session's default directory: where ctrl-n and ctrl-p start the agent"
+TAB=$(printf '\t')
+SDF="$WRSTATE/session-dirs.tsv"; rm -f "$SDF"
+SDROOT="$WRROOT/sd"; mkdir -p "$SDROOT/repo/.git" "$SDROOT/repo/packages/app" "$SDROOT/plain dir" "$SDROOT/other" "$SDROOT/home/proj"
+SDROOT=$(cd "$SDROOT" && pwd -P)
+sess_panes() { tm list-panes -s -t "=$1:" -F '#{pane_id}' 2>/dev/null | sort; }
+# The pane_current_path of the one pane a session gained since <before>.
+fresh_path() {  # <session> <sess_panes taken before>
+  local p; p=$(comm -13 <(printf '%s\n' "$2") <(sess_panes "$1") | head -1)
+  [ -n "$p" ] && tm display -p -t "$p" '#{pane_current_path}'
+}
+sd_new() {  # <session> <pane> <state> <sid> <row dir> -> the path the new agent started in
+  local b; b=$(sess_panes "$1")
+  TA_NEW_CMD="exec '$BIN/claude' 600" act new "$2" "$3" "$4" "$5"; settle 0.7
+  fresh_path "$1" "$b"
+}
+sdset() { modrun session_dir_set "$@"; }
+sdget() { modrun session_dir "$1"; }
+newsess tatest-sd1; mkchat tatest-sd1 sd "$SDROOT/repo/packages/app"; PSD=$LASTPANE; SSD=$LASTSID
+to tatest-work
+
+ok "SD1 nothing saved: ctrl-n starts in the repository root of the row's directory, as it always did" \
+   "$SDROOT/repo" "$(sd_new tatest-sd1 "$PSD" working "$SSD" "$SDROOT/repo/packages/app")"
+ok "SD1 nothing saved: no file was written" "no" "$([ -e "$SDF" ] && echo yes || echo no)"
+
+sdset tatest-sd1 "$SDROOT/repo/packages/app"
+has "SD2 the store is one line: the session, a tab, the directory" "tatest-sd1${TAB}$SDROOT/repo/packages/app" "$(cat "$SDF" 2>/dev/null)"
+ok "SD2 a saved subdirectory of a repository: ctrl-n starts exactly there, with no lift, whatever the row's directory is" \
+   "$SDROOT/repo/packages/app" "$(sd_new tatest-sd1 "$PSD" working "$SSD" "$SDROOT/other")"
+
+# ctrl-p: the account dialog gets the exact directory. prompt() is out of the way and ask_profile only records what it was handed.
+SDCFG="$WRROOT/sd.toml"; printf '[claude.profiles.personal]\nconfig_dir = "~/.claude-personal"\n' >"$SDCFG"
+SDLOG="$WRROOT/sd-profile.log"; : >"$SDLOG"
+sdpick() {  # <pane> <state> <sid> <row dir> -> what ask_profile was called with
+  : >"$SDLOG"
+  TA_CONFIG="$SDCFG" WR_PRE='prompt() { return 1; }; ask_profile() { printf "%s\n" "$*" >>"'"$SDLOG"'"; }' modrun act pick "$@" >/dev/null 2>&1
+  cat "$SDLOG"
+}
+ok "SD3 ctrl-p with a saved directory: the account dialog is handed that directory, not its repository root" \
+   "pick $SDROOT/repo/packages/app tatest-sd1" "$(sdpick "$PSD" working "$SSD" "$SDROOT/other")"
+sdset tatest-sd1
+ok "SD3 ...and with nothing saved, the root of the row's directory, as it was" \
+   "pick $SDROOT/repo tatest-sd1" "$(sdpick "$PSD" working "$SSD" "$SDROOT/repo/packages/app")"
+
+mkdir "$SDROOT/gone"; sdset tatest-sd1 "$SDROOT/gone"; rmdir "$SDROOT/gone"
+ok "SD4 a saved directory that was removed from disk: session_dir says nothing" "" "$(sdget tatest-sd1)"
+ok "SD4 ...and ctrl-n falls back to the row's directory, lifted as if nothing were saved" \
+   "$SDROOT/repo" "$(sd_new tatest-sd1 "$PSD" working "$SSD" "$SDROOT/repo/packages/app")"
+has "SD4 ...the record stays, for the directory coming back" "tatest-sd1${TAB}$SDROOT/gone" "$(cat "$SDF")"
+sdset tatest-sd1
+
+# --new and --window are the caller's word, never the session's. The session owns the directory, so it is the session they go to.
+mkchat tatest-sd1 own "$SDROOT/other"; POWN=$LASTPANE; to tatest-work
+sdset tatest-sd1 "$SDROOT/repo/packages/app"
+nline=$(env TMUX="$WRSOCK,0,0" TA_NEW_CMD="exec '$BIN/claude' 600" bash "$TA" --new --detach "$SDROOT/other" 2>/dev/null)
+NP=${nline%%$TAB*}
+ok "SD5 --new --detach DIR from a session with a saved directory goes to DIR" "$SDROOT/other" "$(settle 0.5; tm display -p -t "$NP" '#{pane_current_path}')"
+ok "SD5 ...in the session that owns DIR" "tatest-sd1" "$(tm display -p -t "$NP" '#{session_name}')"
+wline=$(env TMUX="$WRSOCK,0,0" bash "$TA" --window --detach "$SDROOT/other" 'exec sleep 600' 2>/dev/null)
+WP=${wline%%$TAB*}
+ok "SD5 --window --detach DIR likewise" "$SDROOT/other" "$(settle 0.5; tm display -p -t "$WP" '#{pane_current_path}')"
+ok "SD5 ...and the line it printed has a pane in it" "yes" "$([ -n "$WP" ] && echo yes || echo no)"
+sdset tatest-sd1
+
+# Two sessions: each its own. A name with a space and regex characters does not cross, a name that is a prefix of another's takes nothing.
+S2='sd two [x*] (a|b)'
+tm new-session -d -s "$S2" -x 200 -y 50 -c "$REPO" "exec sleep 600"; mkchat "$S2" two "$SDROOT/repo"; P2=$LASTPANE; SID2=$LASTSID
+newsess tatest-sd1x; mkchat tatest-sd1x px "$SDROOT/repo"; PX=$LASTPANE; SIDX=$LASTSID
+to tatest-work
+sdset tatest-sd1 "$SDROOT/repo/packages/app"
+sdset "$S2" "$SDROOT/plain dir"
+ok "SD6 session one reads its own directory" "$SDROOT/repo/packages/app" "$(sdget tatest-sd1)"
+ok "SD6 a name with a space and regex characters reads its own, a directory with a space whole" "$SDROOT/plain dir" "$(sdget "$S2")"
+ok "SD6 a name that is only the front of a saved name reads nothing" "" "$(sdget tatest-sd)"
+ok "SD6 a name that only contains the regex characters reads nothing" "" "$(sdget 'sd two .*')"
+S3='sd back\slash'
+sdset "$S3" "$SDROOT/other"
+ok "SD6 a name with a backslash reads its own" "$SDROOT/other" "$(sdget "$S3")"
+ok "SD6 ...and the name without the backslash reads nothing" "" "$(sdget 'sd backslash')"
+printf 'dup-sess\t%s\ndup-sess\t%s\n' "$SDROOT/repo" "$SDROOT/other" >>"$SDF"
+ok "SD6 a name saved twice reads the last line, as the header does" "$SDROOT/other" "$(sdget dup-sess)"
+sdset dup-sess; sdset "$S3"
+ok "SD6 a longer name than a saved one reads nothing" "" "$(sdget tatest-sd1x)"
+ok "SD6 ctrl-n in the session with the odd name starts in its directory" "$SDROOT/plain dir" "$(sd_new "$S2" "$P2" working "$SID2" "$SDROOT/other")"
+ok "SD6 ctrl-n in the session whose name is the longer one does not take its neighbour's directory" "$SDROOT/repo" "$(sd_new tatest-sd1x "$PX" working "$SIDX" "$SDROOT/repo/packages/app")"
+sdset tatest-sd1; sdset "$S2"
+
+# the store
+sdset s7 "$SDROOT/other"; sdset s7 "$SDROOT/plain dir"; sdset s8 "$SDROOT/repo"
+EV0=$(tm show -gv @tagents_evgen 2>/dev/null || echo 0); sdset s7 "$SDROOT/plain dir"; EV1=$(tm show -gv @tagents_evgen 2>/dev/null || echo 0)
+ok "SD7 saving a directory rings the list (the event counter goes up by one)" 1 "$((EV1 - EV0))"
+ok "SD7 two sets for one name leave one line for it" 1 "$(LC_ALL=C awk -F"$TAB" '$1 == "s7"' "$SDF" | wc -l | tr -d ' ')"
+ok "SD7 ...the second one" "$SDROOT/plain dir" "$(sdget s7)"
+ok "SD7 a directory that holds a space survives the file whole" "s7${TAB}$SDROOT/plain dir" "$(LC_ALL=C awk -F"$TAB" '$1 == "s7"' "$SDF" | tr -d '\n')"
+sdset s7
+ok "SD7 forgetting one name leaves no line for it" 0 "$(LC_ALL=C awk -F"$TAB" '$1 == "s7"' "$SDF" | wc -l | tr -d ' ')"
+ok "SD7 ...and the other one stays" "$SDROOT/repo" "$(sdget s8)"
+sdset s8
+ok "SD7 the last one forgotten leaves an empty file or none" 0 "$(cat "$SDF" 2>/dev/null | wc -l | tr -d ' ')"
+
+# restart: a second server, killed and started again with the same session name
+tmb kill-server >/dev/null 2>&1; sleep 0.3
+tmb -f /dev/null new-session -d -s persist -x 100 -y 30 -c "$SDROOT/repo" "exec sleep 600"
+WRSOCKB=$(tmb display -p '#{socket_path}')
+sdset persist "$SDROOT/repo/packages/app"
+tmb kill-server >/dev/null 2>&1; sleep 0.3
+tmb -f /dev/null new-session -d -s persist -x 100 -y 30 -c "$SDROOT/repo" "exec sleep 600"
+WRSOCKB=$(tmb display -p '#{socket_path}')
+PB=$(tmb list-panes -a -F '#{pane_id}' | head -1)
+envb() { env TMUX="$WRSOCKB,0,0" TA_NEW_CMD="exec '$BIN/claude' 600" bash "$TA" "$@"; }
+bb=$(tmb list-panes -s -t =persist: -F '#{pane_id}' | sort)
+envb --act new "$PB" working sid-persist "$SDROOT/other"; settle 0.7
+NB=$(comm -13 <(printf '%s\n' "$bb") <(tmb list-panes -s -t =persist: -F '#{pane_id}' | sort) | head -1)
+ok "SD8 after the tmux server was killed and a session of the same name started, ctrl-n still goes to the saved place" \
+   "$SDROOT/repo/packages/app" "$(tmb display -p -t "$NB" '#{pane_current_path}')"
+tmb kill-server >/dev/null 2>&1; sdset persist
+
+# the dialog
+sdask() {  # <text> [row dir] -> SDOUT holds the notices shown, SDRC the exit status. The session is tatest-sd1.
+  tm display-message sdmark
+  printf '%s\n' "$1" | (cd "${SDCWD:-$PWD}" && WR_PRE='HOME="'"$SDROOT"'/home"' modrun ask_dir tatest-sd1 "${2:-}") >/dev/null 2>&1; SDRC=$?
+  SDOUT=$(msgs_since sdmark)
+}
+sdset other-session "$SDROOT/repo"
+sdask "$SDROOT/other"
+ok "SD9 an absolute path is stored" "$SDROOT/other" "$(sdget tatest-sd1)"
+sdask '~/proj'
+ok "SD9 a ~/ path is expanded against home" "$SDROOT/home/proj" "$(sdget tatest-sd1)"
+sdask '.' "$SDROOT/repo/packages/app"
+ok "SD9 . is the directory of the row" "$SDROOT/repo/packages/app" "$(sdget tatest-sd1)"
+sdset tatest-sd1; SDCWD=/ sdask 'packages/app' "$SDROOT/repo"
+ok "SD9 a relative answer lands under the row's directory, whatever the caller's cwd" "$SDROOT/repo/packages/app" "$(sdget tatest-sd1)"
+SDCWD=$SDROOT/other sdask 'proj' "$SDROOT/home"
+ok "SD9 ...also from another cwd that has no such name" "$SDROOT/home/proj" "$(sdget tatest-sd1)"
+sdask "$SDROOT/plain\\ dir"
+ok "SD9 a backslash typed before a space is taken off by the plain read" "$SDROOT/plain dir" "$(sdget tatest-sd1)"
+before=$(cat "$SDF")
+sdask '.' ''; out=$SDOUT
+has "SD9 . with a row that has no directory says so" "tagents: this row has no directory" "$out"
+ok "SD9 ...and fails" 1 "$SDRC"
+ok "SD9 ...and the file is as it was" "$before" "$(cat "$SDF")"
+chmod a-w "$WRSTATE"
+sdask "$SDROOT/other"; out=$SDOUT; rc1=$SDRC
+sdask '-'; out2=$SDOUT; rc2=$SDRC
+chmod u+w "$WRSTATE"
+has "SD9 a state directory that cannot be written: the answer says it was not saved" "tagents: could not save the directory of tatest-sd1" "$out"
+ok "SD9 ...and fails" 1 "$rc1"
+has "SD9 ...and so does - " "tagents: could not save the directory of tatest-sd1" "$out2"
+ok "SD9 ...and - fails" 1 "$rc2"
+ok "SD9 ...and the file is as it was" "$before" "$(cat "$SDF")"
+ok "SD9 ...and no temp file is left" 0 "$(ls "$WRSTATE" | /usr/bin/grep -c '^session-dirs.tsv\.')"
+sdask ''; out=$SDOUT
+ok "SD9 an empty line cancels: the file is as it was" "$before" "$(cat "$SDF")"
+hasnt "SD9 ...with no notice" "tagents:" "$out"
+sdask "$SDROOT/nope"; out=$SDOUT
+has "SD9 a name that is not a directory says so" "is not a directory" "$out"
+ok "SD9 ...and fails" 1 "$SDRC"
+ok "SD9 ...and the file is as it was" "$before" "$(cat "$SDF")"
+ln -s "$SDROOT/other" "$SDROOT/link"
+sdask "$SDROOT/link"
+ok "SD9 a symlink is stored by its physical path" "$SDROOT/other" "$(sdget tatest-sd1)"
+sdask '-'; out=$SDOUT
+ok "SD9 - forgets it" 0 "$(LC_ALL=C awk -F"$TAB" '$1 == "tatest-sd1"' "$SDF" | wc -l | tr -d ' ')"
+has "SD9 ...and says so" "tatest-sd1 has no default directory now" "$out"
+ok "SD9 ...and another session's line is untouched" "$SDROOT/repo" "$(sdget other-session)"
+sdset other-session
+
+# Tab completes a path on a real terminal, and the dialog still ends on its own. A window of the scratch server is the pty.
+printf '#!/bin/bash\nSELF=$1; L=${SELF%%/*}/lib/tagents\n. "$L/core.sh"; for f in "$L"/*.sh; do case $f in */core.sh) ;; *) . "$f" ;; esac; done\nask_dir "$2" "$3"; echo "ended rc=$?"\n' >"$WRROOT/askdir.sh"
+sdset tatest-sd1
+sdtab() {  # <typed before Tab> -> SDCAP holds the screen after Tab and after Enter; SDW is the window
+  SDW=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$SDROOT" "exec bash --noprofile --norc")
+  tm resize-window -t "$SDW" -x 300 2>/dev/null
+  tm send-keys -t "$SDW" "clear; env TMUX='$WRSOCK,0,0' bash '$WRROOT/askdir.sh' '$TA' tatest-sd1 '' " Enter
+  local i=0; while [ "$i" -lt 40 ]; do case "$(tm capture-pane -p -t "$SDW")" in *"> "*) break ;; esac; sleep 0.1; i=$((i+1)); done
+  sleep 0.4; tm send-keys -t "$SDW" "$1" Tab; sleep 0.5
+  SDCAP=$(tm capture-pane -p -J -t "$SDW")
+  tm send-keys -t "$SDW" Enter; sleep 0.8
+  SDEND=$(tm capture-pane -p -t "$SDW")
+  tm kill-window -t "$SDW" 2>/dev/null
+}
+sdtab "$SDROOT/othe"
+has "SD9 Tab completes a path in the dialog" "$SDROOT/other/" "$SDCAP"
+has "SD9 ...and the dialog ends normally on the completed path" "ended rc=0" "$SDEND"
+ok "SD9 ...with that path stored" "$SDROOT/other" "$(sdget tatest-sd1)"
+sdset tatest-sd1
+sdtab "$SDROOT/plai"
+has "SD9 Tab completes a directory with a space in its name" "plain" "$SDCAP"
+has "SD9 ...and the dialog ends normally" "ended rc=0" "$SDEND"
+ok "SD9 ...and it is saved with the space and no backslash" "$SDROOT/plain dir" "$(sdget tatest-sd1)"
+sdset tatest-sd1
+
+# the same dialog through the key's verb, inline (TA_MODE=popup keeps prompt() from opening a popup)
+printf '%s\n' "$SDROOT/other" | TA_MODE=popup act dir "$PSD" working "$SSD" "$SDROOT/repo"
+ok "SD9 act dir on a live row stores the answer for the row's session" "$SDROOT/other" "$(sdget tatest-sd1)"
+printf '%s\n' '.' | TA_MODE=popup act dir "$PSD" working "$SSD" "$SDROOT/repo"
+ok "SD9 ...and . there is the row's directory (the fourth argument of the key)" "$SDROOT/repo" "$(sdget tatest-sd1)"
+sdset tatest-sd1
+
+# a header carries the row printed beneath it: ctrl-n on the header acts for that row's session
+hdr_fields() {  # <group> -> key state sid dir of the header line, tab-separated
+  lst | awk -F'\t' -v g="$1" 'index($2, "\342\226\276") && index($2, "\342\226\276 " g) { print $1 "\t" $3 "\t" $4 "\t" $5; exit }'
+}
+HF=$(hdr_fields tatest-sd1)
+HK=$(printf '%s' "$HF" | cut -f1); HS=$(printf '%s' "$HF" | cut -f2); HI=$(printf '%s' "$HF" | cut -f3); HD=$(printf '%s' "$HF" | cut -f4)
+ok "SD10 the header of the session hands the key of a row of that session" "tatest-sd1" "$(tm display -p -t "$HK" '#{session_name}' 2>/dev/null)"
+sdset tatest-sd1 "$SDROOT/plain dir"
+ok "SD10 ctrl-n on the header with a saved directory starts there" "$SDROOT/plain dir" "$(sd_new tatest-sd1 "$HK" "$HS" "$HI" "$HD")"
+sdset tatest-sd1
+case $HD in "$SDROOT/repo"|"$SDROOT/repo/"*) SDEXP=$SDROOT/repo ;; *) SDEXP=$HD ;; esac
+ok "SD10 ctrl-n on the header with none saved starts at the root of the stand-in row's directory, as before" "$SDEXP" "$(sd_new tatest-sd1 "$HK" "$HS" "$HI" "$HD")"
+ok "SD10 ...and the stand-in row's directory was a real one" yes "$([ -d "$HD" ] && echo yes || echo no)"
+
+# act dir on a row that belongs to no session
+rm -f "$SDF"
+tm display-message sdmark
+printf '%s\n' "$SDROOT/other" | TA_MODE=popup act dir '%s-headless1' working sid-hl "$SDROOT/repo"
+has "SD11 act dir on a headless row: the notice" "tagents: this row belongs to no tmux session" "$(msgs_since sdmark)"
+ok "SD11 ...and no file was written" no "$([ -e "$SDF" ] && echo yes || echo no)"
+tm display-message sdmark
+printf '%s\n' "$SDROOT/other" | TA_MODE=popup act dir '%996' dead sid-closed-dir "$SDROOT/repo"
+has "SD11 act dir on a closed row: the notice" "tagents: this row belongs to no tmux session" "$(msgs_since sdmark)"
+ok "SD11 ...and no file was written" no "$([ -e "$SDF" ] && echo yes || echo no)"
+
+# a closed row whose pane still exists is filed under its session: ctrl-d works on it
+printf '%s\n' "$SDROOT/other" | TA_MODE=popup act dir "$PSD" dead sid-closed-live "$SDROOT/repo"
+ok "SD11 act dir on a closed row whose pane is alive stores the answer for its session" "$SDROOT/other" "$(sdget tatest-sd1)"
+sdset tatest-sd1
+
+# the one writer of the two-column files
+TPF="$WRROOT/tsvput.tsv"; rm -f "$TPF"
+modrun tsv_put "$TPF" 'a\b' one; modrun tsv_put "$TPF" 'a\nb' two; modrun tsv_put "$TPF" 'x' three 'a\b'
+ok "TP a key with a backslash is matched as it is, and the other key's line goes" "a\\nb${TAB}two
+x${TAB}three" "$(cat "$TPF")"
+modrun tsv_put "$TPF" x
+ok "TP no value forgets the key" "a\\nb${TAB}two" "$(cat "$TPF")"
+chmod a-w "$WRROOT"; modrun tsv_put "$WRROOT/tsvput2.tsv" k v; TPRC=$?; chmod u+w "$WRROOT"
+ok "TP a directory that cannot be written: non-zero" 1 "$TPRC"
+ok "TP ...and no temp file is left" 0 "$(ls "$WRROOT" | /usr/bin/grep -c '^tsvput2')"
+rm -f "$TPF"
+
+# the header shows it
+sdset tatest-sd1 "$SDROOT/other"
+HL140=$(TA_COLS=140 run --list | awk -F'\t' 'index($2, "\342\226\276 tatest-sd1\033") { print $2; exit }')
+HL80=$(TA_COLS=80 run --list | awk -F'\t' 'index($2, "\342\226\276 tatest-sd1\033") { print $2; exit }')
+sdset tatest-sd1
+HLTM=$(TA_COLS=140 run --list | awk -F'\t' 'index($2, "\342\226\276 tatest-sd1\033") { print $2; exit }')
+has "SD12 at 140 columns the header shows the saved path" "$SDROOT/other" "$(printf '%s' "$HL140" | strip)"
+hasnt "SD12 ...instead of tmux's own" "$REPO" "$(printf '%s' "$HL140" | strip)"
+has "SD12 with none saved the header shows tmux's path" "$REPO" "$(printf '%s' "$HLTM" | strip)"
+has "SD12 tmux's path is drawn dim" "$(printf '\033[90m')$REPO" "$HLTM"
+hasnt "SD12 the saved path is not drawn dim" "$(printf '\033[90m')$SDROOT/other" "$HL140"
+hasnt "SD12 at 80 columns no path appears" "$SDROOT/other" "$(printf '%s' "$HL80" | strip)"
+ok "SD12 ...and the header is there" yes "$([ -n "$HL80" ] && echo yes || echo no)"
+
+# ctrl-a does not read it
+sdset tatest-sd1 "$SDROOT/other"
+sb=$(sess_panes tatest-sd1)
+act shell "$PSD" working "$SSD" "$SDROOT/repo"; settle 0.7
+ok "SD13 ctrl-a in a session with a saved directory still starts where the row works" "$SDROOT/repo" "$(fresh_path tatest-sd1 "$sb")"
+sdset tatest-sd1
+to tatest-work; tm kill-session -t =tatest-sd1; tm kill-session -t "=$S2"; tm kill-session -t =tatest-sd1x
+rm -f "$WRSTATE"/"${PSD#%}".tsv "$WRSTATE"/"${P2#%}".tsv "$WRSTATE"/"${PX#%}".tsv "$WRSTATE"/"${POWN#%}".tsv
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

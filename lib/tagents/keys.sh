@@ -12,7 +12,9 @@
 # fzf keeps the LAST --bind for a key and drops the earlier one without a word,
 # so two verbs configured onto one key is a verb that silently stopped existing.
 # The order here is the order of keys_table, and it is also the order of
-# precedence — an earlier verb keeps a key a later one asks for.
+# precedence — an earlier verb keeps a key a later one asks for. A new verb goes
+# LAST: placed in the middle, its default would take the key from anyone whose
+# config gave that key to a verb after it.
 #
 # closed is ctrl-y and not the ctrl-b it was born with: ctrl-b is the tmux
 # prefix on a default install, so it never reached the list at all.
@@ -32,9 +34,10 @@ refresh ctrl-l K_REFRESH
 columns ctrl-w K_COLUMNS
 usage \$ K_USAGE
 closed ctrl-y K_CLOSED
-order ctrl-o K_ORDER
 keys ? K_KEYS
-quit ctrl-q K_QUIT"
+quit ctrl-q K_QUIT
+order ctrl-o K_ORDER
+dir ctrl-d K_DIR"
 KEYS_RESOLVED=''
 KEY_NOTES=''
 KEY_TAKEN=' '
@@ -168,7 +171,6 @@ keys_table() {  # key<TAB>verb<TAB>what it does
 "$K_UNDOCK${TAB}undock${TAB}break a joined chat out into a window of its own" \
 "$K_KILL${TAB}kill${TAB}kill this agent, asking first; a closed row is forgotten; on a dimmed row it closes the window, asking first" \
 "$K_TREE${TAB}:tree${TAB}tree or flat" \
-"$K_ORDER${TAB}:order${TAB}rows in window order, or by your last message" \
 "$K_PREVIEW${TAB}:preview${TAB}the preview in a window of its own — in the prefix+a popup, fzf's toggle beside the list" \
 "$K_REFRESH${TAB}:refresh${TAB}refresh now" \
 "$K_COLUMNS${TAB}:columns${TAB}show or hide columns" \
@@ -176,6 +178,8 @@ keys_table() {  # key<TAB>verb<TAB>what it does
 "$K_CLOSED${TAB}:closed${TAB}closed sessions — pick one to resume" \
 "$K_KEYS${TAB}:none${TAB}this window — in the cockpit the tmux prefix keys go to the viewport and ctrl-q leaves the cockpit" \
 "$K_QUIT${TAB}:quit${TAB}quit the dashboard — from the list itself, not from here" \
+"$K_ORDER${TAB}:order${TAB}rows in window order, or by your last message" \
+"$K_DIR${TAB}dir${TAB}the directory new agents of this session start in" \
 "esc${TAB}:quit${TAB}in the popup, close it — from the list itself, not from here" |
     LC_ALL=C awk -F"$TAB" 'length($1) > 0'
 }

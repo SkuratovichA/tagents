@@ -36,7 +36,7 @@ What the tagents dashboard list shows: one row per Claude Code session, grouped 
 - **THEN** that window has no line
 
 ### Requirement: A group header shows the session and what is going on in it
-The header of a group SHALL read `▾ <group name>`, then the group's path with `~` for the home directory when the list is 92 columns wide or more, then one badge per state present, then the five-hour cost total. The path of a session group is the session's working directory as tmux reports it, and the group `no window` shows no path. It SHALL be bold when at least one row in the group is not closed, a dimmed window row counting as not closed, and dim when every row is closed.
+The header of a group SHALL read `▾ <group name>`, then the group's path with `~` for the home directory when the list is 92 columns wide or more, then one badge per state present, then the five-hour cost total. The path of a session group is its saved default directory, else the session's working directory as tmux reports it; the group `no window` shows no path. The header SHALL be bold when a row in the group is not closed (a dimmed window row counts as open), and dim when every row is closed.
 
 #### Scenario: Badges
 - **WHEN** a group has one blocked, one idle and one working agent
@@ -53,6 +53,10 @@ The header of a group SHALL read `▾ <group name>`, then the group's path with 
 #### Scenario: Session name
 - **WHEN** the group is session `release notes`
 - **THEN** its header reads `▾ release notes`
+
+#### Scenario: A saved directory
+- **WHEN** a default directory is saved for the session and the list is 92 columns wide or more
+- **THEN** the header shows that path in the normal colour, and without one it shows the path tmux reports, dim
 
 ### Requirement: A group header stands in for the row directly under it
 A group header line SHALL carry the key, state, session id and directory of the row printed directly beneath it, so a key that acts on an agent (send, rename, kill, pick) pressed on a header acts on that agent. `enter` and `ctrl-g` on the header of a session group SHALL instead show the session (the `window-rows` capability).
