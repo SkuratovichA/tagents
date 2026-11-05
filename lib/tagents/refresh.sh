@@ -51,7 +51,7 @@ snap_has_editor() {
 #
 # The paths are what collect() and list() open: the state files (history.tsv is
 # not one), the origin cache, the labels, the hidden-columns file and the .flat
-# marker; the sub/, model/ and prompt/ files and the directories that hold them,
+# and .order-window markers; the sub/, model/ and prompt/ files and the directories that hold them,
 # since an added or removed file changes only its directory; and the config with
 # its per-host overlay. $STATE_DIR itself is NOT among them: the status bar
 # renames .counts.out into it every few seconds, so its time moves whether or not

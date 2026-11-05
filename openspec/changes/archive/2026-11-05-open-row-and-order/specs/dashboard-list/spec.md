@@ -46,3 +46,18 @@ Unless window order is on, rows inside a group SHALL be ordered by when the user
 #### Scenario: Window rows follow the chats
 - **WHEN** a group has a window that runs no chat and two chats
 - **THEN** the dimmed row is listed after both chats and before any closed row
+
+### Requirement: The row a group header stands for
+The row a header stands in for SHALL be chosen among the rows of the group that are not child sessions: open chats before dimmed window rows before closed rows, and among chats the one typed into most recently. A child is chosen only when the group has nothing else. In window order the header stands for the first printed row: the lowest window among the open chats and the dimmed window rows.
+
+#### Scenario: A chat before a window row
+- **WHEN** a group holds a dimmed window row and a live chat
+- **THEN** the header carries the key of the live chat
+
+#### Scenario: Only a child
+- **WHEN** the only rows of a group are a child session and nothing else
+- **THEN** the header carries the child's key
+
+#### Scenario: Window order
+- **WHEN** rows are kept in window order and the chat typed into last is in a higher window than another chat of the group
+- **THEN** the header carries the key, state, session id and directory of the chat in the lowest window, or of a dimmed window row numbered below every chat, with state none and no session id

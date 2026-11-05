@@ -1,6 +1,6 @@
 # lib/tagents/list.sh — the rows — and the tally the status bar shows
 #
-# list() stays one unit: the responsive column fit, the UTF-8-safe width helpers macOS awk forces it to carry, the row format, the two-level tree a child session hangs in, the group headers and the dimmed window rows. grouped/toggle_group (the .flat marker list() reads) and counts() (the same renderer with TA_MARKS=0, plus the burn rate and the usage line) sit with it because nothing else calls them and both are meaningless without it.
+# list() stays one unit: the responsive column fit, the UTF-8-safe width helpers macOS awk forces it to carry, the row format, the two-level tree a child session hangs in, the group headers and the dimmed window rows. grouped/toggle_group (the .flat marker list() reads), byw_on/toggle_order (the .order-window marker it reads) and counts() (the same renderer with TA_MARKS=0, plus the burn rate and the usage line) sit with it because nothing else calls them and both are meaningless without it.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -10,18 +10,18 @@ grouped() {  # tree by session unless explicitly turned off
   return 0
 }
 
-toggle_group() {
-  if [ -e "$STATE_DIR/.flat" ]; then rm -f "$STATE_DIR/.flat"; else : >"$STATE_DIR/.flat"; fi
-  signal_ev   # the grouping is drawn, and the marker is not a tmux event
+# A marker file flips: present means on. What it says is drawn and the file is not a tmux event, so the list is rung.
+toggle_marker() {  # <file>
+  if [ -e "$1" ]; then rm -f "$1"; else : >"$1"; fi
+  signal_ev
 }
+
+toggle_group() { toggle_marker "$STATE_DIR/.flat"; }
 
 # Rows in the order of their tmux window numbers instead of by the last message.
 byw_on() { [ -e "$STATE_DIR/.order-window" ]; }
 
-toggle_order() {
-  if byw_on; then rm -f "$STATE_DIR/.order-window"; else : >"$STATE_DIR/.order-window"; fi
-  signal_ev   # the order is drawn, and the marker is not a tmux event
-}
+toggle_order() { toggle_marker "$STATE_DIR/.order-window"; }
 
 list() {
   # Nothing is excluded. There used to be a "skip my own pane" rule that fell
@@ -118,7 +118,7 @@ list() {
     # A group key is s:<session> or w: (the trailing group of rows without a window). A session group shows the session path, the other none.
     function gname(g) { return (g == "w:") ? "no window" : substr(g, 3) }
     function gpathof(g) { return (g == "w:") ? "" : spath[substr(g, 3)] }
-    # The header stands in for the first printed row: open chats, then dimmed windows, then closed rows, a chat last typed into first.
+    # The header stands in for the first printed row. By the last message: open chats, then dimmed windows, then closed rows, a chat last typed into first. In window order: open chats and dimmed windows together by window number and pane index, then closed rows by their age.
     function standin(g, grk, cls, age, key, st, sid, dr) {
       if (!(g in ghave) || grk < grank[g] ||
           (grk == grank[g] && (cls < gtdead[g] || (cls == gtdead[g] && age < gtage[g])))) {
@@ -126,9 +126,9 @@ list() {
         gfirst[g] = key; gstate[g] = st; gsid[g] = sid; gdir[g] = dr
       }
     }
-    # A NUMBER PER GROUP, BY BYTES. The sort below puts a group by its name, and under a UTF-8 locale it weighs every Cyrillic letter alike, so two groups whose names differ only in such letters would be one key and their rows would interleave: this number, in field 15 right after the name, keeps the rows of each group together without changing the order of any two names the locale tells apart.
     # The place of a pane in window order: window number, then pane index. A row with no window sorts after every window.
     function ordkey(p) { return (p in pwin && pwin[p] in wix) ? wix[pwin[p]] * 1000 + ppi[p] : 999999000 }
+    # A NUMBER PER GROUP, BY BYTES. The sort below puts a group by its name, and under a UTF-8 locale it weighs every Cyrillic letter alike, so two groups whose names differ only in such letters would be one key and their rows would interleave: this number, in field 15 right after the name, keeps the rows of each group together without changing the order of any two names the locale tells apart.
     function gnum(g) { if (!(g in gno)) gno[g] = ++ngno; return gno[g] }
     # Claude prefixes the terminal title with a spinner glyph; the rest is the
     # session title it maintains itself, which makes a good default name. The
@@ -670,7 +670,7 @@ list() {
         # gtotal counts children too, so the first-seen test gets a flag of its
         # own rather than borrowing that one.
         grk = nest ? 1 : 0
-        standin(grpkey, grk, (rdead[n] ? 2 : 0), age, p, s, rsid[n], dir)
+        standin(grpkey, grk, (rdead[n] ? 2 : 0), ((byw && !rdead[n]) ? ordkey(p) : age), p, s, rsid[n], dir)
         gtotal[grpkey]++
         gcount[grpkey SUBSEP s]++
       }
@@ -732,7 +732,7 @@ list() {
           dmg = "s:" dms
           if (!(dmg in gtotal)) gmin[dmg] = 4.5; else if (4.5 < gmin[dmg]) gmin[dmg] = 4.5   # counts as not closed (prio dead is 5)
           gtotal[dmg]++
-          standin(dmg, 0, 1, wix[dmw], dmw, "none", "", (dmf in path) ? path[dmf] : "")
+          standin(dmg, 0, (byw ? 0 : 1), (byw ? wix[dmw] * 1000 : wix[dmw]), dmw, "none", "", (dmf in path) ? path[dmf] : "")
           nd++; dg[nd] = dmg; dk[nd] = dmw; dix[nd] = wix[dmw]
           dbody[nd] = DIM uclip(wnm[dmw], cols - 10) R
           ddir[nd] = (dmf in path) ? path[dmf] : ""
@@ -798,14 +798,13 @@ list() {
           j = ridx[runder[i]]
           if (j != "") { fam = runder[i]; kid = 1; sd = rdead[j]; sa = (byw && !sd) ? ordkey(runder[i]) : rage[j] }
         }
-        # Without groups nothing keeps the sessions apart, so the session leads the key.
-        if (byw && !grp && !sd) sa += gnum(rg[i]) * 1000000000
+        # Without groups nothing keeps the sessions apart in window order, so the group goes in fields 2 and 15 as in tree mode and the sort keeps each session together, in the order of the names.
         printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n",
                (grp ? (rg[i] == "w:" ? 2 : (gmin[rg[i]] < prio["dead"] ? 0 : 1)) : rdead[i]),
-               (grp ? rg[i] : ""),
+               ((grp || (byw && !sd)) ? rg[i] : ""),
                (sd ? 2 : 0), sa, rp[i], rbody[i], rs[i], rsid[i], rr[i],
                fam, kid, rdead[i], rage[i],
-               (grp ? gnum(rg[i]) : 0),
+               ((grp || (byw && !sd)) ? gnum(rg[i]) : 0),
                ((rp[i] in pwin && wshown[pwin[rp[i]]]) ? 1 : 0)
       }
     }' |

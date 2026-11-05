@@ -66,7 +66,7 @@ A group header line SHALL carry the key, state, session id and directory of the 
 - **THEN** the header carries the window id of `server`, the state `none` and no session id
 
 ### Requirement: The row a group header stands for
-The row a header stands in for SHALL be chosen among the rows of the group that are not child sessions: open chats before dimmed window rows before closed rows, and among chats the one typed into most recently. A child is chosen only when the group has nothing else.
+The row a header stands in for SHALL be chosen among the rows of the group that are not child sessions: open chats before dimmed window rows before closed rows, and among chats the one typed into most recently. A child is chosen only when the group has nothing else. In window order the header stands for the first printed row: the lowest window among the open chats and the dimmed window rows.
 
 #### Scenario: A chat before a window row
 - **WHEN** a group holds a dimmed window row and a live chat
@@ -75,6 +75,10 @@ The row a header stands in for SHALL be chosen among the rows of the group that 
 #### Scenario: Only a child
 - **WHEN** the only rows of a group are a child session and nothing else
 - **THEN** the header carries the child's key
+
+#### Scenario: Window order
+- **WHEN** rows are kept in window order and the chat typed into last is in a higher window than another chat of the group
+- **THEN** the header carries the key, state, session id and directory of the chat in the lowest window, or of a dimmed window row numbered below every chat, with state none and no session id
 
 ### Requirement: Each state has its own glyph, label and colour
 The list SHALL draw states as follows: `⚠` BLOCKED in bold yellow, `✓` IDLE in cyan, `●` working in green, `○` new in grey, `·` with the word `?` in grey for a running Claude with no hook event yet, and `✗` closed in grey. The state word SHALL appear only when the list is wide enough for the label column; the glyph and colour always appear. Which state a session is in, and when, is decided by the `agent-state` capability.

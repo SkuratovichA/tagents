@@ -8,5 +8,5 @@
 
 - [x] 2.1 Write failing checks: the order of three windows with prompts at opposite ages, a dimmed window between two chats, a chat that exits, closed rows, two chats of a window, a child, rows with no window, flat mode, the marker removed, `--toggle-order`, the `?` line and `keys.order` in the config and the schema. Proof: `tests/ui.sh`, `tests/config.sh`, `pnpm --filter @tagents/core test`.
 - [x] 2.2 Add `toggle_order`, the sort keys of the window order, and the marker in the refresher's list of files. Proof: `tests/ui.sh`, `tests/refresh.sh`.
-- [x] 2.3 Add the `order` verb and `ctrl-o` to the key tables, the bindings, `--toggle-order`, the schema, the example config, the guide and the site. Proof: `tests/ui.sh`, `tests/config.sh`, `pnpm --filter @tagents/core test`, `pnpm docs:build`.
+- [x] 2.3 Add the `order` verb and `ctrl-o` to the key tables, the bindings, `--toggle-order`, the schema, the example config, and the guide; `site/src/demos/data/keys.ts` is a recorded frame of the dashboard and stays as it was. Proof: `tests/ui.sh`, `tests/config.sh`, `pnpm --filter @tagents/core test`, `pnpm docs:build`.
 - [x] 2.4 Add the `CHANGELOG.md` line. Proof: `pnpm spec:check`.
