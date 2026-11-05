@@ -8,6 +8,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 
 ### Added
 
+- The list marks the row of the window on screen with a `▸` and draws it bold, and `ctrl-o` (the `order` key) puts the rows of a group in the order of their tmux window numbers, or back to your last message ([#69](https://github.com/SkuratovichA/tagents/pull/69)).
 - `tagents --version` (and `-V`) prints the workspace version and the short commit of the copy ([#54](https://github.com/SkuratovichA/tagents/pull/54)).
 - `tagents-core knowledge mcp`, `knowledge serve` and `knowledge join` are the knowledge MCP server, its shared daemon and the relay a session runs in front of it, in the Rust binary: the same six tools, index and usage store as the node server, with a session that costs a relay and not a node process; a differential suite compares every answer with the node server's, and the other `knowledge` verbs stay with the node CLI ([#60](https://github.com/SkuratovichA/tagents/pull/60)).
 - A session's knowledge server is the Rust binary when it is installed: `knowledge-mcp` probes `tagents-knowledge join` and becomes it, so the session joins one shared daemon with no node and no `nc` (this needs the plugin updated to 0.16.1, which carries the new launcher), and the node server stays as the way out when there is no binary or it fails ([#62](https://github.com/SkuratovichA/tagents/pull/62)).

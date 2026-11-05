@@ -32,6 +32,7 @@ refresh ctrl-l K_REFRESH
 columns ctrl-w K_COLUMNS
 usage \$ K_USAGE
 closed ctrl-y K_CLOSED
+order ctrl-o K_ORDER
 keys ? K_KEYS
 quit ctrl-q K_QUIT"
 KEYS_RESOLVED=''
@@ -167,6 +168,7 @@ keys_table() {  # key<TAB>verb<TAB>what it does
 "$K_UNDOCK${TAB}undock${TAB}break a joined chat out into a window of its own" \
 "$K_KILL${TAB}kill${TAB}kill this agent, asking first; a closed row is forgotten; on a dimmed row it closes the window, asking first" \
 "$K_TREE${TAB}:tree${TAB}tree or flat" \
+"$K_ORDER${TAB}:order${TAB}rows in window order, or by your last message" \
 "$K_PREVIEW${TAB}:preview${TAB}the preview in a window of its own — in the prefix+a popup, fzf's toggle beside the list" \
 "$K_REFRESH${TAB}:refresh${TAB}refresh now" \
 "$K_COLUMNS${TAB}:columns${TAB}show or hide columns" \
@@ -234,6 +236,7 @@ on the row the cursor was on · esc closes")
   case $verb in
     :quit|:none) return 0 ;;
     :tree)       toggle_group; post_fzf "$port" "reload-sync($SELF --list)" ;;
+    :order)      toggle_order; post_fzf "$port" "reload-sync($SELF --list)" ;;
     # In the popup list the text preview IS the live view and fzf own toggle is
     # the whole of it. In a sidebar the preview is a popup, and this body is
     # already one — see preview_popup for why that has to go the long way round.

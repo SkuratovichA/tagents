@@ -484,7 +484,7 @@ has "the two that cannot be run from here are still listed" "ctrl-q" "$TABLE"
 has "...both of them"                                       "esc"    "$TABLE"
 # The verb column exactly as the spec has it (dashboard-keys, "Table of keys"): the spec's order, a leading colon on what the list runs itself, :none on the ? line and :quit on the esc line.
 ok "the verbs come in the spec's order, then the esc line" \
-   "open beside new pick shell goto send rename undock kill :tree :preview :refresh :columns :usage :closed :none :quit :quit" \
+   "open beside new pick shell goto send rename undock kill :tree :order :preview :refresh :columns :usage :closed :none :quit :quit" \
    "$(run --keys | cut -f2 | paste -s -d ' ' -)"
 
 has "the ? line describes the cockpit's keys" "cockpit" "$(run --keys | LC_ALL=C awk -F'\t' '$2 == ":none"')"
@@ -750,6 +750,9 @@ KDUMP=$(dumpargs "$ROOT/fzf-keys" "TA_CONFIG='$KCFG'")
 has "a configured key is the one fzf binds" \
     "--bind=ctrl-o:execute-silent($SELF --act closed {1})" "$KDUMP"
 hasnt "a borrow key left in the config binds nothing" "act borrow" "$KDUMP"
+ok "closed on ctrl-o leaves ctrl-o bound once" 1 "$(printf '%s\n' "$KDUMP" | /usr/bin/grep -c '^--bind=ctrl-o:' | tr -d ' ')"
+has "...and --keys says the order verb is unbound" "# keys.order: ctrl-o is taken already — order is unbound" \
+    "$(env TMUX="$TMUXV" TA_CONFIG="$KCFG" bash "$TA" --keys)"
 KT=$(env TMUX="$TMUXV" TA_CONFIG="$KCFG" bash "$TA" --keys)
 has "...and --keys says the same"     "ctrl-o${TAB}:closed" "$KT"
 hasnt "...and lists no borrow"        "borrow" "$KT"
@@ -963,6 +966,241 @@ said "$A" 600
 ok "the header carries the pane id of the row below it" "$A2" \
    "$(rows_at 140 | awk -F'\t' 'index($2, "\342\226\276") > 0 { split($2, a, " "); if (a[2] == "tatest-work") { print $1; exit } }')"
 
+
+# ---------------------------------------------------------------------------
+t "10a. the window on screen is marked"
+# ---------------------------------------------------------------------------
+# The red pointer is fzf's cursor and goes wherever you browse, so it cannot say which session is open. The mark is a ▸ in the slot of the dash the tree draws, on the row of every chat (and every dimmed window) whose window the viewport shows: the global option @tagents_viewport_window, which the cockpit keeps and unsets when it ends.
+MK=$(printf '\342\226\270')
+HDR=$(printf '\342\226\276')
+marked() { rows_at 140 "$@" | awk -F'\t' -v m="$MK" -v h="$HDR" 'index($2, h) == 0 && index($2, m) > 0 { print $1 }' | sort | tr '\n' ' '; }
+rawlist() { env TMUX="$TMUXV" TA_COLS=140 "$@" bash "$TA" --list; }
+W_A=$(where "$A"); W_A2=$(where "$A2")
+tm set -gu @tagents_viewport_window
+UNMARKED=$(rows_at 140); ru=$?
+# list() ends with the status of collect, which is 1 when the last probe finds nothing, with or without a mark; so "produced" means rows came out and both runs ended alike, not that the status is 0.
+ok "the unmarked list has rows" 1 "$([ "$(printf '%s\n' "$UNMARKED" | wc -l | tr -d ' ')" -gt 5 ] && echo 1 || echo 0)"
+ok "with the option unset no row is marked" "" "$(marked)"
+tm set -g @tagents_viewport_window "$W_A2"
+ok "the chat row of the window on screen is marked, and no other row" "$A2 " "$(marked)"
+ok "a header is never marked" 0 \
+   "$(rows_at 140 | awk -F'\t' -v m="$MK" -v h="$HDR" 'index($2, h) > 0 && index($2, m) > 0' | wc -l | tr -d ' ')"
+ok "flat mode marks the same row" "$A2 " "$(marked TA_FLAT=1)"
+
+# THE MARK TAKES THE SLOT OF THE DASH, so nothing moves: put the dash back and the list is byte for byte what it was.
+MARKED=$(rows_at 140); rm=$?
+ok "the marked list has rows and ended with the same status" "$ru" "$rm"
+ok "the marked list differs from the unmarked one" 1 "$([ "$MARKED" != "$UNMARKED" ] && echo 1 || echo 0)"
+# (the age column is a clock, so two runs a second apart differ in it: it is masked on both sides)
+ok "a marked row is as wide as it was, and nothing else changed" \
+   "$(printf '%s\n' "$UNMARKED" | sed 's/[0-9]*:[0-9][0-9]/T/g')" "$(printf '%s\n' "$MARKED" | sed "s/$MK/─/" | sed 's/[0-9]*:[0-9][0-9]/T/g')"
+# ...and in flat mode, where the dash is a space and the mark takes the place of that.
+tm set -gu @tagents_viewport_window
+UNMARKED_F=$(rows_at 140 TA_FLAT=1)
+tm set -g @tagents_viewport_window "$W_A2"
+MARKED_F=$(rows_at 140 TA_FLAT=1)
+ok "flat mode: the unmarked list has rows" 1 "$([ "$(printf '%s\n' "$UNMARKED_F" | wc -l | tr -d ' ')" -gt 5 ] && echo 1 || echo 0)"
+ok "flat mode: a marked row is as wide as it was, and nothing else changed" \
+   "$(printf '%s\n' "$UNMARKED_F" | sed 's/[0-9]*:[0-9][0-9]/T/g')" "$(printf '%s\n' "$MARKED_F" | sed "s/$MK/ /" | sed 's/[0-9]*:[0-9][0-9]/T/g')"
+tm set -gu @tagents_viewport_window
+TL0=$(env TMUX="$TMUXV" TA_COLS=140 TA_TALLY=1 bash "$TA" --list); r0=$?
+tm set -g @tagents_viewport_window "$W_A2"
+TL1=$(env TMUX="$TMUXV" TA_COLS=140 TA_TALLY=1 bash "$TA" --list); r1=$?
+ok "both tally runs ended with the same status" "$r0" "$r1"
+ok "the tally is not empty" 1 "$([ -n "$TL0" ] && echo 1 || echo 0)"
+ok "the tally is the same with the mark and without it" "$TL0" "$TL1"
+
+# WITH COLOUR LEFT IN the marked row starts bold, and bold comes back after every reset inside it, so the whole row is bold and the others are not.
+RAWL=$(rawlist); rr=$?
+ok "the raw list has rows" 1 "$([ "$(printf '%s\n' "$RAWL" | wc -l | tr -d ' ')" -gt 5 ] && echo 1 || echo 0)"
+RAW=$(printf '%s\n' "$RAWL" | awk -F'\t' -v p="$A2" -v h="$HDR" '$1 == p && index($2, h) == 0 { print $2; exit }')
+has "the marked row has a coloured mark and then bold" "$MK$(printf '\033[0m') $(printf '\033[1m')" "$RAW"
+ok "bold follows every reset inside the body of the marked row (the mark's own reset is followed by the space)" "ok" \
+   "$(printf '%s' "$RAW" | awk -v m="$MK" '{ b = substr($0, index($0, m)); r = gsub(/\033\[0m/, "&", b); k = gsub(/\033\[0m\033\[1m/, "&", b); print (r == k + 2) ? "ok" : r " resets, " k " followed by bold" }')"
+hasnt "a row that is not marked has no bold in it" "$(printf '\033[1m')" \
+      "$(printf '%s\n' "$RAWL" | awk -F'\t' -v p="$A" -v h="$HDR" '$1 == p && index($2, h) == 0 { print $2; exit }')"
+
+# ANOTHER CHAT IN THE SAME WINDOW is on screen too, and so is a dimmed window.
+C2=$(tm split-window -d -t "$A2" -P -F '#{pane_id}' -c "$REPO" "exec '$BIN/claude' 600" 2>/dev/null)
+live "$C2" working sid-live3 "$REPO"; said "$C2" 120
+sleep 0.3
+ok "a window holding two chats marks both" "$(printf '%s\n' "$A2" "$C2" | sort | tr '\n' ' ')" "$(marked)"
+tm set -g @tagents_viewport_window "$WROW"
+ok "a dimmed window on screen is marked" "$WROW " "$(marked)"
+tm set -g @tagents_viewport_window "$W_A2"
+
+# A CHILD HANGS UNDER ITS PARENT and is not on screen because the parent is.
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$(date +%s)" working sid-kid "$REPO" "" "kid" "" "$$" "" "" "${A2#%}" sid-live2 >"$STATE/s-kid.tsv"
+said %s-kid 30
+ok "a child row is listed" 1 "$(rows_at 140 | awk -F'\t' '$1 == "%s-kid"' | wc -l | tr -d ' ')"
+ok "...and it is not marked: its parent is, and the pair of chats of the window stays as it was" "$(printf '%s\n' "$A2" "$C2" | sort | tr '\n' ' ')" "$(marked)"
+ok "...in flat mode neither" "$(printf '%s\n' "$A2" "$C2" | sort | tr '\n' ' ')" "$(marked TA_FLAT=1)"
+rm -f "$STATE/s-kid.tsv" "$STATE/prompt/s-kid"
+
+# THE MARK STAYS ON THE SAME CHAT when the group is reordered under it.
+tm kill-pane -t "$C2" 2>/dev/null; rm -f "$STATE/${C2#%}.tsv" "$STATE/prompt/${C2#%}"
+before=$(order)
+said "$A" 1
+ok "answering the other chat reorders the group" 1 "$([ "$(order)" != "$before" ] && echo 1 || echo 0)"
+ok "...and the mark stays on its chat" "$A2 " "$(marked)"
+said "$A" 600
+tm set -gu @tagents_viewport_window
+
+# ---------------------------------------------------------------------------
+t "10c. the order — a switch to the number of the window"
+# ---------------------------------------------------------------------------
+# The default is the last message and stays: that is what section 10 pins. With the marker file present (ctrl-o flips it) a row sits at its window's number, a dimmed window at its own, and typing into a chat moves nothing, so the place of an agent can be learned.
+gkeys() {  # <group name> [VAR=value ...] — the pane keys of the rows of one group, in the order they are listed
+  local g=$1; shift
+  rows_at 140 "$@" | awk -F'\t' -v h="$HDR" -v n="$HDR $g" 'index($2, h) > 0 { on = (index($2, n) == 1); next } on { print $1 }' | tr '\n' ' '
+}
+ONW="$STATE/.order-window"
+rm -f "$ONW"
+ok "fixture: the window of $A is numbered below the window of $A2" 1 \
+   "$([ "$(tm display -p -t "$A" '#{window_index}')" -lt "$(tm display -p -t "$A2" '#{window_index}')" ] && echo 1 || echo 0)"
+DEF=$(gkeys tatest-work)
+: >"$ONW"
+BYW=$(gkeys tatest-work)
+ok "the marker changes the order of the group" 1 "$([ "$DEF" != "$BYW" ] && echo 1 || echo 0)"
+ok "marker: rows follow the numbers of their windows, the dimmed one among them" "$WROW $A $A2 " "$BYW"
+said "$A" 1
+ok "...and answering a chat moves nothing" "$BYW" "$(gkeys tatest-work)"
+said "$A" 600
+ok "...nor does the group order change" "tatest-dash tatest-work tatest-zeta no " "$(groups)"
+rm -f "$ONW"
+ok "...and the marker removed leaves the groups where they were" "tatest-dash tatest-work tatest-zeta no " "$(groups)"
+ok "the marker removed: the order is the one from before" "$DEF" "$(gkeys tatest-work)"
+: >"$ONW"
+
+# A DIMMED WINDOW sits between the chats by its number, and a chat that exits does not move it: window 3 a chat, 5 a dimmed window, 7 a chat.
+WM=$(tm new-window -d -t tatest-work:5 -n mid -P -F '#{window_id}' "exec sleep 600" 2>/dev/null)
+CX=$(tm new-window -d -t tatest-work:3 -P -F '#{pane_id}' -c "$REPO" "exec '$BIN/claude' 600" 2>/dev/null)
+live "$CX" working sid-livecx "$REPO"; said "$CX" 2000
+sleep 0.3
+K1=$(gkeys tatest-work)
+inseq() { case "$1" in *"$2"*"$3"*) echo yes ;; *) echo "$1" ;; esac; }
+ok "a dimmed window numbered between two chats sits between them" "yes" "$(inseq "$K1" "$CX " "$WM ")"
+tm kill-pane -t "$CX" 2>/dev/null; rm -f "$STATE/${CX#%}.tsv" "$STATE/prompt/${CX#%}"
+sleep 0.3
+K2=$(gkeys tatest-work)
+ok "a chat that exits leaves the dimmed row where it was, relative to the others" "$(printf '%s' "$K1" | sed "s/$CX //")" "$K2"
+
+# CLOSED ROWS stay below every open one and keep their own order (the age), whatever their window is numbered; two chats of a window go by pane index, and a child stays under its parent.
+Z1=$(tm new-window -d -t tatest-work:8 -P -F '#{pane_id}' "exec sleep 600" 2>/dev/null)
+Z2=$(tm new-window -d -t tatest-work:9 -P -F '#{pane_id}' "exec sleep 600" 2>/dev/null)
+live "$Z1" done sid-z1 "$REPO"; said "$Z1" 500
+live "$Z2" done sid-z2 "$REPO"; said "$Z2" 100
+C2=$(tm split-window -d -t "$A2" -P -F '#{pane_id}' -c "$REPO" "exec '$BIN/claude' 600" 2>/dev/null)
+live "$C2" working sid-live3 "$REPO"; said "$C2" 1
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$(date +%s)" working sid-kid "$REPO" "" "kid" "" "$$" "" "" "${A2#%}" sid-live2 >"$STATE/s-kid.tsv"
+said %s-kid 3000
+sleep 0.3
+K3=$(gkeys tatest-work)
+ok "two chats of one window go by pane index, a child stays right under its parent" "yes" \
+   "$(inseq "$K3" "$A2 %s-kid " "$C2 ")"
+rm -f "$STATE/s-kid.tsv" "$STATE/prompt/s-kid"
+
+# FLAT MODE has no groups, so the session has to be in the key or two windows with one number tie: the zeta session's window is still after the work session's.
+FL=$(rows_at 140 TA_FLAT=1 | awk -F'\t' -v h="$HDR" 'index($2, h) == 0 { print $1 }' | tr '\n' ' ')
+ok "flat mode: windows of different sessions do not tie, the sessions stay together" "yes" \
+   "$(inseq "$FL" "$A " "$B ")"
+
+# THE SESSIONS OF THE FLAT LIST COME IN THE ORDER OF THEIR NAMES, and a pane that exits does not shuffle the others: the session is not numbered by the order awk happens to walk its table in. Five sessions, created out of order, so a walk in any order that is not the name order shows.
+FLS=""
+for fn in d b e a c; do
+  FP=$(agent "$REPO" "tatest-fl-$fn")
+  live "$FP" working "sid-fl-$fn" "$REPO"; said "$FP" 100
+  FLS="$FLS$FP "
+done
+sleep 0.3
+flsess() {  # the sessions of the five panes above, in the order the flat list prints their rows
+  rows_at 140 TA_FLAT=1 | awk -F'\t' -v h="$HDR" -v ps="$FLS" 'BEGIN { n = split(ps, a, " "); for (i = 1; i <= n; i++) in_[a[i]] = 1 } index($2, h) == 0 && ($1 in in_) { print $1 }' |
+    while read -r k; do sess_of "$k"; done | tr '\n' ' '
+}
+FLALL=$(flsess)
+ok "flat mode, window order: the sessions come in the order of their names" "tatest-fl-a tatest-fl-b tatest-fl-c tatest-fl-d tatest-fl-e " "$FLALL"
+tm kill-session -t =tatest-fl-a 2>/dev/null; tm kill-session -t =tatest-fl-c 2>/dev/null
+for fp in $FLS; do [ "$(lives "$fp")" = yes ] || rm -f "$STATE/${fp#%}.tsv" "$STATE/prompt/${fp#%}"; done   # the records go with the panes: a closed row has no session to name
+sleep 0.3
+ok "...and they keep that order when two of them exit" "tatest-fl-b tatest-fl-d tatest-fl-e " "$(flsess)"
+for fn in b d e; do tm kill-session -t "=tatest-fl-$fn" 2>/dev/null; done
+for fp in $FLS; do rm -f "$STATE/${fp#%}.tsv" "$STATE/prompt/${fp#%}"; done
+
+# THE HEADER STANDS FOR THE FIRST PRINTED ROW in window order too: the lowest window among the open chats and the dimmed windows, not the chat typed into last. A session with an older chat in window 0 and the newest in window 1; and a session whose window 0 is a shell and window 1 a chat.
+HDA_1=$(agent "$REPO" tatest-hd-a)
+HDA_2=$(tm new-window -d -t =tatest-hd-a: -P -F '#{pane_id}' -c "$REPO2" "exec '$BIN/claude' 600" 2>/dev/null)
+live "$HDA_1" working sid-hda1 "$REPO";  said "$HDA_1" 500
+live "$HDA_2" working sid-hda2 "$REPO2"; said "$HDA_2" 10
+tm new-session -d -s tatest-hd-b -c "$REPO3" "exec sleep 600" 2>/dev/null
+HDB_W=$(tm display -p -t =tatest-hd-b: '#{window_id}')
+HDB_C=$(tm new-window -d -t =tatest-hd-b: -P -F '#{pane_id}' -c "$REPO" "exec '$BIN/claude' 600" 2>/dev/null)
+live "$HDB_C" working sid-hdb "$REPO"; said "$HDB_C" 10
+sleep 0.3
+hline() {  # <group> [VAR=value ...] — key|state|session id|directory of the header, in the fields a key on it is handed
+  local g=$1; shift
+  rows_at 140 "$@" | awk -F'\t' -v n="$HDR $g  " 'index($2, n) == 1 { print $1 "|" $3 "|" $4 "|" $5; exit }'
+}
+fline() {  # <group> [VAR=value ...] — the same fields of the first row printed beneath that header
+  local g=$1; shift
+  rows_at 140 "$@" | awk -F'\t' -v h="$HDR" -v n="$HDR $g  " 'index($2, n) == 1 { on = 1; next } on && index($2, h) == 0 { print $1 "|" $3 "|" $4 "|" $5; exit }'
+}
+: >"$ONW"
+ok "window order: the first row of a session is the chat in its lowest window" "$HDA_1" "$(fline tatest-hd-a | cut -d'|' -f1)"
+ok "window order: the header carries the key, state, session id and directory of that row" "$(fline tatest-hd-a)" "$(hline tatest-hd-a)"
+ok "...so it is not the chat typed into last, which is in the higher window" 1 "$([ "$(hline tatest-hd-a | cut -d'|' -f1)" != "$HDA_2" ] && echo 1 || echo 0)"
+ok "ctrl-n on that header takes the directory of the first printed row" "$REPO" "$(hline tatest-hd-a | cut -d'|' -f4)"
+ok "window order: a dimmed window printed first is what its header carries, with state none and no session id" "$HDB_W|none||$REPO3" "$(hline tatest-hd-b)"
+ok "...the same fields as the row beneath it" "$(fline tatest-hd-b)" "$(hline tatest-hd-b)"
+rm -f "$ONW"
+ok "the default order: the header carries the chat typed into last" "$HDA_2|working|sid-hda2|$REPO2" "$(hline tatest-hd-a)"
+ok "...and a chat before a dimmed window of its session" "$HDB_C|working|sid-hdb|$REPO" "$(hline tatest-hd-b)"
+: >"$ONW"
+tm kill-session -t =tatest-hd-a 2>/dev/null; tm kill-session -t =tatest-hd-b 2>/dev/null
+rm -f "$STATE/${HDA_1#%}.tsv" "$STATE/${HDA_2#%}.tsv" "$STATE/${HDB_C#%}.tsv" "$STATE"/prompt/"${HDA_1#%}" "$STATE"/prompt/"${HDA_2#%}" "$STATE"/prompt/"${HDB_C#%}"
+
+# ROWS WITH NO WINDOW (headless, running) tie at the end of their group and do not trade places when one of them is answered.
+hl() {  # <key> <label>
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date +%s)" working "sid-$1" "$REPO" "" "hl" "" "$$" "" "$2" >"$STATE/$1.tsv"
+}
+hl s-h1 one; hl s-h2 two
+said %s-h1 300; said %s-h2 400
+NW0=$(gkeys no)
+said %s-h2 1
+ok "rows of the no-window group keep their order when one gets a new prompt" "$NW0" "$(gkeys no)"
+rm -f "$ONW"
+ok "...which the last-message order does not" "no" "$([ "$(gkeys no)" = "$NW0" ] && echo yes || echo no)"
+rm -f "$STATE/s-h1.tsv" "$STATE/s-h2.tsv" "$STATE/prompt/s-h1" "$STATE/prompt/s-h2"
+
+# THE KEY. ctrl-o is in the table; :order flips the marker from the ? window and rings the list.
+OST="$ROOT/order-state"; mkdir -p "$OST"
+env TMUX="$TMUXV" TA_STATE_DIR="$OST" bash "$TA" --toggle-order >/dev/null 2>&1; rt=$?
+ok "--toggle-order exits 0" 0 "$rt"
+ok "...and creates the marker" yes "$([ -e "$OST/.order-window" ] && echo yes || echo no)"
+env TMUX="$TMUXV" TA_STATE_DIR="$OST" bash "$TA" --toggle-order >/dev/null 2>&1; rt=$?
+ok "...a second run exits 0" 0 "$rt"
+ok "...and removes it" no "$([ -e "$OST/.order-window" ] && echo yes || echo no)"
+KT=$(run --keys); rk=$?
+ok "the key table was printed" 1 "$([ -n "$KT" ] && echo 1 || echo 0)"
+has "ctrl-o is in the ? window: rows in window order, or by your last message" "ctrl-o	:order	rows in window order, or by your last message" "$KT"
+
+# PICKING :order IN THE ? WINDOW flips the marker and rings the list: the curl of CURLBIN records the request, and the pick is made with fzf's --filter as for :preview above.
+pick_order() {
+  env TMUX="$TMUXV" PATH="$CURLBIN:$PATH" TA_STATE_DIR="$OST" TA_MODE=popup FZF_DEFAULT_OPTS="--exact --filter=window" \
+    bash "$TA" --ask-keys 4242 "$A" working sid-live "$REPO" >/dev/null 2>&1
+}
+: >"$ROOT/curl.log"
+pick_order
+ok "picking :order in the ? window creates the marker" yes "$([ -e "$OST/.order-window" ] && echo yes || echo no)"
+has "...and rings the list" "reload-sync(" "$(cat "$ROOT/curl.log" 2>/dev/null)"
+pick_order
+ok "picking it again removes the marker" no "$([ -e "$OST/.order-window" ] && echo yes || echo no)"
+
+rm -f "$ONW"
+tm kill-pane -t "$C2" 2>/dev/null; tm kill-window -t "$Z1" 2>/dev/null; tm kill-window -t "$Z2" 2>/dev/null
+tm kill-window -t "$WM" 2>/dev/null
+rm -f "$STATE/${C2#%}.tsv" "$STATE/${Z1#%}.tsv" "$STATE/${Z2#%}.tsv" "$STATE"/prompt/"${C2#%}" "$STATE"/prompt/"${Z1#%}" "$STATE"/prompt/"${Z2#%}"
 # ---------------------------------------------------------------------------
 t "10b. the age column is time since YOUR last message"
 # ---------------------------------------------------------------------------

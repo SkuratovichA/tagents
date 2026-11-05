@@ -314,6 +314,13 @@
             "ctrl-t"
           ]
         },
+        "order": {
+          "$ref": "#/$defs/key",
+          "description": "Rows in window order, or by your last message. Default ctrl-o.",
+          "examples": [
+            "ctrl-o"
+          ]
+        },
         "preview": {
           "$ref": "#/$defs/key",
           "description": "The preview in a window of its own. Default ctrl-v.",

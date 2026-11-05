@@ -1,6 +1,6 @@
 # lib/tagents/list.sh — the rows — and the tally the status bar shows
 #
-# list() stays one unit: the responsive column fit, the UTF-8-safe width helpers macOS awk forces it to carry, the row format, the two-level tree a child session hangs in, the group headers and the dimmed window rows. grouped/toggle_group (the .flat marker list() reads) and counts() (the same renderer with TA_MARKS=0, plus the burn rate and the usage line) sit with it because nothing else calls them and both are meaningless without it.
+# list() stays one unit: the responsive column fit, the UTF-8-safe width helpers macOS awk forces it to carry, the row format, the two-level tree a child session hangs in, the group headers and the dimmed window rows. grouped/toggle_group (the .flat marker list() reads), byw_on/toggle_order (the .order-window marker it reads) and counts() (the same renderer with TA_MARKS=0, plus the burn rate and the usage line) sit with it because nothing else calls them and both are meaningless without it.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -10,10 +10,18 @@ grouped() {  # tree by session unless explicitly turned off
   return 0
 }
 
-toggle_group() {
-  if [ -e "$STATE_DIR/.flat" ]; then rm -f "$STATE_DIR/.flat"; else : >"$STATE_DIR/.flat"; fi
-  signal_ev   # the grouping is drawn, and the marker is not a tmux event
+# A marker file flips: present means on. What it says is drawn and the file is not a tmux event, so the list is rung.
+toggle_marker() {  # <file>
+  if [ -e "$1" ]; then rm -f "$1"; else : >"$1"; fi
+  signal_ev
 }
+
+toggle_group() { toggle_marker "$STATE_DIR/.flat"; }
+
+# Rows in the order of their tmux window numbers instead of by the last message.
+byw_on() { [ -e "$STATE_DIR/.order-window" ]; }
+
+toggle_order() { toggle_marker "$STATE_DIR/.order-window"; }
 
 list() {
   # Nothing is excluded. There used to be a "skip my own pane" rule that fell
@@ -21,8 +29,9 @@ list() {
   # *attached client*, so it silently hid whichever agent you happened to be
   # looking at. The dashboard pane runs fzf, never Claude, so it can never show
   # up here anyway and needs no special case.
-  local grp=1 cols hidecols tallyto="" rc
+  local grp=1 cols hidecols tallyto="" rc byw=0
   grouped || grp=0
+  byw_on && byw=1
   # Joined with $RS, never newlines: awk -v refuses a value with a newline in it
   # (BWK awk, and silently enough to look like "nothing is hidden").
   hidecols=$(hidden_cols | LC_ALL=C awk -v rs="$RS" '{ printf "%s%s", $1, rs }')
@@ -65,7 +74,7 @@ list() {
 
   host_once   # in this shell: $(…) below is a subshell, and a failing hostname would run again on every call
   collect | LC_ALL=C awk -F"$TAB" -v now="$(date +%s)" -v ttl="$SUB_TTL" \
-                -v grp="$grp" -v home="$HOME" -v deadttl="$DEAD_TTL" -v cols="$cols" \
+                -v grp="$grp" -v byw="$byw" -v home="$HOME" -v deadttl="$DEAD_TTL" -v cols="$cols" \
                 -v host="$HOST_S" -v hostf="$HOST_F" \
                 -v profs="$(prof_pairs)" -v USC="$US" -v RSC="$RS" \
                 -v hidecols="$hidecols" "$AWK_UNTITLE"'
@@ -109,7 +118,7 @@ list() {
     # A group key is s:<session> or w: (the trailing group of rows without a window). A session group shows the session path, the other none.
     function gname(g) { return (g == "w:") ? "no window" : substr(g, 3) }
     function gpathof(g) { return (g == "w:") ? "" : spath[substr(g, 3)] }
-    # The header stands in for the first printed row: open chats, then dimmed windows, then closed rows, a chat last typed into first.
+    # The header stands in for the first printed row. By the last message: open chats, then dimmed windows, then closed rows, a chat last typed into first. In window order: open chats and dimmed windows together by window number and pane index, then closed rows by their age.
     function standin(g, grk, cls, age, key, st, sid, dr) {
       if (!(g in ghave) || grk < grank[g] ||
           (grk == grank[g] && (cls < gtdead[g] || (cls == gtdead[g] && age < gtage[g])))) {
@@ -117,6 +126,8 @@ list() {
         gfirst[g] = key; gstate[g] = st; gsid[g] = sid; gdir[g] = dr
       }
     }
+    # The place of a pane in window order: window number, then pane index. A row with no window sorts after every window.
+    function ordkey(p) { return (p in pwin && pwin[p] in wix) ? wix[pwin[p]] * 1000 + ppi[p] : 999999000 }
     # A NUMBER PER GROUP, BY BYTES. The sort below puts a group by its name, and under a UTF-8 locale it weighs every Cyrillic letter alike, so two groups whose names differ only in such letters would be one key and their rows would interleave: this number, in field 15 right after the name, keeps the rows of each group together without changing the order of any two names the locale tells apart.
     function gnum(g) { if (!(g in gno)) gno[g] = ++ngno; return gno[g] }
     # Claude prefixes the terminal title with a spinner glyph; the rest is the
@@ -371,7 +382,7 @@ list() {
       norder = split("blocked done working new ? dead", ORD, " ")
     }
     $1=="P" { alive[$2]=1; loc[$2]=$3; title[$2]=$4; path[$2]=$5; pwin[$2]=$6; psb[$2]=$7 + 0; ppi[$2]=$8 + 0; next }
-    $1=="W" { nwin++; wlist[nwin]=$2; wsess[$2]=$3; wix[$2]=$4 + 0; wnm[$2]=$5; next }
+    $1=="W" { nwin++; wlist[nwin]=$2; wsess[$2]=$3; wix[$2]=$4 + 0; wshown[$2]=$5 + 0; wnm[$2]=$6; next }
     $1=="G" { spath[$2]=$3; next }
     $1=="L" { live[$2]=1; next }
     $1=="R" { root[$2]=$3; next }
@@ -659,7 +670,7 @@ list() {
         # gtotal counts children too, so the first-seen test gets a flag of its
         # own rather than borrowing that one.
         grk = nest ? 1 : 0
-        standin(grpkey, grk, (rdead[n] ? 2 : 0), age, p, s, rsid[n], dir)
+        standin(grpkey, grk, (rdead[n] ? 2 : 0), ((byw && !rdead[n]) ? ordkey(p) : age), p, s, rsid[n], dir)
         gtotal[grpkey]++
         gcount[grpkey SUBSEP s]++
       }
@@ -721,7 +732,7 @@ list() {
           dmg = "s:" dms
           if (!(dmg in gtotal)) gmin[dmg] = 4.5; else if (4.5 < gmin[dmg]) gmin[dmg] = 4.5   # counts as not closed (prio dead is 5)
           gtotal[dmg]++
-          standin(dmg, 0, 1, wix[dmw], dmw, "none", "", (dmf in path) ? path[dmf] : "")
+          standin(dmg, 0, (byw ? 0 : 1), (byw ? wix[dmw] * 1000 : wix[dmw]), dmw, "none", "", (dmf in path) ? path[dmf] : "")
           nd++; dg[nd] = dmg; dk[nd] = dmw; dix[nd] = wix[dmw]
           dbody[nd] = DIM uclip(wnm[dmw], cols - 10) R
           ddir[nd] = (dmf in path) ? path[dmf] : ""
@@ -755,8 +766,9 @@ list() {
         }
       }
       for (i = 1; i <= nd; i++)
-        printf "%d\t%s\t1\t1\t%d\t%s\t%s\tnone\t\t%s\t%s\t0\t0\t%d\t%d\n",
-               (gmin[dg[i]] < prio["dead"] ? 0 : 1), dg[i], dix[i], dk[i], dbody[i], ddir[i], dk[i], dix[i], gnum(dg[i])
+        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\tnone\t\t%s\t%s\t0\t0\t%d\t%d\t%d\n",
+               (gmin[dg[i]] < prio["dead"] ? 0 : 1), dg[i], (byw ? 0 : 1), (byw ? dix[i] * 1000 : dix[i]), dk[i], dbody[i], ddir[i], dk[i], dix[i], gnum(dg[i]),
+               (wshown[dk[i]] ? 1 : 0)
       # THE ORDER, and the two things it is deliberately NOT sensitive to:
       # state, and anything that moves during a turn. Projects keep the place
       # their path puts them (field 1 is only open-or-closed, field 2 the path),
@@ -778,19 +790,22 @@ list() {
       # its own closed flag and its own age.
       for (i = 1; i <= n; i++) {
         fam = rp[i]; kid = 0; sd = rdead[i]; sa = rage[i]
+        if (byw && !sd) sa = ordkey(rp[i])
         if (rnest[i]) {
           # ...unless the parent was filtered out after all (its record aged
           # past the cutoff, or the same conversation is live elsewhere): then
           # there is no row to hang under and this is an ordinary one.
           j = ridx[runder[i]]
-          if (j != "") { fam = runder[i]; kid = 1; sd = rdead[j]; sa = rage[j] }
+          if (j != "") { fam = runder[i]; kid = 1; sd = rdead[j]; sa = (byw && !sd) ? ordkey(runder[i]) : rage[j] }
         }
-        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\n",
+        # Without groups nothing keeps the sessions apart in window order, so the group goes in fields 2 and 15 as in tree mode and the sort keeps each session together, in the order of the names.
+        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n",
                (grp ? (rg[i] == "w:" ? 2 : (gmin[rg[i]] < prio["dead"] ? 0 : 1)) : rdead[i]),
-               (grp ? rg[i] : ""),
+               ((grp || (byw && !sd)) ? rg[i] : ""),
                (sd ? 2 : 0), sa, rp[i], rbody[i], rs[i], rsid[i], rr[i],
                fam, kid, rdead[i], rage[i],
-               (grp ? gnum(rg[i]) : 0)
+               ((grp || (byw && !sd)) ? gnum(rg[i]) : 0),
+               ((rp[i] in pwin && wshown[pwin[rp[i]]]) ? 1 : 0)
       }
     }' |
     sort -t"$TAB" -k1,1n -k2,2 -k15,15n -k3,3n -k4,4n -k5,5n \
@@ -817,14 +832,23 @@ list() {
         return 1
       }
       { g[NR]=$2; kind[NR]=$3; pane[NR]=$6; body[NR]=$7; state[NR]=$8; sid[NR]=$9
-        dir[NR]=$10; depth[NR]=$12+0 }
+        dir[NR]=$10; depth[NR]=$12+0; shown[NR]=$16+0 }
       END {
         for (i = 1; i <= NR; i++) {
-          # No row is marked as the one on screen: the window on screen is the
-          # one the list is in, and the cursor is where the user left it.
           if (kind[i] == 0)       mk = DIM "─" R
           else                    mk = grp ? DIM "─" R : " "
           if (depth[i] > 0) mk = DIM "─" R
+          # THE ROW OF THE WINDOW ON SCREEN is marked with a ▸ in the slot of the
+          # dash, and the whole row turns bold: the cursor goes wherever the user
+          # browses, so it cannot say which session is open. A header (field 16
+          # absent, so 0) is never marked, though the row it stands in for may be.
+          # The ▸ (U+25B8) is as wide as the dash and is not the ▾ of a header, so
+          # no column moves and the tally below still counts the same rows. The
+          # gsub puts bold back after every reset inside the body.
+          if (kind[i] == 1 && shown[i]) {
+            mk = HOT "\342\226\270" R
+            b = body[i]; gsub(/\033\[0m/, "&\033[1m", b); body[i] = "\033[1m" b R
+          }
           last = lastat(i)
           if (depth[i] == 0) parlast = last
           if (!grp)               tee = mk " "

@@ -63,6 +63,8 @@ How a child behaves:
 
 **Inside a project, rows are ordered by when you last typed into them.** The newest conversation is on top and closed ones are underneath. The order is not by state, and not by anything that moves during a turn: the state record is rewritten on every tool call, so ordering on it made two working agents trade places while they ran. The clock here moves exactly once per turn, when you press enter, which is also why the agent you just sent something to is the one at the top.
 
+**`ctrl-o` swaps that for window order.** The rows follow their tmux window numbers, a dimmed window sits at its number among them, and a chat that exits keeps its place; the choice is kept until you switch it back. In either order the row of the window on screen carries a `▸` and is drawn bold.
+
 ## The clock the rows are sorted on
 
 The second column is that same clock: how long since your last message, not how long the session has been in its current state.
