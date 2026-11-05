@@ -18,12 +18,13 @@
 #   @tagents_list, @tagents_dash                      dash_pane and list_in_pane: which pane is the list
 #   @tagents_joined                                   a chat joined into a window that is not its home: the session it came from
 #   @tagents_port                                     claim_port: whose port the list pane carries
+#   @tagents_viewport_window                          the window on screen: the list marks its row, and nothing else says that it moved
 #   @ta_notes_for                                     whether a pane is a notes editor, so tnotes sync has something to look after (1 or 0)
 # THE PANE TITLE IS LEFT OUT ON PURPOSE. Claude's spinner retitles a working pane
 # several times a second, so a title in the snapshot would make every tick of a
 # busy session a reload — the very thing this exists to stop. A title-only change
 # waits for the forced reload of the 5th tick.
-REFRESH_SNAP_FMT='#{pane_id}|@|#{session_name}:#{window_index}.#{pane_index}|@|#{window_id}|@|#{pane_current_path}|@|#{pane_current_command}|@|#{pane_pid}|@|#{pane_active}|@|#{pane_last}|@|#{@tagents_list}|@|#{@tagents_dash}|@|#{@tagents_joined}|@|#{@tagents_port}|@|#{?@ta_notes_for,1,0}'
+REFRESH_SNAP_FMT='#{pane_id}|@|#{session_name}:#{window_index}.#{pane_index}|@|#{window_id}|@|#{pane_current_path}|@|#{pane_current_command}|@|#{pane_pid}|@|#{pane_active}|@|#{pane_last}|@|#{@tagents_list}|@|#{@tagents_dash}|@|#{@tagents_joined}|@|#{@tagents_port}|@|#{@tagents_viewport_window}|@|#{?@ta_notes_for,1,0}'
 
 # Does any pane of the snapshot ($snap of the caller) carry @ta_notes_for: the last field of a pane line is 1. The snapshot's own last line is
 # the count of rings, which has no |@| in it.
@@ -64,7 +65,7 @@ refresh_changed() {  # <marker> <overlay config path> [strict] — 0 when someth
   # than the marker is a change there.
   if [ -n "$strict" ]; then
     for f in "$STATE_DIR"/[0-9]*.tsv "$STATE_DIR"/s-*.tsv "$LABELS" "$ORIGINS" "$COLS_FILE" \
-             "$STATE_DIR/.flat" "$STATE_DIR/sub" "$STATE_DIR"/sub/* \
+             "$STATE_DIR/.flat" "$STATE_DIR/.order-window" "$STATE_DIR/sub" "$STATE_DIR"/sub/* \
              "$STATE_DIR/model" "$STATE_DIR"/model/*.tsv \
              "$STATE_DIR/prompt" "$STATE_DIR"/prompt/* "$CONFIG_FILE" "$ovl"; do
       [ "$f" -nt "$mark" ] && return 0
@@ -72,7 +73,7 @@ refresh_changed() {  # <marker> <overlay config path> [strict] — 0 when someth
     return 1
   fi
   for f in "$STATE_DIR"/[0-9]*.tsv "$STATE_DIR"/s-*.tsv "$LABELS" "$ORIGINS" "$COLS_FILE" \
-           "$STATE_DIR/.flat" "$STATE_DIR/sub" "$STATE_DIR"/sub/* \
+           "$STATE_DIR/.flat" "$STATE_DIR/.order-window" "$STATE_DIR/sub" "$STATE_DIR"/sub/* \
            "$STATE_DIR/model" "$STATE_DIR"/model/*.tsv \
            "$STATE_DIR/prompt" "$STATE_DIR"/prompt/* "$CONFIG_FILE" "$ovl"; do
     ! [ "$mark" -nt "$f" ] && return 0

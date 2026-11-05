@@ -374,6 +374,13 @@ act 2 '"$RF_TMUX" -L "$RF_S" select-pane -T "some title" -t "$RF_DP"'
 go 4
 ok "a pane title changes nothing the snapshot covers" "1" "$(reloads)"
 
+# THE WINDOW ON SCREEN IS IN THE SNAPSHOT: the mark in the list follows it, and nothing else tells the refresher that it moved.
+newrun viewport
+act 2 '"$RF_TMUX" -L "$RF_S" set -g @tagents_viewport_window @9'
+act 4 '"$RF_TMUX" -L "$RF_S" set -g @tagents_viewport_window @10'
+go 5
+ok "the window on screen set (2) and then changed (4) each reload once, and the wakes between are quiet" "1 2 4" "$(reloads)"
+
 # ---------------------------------------------------------------------------
 t "4. five refused posts in a row end the loop, and nothing else does"
 # ---------------------------------------------------------------------------
@@ -699,9 +706,10 @@ act 9  'printf "sid-b\tm\t\tSonnet\n" >"$RF_STATE/model/sid-b.tsv"'
 act 10 'echo 200 >"$RF_STATE/prompt/9"'
 act 11 'echo "x = 2" >"$RF_CFG"'
 act 12 'echo "y = 2" >"${RF_CFG%.toml}.ovlhost.toml"'
-go 13
-ok "state file, s- file, origins, labels, cols, .flat, sub, model, prompt, config and overlay each reload on their own wake, and the wake after is quiet" \
-   "1 2 3 4 5 6 7 8 9 10 11 12" "$(reloads)"
+act 13 ': >"$RF_STATE/.order-window"'
+go 14
+ok "state file, s- file, origins, labels, cols, .flat, sub, model, prompt, config, overlay and the order marker each reload on their own wake, and the wake after is quiet" \
+   "1 2 3 4 5 6 7 8 9 10 11 12 13" "$(reloads)"
 rm -f "$OVLF"
 unset TA_HOST
 

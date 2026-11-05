@@ -673,6 +673,23 @@ tm send-keys -K -c "$V" C-b 2
 ok "The shown session changes window elsewhere: the viewport shows work:2" work:2 "$(wait_eq_long work:2 vwin)"
 ok "The shown session changes window elsewhere: the cursor is on its row" "$(rowof '=work:2')" "$(wait_eq_long "$(rowof '=work:2')" curpos)"
 
+# The lines of the list that fzf itself holds (its listen port, not a fresh `--list`) which carry the mark of the window on screen: the picture the person sees, and the one the refresher has to keep right.
+lmarked() {
+  local port; port=$(tm show -pv -t "$(lpane)" @tagents_port 2>/dev/null)
+  [ -n "$port" ] || return 0
+  curl -s "http://127.0.0.1:$port?limit=200" 2>/dev/null |
+    LC_ALL=C awk 'BEGIN { RS = "{\"index\":" } NR > 1 && index($0, "\342\226\270") > 0 { sub(/,.*/, ""); if (!($0 in seen)) { seen[$0] = 1; printf "%s%d", sep, $0 + 1; sep = " " } }'
+}
+
+t "The window on screen is marked in the list fzf holds"
+cpguard_up 38
+ok "A fresh cockpit, no key pressed: the option holds the window the viewport shows" "$(vwid)" "$(wait_eq_long "$(vwid)" opt @tagents_viewport_window)"
+ok "A fresh cockpit: the list fzf holds marks that window's row and no other" "$(rowof '=work:2')" "$(wait_eq_long "$(rowof '=work:2')" lmarked)"
+vkeys 0
+ok "A window change in the viewport: the mark moves to the new window's row" "$(rowof '=work:0')" "$(wait_eq_long "$(rowof '=work:0')" lmarked)"
+vgo personal
+ok "A session change: the mark moves to the row of personal" "$(rowof '=personal:')" "$(wait_eq_long "$(rowof '=personal:')" lmarked)"
+
 # Only the session tagents is left and the viewport is idle: a client's session and the session of a command run from a pane both read tagents. The viewport's shell is stopped for the case, so that a session made here is not picked up and the dashboard stays the only one a lookup can name.
 t "The dashboard is never where a chat or a shell lands"
 cpstart

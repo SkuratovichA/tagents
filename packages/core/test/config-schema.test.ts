@@ -188,7 +188,7 @@ const TYPESCRIPT_ONLY = ['plugins.*.from', 'knowledge.dir'];
 
 test('the scan of the bash side finds the keys it should', () => {
   const found = [...bashPaths()];
-  for (const expected of ['claude.rules.*.dir', 'claude.profiles.*.env.*', 'usage.meter', 'notes.send', 'keys.quit', 'resurrect.every', 'claude.args.*']) {
+  for (const expected of ['claude.rules.*.dir', 'claude.profiles.*.env.*', 'usage.meter', 'notes.send', 'keys.quit', 'keys.order', 'resurrect.every', 'claude.args.*']) {
     assert.ok(found.includes(expected), `${expected} not found in ${found.join(' ')}`);
   }
 });

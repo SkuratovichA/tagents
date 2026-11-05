@@ -77,6 +77,7 @@ follow() {  # [client, ignored]
   viewport_shown_push "$sid"
   if [ "$win" != "$(tmux show -gqv @tagents_viewport_window 2>/dev/null)" ]; then
     tmux set -g @tagents_viewport_window "$win" 2>/dev/null
+    signal_ev   # the mark of the window on screen is drawn, and the refresher reloads only when its snapshot differs
     cursor_to_window "$win"
   fi
   return 0

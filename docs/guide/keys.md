@@ -23,7 +23,7 @@ closed = "ctrl-y"
 send = "alt-s"
 ```
 
-[`config.example.toml`](https://github.com/SkuratovichA/tagents/blob/main/config.example.toml) lists every verb with its default beside it. The names are the verbs of the list: open, beside, new, pick, shell, goto, send, rename, undock, kill, tree, preview, refresh, columns, usage, closed, keys and quit. An entry for any other verb is ignored.
+[`config.example.toml`](https://github.com/SkuratovichA/tagents/blob/main/config.example.toml) lists every verb with its default beside it. The names are the verbs of the list: open, beside, new, pick, shell, goto, send, rename, undock, kill, tree, order, preview, refresh, columns, usage, closed, keys and quit. An entry for any other verb is ignored.
 
 ### Which names work
 

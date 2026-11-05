@@ -395,6 +395,7 @@
 #                      closes the whole window with every pane in it, asking
 #                      first and listing what runs there
 #   ctrl-t             toggle tree / flat
+#   ctrl-o             rows in window order, or by your last message
 #   ctrl-v             the preview in a window of its own: a popup 80% by 85%,
 #                      the size prefix+C-f, tsess and tneww all open at, with
 #                      the per-subagent cost breakdown and the tail of the
@@ -535,6 +536,7 @@ case "${1:-}" in
   --list)         cfg_load; list ;;
   --flat)         cfg_load; TA_FLAT=1 list ;;
   --toggle-group) toggle_group ;;
+  --toggle-order) toggle_order ;;
   --timeline)     timeline ;;
   --label)        label_cmd "${2:-}" "${3:-}" ;;
   --ask-rename)   ask_rename "${2:-}" "${3:-}" ;;
