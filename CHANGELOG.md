@@ -31,7 +31,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 
 ### Fixed
 
-- A transcript moved to another project directory while the index updates no longer empties the offsets table, so the next update no longer counts every transcript a second time.
+- A transcript moved to another project directory while the index updates no longer empties the offsets table, so the next update no longer counts every transcript a second time ([#71](https://github.com/SkuratovichA/tagents/pull/71)).
 - After `/compact` the dashboard's context column shows what the compaction left, and the next answer raises it ([#68](https://github.com/SkuratovichA/tagents/pull/68)).
 - The installer no longer prints curl's `404` above its own `no prebuilt tagents-core` line; any other download failure still shows curl's message ([#54](https://github.com/SkuratovichA/tagents/pull/54)).
 - On tmux below 3.8 the cursor no longer jumps around the cockpit's viewport at every frame of an agent; tmux 3.8 or newer keeps it steady ([#55](https://github.com/SkuratovichA/tagents/pull/55)).
