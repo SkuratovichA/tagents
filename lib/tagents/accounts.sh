@@ -102,7 +102,7 @@ profile_args() {  # <profile>
 # `env -u CLAUDE_CONFIG_DIR` comes first unconditionally, even when a config dir
 # follows it. An inherited value is a different login, and clearing it with
 # CLAUDE_CONFIG_DIR= would not do: empty is not unset, and only unset means the
-# default account (see LEARNING.md, "claude accounts").
+# default account.
 #
 # A profile of the form `dir:<path>` is not a configured profile at all but a
 # raw config dir — the account a closed session was recorded as having run on,

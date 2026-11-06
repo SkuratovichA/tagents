@@ -37,7 +37,7 @@ export interface CliCommand<S extends z.ZodType> {
 /**
  * What a started service hands back: `drain` to stop taking new work and finish
  * what is in flight, `stop` to give up now. Never kill a live worker — ask it to
- * drain (orchestrator/LEARNING.md, 11.09.2026).
+ * drain.
  *
  * `stop` takes the supervisor's word for WHY (a signal name, 'drain'), because
  * a daemon logs its own shutdown and "SIGTERM" and "SIGINT" are different lines

@@ -4,7 +4,7 @@
 #
 # Part of ./tagents; `tagents --help` is the model this implements. Sourced before dash.
 
-# The exact-match target needs its colon: `=tagents` alone is not an exact session match for every command (LEARNING.md, 22.10.2026).
+# The exact-match target needs its colon: `=tagents` alone is not an exact session match for every command.
 cockpit_up() { [ "$(tmux show -qv -t '=tagents:' @tagents_cockpit 2>/dev/null)" = 1 ]; }
 
 # Is this tmux session the cockpit's dashboard: never a group and never a destination.
@@ -256,7 +256,7 @@ cockpit_make() {  # <width> <height>
   case $h in ''|*[!0-9]*|0) h=50 ;; esac
   lw=$((w * DASH_WIDTH / 100)); vw=$((w - lw - 1))
   tmux set -gu @tagents_viewport_tty 2>/dev/null
-  # -x/-y: a detached session is 80x24 until a client attaches, and the list's width is a share of the window (LEARNING.md, 12.09.2026).
+  # -x/-y: a detached session is 80x24 until a client attaches, and the list's width is a share of the window.
   tmux new-session -d -s tagents -x "$w" -y "$h" -n dashboard -c "$HOME" "exec '$SELF'" \; \
        set -t '=tagents:' @tagents_cockpit 1 \; set -t '=tagents:' status off \; set -t '=tagents:' detach-on-destroy off 2>/dev/null || return 1
   cockpit_guard_install

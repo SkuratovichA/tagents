@@ -12,8 +12,8 @@
 //
 // Time is the one thing here that is not real. A turn used to be given a few
 // hundred real milliseconds for a real node process to start, print and be read
-// before the killer fired, and on a loaded box it lost that race (LEARNING.md,
-// 14.09.2026) — a budget nobody can size, because it is a bet on the machine.
+// before the killer fired, and on a loaded box it lost that race — a budget
+// nobody can size, because it is a bet on the machine.
 // So every turn runs on the fake clock from helpers.ts: a case that needs a
 // timer to fire waits for the child's own event first (`await t.seen('text')`)
 // and only then advances the clock, and a case that needs no timer to fire

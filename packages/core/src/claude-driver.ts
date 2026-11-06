@@ -122,8 +122,7 @@ export function stdinLine(text: string): string {
  * the default account, a string picks one.
  *
  * PATH is a configuration choice, not an inheritance. A daemon's PATH lacks
- * ~/.local/bin, where the `claude` symlink lives (orchestrator/LEARNING.md:
- * "spawn claude ENOENT from a daemon"), and the MCP servers are started as bare
+ * ~/.local/bin, where the `claude` symlink lives, and the MCP servers are started as bare
  * `node`, which must be THIS node and not a 2021 one from /usr/local/bin.
  */
 export function childEnv(spec: SessionSpec, parent: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
