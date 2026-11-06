@@ -559,7 +559,7 @@ update() {
     # entry (create, move, copy), which moves that directory's mtime. When none
     # moved, only files that grew are read and the whole-tree listing is skipped.
     if [ -n "$(find "$PROJECTS" -type d -newer "$STAMP" -print -quit 2>/dev/null)" ]; then
-      LC_ALL=C awk -F"$TAB" 'NR==FNR { known[$1]=1; next } !($0 in known)' "$OFFSETS" \
+      LC_ALL=C awk -F"$TAB" 'FILENAME == ARGV[1] { known[$1]=1; next } !($0 in known)' "$OFFSETS" \
         <(find "$PROJECTS" -name '*.jsonl' 2>/dev/null) >>"$tmp/cand" 2>/dev/null
     fi
     sort -u "$tmp/cand" -o "$tmp/cand"
@@ -586,7 +586,7 @@ update() {
   LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v pref="$PROJECTS/" "$AWK_KEY"'
     { print tkey($3), $1, $3, "new", $2 }' "$tmp/cstat" >"$tmp/keyed"
   if [ -s "$tmp/offk" ] && [ -s "$tmp/keyed" ]; then
-    LC_ALL=C awk -F"$TAB" 'NR==FNR { ck[$1] = 1; cp[$3] = 1; next }
+    LC_ALL=C awk -F"$TAB" 'FILENAME == ARGV[1] { ck[$1] = 1; cp[$3] = 1; next }
                   ($4 in ck) && !($1 in cp) { print $4 "\t" $1 }' \
         "$tmp/keyed" "$tmp/offk" >"$tmp/oldk"
     cut -f2 "$tmp/oldk" >"$tmp/oldp"
@@ -652,8 +652,11 @@ update() {
   # merge offsets: untouched files keep their row, and a key that moved keeps
   # exactly one row — the new path's. The old path's row goes, or the next
   # update would offer the offset of a file that is no longer there.
+  # An update that read nothing has an empty newoff, and NR==FNR would then take
+  # the whole old table for updated rows, leave offsets.tsv empty and have the
+  # next update count every transcript again.
   if [ -s "$tmp/offk" ]; then
-    LC_ALL=C awk -F"$TAB" -v OFS="$TAB" 'NR==FNR { up[$1] = 1; uk[$4] = 1; next }
+    LC_ALL=C awk -F"$TAB" -v OFS="$TAB" 'FILENAME == ARGV[1] { up[$1] = 1; uk[$4] = 1; next }
                                 !($1 in up) && !($4 in uk)' \
         "$tmp/newoff" "$tmp/offk" >>"$tmp/newoff.merged" 2>/dev/null
   fi

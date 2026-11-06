@@ -467,6 +467,22 @@ out=$(bash "$TU" --rebuild 2>&1)
 contains "a rebuild says what it skipped" "duplicate transcript copies skipped" "$out"
 ok "and counts the session once" "2.500000" "$(usd_of)"
 
+# An update whose only candidate is gone when it reads leaves the offsets be.
+# A dangling *.jsonl symlink stands in for a transcript moved away between the
+# update's find and its read.
+rm "$A/$SID.jsonl"
+bash "$TU" --update >/dev/null 2>&1
+ok "a clean index: two offsets rows" 2 "$(grep -c . "$TU_STATE/offsets.tsv")"
+ok "...and the session counted once" "2.500000" "$(usd_of)"
+sleep 1.1
+ln -s "$B/vanished.jsonl" "$B/dangling.jsonl"
+bash "$TU" --update >/dev/null 2>&1
+ok "an update that reads nothing keeps both offsets rows" 2 "$(grep -c . "$TU_STATE/offsets.tsv")"
+rm "$B/dangling.jsonl"
+rec q6 $((T2 + 300)) >>"$B/$SID.jsonl"
+bash "$TU" --update >/dev/null 2>&1
+ok "the next update adds one record, not a second copy of the session" "3.000000" "$(usd_of)"
+
 # ---------------------------------------------------------------------------
 t "7. a model that states its own cache-read rate is priced at it"
 # Fable/Mythos 5.1 read at $0.25/MTok — 0.025x their $10 input, not the 0.1x
