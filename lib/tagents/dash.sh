@@ -58,6 +58,8 @@ keyhdr() {  # <cols> <item>... -> the header, one item per line at worst
 # the way out.
 dash_header() {  # <cols> <enter label> [quit item]
   local items=()
+  # A list narrower than the rows can be read in (see compact in list()) has no room for a line of key hints: it would wrap into several rows of a strip a dozen columns wide, and ? shows the keys anyway.
+  case ${1:-80} in ''|*[!0-9]*) ;; *) [ "$1" -lt 34 ] && return 0 ;; esac
   cfg_check   # before resolve_keys: one parse in this process, none per key
   resolve_keys
   [ -n "$K_OPEN" ] && items[${#items[@]}]="$K_OPEN ${2:-open in dashboard}"
@@ -193,7 +195,8 @@ dash() {
   kb "$K_ORDER"   "execute-silent($SELF --toggle-order)+reload-sync($SELF --list)"
   kb "$K_COLLAPSE" "execute-silent($SELF --toggle-collapse)+reload-sync($SELF --list)"
   kb "$K_REFRESH" "reload-sync($SELF --list)"
-  kb resize       "reload-sync($SELF --list)"
+  # The header follows the width too: it is empty below the compact threshold, and a collapse or an expand changes the width without a new fzf.
+  kb resize       "transform-header($SELF --header \$FZF_COLUMNS '$enter_lbl' '$quit')+reload-sync($SELF --list)"
   # THE REFRESHER WATCHES FZF, NOT THE BASH AROUND IT. This function's own pid ($$)
   # is the shell that starts fzf again after an abort, and it lives on while fzf
   # comes and goes, so a refresher that watched it outlived every fzf it was
@@ -230,11 +233,14 @@ dash() {
     unset ft
     fl=$(usage_line footer) && [ -n "$fl" ] && ft=(--footer="$fl")
     header=$(dash_header "${TA_COLS:-80}" "$enter_lbl" "$quit")
+    # An unset --header is no line at all, while --header="" is a blank row taken off the list.
+    unset hd
+    [ -n "$header" ] && hd=(--header="$header")
     out=$(printf '%s\n' "$rows" | fzf \
       --ansi --no-sort --delimiter="$TAB" --with-nth=2 \
       --listen --height=100% --layout=reverse --info=inline \
       --prompt='agents> ' \
-      --header="$header" \
+      ${hd[@]+"${hd[@]}"} \
       ${pv[@]+"${pv[@]}"} \
       ${ft[@]+"${ft[@]}"} \
       ${BINDS[@]+"${BINDS[@]}"} \

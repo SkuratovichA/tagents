@@ -1304,5 +1304,23 @@ hasnt "a session with no prompt file yet does not fall back to the epoch" "h" \
 tm kill-pane -t "$A2" 2>/dev/null
 tm kill-pane -t "$B" 2>/dev/null
 
+# ---------------------------------------------------------------------------------------------------------------------------------
+# A COLLAPSED LIST: below 34 columns the rows are a mark, the state glyph and the title, nothing else, and every one fits the pane
+# fzf shows cols - 3 columns of a line (a 2-column gutter and one spare), and a longer one is cut to "··", so that is the budget.
+# ---------------------------------------------------------------------------------------------------------------------------------
+for cw in 20 24; do
+  CR=$(rows_at "$cw")
+  worst=$(printf '%s\n' "$CR" | awk -F'\t' 'NF > 1 { print $2 }' | perl -CS -ne 'chomp; my $l = length($_); print "$l\n"' | sort -n | tail -1)
+  [ -n "$worst" ] && [ "$worst" -le $((cw - 3)) ]; fits=$?
+  ok "at $cw columns every row fits the $((cw - 3)) that fzf shows (widest: ${worst:-none})" 0 "$fits"
+  hasnt "at $cw columns no row carries a tree glyph" "├" "$CR"
+  hasnt "at $cw columns no row carries a tree glyph (corner)" "└" "$CR"
+  rowA=$(row_of "$A2" "$CR")
+  has "at $cw columns a row still shows the session name" "repo" "$rowA"
+  hasnt "at $cw columns no dash stands in the mark column" "─" "$rowA"
+done
+ok "a header below the compact threshold is empty, there is no room for key hints" "" "$(env TMUX="$TMUXV" bash "$TA" --header 20)"
+has "a header at 34 columns still carries the keys" "keys" "$(env TMUX="$TMUXV" bash "$TA" --header 34)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
