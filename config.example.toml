@@ -96,6 +96,15 @@ every = 300
 # Each resumed chat gets the notes editor it had on screen back, unless resurrect.notes is off: reopen | off.
 notes = "reopen"
 
+# The cockpit: the tmux session `tagents` with the list in one pane and the viewport in the other. A change takes effect the next time the cockpit is built (after ctrl-q, or after the session is gone).
+[dashboard]
+# Which side the list is on: left | right.
+position = "left"
+# Percent of the cockpit's width the list takes (45). The environment variable TA_WIDTH wins when it is set.
+width = 45
+# Columns of the list while it is collapsed (24); ctrl-f collapses and expands it.
+collapsed_width = 24
+
 # Every key of the dashboard, and what it is bound to. Only the ones you write here move; the rest keep the defaults commented beside them. `tagents --keys` prints where each one actually ended up.
 #
 # fzf's own names: ctrl-a…ctrl-z, alt-a…alt-z, alt-0…alt-9, f1…f12, enter, tab, btab, space, bspace, del, up, down, left, right, home, end, pgup, pgdn, esc — or any single printable character. Anything else, and any key another verb already has, is refused with a message and the default is kept.

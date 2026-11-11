@@ -147,13 +147,28 @@ What is hidden lives one key per line in `$STATE_DIR/cols`, so it survives a res
 
 ## The cockpit
 
-The dashboard is a tmux session of its own, named `tagents`. The list is its left pane at `TA_WIDTH` percent (45 by default), and the right pane, the **viewport**, is a second client of the same tmux server that shows the window you select, so no pane ever moves between windows. There is no other layout and no config key for it: a `dashboard.layout` line left in an old config is ignored.
+The dashboard is a tmux session of its own, named `tagents`. The list is its left pane (the right one with `position = "right"`) at `width` percent of the cockpit (45 by default, or `TA_WIDTH` when that is set), and the other pane, the **viewport**, is a second client of the same tmux server that shows the window you select, so no pane ever moves between windows. There is no other layout and no config key for it: a `dashboard.layout` line left in an old config is ignored.
 
 - `tagents`, typed in any pane, and `tagents --ensure-dash` make the cockpit if it is not up, point the viewport at the window you were in and switch your terminal to it. The shell you typed it in gets its prompt back.
 - `enter` on a row points the viewport at that row's window.
 - A selection made for a terminal that is attached elsewhere (a popup, a notification click) points the viewport the same way. The popup also brings that terminal to the session `tagents`.
 - A list or a viewport that is killed comes back within about a second.
 - A session that is already named `tagents` and is not a dashboard stops the cockpit with a message: rename it, and the dashboard can start.
+
+### Where the list sits and how wide
+
+The `[dashboard]` table of the config sets the layout of the cockpit:
+
+```toml
+[dashboard]
+position = "right"      # left (default) | right: the side the list is on
+width = 45              # percent of the cockpit the list takes; TA_WIDTH wins when set
+collapsed_width = 24    # columns of the list while it is collapsed
+```
+
+With `position = "right"` the viewport is the left pane and the list the right one, and a half that is killed comes back on its own side. A changed position or width takes effect at the next cockpit build: quit the cockpit with `ctrl-q` and start it again. A cockpit that is already up keeps the side it was built with.
+
+`ctrl-f` (the `collapse` key) squeezes the list to `collapsed_width` columns and back to `width` percent. The choice is kept in `$STATE_DIR/.collapsed`, so a cockpit built or restored later is sized the same way. In a list narrower than 34 columns, collapsed or just a narrow pane, every row drops its tree and columns and shows only the state icon and as much of the title as fits.
 
 ### Keys and the prefix in the cockpit
 

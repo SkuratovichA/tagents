@@ -673,6 +673,18 @@ EOF
           reference|paste|submit) ;;
           *) cfg_note "$k" "\"$v\" is not one of reference, paste, submit — tnotes uses reference" ;;
         esac ;;
+      dashboard.position)
+        case $v in
+          left|right) ;;
+          *) cfg_note "$k" "\"$v\" is not one of left, right — read as left" ;;
+        esac ;;
+      dashboard.width)
+        case $v in
+          ''|*[!0-9]*|0) cfg_note "$k" "\"$v\" is not a percentage — read as 45" ;;
+          *) [ "$v" -le 90 ] || cfg_note "$k" "$v is more than 90 percent — read as 45" ;;
+        esac ;;
+      dashboard.collapsed_width)
+        case $v in ''|*[!0-9]*|0) cfg_note "$k" "\"$v\" is not a number of columns — read as 24" ;; esac ;;
       resurrect.every)
         # due_every reads anything but a positive number as off, so a "5m"
         # would quietly stop the capture a reboot depends on.

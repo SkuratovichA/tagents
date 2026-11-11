@@ -103,7 +103,7 @@ viewport_wait() {  # <tty>
 # tagents --viewport: the right pane of the dashboard. It marks its own pane (title, @tagents_viewport, allow-set-title off) and then keeps a client of this same server attached: TMUX unset and the socket by path, which tmux allows, makes it one more client of the one server. The loop is bash with the attach as its child, so the pane keeps one tty for its whole life and @tagents_viewport_tty stays true across attaches.
 viewport() {
   local pane=${TMUX_PANE:-} sock tty target idle term watcher=
-  if [ -z "$pane" ] || [ "$(tmux display -p -t "$pane" '#{?#{&&:#{==:#{@tagents_cockpit},1},#{==:#{pane_at_left},0}},1,0}' 2>/dev/null)" != 1 ]; then
+  if [ -z "$pane" ] || [ "$(tmux display -p -t "$pane" '#{?#{&&:#{==:#{@tagents_cockpit},1},#{==:#{pane_at_left},#{?#{==:#{@tagents_side},right},1,0}}},1,0}' 2>/dev/null)" != 1 ]; then
     echo "tagents: --viewport runs only in the cockpit's viewport pane" >&2
     return 1
   fi
@@ -135,10 +135,59 @@ viewport() {
   return 0
 }
 
-# The pane of the dashboard's window on the left (the list) or the right (the viewport).
-cockpit_pane() {  # left|right
+# The [dashboard] settings, read when a cockpit is built or a half of it is restored. A value that is not what the key takes is the default; --check says so.
+# Which side the list is on: the cockpit remembers the side it was built with (@tagents_side), so a position changed in the config waits for the next build and a restore never mixes the two.
+dash_position() {
+  local v
+  v=$(cfg_get dashboard.position) || v=left
+  [ "$v" = right ] && printf right || printf left
+}
+dash_width() {  # percent of the cockpit's width the list takes
+  local v=${TA_WIDTH:-}
+  [ -n "$v" ] || v=$(cfg_get dashboard.width) || v=''
+  case $v in ''|*[!0-9]*|0|[1-9][0-9][0-9]*) v=45 ;; esac
+  [ "$v" -le 90 ] || v=45
+  printf '%s' "$v"
+}
+dash_collapsed_width() {  # columns of the collapsed list
+  local v
+  v=$(cfg_get dashboard.collapsed_width) || v=''
+  case $v in ''|*[!0-9]*|0) v=24 ;; esac
+  printf '%s' "$v"
+}
+collapsed_on() { [ -e "$STATE_DIR/.collapsed" ]; }
+
+# The side the list of the cockpit on screen is on.
+cockpit_side() {
+  local v
+  v=$(tmux show -qv -t '=tagents:' @tagents_side 2>/dev/null)
+  [ "$v" = right ] && printf right || printf left
+}
+
+# The size of the list in a window <width> columns wide: the collapsed width, or its share.
+cockpit_list_cols() {  # <window width>
+  local lw
+  if collapsed_on; then lw=$(dash_collapsed_width); else lw=$(($1 * $(dash_width) / 100)); fi
+  [ "$lw" -le $(($1 - 10)) ] || lw=$(($1 / 2))
+  printf '%s' "$lw"
+}
+
+# The size argument of the split that restores a missing half next to the other, which holds the whole window of <width> columns: a share, or columns when the list is collapsed.
+cockpit_split_size() {  # list|viewport <window width>
+  local lw
+  if collapsed_on; then
+    lw=$(cockpit_list_cols "$2")
+    if [ "$1" = list ]; then printf '%s' "$lw"; else printf '%s' "$(($2 - lw - 1))"; fi
+  elif [ "$1" = list ]; then printf '%s%%' "$(dash_width)"
+  else printf '%s%%' "$((100 - $(dash_width)))"
+  fi
+}
+
+# The pane of the dashboard's window that holds the list or the viewport.
+cockpit_pane() {  # list|viewport
   local want=1
-  [ "$1" = right ] && want=0
+  [ "$(cockpit_side)" = right ] && want=0
+  [ "$1" = viewport ] && want=$((1 - want))
   tmux list-panes -t '=tagents:' -F "#{pane_at_left} #{pane_id}" 2>/dev/null |
     LC_ALL=C awk -v w="$want" '$1 == w { print $2; exit }'
 }
@@ -146,7 +195,7 @@ cockpit_pane() {  # left|right
 # Make the session `tagents` forward the user's prefix to the viewport: the table `tagents-cockpit` binds each prefix key to make the viewport the active pane and send it the key, and holds the root table's mouse bindings that open no menu; the session options that select it are set last, so no key reaches a half-built table. Called again with the new viewport pane whenever a viewport is started again.
 cockpit_keys_install() {
   local vp k tmp
-  vp=$(cockpit_pane right)
+  vp=$(cockpit_pane viewport)
   [ -n "$vp" ] || return 1
   tmux unbind-key -a -T tagents-cockpit 2>/dev/null
   for k in $(tmux show -gqv prefix 2>/dev/null) $(tmux show -gqv prefix2 2>/dev/null); do
@@ -169,7 +218,7 @@ cockpit_keys_install() {
 cockpit_await_viewport() {
   local i=0 vp ptty vtty
   while [ "$i" -lt 100 ]; do
-    vp=$(cockpit_pane right)
+    vp=$(cockpit_pane viewport)
     if [ -n "$vp" ]; then
       ptty=$(tmux display -p -t "$vp" '#{pane_tty}' 2>/dev/null)
       vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
@@ -188,11 +237,12 @@ cockpit_restart_half() {  # [list|viewport]
   p=$(tmux list-panes -t '=tagents:' -F '#{pane_id}' 2>/dev/null)
   if [ "$(tmux display -p -t "$p" '#{@tagents_viewport}' 2>/dev/null)" = 1 ]; then
     [ -z "${1:-}" ] || [ "$1" = list ] || return 0
-    tmux split-window -d -b -h -l "${DASH_WIDTH}%" -c "$HOME" -t "$p" "exec '$SELF'" 2>/dev/null
+    # The list goes on the side the cockpit was built with: before the viewport on the left, after it on the right.
+    tmux split-window -d $([ "$(cockpit_side)" = right ] || printf %s -b) -h -l "$(cockpit_split_size list "$(tmux display -p -t "$p" '#{window_width}' 2>/dev/null)")" -c "$HOME" -t "$p" "exec '$SELF'" 2>/dev/null
     await_list
   elif list_in_pane "$p"; then
     [ -z "${1:-}" ] || [ "$1" = viewport ] || return 0
-    tmux split-window -d -h -l "$((100 - DASH_WIDTH))%" -c "$HOME" -t "$p" "exec '$SELF' --viewport" 2>/dev/null && cockpit_keys_install
+    tmux split-window -d $([ "$(cockpit_side)" = right ] && printf %s -b) -h -l "$(cockpit_split_size viewport "$(tmux display -p -t "$p" '#{window_width}' 2>/dev/null)")" -c "$HOME" -t "$p" "exec '$SELF' --viewport" 2>/dev/null && cockpit_keys_install
   fi
   return 0
 }
@@ -251,21 +301,23 @@ cockpit_client_of_pane() {  # <pane-id>
 
 # The dashboard made from nothing: the session `tagents` of the given size with the list in it, its options, the guard, the viewport beside the list and the key table. The size is the client's, 200x50 when it is not a number. cockpit_ensure calls it for the terminal that asks, and the restore for the viewport it points at a window, switching no terminal.
 cockpit_make() {  # <width> <height>
-  local w=${1:-} h=${2:-} lw vw
+  local w=${1:-} h=${2:-} lw vw side
   case $w in ''|*[!0-9]*|0) w=200 ;; esac
   case $h in ''|*[!0-9]*|0) h=50 ;; esac
-  lw=$((w * DASH_WIDTH / 100)); vw=$((w - lw - 1))
+  lw=$(cockpit_list_cols "$w"); vw=$((w - lw - 1))
+  side=$(dash_position)
   tmux set -gu @tagents_viewport_tty 2>/dev/null
   # -x/-y: a detached session is 80x24 until a client attaches, and the list's width is a share of the window.
   tmux new-session -d -s tagents -x "$w" -y "$h" -n dashboard -c "$HOME" "exec '$SELF'" \; \
-       set -t '=tagents:' @tagents_cockpit 1 \; set -t '=tagents:' status off \; set -t '=tagents:' detach-on-destroy off 2>/dev/null || return 1
+       set -t '=tagents:' @tagents_cockpit 1 \; set -t '=tagents:' @tagents_side "$side" \; set -t '=tagents:' status off \; set -t '=tagents:' detach-on-destroy off 2>/dev/null || return 1
   cockpit_guard_install
-  tmux split-window -d -h -l "$vw" -c "$HOME" -t '=tagents:' "exec '$SELF' --viewport" 2>/dev/null || return 1
+  # The list is the first pane; the viewport goes after it, or before it (-b) when the list is on the right.
+  tmux split-window -d $([ "$side" = right ] && printf %s -b) -h -l "$vw" -c "$HOME" -t '=tagents:' "exec '$SELF' --viewport" 2>/dev/null || return 1
   cockpit_keys_install
   await_list >/dev/null
 }
 
-# A leftover dashboard, as tmux-resurrect restores a cockpit: a session `tagents` without @tagents_cockpit whose only window holds two panes, the sidebar's title on the left one and the viewport's on the right one, both idle shells with neither mark of a running half. Prints "<sidebar pane> <viewport pane>"; anything else is not a leftover and `tagents` stays a taken name.
+# A leftover dashboard, as tmux-resurrect restores a cockpit: a session `tagents` without @tagents_cockpit whose only window holds two panes, the sidebar's title on one and the viewport's on the other (the sidebar's side is the list's side), both idle shells with neither mark of a running half. Prints "<sidebar pane> <viewport pane>"; anything else is not a leftover and `tagents` stays a taken name.
 cockpit_leftover() {
   local rows sb vp c1 c2
   tmux has-session -t '=tagents:' 2>/dev/null || return 1
@@ -274,9 +326,9 @@ cockpit_leftover() {
   rows=$(tmux list-panes -t '=tagents:' -F '#{pane_id}|@|#{pane_title}|@|#{pane_at_left}|@|#{pane_current_command}|@|#{@tagents_list}#{@tagents_viewport}' 2>/dev/null |
     LC_ALL=C awk -F'\\|@\\|' -v OFS="$TAB" '
       { n++ }
-      $2 == "tagents-sidebar" && $3 == 1 && $5 == "" { sb = $1; c1 = $4 }
-      $2 == "tagents-viewport" && $3 == 0 && $5 == "" { vp = $1; c2 = $4 }
-      END { if (n == 2 && sb != "" && vp != "") print sb, vp, c1, c2 }')
+      $2 == "tagents-sidebar" && $5 == "" { sb = $1; c1 = $4; sa = $3 }
+      $2 == "tagents-viewport" && $5 == "" { vp = $1; c2 = $4; va = $3 }
+      END { if (n == 2 && sb != "" && vp != "" && sa != va) print sb, vp, c1, c2 }')
   [ -n "$rows" ] || return 1
   IFS="$TAB" read -r sb vp c1 c2 <<<"$rows"
   is_shell_cmd "$c1" && is_shell_cmd "$c2" || return 1
@@ -285,10 +337,12 @@ cockpit_leftover() {
 
 # The leftover made the cockpit where it stands: the options the dashboard carries, the guard, the list and the viewport started in the two idle shells (respawn-pane -k is safe on them: they run no list whose exit trap could race), the key table. No pane is made and no client is switched or detached.
 cockpit_leftover_rebuild() {
-  local lo sb vp
+  local lo sb vp side
   lo=$(cockpit_leftover) || return 1
   read -r sb vp <<<"$lo"
-  tmux set -t '=tagents:' @tagents_cockpit 1 \; set -t '=tagents:' status off \; set -t '=tagents:' detach-on-destroy off \; \
+  side=left
+  [ "$(tmux display -p -t "$sb" '#{pane_at_left}' 2>/dev/null)" = 1 ] || side=right
+  tmux set -t '=tagents:' @tagents_cockpit 1 \; set -t '=tagents:' @tagents_side "$side" \; set -t '=tagents:' status off \; set -t '=tagents:' detach-on-destroy off \; \
        set -gu @tagents_viewport_tty 2>/dev/null
   cockpit_guard_install
   tmux respawn-pane -k -t "$sb" -c "$HOME" "exec '$SELF'" 2>/dev/null
@@ -328,7 +382,7 @@ cockpit_ensure() {  # [client name]
     tmux switch-client -c "$vtty" -t "=$sess:$win" 2>/dev/null
     tmux switch-client -c "$client" -t '=tagents:' 2>/dev/null
   fi
-  lp=$(cockpit_pane left)
+  lp=$(cockpit_pane list)
   [ -n "$lp" ] && tmux select-pane -t "$lp" 2>/dev/null
   return 0
 }
@@ -344,7 +398,7 @@ cockpit_select() {  # <window-id> [pane]
     return 1
   fi
   client=$(client_raw '#{client_name}')
-  vp=$(cockpit_pane right)
+  vp=$(cockpit_pane viewport)
   tmux switch-client -c "$vtty" -t "=$sess:$win" 2>/dev/null
   [ -n "$vp" ] && tmux select-pane -t "$vp" 2>/dev/null
   [ -n "$pane" ] && tmux select-pane -t "$pane" 2>/dev/null

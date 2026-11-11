@@ -1034,5 +1034,70 @@ ta --ensure-dash >"$CPROOT/r83.log" 2>&1; ok "Restored in the cockpit through --
 leftover_rebuilt "Restored in the cockpit through --ensure-dash" 83
 ok "Restored in the cockpit through --ensure-dash: the viewport has a client" 1 "$(present "$(vtty)")"
 
+# ---------------------------------------------------------------------------------------------------------------------------------
+# [dashboard] position = "right": the list is the right pane, the viewport the left one, on every way the cockpit is built or restored
+# ---------------------------------------------------------------------------------------------------------------------------------
+
+# The two halves by what they run and where they sit: the list is the pane whose command is not --viewport.
+rlist()  { tm list-panes -t '=tagents:' -F '#{pane_id} #{pane_start_command}' 2>/dev/null | awk '$0 !~ /--viewport/ { print $1 }'; }
+rview()  { tm list-panes -t '=tagents:' -F '#{pane_id} #{pane_start_command}' 2>/dev/null | awk '$0 ~ /--viewport/ { print $1 }'; }
+atleft() { tm display -p -t "$1" '#{pane_at_left}' 2>/dev/null; }
+cpright() {  # <n> [extra [dashboard] lines] — a cockpit built with the list on the right
+  cpstart
+  printf '[dashboard]\nposition = "right"\n%s\n' "${2:-}" >"$CPCONF"
+  tm set-environment -g TA_NEW_CMD "sleep 600"
+  kclientio "$1" work;                                     U=$KC
+  ta --ensure-dash >/dev/null 2>&1
+  wait_eq work:2 vwin >/dev/null
+  wait_eq tagents csess "$U" >/dev/null
+  wait_eq_long 1 listready >/dev/null; sleep 1
+}
+
+t "A cockpit with the list on the right"
+cpright 90
+ok "Right: the list is not the left pane" 0 "$(atleft "$(rlist)")"
+ok "Right: the viewport is the left pane" 1 "$(atleft "$(rview)")"
+ok "Right: the cockpit remembers the side" right "$(tm show -qv -t '=tagents:' @tagents_side)"
+near "Right: the list is 90 columns wide" 90 "$(tm display -p -t "$(rlist)" '#{pane_width}')"
+ok "Right: the viewport shows work:2" work:2 "$(wait_eq_long work:2 vwin)"
+ok "Right: the viewport's pane is the one with the client" "$(tm display -p -t "$(rview)" '#{pane_tty}')" "$(vtty)"
+has "Right: the key table points at the viewport" "select-pane -t \"$(rview)\"" "$(tm list-keys -T tagents-cockpit | grep 'C-b')"
+
+t "Right: the viewport is killed"
+OLDV=$(rview); OLDL=$(rlist)
+tm kill-pane -t "$OLDV"
+ok "Right: a new viewport is the left pane" 1 "$(wait_eq_long 1 sh -c "[ -n \"\$(tmux -L $CPS list-panes -t '=tagents:' -F '#{pane_at_left} #{pane_id} #{pane_start_command}' | awk '\$1 == 1 && \$2 != \"$OLDV\" && \$0 ~ /--viewport/ { print 1 }')\" ] && echo 1")"
+ok "Right: the list is the one it was, on the right" "$OLDL 0" "$(rlist) $(atleft "$(rlist)")"
+ok "Right: it shows work:2 again" work:2 "$(wait_eq_long work:2 vwin)"
+
+t "Right: the list is killed"
+OLDV=$(rview); OLDL=$(rlist)
+tm kill-pane -t "$OLDL"
+ok "Right: a new list is the right pane" 1 "$(wait_eq_long 1 sh -c "[ -n \"\$(tmux -L $CPS list-panes -t '=tagents:' -F '#{pane_at_left} #{pane_id} #{pane_start_command}' | awk '\$1 == 0 && \$2 != \"$OLDL\" && \$0 !~ /--viewport/ { print 1 }')\" ] && echo 1")"
+ok "Right: the viewport is the one it was, on the left" "$OLDV 1" "$(rview) $(atleft "$(rview)")"
+near "Right: the new list is 90 columns wide" 90 "$(tm display -p -t "$(rlist)" '#{pane_width}')"
+
+t "Right: a width of 30 percent"
+cpright 91 'width = 30'
+near "Right: the list is 60 columns wide" 60 "$(tm display -p -t "$(rlist)" '#{pane_width}')"
+ok "Right: ...and is on the right" 0 "$(atleft "$(rlist)")"
+
+t "Right: a leftover dashboard with the sidebar on the right"
+cpstart
+sleep 2
+printf '[dashboard]\nposition = "left"\n' >"$CPCONF"
+tm new-session -d -s tagents -x 200 -y 50 -n dashboard
+LV=$(tm list-panes -t '=tagents:' -F '#{pane_id}' | head -1)
+LS=$(tm split-window -d -h -t "$LV" -P -F '#{pane_id}')
+tm set -p -t "$LS" allow-set-title off; tm set -p -t "$LV" allow-set-title off
+tm select-pane -T tagents-sidebar -t "$LS"; tm select-pane -T tagents-viewport -t "$LV"
+kclientio 92 tagents; U=$KC
+printf 'D\twork\t2\n' >"$CPROOT/snap.tsv"
+ta --resurrect --from "$CPROOT/snap.tsv" >"$CPROOT/r92.log" 2>&1
+ok "Right leftover: the list runs in the right pane" 1 "$(wait_eq_long 1 sh -c "pid=\$(tmux -L $CPS display -p -t '$LS' '#{@tagents_list}'); [ -n \"\$pid\" ] && kill -0 \"\$pid\" 2>/dev/null && echo 1")"
+ok "Right leftover: the viewport runs in the left pane" 1 "$(wait_eq_long 1 sh -c "tmux -L $CPS display -p -t '$LV' '#{@tagents_viewport}'")"
+ok "Right leftover: the side is kept as it stood, whatever the config says" right "$(tm show -qv -t '=tagents:' @tagents_side)"
+ok "Right leftover: the same two panes are there" "$LS $LV" "$(rlist) $(rview)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
