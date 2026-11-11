@@ -158,13 +158,14 @@ line=$(jq -r --arg us "$us" '
            then (try ($h.last_assistant_message | split("\n")
                       | first(.[] | fld | select(. != "")) // "" | .[0:1000] | txt) catch "")
       else "" end),
-     (env.TA_LABEL // "" | txt), (env.CLAUDE_CONFIG_DIR // "")]
+     (env.TA_LABEL // "" | txt), (env.CLAUDE_CONFIG_DIR // ""),
+     (if $e == "PreToolUse" or $e == "PostToolUse" then ($h.tool_use_id // "") else "" end)]
   | map(tostring | gsub("[\\r\\n\\t]"; " ") | gsub($us; " "))
   | join($us)
 ' 2>/dev/null) || exit 0
 [ -n "$line" ] || exit 0
 
-IFS="$us" read -r now event agent state sid cwd transcript detail etool esub etext elabel econfig <<EOF
+IFS="$us" read -r now event agent state sid cwd transcript detail etool esub etext elabel econfig etid <<EOF
 $line
 EOF
 
@@ -589,7 +590,7 @@ EOF
   # counters, and its pane option) on our way out is the bug this hook had.
   gowner=$(LC_ALL=C awk -F'	' 'NR==1 { print $3 }' "$dir/$key.tsv" 2>/dev/null)
   if [ -z "$gowner" ] || [ "$gowner" = "${sid:-}" ]; then
-    rm -f "$dir/$key.tsv"
+    rm -f "$dir/$key.tsv" "$dir/$key.tools"
     rm -f "$dir/sub/$key".* 2>/dev/null
     # ...and when you last typed into it, which is what the row was ordered on.
     rm -f "$dir/prompt/$key" 2>/dev/null
@@ -606,6 +607,25 @@ fi
 
 # A finished turn means no subagent of this session can still be running.
 [ "$state" = "done" ] && rm -f "$dir/sub/$key".* 2>/dev/null
+
+# A LATE PostToolUse MUST NOT OVERWRITE A NEWER STATE. Claude Code runs the PostToolUse of a tool call that finishes after a new message interrupted the turn, so it can arrive after the next turn's Notification (blocked) or Stop (done) and would put the session back to "working" with nothing running. The tool_use_ids of the PreToolUse events of the current turn are kept in <key>.tools, one per line, emptied by UserPromptSubmit and Stop. A PostToolUse that finds the record blocked or done is applied only when its id is in that list: a permission prompt answered for a call of this turn still unblocks the row, a call of an earlier turn changes nothing. No id (an older Claude Code) means the old behaviour. Shell builtins only, so no process is added.
+tools="$dir/$key.tools"
+case "$event" in
+  UserPromptSubmit|Stop) [ -e "$tools" ] && : >"$tools" 2>/dev/null ;;
+  PreToolUse) [ -n "$etid" ] && printf '%s\n' "$etid" >>"$tools" 2>/dev/null ;;
+  PostToolUse)
+    if [ -n "$etid" ]; then
+      cur=; IFS="	" read -r _ cur _ <"$dir/$key.tsv" 2>/dev/null
+      case "$cur" in
+        blocked|done)
+          inturn=
+          if [ -e "$tools" ]; then
+            while IFS= read -r tl; do [ "$tl" = "$etid" ] && inturn=1; done <"$tools"
+          fi
+          [ -n "$inturn" ] || exit 0 ;;
+      esac
+    fi ;;
+esac
 
 # WHICH ACCOUNT THIS SESSION IS ON, as the 7th field. A hook runs inside
 # Claude's own process, so it is the only thing that can see the CLAUDE_CONFIG_DIR

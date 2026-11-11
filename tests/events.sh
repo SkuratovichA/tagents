@@ -403,5 +403,37 @@ printf '%s' "$(payload Stop '{"session_id":"sid-new"}')" |
   env -u TMUX_PANE PATH="$SHIM:$PATH" TMUX="$DEAD" TA_STATE_DIR="$S" TA_LABEL=job sh "$HOOK" >/dev/null 2>&1
 ok "a new headless record keeps the label it starts with" job "$(field 13 "$E")"
 
+t "q. a late PostToolUse does not overwrite a newer state"
+# Claude Code 2.1.319 runs the PostToolUse of a call that finishes after a new message interrupted the turn, so it can arrive after the next turn's events.
+rec_state() { field 2 "$S/7.tsv"; }
+tid() { printf '{"tool_name":"Bash","tool_use_id":"%s"}' "$1"; }
+fresh "$S"
+run_hook "$HOOK" "$S" "$(payload UserPromptSubmit '{"prompt":"one"}')"
+run_hook "$HOOK" "$S" "$(payload PreToolUse "$(tid toolu_A)")"
+run_hook "$HOOK" "$S" "$(payload UserPromptSubmit '{"prompt":"two"}')"
+run_hook "$HOOK" "$S" "$(payload Notification '{"notification_type":"permission_prompt","message":"needs you"}')"
+ok "the Notification of the new turn blocks the session" blocked "$(rec_state)"
+run_hook "$HOOK" "$S" "$(payload PostToolUse "$(tid toolu_A)")"
+ok "...and the late PostToolUse of the interrupted turn leaves it blocked" blocked "$(rec_state)"
+run_hook "$HOOK" "$S" "$(payload PreToolUse "$(tid toolu_B)")"
+run_hook "$HOOK" "$S" "$(payload Notification '{"notification_type":"permission_prompt","message":"needs you"}')"
+run_hook "$HOOK" "$S" "$(payload PostToolUse "$(tid toolu_B)")"
+ok "a PostToolUse of a call of this turn still unblocks the row after the prompt is answered" working "$(rec_state)"
+run_hook "$HOOK" "$S" "$(payload Stop)"
+run_hook "$HOOK" "$S" "$(payload PostToolUse "$(tid toolu_B)")"
+ok "a late PostToolUse after Stop leaves the session done" done "$(rec_state)"
+run_hook "$HOOK" "$S" "$(payload PostToolUse '{"tool_name":"Bash"}')"
+ok "a PostToolUse with no id keeps the old behaviour" working "$(rec_state)"
+run_hook "$HOOK" "$S" "$(payload SessionEnd '{"reason":"clear"}')"
+ok "SessionEnd removes the list of the turn's calls" 0 "$([ -e "$S/7.tools" ] && echo 1 || echo 0)"
+
+t "r. a transcript with a line cut through an emoji does not matter to the hook"
+# The hook records the transcript's path and never opens the file; Claude Code before 2.1.309 left such lines on disk.
+fresh "$S"
+printf '{"type":"user","message":{"content":"a"}}\n{"type":"assistant","message":{"content":"cut \360\237\n{"type":"user","message":{"content":"b"}}\n' >"$ROOT/cut.jsonl"
+run_hook "$HOOK" "$S" "$(payload Stop "$(jq -nc --arg p "$ROOT/cut.jsonl" '{transcript_path:$p}')")"
+ok "the state record is written" done "$(rec_state)"
+ok "...and names the transcript" "$ROOT/cut.jsonl" "$(field 5 "$S/7.tsv")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
