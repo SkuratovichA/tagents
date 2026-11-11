@@ -538,6 +538,7 @@ case "${1:-}" in
   --flat)         cfg_load; TA_FLAT=1 list ;;
   --toggle-group) toggle_group ;;
   --toggle-order) toggle_order ;;
+  --toggle-collapse) toggle_collapse ;;
   --timeline)     timeline ;;
   --label)        label_cmd "${2:-}" "${3:-}" ;;
   --ask-rename)   ask_rename "${2:-}" "${3:-}" ;;

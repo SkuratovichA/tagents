@@ -1099,5 +1099,47 @@ ok "Right leftover: the viewport runs in the left pane" 1 "$(wait_eq_long 1 sh -
 ok "Right leftover: the side is kept as it stood, whatever the config says" right "$(tm show -qv -t '=tagents:' @tagents_side)"
 ok "Right leftover: the same two panes are there" "$LS $LV" "$(rlist) $(rview)"
 
+# ---------------------------------------------------------------------------------------------------------------------------------
+# ctrl-f: the list collapses to collapsed_width columns and expands to its share again, on either side; a build or a restore reads the marker
+# ---------------------------------------------------------------------------------------------------------------------------------
+
+cpcol() {  # <n> <left|right> [collapsed] — a cockpit of 200 columns, built with the marker when asked
+  cpstart
+  printf '[dashboard]\nposition = "%s"\n' "$2" >"$CPCONF"
+  [ -z "${3:-}" ] || : >"$CPSTATE/.collapsed"
+  tm set-environment -g TA_NEW_CMD "sleep 600"
+  kclientio "$1" work;                                     U=$KC
+  ta --ensure-dash >/dev/null 2>&1
+  wait_eq work:2 vwin >/dev/null
+  wait_eq tagents csess "$U" >/dev/null
+  wait_eq_long 1 listready >/dev/null; sleep 1
+}
+lwidth() { tm display -p -t "$(rlist)" '#{pane_width}'; }
+
+for side in left right; do
+  t "Collapse with the list on the $side"
+  cpcol 95 $side
+  ta --toggle-collapse >/dev/null 2>&1
+  ok "Collapse $side: the marker is there" yes "$([ -e "$CPSTATE/.collapsed" ] && echo yes || echo no)"
+  ok "Collapse $side: the list is 24 columns wide" 24 "$(wait_eq 24 lwidth)"
+  ok "Collapse $side: the viewport took the rest" 175 "$(tm display -p -t "$(rview)" '#{pane_width}')"
+  ok "Collapse $side: the list is still on the $side" "$([ $side = left ] && echo 1 || echo 0)" "$(atleft "$(rlist)")"
+  ta --toggle-collapse >/dev/null 2>&1
+  ok "Collapse $side: the marker is gone" no "$([ -e "$CPSTATE/.collapsed" ] && echo yes || echo no)"
+  near "Collapse $side: the list is 90 columns wide again" 90 "$(wait_eq 90 lwidth)"
+  : >"$CPSTATE/.collapsed"
+  OLDV=$(rview); OLDL=$(rlist)
+  tm kill-pane -t "$OLDL"
+  ok "Collapse $side: a restored list is 24 columns wide" 24 "$(wait_eq_long 24 sh -c "n=\$(tmux -L $CPS list-panes -t '=tagents:' -F '#{pane_id} #{pane_width} #{pane_start_command}' | awk -v o=$OLDL '\$1 != o && \$0 !~ /--viewport/ { print \$2 }'); echo \$n")"
+  ok "Collapse $side: ...and the viewport is the one it was" "$OLDV" "$(rview)"
+  OLDV=$(rview); OLDL=$(rlist)
+  tm kill-pane -t "$OLDV"
+  ok "Collapse $side: a restored viewport leaves the list its 24 columns" 24 "$(wait_eq_long 1 sh -c "tmux -L $CPS list-panes -t '=tagents:' -F '#{pane_id} #{pane_width} #{pane_start_command}' | awk -v o=$OLDV '\$1 != o && \$0 ~ /--viewport/ { f = 1 } END { print f + 0 }'" >/dev/null; lwidth)"
+  t "Collapse $side: a cockpit built collapsed"
+  cpcol 96 $side collapsed
+  ok "Collapse $side built: the list is 24 columns wide" 24 "$(lwidth)"
+  ok "Collapse $side built: the viewport is 175 wide" 175 "$(tm display -p -t "$(rview)" '#{pane_width}')"
+done
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

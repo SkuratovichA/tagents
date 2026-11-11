@@ -530,7 +530,7 @@ has "the two that cannot be run from here are still listed" "ctrl-q" "$TABLE"
 has "...both of them"                                       "esc"    "$TABLE"
 # The verb column exactly as the spec has it (dashboard-keys, "Table of keys"): the spec's order, a leading colon on what the list runs itself, :none on the ? line and :quit on the esc line.
 ok "the verbs come in the spec's order, then the esc line" \
-   "open beside new pick shell goto send rename undock kill :tree :preview :refresh :columns :usage :closed :none :quit :order dir :quit" \
+   "open beside new pick shell goto send rename undock kill :tree :preview :refresh :columns :usage :closed :none :quit :order dir :collapse :quit" \
    "$(run --keys | cut -f2 | paste -s -d ' ' -)"
 
 has "the ? line describes the cockpit's keys" "cockpit" "$(run --keys | LC_ALL=C awk -F'\t' '$2 == ":none"')"

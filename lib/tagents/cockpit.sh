@@ -183,6 +183,19 @@ cockpit_split_size() {  # list|viewport <window width>
   fi
 }
 
+# ctrl-f: the list as a narrow column, or back to its share. The marker is what a cockpit built or restored later reads; the resize is for the cockpit on screen, and fzf's resize event repaints the list for the new width.
+toggle_collapse() {
+  local lp w
+  toggle_marker "$STATE_DIR/.collapsed"
+  cockpit_up || return 0
+  lp=$(cockpit_pane list)
+  [ -n "$lp" ] || return 0
+  w=$(tmux display -p -t "$lp" '#{window_width}' 2>/dev/null)
+  case $w in ''|*[!0-9]*) return 0 ;; esac
+  tmux resize-pane -t "$lp" -x "$(cockpit_list_cols "$w")" 2>/dev/null
+  return 0
+}
+
 # The pane of the dashboard's window that holds the list or the viewport.
 cockpit_pane() {  # list|viewport
   local want=1

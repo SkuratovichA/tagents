@@ -191,6 +191,7 @@ dash() {
   kb "$K_PREVIEW" "$vact"
   kb "$K_TREE"    "execute-silent($SELF --toggle-group)+reload-sync($SELF --list)"
   kb "$K_ORDER"   "execute-silent($SELF --toggle-order)+reload-sync($SELF --list)"
+  kb "$K_COLLAPSE" "execute-silent($SELF --toggle-collapse)+reload-sync($SELF --list)"
   kb "$K_REFRESH" "reload-sync($SELF --list)"
   kb resize       "reload-sync($SELF --list)"
   # THE REFRESHER WATCHES FZF, NOT THE BASH AROUND IT. This function's own pid ($$)

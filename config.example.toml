@@ -124,6 +124,7 @@ closed = "ctrl-y"
 # kill = "ctrl-x"     # kill this agent, asking first
 # tree = "ctrl-t"     # tree or flat
 # order = "ctrl-o"    # rows in window order, or by your last message
+# collapse = "ctrl-f" # the list as a narrow column, or wide again (cockpit)
 # preview = "ctrl-v"  # the preview in a window of its own
 # refresh = "ctrl-l"  # refresh now
 # columns = "ctrl-w"  # show or hide columns
