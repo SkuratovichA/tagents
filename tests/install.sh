@@ -674,6 +674,16 @@ for bad in "not-a-hash  $ARCHIVE" "${good%????}  $ARCHIVE" "${good}00  $ARCHIVE"
   nothing_installed "...and nothing is installed"
 done
 
+# An uppercase hash is refused for being uppercase whatever letters it holds. Under en_US.UTF-8 bash 3.2 collates `a-f` as a A b B ... e E, so a class spelled as a range lets a hash with an F through to the other refusal; the two hashes below pin the same reason for both.
+fresh_native 0.1.0
+for bad in "$(printf 'F%063d' 0)" "$(printf 'E%063d' 0)"; do
+  printf '%s  %s\n' "$bad" "$ARCHIVE" > "$RELEASES/v0.1.0/$ARCHIVE.sha256"
+  out=$(LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 run_native); rc=$?
+  ok "an uppercase checksum '${bad%${bad#?}}...' exits 1 under en_US.UTF-8" 1 "$rc"
+  contains "...with the reason" "$ARCHIVE.sha256 does not start with a SHA-256" "$out"
+  nothing_installed "...and nothing is installed"
+done
+
 # The first line of the checksum file and its first field are all that count.
 fresh_native 0.1.0
 good=$(cut -d ' ' -f 1 "$RELEASES/v0.1.0/$ARCHIVE.sha256")

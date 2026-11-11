@@ -100,7 +100,7 @@ resurrect_done()  { [ "$(cat "$RESURRECT_DONE" 2>/dev/null)" = "$1" ]; }        
 # A restore is on its way only when tmux-resurrect's restore hook runs tagents (README: set -g @resurrect-hook-post-restore-all '~/.local/bin/tagents --resurrect --auto'). A server without tmux-resurrect or without that line is never restored, so its first minutes hold nothing to protect and must be captured. The -- check stops at the end of a word, so --resurrect-save in that option does not count.
 resurrect_hooked() {
   local h; h=$(tmux show -gqv @resurrect-hook-post-restore-all 2>/dev/null)
-  case $h in *--resurrect|*--resurrect[!-a-zA-Z0-9]*) return 0 ;; esac
+  case $h in *--resurrect|*--resurrect[!-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789]*) return 0 ;; esac
   return 1
 }
 
