@@ -2337,6 +2337,20 @@ if command -v jq >/dev/null 2>&1; then
 else
   echo "  jq missing: section 31 not run"
 fi
+t "32. a transcript line cut through an emoji costs that line and nothing else"
+# ---------------------------------------------------------------------------
+# Claude Code before 2.1.309 cut long tool output previews between the bytes of an emoji, and those transcripts stay broken on disk. jq stops at the first line it cannot parse, so the requests after it would be lost with it; the update reads line by line.
+
+F32="$ROOT/fx31"; mkdir -p "$F32/p/-x" "$F32/s"
+{
+  printf '{"type":"assistant","requestId":"r1","timestamp":"2026-11-10T10:00:00.000Z","sessionId":"s1","message":{"model":"claude-sonnet-5-5","usage":{"input_tokens":10,"output_tokens":5}}}\n'
+  printf '{"type":"assistant","requestId":"r2","timestamp":"2026-11-10T10:01:00.000Z","sessionId":"s1","message":{"model":"claude-sonnet-5-5","content":"cut \360\237\n'
+  printf '{"type":"assistant","requestId":"r3","timestamp":"2026-11-10T10:02:00.000Z","sessionId":"s1","message":{"model":"claude-sonnet-5-5","usage":{"input_tokens":20,"output_tokens":7}}}\n'
+} >"$F32/p/-x/s1.jsonl"
+TU_PROJECTS="$F32/p" TU_STATE="$F32/s" "$TU" --update >/dev/null 2>&1; rc=$?
+ok "the update of a transcript with a broken line exits 0" 0 "$rc"
+ok "...and both requests around the broken line are in the index (2 requests, 30 input, 12 output)" \
+   "2${TAB}30${TAB}12" "$(cut -f8,9,13 "$F32/s/facts.tsv" 2>/dev/null)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

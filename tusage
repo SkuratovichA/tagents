@@ -653,7 +653,7 @@ update() {
       head -c "$end" -- "$f" 2>/dev/null
     else
       tail -c "+$((off + 1))" -- "$f" 2>/dev/null | head -c "$((end - off))"
-    fi | jq -rc "$EXTRACT" 2>/dev/null |
+    fi | jq -rcR "(fromjson? // empty) | $EXTRACT" 2>/dev/null |
       fold_rows "$PF_SLUG" "$seen" "$PF_ORIGIN" "$tmp/newfacts" "$tmp/newmeta" >"$tmp/out"
     newoff=""; IFS= read -r newoff <"$tmp/out"
     printf '%s\t%s\t%s\t%s\n' "$f" "$end" "$newoff" "$key" >>"$tmp/newoff"
