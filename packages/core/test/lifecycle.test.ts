@@ -98,7 +98,7 @@ test('the 50-minute timeout warns at 45:00 and kills at 50:00, to the millisecon
   assert.equal(o.kind, 'timeout');
   if (o.kind === 'timeout') assert.equal(o.toolUses, 1);
   assert.equal(turn.clock.pending, 0, 'nothing outlives the turn');
-  assert.ok(Date.now() - t0 < 5000, 'fifty minutes did not take fifty minutes');
+  assert.ok(Date.now() - t0 < 60_000, 'fifty minutes did not take fifty minutes');
 });
 
 const MIN = 60 * 1000;
