@@ -188,13 +188,18 @@ impl Env {
         }
     }
 
-    /// The usage store to read and write: `resolve_usage_db`, and, when that is okb's own default file and it is not there while tagents kept one, a copy of tagents's made first. The old file is only read and stays where it is: it is the only record of what was read. A copy that fails leaves okb with a store of its own that starts empty.
+    /// The usage store to read and write: `resolve_usage_db`, and, when that is okb's own default file and tagents kept one, the history of tagents's put into it first: the file is copied in when okb has none, and the rows are inserted when okb's file holds no `usage_events` row yet. The old file is only read and stays where it is: it is the only record of what was read. A copy that fails writes one line to stderr and is tried again on the next call, while okb's store has no row.
     pub fn usage_file(&self, index_file: &str) -> String {
         let file = self.resolve_usage_db(index_file);
         let own = node::join(&self.config_dir(), USAGE_BASENAME);
         let old = node::join(&self.tagents_config_dir(), USAGE_BASENAME);
-        if file == own && !Path::new(&file).exists() && Path::new(&old).is_file() {
-            let _ = copy_store(&old, &file);
+        if file == own
+            && Path::new(&old).is_file()
+            && let Err(message) = bring_history(&old, &file)
+        {
+            eprintln!(
+                "okb: the usage history of tagents was not copied ({message}); it is tried again at the next start"
+            );
         }
         file
     }
@@ -208,26 +213,134 @@ impl Env {
     }
 }
 
-/// A consistent copy of a store, made by SQLite so that a journal beside it is taken in, written beside the target and renamed into place so a reader never finds half of it.
+/// How long a leftover half-written copy lives before the next copy removes it.
+const STALE_PART_SECS: u64 = 3600;
+
+/// Puts the history of `from` into the store `to`, never taking away what `to` holds: no file is copied in when `to` exists, and rows are inserted only into a store that has none.
+fn bring_history(from: &str, to: &str) -> Result<(), String> {
+    remove_stale_parts(to);
+    if !Path::new(to).exists() {
+        return copy_store(from, to);
+    }
+    if has_events(to) {
+        return Ok(());
+    }
+    insert_history(from, to)
+}
+
+/// Whether the store holds a `usage_events` row. A store that cannot be read counts as one, so that it is left alone.
+fn has_events(file: &str) -> bool {
+    let Ok(db) =
+        rusqlite::Connection::open_with_flags(file, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+    else {
+        return true;
+    };
+    let _ = db.busy_timeout(COPY_BUSY);
+    match db.query_row("select exists(select 1 from usage_events)", [], |r| {
+        r.get::<_, bool>(0)
+    }) {
+        Ok(has) => has,
+        // No table yet is an empty store; any other refusal leaves it alone.
+        Err(e) => !e.to_string().contains("no such table"),
+    }
+}
+
+/// The rows of `from` inserted into `to` in one write transaction that checks again, under the lock, that `to` is still empty: two starts at once insert once.
+fn insert_history(from: &str, to: &str) -> Result<(), String> {
+    let source =
+        rusqlite::Connection::open_with_flags(from, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| e.to_string())?;
+    source.busy_timeout(COPY_BUSY).map_err(|e| e.to_string())?;
+    let rows: Vec<(i64, String, String, String, Option<String>)> = {
+        let mut statement = source
+            .prepare("select ts, doc_id, heading, kind, caller from usage_events order by rowid")
+            .map_err(|e| e.to_string())?;
+        statement
+            .query_map([], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?
+    };
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let mut target = super::usage::open_usage_db(to)?;
+    let tx = target
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    let present: bool = tx
+        .query_row("select exists(select 1 from usage_events)", [], |r| {
+            r.get(0)
+        })
+        .map_err(|e| e.to_string())?;
+    if !present {
+        let mut insert = tx
+            .prepare("insert into usage_events (ts, doc_id, heading, kind, caller) values (?1, ?2, ?3, ?4, ?5)")
+            .map_err(|e| e.to_string())?;
+        for row in &rows {
+            insert
+                .execute((&row.0, &row.1, &row.2, &row.3, &row.4))
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+const COPY_BUSY: std::time::Duration = std::time::Duration::from_secs(5);
+
+static PART_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// A consistent copy of a store, made by SQLite so that a journal beside it is taken in, written to a part named for this process and this call, and linked into place: the link fails when the file is there, so a copy never replaces a store that another start or a writer made meanwhile, and the file in place is then used as it is.
 fn copy_store(from: &str, to: &str) -> Result<(), String> {
-    let part = format!("{to}.copying-{}", std::process::id());
+    let part = format!(
+        "{to}.copying-{}-{}",
+        std::process::id(),
+        PART_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    );
     let result = (|| {
         if let Some(parent) = Path::new(to).parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        let _ = fs::remove_file(&part);
         let db =
             rusqlite::Connection::open_with_flags(from, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
                 .map_err(|e| e.to_string())?;
+        db.busy_timeout(COPY_BUSY).map_err(|e| e.to_string())?;
         db.execute("vacuum into ?1", [&part])
             .map_err(|e| e.to_string())?;
         drop(db);
-        fs::rename(&part, to).map_err(|e| e.to_string())
+        match fs::hard_link(&part, to) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
     })();
-    if result.is_err() {
-        let _ = fs::remove_file(&part);
-    }
+    let _ = fs::remove_file(&part);
     result
+}
+
+/// Parts older than an hour belong to a start that died; a younger one may be in the making.
+fn remove_stale_parts(to: &str) {
+    let path = Path::new(to);
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
+        return;
+    };
+    let prefix = format!("{}.copying-", name.to_string_lossy());
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age.as_secs() > STALE_PART_SECS);
+        if old && entry.file_name().to_string_lossy().starts_with(&prefix) {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -433,17 +546,29 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
-    fn usage_store(path: &std::path::Path, doc: &str) {
+    const EVENTS: &str = "create table if not exists usage_events (ts integer not null, doc_id text not null, heading text not null default '', kind text not null, caller text);";
+
+    /// A store with one event of `doc`; the connection is returned so a test can keep it open.
+    fn usage_store(path: &std::path::Path, doc: &str) -> rusqlite::Connection {
         let db = rusqlite::Connection::open(path).unwrap();
-        db.execute_batch(&format!(
-            "create table seen (doc text); insert into seen values ('{doc}');"
-        ))
+        db.execute_batch(EVENTS).unwrap();
+        usage_store_add_on(&db, doc);
+        db
+    }
+
+    fn usage_store_add_on(db: &rusqlite::Connection, doc: &str) {
+        db.execute(
+            "insert into usage_events (ts, doc_id, kind) values (1, ?1, 'get')",
+            [doc],
+        )
         .unwrap();
     }
 
     fn docs_of(path: &std::path::Path) -> Vec<String> {
         let db = rusqlite::Connection::open(path).unwrap();
-        let mut statement = db.prepare("select doc from seen").unwrap();
+        let mut statement = db
+            .prepare("select doc_id from usage_events order by rowid")
+            .unwrap();
         statement
             .query_map([], |row| row.get::<_, String>(0))
             .unwrap()
@@ -456,7 +581,7 @@ mod tests {
         let (env, root) = world("usage-copy", &[]);
         let old = root.join("tagents").join(USAGE_BASENAME);
         let own = root.join("okb").join(USAGE_BASENAME);
-        usage_store(&old, "from-tagents");
+        drop(usage_store(&old, "from-tagents"));
         let before = fs::read(&old).unwrap();
         let index = root.join("okb").join(DB_BASENAME);
         let index = index.to_string_lossy();
@@ -479,8 +604,7 @@ mod tests {
     }
 
     fn usage_store_add(path: &std::path::Path, doc: &str) {
-        let db = rusqlite::Connection::open(path).unwrap();
-        db.execute("insert into seen values (?1)", [doc]).unwrap();
+        usage_store_add_on(&rusqlite::Connection::open(path).unwrap(), doc);
     }
 
     #[test]
@@ -488,8 +612,11 @@ mod tests {
      {
         // okb already has one.
         let (env, root) = world("usage-has", &[]);
-        usage_store(&root.join("tagents").join(USAGE_BASENAME), "old");
-        usage_store(&root.join("okb").join(USAGE_BASENAME), "new");
+        drop(usage_store(
+            &root.join("tagents").join(USAGE_BASENAME),
+            "old",
+        ));
+        drop(usage_store(&root.join("okb").join(USAGE_BASENAME), "new"));
         let index = root
             .join("okb")
             .join(DB_BASENAME)
@@ -510,7 +637,10 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         // An index on a scratch path gets a scratch store beside it, and no copy.
         let (env, root) = world("usage-scratch", &[]);
-        usage_store(&root.join("tagents").join(USAGE_BASENAME), "old");
+        drop(usage_store(
+            &root.join("tagents").join(USAGE_BASENAME),
+            "old",
+        ));
         let scratch = root
             .join("docs-env")
             .join(DB_BASENAME)
@@ -528,5 +658,143 @@ mod tests {
         );
         assert!(!root.join("elsewhere.sqlite").exists());
         let _ = fs::remove_dir_all(&root);
+    }
+
+    fn index_of(root: &std::path::Path) -> String {
+        root.join("okb")
+            .join(DB_BASENAME)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    fn no_parts(root: &std::path::Path) -> bool {
+        fs::read_dir(root.join("okb"))
+            .unwrap()
+            .all(|e| !e.unwrap().file_name().to_string_lossy().contains("copying"))
+    }
+
+    #[test]
+    fn copies_that_race_end_with_one_complete_store_and_no_lost_event() {
+        let (env, root) = world("usage-race", &[]);
+        let old = root.join("tagents").join(USAGE_BASENAME);
+        let own = root.join("okb").join(USAGE_BASENAME);
+        let writer = usage_store(&old, "e0");
+        for n in 1..40 {
+            usage_store_add_on(&writer, &format!("e{n}"));
+        }
+        drop(writer);
+        let index = index_of(&root);
+        let copiers: Vec<_> = (0..8)
+            .map(|_| {
+                let (env, index) = (env.clone(), index.clone());
+                std::thread::spawn(move || env.usage_file(&index))
+            })
+            .collect();
+        // The first start to publish is followed at once by a write of okb's own.
+        while !own.exists() {
+            std::thread::yield_now();
+        }
+        let db = super::super::usage::open_usage_db(&own.to_string_lossy()).unwrap();
+        usage_store_add_on(&db, "late");
+        drop(db);
+        for copier in copiers {
+            copier.join().unwrap();
+        }
+        let docs = docs_of(&own);
+        assert_eq!(docs.len(), 41, "{docs:?}");
+        assert_eq!(docs.last().map(String::as_str), Some("late"));
+        assert_eq!(docs.iter().filter(|d| *d == "e0").count(), 1);
+        assert!(no_parts(&root));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_store_of_okb_without_events_gets_the_history_and_one_with_events_does_not() {
+        let (env, root) = world("usage-empty", &[]);
+        let own = root.join("okb").join(USAGE_BASENAME);
+        drop(usage_store(
+            &root.join("tagents").join(USAGE_BASENAME),
+            "old-1",
+        ));
+        // Schema only.
+        let db = rusqlite::Connection::open(&own).unwrap();
+        db.execute_batch(EVENTS).unwrap();
+        drop(db);
+        env.usage_file(&index_of(&root));
+        assert_eq!(docs_of(&own), ["old-1"]);
+        // Asked again, it inserts nothing twice.
+        env.usage_file(&index_of(&root));
+        assert_eq!(docs_of(&own), ["old-1"]);
+        // A file with no table at all.
+        let _ = fs::remove_file(&own);
+        drop(rusqlite::Connection::open(&own).unwrap());
+        env.usage_file(&index_of(&root));
+        assert_eq!(docs_of(&own), ["old-1"]);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_store_in_wal_mode_with_a_writer_still_open_is_copied_with_its_latest_events() {
+        let (env, root) = world("usage-wal", &[]);
+        let old = root.join("tagents").join(USAGE_BASENAME);
+        let writer = rusqlite::Connection::open(&old).unwrap();
+        writer.execute_batch("pragma journal_mode = wal;").unwrap();
+        writer.execute_batch(EVENTS).unwrap();
+        usage_store_add_on(&writer, "before");
+        usage_store_add_on(&writer, "in-the-wal");
+        env.usage_file(&index_of(&root));
+        assert_eq!(
+            docs_of(&root.join("okb").join(USAGE_BASENAME)),
+            ["before", "in-the-wal"]
+        );
+        drop(writer);
+        assert!(no_parts(&root));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_copy_that_fails_leaves_the_old_file_alone_and_is_tried_again() {
+        let (env, root) = world("usage-retry", &[]);
+        let old = root.join("tagents").join(USAGE_BASENAME);
+        let own = root.join("okb").join(USAGE_BASENAME);
+        fs::write(&old, vec![b'x'; 5000]).unwrap();
+        env.usage_file(&index_of(&root));
+        assert!(!own.exists());
+        assert_eq!(fs::read(&old).unwrap(), vec![b'x'; 5000]);
+        assert!(no_parts(&root));
+        fs::remove_file(&old).unwrap();
+        drop(usage_store(&old, "now-readable"));
+        env.usage_file(&index_of(&root));
+        assert_eq!(docs_of(&own), ["now-readable"]);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_part_left_by_a_start_that_died_goes_after_an_hour_and_not_before() {
+        let (env, root) = world("usage-stale", &[]);
+        let own = root.join("okb").join(USAGE_BASENAME);
+        drop(usage_store(
+            &root.join("tagents").join(USAGE_BASENAME),
+            "old",
+        ));
+        let stale = root
+            .join("okb")
+            .join(format!("{USAGE_BASENAME}.copying-1-0"));
+        let fresh = root
+            .join("okb")
+            .join(format!("{USAGE_BASENAME}.copying-2-0"));
+        fs::write(&stale, "x").unwrap();
+        fs::write(&fresh, "x").unwrap();
+        let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
+        fs::File::options()
+            .write(true)
+            .open(&stale)
+            .unwrap()
+            .set_modified(long_ago)
+            .unwrap();
+        env.usage_file(&index_of(&root));
+        assert!(!stale.exists() && fresh.exists());
+        assert_eq!(docs_of(&own), ["old"]);
+        let _ = fs::remove_dir_all(root);
     }
 }
