@@ -449,7 +449,7 @@ out=$(run --resurrect --dry-run --from "$SNAP/dry.tsv")
 has "it would resume the row" "would resume tatest-other:0.0 Dry [sid-dry]" "$out"
 # Pane numbers start again from %0 after a reboot, so the pane may still hold a record some other chat left under its number.
 has "...with a command that drops the pane's old record before claude starts" \
-    "rm -f '$STATE'/\"\${TMUX_PANE#%}\".tsv; exec " "$out"
+    "rm -f '$STATE'/\"\${TMUX_PANE#%}\".tsv '$STATE'/\"\${TMUX_PANE#%}\".tools; exec " "$out"
 sleep 0.5
 ok "...and launched nothing" "$before" "$(nouts)"
 ok "...and opened no window" 2 "$(nwin tatest-other)"

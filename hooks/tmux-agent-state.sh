@@ -612,14 +612,21 @@ fi
 tools="$dir/$key.tools"
 case "$event" in
   UserPromptSubmit|Stop) [ -e "$tools" ] && : >"$tools" 2>/dev/null ;;
-  PreToolUse) [ -n "$etid" ] && printf '%s\n' "$etid" >>"$tools" 2>/dev/null ;;
+  PreToolUse)
+    if [ -n "$etid" ]; then
+      # One sidecar per session and no SessionEnd for a headless one, so the sweep lives here, on the path that creates the file and not on every event.
+      [ -e "$tools" ] || find "$dir" -maxdepth 1 -name '*.tools' -mtime +2 -delete 2>/dev/null
+      printf '%s\n' "$etid" >>"$tools" 2>/dev/null
+    fi ;;
   PostToolUse)
     if [ -n "$etid" ]; then
-      cur=; IFS="	" read -r _ cur _ <"$dir/$key.tsv" 2>/dev/null
+      cur=; [ -r "$dir/$key.tsv" ] && IFS="	" read -r _ cur _ <"$dir/$key.tsv"
       case "$cur" in
         blocked|done)
-          inturn=
+          # No sidecar (a hook upgraded mid-turn, a pruned file) means nothing is known about the turn, so the event applies as it did before the sidecar existed.
+          inturn=1
           if [ -e "$tools" ]; then
+            inturn=
             while IFS= read -r tl; do [ "$tl" = "$etid" ] && inturn=1; done <"$tools"
           fi
           [ -n "$inturn" ] || exit 0 ;;

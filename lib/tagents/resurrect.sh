@@ -322,7 +322,7 @@ resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
       else if ($i ~ /^--effort=/) { sub(/^--effort=/, "", $i); print $i; d = 1 } }')
     [ -n "$eff" ] && cmd="$cmd --effort $(cfg_quote "$eff")"
     # The pane drops the record its previous chat left under this pane number before claude starts, so nothing reads the old session id there in between. Inside the pane, because only there is the pane number known on every path — a respawned pane, a new window, a new session.
-    cmd="rm -f $(cfg_quote "$STATE_DIR")/\"\${TMUX_PANE#%}\".tsv; exec $cmd"
+    cmd="rm -f $(cfg_quote "$STATE_DIR")/\"\${TMUX_PANE#%}\".tsv $(cfg_quote "$STATE_DIR")/\"\${TMUX_PANE#%}\".tools; exec $cmd"
     if [ "$dry" = 1 ]; then
       echo "✓ would resume $at ${tname:-$wname} [$sid]${note}"; echo "    $cmd"
       n=$((n + 1)); continue

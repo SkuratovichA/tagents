@@ -114,8 +114,7 @@ t "3. every verb the dispatch answers still has its function"
 # A module dropped from the list would leave the flags it served pointing at
 # nothing — and bash only finds that out when the flag is typed.
 verbs=$(awk '/^case "\$\{1:-\}" in/,/^esac$/' "$TA" |
-        sed '/^[[:space:]]*#/d' |
-        sed -n 's/^  [^)]*)[[:space:]]*\(.*\)$/\1/p' |
+        sed -n -e '/^[[:space:]]*#/d' -e 's/^  [^)]*)[[:space:]]*\(.*\)$/\1/p' |
         sed 's/^shift; //' | awk '{print $1}' |
         grep -E '^[a-z_][a-z0-9_]*$' | sort -u)
 # Defined here wins over anything on $PATH: `dash` is this program's main loop
