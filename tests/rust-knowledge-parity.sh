@@ -97,7 +97,7 @@ reset_world() {
 }
 # The environment of a program: exactly these variables.
 program_env() {
-  PENV=(PATH=/usr/bin:/bin HOME="$SESSIONS_HOME" CLAUDE_HOMES="$SESSIONS_HOME/.claude" TAGENTS_CONFIG_DIR="$TMP/cfg" TAGENTS_KNOWLEDGE_DIR="$DOCS" TAGENTS_KNOWLEDGE_DB="$INDEX" TAGENTS_KNOWLEDGE_USAGE_DB="$USAGE" TMPDIR="$TMP/tmp" TZ=UTC LANG=en_US.UTF-8 TAGENTS_LOCALE=en)
+  PENV=(PATH=/usr/bin:/bin HOME="$SESSIONS_HOME" CLAUDE_HOMES="$SESSIONS_HOME/.claude" TAGENTS_CONFIG_DIR="$TMP/cfg" OKB_CONFIG_DIR="$TMP/cfg" TAGENTS_KNOWLEDGE_DIR="$DOCS" TAGENTS_KNOWLEDGE_DB="$INDEX" TAGENTS_KNOWLEDGE_USAGE_DB="$USAGE" TMPDIR="$TMP/tmp" TZ=UTC LANG=en_US.UTF-8 TAGENTS_LOCALE=en)
 }
 server_command() {  # <side> <verb> [args...]: the program of a side
   local side=$1; shift
@@ -616,6 +616,7 @@ cli() {  # <words...>
   if [ "$SIDE" = node ]; then CMD=("$NODE" "$KJS_CLI" "$@"); else CMD=("$RUST_ABS" "$@"); fi
   env -i "${PENV[@]}" ${CLI_ENV[@]+"${CLI_ENV[@]}"} "${ALARMED[@]}" "${CMD[@]}" > "$out" 2> "$err" < /dev/null
   code=$?
+  [ "$SIDE" != node ] || oracle_okb_words "$out" "$err"
   { printf '$ %s\nexit %s\n--- stdout\n' "$*" "$code"; cat "$out"; printf -- '--- stderr\n'; cat "$err"; printf '\n'; } >> "$TMP/transcript.$SIDE"
 }
 # The environment of the next calls: extra variables, and the ones of the world to drop.

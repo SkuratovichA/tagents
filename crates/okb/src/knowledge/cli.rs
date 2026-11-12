@@ -133,7 +133,7 @@ fn given(value: Option<&str>) -> Option<String> {
 fn env_with(env: &Env, parsed: &Parsed) -> Env {
     let mut env = env.clone();
     if let Some(dir) = given(parsed.value("dir")) {
-        env.knowledge_dir = Some(dir);
+        env.okb_dir = Some(dir);
     }
     if let Some(db) = given(parsed.value("db")) {
         env.knowledge_db = Some(db);
@@ -213,10 +213,7 @@ impl Run<'_> {
                 "noDir",
                 &[
                     ("config", &config),
-                    (
-                        "snippet",
-                        "  [knowledge]\n  dir = \"~/git/personal/knowledge\"",
-                    ),
+                    ("snippet", "  dir = \"~/git/personal/knowledge\""),
                 ],
             ),
             DirResult::Missing { dir, .. } => self.t("missingDir", &[("dir", &dir)]),
@@ -240,7 +237,7 @@ impl Run<'_> {
 
     /// Leaves the events of a read that answered in the usage store; a store that cannot take them is named on stderr only for `--verbose`.
     fn record(&mut self, events: &[usage::UsageEvent], env: &Env, index_file: &str, verbose: bool) {
-        let file = env.resolve_usage_db(index_file);
+        let file = env.usage_file(index_file);
         if let Some(reason) = usage::record_reads(&file, events, self.now_ms)
             && verbose
         {
@@ -568,7 +565,7 @@ impl Run<'_> {
         let Some((db, _, index_file)) = self.open_index(&env)? else {
             return Ok(exit::ERROR);
         };
-        let file = env.resolve_usage_db(&index_file);
+        let file = env.usage_file(&index_file);
         let options = ReportOptions {
             since_days: Some(since_days),
             top: Some(top as f64),

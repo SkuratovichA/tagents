@@ -62,7 +62,7 @@ impl KnowledgeTools {
             DirResult::Found(dir) => dir,
             DirResult::Unset { config } => {
                 return Err(format!(
-                    "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in {config}"
+                    "no knowledge directory: set OKB_DIR or dir in {config}"
                 ));
             }
             DirResult::Missing { dir, .. } => {
@@ -77,11 +77,7 @@ impl KnowledgeTools {
 
     /// Leave the events of a read in the usage store. Silent: a tool has nobody to tell, and a store that fails never changes an answer.
     fn record(&self, events: &[usage::UsageEvent], index_file: &str) {
-        let _ = usage::record_reads(
-            &self.env.resolve_usage_db(index_file),
-            events,
-            (self.clock)(),
-        );
+        let _ = usage::record_reads(&self.env.usage_file(index_file), events, (self.clock)());
     }
 
     fn tool_search(&self, args: &Map<String, Value>) -> Result<String, String> {
@@ -173,7 +169,7 @@ impl KnowledgeTools {
             min_days: number(args, "min_days").map(|n| n as i64),
         };
         let rows = self.with_db(|db, index_file| {
-            let file = self.env.resolve_usage_db(index_file);
+            let file = self.env.usage_file(index_file);
             usage::read_usage_rows(db, &file, &options, (self.clock)()).map_err(|e| match e {
                 ReportError::Store(e) => {
                     format!("the usage store {} cannot be read: {}", e.file, e.reason)

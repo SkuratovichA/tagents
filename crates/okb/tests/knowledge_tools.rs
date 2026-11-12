@@ -167,12 +167,17 @@ fn scenario_env(dir: &Path, vars: &Map<String, Value>) -> Env {
         home: text.into(),
         cwd: format!("{text}/cwd"),
         tagents_config_dir: Some(format!("{text}/config")),
+        okb_config_dir: Some(format!("{text}/config")),
         ..Env::default()
     };
     for (name, value) in vars {
         let value = value.as_str().map(|v| v.replace("<dir>", text));
         match name.as_str() {
-            "TAGENTS_CONFIG_DIR" => env.tagents_config_dir = value,
+            // The vectors know one config directory: tagents's, which okb reads the folder from, and where it kept the index. okb's own is the same directory here.
+            "TAGENTS_CONFIG_DIR" => {
+                env.okb_config_dir.clone_from(&value);
+                env.tagents_config_dir = value;
+            }
             "XDG_CONFIG_HOME" => env.xdg_config_home = value,
             "TAGENTS_KNOWLEDGE_DIR" => env.knowledge_dir = value,
             "TAGENTS_KNOWLEDGE_DB" => env.knowledge_db = value,
@@ -226,11 +231,16 @@ fn where_the_folder_the_index_and_the_store_are_is_what_node_works_out() {
                     result.is_error(),
                     "{what}"
                 );
-                assert_eq!(
-                    step["text"].as_str().unwrap().replace("<dir>", text),
-                    result.body(),
-                    "{what}"
-                );
+                // The one sentence okb says differently: where the folder is named.
+                let want = step["text"]
+                    .as_str()
+                    .unwrap()
+                    .replace("<dir>", text)
+                    .replace(
+                        "set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in",
+                        "set OKB_DIR or dir in",
+                    );
+                assert_eq!(want, result.body(), "{what}");
             } else if let Some(write) = step["write"].as_object() {
                 write_file(
                     folder.as_ref().unwrap(),

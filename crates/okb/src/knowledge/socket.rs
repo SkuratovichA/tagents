@@ -34,6 +34,9 @@ pub const KEY_VARS: [&str; 7] = [
     "CLAUDE_HOMES",
 ];
 
+/// The variables okb added to the key. They are in a key line only while set, so an environment without them has the key it always had.
+pub const OKB_KEY_VARS: [&str; 2] = ["OKB_CONFIG_DIR", "OKB_DIR"];
+
 /// 108 bytes on Linux, 104 on macOS, and the terminating NUL counts.
 const MAX_SOCKET_BYTES: usize = 100;
 const KEY_HEX: usize = 12;
@@ -55,6 +58,8 @@ fn var<'a>(env: &'a Env, name: &str) -> Option<&'a str> {
         "TAGENTS_KNOWLEDGE_DB" => env.knowledge_db.as_deref(),
         "TAGENTS_KNOWLEDGE_USAGE_DB" => env.knowledge_usage_db.as_deref(),
         "CLAUDE_HOMES" => env.claude_homes.as_deref(),
+        "OKB_CONFIG_DIR" => env.okb_config_dir.as_deref(),
+        "OKB_DIR" => env.okb_dir.as_deref(),
         _ => None,
     }
 }
@@ -99,6 +104,8 @@ pub fn canonical(env: &Env) -> Env {
         knowledge_dir: path(&env.knowledge_dir),
         knowledge_db: path(&env.knowledge_db),
         knowledge_usage_db: path(&env.knowledge_usage_db),
+        okb_config_dir: path(&env.okb_config_dir),
+        okb_dir: path(&env.okb_dir),
         claude_homes: homes(&env.claude_homes),
         ..env.clone()
     }
@@ -109,6 +116,7 @@ pub fn exported(env: &Env) -> Vec<(&'static str, String)> {
     let canonical = canonical(env);
     KEY_VARS[1..]
         .iter()
+        .chain(&OKB_KEY_VARS)
         .filter_map(|name| var(&canonical, name).map(|value| (*name, value.to_owned())))
         .collect()
 }
@@ -116,8 +124,12 @@ pub fn exported(env: &Env) -> Vec<(&'static str, String)> {
 /// One `NAME=value` line for each variable of the key, after `canonical`, an unset variable being an empty one.
 pub fn key_lines(env: &Env) -> Vec<String> {
     let canonical = canonical(env);
+    let set_okb = OKB_KEY_VARS
+        .iter()
+        .filter(|name| var(&canonical, name).is_some());
     KEY_VARS
         .iter()
+        .chain(set_okb)
         .map(|name| format!("{name}={}", var(&canonical, name).unwrap_or("")))
         .collect()
 }

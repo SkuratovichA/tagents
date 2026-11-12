@@ -18,7 +18,7 @@ okb is the knowledge base of the owner's markdown documents: a folder of OKF v0.
 
 ## What holds everywhere
 
-- The folder comes from the `--dir` option, the environment or the config file, and `okb` says so when none is set. The index and the usage record are rebuilt or created on demand.
+- The folder comes from the `--dir` option, `OKB_DIR`, or `dir` in `~/.config/okb/config.toml` (`OKB_CONFIG_DIR` moves that directory), and `okb` says so when none is set. The index and the usage record live in the same directory and are rebuilt or created on demand.
 - `okb` must be on `PATH`; the tagents installer writes it. A machine without it has no knowledge server until `tagents update`.
 - A verb that prints JSON prints one pretty-printed document on stdout. Exit codes carry the outcome, and the table is in the `okb` section of `references/cli.md`. Check the exit code before parsing the output.
 - The MCP server named `knowledge` is one shared process per environment, which every session joins, so a session costs about a megabyte.
