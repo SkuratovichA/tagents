@@ -23,6 +23,7 @@ for (const plugin of PLUGINS) {
   test(`every file the manifest of ${plugin.name} names under CLAUDE_PLUGIN_ROOT exists and is in its digest`, async () => {
     const manifest: unknown = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, plugin.manifest), 'utf8'));
     const named = strings(manifest).filter((s) => s.includes(ROOT_VAR)).map((s) => `${plugin.root}${s.slice(s.indexOf(ROOT_VAR) + ROOT_VAR.length)}`);
+    assert.ok(named.length > 0, `${plugin.manifest} names no file under CLAUDE_PLUGIN_ROOT`);
     const generated = [...generatedFiles(await collectSources(REPO_ROOT))].map(([p]) => p);
     for (const file of named) {
       assert.ok(fs.existsSync(path.join(REPO_ROOT, file)), `${file} does not exist`);

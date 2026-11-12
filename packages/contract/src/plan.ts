@@ -11,6 +11,17 @@ import { decideVersion, digestOf, type PayloadFile, type VersionMove } from './v
 export const CONTRACT_FILE = 'contract.json';
 export const PLUGIN_FILE = TAGENTS.manifest;
 export const MARKETPLACE_FILE = '.claude-plugin/marketplace.json';
+
+/** The entry of one plugin in the marketplace file, or nothing when the file is not JSON or lists no such plugin: a change to another plugin's entry must not move this plugin's digest. */
+function marketplaceEntry(text: string, name: string): JsonValue | undefined {
+  try {
+    const parsed = parseJson(text);
+    const plugins = isJsonObject(parsed) ? parsed['plugins'] : undefined;
+    return Array.isArray(plugins) ? plugins.find((entry) => isJsonObject(entry) && entry['name'] === name) : undefined;
+  } catch {
+    return undefined;
+  }
+}
 export const SKILLS_DIR = TAGENTS.skillsDir;
 /** The directory the generator owns for the plugin that is the repo root: a file in it that it did not produce is stray. */
 export const REFERENCES_DIR = TAGENTS.referencesDir;
@@ -157,7 +168,8 @@ export function planGenerate(sources: Sources, disk: Disk, t: Translate = create
       { path: plugin.manifest, content: stringifyJson(withoutOwnKeys(manifest, t)) },
     ];
     const marketplace = disk.files.get(MARKETPLACE_FILE);
-    if (plugin === TAGENTS && marketplace !== undefined) payload.push({ path: MARKETPLACE_FILE, content: marketplace });
+    const entry = marketplace === undefined ? undefined : marketplaceEntry(marketplace, plugin.name);
+    if (entry !== undefined) payload.push({ path: `${MARKETPLACE_FILE}#${plugin.name}`, content: stringifyJson(entry) });
     const digest = digestOf(payload);
     const version = versionOf(manifest, t);
     const decision = decideVersion(

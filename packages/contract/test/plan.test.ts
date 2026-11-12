@@ -146,10 +146,15 @@ test('a stray file under the references directory of the second plugin is delete
   assert.deepEqual([okbOf(plan)?.move, plan.move], ['patch', 'same']);
 });
 
-test('a changed marketplace.json is a patch', () => {
-  const { sources, disk } = generated();
-  const plan = planGenerate(sources, withDisk(disk, { '.claude-plugin/marketplace.json': '{"name":"other"}\n' }), t);
-  assert.deepEqual([plan.move, plan.versionTo], ['patch', '0.1.1']);
+test('the entry of a plugin in the marketplace is in the digest of that plugin only', () => {
+  const market = (tagents: string, okb: string): string =>
+    `${JSON.stringify({ name: 'demo', plugins: [{ name: 'tagents', description: tagents }, { name: 'okb', description: okb }] })}\n`;
+  const first = planGenerate(sampleSources(), withDisk(sampleDisk(), { '.claude-plugin/marketplace.json': market('a', 'b') }), t);
+  const disk = applied(withDisk(sampleDisk(), { '.claude-plugin/marketplace.json': market('a', 'b') }), first);
+  const okbChanged = planGenerate(sampleSources(), withDisk(disk, { '.claude-plugin/marketplace.json': market('a', 'b2') }), t);
+  assert.deepEqual([okbChanged.move, okbOf(okbChanged)?.move], ['same', 'patch']);
+  const tagentsChanged = planGenerate(sampleSources(), withDisk(disk, { '.claude-plugin/marketplace.json': market('a2', 'b') }), t);
+  assert.deepEqual([tagentsChanged.move, okbOf(tagentsChanged)?.move], ['patch', 'same']);
 });
 
 test('a changed key of plugin.json other than the version and the digest is a patch', () => {
