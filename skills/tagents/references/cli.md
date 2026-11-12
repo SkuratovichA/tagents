@@ -315,6 +315,40 @@ Usage: `tagents-knowledge usage [--dir <dir>] [--db <db>] [--usage-db <usage-db>
 | `--min-days` | string | no | no |
 | `--json` | boolean | no | no |
 
+### mcp
+
+serves the six knowledge tools to an MCP client over stdin and stdout in this process until the client closes them
+
+CLI only: no tool runs this verb.
+
+Usage: `tagents-knowledge mcp`
+
+This verb takes no flags.
+
+### serve
+
+prints the socket of the shared knowledge server of this environment and starts that server when nothing answers; with --foreground it is the server itself
+
+CLI only: no tool runs this verb.
+
+Usage: `tagents-knowledge serve [--idle <idle>] [--foreground] [--socket <socket>]`
+
+| Flag | Type | Required | Repeatable |
+|---|---|---|---|
+| `--idle` | string | no | no |
+| `--foreground` | boolean | no | no |
+| `--socket` | string | no | no |
+
+### join
+
+connects stdin and stdout to the shared knowledge server, starting it when none runs, and serves in this process when none can be started
+
+CLI only: no tool runs this verb.
+
+Usage: `tagents-knowledge join`
+
+This verb takes no flags.
+
 ## tagents-notify
 
 ### Exit codes

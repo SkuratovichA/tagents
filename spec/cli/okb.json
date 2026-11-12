@@ -200,6 +200,46 @@
       "summary": "reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store",
       "effect": "read",
       "tool": false
+    },
+    {
+      "path": [
+        "mcp"
+      ],
+      "positionals": [],
+      "options": {},
+      "required": [],
+      "summary": "serves the six knowledge tools to an MCP client over stdin and stdout in this process until the client closes them",
+      "effect": "serve"
+    },
+    {
+      "path": [
+        "serve"
+      ],
+      "positionals": [],
+      "options": {
+        "idle": {
+          "type": "string"
+        },
+        "foreground": {
+          "type": "boolean"
+        },
+        "socket": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "summary": "prints the socket of the shared knowledge server of this environment and starts that server when nothing answers; with --foreground it is the server itself",
+      "effect": "serve"
+    },
+    {
+      "path": [
+        "join"
+      ],
+      "positionals": [],
+      "options": {},
+      "required": [],
+      "summary": "connects stdin and stdout to the shared knowledge server, starting it when none runs, and serves in this process when none can be started",
+      "effect": "serve"
     }
   ]
 }

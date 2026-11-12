@@ -803,7 +803,7 @@ fn nfc(text: &str) -> String {
 
 /// `\p{L}`, `\p{M}` and `\p{N}` of a regular expression with the `u` flag: the general categories whose first letter is L, M or N.
 fn is_letter_mark_or_number(c: char) -> bool {
-    use unicode_general_category::{get_general_category, GeneralCategory as G};
+    use unicode_general_category::{GeneralCategory as G, get_general_category};
     matches!(
         get_general_category(c),
         G::UppercaseLetter

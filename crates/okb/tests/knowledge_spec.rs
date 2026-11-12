@@ -36,15 +36,27 @@ fn the_version_flag_prints_the_workspace_version() {
 }
 
 #[test]
-fn the_spec_lists_exactly_the_verbs_that_read_the_folder() {
+fn the_spec_lists_the_verbs_that_read_the_folder_and_the_three_that_serve() {
     let spec: Value = serde_json::from_str(okb::knowledge::SPEC).unwrap();
-    let verbs: Vec<&str> = spec["commands"]
-        .as_array()
+    let commands = spec["commands"].as_array().unwrap();
+    let words = |effect_is_serve: bool| -> Vec<&str> {
+        commands
+            .iter()
+            .filter(|c| (c["effect"] == "serve") == effect_is_serve)
+            .map(|c| c["path"][0].as_str().unwrap())
+            .collect()
+    };
+    assert_eq!(okb::knowledge::cli::VERBS.to_vec(), words(false));
+    assert_eq!(vec!["mcp", "serve", "join"], words(true));
+    let serve = commands.iter().find(|c| c["path"][0] == "serve").unwrap();
+    let mut options: Vec<&str> = serve["options"]
+        .as_object()
         .unwrap()
-        .iter()
-        .map(|c| c["path"][0].as_str().unwrap())
+        .keys()
+        .map(String::as_str)
         .collect();
-    assert_eq!(okb::knowledge::cli::VERBS.to_vec(), verbs);
+    options.sort_unstable();
+    assert_eq!(vec!["foreground", "idle", "socket"], options);
     assert_eq!(0, spec["exit"]["ok"]);
     assert_eq!(2, spec["exit"]["usage"]);
     assert_eq!(4, spec["exit"]["notFound"]);
