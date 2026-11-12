@@ -2,8 +2,8 @@
   "generator": {
     "node": "v22.23.1",
     "sdk": "1.30.0",
-    "zod": "4.6.2",
-    "yaml": "2.9.0"
+    "zod": "4.6.7",
+    "yaml": "2.9.1"
   },
   "docs": {
     "documents": [
