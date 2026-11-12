@@ -10,7 +10,6 @@ pub mod front_door;
 pub mod host;
 pub mod js;
 pub mod json;
-pub mod knowledge;
 pub mod mcp;
 pub mod messages;
 pub mod node;
@@ -19,7 +18,7 @@ pub mod parse_args;
 pub mod plugin;
 pub mod session;
 pub mod sessions;
-mod sync;
+pub mod sync;
 #[cfg(test)]
 mod testing;
 pub mod toml_js;

@@ -1,6 +1,6 @@
 ---
 name: tagents
-description: Use when driving tagents from a session or a script — opening, prompting, listing or aborting headless Claude Code sessions with tagents-core, finding a past session, searching the owner's knowledge documents with tagents-knowledge or its MCP tools, sending a desktop notification, opening Claude Code sessions or a command in tmux windows, reading session cost with tusage, calling a flag of the tagents dashboard or of tnotes, or writing code or a tagents plugin (definePlugin) against @tagents/core, @tagents/knowledge, @tagents/notify or @tagents/telegram.
+description: Use when driving tagents from a session or a script — opening, prompting, listing or aborting headless Claude Code sessions with tagents-core, finding a past session, searching the owner's knowledge documents with okb (also `tagents-knowledge`) or its MCP tools, sending a desktop notification, opening Claude Code sessions or a command in tmux windows, reading session cost with tusage, calling a flag of the tagents dashboard or of tnotes, or writing code or a tagents plugin (definePlugin) against @tagents/core, @tagents/notify or @tagents/telegram.
 ---
 
 # tagents
@@ -15,11 +15,11 @@ tagents is a tmux dashboard for Claude Code sessions plus the packages that driv
 |---|---|---|
 | open, prompt, read, list or abort a headless Claude Code session; list, add, remove or scaffold a tagents plugin; run `doctor` | `tagents-core` | `references/cli.md` |
 | find a past session by its project or opening prompt | the `knowledge` MCP tools this plugin registers, or `tagents-core sessions` from a shell | `references/mcp.md`, `references/cli.md` |
-| search or read the owner's knowledge documents | the same `knowledge` MCP tools, or `tagents-knowledge` from a shell | `references/mcp.md`, `references/cli.md` |
+| search or read the owner's knowledge documents | the same `knowledge` MCP tools, or `okb` from a shell | `references/mcp.md`, `references/cli.md` |
 | send a desktop notification, open another Claude Code session in a tmux window, or run a command in one | the `tagents` MCP tools this plugin registers | [Using the tools](#using-the-tools) |
 | read cost and context accounting per session | `tusage` | `references/scripts.md` |
 | call a flag of the dashboard or of the notes workspace | `tagents`, `tnotes` | `references/scripts.md` |
-| write code against a package, or a tagents plugin with `definePlugin` | `@tagents/core`, `@tagents/knowledge`, `@tagents/notify`, `@tagents/telegram` | `references/core.api.md`, `references/knowledge.api.md`, `references/notify.api.md`, `references/telegram.api.md` |
+| write code against a package, or a tagents plugin with `definePlugin` | `@tagents/core`, `@tagents/notify`, `@tagents/telegram` | `references/core.api.md`, `references/notify.api.md`, `references/telegram.api.md` |
 
 The same contract as data, for a script that wants to check a verb or a tool schema: `${CLAUDE_PLUGIN_ROOT}/contract.json`.
 
@@ -28,7 +28,7 @@ The same contract as data, for a script that wants to check a verb or a tool sch
 - A verb the `tagents` script has no flag for is handed to `tagents-core` unchanged, so `tagents session list` and `tagents-core session list` are the same call.
 - A verb that prints JSON prints one pretty-printed document on stdout. The exception is `session prompt --events`, which prints one compact JSON line per event and then the outcome.
 - Exit codes carry the outcome, and each CLI's table is in its section of `references/cli.md`. Check the exit code before parsing the output.
-- `tagents-core`, `tagents-knowledge`, `tagents-notify` and `tagents-mcp` must be on `PATH`; the installer writes all four.
+- `tagents-core`, `okb`, `tagents-knowledge` (an alias of `okb`), `tagents-notify` and `tagents-mcp` must be on `PATH`; the installer writes all five.
 
 ## Using the tools
 

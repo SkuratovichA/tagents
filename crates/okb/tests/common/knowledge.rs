@@ -1,0 +1,111 @@
+//! The knowledge vectors every knowledge test reads: what the node knowledge package gives for each input, written by `tests/rust-knowledge-vectors.mts`.
+
+use std::{
+    fs,
+    path::Path,
+    sync::OnceLock,
+    time::{Duration, SystemTime},
+};
+
+use okb::knowledge::index::{open_db, reindex};
+use rusqlite::{Connection, types::ValueRef};
+use serde_json::{Map, Value, json};
+
+use super::scratch;
+
+/// The parsed `knowledge-vectors.json`, read once per test binary.
+pub fn vectors() -> &'static Value {
+    static VECTORS: OnceLock<Value> = OnceLock::new();
+    VECTORS.get_or_init(|| {
+        let file = format!(
+            "{}/crates/okb/tests/fixtures/knowledge-vectors.json",
+            super::REPO
+        );
+        serde_json::from_str(&std::fs::read_to_string(file).unwrap()).unwrap()
+    })
+}
+
+/// What a refused document says when its front matter is not YAML, up to the wording of the YAML error.
+pub const YAML_ERROR: &str = "frontmatter is not YAML: ";
+
+/// Whether an error message is the one node gave. The wording of a YAML error is a known difference (the `yaml` package and `saphyr` word the same refusal differently); the refusal and the text before the wording are not.
+pub fn same_message(got: &str, want: &str) -> bool {
+    if want.starts_with(YAML_ERROR) {
+        return got.starts_with(YAML_ERROR);
+    }
+    got == want
+}
+
+/// One file of a vector written into `folder`, with the modification time the vector gives it.
+pub fn write_file(folder: &Path, name: &str, text: &str, mtime_sec: u64) {
+    let path = folder.join(name);
+    fs::write(&path, text).unwrap();
+    let handle = fs::File::options().write(true).open(&path).unwrap();
+    handle
+        .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(mtime_sec))
+        .unwrap();
+}
+
+/// The files of a vector written into `folder`, which is made when it is not there.
+pub fn write_files(folder: &Path, files: &Value) {
+    fs::create_dir_all(folder).unwrap();
+    for file in files.as_array().unwrap() {
+        write_file(
+            folder,
+            file["name"].as_str().unwrap(),
+            file["text"].as_str().unwrap(),
+            file["mtimeSec"].as_u64().unwrap(),
+        );
+    }
+}
+
+/// A folder of the vector's files with the times they were written at, and an index over it.
+pub fn index_of(name: &str, files: &Value) -> (Connection, String) {
+    let dir = scratch(name);
+    let folder = dir.join("folder");
+    write_files(&folder, files);
+    let folder = folder.to_str().unwrap().to_string();
+    let mut db = open_db(dir.join("index.sqlite").to_str().unwrap()).unwrap();
+    reindex(&mut db, &folder, false).unwrap();
+    (db, folder)
+}
+
+/// A SQLite value as the JSON the vectors hold.
+pub fn cell(value: ValueRef) -> Value {
+    match value {
+        ValueRef::Null => Value::Null,
+        ValueRef::Integer(i) => json!(i),
+        ValueRef::Real(f) => json!(f),
+        ValueRef::Text(bytes) => json!(String::from_utf8(bytes.to_vec()).unwrap()),
+        ValueRef::Blob(bytes) => json!(bytes),
+    }
+}
+
+/// The rows of a query as objects keyed by column name, the shape the vectors hold.
+pub fn rows(db: &Connection, query: &str) -> Vec<Value> {
+    let mut statement = db.prepare(query).unwrap();
+    let names: Vec<String> = statement.column_names().map(str::to_string).collect();
+    statement
+        .query_map([], |row| {
+            let mut object = Map::new();
+            for (i, name) in names.iter().enumerate() {
+                object.insert(name.clone(), cell(row.get_ref(i)?));
+            }
+            Ok(Value::Object(object))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+/// What a connection reports about itself, read back from SQLite: the shape of `engine.schema.applied` in the vectors.
+pub fn settings(db: &Connection) -> Value {
+    let setting =
+        |pragma: &str, column: &str| rows(db, &format!("pragma {pragma}"))[0][column].clone();
+    json!({
+        "busyTimeout": setting("busy_timeout", "timeout"),
+        "journalMode": setting("journal_mode", "journal_mode"),
+        "synchronous": setting("synchronous", "synchronous"),
+        "foreignKeys": setting("foreign_keys", "foreign_keys"),
+    })
+}

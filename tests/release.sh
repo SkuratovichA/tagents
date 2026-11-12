@@ -256,6 +256,17 @@ if command -v sha256sum >/dev/null 2>&1; then
 else
   printf '  skip sha256sum is not on this machine\n'
 fi
+# okb is packaged by the same command, from a binary of that name: its own archive name, the same two members, a program name the packager does not know is refused.
+printf '#!/bin/sh\necho "okb 1.2.3"\n' > "$PKG/okb"; chmod 700 "$PKG/okb"
+OKBNAME=okb-1.2.3-$TRIPLE.tar.gz
+out=$(rel "$PKG" package 1.2.3 $TRIPLE "$PKG/okb" "$PKG/LICENSE" "$PKG/out-okb")
+ok "package of okb exits 0 and prints its two file names" "0 $OKBNAME $OKBNAME.sha256" "$(code_of "$out") $(body_of "$out" | tr '\n' ' ' | sed 's/ $//')"
+ok "the archive of okb holds exactly okb and LICENSE" "LICENSE
+okb" "$(tar -tzf "$PKG/out-okb/$OKBNAME" | sort)"
+ok "shasum -a 256 -c accepts the checksum of okb" 0 "$(cd "$PKG/out-okb" && shasum -a 256 -c "$OKBNAME.sha256" >/dev/null 2>&1; echo $?)"
+printf '#!/bin/sh\nexit 0\n' > "$PKG/other"; chmod 700 "$PKG/other"
+out=$(rel "$PKG" package 1.2.3 $TRIPLE "$PKG/other" "$PKG/LICENSE" "$PKG/out-other")
+ok "a binary that is neither tagents-core nor okb is refused" 1 "$(code_of "$out")"
 cp "$PKG/out/$NAME" "$PKG/tampered.tar.gz"; printf 'x' >> "$PKG/out/$NAME"
 ok "an archive changed after the checksum was written fails shasum -c" 1 "$(cd "$PKG/out" && shasum -a 256 -c "$NAME.sha256" >/dev/null 2>&1; echo $?)"
 if command -v sha256sum >/dev/null 2>&1; then

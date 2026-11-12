@@ -261,12 +261,16 @@ t "the installer accepts the --version of this binary"
 # install.sh compares the first line of `tagents-core --version` with the workspace version of the copy it installs, and installs nothing that differs. The binary of this checkout is packaged by the real packager, served as a file:// release, and installed by the whole installer in a sandbox: if the Rust side and the installer ever disagree about the shape of that line, the run ends with a warning here and not on a user's machine.
 INST=$TMP/installer
 # The tree holds the four entry files install.sh wraps: a wrapper whose entry is missing after the build is left alone with a warning, and the run ends with status 1.
-ORIGIN=$INST/origin; mkdir -p "$ORIGIN/packages/core/dist/cli" "$ORIGIN/packages/knowledge/dist/cli" "$ORIGIN/packages/notify/dist" "$INST/home"
+ORIGIN=$INST/origin; mkdir -p "$ORIGIN/packages/core/dist/cli" "$ORIGIN/packages/notify/dist" "$INST/home"
 cp "$REPO/Cargo.toml" "$ORIGIN/Cargo.toml"
-printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/core/dist/cli/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/knowledge/dist/cli/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/notify/dist/main.js"
+printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/core/dist/cli/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/notify/dist/main.js"
 git -C "$ORIGIN" init -q -b main && git -C "$ORIGIN" config user.email t@example.com && git -C "$ORIGIN" config user.name t && git -C "$ORIGIN" add -A && git -C "$ORIGIN" commit -q -m origin
 version=$(sh "$REPO/.github/scripts/core-release.sh" version "$REPO/Cargo.toml")
 sh "$REPO/.github/scripts/core-release.sh" package "$version" aarch64-apple-darwin "$RUST" "$REPO/LICENSE" "$INST/release/v$version" > /dev/null
+# okb is in the same release: the installer fetches both archives, and the one of okb has to say its own version too.
+OKB=${OKB_BIN:-$REPO/target/debug/okb}
+[ -x "$OKB" ] || (cd "$REPO" && cargo build -p okb >&2) || { echo "rust-parity: cargo build -p okb failed" >&2; exit 2; }
+sh "$REPO/.github/scripts/core-release.sh" package "$version" aarch64-apple-darwin "$OKB" "$REPO/LICENSE" "$INST/release/v$version" > /dev/null
 inst_out=$(env -i PATH="$(dirname "$NODE"):/usr/bin:/bin" HOME="$INST/home" TAGENTS_HOME="$INST/home/share/tagents" TAGENTS_BIN="$INST/home/bin" TAGENTS_REPO="$ORIGIN" \
   TAGENTS_BUILD_CMD=true TAGENTS_CORE_BASE_URL="file://$INST/release/v$version" TAGENTS_CORE_TARGET=aarch64-apple-darwin \
   sh "$REPO/install.sh" --hooks-dir "$INST/home/hooks" 2>&1); inst_code=$?
@@ -280,6 +284,11 @@ case $inst_out in
   *) ok ;;
 esac
 if cmp -s "$INST/home/share/tagents/target/release/tagents-core" "$RUST"; then ok; else bad "the binary the installer placed is the packaged one"; fi
+case $inst_out in
+  *"installed the prebuilt okb $version"*) ok ;;
+  *) bad "the installer installs the okb of this checkout (version $version)" "$(printf '%s\n' "$inst_out" | tail -5)" ;;
+esac
+if cmp -s "$INST/home/share/tagents/target/release/okb" "$OKB"; then ok; else bad "the okb the installer placed is the packaged one"; fi
 
 printf '\nrust-parity: %d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

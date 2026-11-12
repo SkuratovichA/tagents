@@ -58,7 +58,7 @@ mkorigin() {
   (
     cd "$ORIGIN" || exit 1
     git init -q -b main . && git config user.email t@example.com && git config user.name t
-    mkdir -p hooks packages/core/dist/cli packages/knowledge/dist/cli packages/notify/dist
+    mkdir -p hooks packages/core/dist/cli packages/notify/dist
     for f in tagents tusage tnotes; do printf '#!/bin/sh\necho "%s v1 $*"\n' "$f" > "$f"; chmod +x "$f"; done
     # install.sh calls `tagents setup` when a fresh install or an update needs it. The stub says nothing, writes down its arguments and what the first hooks directory held at that moment, and exits with the status a case leaves in $HOME/setup.status.
     cat > tagents <<'STUB'
@@ -78,7 +78,6 @@ STUB
     printf '#!/bin/sh\necho "state v1 $* <$(cat)>"\n' > hooks/tmux-agent-state.sh
     printf '#!/bin/sh\necho "notes v1"\n' > hooks/notes-context.sh
     printf '#!/usr/bin/env node\n' > packages/core/dist/cli/main.js
-    printf '#!/usr/bin/env node\n' > packages/knowledge/dist/cli/main.js
     printf '#!/usr/bin/env node\n' > packages/notify/dist/main.js
     # The tree's own installer, so an update that moves the copy hands over to the install.sh of the commit it lands on, as on a real machine.
     cp "$INSTALL" install.sh
@@ -271,11 +270,11 @@ mkorigin; fresh_env
 out=$(PATH="$TMP/node-a:$PATH" run); rc=$?
 ok "an install with a node on PATH exits 0" 0 "$rc"
 contains "tagents-core pins the node found at install" 'n="'"$TMP"'/node-a/node"' "$(cat "$TAGENTS_BIN/tagents-core")"
-contains "tagents-knowledge pins it too" 'n="'"$TMP"'/node-a/node"' "$(cat "$TAGENTS_BIN/tagents-knowledge")"
+contains "tagents-knowledge runs the okb wrapper beside it, by its path" 'exec "'"$TAGENTS_BIN"'/okb" "$@"' "$(cat "$TAGENTS_BIN/tagents-knowledge")"
 contains "tagents-notify and tagents-mcp pin it too" 'n="'"$TMP"'/node-a/node"' "$(cat "$TAGENTS_BIN/tagents-notify" "$TAGENTS_BIN/tagents-mcp")"
 ok "tagents-core runs the pinned node with no node on the caller's PATH" "node-a $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
 rm -f "$TMP/node-a/node"
-ok "tagents-knowledge falls back to the node on the caller's PATH once the pinned file is gone" "node-b $TAGENTS_HOME/packages/knowledge/dist/cli/main.js x" "$(env PATH="$TMP/node-b:/usr/bin:/bin" "$TAGENTS_BIN/tagents-knowledge" x)"
+ok "okb, with no binary, exits 69 and starts no node" "69" "$(env PATH="$TMP/node-b:/usr/bin:/bin" "$TAGENTS_BIN/okb" x >/dev/null 2>&1; echo $?)"
 out=$(PATH="$TMP/node-b:$PATH" run); rc=$?
 ok "an install from a shell finding the second node exits 0" 0 "$rc"
 contains "tagents-core now pins the second node" 'n="'"$TMP"'/node-b/node"' "$(cat "$TAGENTS_BIN/tagents-core")"
@@ -331,13 +330,13 @@ wrapper_bytes() {  # <node or empty> <target> [word given first] — the pinned 
     printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nexec node "%s" %s"$@"\n' "$2" "${3:+$3 }"
   fi
 }
-# The tagents-knowledge wrapper, spelled out: the node wrapper plus the line that answers the launcher's probe, and with a binary the rule in front of both. Pinned node only (every case here has one).
-knowledge_wrapper_bytes() {  # <node> <target> [native binary]
-  printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nn="%s"\n[ -x "$n" ] || n=node\n' "$1"
-  if [ -n "${3:-}" ]; then
-    printf 'r="%s"\nif [ -f "$r" ] && [ -x "$r" ]; then\n  if [ "${1-}" = serve ] || { [ "$#" -eq 1 ] && { [ "$1" = join ] || [ "$1" = mcp ]; }; }; then\n    TAGENTS_NODE="$n"; export TAGENTS_NODE; exec "$r" knowledge "$@"\n  fi\nfi\n' "$3"
-  fi
-  printf '[ "$#" -ne 1 ] || [ "$1" != join ] || exit 69\nexec "$n" "%s" "$@"\n' "$2"
+# The okb wrapper, spelled out: the binary named by its path and looked up when the wrapper runs, and without it the needs-binary line and exit 69. It is the same bytes whether the binary exists at install time or not. tagents-knowledge is the old name: it runs the okb wrapper beside it.
+okb_wrapper_bytes() {  # <native binary>
+  printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nr="%s"\n[ ! -f "$r" ] || [ ! -x "$r" ] || exec "$r" "$@"\n' "$1"
+  printf '%s\n' "echo 'knowledge is served by the okb binary, and this machine has none: run \`tagents update\`, or \`cargo build --release -p okb\` in the checkout' >&2" 'exit 69'
+}
+alias_wrapper_bytes() {  # <okb wrapper>
+  printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nexec "%s" "$@"\n' "$1"
 }
 same_bytes() {  # <name> <expected file> <actual file>
   if cmp -s "$2" "$3"; then pass=$((pass + 1)); printf '  ok   %s\n' "$1"; else
@@ -349,12 +348,14 @@ mkorigin; fresh_env
 out=$(PATH="$TMP/node-c:$PATH" run); rc=$?
 ok "an install with no Rust binary exits 0" 0 "$rc"
 wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/core/dist/cli/main.js" > "$TMP/expected-core"
-knowledge_wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/knowledge/dist/cli/main.js" > "$TMP/expected-knowledge"
+okb_wrapper_bytes "$TAGENTS_HOME/target/release/okb" > "$TMP/expected-okb"
+alias_wrapper_bytes "$TAGENTS_BIN/okb" > "$TMP/expected-knowledge"
 wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/core/dist/cli/main.js" mcp > "$TMP/expected-mcp"
 wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/notify/dist/main.js" > "$TMP/expected-notify"
 printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nexec sh "%s" "$@"\n' "$TAGENTS_HOME/hooks/tmux-agent-state.sh" > "$TMP/expected-hook"
 same_bytes "with no binary, tagents-core is byte for byte what it always was" "$TMP/expected-core" "$TAGENTS_BIN/tagents-core"
-same_bytes "tagents-knowledge too, with the line that answers the launcher's probe" "$TMP/expected-knowledge" "$TAGENTS_BIN/tagents-knowledge"
+same_bytes "okb names its binary and answers 69 without it" "$TMP/expected-okb" "$TAGENTS_BIN/okb"
+same_bytes "tagents-knowledge runs the okb wrapper" "$TMP/expected-knowledge" "$TAGENTS_BIN/tagents-knowledge"
 same_bytes "and tagents-mcp, which names no binary either" "$TMP/expected-mcp" "$TAGENTS_BIN/tagents-mcp"
 same_bytes "and tagents-notify, which names no binary either" "$TMP/expected-notify" "$TAGENTS_BIN/tagents-notify"
 same_bytes "and a hook wrapper" "$TMP/expected-hook" "$HOOKS_A/tmux-agent-state.sh"
@@ -408,8 +409,8 @@ ok "no arguments reach the node program" "node-c $notify_path" "$(env PATH=/usr/
 ok "run and an empty argument reach the node program" "node-c $notify_path run " "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-notify" run "")"
 ok "a single empty argument reaches the node program" "node-c $notify_path " "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-notify" "")"
 ok "tagents-mcp still hands the binary run: no test of its arguments" "rust node=$TMP/node-c/node mcp run" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-mcp" run)"
-knowledge_wrapper_bytes "$TMP/node-c/node" "$TAGENTS_HOME/packages/knowledge/dist/cli/main.js" "$RUST_BIN" > "$TMP/expected-native-knowledge"
-same_bytes "with a binary, tagents-knowledge is byte for byte the text of the design" "$TMP/expected-native-knowledge" "$TAGENTS_BIN/tagents-knowledge"
+same_bytes "with the binaries, okb is the same bytes" "$TMP/expected-okb" "$TAGENTS_BIN/okb"
+same_bytes "...and so is tagents-knowledge" "$TMP/expected-knowledge" "$TAGENTS_BIN/tagents-knowledge"
 same_bytes "nor does a hook wrapper" "$TMP/expected-hook" "$HOOKS_A/tmux-agent-state.sh"
 # The wrapper's two guards are each pinned by a case only that guard catches, on the wrapper written for the real binary and without a reinstall.
 node_answer="node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b"
@@ -534,12 +535,15 @@ run_native() { rm -f "$CURL_LOG"; PATH="$TMP/curlspy:$TMP/node-c:$PATH" run "$@"
 set_version() {  # <version> — origin/main moves to a Cargo.toml with that workspace version
   advance sh -c 'printf "[workspace.package]\nversion = \"%s\"\n" "$1" > Cargo.toml' sh "$1"
 }
-make_release() {  # <version> <triple> [<version the binary claims>] — the two files of the release, made by the real packager around a stub binary
+make_release() {  # <version> <triple> [<version the binary claims>] — the four files of the release (an archive and its checksum for each of the two binaries), made by the real packager around a stub binary
   local v=$1 tr=$2 said=${3:-$1} src=$TMP/stub-$1-$2
   rm -rf "$src"; mkdir -p "$src"
   printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core %s"; exit 0; fi\necho "native-core %s $*"\n' "$said" "$v" > "$src/tagents-core"
   chmod 755 "$src/tagents-core"; printf 'license\n' > "$src/LICENSE"
   sh "$ROOT/.github/scripts/core-release.sh" package "$v" "$tr" "$src/tagents-core" "$src/LICENSE" "$RELEASES/v$v" >/dev/null
+  printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "okb %s"; exit 0; fi\necho "native-okb %s $*"\n' "$said" "$v" > "$src/okb"
+  chmod 755 "$src/okb"
+  sh "$ROOT/.github/scripts/core-release.sh" package "$v" "$tr" "$src/okb" "$src/LICENSE" "$RELEASES/v$v" >/dev/null
 }
 use_release() { export TAGENTS_CORE_BASE_URL=file://$RELEASES/v$1; }  # <version>
 fresh_native() {  # <version> — origin at that version, its release made, nothing installed
@@ -547,12 +551,13 @@ fresh_native() {  # <version> — origin at that version, its release made, noth
   set_version "$1"; export TAGENTS_CORE_TARGET=$TRIPLE
   make_release "$1" "$TRIPLE"; use_release "$1"
   RUST_BIN=$TAGENTS_HOME/target/release/tagents-core
+  OKB_BIN=$TAGENTS_HOME/target/release/okb
   ARCHIVE=tagents-core-$1-$TRIPLE.tar.gz
 }
 nothing_installed() {  # <name> — neither the binary nor its marker, and nothing else in target/release
   ok "$1: no binary" no "$(exists "$RUST_BIN")"
   ok "$1: no marker" no "$(exists "$RUST_BIN.release")"
-  ok "$1: nothing left in target/release" "" "$(ls -A "$TAGENTS_HOME/target/release" 2>/dev/null)"
+  ok "$1: nothing left in target/release" "" "$(ls -A "$TAGENTS_HOME/target/release" 2>/dev/null | grep -v '^okb')"
 }
 node_cli_answers() {  # <name> — no binary here: the wrapper runs node's CLI, which answers `mcp` with the needs-binary word after it
   ok "$1: the wrapper runs the node CLI" "node-c $TAGENTS_HOME/packages/core/dist/cli/main.js a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
@@ -575,8 +580,13 @@ ok "a first install exits 0" 0 "$rc"
 contains "it says what it installed" "installed the prebuilt tagents-core 0.1.0 ($TRIPLE)" "$out"
 ok "the binary is an executable regular file" yes "$([ -f "$RUST_BIN" ] && [ ! -L "$RUST_BIN" ] && [ -x "$RUST_BIN" ] && echo yes || echo no)"
 ok "the marker is one line: version, target, SHA-256 of the binary" "0.1.0 $TRIPLE $(sha_of "$RUST_BIN")" "$(cat "$RUST_BIN.release")"
-ok "target/release holds those two and nothing else" "tagents-core
+ok "target/release holds the two binaries and their markers and nothing else" "okb
+okb.release
+tagents-core
 tagents-core.release" "$(ls -A "$TAGENTS_HOME/target/release")"
+ok "the marker of okb is one line too" "0.1.0 $TRIPLE $(sha_of "$OKB_BIN")" "$(cat "$OKB_BIN.release")"
+ok "okb answers through its wrapper, with every argument" "native-okb 0.1.0 a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/okb" a b)"
+ok "tagents-knowledge is the old name of okb" "native-okb 0.1.0 join" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-knowledge" join)"
 contains "the wrapper names the binary" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-core")"
 ok "the binary answers through the wrapper, with every argument" "native-core 0.1.0 a b" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a b)"
 contains "tagents-mcp names the binary too" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-mcp")"
@@ -584,7 +594,7 @@ ok "...and the binary answers through it with the word mcp first" "native-core 0
 contains "tagents-notify names the binary too" 'r="'"$RUST_BIN"'"' "$(cat "$TAGENTS_BIN/tagents-notify")"
 ok "...and the binary answers through it for run with the word notify first" "native-core 0.1.0 notify run" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-notify" run)"
 ok "...while status runs the node program" "node-c $TAGENTS_HOME/packages/notify/dist/main.js status" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-notify" status)"
-ok "two files were requested: the checksum, then the archive" "2" "$(calls)"
+ok "four files were requested: the checksum and the archive of each binary" "4" "$(calls)"
 contains "the checksum was asked for first" "$ARCHIVE.sha256" "$(head -n 1 "$CURL_LOG")"
 contains "every wait is bounded, whatever the URL" "--connect-timeout 15 --max-time 120" "$(cat "$CURL_LOG")"
 contains "a file:// base is held to files" "--proto =file" "$(cat "$CURL_LOG")"
@@ -649,10 +659,10 @@ printf 'x' >> "$RELEASES/v0.1.1/tagents-core-0.1.1-$TRIPLE.tar.gz"
 out=$(TMPDIR=$TMP/fetch-tmp run_native); rc=$?
 ok "an archive that is not the one the checksum is of exits 1" 1 "$rc"
 contains "the warning names the archive and both hashes" "the SHA-256 of tagents-core-0.1.1-$TRIPLE.tar.gz is" "$out"
-contains "and says what the run came to" "the prebuilt tagents-core was not installed, see above" "$out"
+contains "and says what the run came to" "a prebuilt binary was not installed, see above" "$out"
 kept_binary "the 0.1.0 binary stays beside a failed 0.1.1" 0.1.0
 ok "the wrappers were written all the same" "tagents v1 " "$("$TAGENTS_BIN/tagents")"
-ok "the temporary directory is removed after a failed check as well" 0 "$(ls -A "$TAGENTS_HOME/target" | grep -c '^tagents-core\.' || true)"
+ok "the temporary directory is removed after a failed check as well" 0 "$(ls -A "$TAGENTS_HOME/target" | grep -c '^\(okb\|tagents-core\)\.' || true)"
 ok "...and nothing was made in TMPDIR for it" "" "$(ls -A "$TMP/fetch-tmp")"
 make_release 0.1.1 "$TRIPLE"
 printf '%s  %s\n' "$(printf 0%.0s $(seq 1 64))" "tagents-core-0.1.1-$TRIPLE.tar.gz" > "$RELEASES/v0.1.1/tagents-core-0.1.1-$TRIPLE.tar.gz.sha256"
@@ -664,6 +674,25 @@ make_release 0.1.1 "$TRIPLE"
 out=$(run_native); rc=$?
 ok "the next run, with a release that checks out, installs it and exits 0" 0 "$rc"
 ok "...and the binary is there" "native-core 0.1.1 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+
+# --- the two binaries are fetched one by one: a release that lacks okb, or holds a corrupt one, leaves the other installed ---
+fresh_native 0.1.0
+rm -f "$RELEASES/v0.1.0/okb-0.1.0-$TRIPLE.tar.gz" "$RELEASES/v0.1.0/okb-0.1.0-$TRIPLE.tar.gz.sha256"
+out=$(TMPDIR=$TMP/fetch-tmp run_native); rc=$?
+ok "a release with no okb archive exits 0" 0 "$rc"
+contains "...says there is no prebuilt okb, with the URL it tried" "no prebuilt okb 0.1.0 for $TRIPLE (file://$RELEASES/v0.1.0/okb-0.1.0-$TRIPLE.tar.gz.sha256)" "$out"
+ok "...tagents-core is installed all the same" "native-core 0.1.0 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+ok "...and there is no okb binary" no "$(exists "$OKB_BIN")"
+ok "...nor a download directory of either binary" 0 "$(ls -A "$TAGENTS_HOME/target" | grep -c '^\(okb\|tagents-core\)\.' || true)"
+fresh_native 0.1.0
+printf 'x' >> "$RELEASES/v0.1.0/okb-0.1.0-$TRIPLE.tar.gz"
+out=$(TMPDIR=$TMP/fetch-tmp run_native); rc=$?
+ok "a corrupt okb archive exits 1" 1 "$rc"
+contains "...the warning names the okb archive" "the SHA-256 of okb-0.1.0-$TRIPLE.tar.gz is" "$out"
+contains "...and says what the run came to" "a prebuilt binary was not installed, see above" "$out"
+ok "...tagents-core is installed all the same" "native-core 0.1.0 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+ok "...and there is no okb binary" no "$(exists "$OKB_BIN")"
+ok "...and no download directory is left" 0 "$(ls -A "$TAGENTS_HOME/target" | grep -c '^\(okb\|tagents-core\)\.' || true)"
 
 # --- a checksum file that is not a SHA-256 -------------------------------------
 fresh_native 0.1.0
@@ -767,8 +796,10 @@ fresh_native 0.1.0
 TAGENTS_NO_NATIVE=1 run_native >/dev/null
 mkdir -p "$(dirname "$RUST_BIN")"
 printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.1.0"; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+printf '#!/bin/sh\necho handbuilt-okb\n' > "$OKB_BIN"; chmod 755 "$OKB_BIN"
 out=$(run_native); rc=$?
 ok "an install over a hand-built binary exits 0" 0 "$rc"
+ok "okb, built by hand as well, is as it was" "handbuilt-okb" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/okb")"
 ok "it made no request" 0 "$(calls)"
 ok "the binary is as it was" "handbuilt" "$("$RUST_BIN")"
 ok "and gained no marker" no "$(exists "$RUST_BIN.release")"
@@ -1053,101 +1084,85 @@ ok "the real verb takes the arguments install.sh passes" accepted "$verdict"
 lacks "...without a word about an option" "option" "$out"
 
 # ---------------------------------------------------------------------------
-t "16. tagents-knowledge: the binary for serve, join and mcp, the node program for the rest, and exit 69 for a join that cannot reach the binary"
+t "16. okb and tagents-knowledge: the binary for every call, and exit 69 with the needs-binary line when it is not there"
 # ---------------------------------------------------------------------------
-# A node that writes down every start: a join that reaches it has paid a node start for a question whose answer is no.
+# A node that writes down every start: nothing here may start one.
 mkdir -p "$TMP/node-rec"
 printf '#!/bin/sh\necho started >> "%s/node-starts"\necho "node-rec $*"\n' "$TMP" > "$TMP/node-rec/node"; chmod 755 "$TMP/node-rec/node"
 run_rec() { rm -f "$TMP/node-starts" "$CURL_LOG"; PATH="$TMP/curlspy:$TMP/node-rec:$PATH" run "$@"; }
 starts() { if [ -f "$TMP/node-starts" ]; then wc -l < "$TMP/node-starts" | tr -d ' '; else echo 0; fi; }
 kn() { env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-knowledge" "$@"; }
-knowledge_path=$TAGENTS_HOME/packages/knowledge/dist/cli/main.js
+okb() { env PATH=/usr/bin:/bin "$TAGENTS_BIN/okb" "$@"; }
+NEEDS='knowledge is served by the okb binary, and this machine has none: run `tagents update`, or `cargo build --release -p okb` in the checkout'
 
 # --- with the binary ----------------------------------------------------------
 fresh_native 0.1.0
-knowledge_path=$TAGENTS_HOME/packages/knowledge/dist/cli/main.js
 out=$(run_rec); rc=$?
-ok "an install with a binary exits 0" 0 "$rc"
-knowledge_wrapper_bytes "$TMP/node-rec/node" "$knowledge_path" "$RUST_BIN" > "$TMP/expected-kn-native"
-same_bytes "the wrapper with the binary is the text of the design" "$TMP/expected-kn-native" "$TAGENTS_BIN/tagents-knowledge"
-ok "join alone reaches the binary, with the pinned node" "native-core 0.1.0 knowledge join" "$(kn join)"
-ok "mcp alone reaches it" "native-core 0.1.0 knowledge mcp" "$(kn mcp)"
-ok "serve with no argument reaches it" "native-core 0.1.0 knowledge serve" "$(kn serve)"
-ok "serve with one argument reaches it" "native-core 0.1.0 knowledge serve --foreground" "$(kn serve --foreground)"
-ok "serve with several arguments reaches it" "native-core 0.1.0 knowledge serve --idle 30 --socket /p" "$(kn serve --idle 30 --socket /p)"
-ok "mcp extra reaches node" "node-rec $knowledge_path mcp extra" "$(kn mcp extra)"
-ok "join x reaches node" "node-rec $knowledge_path join x" "$(kn join x)"
-ok "search x reaches node" "node-rec $knowledge_path search x" "$(kn search x)"
-ok "no arguments reach node" "node-rec $knowledge_path" "$(kn)"
-ok "an empty argument reaches node" "node-rec $knowledge_path " "$(kn "")"
-ok "join and an empty argument reach node" "node-rec $knowledge_path join " "$(kn join "")"
-ok "serve is not matched as a prefix: servers reaches node" "node-rec $knowledge_path servers" "$(kn servers)"
+ok "an install with the binaries exits 0" 0 "$rc"
+okb_wrapper_bytes "$OKB_BIN" > "$TMP/expected-okb"
+alias_wrapper_bytes "$TAGENTS_BIN/okb" > "$TMP/expected-kn"
+same_bytes "the okb wrapper is the text of the design" "$TMP/expected-okb" "$TAGENTS_BIN/okb"
+same_bytes "tagents-knowledge is the text of the design" "$TMP/expected-kn" "$TAGENTS_BIN/tagents-knowledge"
+ok "okb hands every word to the binary" "native-okb 0.1.0 search deploy --json" "$(okb search deploy --json)"
+ok "tagents-knowledge hands join to it" "native-okb 0.1.0 join" "$(kn join)"
+ok "...and mcp" "native-okb 0.1.0 mcp" "$(kn mcp)"
+ok "...and serve with its options" "native-okb 0.1.0 serve --idle 30 --socket /p" "$(kn serve --idle 30 --socket /p)"
+ok "...and no arguments" "native-okb 0.1.0 " "$(kn)"
+ok "...and an empty argument" "native-okb 0.1.0 " "$(kn "")"
+ok "...and started no node" 0 "$(starts)"
 # The wrapper of tagents-notify keeps its bytes next to it.
 native_wrapper_bytes "$TMP/node-rec/node" "$RUST_BIN" notify "$TAGENTS_HOME/packages/notify/dist/main.js" run > "$TMP/expected-kn-notify"
 same_bytes "tagents-notify is the same bytes as before" "$TMP/expected-kn-notify" "$TAGENTS_BIN/tagents-notify"
 
 # --- the binary vanishes, or loses its executable bit ---------------------------
-rm -f "$RUST_BIN" "$TMP/node-starts"
-kn join >/dev/null; rc=$?
+rm -f "$OKB_BIN" "$TMP/node-starts"
+kn join >/dev/null 2>&1; rc=$?
 ok "a vanished binary: join exits 69" 69 "$rc"
 ok "...and started no node" 0 "$(starts)"
-ok "...and said nothing" "" "$(kn join 2>&1)"
-ok "...serve runs node" "node-rec $knowledge_path serve --idle 30" "$(kn serve --idle 30)"
-ok "...mcp runs node" "node-rec $knowledge_path mcp" "$(kn mcp)"
-mkdir "$RUST_BIN"
-kn join >/dev/null; rc=$?
+ok "...and says the needs-binary line on stderr" "$NEEDS" "$(kn join 2>&1 >/dev/null)"
+ok "...and nothing on stdout" "" "$(kn join 2>/dev/null)"
+ok "...serve exits 69 too" 69 "$(kn serve --idle 30 >/dev/null 2>&1; echo $?)"
+ok "...and so does mcp" 69 "$(kn mcp >/dev/null 2>&1; echo $?)"
+mkdir "$OKB_BIN"
+kn join >/dev/null 2>&1; rc=$?
 ok "a directory where the binary was: join exits 69" 69 "$rc"
-rmdir "$RUST_BIN"
-printf '#!/bin/sh\necho native\n' > "$RUST_BIN"; chmod 644 "$RUST_BIN"
-rm -f "$TMP/node-starts"
-kn join >/dev/null; rc=$?
+rmdir "$OKB_BIN"
+printf '#!/bin/sh\necho native\n' > "$OKB_BIN"; chmod 644 "$OKB_BIN"
+kn join >/dev/null 2>&1; rc=$?
 ok "a binary without the executable bit: join exits 69" 69 "$rc"
 ok "...and started no node" 0 "$(starts)"
-ok "...serve runs node" "node-rec $knowledge_path serve" "$(kn serve)"
-ok "...mcp runs node" "node-rec $knowledge_path mcp" "$(kn mcp)"
-rm -f "$RUST_BIN" "$RUST_BIN.release"
+rm -f "$OKB_BIN" "$OKB_BIN.release"
 
-# --- no binary named: the node wrapper plus the join line ----------------------
-knowledge_wrapper_bytes "$TMP/node-rec/node" "$knowledge_path" > "$TMP/expected-kn-node"
-# another version of the binary: node serves nothing of it, so it is named all the same
-printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.0.9"; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
-run_rec >/dev/null
-knowledge_wrapper_bytes "$TMP/node-rec/node" "$knowledge_path" "$RUST_BIN" > "$TMP/expected-kn-native"
-same_bytes "a binary of another version is named" "$TMP/expected-kn-native" "$TAGENTS_BIN/tagents-knowledge"
-ok "...and join reaches it" "handbuilt" "$(kn join)"
-# no binary at all
+# --- no binary and no release: the same bytes, and 69 ---------------------------
 fresh_native 0.1.0
 set_version 0.1.2; use_release 0.1.2
 run_rec >/dev/null
-same_bytes "with no binary and no release, no binary is named" "$TMP/expected-kn-node" "$TAGENTS_BIN/tagents-knowledge"
+same_bytes "with no binary and no release, the okb wrapper is the same bytes" "$TMP/expected-okb" "$TAGENTS_BIN/okb"
+same_bytes "...and so is tagents-knowledge" "$TMP/expected-kn" "$TAGENTS_BIN/tagents-knowledge"
 rm -f "$TMP/node-starts"
-kn join >/dev/null; rc=$?
+kn join >/dev/null 2>&1; rc=$?
 ok "...and join exits 69 without a node start" "69 0" "$rc $(starts)"
-# a release that installs: the wrapper names it
+# a release that installs: the wrapper reaches it
 set_version 0.1.3; make_release 0.1.3 "$TRIPLE"; use_release 0.1.3
 run_rec >/dev/null
-knowledge_wrapper_bytes "$TMP/node-rec/node" "$knowledge_path" "$RUST_BIN" > "$TMP/expected-kn-native"
-same_bytes "a fetched binary of the checkout's version is named" "$TMP/expected-kn-native" "$TAGENTS_BIN/tagents-knowledge"
-ok "...and join reaches it" "native-core 0.1.3 knowledge join" "$(kn join)"
+ok "a fetched binary of the checkout's version is reached" "native-okb 0.1.3 join" "$(kn join)"
 
 # --- TAGENTS_NO_NATIVE=1 at run time does nothing: the wrapper tests only the binary ---
-rm -f "$TMP/node-starts"
-ok "run time TAGENTS_NO_NATIVE=1: serve still reaches the binary" "native-core 0.1.3 knowledge serve --idle 30" "$(TAGENTS_NO_NATIVE=1 kn serve --idle 30)"
-ok "...and so does mcp" "native-core 0.1.3 knowledge mcp" "$(TAGENTS_NO_NATIVE=1 kn mcp)"
-ok "...and a lone join" "native-core 0.1.3 knowledge join" "$(TAGENTS_NO_NATIVE=1 kn join)"
-lacks "...the wrapper does not read the variable" "TAGENTS_NO_NATIVE" "$(cat "$TAGENTS_BIN/tagents-knowledge")"
+ok "run time TAGENTS_NO_NATIVE=1: serve still reaches the binary" "native-okb 0.1.3 serve --idle 30" "$(TAGENTS_NO_NATIVE=1 kn serve --idle 30)"
+ok "...and a lone join" "native-okb 0.1.3 join" "$(TAGENTS_NO_NATIVE=1 kn join)"
+lacks "...the wrapper does not read the variable" "TAGENTS_NO_NATIVE" "$(cat "$TAGENTS_BIN/okb")"
 
 # --- TAGENTS_NO_NATIVE=1 at install time, over a binary built by hand -------------
 fresh_native 0.1.0
 TAGENTS_NO_NATIVE=1 run_rec >/dev/null   # the first install makes the tree; a directory made before it would be refused as not a tagents copy
-mkdir -p "$(dirname "$RUST_BIN")"
-printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core 0.1.0"; exit 0; fi\necho handbuilt\n' > "$RUST_BIN"; chmod 755 "$RUST_BIN"
+mkdir -p "$(dirname "$OKB_BIN")"
+printf '#!/bin/sh\necho handbuilt-okb "$@"\n' > "$OKB_BIN"; chmod 755 "$OKB_BIN"
 run_rec >/dev/null
-knowledge_wrapper_bytes "$TMP/node-rec/node" "$knowledge_path" "$RUST_BIN" > "$TMP/expected-kn-native"
-same_bytes "an unmarked binary of the right version is named" "$TMP/expected-kn-native" "$TAGENTS_BIN/tagents-knowledge"
+ok "an unmarked okb is reached" "handbuilt-okb join" "$(kn join)"
+ok "...and gained no marker, and nothing was fetched for it" "no 0" "$(exists "$OKB_BIN.release") $(grep -c 'okb-' "$CURL_LOG" 2>/dev/null || true)"
 TAGENTS_NO_NATIVE=1 run_rec >/dev/null
-same_bytes "...and TAGENTS_NO_NATIVE=1 at install time leaves it named, as the hand-built binary stays" "$TMP/expected-kn-native" "$TAGENTS_BIN/tagents-knowledge"
-ok "...the unmarked binary is still there, not ours to delete" yes "$([ -x "$RUST_BIN" ] && echo yes || echo no)"
+ok "...and TAGENTS_NO_NATIVE=1 at install time leaves it, as the hand-built binary stays" "handbuilt-okb join" "$(kn join)"
+ok "...the unmarked binary is still there, not ours to delete" yes "$([ -x "$OKB_BIN" ] && echo yes || echo no)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

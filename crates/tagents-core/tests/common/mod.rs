@@ -5,7 +5,6 @@
 // Every test crate that includes this module uses some of it.
 #![allow(dead_code, unused_imports)]
 
-pub mod knowledge;
 pub mod rig;
 pub mod sessions;
 pub mod shared;

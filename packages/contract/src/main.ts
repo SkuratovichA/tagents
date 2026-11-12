@@ -2,13 +2,10 @@
 //
 // Without --check: writes contract.json, the references and plugin.json's version and digest, deletes stray reference files, prints what changed. With --check: writes nothing and exits 1 naming every stale path.
 import { parseArgs } from 'node:util';
-import { silenceSqliteWarning } from '../../knowledge/src/db.ts';
 import { createT } from './i18n/index.ts';
 import { REPO_ROOT, applyPlan, changeLines, noticeLines, planTree, staleLines } from './tree.ts';
 
 async function main(argv: readonly string[]): Promise<number> {
-  // Collecting the MCP tools imports the knowledge server and with it node:sqlite, whose experimental notice would otherwise land in every commit's output.
-  silenceSqliteWarning();
   const t = createT();
   let check: boolean;
   try {

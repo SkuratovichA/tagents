@@ -61,11 +61,7 @@ fn serve(path: &OsString) -> Result<(), String> {
 }
 
 /// Serve `tools` to the client on `input` and this process's stdout until the input ends. The client may also go away by a signal: the calls in flight are stopped first, then the process leaves.
-pub(crate) fn serve_stdio(
-    tools: Arc<dyn Tools>,
-    config: Config,
-    input: impl Read,
-) -> Result<(), String> {
+pub fn serve_stdio(tools: Arc<dyn Tools>, config: Config, input: impl Read) -> Result<(), String> {
     let server = Server::new(tools, Out::new(io::stdout()), config, || {
         std::process::exit(i32::from(exit::OK))
     });

@@ -38,7 +38,7 @@ pub fn config_dir_from(
 }
 
 /// An environment variable that is set and not blank: JavaScript's `value && value.trim()`.
-pub(crate) fn not_blank(value: Option<&str>) -> Option<&str> {
+pub fn not_blank(value: Option<&str>) -> Option<&str> {
     value.filter(|v| !js::trim(v).is_empty())
 }
 

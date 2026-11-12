@@ -19,19 +19,19 @@ That one line needs Claude Code 2.1.275 or later. Before it, use two commands:
 
 ### The `tagents` skill
 
-The skill gives Claude the exact contract of `tagents-core`, `tagents-knowledge`, `tagents`, `tusage` and `tnotes`: every verb and flag, every MCP tool schema, and the public TypeScript API. It is generated from the code, so it never goes stale ([how](../architecture/contract)). Claude loads it when a task touches tagents instead of guessing at flags.
+The skill gives Claude the exact contract of `tagents-core`, `okb`, `tagents`, `tusage` and `tnotes`: every verb and flag, every MCP tool schema, and the public TypeScript API. It is generated from the code, so it never goes stale ([how](../architecture/contract)). Claude loads it when a task touches tagents instead of guessing at flags.
 
 ### The `knowledge` MCP server
 
-The server gives every session search and read access to your markdown notes (`tagents-knowledge`). The plugin registers `packages/knowledge/bin/knowledge-mcp` for it.
+The server gives every session search and read access to your markdown notes (`okb`, also reachable as `tagents-knowledge`). The plugin registers `bin/knowledge-mcp` for it.
 
-- It first asks `tagents-knowledge join` whether this machine has the Rust binary (`tagents-core`, installed by `tagents update` when a release matches the checkout). With the binary, the session's process **is** `tagents-core knowledge join`: it connects to **one shared Rust knowledge daemon per environment**, starting it when it is not running, and relays the session's input and output to it. There is no node process and no `nc` in the session.
-- Without the binary (none installed, or one the installer could not replace), the wrapper answers `join` with exit code 69 before it starts any node. The script then goes on to `tagents-knowledge serve` and `tagents-knowledge mcp`, which node answers with one line naming `tagents update` and `cargo build --release -p tagents-core`, and exit 69: the session has no knowledge server until a binary is installed.
-- A plugin older than the install still calls `serve` and `mcp`; the wrappers accept both and the binary serves them.
+- It first asks `tagents-knowledge join` whether this machine has the Rust binary (`okb`, installed by `tagents update` when a release matches the checkout). With the binary, the session's process **is** `okb join`: it connects to **one shared Rust knowledge daemon per environment**, starting it when it is not running, and relays the session's input and output to it. There is no node process and no `nc` in the session.
+- Without the binary (none installed, or one the installer could not replace), the wrapper answers `join` with exit code 69. The script then goes on to `tagents-knowledge serve` and `tagents-knowledge mcp`, which answer with one line naming `tagents update` and `cargo build --release -p okb`, and exit 69: the session has no knowledge server until a binary is installed.
+- A plugin older than the install still calls `tagents-knowledge serve` and `mcp`; that name is an alias of `okb` and the binary serves them.
 - If the binary is there and `join` fails with any code besides 0, 69 and 2, the script writes one line naming the code to stderr, which Claude Code keeps in the log of an MCP server, and goes on to the binary's `serve` and `mcp`, a per-session server that needs no daemon.
 - `TAGENTS_NO_NATIVE=1` at install time removes a prebuilt binary and installs the wrappers without one; the wrappers no longer read it when they run.
 - Either daemon starts on demand and exits after 10 minutes without a client.
-- To see which program serves, run `tagents-knowledge join </dev/null; echo $?`: `0` is the Rust binary, `69` is a machine with no binary. `footprint <pid>` on a session's process shows what it holds, and `ps -o command= -p <pid>` shows the `tagents-core knowledge join`. What the processes hold, measured, is in [What a knowledge session holds](../architecture/rust-core.md#what-a-knowledge-session-holds).
+- To see which program serves, run `tagents-knowledge join </dev/null; echo $?`: `0` is the Rust binary, `69` is a machine with no binary. `footprint <pid>` on a session's process shows what it holds, and `ps -o command= -p <pid>` shows the `okb join`. What the processes hold, measured, is in [What a knowledge session holds](../architecture/rust-core.md#what-a-knowledge-session-holds).
 - The launcher is part of the plugin, so it arrives with a plugin update: run `claude plugin marketplace update tagents` and then `claude plugin update tagents@tagents`, and restart Claude Code. A copy installed before keeps its old launcher, which reaches the same binary through the wrapper as `serve` and `nc -U`: the session then has the Rust daemon and an `nc` until the plugin is updated.
 - `tagents-knowledge` has to be on `$PATH`.
 
@@ -65,4 +65,4 @@ The plugin registers no hooks and no status line. The state hook and the status 
 ## Where the rest is documented
 
 - [The generated contract](../architecture/contract), for how the skill is kept honest.
-- [`@tagents/knowledge`](https://github.com/SkuratovichA/tagents/blob/main/packages/knowledge/README.md), for the notes documents and the FTS5 index behind the server.
+- [`okb`](https://github.com/SkuratovichA/tagents/tree/main/crates/okb), the Rust binary behind the notes documents and the FTS5 index of the server.

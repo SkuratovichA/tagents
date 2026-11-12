@@ -5922,7 +5922,7 @@
         "locale": "en",
         "key": "usage",
         "vars": {},
-        "text": "usage: tagents-core <command>\n\n  session open --cwd P [--label N] [--model M] [--effort E] [--resume ID]\n               [--system-prompt-file F] [--mcp-config F]\n               [--config-dir D | --no-config-dir] [--skip-permissions]\n  session prompt <ref-json-or-id> <text> [--timeout MS] [--warn-before MS] [--events]\n  session last <ref-json-or-id>\n  session list [--label N] [--state S]...\n  session abort <ref-json-or-id>\n  sessions recent [N] | search <words…> | show <id-prefix>\n  plugin list [--json]\n  plugin add <package-or-path> [--name N]\n  plugin remove <name>\n  plugin new <name> [--dir D]\n  doctor\n  mcp --contract F   (Rust binary only)\n  notify run   (the notification service: the Rust binary serves it)\n  knowledge mcp   (the knowledge server of one session on stdin and stdout: Rust binary only)\n  knowledge serve [--idle S] [--foreground] [--socket P]   (the shared knowledge server: Rust binary only)\n  knowledge join   (a session joined to the shared knowledge server: Rust binary only)\n  <plugin> <command> [args]   a configured plugin’s own verb (plugin list names them)\n\nreserved: session · sessions · plugin · doctor · help — a core verb always wins\nexit: 0 ok · 1 error · 2 usage · 3 refused · 4 timeout"
+        "text": "usage: tagents-core <command>\n\n  session open --cwd P [--label N] [--model M] [--effort E] [--resume ID]\n               [--system-prompt-file F] [--mcp-config F]\n               [--config-dir D | --no-config-dir] [--skip-permissions]\n  session prompt <ref-json-or-id> <text> [--timeout MS] [--warn-before MS] [--events]\n  session last <ref-json-or-id>\n  session list [--label N] [--state S]...\n  session abort <ref-json-or-id>\n  sessions recent [N] | search <words…> | show <id-prefix>\n  plugin list [--json]\n  plugin add <package-or-path> [--name N]\n  plugin remove <name>\n  plugin new <name> [--dir D]\n  doctor\n  mcp --contract F   (Rust binary only)\n  notify run   (the notification service: the Rust binary serves it)\n  <plugin> <command> [args]   a configured plugin’s own verb (plugin list names them)\n\nreserved: session · sessions · plugin · doctor · help — a core verb always wins\nexit: 0 ok · 1 error · 2 usage · 3 refused · 4 timeout"
       },
       {
         "locale": "en",
@@ -7657,24 +7657,6 @@
         "key": "summaryNotifyRun",
         "vars": {},
         "text": "runs the notification service in this process until a signal stops it: it follows the event stream of the agents and posts a notice for each turn that ends, each question and each permission prompt"
-      },
-      {
-        "locale": "en",
-        "key": "summaryKnowledgeMcp",
-        "vars": {},
-        "text": "serves the six knowledge tools to an MCP client over stdin and stdout in this process until the client closes them"
-      },
-      {
-        "locale": "en",
-        "key": "summaryKnowledgeServe",
-        "vars": {},
-        "text": "prints the socket of the shared knowledge server of this environment and starts that server when nothing answers; with --foreground it is the server itself"
-      },
-      {
-        "locale": "en",
-        "key": "summaryKnowledgeJoin",
-        "vars": {},
-        "text": "connects stdin and stdout to the shared knowledge server, starting it when none runs, and serves in this process when none can be started"
       },
       {
         "locale": "ru",
@@ -9415,24 +9397,6 @@
         "key": "summaryNotifyRun",
         "vars": {},
         "text": "runs the notification service in this process until a signal stops it: it follows the event stream of the agents and posts a notice for each turn that ends, each question and each permission prompt"
-      },
-      {
-        "locale": "ru",
-        "key": "summaryKnowledgeMcp",
-        "vars": {},
-        "text": "serves the six knowledge tools to an MCP client over stdin and stdout in this process until the client closes them"
-      },
-      {
-        "locale": "ru",
-        "key": "summaryKnowledgeServe",
-        "vars": {},
-        "text": "prints the socket of the shared knowledge server of this environment and starts that server when nothing answers; with --foreground it is the server itself"
-      },
-      {
-        "locale": "ru",
-        "key": "summaryKnowledgeJoin",
-        "vars": {},
-        "text": "connects stdin and stdout to the shared knowledge server, starting it when none runs, and serves in this process when none can be started"
       }
     ],
     "missingInRu": [

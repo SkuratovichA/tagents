@@ -441,8 +441,12 @@ test('install recognises the wrapper of a TAGENTS_HOME that is a symlink: the wr
 
 test('installedCommand recognises what write_wrapper in install.sh writes, with a binary named or not', () => {
   // The function as install.sh has it, run by sh: nothing here retypes what the installer writes.
-  const fn = /^write_wrapper\(\) \{[\s\S]*?^\}/m.exec(fs.readFileSync(INSTALL_SH, 'utf8'))?.[0] ?? '';
-  assert.ok(fn.length > 0, 'write_wrapper was not found in install.sh');
+  const installer = fs.readFileSync(INSTALL_SH, 'utf8');
+  const claim = /^claim_dest\(\) \{[\s\S]*?^\}/m.exec(installer)?.[0] ?? '';
+  const wrapper = /^write_wrapper\(\) \{[\s\S]*?^\}/m.exec(installer)?.[0] ?? '';
+  assert.ok(claim.length > 0, 'claim_dest was not found in install.sh');
+  assert.ok(wrapper.length > 0, 'write_wrapper was not found in install.sh');
+  const fn = `${claim}\n${wrapper}`;
   const mainJs = checkoutMain();
   const cases: readonly (readonly string[])[] = [
     [],

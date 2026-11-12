@@ -29,7 +29,7 @@ function binSources(): { pkg: string; bin: string; source: string }[] {
 
 test('every bin entry starts with a bare node shebang on its own line', () => {
   const bins = binSources();
-  assert.ok(bins.length >= 3, 'the bins of core, knowledge and notify are found');
+  assert.ok(bins.length >= 2, 'the bins of core and notify are found');
   for (const { pkg, bin, source } of bins) {
     const firstLine = fs.readFileSync(source, 'utf8').split('\n', 1)[0];
     assert.match(firstLine ?? '', /^#!\/usr\/bin\/env node$/, `${pkg}: ${bin} (${path.relative(REPO_ROOT, source)})`);

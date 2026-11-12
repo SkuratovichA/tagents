@@ -12,7 +12,6 @@ on:
       - crates/**
       - spec/**
       - packages/core/**
-      - packages/knowledge/**
       - packages/notify/**
       - tests/rust-parity.sh
       - tests/rust-mcp-parity.sh
@@ -34,7 +33,7 @@ on:
       - tests/release.sh
       - tests/install.sh
       - tests/knowledge-launcher.sh
-      - packages/knowledge/bin/knowledge-mcp
+      - bin/knowledge-mcp
       - install.sh
       - tests/rust-session-parity.sh
       - tests/rust-session-parity-driver.mts
@@ -49,7 +48,6 @@ on:
       - crates/**
       - spec/**
       - packages/core/**
-      - packages/knowledge/**
       - packages/notify/**
       - tests/rust-parity.sh
       - tests/rust-mcp-parity.sh
@@ -71,7 +69,7 @@ on:
       - tests/release.sh
       - tests/install.sh
       - tests/knowledge-launcher.sh
-      - packages/knowledge/bin/knowledge-mcp
+      - bin/knowledge-mcp
       - install.sh
       - tests/rust-session-parity.sh
       - tests/rust-session-parity-driver.mts
@@ -104,13 +102,13 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit and integration tests
         run: cargo test --workspace --locked
-      - name: Build the node CLI of tag v0.6.7, which the parity suites compare the Rust binary with (it fetches the tag when the clone lacks it)
+      - name: Build the node CLI of tag v0.6.7, which the parity suites compare the Rust binary with (it fetches the tag when the clone lacks it); the knowledge suite builds its own oracle of tag v0.7.0
         run: bash tests/parity-oracle.sh
       - name: Parity with the node CLI, byte for byte
         run: bash tests/rust-parity.sh
       - name: Parity of the MCP server with the node one, byte for byte
         run: bash tests/rust-mcp-parity.sh
-      - name: Parity of the knowledge MCP server and its daemon with the node ones, transcripts compared byte for byte
+      - name: Parity of okb with the node knowledge package byte for byte, for the verbs that read the folder, the MCP server and its daemon
         run: bash tests/rust-knowledge-parity.sh
       - name: Parity of the notify daemon with the node one, byte for byte
         run: bash tests/rust-notify-parity.sh
@@ -118,7 +116,7 @@ jobs:
         run: bash tests/rust-plugin-parity.sh
       - name: Parity of the session verbs with the node ones, state and exit codes included
         run: bash tests/rust-session-parity.sh
-      - name: The program a session starts over a scratch install, with the built binary and a node CLI that answers the needs-binary line
+      - name: The program a session starts over a scratch install, with the built binary and the okb wrapper that answers the needs-binary line
         run: bash tests/knowledge-launcher.sh
 
   # A change to what the tagents-core binary is built from must raise the workspace version (docs/architecture/rust-core.md, "How a release is made"). Every such input is in the paths above, so a pull request that breaks the rule always runs this job. The history is deep because the gate compares with the merge base.

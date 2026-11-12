@@ -3,7 +3,7 @@
 //
 // What stays here: `plugin list [--json]`, and the host of plugins. A verb this file does not know is offered to the configured plugins before it is refused: `tagents-core telegram status` runs the `status` CliCommand of the plugin named `telegram` (cli/plugin-run.ts). The core verbs are matched FIRST and always win — what `plugin` and `help` mean must not depend on what somebody has installed.
 //
-// What went: `session`, `sessions`, `doctor`, `plugin add|remove|new`, `mcp`, `notify run` and the knowledge server verbs are the binary's (`impl: "rust"` in spec/cli/tagents-core.json). Called here they print one line that says so and exit 69.
+// What went: `session`, `sessions`, `doctor`, `plugin add|remove|new`, `mcp` and `notify run` are the binary's (`impl: "rust"` in spec/cli/tagents-core.json). Called here they print one line that says so and exit 69.
 //
 // Exit codes: 0 ok · 1 error · 2 usage · 3 refused · 4 timeout · 69 no binary.
 import fs from 'node:fs';
@@ -18,7 +18,7 @@ export async function main(argv: string[], io: Io = stdio()): Promise<number> {
   const t = coreT(createT());
   const [verb, ...rest] = argv;
   try {
-    // A verb the binary serves is not run here: this CLI says so and exits 69, the code `tagents-knowledge join` gives for the same reason. The list is the `impl` column of the spec file, so it cannot drift from the binary's.
+    // A verb the binary serves is not run here: this CLI says so and exits 69, the code `okb join` gives for the same reason. The list is the `impl` column of the spec file, so it cannot drift from the binary's.
     const retired = verb === undefined ? null : servedByBinary(verb, rest);
     if (retired !== null) {
       io.err(`${t('needsBinary', { verb: retired })}\n`);

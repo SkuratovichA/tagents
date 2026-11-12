@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# tests/rust-knowledge-parity.sh — `tagents-core knowledge mcp|serve|join` answer what the node knowledge package answers.
+# tests/rust-knowledge-parity.sh — `okb` answers what the node knowledge package answered: the seven verbs that read the folder (`index`, `search`, `show`, `list`, `lint`, `toc`, `usage`), and `mcp`, `serve` and `join`.
 #
-# Every scenario runs twice, once against `node packages/knowledge/dist/cli/main.js` and once against `target/debug/tagents-core knowledge` (or $TAGENTS_CORE_BIN), each on its own copy of one corpus in scratch directories, with a scratch HOME, TMPDIR, config directory, index and usage store, and compares what the client sees byte for byte. The MCP scenarios go through tests/rust-mcp-parity-driver.mts, which speaks to any stdio MCP server; tests/rust-knowledge-parity-driver.mts writes the documents and the sweep they search.
+# Every scenario runs twice, once against `node packages/knowledge/dist/cli/main.js` of the oracle and once against `target/debug/okb` (or $OKB_BIN), each on its own copy of one corpus in scratch directories, with a scratch HOME, TMPDIR, config directory, index and usage store, and compares what the client sees byte for byte. The MCP scenarios go through tests/rust-mcp-parity-driver.mts, which speaks to any stdio MCP server; tests/rust-knowledge-parity-driver.mts writes the documents and the sweep they search.
 # The daemon scenarios compare facts (how many daemons run, what the socket directory is, what a session was told) read from outside, because the two programs name their sockets differently. The `join` scenarios have no node counterpart in the daemon's own right (the session of the node arrangement is `nc`), so they assert the outcome of the Rust relay and compare what its client sees with what the node server's stdio says.
 # Tripwires assert on the node transcript alone, so a scenario that stopped provoking what it exists for fails here instead of passing for nothing. The suite prints how many scenarios it skipped (PARITY_ONLY).
 # Differences that are known and listed in docs/architecture/rust-core.md are not scenarios.
@@ -19,18 +19,22 @@ REPO=$(cd "$HERE/.." && pwd -P)
 ORACLE=$(bash "$HERE/parity-oracle.sh") || { echo "rust-knowledge-parity: no node oracle (tests/parity-oracle.sh)" >&2; exit 2; }
 NODE=${TAGENTS_NODE:-$(command -v node)}
 KJS="$ORACLE/packages/knowledge/dist/cli/main.js"
+# The seven verbs that read the folder are compared with v0.7.0, the last tag whose node program words them as the tree did before it left: v0.6.7 still has `mcp` and `serve` in the usage text, which the binary serves in its place. `mcp`, `serve` and `join` are compared with v0.6.7, which still has their node implementations.
+CLI_ORACLE=$(PARITY_ORACLE_TAG=v0.7.0 bash "$HERE/parity-oracle.sh") || { echo "rust-knowledge-parity: no node oracle for the verbs (tests/parity-oracle.sh at v0.7.0)" >&2; exit 2; }
+KJS_CLI="$CLI_ORACLE/packages/knowledge/dist/cli/main.js"
 MCP_DRIVER="$HERE/rust-mcp-parity-driver.mts"
 GEN="$HERE/rust-knowledge-parity-driver.mts"
 # A process that has not ended after 30 seconds is killed by its own alarm, which a relay test then reports as exit 142.
 # PERL_BADLANG keeps perl quiet about a locale the system does not have: the program environment names en_US.UTF-8, and the join scenarios read stderr.
 ALARMED=(env PERL_BADLANG=0 perl -e 'alarm 30; exec @ARGV')
-RUST=${TAGENTS_CORE_BIN:-$REPO/target/debug/tagents-core}
+RUST=${OKB_BIN:-$REPO/target/debug/okb}
 
 [ -n "$NODE" ] && [ -x "$NODE" ] || { echo "rust-knowledge-parity: no node to run (set TAGENTS_NODE)" >&2; exit 2; }
+[ -f "$KJS_CLI" ] || { echo "rust-knowledge-parity: $KJS_CLI is not built; run: PARITY_ORACLE_TAG=v0.7.0 bash tests/parity-oracle.sh" >&2; exit 2; }
 [ -f "$KJS" ] || { echo "rust-knowledge-parity: $KJS is not built; run: bash tests/parity-oracle.sh" >&2; exit 2; }
 if [ ! -x "$RUST" ]; then
-  if [ -n "${TAGENTS_CORE_BIN:-}" ]; then echo "rust-knowledge-parity: $RUST is not an executable" >&2; exit 2; fi
-  (cd "$REPO" && cargo build -p tagents-core >&2) || { echo "rust-knowledge-parity: cargo build failed" >&2; exit 2; }
+  if [ -n "${OKB_BIN:-}" ]; then echo "rust-knowledge-parity: $RUST is not an executable" >&2; exit 2; fi
+  (cd "$REPO" && cargo build -p okb >&2) || { echo "rust-knowledge-parity: cargo build failed" >&2; exit 2; }
 fi
 command -v sqlite3 > /dev/null || { echo "rust-knowledge-parity: no sqlite3 to read the stores with" >&2; exit 2; }
 RUST_ABS=$(cd "$(dirname "$RUST")" && pwd -P)/$(basename "$RUST")
@@ -65,14 +69,15 @@ SESSIONS_HOME=$TMP/seed/fixture
 # The first check: the program compared with node is Rust. A launcher script or the node CLI itself would make every scenario below compare node with node and pass.
 t "the program under test is Rust"
 if [ "$(head -c 2 "$RUST_ABS")" = '#!' ]; then bad "the program under test is a script" "$RUST_ABS starts with #!"; else ok; fi
-# `knowledge mcp` is served by the binary itself: with no node on the PATH and no input it still ends with exit 0 and says nothing.
-nothing_said=$(env -i PATH=/nonexistent HOME="$TMP" TAGENTS_CONFIG_DIR="$TMP/cfg" TAGENTS_KNOWLEDGE_DIR="$TMP/none" TAGENTS_KNOWLEDGE_DB="$TMP/none.sqlite" "$RUST_ABS" knowledge mcp < /dev/null 2>&1); code=$?
+# `okb mcp` is served by the binary itself: with no node on the PATH and no input it still ends with exit 0 and says nothing.
+nothing_said=$(env -i PATH=/nonexistent HOME="$TMP" TAGENTS_CONFIG_DIR="$TMP/cfg" TAGENTS_KNOWLEDGE_DIR="$TMP/none" TAGENTS_KNOWLEDGE_DB="$TMP/none.sqlite" "$RUST_ABS" mcp < /dev/null 2>&1); code=$?
 if [ "$code" -eq 0 ] && [ -z "$nothing_said" ]; then ok; else bad "the program under test does not serve mcp by itself" "exit $code: $nothing_said"; fi
 
 # ----------------------------------------------------------------- the world of one run ---
 # docs, index and usage store of the run, in one directory the run starts from scratch.
 DOCS=$TMP/world/docs; INDEX=$TMP/world/index.sqlite; USAGE=$TMP/world/usage.sqlite
 CORPUS=knowledge   # the fixture folder the run copies: knowledge, okf or both
+BAD=               # whether the documents of the driver's `bad` are added
 EXTRAS=            # whether the documents of the driver's `extras` are added
 # the permission bits of a path, the same on macOS and Linux
 mode_of() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
@@ -80,12 +85,13 @@ mode_of() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 reset_world() {
   rm -rf "$TMP/world" "$TMP/tmp"; mkdir -p "$DOCS" "$TMP/tmp"
   case $CORPUS in
-    knowledge|both) cp "$REPO"/packages/knowledge/test/fixtures/knowledge/*.md "$DOCS/" ;;
+    knowledge|both) cp "$REPO"/crates/okb/tests/fixtures/knowledge/*.md "$DOCS/" ;;
   esac
   case $CORPUS in
-    okf|both) cp "$REPO"/packages/knowledge/test/fixtures/okf/*.md "$DOCS/" ;;
+    okf|both) cp "$REPO"/crates/okb/tests/fixtures/okf/*.md "$DOCS/" ;;
   esac
   [ -z "$EXTRAS" ] || "$NODE" "$GEN" extras "$DOCS"
+  [ -z "$BAD" ] || "$NODE" "$GEN" bad "$DOCS"
   # The same modification time in every world, with a fraction of a millisecond that rounding would carry over: the index records it.
   perl -MTime::HiRes=utime -e 'utime(1767225600.7896, 1767225600.7896, @ARGV)' "$DOCS"/*.md
 }
@@ -95,7 +101,7 @@ program_env() {
 }
 server_command() {  # <side> <verb> [args...]: the program of a side
   local side=$1; shift
-  if [ "$side" = node ]; then SERVER=("$NODE" "$KJS" "$@"); else SERVER=("$RUST_ABS" knowledge "$@"); fi
+  if [ "$side" = node ]; then SERVER=("$NODE" "$KJS" "$@"); else SERVER=("$RUST_ABS" "$@"); fi
 }
 
 # ----------------------------------------------------------------- comparing ---
@@ -559,7 +565,7 @@ if wanted "daemon: garbage, then a real client"; then
 fi
 
 # ------------------------------------------------------------------ join ---
-# `knowledge join` is what a session runs in place of `knowledge mcp`: the client sees what the node server's stdio says, whether a daemon serves it or the relay serves in process. The node counterpart of the relay is `nc`, which does not retry, so what the relay does around a daemon that goes away is asserted on the Rust side alone.
+# `join` is what a session runs in place of `knowledge mcp`: the client sees what the node server's stdio says, whether a daemon serves it or the relay serves in process. The node counterpart of the relay is `nc`, which does not retry, so what the relay does around a daemon that goes away is asserted on the Rust side alone.
 join_session() {  # <label> <VAR=value ...>: node's `mcp` against Rust's `join`, the second in an environment with these variables set over the world's
   local label=$1 over=$2 side
   wanted "$label" || return 0
@@ -567,7 +573,7 @@ join_session() {  # <label> <VAR=value ...>: node's `mcp` against Rust's `join`,
   for side in node rust; do
     stop_all; reset_world; mkdir -p "$TMP/tmp"
     program_env
-    if [ "$side" = node ]; then SERVER=("$NODE" "$KJS" mcp); else SERVER=("$RUST_ABS" knowledge join); fi
+    if [ "$side" = node ]; then SERVER=("$NODE" "$KJS" mcp); else SERVER=("$RUST_ABS" join); fi
     env -i "${PENV[@]}" $( [ "$side" = rust ] && echo "$over" ) PARITY_DIR="$W" "$NODE" "$MCP_DRIVER" run "$TMP/scripts/join.json" "$W" -- "${SERVER[@]}" > "$TMP/raw.$side" 2> "$TMP/driver.$side" || { bad "$label: the driver failed on the $side server" "$(head -c 300 "$TMP/driver.$side" | tr '\n' '|')"; stop_all; return 0; }
     norm "$TMP/raw.$side" > "$TMP/transcript.$side"
     JOIN_LEFT="daemons: $(count_daemons), pid files: $(count_pidfiles)"  # the last side is Rust
@@ -588,7 +594,7 @@ expect "join without a daemon: none was started" "${JOIN_LEFT:-}" "daemons: 0, p
 j_input_ends() {
   local err code
   stop_all; reset_world; program_env
-  err=$(env -i "${PENV[@]}" "${ALARMED[@]}" "$RUST_ABS" knowledge join < /dev/null 2>&1 > /dev/null); code=$?
+  err=$(env -i "${PENV[@]}" "${ALARMED[@]}" "$RUST_ABS" join < /dev/null 2>&1 > /dev/null); code=$?
   expect "join: input that ends at once is exit 0 and silence" "$code:$err" "0:"
 }
 j_daemon_dies_mid_session() {
@@ -602,7 +608,7 @@ j_daemon_dies_mid_session() {
     wait_no_daemon
     echo '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
     sleep 5
-  } | env -i "${PENV[@]}" "${ALARMED[@]}" "$RUST_ABS" knowledge join > "$TMP/out" 2> "$TMP/err"
+  } | env -i "${PENV[@]}" "${ALARMED[@]}" "$RUST_ABS" join > "$TMP/out" 2> "$TMP/err"
   code=${PIPESTATUS[1]}
   err=$(cat "$TMP/err")
   expect "join: a daemon that dies after the first reply ends the session with exit 1" "$code" "1"
@@ -611,6 +617,178 @@ j_daemon_dies_mid_session() {
 }
 if wanted "join: input ends"; then j_input_ends; fi
 if wanted "join: the daemon dies mid-session"; then j_daemon_dies_mid_session; fi
+
+# ----------------------------------------------------------------- the verbs that read the folder ---
+# A scenario is a function that runs the program of a side (`cli`) on a world of its own. What each call said (the words, the exit code, stdout, stderr) is appended to the transcript of the side, and the two transcripts must be the same bytes.
+SIDE=
+cli() {  # <words...>
+  local out=$TMP/cli.out err=$TMP/cli.err code
+  if [ "$SIDE" = node ]; then CMD=("$NODE" "$KJS_CLI" "$@"); else CMD=("$RUST_ABS" "$@"); fi
+  env -i "${PENV[@]}" ${CLI_ENV[@]+"${CLI_ENV[@]}"} "${ALARMED[@]}" "${CMD[@]}" > "$out" 2> "$err" < /dev/null
+  code=$?
+  { printf '$ %s\nexit %s\n--- stdout\n' "$*" "$code"; cat "$out"; printf -- '--- stderr\n'; cat "$err"; printf '\n'; } >> "$TMP/transcript.$SIDE"
+}
+# The environment of the next calls: extra variables, and the ones of the world to drop.
+CLI_ENV=()
+without() {  # <name...>: drops the variables from the environment of the next calls
+  local keep=() v drop name
+  for v in "${PENV[@]}"; do
+    drop=
+    for name in "$@"; do case $v in "$name="*) drop=1 ;; esac; done
+    [ -n "$drop" ] || keep+=("$v")
+  done
+  PENV=("${keep[@]}")
+}
+scenario() {  # <label> <function>: the function runs once per side
+  local label="verbs: $1" fn=$2
+  wanted "$label" || return 0
+  for SIDE in node rust; do
+    reset_world; program_env; CLI_ENV=(); : > "$TMP/transcript.$SIDE"
+    "$fn"
+  done
+  compare "$label"
+}
+saw() {  # <label> <needle>: the node transcript holds what the scenario exists to provoke
+  [ -n "$RAN" ] || return 0
+  if grep -qF -- "$2" "$TMP/transcript.node"; then ok; else bad "tripwire $1: node did not say what this scenario expects" "wanted: $2"; fi
+}
+
+t "verbs: usage and the refusals of the command line"
+sc_usage() { cli; cli help; cli --help; cli -h; cli bogus; cli index --bogus; cli index extra; cli index --dir; cli search; cli search '  '; cli show; cli show '   '; cli list extra; cli lint --full; cli toc --check=1; cli usage --since; }
+scenario "usage text, help, an unknown verb and bad options" sc_usage
+saw "usage text" 'usage: tagents-knowledge <command>'
+saw "an unknown verb" 'unknown command: bogus'
+
+t "verbs: no folder, a missing folder"
+sc_nodir() { without TAGENTS_KNOWLEDGE_DIR; for v in index "search x" "show x" list lint toc usage; do cli $v; done; }
+scenario "no knowledge directory" sc_nodir
+sc_missingdir() { for v in index "search x" "show x" list lint toc usage; do cli $v --dir "$TMP/not-here"; done; CLI_ENV=(TAGENTS_KNOWLEDGE_DIR="$TMP/also-not-here"); cli list; }
+scenario "a missing knowledge directory" sc_missingdir
+
+t "verbs: index"
+CORPUS=both; EXTRAS=1
+sc_index() { cli index; cli index; cli index --full; touch "$DOCS/cafe-notes.md"; cli index; printf -- '---\ntype: note\n---\n\nnew\n' > "$DOCS/fresh-one.md"; cli index; cli index --db "$TMP/world/other.sqlite"; cli index --dir "$DOCS" --db "$TMP/world/third.sqlite" --full; }
+scenario "index: new, changed, unchanged, full, --db" sc_index
+BAD=1
+sc_index_bad() { cli index; cli index --full; }
+scenario "index: files that do not parse" sc_index_bad
+BAD=; EXTRAS=
+
+t "verbs: search"
+CORPUS=both; EXTRAS=1
+sc_search() {
+  cli search cafe; cli search naive resume zoe; cli search marmalade; cli search 'depl*'; cli search sqlite
+  cli search runbook --tag ops; cli search runbook --type Runbook; cli search runbook --kind runbook
+  cli search the --limit 2; cli search the --limit 0; cli search the --limit -1; cli search the --limit abc; cli search the --limit 2.5; cli search the --limit=3
+  cli search '"unterminated'; cli search nothing-matches-this-zzz; cli search --json nothing-matches-this-zzz
+  cli search --json marmalade; cli search --json cafe --limit 1; cli search --json the --tag ops
+  cli search --usage-db "$TMP/world/other-usage.sqlite" cafe --verbose; cli search cafe --db "$TMP/world/other.sqlite"
+  cli usage --json; cli usage
+}
+scenario "search: queries, filters, limits, --json, --usage-db" sc_search
+sc_search_usage_broken() { mkdir "$TMP/world/store-dir"; cli search cafe --usage-db "$TMP/world/store-dir" --verbose; cli search cafe --usage-db "$TMP/world/store-dir"; cli show cafe-notes --usage-db "$TMP/world/store-dir" --verbose; }
+scenario "search and show: a usage store that cannot take the events" sc_search_usage_broken
+
+t "verbs: show"
+sc_show() {
+  cli show deploy-runbook; cli show deploy-runbook#Deploy; cli show 'deploy-runbook#deploy'; cli show deploy-runbook#; cli show 'deploy-runbook#Nope'; cli show no-such-doc; cli show no-such-doc#x
+  cli show okf-none; cli show backup-runbook; printf 'no newline at the end' > "$DOCS/bare.md"; cli index; cli show bare
+  rm "$DOCS/cafe-notes.md"; cli show cafe-notes; cli usage --all --json
+}
+scenario "show: a document, a section, case, misses" sc_show
+
+t "verbs: list"
+sc_list() { cli list; cli list --json; cli list --type Runbook; cli list --kind runbook; cli list --tag ops; cli list --tag ops --json; cli list --tag nothing; cli list --tag nothing --json; cli list --db "$TMP/world/other.sqlite"; }
+scenario "list: lines, --json, filters, nothing" sc_list
+sc_list_stale() { printf -- '---\ntype: note\nstale_after: 2020-01-01T00:00:00Z\ngenerated: {by: me, at: "2026-03-04T05:06:07+03:00"}\ntags: [a, b]\n---\n\nbody\n' > "$DOCS/aged.md"; cli list; cli list --json; cli search aged; cli search --json body; }
+scenario "list and search: the stale mark, tags and generated.at" sc_list_stale
+sc_list_empty() { rm -f "$DOCS"/*.md; cli list; cli list --json; cli search x; cli usage; cli lint; cli toc; cli show x; }
+scenario "an empty folder" sc_list_empty
+# An index database that cannot be used: a directory where the file should be, a file that is not SQLite, and a path whose parent is a regular file. Each verb that reads or writes the index says what it met.
+sc_db_unusable() {
+  mkdir -p "$TMP/world/db-is-a-dir"; printf 'this is not a database, only text\n' > "$TMP/world/garbage.sqlite"; : > "$TMP/world/plain-file"
+  local db
+  for db in "$TMP/world/db-is-a-dir" "$TMP/world/garbage.sqlite" "$TMP/world/plain-file/below.sqlite"; do
+    cli index --db "$db"; cli index --full --db "$db"; cli search cafe --db "$db"; cli list --db "$db"; cli list --json --db "$db"; cli toc --db "$db"
+  done
+}
+scenario "an index database that is a directory, garbage, or below a file" sc_db_unusable
+# toc writes index.md into the folder: a directory of that name, and a folder that cannot be written to, make the write fail.
+sc_toc_unwritable() { mkdir -p "$DOCS/index.md"; cli toc; cli toc --check; cli lint; rm -rf "$DOCS/index.md"; chmod 555 "$DOCS"; cli toc; cli toc --check; chmod 755 "$DOCS"; }
+scenario "toc: an index file that cannot be written" sc_toc_unwritable
+# The folder comes from knowledge.dir of config.toml when neither the option nor the variable names one; a relative value is read against the directory of the config file.
+sc_config_dir() {
+  without TAGENTS_KNOWLEDGE_DIR; mkdir -p "$TMP/cfg"
+  printf '[knowledge]\ndir = "%s"\n' "$DOCS" > "$TMP/cfg/config.toml"; cli list; cli index; cli search cafe
+  printf '[knowledge]\ndir = "../world/docs"\n' > "$TMP/cfg/config.toml"; cli list
+  printf '[knowledge]\ndir = "%s/not-here"\n' "$TMP" > "$TMP/cfg/config.toml"; cli list
+  printf 'not [ toml\n' > "$TMP/cfg/config.toml"; cli list
+  printf '[knowledge]\ndir = 3\n' > "$TMP/cfg/config.toml"; cli list
+}
+scenario "the folder comes from knowledge.dir in config.toml" sc_config_dir
+CORPUS=knowledge; EXTRAS=
+
+t "verbs: lint and toc"
+CORPUS=both; EXTRAS=1; BAD=1
+sc_lint() { cli lint; cli lint --dir "$DOCS"; cli toc; cli lint; cli toc --check; }
+scenario "lint: every rule of the profile, dead links, sources, expired" sc_lint
+BAD=
+sc_lint_clean() { cli lint; cli toc; cli lint; cli toc --check; printf -- '---\ntype: note\n---\n\nbody\n' > "$DOCS/more.md"; cli lint; cli toc --check; cli toc; cli toc --check; }
+scenario "lint and toc: clean, then out of date" sc_lint_clean
+sc_lint_git() {
+  ( cd "$DOCS" || exit
+    git -c init.defaultBranch=main init -q . ; git config user.email a@b.c; git config user.name n
+    printf -- '---\ntype: note\ngenerated: {by: me, at: "2020-01-01T00:00:00Z"}\n---\n\nbody\n' > old-claim.md
+    git add -A; GIT_COMMITTER_DATE='2030-05-06T07:08:09+00:00' GIT_AUTHOR_DATE='2030-05-06T07:08:09+00:00' git commit -q -m c ) > /dev/null 2>&1
+  cli toc; cli lint
+}
+scenario "lint: generated.at older than the last commit" sc_lint_git
+sc_toc() { cli toc --check; cli toc; cat "$DOCS/index.md" >> "$TMP/transcript.$SIDE"; cli toc --check; printf -- '---\ntype: "Weird [type]"\ntitle: "Plan ] draft [x]"\ndescription: "two\n  lines   here"\nstatus: deprecated\n---\n\nbody\n' > "$DOCS/weird.md"; cli toc; cat "$DOCS/index.md" >> "$TMP/transcript.$SIDE"; rm -f "$DOCS"/*.md; cli toc; cat "$DOCS/index.md" >> "$TMP/transcript.$SIDE"; cli toc --check; }
+scenario "toc: the file, --check, brackets, an empty folder" sc_toc
+BAD=1
+sc_toc_bad() { cli toc; cli toc --check; cat "$DOCS/index.md" >> "$TMP/transcript.$SIDE"; }
+scenario "toc: files that do not load" sc_toc_bad
+BAD=; CORPUS=knowledge; EXTRAS=
+
+t "verbs: usage"
+CORPUS=both; EXTRAS=1
+sc_usage_report() {
+  cli usage; cli usage --json; cli show deploy-runbook; cli show deploy-runbook#Deploy; cli show deploy-runbook#Deploy; cli search deploy; cli search cafe --json
+  cli usage; cli usage --json; cli usage --candidates; cli usage --candidates --min-gets 1 --min-days 1; cli usage --candidates --min-gets 1 --min-days 1 --json
+  cli usage --type Runbook --json; cli usage --top 2; cli usage --top 1 --json; cli usage --since 1d; cli usage --since 365d --json
+  cli usage --all; rm "$DOCS/deploy-runbook.md"; cli usage --all
+  cli usage --usage-db "$TMP/world/nothing.sqlite"; cli usage --usage-db "$TMP/world/nothing.sqlite" --json
+}
+scenario "usage: counts, filters, windows, --all, --candidates" sc_usage_report
+sc_usage_bad() {
+  cli usage --since 30; cli usage --since d; cli usage --since 0d; cli usage --since -3d; cli usage --since 1.5d
+  cli usage --top 0; cli usage --top abc; cli usage --top 1.5; cli usage --min-gets 0; cli usage --min-days x
+  cli usage --top 9007199254740993; cli usage --top 9007199254740991
+}
+scenario "usage: values that are not counts" sc_usage_bad
+sc_usage_store() {
+  mkdir "$TMP/world/store-dir"; cli usage --usage-db "$TMP/world/store-dir"
+  printf 'not a database, not even close to one, at all.' > "$TMP/world/garbage.sqlite"; cli usage --usage-db "$TMP/world/garbage.sqlite"
+  sqlite3 "$TMP/world/empty.sqlite" 'create table other (x)'; cli usage --usage-db "$TMP/world/empty.sqlite"
+}
+scenario "usage: a store that cannot be read or has no table" sc_usage_store
+CORPUS=knowledge; EXTRAS=
+
+t "verbs: the locale"
+sc_locale() { CLI_ENV=(TAGENTS_LOCALE=ru); cli; cli bogus; cli search; cli show; cli list --tag nothing; cli lint; cli toc --check; cli usage --since 1; }
+scenario "the Russian texts" sc_locale
+
+
+# The text a YAML parser gives for a document it cannot read is the parser's own, so the two sides are held to the shape of the line and the exit code, not to the words after the colon.
+if wanted "verbs: a front matter that is not YAML"; then
+  for SIDE in node rust; do
+    reset_world; program_env; CLI_ENV=(); : > "$TMP/transcript.$SIDE"
+    printf -- '---\nfoo: [unclosed\n---\n\nbody\n' > "$DOCS/bad-yaml.md"
+    cli lint; cli index; cli toc
+    sed -n -e '/^\$ /p' -e '/^exit /p' -e 's/\(bad-yaml.md: [a-z ]*frontmatter is not YAML:\).*/\1/p' "$TMP/transcript.$SIDE" > "$TMP/shape.$SIDE"
+  done
+  if cmp -s "$TMP/shape.node" "$TMP/shape.rust" && grep -q 'frontmatter is not YAML:' "$TMP/shape.rust"; then ok; else bad "verbs: a front matter that is not YAML" "$(first_difference "$TMP/shape.node" "$TMP/shape.rust")"; fi
+fi
 
 printf '\nrust-knowledge-parity: %d passed, %d failed, %d scenarios skipped\n' "$pass" "$fail" "$SKIPPED"
 [ "$fail" -eq 0 ]

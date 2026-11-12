@@ -17,7 +17,7 @@ tagents is a bash dashboard plus a small family of TypeScript packages. This pag
 | `hooks/notes-freshness.sh`, `hooks/ticket-ledger.sh` | two more optional notes hooks |
 | `config.example.toml`, `schemas/config.schema.json` | a commented example of the optional config, and the JSON Schema that editors use to check and explain it |
 | `packages/core/` | `@tagents/core`, the TypeScript package for **headless** sessions |
-| `packages/knowledge/` | [`@tagents/knowledge`](https://github.com/SkuratovichA/tagents/blob/main/packages/knowledge/README.md), your notes as markdown documents with an FTS5 index, a `tagents-knowledge` CLI and an MCP server |
+| `crates/okb/` | `okb`, a Rust binary of its own: your notes as markdown documents with an FTS5 index, a CLI and an MCP server; `tagents-knowledge` runs it |
 | `packages/telegram/` | [`@tagents/telegram`](https://github.com/SkuratovichA/tagents/blob/main/packages/telegram/README.md), the Telegram Bot API typed and small: one client for every plugin that has a bot token |
 | `packages/notify/` | [`@tagents/notify`](https://github.com/SkuratovichA/tagents/blob/main/packages/notify/README.md), desktop notifications, see [Notifications](../guide/notifications). Its service runs in the prebuilt Rust binary (`tagents-core notify run`, see [the Rust core](./rust-core)) when the installer has put one on the machine, and in a node process otherwise; Notifications says [how to see which one is running](../guide/notifications#which-program-runs-the-service) |
 | `packages/contract/` | `@tagents/contract`, private: generates the contract of the [Claude Code plugin](../guide/claude-code-plugin) from the code and moves the plugin's version |
@@ -50,7 +50,7 @@ How such a session reads on the list is in [States and order](../guide/states#he
 |---------|------------|
 | `tagents` (the script) | the dashboard: tmux, fzf, the tree, the cockpit. Bash, no dependencies of its own. The entry point, with the rest of it in `lib/tagents/` |
 | [`@tagents/core`](https://github.com/SkuratovichA/tagents/blob/main/packages/core/README.md) | headless sessions (spawn, prompt, read, list) plus the plugin contract and host, behind a `tagents-core` CLI |
-| [`@tagents/knowledge`](https://github.com/SkuratovichA/tagents/blob/main/packages/knowledge/README.md) | your notes as markdown documents with an FTS5 index, a `tagents-knowledge` CLI and an MCP server |
+| `okb` (`crates/okb`) | your notes as markdown documents with an FTS5 index, a CLI and an MCP server, in a Rust binary installed beside `tagents-core` |
 | [`@tagents/telegram`](https://github.com/SkuratovichA/tagents/blob/main/packages/telegram/README.md) | the Telegram Bot API, typed and small: one envelope-parsing `call()`, the methods a bot actually uses, and the 4096-character split |
 | [`@tagents/notify`](https://github.com/SkuratovichA/tagents/blob/main/packages/notify/README.md) | desktop notifications, a plugin |
 | plugins, e.g. `@tagents/plugin-telegram` | a package the config names: one `definePlugin({ … })` object offering CLI verbs, long-running services and MCP tools |

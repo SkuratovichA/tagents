@@ -1,10 +1,10 @@
 #!/bin/sh
 #
-# core-release.sh — the CI side of releasing the Rust `tagents-core`: what version the workspace holds, what a release archive is, which pull requests must bump the version, and whether a tag may be released.
+# core-release.sh — the CI side of releasing the Rust binaries `tagents-core` and `okb`: what version the workspace holds, what a release archive is, which pull requests must bump the version, and whether a tag may be released.
 #
 #   core-release.sh version [Cargo.toml|-]               print the workspace version, from the file (default: Cargo.toml) or from stdin
 #   core-release.sh package <version> <triple> <binary> <license-file> <outdir>
-#                                                       write tagents-core-<version>-<triple>.tar.gz and its .sha256 into <outdir>, print both names
+#                                                       write <program>-<version>-<triple>.tar.gz and its .sha256 into <outdir>, print both names; <program> is the file name of <binary>: tagents-core or okb, and the archive holds that file and LICENSE
 #   core-release.sh gate <base-ref>                      exit 1 when the pull request changes an input of the binary and does not raise the workspace version above the one at the merge base
 #   core-release.sh verify <tag> <main-ref>              exit 1 unless <tag> is v<workspace version> and HEAD is on <main-ref>
 #
@@ -83,17 +83,22 @@ package() {
   printf '%s\n' "$pkg_triple" | grep -Eq '^[A-Za-z0-9_]+(-[A-Za-z0-9_]+)+$' || fail "the target '$pkg_triple' is not a target triple"
   [ -f "$pkg_binary" ] && [ -x "$pkg_binary" ] || fail "$pkg_binary is not an executable file"
   [ -f "$pkg_license" ] || fail "$pkg_license is not a file"
-  name=tagents-core-$pkg_version-$pkg_triple.tar.gz
+  prog=$(basename "$pkg_binary")
+  case $prog in
+    tagents-core | okb) ;;
+    *) fail "the binary is called $prog, and a release holds tagents-core and okb" ;;
+  esac
+  name=$prog-$pkg_version-$pkg_triple.tar.gz
   mkdir -p "$pkg_out"
   stage=$(mktemp -d "${TMPDIR:-/tmp}/core-release.XXXXXX")
   # shellcheck disable=SC2064 # the directory is known now, which is the point
   trap "rm -rf '$stage'" EXIT
-  cp "$pkg_binary" "$stage/tagents-core"
+  cp "$pkg_binary" "$stage/$prog"
   cp "$pkg_license" "$stage/LICENSE"
-  chmod 755 "$stage/tagents-core"
+  chmod 755 "$stage/$prog"
   chmod 644 "$stage/LICENSE"
-  # COPYFILE_DISABLE keeps macOS tar from adding ._tagents-core for the extended attributes of the copy: an archive holds exactly the two members install.sh accepts.
-  COPYFILE_DISABLE=1 tar -czf "$pkg_out/$name" -C "$stage" tagents-core LICENSE
+  # COPYFILE_DISABLE keeps macOS tar from adding ._<program> for the extended attributes of the copy: an archive holds exactly the two members install.sh accepts.
+  COPYFILE_DISABLE=1 tar -czf "$pkg_out/$name" -C "$stage" "$prog" LICENSE
   printf '%s  %s\n' "$(sha256_of "$pkg_out/$name")" "$name" > "$pkg_out/$name.sha256"
   printf '%s\n%s\n' "$name" "$name.sha256"
 }

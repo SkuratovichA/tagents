@@ -65,7 +65,6 @@ test('a retired verb prints the needs-binary line and exits 69, with nothing on 
     [['plugin', 'new', 'x'], 'plugin new'],
     [['mcp', '--contract', 'f'], 'mcp'],
     [['notify', 'run'], 'notify run'],
-    [['knowledge', 'serve'], 'knowledge serve'],
   ];
   for (const [argv, shown] of cases) {
     const r = runCli(argv, withHome());
@@ -88,9 +87,9 @@ test('every verb the spec marks rust gets the line, and no verb marked node does
 });
 
 test('a group the binary serves only in part is not retired for its other words', () => {
-  for (const argv of [['notify', 'status'], ['notify', 'install'], ['notify'], ['knowledge', 'list'], ['knowledge']]) {
+  for (const argv of [['notify', 'status'], ['notify', 'install'], ['notify']]) {
     const r = runCli(argv, withHome());
-    assert.notEqual(r.code, 69, `${argv.join(' ')} is node's, the spec lists only notify run and knowledge mcp|serve|join`);
+    assert.notEqual(r.code, 69, `${argv.join(' ')} is node's, the spec lists only notify run`);
   }
 });
 

@@ -266,49 +266,6 @@
           "required": [],
           "summary": "runs the notification service in this process until a signal stops it: it follows the event stream of the agents and posts a notice for each turn that ends, each question and each permission prompt",
           "effect": "serve"
-        },
-        {
-          "path": [
-            "knowledge",
-            "mcp"
-          ],
-          "positionals": [],
-          "options": {},
-          "required": [],
-          "summary": "serves the six knowledge tools to an MCP client over stdin and stdout in this process until the client closes them",
-          "effect": "serve"
-        },
-        {
-          "path": [
-            "knowledge",
-            "serve"
-          ],
-          "positionals": [],
-          "options": {
-            "idle": {
-              "type": "string"
-            },
-            "foreground": {
-              "type": "boolean"
-            },
-            "socket": {
-              "type": "string"
-            }
-          },
-          "required": [],
-          "summary": "prints the socket of the shared knowledge server of this environment and starts that server when nothing answers; with --foreground it is the server itself",
-          "effect": "serve"
-        },
-        {
-          "path": [
-            "knowledge",
-            "join"
-          ],
-          "positionals": [],
-          "options": {},
-          "required": [],
-          "summary": "connects stdin and stdout to the shared knowledge server, starting it when none runs, and serves in this process when none can be started",
-          "effect": "serve"
         }
       ]
     },
@@ -513,6 +470,46 @@
           "summary": "reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store",
           "effect": "read",
           "tool": false
+        },
+        {
+          "path": [
+            "mcp"
+          ],
+          "positionals": [],
+          "options": {},
+          "required": [],
+          "summary": "serves the six knowledge tools to an MCP client over stdin and stdout in this process until the client closes them",
+          "effect": "serve"
+        },
+        {
+          "path": [
+            "serve"
+          ],
+          "positionals": [],
+          "options": {
+            "idle": {
+              "type": "string"
+            },
+            "foreground": {
+              "type": "boolean"
+            },
+            "socket": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "summary": "prints the socket of the shared knowledge server of this environment and starts that server when nothing answers; with --foreground it is the server itself",
+          "effect": "serve"
+        },
+        {
+          "path": [
+            "join"
+          ],
+          "positionals": [],
+          "options": {},
+          "required": [],
+          "summary": "connects stdin and stdout to the shared knowledge server, starting it when none runs, and serves in this process when none can be started",
+          "effect": "serve"
         }
       ]
     },
@@ -1266,8 +1263,7 @@
     }
   },
   "api": {
-    "@tagents/core": "sha256:23ce2011e1d69fdd1ab37a83338fdee4a57607e069bed0f0abf05ec11759dd94",
-    "@tagents/knowledge": "sha256:dbdf2491e8329de4cd22cc4107f491f46345a88d7636359623ab3c64dfe41e0d",
+    "@tagents/core": "sha256:60933253154efd204c03f7b7cc3a2d2c77795557bc9dfe4a1ce4c6b8cace30a3",
     "@tagents/notify": "sha256:9fd35c43c5dd7262667bfdd48944a46e39551f1e7441438455c7859a39f8fb7e",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"
   }
