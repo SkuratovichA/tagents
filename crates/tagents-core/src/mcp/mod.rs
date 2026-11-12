@@ -1,6 +1,6 @@
 //! `tagents-core mcp --contract <file>`: the plugin's MCP server.
 //!
-//! One tool per verb of every structured CLI spec the contract records, over stdio, replacing `packages/mcp` (which stays, as the oracle `tests/rust-mcp-parity.sh` compares this server with). The file is read once, at start; a plugin update brings a new file and the next session sees the new tools.
+//! One tool per verb of every structured CLI spec the contract records, over stdio, replacing the node server `packages/mcp` (deleted; the oracle tag `v0.6.7` keeps it for `tests/rust-mcp-parity.sh`). The file is read once, at start; a plugin update brings a new file and the next session sees the new tools.
 //!
 //! `contract` reads the file, `tools` turns it into tools and builds the command line of a call, `run` runs one, `server` is the loop, and `rpc` is the wire. Stdout carries JSON-RPC lines and nothing else: the module denies `print_stdout`, and `rpc::Out` is the only writer.
 #![deny(clippy::print_stdout, clippy::dbg_macro)]

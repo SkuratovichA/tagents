@@ -759,7 +759,7 @@ waitsnap "sid-$LN" absent; ok "...and it is out of the snapshot within seconds" 
 # ---------------------------------------------------------------------------
 t "15e. the capture a launch left for later survives the process group the launch ran in"
 # ---------------------------------------------------------------------------
-# A call of an MCP tool ends by killing the process group it started (packages/mcp/src/run.ts), and the capture a launch leaves for later was a background subshell of that group. The group here is made by perl, which macOS has and setsid(1) it has not.
+# A call of an MCP tool ends by killing the process group it started (the run.ts of the deleted packages/mcp, now crates/tagents-core/src/mcp/run.rs), and the capture a launch leaves for later was a background subshell of that group. The group here is made by perl, which macOS has and setsid(1) it has not.
 clear_out
 perl -MPOSIX -e 'POSIX::setpgid(0, 0); exec @ARGV' env TMUX="$SOCK,0,0" TA_RESURRECT_SOON=4 bash "$TA" --new "$PERS" personal >/dev/null 2>&1 &
 GP=$!
