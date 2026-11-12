@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { z } from 'zod';
 import { coreCliContract } from '../../core/src/cli/spec.ts';
 import { knowledgeCliContract } from '../../knowledge/src/cli/spec.ts';
 import { notifyCliContract } from '../../notify/src/cli/spec.ts';
@@ -65,17 +66,26 @@ export const KNOWLEDGE_SERVER_NAME = 'tagents-knowledge';
 /** The `tools/list` of the knowledge server, which the binary serves and embeds: the file was written from the node server before it was deleted, and is frozen. */
 export const KNOWLEDGE_TOOLS_FILE = 'crates/tagents-core/src/knowledge/tools.json';
 
+/** One entry of the frozen tool list: the fields `toTool` reads; the schemas are checked there. */
+const FrozenTool = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  inputSchema: z.unknown(),
+  outputSchema: z.unknown().optional(),
+  annotations: z.unknown().optional(),
+});
+
 /** The tools the knowledge server lists, sorted by name, and the plugin's own server made from the CLI specs. */
 export async function mcpServers(cli: readonly CliContract[], t: Translate = createT(), root: string = fileURLToPath(new URL('../../../', import.meta.url))): Promise<readonly McpServerSpec[]> {
-  const listed: unknown = JSON.parse(await readFile(path.join(root, KNOWLEDGE_TOOLS_FILE), 'utf8'));
-  if (!Array.isArray(listed)) throw new Error(`${KNOWLEDGE_TOOLS_FILE} is not a list of tools`);
+  const parsed = z.array(FrozenTool).safeParse(JSON.parse(await readFile(path.join(root, KNOWLEDGE_TOOLS_FILE), 'utf8')));
+  if (!parsed.success) throw new Error(`${KNOWLEDGE_TOOLS_FILE} is not a list of tools: ${parsed.error.message}`);
   // The SDK wrote `$schema` after the other keys of an input schema; the file has it first, and the contract keeps the order it had.
   const schemaLast = (schema: unknown): unknown => {
     if (typeof schema !== 'object' || schema === null || !('$schema' in schema)) return schema;
     const { $schema, ...rest } = schema;
     return { ...rest, $schema };
   };
-  const tools = listed.map((tool: Parameters<typeof toTool>[0]) => toTool({ ...tool, inputSchema: schemaLast(tool.inputSchema), outputSchema: schemaLast(tool.outputSchema) }, t));
+  const tools = parsed.data.map((tool) => toTool({ ...tool, inputSchema: schemaLast(tool.inputSchema), outputSchema: schemaLast(tool.outputSchema) }, t));
   tools.sort((a, b) => byCodeUnit(a.name, b.name));
   return [{ name: KNOWLEDGE_SERVER_NAME, tools }, tagentsServer(cli, t)];
 }
