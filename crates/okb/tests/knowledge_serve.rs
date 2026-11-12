@@ -1,4 +1,4 @@
-//! `tagents-core knowledge serve`: the options it reads as `util.parseArgs` and `Number` read them in the node program, what it prints, and its two sentences in both languages. The argument table is the one `tests/rust-knowledge-vectors/process.mts` runs through the node program (`process.serve` of the knowledge vectors): the Rust parser is pinned by the exit code and the option or the word the refusal names, and by the whole sentence where the sentence is the catalogue's own.
+//! `okb serve`: the options it reads as `util.parseArgs` and `Number` read them in the node program, what it prints, and its two sentences in both languages. The argument table is the one `tests/rust-knowledge-vectors/process.mts` runs through the node program (`process.serve` of the knowledge vectors): the Rust parser is pinned by the exit code and the option or the word the refusal names, and by the whole sentence where the sentence is the catalogue's own.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

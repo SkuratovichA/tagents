@@ -2,10 +2,11 @@
 
 // Test code: a failed unwrap here is the failure report.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-// Every test crate that includes this module uses some of it.
+// Each test crate that includes this module uses a different part of it, so what one leaves unused is not dead.
 #![allow(dead_code, unused_imports)]
-
 pub mod knowledge;
+// The process helpers are the file the tests of tagents-core use, so that they exist once.
+#[path = "../../../tagents-core/tests/common/rig.rs"]
 pub mod rig;
 pub mod sessions;
 pub mod shared;
@@ -15,7 +16,6 @@ pub const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
 use std::{
     fs,
-    io::{self, PipeWriter},
     ops::Deref,
     path::{Path, PathBuf},
 };
@@ -55,11 +55,4 @@ pub fn short_scratch(name: &str) -> Short {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     Short(dir)
-}
-
-/// The write end of a pipe whose read end is gone: a child given it as stderr gets EPIPE on every write.
-pub fn closed_pipe() -> PipeWriter {
-    let (reader, writer) = io::pipe().unwrap();
-    drop(reader);
-    writer
 }

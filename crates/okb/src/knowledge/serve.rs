@@ -1,4 +1,4 @@
-//! `tagents-core knowledge serve`: prints the socket of the shared server of this environment, starting that server when nothing answers, and with `--foreground` is that server.
+//! `okb serve`: prints the socket of the shared server of this environment, starting that server when nothing answers, and with `--foreground` is that server.
 //!
 //! The options are `--idle S`, `--foreground` and `--socket P`, read by `parse_args` as `util.parseArgs` of the node program reads them, strictly. `--idle` is read as `Number` reads it and must be finite and positive. `--socket` is read and left alone unless `--foreground` is given, as the node program does. Two sentences are this verb's own, `badIdle` and `serveFailed`, in the catalogue `texts.json`, in the language `TAGENTS_LOCALE` names.
 //!
@@ -153,7 +153,7 @@ pub fn run(args: &[OsString]) -> u8 {
     let texts = match texts(locale) {
         Ok(texts) => texts,
         Err(error) => {
-            eprintln!("tagents-core: the texts of knowledge serve do not load: {error}");
+            eprintln!("okb: the texts of serve do not load: {error}");
             return exit::ERROR;
         }
     };

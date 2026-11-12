@@ -1,4 +1,4 @@
-//! `tagents-core knowledge join`: connects the standard streams of a session to the shared knowledge server, starting it when none answers.
+//! `okb join`: connects the standard streams of a session to the shared knowledge server, starting it when none answers.
 //!
 //! It is a byte relay and adds three things to a copy. When the input ends it shuts the writing half of the connection and goes on copying replies until the server closes it, then exits 0. When the connection ends before the first reply byte it connects once more and sends again what it had sent, which covers a server that left as the session arrived. When the connection ends after a reply byte with the input still open the server died in the middle of the session: it exits 1 with a line on stderr, so that the client sees its server die and reconnects. A server that cannot be had at all is no error: the session is served by this process, as `mcp` serves it.
 //!

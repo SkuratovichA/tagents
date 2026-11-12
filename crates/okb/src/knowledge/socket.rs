@@ -291,7 +291,7 @@ pub trait Starter {
     fn start(&self, launch: &Launch<'_>) -> io::Result<Ended>;
 }
 
-/// The daemon as a process of its own: `knowledge serve --foreground --socket P --idle S` in a process group of its own, in `/`, with no stdio, under the environment of `canonical`. A new session would need `setsid` called inside the daemon, which leaves a window in which a signal to the starter's group reaches it, and `pre_exec` is unsafe; the group is enough for what matters, that a `^C` or a kill of the group of the session's proxy never reaches the daemon.
+/// The daemon as a process of its own: `okb serve --foreground --socket P --idle S` in a process group of its own, in `/`, with no stdio, under the environment of `canonical`. A new session would need `setsid` called inside the daemon, which leaves a window in which a signal to the starter's group reaches it, and `pre_exec` is unsafe; the group is enough for what matters, that a `^C` or a kill of the group of the session's proxy never reaches the daemon.
 pub struct Detached {
     program: PathBuf,
 }

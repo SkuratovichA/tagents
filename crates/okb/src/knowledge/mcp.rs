@@ -1,4 +1,4 @@
-//! `tagents-core knowledge mcp`: the knowledge server of one session, in this process, on its standard streams. It is what `join` falls back to when no shared server can be had.
+//! `okb mcp`: the knowledge server of one session, in this process, on its standard streams. It is what `join` falls back to when no shared server can be had.
 
 use std::{
     io::{self, Read},
