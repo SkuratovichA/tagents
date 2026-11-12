@@ -1,7 +1,7 @@
 # rust-notify Specification
 
 ## Purpose
-The notification service as a verb of the Rust binary: `tagents-core notify run` follows the same events, posts the same notices, writes the same log lines and holds the same lock as the node service in `packages/notify`, which stays as the fallback and as the reference that the differential suite compares it with byte for byte; how it reads and watches the options file, how a failed start hands over to node, and where the two services knowingly differ.
+The notification service as a verb of the Rust binary: `tagents-core notify run` follows the same events, posts the same notices, writes the same log lines and holds the same lock as the node service of the oracle tag `v0.6.7` (`packages/notify` now only starts the binary for an old LaunchAgent), which the differential suite compares it with byte for byte; how it reads and watches the options file, and where the two services knowingly differ.
 
 ## Requirements
 
