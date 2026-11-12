@@ -51,7 +51,7 @@ KEY_NL='
 # single character, which is how $ and ? got in.
 key_valid() {  # <key>
   case $1 in
-    ctrl-[a-z]|alt-[a-z]|alt-[0-9]|f[1-9]|f1[0-2]) return 0 ;;
+    ctrl-[abcdefghijklmnopqrstuvwxyz]|alt-[abcdefghijklmnopqrstuvwxyz]|alt-[0-9]|f[1-9]|f1[0-2]) return 0 ;;
     enter|tab|btab|space|bspace|del|esc) return 0 ;;
     up|down|left|right|home|end|pgup|pgdn) return 0 ;;
     ?) ;;

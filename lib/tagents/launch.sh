@@ -120,7 +120,7 @@ resume_with() {  # <pane> <sid> <dir> <profile> [session] [after]
     cur=$(tmux display -p -t "$pane" '#{pane_current_command}' 2>/dev/null)
     if is_shell_cmd "$cur"; then
       # Its own pane, idle at a prompt — the natural place to bring it back.
-      rm -f "$STATE_DIR/${pane#%}.tsv"
+      rm -f "$STATE_DIR/${pane#%}.tsv" "$STATE_DIR/${pane#%}.tools"
       tmux send-keys -t "$pane" -l -- "cd \"$dir\" && $cmd"
       tmux send-keys -t "$pane" Enter
       "$after" "$pane"
@@ -130,7 +130,7 @@ resume_with() {  # <pane> <sid> <dir> <profile> [session] [after]
   fi
 
   # Pane is gone, or busy with something else — do not type into it.
-  rm -f "$STATE_DIR/${pane#%}.tsv"
+  rm -f "$STATE_DIR/${pane#%}.tsv" "$STATE_DIR/${pane#%}.tools"
   [ -n "$sess" ] || sess=$(row_session "$pane")
   ! session_is_cockpit "$sess" || sess=""
   [ -n "$sess" ] || sess=$(client_session "")

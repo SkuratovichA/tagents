@@ -100,7 +100,7 @@ resurrect_done()  { [ "$(cat "$RESURRECT_DONE" 2>/dev/null)" = "$1" ]; }        
 # A restore is on its way only when tmux-resurrect's restore hook runs tagents (README: set -g @resurrect-hook-post-restore-all '~/.local/bin/tagents --resurrect --auto'). A server without tmux-resurrect or without that line is never restored, so its first minutes hold nothing to protect and must be captured. The -- check stops at the end of a word, so --resurrect-save in that option does not count.
 resurrect_hooked() {
   local h; h=$(tmux show -gqv @resurrect-hook-post-restore-all 2>/dev/null)
-  case $h in *--resurrect|*--resurrect[!-a-zA-Z0-9]*) return 0 ;; esac
+  case $h in *--resurrect|*--resurrect[!-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789]*) return 0 ;; esac
   return 1
 }
 
@@ -322,7 +322,7 @@ resurrect_restore() {  # [--dry-run] [--auto] [--from <file>|latest]
       else if ($i ~ /^--effort=/) { sub(/^--effort=/, "", $i); print $i; d = 1 } }')
     [ -n "$eff" ] && cmd="$cmd --effort $(cfg_quote "$eff")"
     # The pane drops the record its previous chat left under this pane number before claude starts, so nothing reads the old session id there in between. Inside the pane, because only there is the pane number known on every path — a respawned pane, a new window, a new session.
-    cmd="rm -f $(cfg_quote "$STATE_DIR")/\"\${TMUX_PANE#%}\".tsv; exec $cmd"
+    cmd="rm -f $(cfg_quote "$STATE_DIR")/\"\${TMUX_PANE#%}\".tsv $(cfg_quote "$STATE_DIR")/\"\${TMUX_PANE#%}\".tools; exec $cmd"
     if [ "$dry" = 1 ]; then
       echo "✓ would resume $at ${tname:-$wname} [$sid]${note}"; echo "    $cmd"
       n=$((n + 1)); continue

@@ -653,7 +653,7 @@ update() {
       head -c "$end" -- "$f" 2>/dev/null
     else
       tail -c "+$((off + 1))" -- "$f" 2>/dev/null | head -c "$((end - off))"
-    fi | jq -rc "$EXTRACT" 2>/dev/null |
+    fi | jq -rcR "(fromjson? // empty) | $EXTRACT" 2>/dev/null |
       fold_rows "$PF_SLUG" "$seen" "$PF_ORIGIN" "$tmp/newfacts" "$tmp/newmeta" >"$tmp/out"
     newoff=""; IFS= read -r newoff <"$tmp/out"
     printf '%s\t%s\t%s\t%s\n' "$f" "$end" "$newoff" "$key" >>"$tmp/newoff"
@@ -1464,7 +1464,7 @@ name_paths() {
 
 # --session's text becomes the full id, or the run ends: 1 when nothing has that id or name, 3 when several do. A text no id starts with is looked up as a name, whatever it is made of: a session can be called feed or 2026-11-02. The one exception is a whole id (8-4-4-4-12 hex digits, the shape the dashboard sends) that the index lacks: it is an id that has aged out of the index, not a name, so it is no error and the detail of a session with no usage is empty.
 resolve_session() {
-  local hits sidshape=0 re='^[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$'
+  local hits sidshape=0 re='^[0123456789abcdefABCDEF]{8}(-[0123456789abcdefABCDEF]{4}){3}-[0123456789abcdefABCDEF]{12}$'
   [ -s "$FACTS" ] || return 0
   [[ $SESSION =~ $re ]] && sidshape=1
   hits=$(session_hits "$SESSION" id)
