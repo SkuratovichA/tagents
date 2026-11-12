@@ -223,7 +223,7 @@ dependencies = [
 
 [[package]]
 name = "okb"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "libc",
  "rusqlite",
@@ -428,7 +428,7 @@ dependencies = [
 
 [[package]]
 name = "tagents-core"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "kqueue",
  "libc",
@@ -442,7 +442,7 @@ dependencies = [
 
 [[package]]
 name = "tagents-spec"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde",
  "serde_json",

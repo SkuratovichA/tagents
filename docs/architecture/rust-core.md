@@ -252,20 +252,22 @@ A binary built by hand goes stale. `target/` is ignored by git and nothing rebui
 **A tag makes the release.** Pushing `v<version>` on a commit of `main` starts `.github/workflows/release.yml`:
 
 1. `verify` (read-only token, whole history): the tag is `v` plus the workspace version of that commit, the commit is an ancestor of `origin/main`, and no release of that tag exists yet. A release is never overwritten; a wrong one is superseded by a new version.
-2. `build`, on three targets: `aarch64-apple-darwin` and `x86_64-apple-darwin` (cross-built on the arm64 macOS runner) and `x86_64-unknown-linux-musl`. Each runs `cargo build --locked --release --target <triple> --package tagents-core`, packages with `core-release.sh package`, and on the two targets the runner can run unpacks the archive elsewhere and checks `--version` and `--spec`.
-3. `publish` (the only job with `contents: write`, and it checks out nothing): `gh release create` with exactly six files.
+2. `build`, on three targets: `aarch64-apple-darwin` and `x86_64-apple-darwin` (cross-built on the arm64 macOS runner) and `x86_64-unknown-linux-musl`. Each runs `cargo build --locked --release --target <triple> --package tagents-core --package okb`, packages both with `core-release.sh package`, and on the two targets the runner can run unpacks the archive elsewhere and checks `--version` and `--spec`.
+3. `publish` (the only job with `contents: write`, and it checks out nothing): `gh release create` with exactly twelve files, the six of `tagents-core` and the six of `okb` (the same two files per target).
 
 | file | content |
 |------|---------|
 | `tagents-core-<version>-<triple>.tar.gz` | exactly two members: `tagents-core` (mode 755) and `LICENSE` |
 | `tagents-core-<version>-<triple>.tar.gz.sha256` | one line, `<64 lowercase hex>  <archive name>`, readable by `sha256sum -c` and `shasum -a 256 -c` |
+| `okb-<version>-<triple>.tar.gz` | exactly two members: `okb` (mode 755) and `LICENSE` |
+| `okb-<version>-<triple>.tar.gz.sha256` | the same one line for the okb archive |
 
 A pull request that changes the workflow, the scripts or an input of the binary (the paths above, which `tests/release.sh` pins to the `pull_request.paths` of `release.yml`) runs the three builds as a dry run and publishes nothing, so a musl link failure or a failed cross-build shows on the pull request and not when the tag is pushed. The `build` job checks out the commit the `verify` job checked, not the tag by name, so a tag moved between the two jobs is not built unverified. A run that failed halfway is redone from the Actions tab with the tag as input (`workflow_dispatch`).
 
 ```sh
 git switch main && git pull --ff-only          # the commit that holds the bump
-sh .github/scripts/core-release.sh version     # 0.6.8
-git tag v0.6.8 && git push origin v0.6.8       # starts the release workflow
+sh .github/scripts/core-release.sh version     # 0.8.0
+git tag v0.8.0 && git push origin v0.8.0       # starts the release workflow
 ```
 
 **When `main` is ahead of the last release,** a managed copy that follows `main` holds a version with no release yet. Its installer finds nothing to download, says so, keeps the binary it already has, and the wrappers keep naming it until the tag of that version is pushed. With no binary at all it warns what will not work. Nothing releases on a push to `main`: the person who merges the bump pushes the tag.

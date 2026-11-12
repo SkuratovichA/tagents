@@ -1,6 +1,6 @@
 name: release
 
-# Publishes the prebuilt `tagents-core` of one version as a GitHub release: three archives with a checksum each, which install.sh fetches for the managed copy that holds that version in its Cargo.toml (docs/architecture/rust-core.md, "How a release is made"). The logic lives in .github/scripts/core-release.sh; this file only calls it.
+# Publishes the prebuilt `tagents-core` and `okb` of one version as a GitHub release: three archives of each with a checksum each, which install.sh fetches for the managed copy that holds that version in its Cargo.toml (docs/architecture/rust-core.md, "How a release is made"). The logic lives in .github/scripts/core-release.sh; this file only calls it.
 #
 # A release is made by pushing the tag v<version> on a commit of main whose workspace version is <version>. The release of a tag that failed halfway is made by running this workflow by hand with that tag. A pull request that changes this file, the scripts or an input of the binary (the `pull_request.paths` below) runs the three builds as a dry run: the tag rules do not apply to it and nothing is published.
 on:
@@ -113,38 +113,45 @@ jobs:
         if: matrix.target == 'x86_64-unknown-linux-musl'
         run: sudo apt-get update && sudo apt-get install --yes musl-tools
       - name: Build
-        run: cargo build --locked --release --target "$TARGET" --package tagents-core
+        run: cargo build --locked --release --target "$TARGET" --package tagents-core --package okb
       - name: Package
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: sh .github/scripts/core-release.sh package "$VERSION" "$TARGET" "target/$TARGET/release/tagents-core" LICENSE dist
-      - name: Check the archive against its checksum, and the binary in it where this machine can run it
+        run: |
+          sh .github/scripts/core-release.sh package "$VERSION" "$TARGET" "target/$TARGET/release/tagents-core" LICENSE dist
+          sh .github/scripts/core-release.sh package "$VERSION" "$TARGET" "target/$TARGET/release/okb" LICENSE dist
+      - name: Check the archives against their checksums, and the binaries in them where this machine can run them
         env:
           VERSION: ${{ steps.version.outputs.version }}
           NATIVE: ${{ matrix.native }}
         run: |
-          archive="tagents-core-$VERSION-$TARGET.tar.gz"
-          if command -v sha256sum >/dev/null 2>&1; then
-            (cd dist && sha256sum -c "$archive.sha256")
-          else
-            (cd dist && shasum -a 256 -c "$archive.sha256")
-          fi
-          if [ "$NATIVE" = true ]; then
-            unpacked=$(mktemp -d)
-            tar -xzf "dist/$archive" -C "$unpacked"
-            test "$("$unpacked/tagents-core" --version)" = "tagents-core $VERSION"
-            "$unpacked/tagents-core" --spec | grep -q '"program": "tagents-core"'
-          fi
+          for prog in tagents-core okb; do
+            archive="$prog-$VERSION-$TARGET.tar.gz"
+            if command -v sha256sum >/dev/null 2>&1; then
+              (cd dist && sha256sum -c "$archive.sha256")
+            else
+              (cd dist && shasum -a 256 -c "$archive.sha256")
+            fi
+            if [ "$NATIVE" = true ]; then
+              unpacked=$(mktemp -d)
+              tar -xzf "dist/$archive" -C "$unpacked"
+              test "$("$unpacked/$prog" --version)" = "$prog $VERSION"
+              case $prog in tagents-core) spec=tagents-core ;; okb) spec=tagents-knowledge ;; esac
+              "$unpacked/$prog" --spec | grep -q '"program": "'"$spec"'"'
+            fi
+          done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: package-${{ matrix.target }}
           path: |
             dist/tagents-core-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz
             dist/tagents-core-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+            dist/okb-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz
+            dist/okb-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
           if-no-files-found: error
           retention-days: 7
 
-  # The only job that can write, and it runs no repository code: it checks out nothing and only hands the six files to gh.
+  # The only job that can write, and it runs no repository code: it checks out nothing and only hands the twelve files to gh.
   publish:
     needs: [verify, build]
     if: github.event_name != 'pull_request'
@@ -161,12 +168,12 @@ jobs:
           pattern: package-*
           merge-multiple: true
           path: dist
-      - name: Create the release from exactly the six expected files
+      - name: Create the release from exactly the twelve expected files
         run: |
           version=${TAG#v}
           set --
           for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-musl; do
-            for file in "tagents-core-$version-$target.tar.gz" "tagents-core-$version-$target.tar.gz.sha256"; do
+            for file in "tagents-core-$version-$target.tar.gz" "tagents-core-$version-$target.tar.gz.sha256" "okb-$version-$target.tar.gz" "okb-$version-$target.tar.gz.sha256"; do
               if [ ! -f "dist/$file" ]; then
                 echo "::error::dist/$file is missing"
                 exit 1
@@ -174,8 +181,8 @@ jobs:
               set -- "$@" "dist/$file"
             done
           done
-          if [ "$(find dist -mindepth 1 | wc -l | tr -d ' ')" -ne 6 ]; then
-            echo "::error::dist holds more than the six expected files"
+          if [ "$(find dist -mindepth 1 | wc -l | tr -d ' ')" -ne 12 ]; then
+            echo "::error::dist holds more than the twelve expected files"
             find dist -mindepth 1
             exit 1
           fi
