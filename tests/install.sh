@@ -1149,5 +1149,30 @@ TAGENTS_NO_NATIVE=1 run_rec >/dev/null
 same_bytes "...and TAGENTS_NO_NATIVE=1 at install time leaves it named, as the hand-built binary stays" "$TMP/expected-kn-native" "$TAGENTS_BIN/tagents-knowledge"
 ok "...the unmarked binary is still there, not ours to delete" yes "$([ -x "$RUST_BIN" ] && echo yes || echo no)"
 
+# ---------------------------------------------------------------------------
+t "17. the build trusts the system CA store when the node on PATH can"
+# ---------------------------------------------------------------------------
+# The build command writes the NODE_OPTIONS it was given. A fake node stands in for the real one, so the probe `node --use-system-ca -e 0` answers whatever the case wants.
+mkdir -p "$TMP/node-ca-yes" "$TMP/node-ca-no"
+printf '#!/bin/sh\nexit 0\n' > "$TMP/node-ca-yes/node"
+printf '#!/bin/sh\n[ "${1:-}" != --use-system-ca ] || exit 9\nexit 0\n' > "$TMP/node-ca-no/node"
+chmod +x "$TMP/node-ca-yes/node" "$TMP/node-ca-no/node"
+build_node_options() {  # <PATH for the run> — a fresh install whose build records NODE_OPTIONS; prints what the build saw
+  mkorigin; fresh_env
+  rm -f "$TMP/build-node-options"
+  TAGENTS_BUILD_CMD='printf "%s" "${NODE_OPTIONS:-}" > "$TMP/build-node-options"' PATH="$1" TMP="$TMP" run >/dev/null
+  cat "$TMP/build-node-options" 2>/dev/null || echo "build did not run"
+}
+unset NODE_OPTIONS
+ok "a node that accepts the flag: the build sees it alone" "--use-system-ca" "$(build_node_options "$TMP/node-ca-yes:$PATH")"
+ok "...after the NODE_OPTIONS the caller had" "--max-old-space-size=4096 --use-system-ca" "$(NODE_OPTIONS=--max-old-space-size=4096 build_node_options "$TMP/node-ca-yes:$PATH")"
+ok "...and not twice when the caller already had it" "--use-system-ca" "$(NODE_OPTIONS=--use-system-ca build_node_options "$TMP/node-ca-yes:$PATH")"
+ok "a node that refuses the flag: the build sees NODE_OPTIONS as it was" "" "$(build_node_options "$TMP/node-ca-no:$PATH")"
+if [ -n "$(env PATH=/usr/bin:/bin sh -c 'command -v node' 2>/dev/null)" ]; then
+  printf '  skip no node on PATH: /usr/bin or /bin holds one\n'
+else
+  ok "no node on PATH: the build sees NODE_OPTIONS as it was" "" "$(build_node_options /usr/bin:/bin)"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
