@@ -5,7 +5,6 @@
 ```ts
 
 import { DatabaseSync } from 'node:sqlite';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { SQLOutputValue } from 'node:sqlite';
 import { TurnClock } from '@tagents/core';
 
@@ -42,9 +41,6 @@ export type Clock = Pick<TurnClock, 'now'>;
 
 // @public
 export function configuredDir(file?: string): string | null;
-
-// @public (undocumented)
-export function createServer(env?: NodeJS.ProcessEnv, clock?: Clock): McpServer;
 
 // @public
 export function createT(locale?: string | undefined): Translate;
@@ -326,9 +322,6 @@ export interface LoadResult {
 // @public (undocumented)
 export type Locale = keyof typeof resources;
 
-// @public (undocumented)
-export const MAX_SESSIONS = 50;
-
 // @public
 export const OKF_KEYS: readonly string[];
 
@@ -415,6 +408,7 @@ export const resources: {
         readonly knowledge: {
             readonly usage: string;
             readonly unknownCommand: "unknown command: {{command}}";
+            readonly needsBinary: "{{verb}} is served by the tagents-core binary, and this machine has none: run `tagents update`, or `cargo build --release -p tagents-core` in the checkout";
             readonly missingOption: "missing required argument {{option}}";
             readonly noDir: string;
             readonly missingDir: "knowledge directory {{dir}} does not exist";
@@ -460,20 +454,16 @@ export const resources: {
             readonly summaryLint: "checks the claims each document makes about itself";
             readonly summaryToc: "writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date";
             readonly summaryUsage: "reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store";
-            readonly summaryMcp: "serves the knowledge tools over stdio as an MCP server";
-            readonly summaryServe: "starts the shared MCP server for this environment if it is not running and prints its unix socket; --idle S is how many seconds without a client before it exits (default 600); --foreground runs the server in this process, on --socket P";
             readonly usageColumns: "id type status gets hits days last";
             readonly noUsageRows: "nothing to report: no document matches";
             readonly badSince: "--since must be a positive whole number of days followed by d, such as 30d";
             readonly badCount: "--{{flag}} must be a positive whole number";
             readonly usageUnreadable: "the usage store {{file}} cannot be read: {{reason}}";
             readonly notRecorded: "not recorded in the usage store {{file}}: {{reason}}";
-            readonly badIdle: "--idle must be a positive number of seconds";
-            readonly serveFailed: "could not start the shared knowledge server: {{reason}}";
         };
     };
     readonly ru: {
-        readonly knowledge: Partial<Record<"usage" | "unknownCommand" | "missingOption" | "noDir" | "missingDir" | "indexed" | "indexErrors" | "notIndexed" | "noHits" | "unknownId" | "unknownHeading" | "noDocs" | "lintClean" | "lintProblems" | "issueFrontmatter" | "issueStem" | "issueDuplicateId" | "issueStemSlug" | "issueUnknownKey" | "issueNotString" | "issueDescriptionLines" | "issueTagsList" | "issueTag" | "issueStatus" | "issueScope" | "issueGeneratedShape" | "issueVerifiedShape" | "issueStaleAfter" | "issueSourcesList" | "issueSourceResource" | "issueUpdated" | "issueLegacy" | "issueExpired" | "issueStale" | "issueGenerated" | "issueDeadLink" | "issueIndexMissing" | "issueIndexOutdated" | "tocWrote" | "tocOutOfDate" | "summaryIndex" | "summarySearch" | "summaryShow" | "summaryList" | "summaryLint" | "summaryToc" | "summaryUsage" | "summaryMcp" | "summaryServe" | "usageColumns" | "noUsageRows" | "badSince" | "badCount" | "usageUnreadable" | "notRecorded" | "badIdle" | "serveFailed", string>>;
+        readonly knowledge: Partial<Record<"usage" | "unknownCommand" | "needsBinary" | "missingOption" | "noDir" | "missingDir" | "indexed" | "indexErrors" | "notIndexed" | "noHits" | "unknownId" | "unknownHeading" | "noDocs" | "lintClean" | "lintProblems" | "issueFrontmatter" | "issueStem" | "issueDuplicateId" | "issueStemSlug" | "issueUnknownKey" | "issueNotString" | "issueDescriptionLines" | "issueTagsList" | "issueTag" | "issueStatus" | "issueScope" | "issueGeneratedShape" | "issueVerifiedShape" | "issueStaleAfter" | "issueSourcesList" | "issueSourceResource" | "issueUpdated" | "issueLegacy" | "issueExpired" | "issueStale" | "issueGenerated" | "issueDeadLink" | "issueIndexMissing" | "issueIndexOutdated" | "tocWrote" | "tocOutOfDate" | "summaryIndex" | "summarySearch" | "summaryShow" | "summaryList" | "summaryLint" | "summaryToc" | "summaryUsage" | "usageColumns" | "noUsageRows" | "badSince" | "badCount" | "usageUnreadable" | "notRecorded", string>>;
     };
 };
 
@@ -482,9 +472,6 @@ export const RETENTION_DAYS = 365;
 
 // @public (undocumented)
 export type Row = Record<string, SQLOutputValue>;
-
-// @public
-export function runMcp(env?: NodeJS.ProcessEnv): Promise<void>;
 
 // @public (undocumented)
 export const SCHEMA_VERSION = 2;
@@ -515,12 +502,6 @@ export interface Section {
     // (undocumented)
     readonly ord: number;
 }
-
-// @public (undocumented)
-export const SERVER_NAME = "tagents-knowledge";
-
-// @public (undocumented)
-export const SERVER_VERSION = "0.1.0";
 
 // @public
 export function silenceSqliteWarning(): void;

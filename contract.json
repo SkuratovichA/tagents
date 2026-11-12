@@ -317,7 +317,8 @@
         "ok": 0,
         "error": 1,
         "usage": 2,
-        "notFound": 4
+        "notFound": 4,
+        "noBinary": 69
       },
       "commands": [
         {
@@ -512,36 +513,6 @@
           "summary": "reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store",
           "effect": "read",
           "tool": false
-        },
-        {
-          "path": [
-            "mcp"
-          ],
-          "positionals": [],
-          "options": {},
-          "required": [],
-          "summary": "serves the knowledge tools over stdio as an MCP server",
-          "effect": "serve"
-        },
-        {
-          "path": [
-            "serve"
-          ],
-          "positionals": [],
-          "options": {
-            "idle": {
-              "type": "string"
-            },
-            "foreground": {
-              "type": "boolean"
-            },
-            "socket": {
-              "type": "string"
-            }
-          },
-          "required": [],
-          "summary": "starts the shared MCP server for this environment if it is not running and prints its unix socket; --idle S is how many seconds without a client before it exits (default 600); --foreground runs the server in this process, on --socket P",
-          "effect": "serve"
         }
       ]
     },
@@ -1295,8 +1266,8 @@
     }
   },
   "api": {
-    "@tagents/core": "sha256:61bbe832e0f639b098c929ba68ece8e58411270d235c0ad9feb10ad40bfbe312",
-    "@tagents/knowledge": "sha256:63465226fcb49e8f6a20867948332ff35da600f4a020fa9701ef88730f5c2d8a",
+    "@tagents/core": "sha256:23ce2011e1d69fdd1ab37a83338fdee4a57607e069bed0f0abf05ec11759dd94",
+    "@tagents/knowledge": "sha256:dbdf2491e8329de4cd22cc4107f491f46345a88d7636359623ab3c64dfe41e0d",
     "@tagents/notify": "sha256:9fd35c43c5dd7262667bfdd48944a46e39551f1e7441438455c7859a39f8fb7e",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"
   }

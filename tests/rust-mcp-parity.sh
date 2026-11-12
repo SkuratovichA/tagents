@@ -17,13 +17,14 @@ set -o pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(cd "$HERE/.." && pwd -P)
+ORACLE=$(bash "$HERE/parity-oracle.sh") || { echo "rust-mcp-parity: no node oracle (tests/parity-oracle.sh)" >&2; exit 2; }
 NODE=${TAGENTS_NODE:-$(command -v node)}
-MCP_JS="$REPO/packages/mcp/dist/main.js"
+MCP_JS="$ORACLE/packages/mcp/dist/main.js"
 DRIVER="$HERE/rust-mcp-parity-driver.mts"
 RUST=${TAGENTS_CORE_BIN:-$REPO/target/debug/tagents-core}
 
 [ -n "$NODE" ] && [ -x "$NODE" ] || { echo "rust-mcp-parity: no node to run (set TAGENTS_NODE)" >&2; exit 2; }
-[ -f "$MCP_JS" ] || { echo "rust-mcp-parity: $MCP_JS is not built; run: pnpm install && pnpm build" >&2; exit 2; }
+[ -f "$MCP_JS" ] || { echo "rust-mcp-parity: $MCP_JS is not built; run: bash tests/parity-oracle.sh" >&2; exit 2; }
 if [ ! -x "$RUST" ]; then
   if [ -n "${TAGENTS_CORE_BIN:-}" ]; then echo "rust-mcp-parity: $RUST is not an executable" >&2; exit 2; fi
   (cd "$REPO" && cargo build -p tagents-core >&2) || { echo "rust-mcp-parity: cargo build failed" >&2; exit 2; }
@@ -195,7 +196,7 @@ ascii_only() {  # <label> <request text>
 
 # ------------------------------------------------------------ the checks ---
 t "initialize: every protocol version the SDK lists, and two it does not"
-VERSIONS=$("$NODE" "$DRIVER" versions "$REPO") || { echo "rust-mcp-parity: cannot read the protocol versions of the SDK" >&2; exit 2; }
+VERSIONS=$("$NODE" "$DRIVER" versions "$ORACLE") || { echo "rust-mcp-parity: cannot read the protocol versions of the SDK" >&2; exit 2; }
 [ -n "$VERSIONS" ] || { echo "rust-mcp-parity: the SDK lists no protocol version" >&2; exit 2; }
 for v in $VERSIONS 2099-01-01 1999-01-01 ""; do
   play "initialize ${v:-(empty version)}" "$(steps "$(initialize_with_roots "$v")" "$(await 1)")"

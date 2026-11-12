@@ -1,7 +1,7 @@
 // Writes the corpus or the package tree of the plugin vectors to a directory, for the shell suite that compares the two programs on them.
 //
-// Run: node tests/rust-plugin-vectors/materialise.mts corpus <dir>   one file `<name>.toml` for each document
-//      node tests/rust-plugin-vectors/materialise.mts tree <dir>     the packages of tree.mts
+// Run: node tests/rust-plugin-parity/materialise.mts corpus <dir>   one file `<name>.toml` for each document
+//      node tests/rust-plugin-parity/materialise.mts tree <dir>     the packages of tree.mts
 import fs from 'node:fs';
 import path from 'node:path';
 import { bytesOf, documents } from './corpus.mts';

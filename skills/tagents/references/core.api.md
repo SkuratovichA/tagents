@@ -677,6 +677,7 @@ export const resources: {
         readonly core: {
             readonly usage: string;
             readonly unknownCommand: "unknown command: {{command}}";
+            readonly needsBinary: "{{verb}} is served by the tagents-core binary, and this machine has none: run `tagents update`, or `cargo build --release -p tagents-core` in the checkout";
             readonly missingOption: "missing required option {{option}}";
             readonly unknownOption: "unknown option {{option}}";
             readonly badRef: "no session matches {{ref}}";
@@ -730,7 +731,7 @@ export const resources: {
         };
     };
     readonly ru: {
-        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "abortPaneAgent" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "doctorNodeMissing" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryDoctor" | "summaryMcp" | "summaryNotifyRun" | "summaryKnowledgeMcp" | "summaryKnowledgeServe" | "summaryKnowledgeJoin", string>>;
+        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "needsBinary" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "abortPaneAgent" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "doctorNodeMissing" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryDoctor" | "summaryMcp" | "summaryNotifyRun" | "summaryKnowledgeMcp" | "summaryKnowledgeServe" | "summaryKnowledgeJoin", string>>;
     };
 };
 

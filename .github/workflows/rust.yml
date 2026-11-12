@@ -12,7 +12,6 @@ on:
       - crates/**
       - spec/**
       - packages/core/**
-      - packages/mcp/**
       - packages/knowledge/**
       - packages/notify/**
       - tests/rust-parity.sh
@@ -27,14 +26,8 @@ on:
       - package.json
       - pnpm-lock.yaml
       - tests/rust-parity-seed.mts
-      - tests/rust-notify-vectors.mts
-      - tests/rust-notify-vectors/**
+      - tests/parity-oracle.sh
       - tests/rust-plugin-parity.sh
-      - tests/rust-plugin-vectors.mts
-      - tests/rust-plugin-vectors/**
-      - tests/rust-knowledge-vectors.mts
-      - tests/rust-knowledge-vectors/**
-      - tests/rust-knowledge-embed.mts
       - .github/workflows/rust.yml
       - .github/workflows/release.yml
       - .github/scripts/core-release.sh
@@ -45,8 +38,6 @@ on:
       - install.sh
       - tests/rust-session-parity.sh
       - tests/rust-session-parity-driver.mts
-      - tests/rust-session-vectors.mts
-      - tests/rust-session-vectors/**
       - tests/lib/parity.sh
   pull_request:
     paths:
@@ -58,7 +49,6 @@ on:
       - crates/**
       - spec/**
       - packages/core/**
-      - packages/mcp/**
       - packages/knowledge/**
       - packages/notify/**
       - tests/rust-parity.sh
@@ -73,14 +63,8 @@ on:
       - package.json
       - pnpm-lock.yaml
       - tests/rust-parity-seed.mts
-      - tests/rust-notify-vectors.mts
-      - tests/rust-notify-vectors/**
+      - tests/parity-oracle.sh
       - tests/rust-plugin-parity.sh
-      - tests/rust-plugin-vectors.mts
-      - tests/rust-plugin-vectors/**
-      - tests/rust-knowledge-vectors.mts
-      - tests/rust-knowledge-vectors/**
-      - tests/rust-knowledge-embed.mts
       - .github/workflows/rust.yml
       - .github/workflows/release.yml
       - .github/scripts/core-release.sh
@@ -91,8 +75,6 @@ on:
       - install.sh
       - tests/rust-session-parity.sh
       - tests/rust-session-parity-driver.mts
-      - tests/rust-session-vectors.mts
-      - tests/rust-session-vectors/**
       - tests/lib/parity.sh
 
 permissions:
@@ -122,28 +104,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit and integration tests
         run: cargo test --workspace --locked
-      - name: Build the node CLI the Rust binary is compared with
-        run: pnpm build
-      - name: The notify vectors node writes are the ones committed, so a change to a function the Rust daemon copies fails here until the copy follows
-        run: |
-          node tests/rust-notify-vectors.mts
-          git diff --exit-code crates/tagents-core/tests/fixtures/notify-vectors.json
-      - name: The plugin vectors node writes are the ones committed, so a change to the config writer, the package resolver or a message the Rust verbs copy fails here until the copy follows
-        run: |
-          node tests/rust-plugin-vectors.mts
-          git diff --exit-code crates/tagents-core/tests/fixtures/plugin-vectors.json
-      - name: The knowledge vectors node writes are the ones committed, so a change to the index, the search or the usage store fails here until the Rust copy follows
-        run: |
-          node tests/rust-knowledge-vectors.mts
-          git diff --exit-code crates/tagents-core/tests/fixtures/knowledge-vectors.json
-      - name: The session vectors node writes are the ones committed, so a change to the reference schema, the stream reader, the argument or environment builders or the printing of a number or a string fails here until the Rust copy follows
-        run: |
-          node tests/rust-session-vectors.mts
-          git diff --exit-code crates/tagents-core/tests/fixtures/session-vectors.json
-      - name: The tool list and the two sentences the Rust knowledge server embeds are the ones node has, so a changed tool, description or text fails here until they are written again
-        run: |
-          node tests/rust-knowledge-embed.mts
-          git diff --exit-code crates/tagents-core/src/knowledge/tools.json crates/tagents-core/src/knowledge/texts.json
+      - name: Build the node CLI of tag v0.6.7, which the parity suites compare the Rust binary with (it fetches the tag when the clone lacks it)
+        run: bash tests/parity-oracle.sh
       - name: Parity with the node CLI, byte for byte
         run: bash tests/rust-parity.sh
       - name: Parity of the MCP server with the node one, byte for byte

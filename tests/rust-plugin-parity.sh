@@ -3,7 +3,7 @@
 # tests/rust-plugin-parity.sh — `tagents-core plugin add`, `plugin remove`, `plugin new` and `doctor` leave what the node CLI leaves.
 #
 # Every scenario runs twice, `node packages/core/dist/cli/main.js <args>` and `target/debug/tagents-core <args>` (or $TAGENTS_CORE_BIN), each on its own pristine copy of the same tree at the same path (so no transcript can tell the two apart by where it ran), under `env -i` with a scratch HOME, config directory and locale, and with no `pnpm` on PATH (node's last resort for a package it cannot find is `pnpm root -g`). It passes only when stdout, stderr, the exit code and the whole tree afterwards (every path, its mode, its link target or the checksum of its bytes) are the same. The only thing normalised is the process id in a temporary file's name.
-# The tree is the package tree of tests/rust-plugin-vectors/tree.mts, and the config documents are the corpus of tests/rust-plugin-vectors/corpus.mts, written by tests/rust-plugin-vectors/materialise.mts, so the cases here and the vectors of crates/tagents-core/tests/plugin_vectors/ are about the same inputs.
+# The tree is the package tree of tests/rust-plugin-parity/tree.mts, and the config documents are the corpus of tests/rust-plugin-parity/corpus.mts, written by tests/rust-plugin-parity/materialise.mts, so the cases here and the vectors of crates/tagents-core/tests/plugin_vectors/ are about the same inputs.
 # Who answered is checked too. The Rust side runs with $TAGENTS_NODE pointing at a shim that notes it was started and then runs the real node (except for `node -p`, the one question `doctor` asks node about itself, which is not a hand-over): a scenario marked `rust` fails when the binary handed the call to node (a binary that forwarded everything would otherwise pass every comparison), one marked `node` fails when the binary answered it itself (the call is one the design hands over, and answering it would be a second implementation of node's error text), and one marked `any` is counted and not judged (the corpus sweeps, where whether Rust can prove an answer depends on the document). A floor on the count says the sweeps were not all handed over.
 # `doctor` with a node that cannot be asked has no oracle for its first line, because node cannot run without node: `sc_nonode` compares the other three lines, stderr, the exit code and the tree with node's, and checks line one against the text the design gives it.
 # Tripwires assert on the node run alone: its exit code, and a text it must print, so a scenario that stopped provoking what it exists for fails here instead of passing for nothing.
@@ -19,15 +19,16 @@ umask 022
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(cd "$HERE/.." && pwd -P)
+ORACLE=$(bash "$HERE/parity-oracle.sh") || { echo "rust-plugin-parity: no node oracle (tests/parity-oracle.sh)" >&2; exit 2; }
 NODE=${TAGENTS_NODE:-$(command -v node)}
-CORE_JS="$REPO/packages/core/dist/cli/main.js"
+CORE_JS="$ORACLE/packages/core/dist/cli/main.js"
 RUST=${TAGENTS_CORE_BIN:-$REPO/target/debug/tagents-core}
-MATERIALISE="$HERE/rust-plugin-vectors/materialise.mts"
+MATERIALISE="$HERE/rust-plugin-parity/materialise.mts"
 SELF_TEST=${PARITY_SELF_TEST:-}
 ONLY=${PARITY_ONLY:-}
 
 [ -n "$NODE" ] && [ -x "$NODE" ] || { echo "rust-plugin-parity: no node to run (set TAGENTS_NODE)" >&2; exit 2; }
-[ -f "$CORE_JS" ] || { echo "rust-plugin-parity: $CORE_JS is not built; run: pnpm install && pnpm build" >&2; exit 2; }
+[ -f "$CORE_JS" ] || { echo "rust-plugin-parity: $CORE_JS is not built; run: bash tests/parity-oracle.sh" >&2; exit 2; }
 if [ -z "$SELF_TEST" ] && [ ! -x "$RUST" ]; then
   if [ -n "${TAGENTS_CORE_BIN:-}" ]; then echo "rust-plugin-parity: $RUST is not an executable" >&2; exit 2; fi
   (cd "$REPO" && cargo build -p tagents-core >&2) || { echo "rust-plugin-parity: cargo build failed" >&2; exit 2; }

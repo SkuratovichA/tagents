@@ -16,13 +16,14 @@ set -o pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(cd "$HERE/.." && pwd -P)
+ORACLE=$(bash "$HERE/parity-oracle.sh") || { echo "rust-parity: no node oracle (tests/parity-oracle.sh)" >&2; exit 2; }
 NODE=${TAGENTS_NODE:-$(command -v node)}
-CORE_JS="$REPO/packages/core/dist/cli/main.js"
+CORE_JS="$ORACLE/packages/core/dist/cli/main.js"
 RUST=${TAGENTS_CORE_BIN:-$REPO/target/debug/tagents-core}
 FIXTURES="$REPO/packages/core/test/fixtures/sessions"
 
 [ -n "$NODE" ] && [ -x "$NODE" ] || { echo "rust-parity: no node to run (set TAGENTS_NODE)" >&2; exit 2; }
-[ -f "$CORE_JS" ] || { echo "rust-parity: $CORE_JS is not built; run: pnpm install && pnpm build" >&2; exit 2; }
+[ -f "$CORE_JS" ] || { echo "rust-parity: $CORE_JS is not built; run: bash tests/parity-oracle.sh" >&2; exit 2; }
 if [ ! -x "$RUST" ]; then
   if [ -n "${TAGENTS_CORE_BIN:-}" ]; then echo "rust-parity: $RUST is not an executable" >&2; exit 2; fi
   (cd "$REPO" && cargo build -p tagents-core >&2) || { echo "rust-parity: cargo build failed" >&2; exit 2; }

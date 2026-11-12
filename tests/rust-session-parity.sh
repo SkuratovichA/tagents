@@ -19,8 +19,9 @@ umask 022
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(cd "$HERE/.." && pwd -P)
+ORACLE=$(bash "$HERE/parity-oracle.sh") || { echo "rust-session-parity: no node oracle (tests/parity-oracle.sh)" >&2; exit 2; }
 NODE=${TAGENTS_NODE:-$(command -v node)}
-CORE_JS="$REPO/packages/core/dist/cli/main.js"
+CORE_JS="$ORACLE/packages/core/dist/cli/main.js"
 RUST=${TAGENTS_CORE_BIN:-$REPO/target/debug/tagents-core}
 DRIVER="$HERE/rust-session-parity-driver.mts"
 SELF_TEST=${PARITY_SELF_TEST:-}
@@ -28,7 +29,7 @@ ONLY=${PARITY_ONLY:-}
 SHOW=${PARITY_SHOW:-}
 
 [ -n "$NODE" ] && [ -x "$NODE" ] || { echo "rust-session-parity: no node to run (set TAGENTS_NODE)" >&2; exit 2; }
-[ -f "$CORE_JS" ] || { echo "rust-session-parity: $CORE_JS is not built; run: pnpm install && pnpm build" >&2; exit 2; }
+[ -f "$CORE_JS" ] || { echo "rust-session-parity: $CORE_JS is not built; run: bash tests/parity-oracle.sh" >&2; exit 2; }
 if [ -z "$SELF_TEST" ] && [ ! -x "$RUST" ]; then
   if [ -n "${TAGENTS_CORE_BIN:-}" ]; then echo "rust-session-parity: $RUST is not an executable" >&2; exit 2; fi
   (cd "$REPO" && cargo build -p tagents-core >&2) || { echo "rust-session-parity: cargo build failed" >&2; exit 2; }

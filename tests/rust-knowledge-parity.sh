@@ -16,8 +16,9 @@ set -o pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(cd "$HERE/.." && pwd -P)
+ORACLE=$(bash "$HERE/parity-oracle.sh") || { echo "rust-knowledge-parity: no node oracle (tests/parity-oracle.sh)" >&2; exit 2; }
 NODE=${TAGENTS_NODE:-$(command -v node)}
-KJS="$REPO/packages/knowledge/dist/cli/main.js"
+KJS="$ORACLE/packages/knowledge/dist/cli/main.js"
 MCP_DRIVER="$HERE/rust-mcp-parity-driver.mts"
 GEN="$HERE/rust-knowledge-parity-driver.mts"
 # A process that has not ended after 30 seconds is killed by its own alarm, which a relay test then reports as exit 142.
@@ -26,7 +27,7 @@ ALARMED=(env PERL_BADLANG=0 perl -e 'alarm 30; exec @ARGV')
 RUST=${TAGENTS_CORE_BIN:-$REPO/target/debug/tagents-core}
 
 [ -n "$NODE" ] && [ -x "$NODE" ] || { echo "rust-knowledge-parity: no node to run (set TAGENTS_NODE)" >&2; exit 2; }
-[ -f "$KJS" ] || { echo "rust-knowledge-parity: $KJS is not built; run: pnpm install && pnpm build" >&2; exit 2; }
+[ -f "$KJS" ] || { echo "rust-knowledge-parity: $KJS is not built; run: bash tests/parity-oracle.sh" >&2; exit 2; }
 if [ ! -x "$RUST" ]; then
   if [ -n "${TAGENTS_CORE_BIN:-}" ]; then echo "rust-knowledge-parity: $RUST is not an executable" >&2; exit 2; fi
   (cd "$REPO" && cargo build -p tagents-core >&2) || { echo "rust-knowledge-parity: cargo build failed" >&2; exit 2; }
@@ -157,7 +158,7 @@ ksession() { session "$@"; }
 
 # ------------------------------------------------------------ the checks ---
 t "handshake, listing and the refusals of the protocol"
-VERSIONS=$("$NODE" "$MCP_DRIVER" versions "$REPO") || { echo "rust-knowledge-parity: cannot read the protocol versions of the SDK" >&2; exit 2; }
+VERSIONS=$("$NODE" "$MCP_DRIVER" versions "$ORACLE") || { echo "rust-knowledge-parity: cannot read the protocol versions of the SDK" >&2; exit 2; }
 for v in $VERSIONS 2099-01-01 ""; do
   play "handshake and list: initialize ${v:-(empty version)}" "$(steps "$(init_request "$v")" "$(await 1)")"
 done

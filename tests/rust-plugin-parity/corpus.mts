@@ -2,7 +2,7 @@
 //
 // The first 27 are the documents the design measured the two TOML parsers on (the `toml` crate against smol-toml): they agree on whether each parses and on what it holds, except an integer beyond 2^53, which smol-toml refuses. The rest are what a hand-kept config looks like, and what `cutSections` has to cut around. A document is written as text, or as hex when it is not UTF-8 text, so that what the file holds is readable here and survives any tool that normalises line ends.
 //
-// `tests/rust-plugin-vectors/materialise.mts <dir>` writes each one to `<dir>/<name>.toml` for the shell suite.
+// `tests/rust-plugin-parity/materialise.mts <dir>` writes each one to `<dir>/<name>.toml` for the shell suite.
 
 export interface Document {
   readonly name: string;
