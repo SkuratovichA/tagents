@@ -34,6 +34,12 @@ if [ -z "$SELF_TEST" ] && [ ! -x "$RUST" ]; then
   (cd "$REPO" && cargo build -p tagents-core >&2) || { echo "rust-plugin-parity: cargo build failed" >&2; exit 2; }
 fi
 
+# `plugin new` writes the path of the packages/core it was found in into the scaffold's package.json, so the binary has to sit in the tree whose node CLI it is compared with: a copy in the oracle's target/debug finds the oracle's packages/core, as the node side does.
+if [ -z "$SELF_TEST" ]; then
+  mkdir -p "$ORACLE/target/debug" && cp "$RUST" "$ORACLE/target/debug/tagents-core" || { echo "rust-plugin-parity: cannot place the binary in the oracle" >&2; exit 2; }
+  RUST=$ORACLE/target/debug/tagents-core
+fi
+
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/tagents-plugin-parity.XXXXXX") || exit 2
 TMP=$(cd "$TMP" && pwd -P) || exit 2
 trap 'chmod -R u+rwx "$TMP" 2>/dev/null; rm -rf "$TMP"' EXIT INT TERM

@@ -1,6 +1,6 @@
 name: rust
 
-# The Rust workspace and everything its tests compare it with: the shell file `lib/tagents/names.sh` that three Rust tests run, the shared CLI spec and its generated `contract.json` (which the MCP tests read), the node CLI that stays the reference, and the parity suite. The `rust` job runs on Linux and on macOS; the `release-path` job, on Linux, holds the version gate and the two shell suites of the release path (the packaging script and the installer's fetch), and `tests/release.sh` reads `release.yml` and `rust.yml`, so both are listed; the other shell suites for `tagents` are not run here, so those files are not listed.
+# The Rust workspace and everything its tests compare it with: the shell file `lib/tagents/names.sh` that three Rust tests run, the shared CLI spec and its generated `contract.json` (which the MCP tests read), the oracle tag of the node CLI that stays the reference, and the parity suites. The `rust` job runs on Linux and on macOS; the `release-path` job, on Linux, holds the version gate and the two shell suites of the release path (the packaging script and the installer's fetch), and `tests/release.sh` reads `release.yml` and `rust.yml`, so both are listed; the other shell suites for `tagents` are not run here, so those files are not listed.
 on:
   push:
     paths:
@@ -96,7 +96,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      - name: Install the node dependencies, which the smoke test of the MCP server and the parity suites run against
+      - name: Install the node dependencies, which the node-side tests and the driver of the parity suites run against
         run: pnpm install --frozen-lockfile
       - name: Formatting
         run: cargo fmt --all --check
@@ -118,7 +118,7 @@ jobs:
         run: bash tests/rust-plugin-parity.sh
       - name: Parity of the session verbs with the node ones, state and exit codes included
         run: bash tests/rust-session-parity.sh
-      - name: The program a session starts over a scratch install, with the built binary and the built node server
+      - name: The program a session starts over a scratch install, with the built binary and a node CLI that answers the needs-binary line
         run: bash tests/knowledge-launcher.sh
 
   # A change to what the tagents-core binary is built from must raise the workspace version (docs/architecture/rust-core.md, "How a release is made"). Every such input is in the paths above, so a pull request that breaks the rule always runs this job. The history is deep because the gate compares with the merge base.
