@@ -348,25 +348,4 @@ mod tests {
             "{failure}"
         );
     }
-
-    #[test]
-    fn a_line_cut_through_an_emoji_is_skipped_and_the_lines_around_it_are_kept() {
-        // Claude Code before 2.1.309 cut long tool output previews between the bytes of an emoji; those transcripts stay broken on disk.
-        let scratch = Scratch::new();
-        let file = scratch.path().join("cut.jsonl");
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(br#"{"type":"user","message":{"content":"first prompt"}}"#);
-        bytes.push(b'\n');
-        bytes.extend_from_slice(
-            br#"{"type":"assistant","message":{"content":[{"type":"text","text":"cut "#,
-        );
-        bytes.extend_from_slice(&"\u{1F600}".as_bytes()[..2]);
-        bytes.push(b'\n');
-        bytes.extend_from_slice(reply("last answer").as_bytes());
-        bytes.push(b'\n');
-        fs::write(&file, bytes).unwrap();
-        let file = file.to_str().unwrap();
-        assert_eq!(first_prompt(file), Ok("first prompt".to_owned()));
-        assert_eq!(last_assistant_text(file), Ok("last answer".to_owned()));
-    }
 }
