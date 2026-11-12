@@ -16,7 +16,7 @@ fn link_text(s: &str) -> String {
 
 /// Code-unit order, not locale order: the same folder gives the same bytes on every machine.
 fn by_text(a: &str, b: &str) -> std::cmp::Ordering {
-    a.encode_utf16().cmp(b.encode_utf16())
+    tagents_core::js::cmp16(a, b)
 }
 
 /// The text of `index.md` for these documents: groups by type, entries by id.

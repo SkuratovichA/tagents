@@ -20,7 +20,11 @@ use super::{
 use tagents_core::{
     ending::Stop,
     json::pretty,
-    mcp::{args, rpc::CallResult, server::Tools},
+    mcp::{
+        args::{self, number, text},
+        rpc::CallResult,
+        server::Tools,
+    },
     node,
     sync::locked,
 };
@@ -218,16 +222,6 @@ impl Tools for KnowledgeTools {
             Err(text) => CallResult::fail(text),
         })
     }
-}
-
-/// A string argument the check let through, or an empty one for a call that left it out.
-fn text<'a>(args: &'a Map<String, Value>, key: &str) -> &'a str {
-    args.get(key).and_then(Value::as_str).unwrap_or("")
-}
-
-/// A number argument, as the double JavaScript reads it.
-fn number(args: &Map<String, Value>, key: &str) -> Option<f64> {
-    args.get(key).and_then(Value::as_f64)
 }
 
 fn filters_of(args: &Map<String, Value>) -> Filters<'_> {

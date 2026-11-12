@@ -72,6 +72,11 @@ pub fn split_space(s: &str) -> Vec<&str> {
 }
 
 /// The length of `s` in UTF-16 code units, which is what `.length` counts.
+/// The order JavaScript sorts strings in: by UTF-16 code unit, not by code point.
+pub fn cmp16(a: &str, b: &str) -> std::cmp::Ordering {
+    a.encode_utf16().cmp(b.encode_utf16())
+}
+
 pub fn len16(s: &str) -> usize {
     s.chars().map(char::len_utf16).sum()
 }

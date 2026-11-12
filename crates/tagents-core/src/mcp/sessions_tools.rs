@@ -59,17 +59,14 @@ impl SessionTools {
         let answer = if name == "sessions_recent" {
             sessions::recent(
                 &context,
-                args.get("limit")
-                    .and_then(Value::as_f64)
-                    .unwrap_or(DEFAULT_SESSIONS),
+                args::number(args, "limit").unwrap_or(DEFAULT_SESSIONS),
             )
         } else {
-            let words: Vec<String> =
-                js::split_space(args.get("words").and_then(Value::as_str).unwrap_or(""))
-                    .into_iter()
-                    .filter(|word| !word.is_empty())
-                    .map(str::to_owned)
-                    .collect();
+            let words: Vec<String> = js::split_space(args::text(args, "words"))
+                .into_iter()
+                .filter(|word| !word.is_empty())
+                .map(str::to_owned)
+                .collect();
             sessions::search(&context, &words)
         };
         Some(match answer {

@@ -80,7 +80,7 @@ impl Tools for PluginTools {
         let mut tools = self.runner.list();
         tools.extend(sessions_tools::listing().iter().cloned());
         let name = |tool: &Value| tool["name"].as_str().unwrap_or("").to_owned();
-        tools.sort_by(|a, b| name(a).encode_utf16().cmp(name(b).encode_utf16()));
+        tools.sort_by(|a, b| crate::js::cmp16(&name(a), &name(b)));
         tools
     }
 
