@@ -122,9 +122,11 @@ for code in 1 3 127 126 130; do
   ok "...and mcp sees no TAGENTS_NO_NATIVE either" "join=unset|serve=unset|mcp=unset|" "$(tr '\n' '|' < "$TMP/envlog")"
 done
 
-# No okb at all: the shell's 127 is a code like any other.
+# No okb at all: one line that says so and names `tagents update`, nothing on stdout, exit 69.
 OUT=$(env -i PATH="$NO_NC/none" /bin/sh "$LAUNCHER" 2> "$TMP/err" </dev/null); RC=$?
-ok "no okb on PATH: the first line of stderr names 127" "okb-mcp: okb join exited 127, using a server of its own (okb join </dev/null shows why)" "$(head -n 1 "$TMP/err")"
+ok "no okb on PATH: exit 69" 69 "$RC"
+ok "...nothing on stdout" "" "$OUT"
+ok "...one line on stderr, that says okb is not on PATH and names tagents update" "okb-mcp: okb is not on PATH; run tagents update (or install okb) and restart Claude Code" "$(cat "$TMP/err")"
 
 # ---------------------------------------------------------------------------
 t "2. over a scratch install: the program a session starts"
@@ -242,9 +244,59 @@ else
   stop_scratch_daemons
   sleep 0.5
 
-  # --- the launcher of the plugin cache: the old two lines over the new wrapper ----
+  # --- the launcher of the plugin cache: the pre-split launcher over the new wrapper ----
+  # A machine meets this first: the plugin cache keeps the old launcher until the plugin updates, and the old name is a wrapper that names okb. The text is bin/knowledge-mcp of 87f8bc8 (the commit before the split), byte for byte: it calls `tagents-knowledge join`, `serve` and `mcp`, so the wrapper of this checkout is what runs, and the one line it writes to stderr is the only difference a session shows.
+  cat > "$TMP/old-launcher" <<'OLDLAUNCHER'
+#!/bin/sh
+# knowledge-mcp — the MCP server entry the plugin registers (plugin.json, mcpServers.knowledge).
+#
+# A Claude session expects an MCP server to be a process it can talk to over stdin and stdout, and `exec` cannot fall back once it has run, so the launcher asks first which program to become. Three arrangements, best first:
+#
+#   1. The Rust binary: `tagents-knowledge join` connects to the one shared daemon (starting it when it is not running), relays stdin and stdout to it, and leaves the session with one process of about 1 MB (`footprint`, measured in docs/architecture/rust-core.md, "What a knowledge session holds") and no node and no `nc`.
+#   2. The shared node daemon: `tagents-knowledge serve` makes sure one daemon runs for this environment and prints the unix socket it listens on, and `nc -U` joins this session's stdin and stdout to it.
+#   3. The server of the session itself: `tagents-knowledge mcp`, which the binary serves as a process of its own per session, with no daemon.
+#
+# The probe on the next line runs `join` with no input and with its output thrown away, and the exit code says which arrangement this machine has. With the binary, the empty input connects, finds or starts the daemon, shuts the write half and exits 0, and the daemon is left running for the `join` that follows. The probe costs one more start of a small process; on a machine without the binary it costs a shell that exits, because the wrapper answers `join` with 69 before it starts any node.
+#   0   the binary served the probe: become `join` for real.
+#   69  the wrapper has no binary (none installed): the next arrangements, silently. `serve` and `mcp` then answer the needs-binary line and exit 69 too, so a machine with no binary has no knowledge server until `tagents update` or a build.
+#   2   a wrapper from before this arrangement, whose node program does not know `join`: the next arrangements, silently, at the price of one node start until the next `tagents update`.
+#   any other code (1, 3, 126, 127, a signal): the binary was there and failed, or there is no tagents-knowledge at all. One line names the code on stderr, which Claude Code keeps in the log of an MCP server, and the next arrangements run: the wrapper hands `serve` and `mcp` to the binary as well as `join`, a per-session server that needs no daemon.
+#
+# `exec` so that the last program IS the process Claude started, and signalling it needs no shell in between. `join` ends when its stdin closes. `nc` ends then too on macOS, but the netcat-openbsd of Debian without -N does not: there it ends at the SIGTERM a client sends after closing stdin, and the daemon counts the session out then.
+#
+# The way out of the daemon: a machine without a usable `nc` has nothing to exec, and a daemon that cannot start leaves no socket. In each the session still gets its own server.
+tagents-knowledge join </dev/null >/dev/null 2>&1; rc=$?
+case $rc in
+  0) exec tagents-knowledge join ;;
+  69 | 2) ;;
+  *) printf 'knowledge-mcp: tagents-knowledge join exited %s, using a server of its own (tagents-knowledge join </dev/null shows why)\n' "$rc" >&2 ;;
+esac
+sock=$(tagents-knowledge serve 2>/dev/null) && [ -S "$sock" ] && command -v nc >/dev/null 2>&1 && exec nc -U "$sock"
+exec tagents-knowledge mcp
+OLDLAUNCHER
+  SEARCH='{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"knowledge_search","arguments":{"query":"sqlite"}}}'
+  rm -f "$TMP/node-starts"
+  # one daemon serves the environment whichever argument list started it: this one is started with a short idle time, so that it leaving shows the session was counted out
+  osock=$(senv "$TAGENTS_BIN/okb" serve --idle 4 2>/dev/null)
+  ok "the Rust daemon is up and serve printed its socket" yes "$([ -S "$osock" ] && echo yes || echo no)"
+  odpid=$(cat "$osock.pid" 2>/dev/null)
+  SESSION_LAUNCHER=$TMP/old-launcher session old "$SEARCH"
+  ok "the old launcher: initialize and knowledge_search both got a reply" 2 "$(grep -c '"result"' "$TMP/out.old")"
+  ok "...and the search found a document of the fixtures" yes "$(grep -q 'deploy-runbook' "$TMP/out.old" && echo yes || echo no)"
+  cmd=$(ps -o command= -p "$SPID" 2>/dev/null)
+  case $cmd in *"/okb join") got="okb join" ;; *) got="$cmd" ;; esac
+  ok "...through the wrapper, which became okb join" "okb join" "$got"
+  ok "...no node was started" 0 "$(starts)"
+  ok "...the one line on stderr names okb and the next release" "tagents-knowledge is now called okb; this name goes away in the next release" "$(cat "$TMP/err.old")"
+  ok "...which is alive while the session is connected" yes "$(alive "$odpid" && echo yes || echo no)"
+  ok "...and ends when its input closes" gone=yes "$(end_session old)"
+  for _ in $(seq 1 120); do alive "$odpid" || break; sleep 0.2; done
+  ok "...and the daemon, with nobody connected, leaves after its idle time" no "$(alive "$odpid" && echo yes || echo no)"
+  stop_scratch_daemons
+
+  # --- the serve and nc arrangement of a launcher whose probe failed: its last two lines over the wrapper ----
   # A machine meets this first: the plugin cache keeps the old launcher until the plugin updates, and the wrapper is rewritten at the next `tagents update`. The two commands are those of 9af0ac1:plugins/okb/bin/okb-mcp, verbatim; `serve` now reaches the Rust daemon and `nc -U` connects to it.
-  cat > "$TMP/old-launcher" <<'OLD'
+  cat > "$TMP/oldnc-launcher" <<'OLD'
 sock=$(okb serve 2>/dev/null) && [ -S "$sock" ] && command -v nc >/dev/null 2>&1 && exec nc -U "$sock"
 exec okb mcp
 OLD
@@ -257,16 +309,16 @@ OLD
     osock=$(senv "$TAGENTS_BIN/okb" serve --idle 4 2>/dev/null)
     ok "the Rust daemon is up and serve printed its socket" yes "$([ -S "$osock" ] && echo yes || echo no)"
     odpid=$(cat "$osock.pid" 2>/dev/null)
-    SESSION_LAUNCHER=$TMP/old-launcher session old "$SEARCH"
-    ok "the old launcher: initialize and knowledge_search both got a reply" 2 "$(grep -c '"result"' "$TMP/out.old")"
-    ok "...and the search found a document of the fixtures" yes "$(grep -q 'deploy-runbook' "$TMP/out.old" && echo yes || echo no)"
+    SESSION_LAUNCHER=$TMP/oldnc-launcher session oldnc "$SEARCH"
+    ok "the old launcher: initialize and knowledge_search both got a reply" 2 "$(grep -c '"result"' "$TMP/out.oldnc")"
+    ok "...and the search found a document of the fixtures" yes "$(grep -q 'deploy-runbook' "$TMP/out.oldnc" && echo yes || echo no)"
     cmd=$(ps -o command= -p "$SPID" 2>/dev/null)
     case $cmd in "nc -U "*) got=nc ;; *) got="$cmd" ;; esac
     ok "...through nc -U, the process the session started" nc "$got"
     ok "...to the daemon the wrapper started in Rust, and no node was started" 0 "$(starts)"
     ok "...which is alive while the session is connected" yes "$(alive "$odpid" && echo yes || echo no)"
-    ok "...nothing on stderr" "" "$(cat "$TMP/err.old")"
-    ok "...and the session ends: at end of input where nc does (here: $NC_ENDS), at SIGTERM where it does not" "$(ncexpect)" "$(end_nc_session old)"
+    ok "...nothing on stderr" "" "$(cat "$TMP/err.oldnc")"
+    ok "...and the session ends: at end of input where nc does (here: $NC_ENDS), at SIGTERM where it does not" "$(ncexpect)" "$(end_nc_session oldnc)"
     for _ in $(seq 1 120); do alive "$odpid" || break; sleep 0.2; done
     ok "...and the daemon, with nobody connected, leaves after its idle time" no "$(alive "$odpid" && echo yes || echo no)"
     stop_scratch_daemons

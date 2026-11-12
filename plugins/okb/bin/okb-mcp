@@ -11,11 +11,13 @@
 #   0   the binary served the probe: become `join` for real.
 #   69  the wrapper has no binary (none installed): the next arrangements, silently. `serve` and `mcp` then answer the needs-binary line and exit 69 too, so a machine with no binary has no knowledge server until `tagents update` or a build.
 #   2   a wrapper from before this arrangement, whose node program does not know `join`: the next arrangements, silently, at the price of one node start until the next `tagents update`.
-#   any other code (1, 3, 126, 127, a signal): the binary was there and failed, or there is no okb at all. One line names the code on stderr, which Claude Code keeps in the log of an MCP server, and the next arrangements run: the wrapper hands `serve` and `mcp` to the binary as well as `join`, a per-session server that needs no daemon.
+#   any other code (1, 3, 126, 127, a signal): the binary was there and failed. One line names the code on stderr, which Claude Code keeps in the log of an MCP server, and the next arrangements run: the wrapper hands `serve` and `mcp` to the binary as well as `join`, a per-session server that needs no daemon.
 #
 # `exec` so that the last program IS the process Claude started, and signalling it needs no shell in between. `join` ends when its stdin closes. `nc` ends then too on macOS, but the netcat-openbsd of Debian without -N does not: there it ends at the SIGTERM a client sends after closing stdin, and the daemon counts the session out then.
 #
 # The way out of the daemon: a machine without a usable `nc` has nothing to exec, and a daemon that cannot start leaves no socket. In each the session still gets its own server.
+# No okb at all: the session would only see a failed start, so one line says what to do. Stdout stays clean: it is the protocol's.
+command -v okb >/dev/null 2>&1 || { printf 'okb-mcp: okb is not on PATH; run tagents update (or install okb) and restart Claude Code\n' >&2; exit 69; }
 okb join </dev/null >/dev/null 2>&1; rc=$?
 case $rc in
   0) exec okb join ;;
