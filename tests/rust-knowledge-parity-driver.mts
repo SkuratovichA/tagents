@@ -1,11 +1,13 @@
 // The inputs of tests/rust-knowledge-parity.sh that a shell cannot write well: documents with characters in them, and the script of one request per code point of a sweep. It runs no server: tests/rust-mcp-parity-driver.mts does, for both programs.
 //
 //   node tests/rust-knowledge-parity-driver.mts extras <docs dir>
+//   node tests/rust-knowledge-parity-driver.mts bad <docs dir>
 //   node tests/rust-knowledge-parity-driver.mts sweep <docs dir> <script out> <map out>
 //   node tests/rust-knowledge-parity-driver.mts locate <map> <request id>
 //   node tests/rust-knowledge-parity-driver.mts client <socket> [connected file]
 //
 // `extras` adds the documents the fixtures lack: diacritics, two documents that rank alike, a deprecated one, a type in capitals and the legacy `kind`.
+// `bad` adds the documents `lint` has something to say about: no front matter, YAML that does not parse, every rule of the profile broken, dead links in both forms, a source newer than the document and a stale_after that has passed.
 // `sweep` writes one document that holds `a<c>b` for each code point c of a list of ranges, and a script, in the steps of the MCP driver, that searches for each of them; the map says which request stands for which code point, so that a difference is named by its code point.
 // `locate` prints the code point of a request of the map.
 // `client` is a client of a unix socket that behaves the same on macOS and Linux, where `nc -U` does not (the Linux one stays connected past the end of its input unless it is given -N, which the macOS one does not have): what comes in goes to the socket and the end of the input ends the writing side only, what the socket says goes out, and the end of the socket ends the client. The optional file appears when the connection is made. The exit is 1 when it cannot connect or the socket fails.
@@ -26,6 +28,26 @@ function extras(dir: string): void {
   write('old-marmalade.md', document({ id: 'old-marmalade', title: 'Old marmalade', kind: 'note', tags: '[tie]', status: 'deprecated', updated: '2026-01-01' }, 'Marmalade marmalade marmalade, retired.'));
   write('capital-type.md', document({ id: 'capital-type', title: 'Capital type', type: 'Runbook', tags: '[ops]', updated: '2026-09-12' }, 'A runbook whose type is written in capitals.'));
   write('legacy-kind.md', document({ id: 'legacy-kind', title: 'Legacy kind', kind: 'runbook', tags: '[ops]', updated: '2026-09-12' }, 'A runbook with the legacy kind field.'));
+}
+
+function bad(dir: string): void {
+  const write = (name: string, text: string): void => fs.writeFileSync(path.join(dir, name), text);
+  write('no-front.md', 'just text, no front matter\n');
+  write('scalar-root.md', '---\njust a string\n---\n\nbody\n');
+  write('no-type.md', '---\ntitle: nothing\n---\n\nbody\n');
+  write('empty-type.md', '---\ntype: "  "\n---\n\nbody\n');
+  write('Bad Stem.md', '---\ntype: note\n---\n\nbody\n');
+  write('mismatch.md', '---\ntype: note\nid: other-id\n---\n\nbody\n');
+  write('dup-a.md', '---\ntype: note\nid: dup-id\n---\n\nbody\n');
+  write('dup-b.md', '---\ntype: note\nid: dup-id\n---\n\nbody\n');
+  write('legacy-bad.md', '---\nkind: note\nupdated: 2026-02-30\ngenerated_from: ./gone.txt\n---\n\nbody\n');
+  write('unknown-keys.md', '---\ntype: note\nflavor: sweet\n7: seven\n2: two\nid: 5\ntitle: [a, b]\ndescription: |\n  first\n  second\nresource: 3\ntags: [good-tag, Bad Tag, 5, null, [x, y]]\nstatus: wip\nscope: universe\ngenerated: {by: "", at: 2026-01-01}\nverified: []\nstale_after: tomorrow\nsources: [1, {resource: " "}, {resource: ok}]\n---\n\nbody\n');
+  write('not-lists.md', '---\ntype: note\ntags: abc\nsources: x\nverified: yes\nstatus: 7\nscope: [a, b]\nstale_after: [1, null, [2]]\ngenerated: {by: x}\n---\n\nbody\n');
+  write('good-verified.md', '---\ntype: note\ndescription: fine\nverified:\n  - {by: me, at: 2026-01-01T00:00:00+02:00}\n  - {by: you, at: 2026-01-01T25:00:00Z}\n---\n\nbody\n');
+  write('expired.md', '---\ntype: note\nstale_after: 2020-01-01T00:00:00Z\n---\n\nbody\n');
+  write('src.txt', 'a source\n');
+  write('moved-source.md', '---\ntype: note\ngenerated: {by: me, at: "2000-01-01T00:00:00Z"}\nsources:\n  - resource: ./src.txt\n  - resource: /src.txt\n  - resource: https://example.com/x\n  - resource: ./missing.txt\n  - resource: ~/nowhere.txt\n---\n\nbody\n');
+  write('links.md', '---\ntype: note\n---\n\nSee [[deploy-runbook]], [[deploy-runbook#Nope]], [[Deploy-Runbook#deploy]], [[missing-doc]], [[ghost3#H]] and [[ index ]].\n\n[ok](./deploy-runbook.md), [frag](deploy-runbook.md#nope), [slug](cache-policy.md#some-heading), [abs](/cache-policy.md), [dead](ghost.md), [esc \\] b](missing2.md), [titled](deploy-runbook.md "a title"), ![img](nowhere.md), [web](https://x.test/a.md), [bare](#frag), [dir](a/b.md), [dot](../up.md)\n\n`[[in-code-span]]` and ``[[two]] `x` [[three]]`` and ```[[not-a-span]]`.\n\n```\n[[in-fence]] [dead](fence.md)\n```\n\n~~~\n[[tilde-fence]]\n~~~\n\n[[ghost4]]\n');
 }
 
 const RANGES: ReadonlyArray<readonly [number, number]> = [
@@ -79,6 +101,7 @@ function client(socketPath: string, connectedFile: string | undefined): void {
 }
 
 if (command === 'extras' && args.length === 1 && args[0] !== undefined) extras(args[0]);
+else if (command === 'bad' && args.length === 1 && args[0] !== undefined) bad(args[0]);
 else if (command === 'sweep' && args.length === 3 && args[0] !== undefined && args[1] !== undefined && args[2] !== undefined) sweep(args[0], args[1], args[2]);
 else if (command === 'locate' && args.length === 2 && args[0] !== undefined && args[1] !== undefined) locate(args[0], args[1]);
 else if (command === 'client' && args.length <= 2 && args[0] !== undefined) client(args[0], args[1]);

@@ -7,9 +7,27 @@ use sha2::{Digest, Sha256};
 use super::front_matter::{self, Yaml};
 use tagents_core::{js, node};
 
-const STATUSES: [&str; 3] = ["draft", "stable", "deprecated"];
-const SCOPES: [&str; 2] = ["global", "project"];
-const RESERVED_FILES: [&str; 2] = ["index.md", "log.md"];
+pub const STATUSES: [&str; 3] = ["draft", "stable", "deprecated"];
+pub const SCOPES: [&str; 2] = ["global", "project"];
+pub const RESERVED_FILES: [&str; 2] = ["index.md", "log.md"];
+
+/// The top-level keys the profile knows; `lint` reports the rest.
+pub const OKF_KEYS: [&str; 12] = [
+    "type",
+    "title",
+    "description",
+    "tags",
+    "resource",
+    "generated",
+    "verified",
+    "sources",
+    "status",
+    "stale_after",
+    "scope",
+    "id",
+];
+/// The extra keys a legacy document may carry.
+pub const LEGACY_KEYS: [&str; 3] = ["kind", "updated", "generated_from"];
 
 /// Who generated a document and when (an offset datetime).
 #[derive(Debug, Clone, PartialEq)]
@@ -55,6 +73,8 @@ pub struct Chunk {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Document {
     pub meta: Meta,
+    /// The front matter mapping as parsed, what `lint` holds to the profile.
+    pub raw: Yaml,
     /// The front matter `id` key when it is a string.
     pub declared_id: Option<String>,
     pub path: String,
@@ -366,7 +386,7 @@ pub fn stem_of(file: &str) -> String {
     base.strip_suffix(".md").unwrap_or(base).to_owned()
 }
 
-fn is_slug(stem: &str) -> bool {
+pub fn is_slug(stem: &str) -> bool {
     !stem.is_empty()
         && stem.split('-').all(|word| {
             !word.is_empty()
@@ -477,6 +497,7 @@ pub fn parse_doc(file: &str, text: &str) -> Result<Document, DocError> {
         text: text.to_owned(),
         body,
         meta,
+        raw,
     })
 }
 
@@ -514,4 +535,314 @@ pub fn list_files(dir: &str) -> Result<Vec<String>, String> {
     }
     files.sort_by(|a, b| a.encode_utf16().cmp(b.encode_utf16()));
     Ok(files)
+}
+
+// ---- links ------------------------------------------------------------------------------------
+
+/// A link from one document to another or to one of its sections, in either form.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocLink {
+    /// True for `[[id]]`, false for `[text](id.md)`.
+    pub wiki: bool,
+    /// The link as written, for messages.
+    pub raw: String,
+    pub id: String,
+    /// The heading (wikilink) or fragment (markdown link) as written.
+    pub fragment: Option<String>,
+}
+
+/// `/^[a-z][a-z0-9+.-]*:/i`: a target with a URL scheme.
+pub fn has_url_scheme(target: &str) -> bool {
+    let mut chars = target.chars();
+    if !chars.next().is_some_and(|c| c.is_ascii_alphabetic()) {
+        return false;
+    }
+    for c in chars {
+        if c == ':' {
+            return true;
+        }
+        if !(c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-')) {
+            return false;
+        }
+    }
+    false
+}
+
+/// Each line of a body with whether it sits in, opens or closes a fenced code block.
+fn scan_fences(body: &str) -> Vec<(&str, bool)> {
+    let mut fence: Option<&'static str> = None;
+    body.split('\n')
+        .map(|line| match fence_marker(line) {
+            Some(marker) => {
+                match fence {
+                    None => fence = Some(marker),
+                    Some(open) if open == marker => fence = None,
+                    Some(_) => {}
+                }
+                (line, true)
+            }
+            None => (line, fence.is_some()),
+        })
+        .collect()
+}
+
+/// A line with its inline code spans blanked out, one space per UTF-16 unit: a link inside backticks is not a link. The pattern is `(`+)[^`]*?\1`, so a run of backticks gives back its length until a closing run of the same length is found.
+fn without_code_spans(line: &str) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    let mut out = String::with_capacity(line.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let end = if chars[i] == '`' {
+            code_span_end(&chars, i)
+        } else {
+            None
+        };
+        match end {
+            Some(end) => {
+                let units: usize = chars[i..end].iter().map(|c| c.len_utf16()).sum();
+                out.extend(std::iter::repeat_n(' ', units));
+                i = end;
+            }
+            None => {
+                out.push(chars[i]);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+fn code_span_end(chars: &[char], start: usize) -> Option<usize> {
+    let run = chars[start..].iter().take_while(|c| **c == '`').count();
+    for n in (1..=run).rev() {
+        let mut pos = start + n;
+        loop {
+            let closes = chars.len() >= pos + n && chars[pos..pos + n].iter().all(|c| *c == '`');
+            if closes {
+                return Some(pos + n);
+            }
+            match chars.get(pos) {
+                Some(c) if *c != '`' => pos += 1,
+                _ => break,
+            }
+        }
+    }
+    None
+}
+
+/// `\[\[([^\]|#]+)(?:#([^\]|]+))?\]\]` at `at`: the match end, the id and the heading.
+fn wikilink_at(chars: &[char], at: usize) -> Option<(usize, String, Option<String>)> {
+    if chars.get(at) != Some(&'[') || chars.get(at + 1) != Some(&'[') {
+        return None;
+    }
+    let id_start = at + 2;
+    let mut i = id_start;
+    while i < chars.len() && !matches!(chars[i], ']' | '|' | '#') {
+        i += 1;
+    }
+    if i == id_start {
+        return None;
+    }
+    let id: String = chars[id_start..i].iter().collect();
+    let mut heading = None;
+    if chars.get(i) == Some(&'#') {
+        let head_start = i + 1;
+        let mut j = head_start;
+        while j < chars.len() && !matches!(chars[j], ']' | '|') {
+            j += 1;
+        }
+        if j == head_start {
+            return None;
+        }
+        heading = Some(chars[head_start..j].iter().collect::<String>());
+        i = j;
+    }
+    (chars.get(i) == Some(&']') && chars.get(i + 1) == Some(&']')).then_some((i + 2, id, heading))
+}
+
+/// `(?<!!)\[(?:\\.|[^\]\\])*\]\(([^)\s]+)(?:\s+"[^"]*")?\)` at `at`: the match end and the target.
+fn markdown_link_at(chars: &[char], at: usize) -> Option<(usize, String)> {
+    if chars.get(at) != Some(&'[') || (at > 0 && chars[at - 1] == '!') {
+        return None;
+    }
+    let mut i = at + 1;
+    loop {
+        match chars.get(i)? {
+            '\\' => {
+                // `.` takes any one character but a line terminator
+                let next = chars.get(i + 1)?;
+                if matches!(next, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
+                    return None;
+                }
+                i += 2;
+            }
+            ']' => break,
+            _ => i += 1,
+        }
+    }
+    if chars.get(i + 1) != Some(&'(') {
+        return None;
+    }
+    let target_start = i + 2;
+    let mut j = target_start;
+    while j < chars.len() && chars[j] != ')' && !js::is_space(chars[j]) {
+        j += 1;
+    }
+    if j == target_start {
+        return None;
+    }
+    let target: String = chars[target_start..j].iter().collect();
+    if chars.get(j) == Some(&')') {
+        return Some((j + 1, target));
+    }
+    let mut k = j;
+    while k < chars.len() && js::is_space(chars[k]) {
+        k += 1;
+    }
+    if k == j || chars.get(k) != Some(&'"') {
+        return None;
+    }
+    k += 1;
+    while k < chars.len() && chars[k] != '"' {
+        k += 1;
+    }
+    (chars.get(k) == Some(&'"') && chars.get(k + 1) == Some(&')')).then_some((k + 2, target))
+}
+
+/// A markdown target that names a document: the id and the fragment, none for a URL, a file that is not `.md` or an empty id.
+fn markdown_target(target: &str) -> Option<(String, Option<String>)> {
+    if has_url_scheme(target) {
+        return None;
+    }
+    let (file, fragment) = match target.find('#') {
+        Some(hash) => (&target[..hash], Some(&target[hash + 1..])),
+        None => (target, None),
+    };
+    let id = file.strip_suffix(".md")?;
+    let id = id
+        .strip_prefix("./")
+        .or_else(|| id.strip_prefix('/'))
+        .unwrap_or(id);
+    if id.is_empty() {
+        return None;
+    }
+    Some((
+        id.to_owned(),
+        fragment.filter(|f| !f.is_empty()).map(str::to_owned),
+    ))
+}
+
+/// Every link to a document of the bundle in a body, in document order: `[[id]]`, `[[id#Heading]]` and `[t](/id.md#frag)`, `[t](./id.md)`, `[t](id.md)`. Links in fenced code or inline code spans are not links.
+pub fn document_links(body: &str) -> Vec<DocLink> {
+    let mut out = Vec::new();
+    for (line, in_fence) in scan_fences(body) {
+        if in_fence {
+            continue;
+        }
+        let text = without_code_spans(line);
+        let chars: Vec<char> = text.chars().collect();
+        let mut found: Vec<(usize, DocLink)> = Vec::new();
+        let mut i = 0;
+        while i < chars.len() {
+            if let Some((end, id, heading)) = wikilink_at(&chars, i) {
+                let id = js::trim(&id).to_owned();
+                if !id.is_empty() {
+                    found.push((
+                        i,
+                        DocLink {
+                            wiki: true,
+                            raw: chars[i..end].iter().collect(),
+                            id,
+                            fragment: heading.map(|h| js::trim(&h).to_owned()),
+                        },
+                    ));
+                }
+                i = end;
+            } else {
+                i += 1;
+            }
+        }
+        let mut i = 0;
+        while i < chars.len() {
+            if let Some((end, target)) = markdown_link_at(&chars, i) {
+                if let Some((id, fragment)) = markdown_target(&target) {
+                    found.push((
+                        i,
+                        DocLink {
+                            wiki: false,
+                            raw: chars[i..end].iter().collect(),
+                            id,
+                            fragment,
+                        },
+                    ));
+                }
+                i = end;
+            } else {
+                i += 1;
+            }
+        }
+        found.sort_by_key(|(at, _)| *at);
+        out.extend(found.into_iter().map(|(_, link)| link));
+    }
+    out
+}
+
+/// The anchor of a heading as GitHub makes it: lowercase, white space to dashes, everything but letters, marks, digits and dashes dropped. Letters are the ones `char::is_alphabetic` knows.
+fn heading_slug(heading: &str) -> String {
+    js::lower(js::trim(heading))
+        .chars()
+        .filter(|c| c.is_alphanumeric() || js::is_space(*c) || *c == '-' || is_mark(*c))
+        .map(|c| if js::is_space(c) { '-' } else { c })
+        .collect()
+}
+
+/// The combining marks of the common blocks; `char` has no general category.
+fn is_mark(c: char) -> bool {
+    matches!(c, '\u{300}'..='\u{36f}' | '\u{483}'..='\u{489}' | '\u{591}'..='\u{5bd}' | '\u{64b}'..='\u{65f}' | '\u{1ab0}'..='\u{1aff}' | '\u{1dc0}'..='\u{1dff}' | '\u{20d0}'..='\u{20ff}' | '\u{fe20}'..='\u{fe2f}')
+}
+
+/// A markdown-link fragment names a heading when it equals the text (case-insensitive, URL-decoded) or its slug.
+pub fn fragment_matches(fragment: &str, heading: &str) -> bool {
+    let want = js::lower(js::trim(&percent_decoded(fragment)));
+    js::lower(js::trim(heading)) == want || heading_slug(heading) == want
+}
+
+/// `decodeURIComponent`, or the text as written when an escape is malformed.
+fn percent_decoded(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'%' {
+            out.push(bytes[i]);
+            i += 1;
+            continue;
+        }
+        let hex = bytes
+            .get(i + 1..i + 3)
+            .filter(|h| h.iter().all(u8::is_ascii_hexdigit))
+            .and_then(|h| std::str::from_utf8(h).ok())
+            .and_then(|h| u8::from_str_radix(h, 16).ok());
+        match hex {
+            Some(byte) => {
+                out.push(byte);
+                i += 3;
+            }
+            None => return text.to_owned(),
+        }
+    }
+    String::from_utf8(out).unwrap_or_else(|_| text.to_owned())
+}
+
+/// Every document of a folder, a file that cannot be read or parsed reported beside them and not thrown. Ids are stems, so they cannot collide.
+pub fn load_dir(dir: &str) -> Result<(Vec<Document>, Vec<DocError>), String> {
+    let mut docs = Vec::new();
+    let mut errors = Vec::new();
+    for file in list_files(dir)? {
+        match read_doc(&file) {
+            Ok(doc) => docs.push(doc),
+            Err(error) => errors.push(error),
+        }
+    }
+    Ok((docs, errors))
 }

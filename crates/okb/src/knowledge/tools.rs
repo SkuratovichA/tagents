@@ -292,7 +292,7 @@ fn hit_json(hit: &Hit) -> Value {
     Value::Object(map)
 }
 
-fn doc_json(doc: &DocSummary) -> Value {
+pub(super) fn doc_json(doc: &DocSummary) -> Value {
     let mut map = lifecycle(&doc.life);
     map.insert("id".into(), json!(doc.id));
     map.insert("title".into(), json!(doc.title));
@@ -303,7 +303,7 @@ fn doc_json(doc: &DocSummary) -> Value {
     Value::Object(map)
 }
 
-fn row_json(row: &UsageRow) -> Value {
+pub(super) fn row_json(row: &UsageRow) -> Value {
     json!({
         "id": row.id,
         "type": row.type_,

@@ -686,10 +686,7 @@ fn detached_the_daemon_is_started_as_serve_in_a_group_of_its_own_in_the_root_wit
     );
     let pid = recorded(&record, "pid");
     assert_eq!(
-        format!(
-            "knowledge serve --foreground --socket {} --idle 30",
-            socket.display()
-        ),
+        format!("serve --foreground --socket {} --idle 30", socket.display()),
         recorded(&record, "args")
     );
     assert_eq!("/", recorded(&record, "cwd"));

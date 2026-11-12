@@ -7,7 +7,6 @@ mod common;
 use std::{ffi::OsString, fs, path::Path, sync::atomic::Ordering, thread, time::Duration};
 
 use okb::knowledge::{
-    VERBS,
     daemon::DEFAULT_IDLE_SECONDS,
     serve::{Refused, Request, answer, parse, texts},
     socket::{Ended, Launch, Starter},
@@ -418,16 +417,4 @@ fn join_takes_no_argument_serve_is_strict_and_any_other_word_is_a_usage_error() 
     assert_eq!(2, status(&args(&["serve", "--bogus"])));
     assert_eq!(2, status(&args(&["frobnicate"])));
     assert_eq!(2, status(&[]));
-}
-
-#[test]
-fn the_verbs_are_the_three_words_after_knowledge() {
-    assert_eq!(
-        &[
-            &["knowledge", "mcp"][..],
-            &["knowledge", "serve"],
-            &["knowledge", "join"]
-        ],
-        VERBS
-    );
 }

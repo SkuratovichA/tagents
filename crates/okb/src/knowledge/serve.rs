@@ -1,6 +1,6 @@
 //! `tagents-core knowledge serve`: prints the socket of the shared server of this environment, starting that server when nothing answers, and with `--foreground` is that server.
 //!
-//! The options are `--idle S`, `--foreground` and `--socket P`, read by `parse_args` as `util.parseArgs` of the node program reads them, strictly. `--idle` is read as `Number` reads it and must be finite and positive. `--socket` is read and left alone unless `--foreground` is given, as the node program does. Two sentences are this verb's own, `badIdle` and `serveFailed`, in the catalogue `texts.json` that `tests/rust-knowledge-embed.mts` writes from the node program's, in the language `TAGENTS_LOCALE` names.
+//! The options are `--idle S`, `--foreground` and `--socket P`, read by `parse_args` as `util.parseArgs` of the node program reads them, strictly. `--idle` is read as `Number` reads it and must be finite and positive. `--socket` is read and left alone unless `--foreground` is given, as the node program does. Two sentences are this verb's own, `badIdle` and `serveFailed`, in the catalogue `texts.json`, in the language `TAGENTS_LOCALE` names.
 //!
 //! What is asked (`parse`) is kept apart from running it (`answer`), so that a test reads every command line without a daemon or a signal handler; `run` is the program's verb: it installs the handlers for the foreground only, since a signal that came while a server is being looked for has to end the process, as it does in the node program.
 
@@ -25,12 +25,9 @@ const OPTIONS: &Options = &[
     ("socket", Kind::Text),
 ];
 
-/// The sentences of this verb, as `tests/rust-knowledge-embed.mts` wrote them.
-const TEXTS: &str = include_str!("texts.json");
-
-/// The sentences of this verb in `locale`.
+/// The sentences of the verbs of `okb` in `locale`.
 pub fn texts(locale: Locale) -> Result<Texts, serde_json::Error> {
-    Texts::from_json(locale, TEXTS)
+    super::texts(locale)
 }
 
 /// What a command line asks for.

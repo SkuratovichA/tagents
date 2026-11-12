@@ -319,7 +319,7 @@ impl Starter for Detached {
     fn start(&self, launch: &Launch<'_>) -> io::Result<Ended> {
         let mut command = Command::new(&self.program);
         command
-            .args(["knowledge", "serve", "--foreground", "--socket"])
+            .args(["serve", "--foreground", "--socket"])
             .arg(launch.socket)
             .arg("--idle")
             .arg(js::number_text(launch.idle))
