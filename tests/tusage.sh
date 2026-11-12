@@ -2278,5 +2278,65 @@ out=$(cal30 --calibrate work 10 --at "2026-09-15 12:00"); rc=$?
 ok "a month with nothing indexed is refused" 1 "$rc"
 contains "...and says which month" "nothing indexed for work in the month of that instant, up to it" "$out"
 
+# ---------------------------------------------------------------------------
+t "31. --windows: the spend inside an account's 7-day window"
+# ---------------------------------------------------------------------------
+# A fixture of its own. work's window began at W0, two days back. Its session s-work straddles that start: $5 an hour before it (must not count), $25 of output and a $5 subagent inside it before the record was written at RE, and $5 after RE (not in the rate, but in the session). personal has no record, which is how an Enterprise login stays in dollars.
+HOOK="$HERE/../hooks/claude-statusline.sh"
+F31="$ROOT/fx31"; mkdir -p "$F31/usage"
+W0=$(( NOW - 172800 )); RE=$(( W0 + 1000 )); RESET31=$(( W0 + 604800 )); R5_31=$(( NOW + 3600 ))
+frow() {  # <ts> <sid> <agent id> <agent type> <model> <reqs> <in> <out>
+  printf '%s\tslug\t%s\t%s\t%s\t-\t%s\t%s\t%s\t0\t0\t0\t%s\t1000000\t1000000\n' "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8"
+}
+{ frow $(( W0 - 3600 )) s-work - - claude-opus-5 1 1000000 0
+  frow $(( W0 + 100 ))  s-work - - claude-opus-5 1 0 1000000
+  frow $(( W0 + 200 ))  s-work ag1 sub claude-opus-5 1 1000000 0
+  frow $(( RE + 500 ))  s-work - - claude-opus-5 1 1000000 0
+  frow $(( W0 + 100 ))  s-pers - - claude-opus-5 1 1000000 0; } >"$F31/usage/facts.tsv"
+mkdir -p "$F31/acct/work" "$F31/acct/personal"
+printf '{"display":"x","pastedContents":{},"timestamp":1000,"project":"/x","sessionId":"s-work"}\n' >"$F31/acct/work/history.jsonl"
+printf '{"display":"x","pastedContents":{},"timestamp":1000,"project":"/x","sessionId":"s-pers"}\n' >"$F31/acct/personal/history.jsonl"
+tw() { TU_STATE="$F31/usage" TU_ACCOUNTS="work=$F31/acct/work;personal=$F31/acct/personal" TU_ACCOUNT_RULES= bash "$TU" --no-update "$@" 2>&1; }
+if command -v jq >/dev/null 2>&1; then
+  pl31=$(printf '{"session_id":"sid-1","model":{"id":"claude-opus-5","display_name":"Opus"},"rate_limits":{"five_hour":{"used_percentage":20,"resets_at":%s},"seven_day":{"used_percentage":55,"resets_at":%s}}}' "$R5_31" "$RESET31")
+  printf '%s' "$pl31" | CLAUDE_CONFIG_DIR="$F31/acct/work/" TA_STATE_DIR="$F31" sh "$HOOK" >/dev/null
+  rec31=$(ls "$F31/ratelimit" | head -1)
+  ok "the hook named the record after the work dir, slash stripped" "$(printf '%s' "$F31/acct/work" | tr / _).tsv" "$rec31"
+  # The hook stamps the record with now; the tests need the instant RE the percent was true at.
+  printf '%s\t55\t%s\t20\t%s\n' "$RE" "$RESET31" "$R5_31" >"$F31/ratelimit/$rec31"
+  got=$(tw --windows)
+  ok "one row, for the work account only; the rate counts the window from its start to the record (30), not the session's pre-window \$5 or its spend after the record" \
+     "@w${TAB}work${TAB}${RE}${TAB}55${TAB}${RESET31}${TAB}20${TAB}${R5_31}${TAB}30.0000" "$got"
+  got=$(tw --sessions --windows)
+  ok "the rows come first and the window row last" "@w" "$(printf '%s\n' "$got" | tail -1 | cut -f1)"
+  ok "s-work: in-window dollars up to the record (25 + 5; the pre-window 5 and the 5 after the record both left out), the subagent part, and the account" \
+     "30.000000${TAB}5.000000${TAB}work" "$(printf '%s\n' "$got" | awk -F"$TAB" '$1 == "s-work" { print $15 "\t" $16 "\t" $17 }')"
+  ok "...while its all-time dollars still count both" "40.000000" "$(printf '%s\n' "$got" | awk -F"$TAB" '$1 == "s-work" { print $11 }')"
+  ok "s-pers has no window: nothing in it and no account" "0.000000${TAB}0.000000${TAB}" "$(printf '%s\n' "$got" | awk -F"$TAB" '$1 == "s-pers" { print $15 "\t" $16 "\t" $17 }')"
+  ok "--sessions alone prints neither the columns nor a window row" "14:0" "$(tw --sessions | awk -F"$TAB" 'NR == 1 { n = NF } /^@w/ { w++ } END { print n ":" w + 0 }')"
+  ok "...and one read of the index serves both: the session rows are the same with and without --windows" \
+     "$(tw --sessions | cut -f1-14 | sort)" "$(tw --sessions --windows | grep -v '^@w' | cut -f1-14 | sort)"
+  # A window that has already reset says nothing about this week.
+  printf '%s\t55\t%s\t20\t%s\n' "$RE" "$(( NOW - 10 ))" "$R5_31" >"$F31/ratelimit/$rec31"
+  ok "an expired window prints nothing" "" "$(tw --windows)"
+  printf '%s\t55\t%s\t20\t%s\n' "$RE" "$RESET31" "$(( NOW - 10 ))" >"$F31/ratelimit/$rec31"
+  ok "an expired five-hour window is blanked, the week stays" "@w${TAB}work${TAB}${RE}${TAB}55${TAB}${RESET31}${TAB}${TAB}${TAB}30.0000" "$(tw --windows)"
+
+  # The default login: CLAUDE_CONFIG_DIR unset, and ~/.claude a symlink, which the account list resolves and the hook never does.
+  H31="$F31/home"; mkdir -p "$H31/real"; ln -s real "$H31/.claude"
+  printf '{"display":"x","pastedContents":{},"timestamp":1000,"project":"/x","sessionId":"s-def"}\n' >"$H31/real/history.jsonl"
+  { frow $(( W0 + 100 )) s-def - - claude-opus-5 1 1000000 0; } >"$F31/usage/facts.tsv"
+  rm -rf "$F31/ratelimit"
+  printf '%s' "$pl31" | env -u CLAUDE_CONFIG_DIR HOME="$H31" TA_STATE_DIR="$F31" sh "$HOOK" >/dev/null
+  ok "the hook keeps the default login in default.tsv" "default.tsv" "$(ls "$F31/ratelimit")"
+  got=$(env -u TU_ACCOUNTS HOME="$H31" TU_STATE="$F31/usage" bash "$TU" --no-update --windows 2>&1)
+  ok "tusage finds it through a symlinked ~/.claude, with no TU_ACCOUNTS" "@w${TAB}default" "$(printf '%s' "$got" | cut -f1-2)"
+  ok "...and prices the default login's window" "5.0000" "$(printf '%s' "$got" | cut -f8)"
+  got=$(TU_ACCOUNTS="default=" HOME="$H31" TU_STATE="$F31/usage" bash "$TU" --no-update --windows 2>&1)
+  ok "an empty directory in TU_ACCOUNTS is the default login too" "@w${TAB}default" "$(printf '%s' "$got" | cut -f1-2)"
+else
+  echo "  jq missing: section 31 not run"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

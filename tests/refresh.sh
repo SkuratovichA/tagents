@@ -708,9 +708,10 @@ act 11 'echo "x = 2" >"$RF_CFG"'
 act 12 'echo "y = 2" >"${RF_CFG%.toml}.ovlhost.toml"'
 act 13 ': >"$RF_STATE/.order-window"'
 act 14 'printf "work\t/tmp\n" >"$RF_STATE/session-dirs.tsv"'
-go 15
-ok "state file, s- file, origins, labels, cols, .flat, sub, model, prompt, config, overlay, the order marker and the saved session directories each reload on their own wake, and the wake after is quiet" \
-   "1 2 3 4 5 6 7 8 9 10 11 12 13 14" "$(reloads)"
+act 15 'mkdir -p "$RF_STATE/ratelimit"; printf "1\t40\t9\t\t\n" >"$RF_STATE/ratelimit/default.tsv"'
+go 16
+ok "state file, s- file, origins, labels, cols, .flat, sub, model, prompt, config, overlay, the order marker, the saved session directories and the rate-limit record each reload on their own wake, and the wake after is quiet" \
+   "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15" "$(reloads)"
 rm -f "$OVLF"
 unset TA_HOST
 

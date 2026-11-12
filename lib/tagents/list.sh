@@ -77,7 +77,7 @@ list() {
                 -v grp="$grp" -v byw="$byw" -v home="$HOME" -v deadttl="$DEAD_TTL" -v cols="$cols" \
                 -v host="$HOST_S" -v hostf="$HOST_F" \
                 -v profs="$(prof_pairs)" -v USC="$US" -v RSC="$RS" \
-                -v hidecols="$hidecols" "$AWK_UNTITLE"'
+                -v hidecols="$hidecols" -v disp="$(usage_display)" "$AWK_UNTITLE"'
     # macOS awk counts bytes, so substr and %-Ns cut Cyrillic mid-character and
     # pad it to half width. Count characters instead, and never split one.
     function uclen(s,   i, n, c) {
@@ -151,6 +151,26 @@ list() {
       if (d >= 10)    return sprintf("$%.1f", d)
       if (d >= 0.01)  return sprintf("$%.2f", d)
       return "<$.01"
+    }
+    # A share of the week, narrow enough for the same cell: one decimal below
+    # 10%, none from there, and "<.1%" for a session that has spent something.
+    function pctfmt(v) {
+      if (v <= 0)     return "0%"
+      if (v < 0.1)    return "<.1%"
+      if (v < 9.95)   return sprintf("%.1f%%", v)
+      return sprintf("%d%%", v + 0.5)
+    }
+    # Transcript dollars to a share of the subscription week: what the session
+    # priced inside its account window (tusage prices both sides from the same
+    # transcripts, so they measure the same thing) times the 7d percent over what
+    # the account priced from the window start to the moment that percent was
+    # read. -1 (the caller falls back to dollars) when the setting says usd, the
+    # session has no fresh window, the percent is under 1 (the quotient would be
+    # noise) or the account priced nothing in the window.
+    function pctof(d, an) {
+      if (disp == "usd" || an == "" || !(an in wp7)) return -1
+      if (wp7[an] < 1 || wusd[an] <= 0) return -1
+      return d * wp7[an] / wusd[an]
     }
     # claude-opus-4-8 -> opus4.8, claude-haiku-4-5-20251001 -> haiku4.5. The
     # vendor prefix and the dated snapshot suffix carry no information in a
@@ -431,9 +451,12 @@ list() {
     # transcript at all (retries, title and summary generation), which is why it
     # wins over the priced one wherever it exists.
     $1=="M" { smdl[$2]=$3; if ($4 + 0 > 0) scost[$2]=$4 + 0; next }
+    # The window rows of tusage --windows: account, record time, 7d percent and
+    # reset, 5h percent and reset, and the dollars priced inside the 7d window.
+    $1=="U" && $2=="@w" { wp7[$3]=$5+0; wr7[$3]=$6+0; wp5[$3]=$7; wr5[$3]=$8+0; wusd[$3]=$9+0; next }
     $1=="U" { uctx[$2]=$5+0; u5h[$2]=$10+0; usub[$2]=$8+0; utot[$2]=$3+0
               umdl[$2]=$11; uusd[$2]=$12+0; uusd5h[$2]=$13+0; uusdsub[$2]=$14+0
-              uunp[$2]=$15+0; next }
+              uunp[$2]=$15+0; uws[$2]=$16+0; uwsub[$2]=$17+0; uacct[$2]=$18; next }
     END {
       # A session id that is running right now must not also be offered as a
       # closed one: resuming re-registers under a new pane, and the old record
@@ -612,7 +635,14 @@ list() {
         if (exact) ud = scost[sq]
         udsub = (sq in uusdsub) ? uusdsub[sq] : 0
         unp = (sq in uunp) ? uunp[sq] : 0
-        gburn[grpkey] += (sq in uusd5h) ? uusd5h[sq] : 0
+        # The window belongs to the account tusage placed the session in, which
+        # is the account its transcripts were written under, not the one the pane
+        # was launched as.
+        an = (sq in uacct) ? uacct[sq] : ""
+        pv = (sq in uusd5h) ? uusd5h[sq] : 0
+        pw = pctof(pv, an)
+        if (pv > 0 && pw >= 0) gburnp[grpkey] += pw
+        else gburn[grpkey] += pv
         # What this session has cost, priced per request at the model that ran
         # it. A trailing ? means some of it ran on a model with no published
         # rate, so the figure is a floor rather than the whole bill.
@@ -625,9 +655,17 @@ list() {
         # when there is a figure to mark: money() returns nothing at all below a
         # cent, and prefixing that left a lone "~" sitting in the column of every
         # session that had not spent anything yet.
-        udtxt = money(ud)
-        if (udtxt != "")
-          udtxt = (exact ? "" : "~") udtxt (!exact && unp > 0 ? "?" : "")
+        # A share of the week is always an estimate, so it always wears the ~, and
+        # it is measured on transcript dollars even where Claude Code reported an
+        # exact total: both sides of the division must be the same kind of figure.
+        pw = pctof((sq in uws) ? uws[sq] : 0, an)
+        if (ud > 0 && pw >= 0) {
+          udtxt = "~" pctfmt(pw) (unp > 0 ? "?" : "")
+        } else {
+          udtxt = money(ud)
+          if (udtxt != "")
+            udtxt = (exact ? "" : "~") udtxt (!exact && unp > 0 ? "?" : "")
+        }
         # THE CELLS ARE KEPT, NOT DRAWN. How wide a column is depends on what
         # every row puts in it, so each row is measured here and drawn after the
         # loop, once fitcols has seen them all.
@@ -635,6 +673,8 @@ list() {
         cbdg[n] = badgeof((p in cfgd) ? cfgd[p] : "", (p in hascfg) ? hascfg[p] : 0)
         cmdl[n] = curmodel(sq)
         cacct[n] = acctname((p in cfgd) ? cfgd[p] : "", (p in hascfg) ? hascfg[p] : 0)
+        pw = pctof((sq in uwsub) ? uwsub[sq] : 0, an)
+        cusubt[n] = (udsub > 0 && pw >= 0) ? pctfmt(pw) : money(udsub)
         cwhere[n] = where; cpre[n] = pre; cusub[n] = udsub; cdtl[n] = subp d
         if (cx > 0) mxctx = 1
         if (udtxt != "") mxcost = 1
@@ -703,8 +743,8 @@ list() {
         # expensive when I have barely typed into it".
         pre = cpre[i]; prew = uclen(pre)
         if (cusub[i] > 0 && burnw) {
-          pre = pre sprintf("%s⑂%s%s ", DIM, money(cusub[i]), R)
-          prew += uclen(money(cusub[i])) + 2
+          pre = pre sprintf("%s⑂%s%s ", DIM, cusubt[i], R)
+          prew += uclen(cusubt[i]) + 2
         }
         # THE DEEPER TEE IS PAID FOR OUT OF THE DETAIL OF THE CHILD. fitcols has
         # one tree budget for the whole list, and widening it for a second level
@@ -758,8 +798,10 @@ list() {
           # rather than as a third ternary in it — BWK awk will not take a
           # newline after the "?" of one.
           gbt = ""
-          if (gburn[g] > 0 && cols >= 60 && !("cost" in hid))
-            gbt = sprintf("%s%s/5h%s", DIM, money(gburn[g]), R)
+          gbs = (gburnp[g] > 0 ? pctfmt(gburnp[g]) : "")
+          if (gburn[g] > 0) gbs = gbs (gbs == "" ? "" : " ") money(gburn[g])
+          if (gbs != "" && cols >= 60 && !("cost" in hid))
+            gbt = sprintf("%s%s/5h%s", DIM, gbs, R)
           hdr = sprintf("%s▾ %s%s%s  %s%s",
                         (gmin[g] < prio["dead"] ? BOLD : DIM), gname(g), R, gpath, badge, gbt)
           printf "%d\t%s\t0\t0\t0\t%s\t%s\t%s\t%s\t%s\t0\t0\t0\t0\t%d\n",

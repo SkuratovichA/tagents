@@ -461,5 +461,77 @@ DATELOG="$ROOT/date.log" fnrun "$CFG" 'usage_line footer' >/dev/null 2>&1
 ok "usage_line footer starts one date" 1 "$(wc -l <"$ROOT/date.log" | tr -d ' ')"
 rm -f "$BIN/date"
 
+# ---------------------------------------------------------------------------
+t "11. a subscription login: the week, not the month"
+# ---------------------------------------------------------------------------
+# With a status-line record for the watched account the footer and the status
+# text are the 7-day window, read off the record itself with no tusage run;
+# without one, with a window that has reset, or with display = usd, they are the
+# month against the limit as before.
+NOWS=$(date +%s)
+RESET=$(( NOWS + 86400 ))
+AT=$(date -r "$RESET" '+%a %H:%M')
+rec() {  # <key> <7d reset> <5h reset>
+  mkdir -p "$STATE/ratelimit"
+  printf '%s\t41\t%s\t23\t%s\n' "$NOWS" "$2" "$3" >"$STATE/ratelimit/$1.tsv"
+}
+rec default "$RESET" "$RESET"
+mkrows 400
+: >"$ENVOUT"
+FT=$(fnrun "$CFG" 'usage_line footer' 2>/dev/null | strip)
+ok  "the footer is the week, with its reset" "work · 7d 41% ↺ $AT · 5h 23%" "$FT"
+ST=$(fnrun "$CFG" 'usage_line status' 2>/dev/null)
+ok  "the status text is the week too" "#[fg=colour244]w 7d 41% #[default]" "$ST"
+ok  "...and it ran no tusage at all" 0 "$(wc -c <"$ENVOUT" | tr -d ' ')"
+fnrun "$CFG" 'usage_line both' >"$ROOT/both.out" 2>/dev/null
+ok  "both is still the status, a \\036 byte and the footer" "$ST" "$(splitpart 1 "$ROOT/both.out")"
+has "...and the month is nowhere on it" "work · 7d" "$(splitpart 2 "$ROOT/both.out" | strip)"
+rec default "$RESET" "$(( NOWS - 5 ))"
+ok  "a five-hour window that has reset is left off" "work · 7d 41% ↺ $AT" "$(fnrun "$CFG" 'usage_line footer' 2>/dev/null | strip)"
+CFGUSD="$ROOT/config-usd.toml"
+mkcfg "$CFGUSD" "[usage]
+watch = \"work\"
+monthly_limit_usd = 850
+safety_margin_pct = 5
+display = \"usd\""
+rec default "$RESET" "$RESET"
+has "display = usd keeps the month against the limit" "of \$850" "$(fnrun "$CFGUSD" 'usage_line footer' 2>/dev/null | strip)"
+rec default "$(( NOWS - 5 ))" "$RESET"
+has "a window that has reset keeps the month" "of \$850" "$(fnrun "$CFG" 'usage_line footer' 2>/dev/null | strip)"
+rm -f "$STATE/ratelimit/default.tsv"
+has "no record (an Enterprise login) keeps the month against the limit" "of \$850" "$(fnrun "$CFG" 'usage_line footer' 2>/dev/null | strip)"
+
+# A config_dir written with ~ is expanded before the key is made, so the record
+# the hook wrote under the real path is found; a profile with a trailing slash too.
+HM="$ROOT/home"; mkdir -p "$HM"
+CFGT="$ROOT/config-tilde.toml"
+cat >"$CFGT" <<EOF
+[claude.profiles.work]
+config_dir = "~/.claude-w/"
+
+[usage]
+watch = "work"
+monthly_limit_usd = 850
+EOF
+rec "$(printf '%s' "$HM/.claude-w" | tr / _)" "$RESET" "$RESET"
+has "a ~/ config_dir finds the record the hook keyed by the real path" "work · 7d 41%" \
+    "$(env HOME="$HM" TA_CONFIG="$CFGT" TA_STATE_DIR="$STATE" PATH="$BIN:$PATH" /bin/bash -c 'set -uo pipefail; for m in '"$FN_MODS"'; do . "'"$LIBD"'/$m.sh"; done; cfg_load; usage_line footer' 2>/dev/null | strip)"
+
+# THE KEY, THREE COPIES. The hook, tusage and usage.sh each make it; one login's
+# record has to be found by all three whatever the spelling of its directory.
+HOOKSH="$HERE/../hooks/claude-statusline.sh"
+if command -v jq >/dev/null 2>&1; then
+  for d in "" "$HM/.claude" "$HM/.claude/" "$HM/.claude-w" "$HM/.claude-w//" "/opt/x y/.claude-z"; do
+    rm -rf "$ROOT/kst"; mkdir -p "$ROOT/kst"
+    printf '{"session_id":"s","model":{"id":"m","display_name":"M"},"rate_limits":{"seven_day":{"used_percentage":1,"resets_at":99999999999}}}' |
+      env HOME="$HM" TA_STATE_DIR="$ROOT/kst" ${d:+CLAUDE_CONFIG_DIR="$d"} sh "$HOOKSH" >/dev/null 2>&1
+    ok "the hook and usage.sh key '${d:-unset}' alike" "$(ls "$ROOT/kst/ratelimit" 2>/dev/null)" \
+       "$(env HOME="$HM" /bin/bash -c 'for m in '"$FN_MODS"'; do . "'"$LIBD"'/$m.sh"; done; usage_ratelimit_key "$1"; printf .tsv' _ "$d" 2>/dev/null)"
+  done
+else
+  echo "  jq missing: the key pin against the hook not run"
+fi
+rm -rf "$STATE/ratelimit"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

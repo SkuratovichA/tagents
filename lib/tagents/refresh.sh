@@ -67,7 +67,7 @@ refresh_changed() {  # <marker> <overlay config path> [strict] — 0 when someth
     for f in "$STATE_DIR"/[0-9]*.tsv "$STATE_DIR"/s-*.tsv "$LABELS" "$SESSION_DIRS" "$ORIGINS" "$COLS_FILE" \
              "$STATE_DIR/.flat" "$STATE_DIR/.order-window" "$STATE_DIR/sub" "$STATE_DIR"/sub/* \
              "$STATE_DIR/model" "$STATE_DIR"/model/*.tsv \
-             "$STATE_DIR/prompt" "$STATE_DIR"/prompt/* "$CONFIG_FILE" "$ovl"; do
+             "$STATE_DIR/prompt" "$STATE_DIR"/prompt/* "$STATE_DIR/ratelimit" "$STATE_DIR"/ratelimit/* "$CONFIG_FILE" "$ovl"; do
       [ "$f" -nt "$mark" ] && return 0
     done
     return 1
@@ -75,7 +75,7 @@ refresh_changed() {  # <marker> <overlay config path> [strict] — 0 when someth
   for f in "$STATE_DIR"/[0-9]*.tsv "$STATE_DIR"/s-*.tsv "$LABELS" "$SESSION_DIRS" "$ORIGINS" "$COLS_FILE" \
            "$STATE_DIR/.flat" "$STATE_DIR/.order-window" "$STATE_DIR/sub" "$STATE_DIR"/sub/* \
            "$STATE_DIR/model" "$STATE_DIR"/model/*.tsv \
-           "$STATE_DIR/prompt" "$STATE_DIR"/prompt/* "$CONFIG_FILE" "$ovl"; do
+           "$STATE_DIR/prompt" "$STATE_DIR"/prompt/* "$STATE_DIR/ratelimit" "$STATE_DIR"/ratelimit/* "$CONFIG_FILE" "$ovl"; do
     ! [ "$mark" -nt "$f" ] && return 0
   done
   return 1

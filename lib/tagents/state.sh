@@ -445,6 +445,15 @@ collect() {
   # Token accounting, joined on session id. --no-update keeps this to one awk
   # pass over the index; advancing the index is the refresher loop's job, so a
   # keystroke never waits on it.
-  usage_on &&
-    tusage --no-update --sessions 2>/dev/null | sed "s/^/U${TAB}/"
+  # A subscription login keeps a ratelimit record (the status line writes it),
+  # and only then does the same pass print the account's window rows too, "@w"
+  # in the second field. A machine with none (Enterprise, API) asks as before.
+  if usage_on; then
+    set -- "$STATE_DIR"/ratelimit/*.tsv
+    if [ -e "$1" ]; then
+      TU_RATELIMIT="$STATE_DIR/ratelimit" tusage --no-update --sessions --windows 2>/dev/null | sed "s/^/U${TAB}/"
+    else
+      tusage --no-update --sessions 2>/dev/null | sed "s/^/U${TAB}/"
+    fi
+  fi
 }

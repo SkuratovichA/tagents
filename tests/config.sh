@@ -512,6 +512,9 @@ send = "mail"
 new = "ctrl-1"
 EOF
 out=$(ck "$TMP/values.toml")
+printf '[usage]\ndisplay = "euros"\n' >"$TMP/display.toml"
+contains "a display outside its three words" \
+   "usage.display: \"euros\" is not one of auto, usd, percent — read as auto" "$(ck "$TMP/display.toml")"
 contains "a limit that is not a number" "usage.monthly_limit_usd: \"850 dollars\" is not a number" "$out"
 contains "a margin over 100"            "usage.safety_margin_pct: 150 is not a percentage" "$out"
 contains "workdays: False reads as true, and says so" \

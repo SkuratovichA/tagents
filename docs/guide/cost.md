@@ -55,6 +55,19 @@ A seat with no meter (a plan, not credits) answers without a spend figure and is
 
 A typed reading from another month, or one implying a correction outside 0.5 to 1.5, is ignored and the footer says so.
 
+## Subscription plans: the week, not the dollar
+
+A Pro, Max or Ultra login has no bill to read a dollar figure off, it has a 7-day rate-limit window, and a session is cheap or dear by how much of that week it took. For such a login the cost column reads as a share of the week (`~4.9%`) and the footer as `work · 7d 41% ↺ Thu 14:00 · 5h 23%`. An Enterprise or API login has no window and stays in dollars.
+
+- **Where the figure comes from**: Claude Code hands the status line its own `rate_limits` (the 7-day and 5-hour percent used, and when each resets). `hooks/claude-statusline.sh` keeps the latest of them per login in `agent-state/ratelimit/<key>.tsv`, one line of epoch, 7d percent, 7d reset, 5h percent, 5h reset. The key is `CLAUDE_CONFIG_DIR` with the trailing slash off and every other `/` turned into `_` (`/Users/me/.claude-work/` is `_Users_me_.claude-work`); the unset variable and `~/.claude` are both `default`. Nothing is fetched, no keychain is read.
+- **How dollars become percent**: `tusage --sessions --windows` prices, from the same transcripts and in the same pass, the login's requests from the window start (its reset minus a week) up to the instant the status line wrote the record, and each session's requests inside the window up to that same instant. The first sum divided by the 7d percent is what one percent of the week costs; a session's in-window sum divided by that is its share. A session that began before the window counts only what it spent inside it, and requests priced after the record move neither the rate nor any session's share (a headless run with no status line keeps an old record, and must not outgrow the percent). The `⑂` subagent share and the `/5h` figure on a group header convert the same way.
+- **It is always an estimate**, so it always wears the `~` (and the `?` when part ran on an unrated model), even where Claude Code reported an exact dollar total: both sides of the division have to be the same kind of figure. The rate moves with the plan and with what was run this week, so the same session reads a different percent next week. Under `<.1%` a session that spent something still shows.
+- **The footer and status text** are read off the record alone, with no `tusage` run on the status-bar tick.
+- **When it falls back to dollars**: there is no fresh reading (the window has reset, or the status line has not rendered yet), the 7d percent is under 1 (the quotient would be noise), or nothing was priced inside the window.
+- **Hiding the cost column** hides the percent with it, and the header total.
+
+`usage.display` picks what is shown: `auto` (the default) and `percent` read a subscription login in percent whenever there is a reading, and `usd` always prints dollars. Today `auto` and `percent` behave the same, since the 7-day window is the only source of a percent; they are two names so a second source can tell them apart later.
+
 ## Reports in a terminal
 
 Run by hand, `tusage` answers where the money went. Every table prices each request at the rate of the model that served it, in dollars at list price, from the same index the dashboard reads.

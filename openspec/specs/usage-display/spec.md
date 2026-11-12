@@ -175,3 +175,50 @@ While the fetched meter reading for the watched account has status `ok` and is l
 #### Scenario: No reading configured
 - **WHEN** `usage.meter` is unset and no fetched reading applies
 - **THEN** the footer carries no meter note
+
+### Requirement: The status line keeps the account's 7-day window
+The `claude-statusline` capability SHALL keep the latest `rate_limits` it sees, per login, in `ratelimit/<key>.tsv` as one line of epoch, 7d percent, 7d reset, 5h percent and 5h reset. The key SHALL be `CLAUDE_CONFIG_DIR` without trailing slashes, `default` when that is empty or `$HOME/.claude`, and every other `/` turned into `_`. A payload without `rate_limits` SHALL write nothing.
+
+#### Scenario: Two spellings of one directory
+- **WHEN** the same login reports once with a trailing slash on its config directory and once without
+- **THEN** both reports go to the same record
+
+### Requirement: A subscription session reads as a share of its week
+For an account with a fresh record, the cost cell SHALL show the session's share of the 7-day window instead of dollars: its transcript list-price spend inside the window (reset minus seven days until the instant the record was written), times the 7d percent, over the account's spend from the window start to the instant the record was written. Both sides SHALL be priced from the same transcripts by one read of the index (`tusage --sessions --windows`).
+
+#### Scenario: A subscription session
+- **WHEN** the record says 40% used, the account priced $100 up to that record and a session priced $5 inside the window
+- **THEN** its row shows `~2.0%`, not its dollars
+
+#### Scenario: A session that began before the window
+- **WHEN** a session spent $5 before the window began and $5 inside it
+- **THEN** only the $5 inside counts toward its share
+
+#### Scenario: Spend after the record
+- **WHEN** requests are priced after the instant the record was written
+- **THEN** they move neither the account's dollars per percent nor any session's share
+
+### Requirement: The share is an estimate and is drawn narrow
+The share SHALL always carry `~`, followed by `?` when part of the spend ran on an unrated model, because it is priced from transcripts. It SHALL be shown with one decimal below 10, none from 10, and `<.1%` below 0.1. The `⑂` subagent share and the project header's `/5h` total SHALL convert the same way, and hiding the cost column SHALL hide them all.
+
+#### Scenario: The cost column is hidden
+- **WHEN** the cost column is hidden on a subscription login
+- **THEN** no row or header shows a percent
+
+### Requirement: The share falls back to dollars
+Rows and headers SHALL show dollars, and the footer the month against its limit, when the account has no record (an Enterprise or API login), its window has reset, its 7d percent is under 1, it priced nothing in the window, or `usage.display` is `usd`. `usage.display` SHALL accept `auto`, `usd` and `percent`, the first and last behaving alike; anything else SHALL be reported by `--check` and read as `auto`.
+
+#### Scenario: An Enterprise login
+- **WHEN** the account has no record
+- **THEN** rows, headers and footer show dollars and the month as before
+
+#### Scenario: Dollars forced
+- **WHEN** `usage.display` is `usd` on a subscription login
+- **THEN** rows show dollars
+
+### Requirement: The footer reads the week without tusage
+For a watched profile with a fresh record the footer and status text SHALL read `<profile> · 7d <n>% ↺ <weekday HH:MM> · 5h <n>%`, taken from the record alone, so the status-bar tick runs no `tusage`. The `5h` part SHALL be left off once that window has reset.
+
+#### Scenario: The footer on a subscription login
+- **WHEN** the watched profile's record says 41% of the week and 23% of five hours
+- **THEN** the footer reads `<profile> · 7d 41% ↺ <weekday HH:MM> · 5h 23%` and no `tusage` process was started for it

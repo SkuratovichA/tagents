@@ -663,6 +663,11 @@ EOF
           true|false|yes|no|on|off|0|1) ;;
           *) cfg_note "$k" "\"$v\" is not true or false — read as true" ;;
         esac ;;
+      usage.display)
+        case $v in
+          auto|usd|percent) ;;
+          *) cfg_note "$k" "\"$v\" is not one of auto, usd, percent — read as auto" ;;
+        esac ;;
       notes.send)
         case $v in
           reference|paste|submit) ;;
