@@ -1335,6 +1335,25 @@ ok "the child row fits too" 1 "$(printf '%s' "$(row_of %s-kid "$CK")" | perl -CS
 hasnt "33 columns is compact: no tree glyph" "├" "$(rows_at 33)"
 has "34 columns is not: the tree is drawn" "├" "$(rows_at 34)"
 rm -f "$STATE/s-kid.tsv" "$STATE/prompt/s-kid"
+# THE RESIZE SCRIPT: the dashboard writes it, and one header per band of widths, when it starts. A fzf that quits at once is enough to start it; the script is then run the way the resize bind runs it, with the width in FZF_COLUMNS.
+RZ="$ROOT/rz-state"; RZBIN="$ROOT/rz-bin"; mkdir -p "$RZ" "$RZBIN"
+printf '#!/bin/sh\nexit 130\n' >"$RZBIN/fzf"; chmod +x "$RZBIN/fzf"
+env TMUX="$TMUXV" PATH="$RZBIN:$PATH" TA_STATE_DIR="$RZ" TA_COLS=80 bash "$TA" >/dev/null 2>&1
+ok "the dashboard wrote its resize script under a fixed name" yes "$([ -s "$RZ/.resize.dash0.sh" ] && echo yes || echo no)"
+RH40=$(env FZF_COLUMNS=40 sh "$RZ/.resize.dash0.sh")
+ok "at 40 columns the script prints a header" 1 "$([ -n "$RH40" ] && echo 1 || echo 0)"
+ok "...no line of it wider than 36 (cols - 4), and the quit hint is still in it" "0 1" \
+   "$(printf '%s\n' "$RH40" | perl -CS -ne 'chomp; $w = 1 if length($_) > 36; $q = 1 if /quit/; END { print(($w ? 1 : 0) . " " . ($q ? 1 : 0)) }')"
+ok "at 33 columns the script prints nothing" "" "$(env FZF_COLUMNS=33 sh "$RZ/.resize.dash0.sh")"
+RZN=$(ls -A "$RZ" | wc -l | tr -d ' ')
+env TMUX="$TMUXV" PATH="$RZBIN:$PATH" TA_STATE_DIR="$RZ" TA_COLS=80 bash "$TA" >/dev/null 2>&1
+ok "starting again adds no file" "$RZN" "$(ls -A "$RZ" | wc -l | tr -d ' ')"
+
+# THE ORDER MARKER MIGRATION: the start removes the .order-window an earlier version left and keeps the .order-recent of this one.
+OM="$ROOT/om-state"; mkdir -p "$OM"; : >"$OM/.order-window"; : >"$OM/.order-recent"
+env TMUX="$TMUXV" PATH="$RZBIN:$PATH" TA_STATE_DIR="$OM" TA_COLS=80 bash "$TA" >/dev/null 2>&1
+ok "a leftover .order-window is gone after a start" no "$([ -e "$OM/.order-window" ] && echo yes || echo no)"
+ok "...and .order-recent survives it" yes "$([ -e "$OM/.order-recent" ] && echo yes || echo no)"
 ok "a header below the compact threshold is empty, there is no room for key hints" "" "$(env TMUX="$TMUXV" bash "$TA" --header 20)"
 has "a header at 34 columns still carries the keys" "keys" "$(env TMUX="$TMUXV" bash "$TA" --header 34)"
 
