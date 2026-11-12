@@ -62,7 +62,7 @@ A verb that is not for a model, such as one that opens a session or sends a prom
 { "path": ["--window"], "options": { "detach": { "type": "boolean" } }, "toolDefaults": { "detach": true }, /* … */ }
 ```
 
-Nineteen tools result today: `core_doctor`, `core_plugin_list`, `core_plugin_new`, `core_plugin_remove`, `core_session_last`, `core_session_list`, `core_sessions_show`, `knowledge_index`, `knowledge_lint`, `knowledge_toc`, `notify_send`, `notify_status`, `notify_test`, `tagents_check`, `tagents_config`, `tagents_label`, `tagents_new`, `tagents_profile_for` and `tagents_window`.
+Nineteen tools result today: `core_doctor`, `core_plugin_list`, `core_plugin_new`, `core_plugin_remove`, `core_session_last`, `core_session_list`, `core_sessions_show`, `notify_send`, `notify_status`, `notify_test`, `okb_index`, `okb_lint`, `okb_toc`, `tagents_check`, `tagents_config`, `tagents_label`, `tagents_new`, `tagents_profile_for` and `tagents_window`. The server answers two more itself, `sessions_recent` and `sessions_search`, which no CLI verb stands behind: their entries are in `crates/tagents-core/src/mcp/sessions_tools.json`.
 
 ## Three things keep it honest
 

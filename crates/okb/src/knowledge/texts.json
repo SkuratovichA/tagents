@@ -1,13 +1,13 @@
 {
   "en": {
-    "usage": "usage: tagents-knowledge <command>\n\n  index [--dir D] [--db F] [--full]\n  search <query…> [--tag T] [--type T] [--kind K] [--limit N] [--json] [--usage-db F] [--verbose]\n  show <id[#heading]> [--dir D] [--usage-db F] [--verbose]\n  list [--type T] [--kind K] [--tag T] [--json]\n  lint [--dir D]\n  toc [--dir D] [--check]\n  usage [--dir D] [--db F] [--usage-db F] [--since Nd] [--top N] [--type T] [--all] [--candidates] [--min-gets N] [--min-days N] [--json]\n\nexit: 0 ok · 1 error · 2 usage · 4 nothing found",
+    "usage": "usage: okb <command>\n\n  index [--dir D] [--db F] [--full]\n  search <query…> [--tag T] [--type T] [--kind K] [--limit N] [--json] [--usage-db F] [--verbose]\n  show <id[#heading]> [--dir D] [--usage-db F] [--verbose]\n  list [--type T] [--kind K] [--tag T] [--json]\n  lint [--dir D]\n  toc [--dir D] [--check]\n  usage [--dir D] [--db F] [--usage-db F] [--since Nd] [--top N] [--type T] [--all] [--candidates] [--min-gets N] [--min-days N] [--json]\n\nexit: 0 ok · 1 error · 2 usage · 4 nothing found",
     "unknownCommand": "unknown command: {{command}}",
     "missingOption": "missing required argument {{option}}",
     "noDir": "no knowledge directory: set OKB_DIR, pass --dir, or add to {{config}}\n\n{{snippet}}",
     "missingDir": "knowledge directory {{dir}} does not exist",
     "indexed": "indexed {{db}}: {{added}} new, {{changed}} changed, {{unchanged}} unchanged, {{removed}} removed",
     "indexErrors": "{{count}} file(s) could not be read; run lint",
-    "notIndexed": "index {{db}} is empty — run: tagents-knowledge index",
+    "notIndexed": "index {{db}} is empty — run: okb index",
     "noHits": "nothing matches {{query}}",
     "unknownId": "no document with id {{id}}",
     "unknownHeading": "document {{id}} has no section \"{{heading}}\"",
@@ -57,13 +57,11 @@
     "serveFailed": "could not start the shared knowledge server: {{reason}}"
   },
   "ru": {
-    "usage": "использование: tagents-knowledge <команда>\n\n  index [--dir D] [--db F] [--full]\n  search <запрос…> [--tag T] [--type T] [--kind K] [--limit N] [--json]\n  show <id[#заголовок]> [--dir D]\n  list [--type T] [--kind K] [--tag T] [--json]\n  lint [--dir D]\n  toc [--dir D] [--check]\n\nкоды выхода: 0 ок · 1 ошибка · 2 использование · 4 ничего не найдено",
     "unknownCommand": "неизвестная команда: {{command}}",
     "missingOption": "не хватает обязательного аргумента {{option}}",
     "missingDir": "каталог знаний {{dir}} не существует",
     "indexed": "проиндексировано {{db}}: новых {{added}}, изменённых {{changed}}, без изменений {{unchanged}}, удалено {{removed}}",
     "indexErrors": "файлов не прочитано: {{count}}; запустите lint",
-    "notIndexed": "индекс {{db}} пуст — выполните: tagents-knowledge index",
     "noHits": "ничего не найдено по запросу {{query}}",
     "unknownId": "нет документа с id {{id}}",
     "unknownHeading": "в документе {{id}} нет раздела «{{heading}}»",

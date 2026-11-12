@@ -13,7 +13,7 @@
 #                                           or $TAGENTS_HOME/target/release/tagents-core when that binary exists at install time (node's CLI answers the verbs the binary serves with a needs-binary line and exit 69)
 #                                           the binary is the prebuilt one of this checkout's version when a release has it (below), or one built by hand
 #   ~/.local/bin/okb                        exec $TAGENTS_HOME/target/release/okb, looked up when it runs; with none, the needs-binary line and exit 69
-#   ~/.local/bin/tagents-knowledge          exec ~/.local/bin/okb: the old name of okb
+#   ~/.local/bin/tagents-knowledge          one stderr line naming okb, then exec ~/.local/bin/okb: the old name of okb, kept for one release
 #   ~/.local/bin/tagents-notify             exec <node> $TAGENTS_HOME/packages/notify/dist/main.js
 #                                           or `tagents-core notify run` of the same binary, for the one call `tagents-notify run` and no other (status, install and the rest stay with node), named when the binary exists at install time; the LaunchAgent that `tagents notify install` writes runs this wrapper, so a binary that is gone at the next start gives node's needs-binary line and exit 69
 #   ~/.local/bin/tagents-mcp                exec <node> $TAGENTS_HOME/packages/core/dist/cli/main.js mcp
@@ -100,11 +100,11 @@ write_okb_wrapper() {  # <dest> <binary>; 1 when $1 is not ours and was left alo
   mv -f "$tmp" "$1"
 }
 
-# tagents-knowledge is the old name of okb: it runs the okb wrapper next to it, by its path, so the caller's PATH does not matter.
+# tagents-knowledge is the old name of okb, kept for one release: it says on stderr that the name is okb now and runs the okb wrapper next to it, by its path, so the caller's PATH does not matter.
 write_okb_alias() {  # <dest> <okb wrapper>
   claim_dest "$1" || return 0
   tmp=$1.tmp.$$
-  printf '#!/bin/sh\n# %s, rewritten on every update: do not edit\nexec "%s" "$@"\n' "$MARK" "$2" > "$tmp"
+  printf '#!/bin/sh\n# %s, rewritten on every update: do not edit\necho "tagents-knowledge is now called okb; this name goes away in the next release" >&2\nexec "%s" "$@"\n' "$MARK" "$2" > "$tmp"
   chmod 755 "$tmp"
   mv -f "$tmp" "$1"
 }

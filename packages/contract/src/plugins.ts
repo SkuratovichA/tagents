@@ -2,8 +2,8 @@
 import { isJsonObject, type JsonObject, type JsonValue } from './json.ts';
 
 /** The program and the MCP server the okb plugin is made of, by the names the contract gives them. */
-export const OKB_PROGRAM = 'tagents-knowledge';
-export const KNOWLEDGE_SERVER_NAME = 'tagents-knowledge';
+export const OKB_PROGRAM = 'okb';
+export const KNOWLEDGE_SERVER_NAME = 'okb';
 
 export interface PluginDef {
   readonly name: string;

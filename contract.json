@@ -269,7 +269,7 @@
         }
       ]
     },
-    "tagents-knowledge": {
+    "okb": {
       "exit": {
         "ok": 0,
         "error": 1,
@@ -697,7 +697,7 @@
     }
   },
   "mcp": {
-    "tagents-knowledge": {
+    "okb": {
       "tools": [
         {
           "name": "knowledge_get",
@@ -969,71 +969,6 @@
           }
         },
         {
-          "name": "knowledge_index",
-          "description": "Brings the index in line with the folder; --full rebuilds it from nothing.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "dir": {
-                "type": "string"
-              },
-              "db": {
-                "type": "string"
-              },
-              "full": {
-                "type": "boolean"
-              }
-            },
-            "required": [],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": false,
-            "destructiveHint": false,
-            "openWorldHint": false
-          }
-        },
-        {
-          "name": "knowledge_lint",
-          "description": "Checks the claims each document makes about itself.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "dir": {
-                "type": "string"
-              }
-            },
-            "required": [],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": true,
-            "openWorldHint": false
-          }
-        },
-        {
-          "name": "knowledge_toc",
-          "description": "Writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "dir": {
-                "type": "string"
-              },
-              "check": {
-                "type": "boolean"
-              }
-            },
-            "required": [],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": false,
-            "destructiveHint": false,
-            "openWorldHint": false
-          }
-        },
-        {
           "name": "notify_send",
           "description": "Posts a desktop notification with this message (the words are joined with a space) through the configured backend, which shows it on the screen; a click docks the pane the command runs in; a title over 256 characters or a message over 2048 is refused.",
           "inputSchema": {
@@ -1083,6 +1018,71 @@
             "properties": {
               "kind": {
                 "type": "string"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "okb_index",
+          "description": "Brings the index in line with the folder; --full rebuilds it from nothing.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dir": {
+                "type": "string"
+              },
+              "db": {
+                "type": "string"
+              },
+              "full": {
+                "type": "boolean"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "okb_lint",
+          "description": "Checks the claims each document makes about itself.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dir": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "okb_toc",
+          "description": "Writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dir": {
+                "type": "string"
+              },
+              "check": {
+                "type": "boolean"
               }
             },
             "required": [],

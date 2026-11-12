@@ -2,7 +2,7 @@
 
 This file is generated from the code by `pnpm plugin:gen`. Do not edit it by hand: change the code and regenerate.
 
-## tagents-knowledge
+## okb
 
 ### knowledge_get
 

@@ -229,11 +229,7 @@ fn input_that_ends_releases_the_daemon_at_once() {
             .leak();
     let (ran, sink) = run(connect, session(text, "serverInfo", true));
     assert_eq!((0, ""), (ran.code, ran.errors.as_str()));
-    assert!(
-        sink.has("\"name\":\"tagents-knowledge\""),
-        "{}",
-        sink.text()
-    );
+    assert!(sink.has("\"name\":\"okb\""), "{}", sink.text());
     assert_eq!(1, calls.load(Ordering::SeqCst));
     // The connection is not counted any more, so the idle time runs and the daemon leaves.
     assert_eq!(Ok(Outcome::Served), daemon.outcome());
@@ -349,7 +345,7 @@ fn a_server_that_goes_after_its_first_reply_ends_join_with_exit_1_and_the_line()
     let (ran, sink) = run(connect, session("q\n", "r1\n", false));
     assert_eq!(1, ran.code);
     assert_eq!(format!("{WENT_AWAY}\n"), ran.errors);
-    assert_eq!("tagents-knowledge: the shared server went away", WENT_AWAY);
+    assert_eq!("okb: the shared server went away", WENT_AWAY);
     assert_eq!("r1\n", sink.text());
     assert_eq!(1, calls.load(Ordering::SeqCst));
     assert!(ran.here.is_empty());

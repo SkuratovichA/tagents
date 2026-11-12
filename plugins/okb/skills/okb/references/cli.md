@@ -2,7 +2,7 @@
 
 This file is generated from the code by `pnpm plugin:gen`. Do not edit it by hand: change the code and regenerate.
 
-## tagents-knowledge
+## okb
 
 ### Exit codes
 
@@ -18,9 +18,9 @@ This file is generated from the code by `pnpm plugin:gen`. Do not edit it by han
 
 brings the index in line with the folder; --full rebuilds it from nothing
 
-Tool: `knowledge_index`
+Tool: `okb_index`
 
-Usage: `tagents-knowledge index [--dir <dir>] [--db <db>] [--full]`
+Usage: `okb index [--dir <dir>] [--db <db>] [--full]`
 
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
@@ -34,7 +34,7 @@ prints one line per hit: id#heading, score and snippet; --type filters by type (
 
 CLI only: no tool runs this verb.
 
-Usage: `tagents-knowledge search <query…> [--dir <dir>] [--db <db>] [--tag <tag>] [--type <type>] [--kind <kind>] [--limit <limit>] [--json] [--usage-db <usage-db>] [--verbose]`
+Usage: `okb search <query…> [--dir <dir>] [--db <db>] [--tag <tag>] [--type <type>] [--kind <kind>] [--limit <limit>] [--json] [--usage-db <usage-db>] [--verbose]`
 
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
@@ -54,7 +54,7 @@ prints the markdown of a document, or of one section of it; the read is recorded
 
 CLI only: no tool runs this verb.
 
-Usage: `tagents-knowledge show <id[#heading]> [--dir <dir>] [--db <db>] [--usage-db <usage-db>] [--verbose]`
+Usage: `okb show <id[#heading]> [--dir <dir>] [--db <db>] [--usage-db <usage-db>] [--verbose]`
 
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
@@ -69,7 +69,7 @@ prints one line per document: id, type, updated, title and tags; --type filters 
 
 CLI only: no tool runs this verb.
 
-Usage: `tagents-knowledge list [--dir <dir>] [--db <db>] [--type <type>] [--kind <kind>] [--tag <tag>] [--json]`
+Usage: `okb list [--dir <dir>] [--db <db>] [--type <type>] [--kind <kind>] [--tag <tag>] [--json]`
 
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
@@ -84,9 +84,9 @@ Usage: `tagents-knowledge list [--dir <dir>] [--db <db>] [--type <type>] [--kind
 
 checks the claims each document makes about itself
 
-Tool: `knowledge_lint`
+Tool: `okb_lint`
 
-Usage: `tagents-knowledge lint [--dir <dir>]`
+Usage: `okb lint [--dir <dir>]`
 
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
@@ -96,9 +96,9 @@ Usage: `tagents-knowledge lint [--dir <dir>]`
 
 writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date
 
-Tool: `knowledge_toc`
+Tool: `okb_toc`
 
-Usage: `tagents-knowledge toc [--dir <dir>] [--check]`
+Usage: `okb toc [--dir <dir>] [--check]`
 
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
@@ -111,7 +111,7 @@ reports what was read: one line per document with its type, status, gets, hits, 
 
 CLI only: no tool runs this verb.
 
-Usage: `tagents-knowledge usage [--dir <dir>] [--db <db>] [--usage-db <usage-db>] [--since <since>] [--top <top>] [--type <type>] [--all] [--candidates] [--min-gets <min-gets>] [--min-days <min-days>] [--json]`
+Usage: `okb usage [--dir <dir>] [--db <db>] [--usage-db <usage-db>] [--since <since>] [--top <top>] [--type <type>] [--all] [--candidates] [--min-gets <min-gets>] [--min-days <min-days>] [--json]`
 
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
@@ -133,7 +133,7 @@ serves the six knowledge tools to an MCP client over stdin and stdout in this pr
 
 CLI only: no tool runs this verb.
 
-Usage: `tagents-knowledge mcp`
+Usage: `okb mcp`
 
 This verb takes no flags.
 
@@ -143,7 +143,7 @@ prints the socket of the shared knowledge server of this environment and starts 
 
 CLI only: no tool runs this verb.
 
-Usage: `tagents-knowledge serve [--idle <idle>] [--foreground] [--socket <socket>]`
+Usage: `okb serve [--idle <idle>] [--foreground] [--socket <socket>]`
 
 | Flag | Type | Required | Repeatable |
 |---|---|---|---|
@@ -157,6 +157,6 @@ connects stdin and stdout to the shared knowledge server, starting it when none 
 
 CLI only: no tool runs this verb.
 
-Usage: `tagents-knowledge join`
+Usage: `okb join`
 
 This verb takes no flags.

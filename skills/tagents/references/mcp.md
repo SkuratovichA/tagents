@@ -192,93 +192,6 @@ Prints the full text of one transcript, picked by id prefix.
 }
 ```
 
-### knowledge_index
-
-Brings the index in line with the folder; --full rebuilds it from nothing.
-
-#### Inputs
-
-| Input | Type | Required | Description |
-|---|---|---|---|
-| `dir` | string | no |  |
-| `db` | string | no |  |
-| `full` | boolean | no |  |
-
-#### Input schema
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "dir": {
-      "type": "string"
-    },
-    "db": {
-      "type": "string"
-    },
-    "full": {
-      "type": "boolean"
-    }
-  },
-  "required": [],
-  "additionalProperties": false
-}
-```
-
-### knowledge_lint
-
-Checks the claims each document makes about itself.
-
-#### Inputs
-
-| Input | Type | Required | Description |
-|---|---|---|---|
-| `dir` | string | no |  |
-
-#### Input schema
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "dir": {
-      "type": "string"
-    }
-  },
-  "required": [],
-  "additionalProperties": false
-}
-```
-
-### knowledge_toc
-
-Writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date.
-
-#### Inputs
-
-| Input | Type | Required | Description |
-|---|---|---|---|
-| `dir` | string | no |  |
-| `check` | boolean | no |  |
-
-#### Input schema
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "dir": {
-      "type": "string"
-    },
-    "check": {
-      "type": "boolean"
-    }
-  },
-  "required": [],
-  "additionalProperties": false
-}
-```
-
 ### notify_send
 
 Posts a desktop notification with this message (the words are joined with a space) through the configured backend, which shows it on the screen; a click docks the pane the command runs in; a title over 256 characters or a message over 2048 is refused.
@@ -351,6 +264,93 @@ Posts one sample notice of the given kind through the configured backend, which 
   "properties": {
     "kind": {
       "type": "string"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}
+```
+
+### okb_index
+
+Brings the index in line with the folder; --full rebuilds it from nothing.
+
+#### Inputs
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `dir` | string | no |  |
+| `db` | string | no |  |
+| `full` | boolean | no |  |
+
+#### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "dir": {
+      "type": "string"
+    },
+    "db": {
+      "type": "string"
+    },
+    "full": {
+      "type": "boolean"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}
+```
+
+### okb_lint
+
+Checks the claims each document makes about itself.
+
+#### Inputs
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `dir` | string | no |  |
+
+#### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "dir": {
+      "type": "string"
+    }
+  },
+  "required": [],
+  "additionalProperties": false
+}
+```
+
+### okb_toc
+
+Writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date.
+
+#### Inputs
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `dir` | string | no |  |
+| `check` | boolean | no |  |
+
+#### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "dir": {
+      "type": "string"
+    },
+    "check": {
+      "type": "boolean"
     }
   },
   "required": [],

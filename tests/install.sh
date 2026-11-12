@@ -336,7 +336,7 @@ okb_wrapper_bytes() {  # <native binary>
   printf '%s\n' "echo 'knowledge is served by the okb binary, and this machine has none: run \`tagents update\`, or \`cargo build --release -p okb\` in the checkout' >&2" 'exit 69'
 }
 alias_wrapper_bytes() {  # <okb wrapper>
-  printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\nexec "%s" "$@"\n' "$1"
+  printf '#!/bin/sh\n# managed by tagents install.sh, rewritten on every update: do not edit\necho "tagents-knowledge is now called okb; this name goes away in the next release" >&2\nexec "%s" "$@"\n' "$1"
 }
 same_bytes() {  # <name> <expected file> <actual file>
   if cmp -s "$2" "$3"; then pass=$((pass + 1)); printf '  ok   %s\n' "$1"; else
@@ -1105,6 +1105,7 @@ same_bytes "the okb wrapper is the text of the design" "$TMP/expected-okb" "$TAG
 same_bytes "tagents-knowledge is the text of the design" "$TMP/expected-kn" "$TAGENTS_BIN/tagents-knowledge"
 ok "okb hands every word to the binary" "native-okb 0.1.0 search deploy --json" "$(okb search deploy --json)"
 ok "tagents-knowledge hands join to it" "native-okb 0.1.0 join" "$(kn join)"
+ok "tagents-knowledge names okb on stderr, one line, and nothing on stdout" "tagents-knowledge is now called okb; this name goes away in the next release" "$(kn join 2>&1 > /dev/null)"
 ok "...and mcp" "native-okb 0.1.0 mcp" "$(kn mcp)"
 ok "...and serve with its options" "native-okb 0.1.0 serve --idle 30 --socket /p" "$(kn serve --idle 30 --socket /p)"
 ok "...and no arguments" "native-okb 0.1.0 " "$(kn)"
@@ -1119,7 +1120,8 @@ rm -f "$OKB_BIN" "$TMP/node-starts"
 kn join >/dev/null 2>&1; rc=$?
 ok "a vanished binary: join exits 69" 69 "$rc"
 ok "...and started no node" 0 "$(starts)"
-ok "...and says the needs-binary line on stderr" "$NEEDS" "$(kn join 2>&1 >/dev/null)"
+ok "...and says the new name and then the needs-binary line on stderr" "tagents-knowledge is now called okb; this name goes away in the next release
+$NEEDS" "$(kn join 2>&1 >/dev/null)"
 ok "...and nothing on stdout" "" "$(kn join 2>/dev/null)"
 ok "...serve exits 69 too" 69 "$(kn serve --idle 30 >/dev/null 2>&1; echo $?)"
 ok "...and so does mcp" 69 "$(kn mcp >/dev/null 2>&1; echo $?)"

@@ -12,7 +12,7 @@ import { REPO_ROOT } from '../src/tree.ts';
 
 test('every CLI contract is present, each with verbs and exit codes: the three packages\' and the script\'s', async () => {
   const contracts = await cliContracts(REPO_ROOT);
-  assert.deepEqual(contracts.map((c) => c.program), ['tagents-core', 'tagents-knowledge', 'tagents-notify', 'tagents']);
+  assert.deepEqual(contracts.map((c) => c.program), ['tagents-core', 'okb', 'tagents-notify', 'tagents']);
   for (const c of contracts) {
     assert.ok(c.commands.length > 0, c.program);
     assert.equal(c.exit['ok'], 0, c.program);

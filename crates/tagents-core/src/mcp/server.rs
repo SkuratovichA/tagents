@@ -43,9 +43,9 @@ impl Identity {
         sdk: Sdk::Server,
     };
 
-    /// The knowledge server, `packages/knowledge`: the node one answers as `tagents-knowledge` over the SDK's `McpServer`.
+    /// The knowledge server of okb. The node one, `packages/knowledge`, answered as `tagents-knowledge` over the SDK's `McpServer`.
     pub const KNOWLEDGE: Identity = Identity {
-        name: "tagents-knowledge",
+        name: "okb",
         version: env!("CARGO_PKG_VERSION"),
         sdk: Sdk::McpServer,
     };

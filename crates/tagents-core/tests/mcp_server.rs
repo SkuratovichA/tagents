@@ -794,7 +794,7 @@ impl Link {
 }
 
 const KNOWLEDGE: Identity = Identity {
-    name: "tagents-knowledge",
+    name: "okb",
     version: "9.9.9",
     sdk: Sdk::McpServer,
 };
@@ -805,7 +805,7 @@ fn the_identity_and_the_capabilities_of_the_handshake_are_the_configs() {
     let answer = knowledge.shake_hands("a-client");
     assert_eq!(
         answer["result"]["serverInfo"],
-        json!({"name": "tagents-knowledge", "version": "9.9.9"})
+        json!({"name": "okb", "version": "9.9.9"})
     );
     assert_eq!(
         answer["result"]["capabilities"],

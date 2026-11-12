@@ -110,9 +110,9 @@ expect() {  # <label> <got> <want>
   if [ "$2" = "$3" ]; then ok; else bad "$1" "got:    $2
        wanted: $3"; fi
 }
-# The node oracle still lists `sessions_recent` and `sessions_search`, which moved to the tagents server (tests/rust-mcp-parity.sh and crates/tagents-core/tests/session_tools.rs hold them now): they are cut out of its tools/list answers, and nothing calls them here.
+# The oracle answers as `tagents-knowledge` and okb as `okb`: the name is put into okb's in both transcripts. The node oracle still lists `sessions_recent` and `sessions_search`, which moved to the tagents server (tests/rust-mcp-parity.sh and crates/tagents-core/tests/session_tools.rs hold them now): they are cut out of its tools/list answers, and nothing calls them here.
 norm() {  # <file>: the version a server reports is its own, and the tools okb does not have
-  sed -e 's/"serverInfo":{"name":"tagents-knowledge","version":"[^"]*"}/"serverInfo":{"name":"tagents-knowledge","version":"-"}/' "$1" | perl -pe 's/,?\{"name":"sessions_(?:recent|search)"(?:[^{}]|(\{(?:[^{}]|(?1))*\}))*\}//g'
+  sed -e 's/tagents-knowledge/okb/g' -e 's/"serverInfo":{"name":"okb","version":"[^"]*"}/"serverInfo":{"name":"okb","version":"-"}/' "$1" | perl -pe 's/,?\{"name":"sessions_(?:recent|search)"(?:[^{}]|(\{(?:[^{}]|(?1))*\}))*\}//g'
 }
 RAN=1
 SKIPPED=0
@@ -169,7 +169,7 @@ VERSIONS=$("$NODE" "$MCP_DRIVER" versions "$ORACLE") || { echo "rust-knowledge-p
 for v in $VERSIONS 2099-01-01 ""; do
   play "handshake and list: initialize ${v:-(empty version)}" "$(steps "$(init_request "$v")" "$(await 1)")"
 done
-must "initialize: the server's name" '"serverInfo":{"name":"tagents-knowledge"'
+must "initialize: the server's name" '"serverInfo":{"name":"okb"'
 play "handshake and list: tools/list, ping, an unknown method, an unknown tool, a malformed line" "$(ksession "$(req 2 tools/list)" "$(await 2)" "$(req 3 ping)" "$(await 3)" "$(req 4 nope/method)" "$(await 4)" "$(kcall 5 nope_tool '{}')" '{"raw":"{not json\n"}' "$(req 6 tools/list)" "$(await 6)")"
 for tool in knowledge_search knowledge_get knowledge_list knowledge_usage; do must "tools/list: $tool" "\"name\":\"$tool\""; done
 must "ping" '"result":{}'
@@ -647,7 +647,7 @@ saw() {  # <label> <needle>: the node transcript holds what the scenario exists 
 t "verbs: usage and the refusals of the command line"
 sc_usage() { cli; cli help; cli --help; cli -h; cli bogus; cli index --bogus; cli index extra; cli index --dir; cli search; cli search '  '; cli show; cli show '   '; cli list extra; cli lint --full; cli toc --check=1; cli usage --since; }
 scenario "usage text, help, an unknown verb and bad options" sc_usage
-saw "usage text" 'usage: tagents-knowledge <command>'
+saw "usage text" 'usage: okb <command>'
 saw "an unknown verb" 'unknown command: bogus'
 
 t "verbs: no folder, a missing folder"
@@ -766,7 +766,8 @@ scenario "usage: a store that cannot be read or has no table" sc_usage_store
 CORPUS=knowledge; EXTRAS=
 
 t "verbs: the locale"
-sc_locale() { CLI_ENV=(TAGENTS_LOCALE=ru); cli; cli bogus; cli search; cli show; cli list --tag nothing; cli lint; cli toc --check; cli usage --since 1; }
+# The usage text and the "not indexed" sentence have no Russian in okb (the keys were removed, so they are English) and the oracle's are Russian: the usage block of both sides is cut down to one line, and no call here reaches the other sentence.
+sc_locale() { CLI_ENV=(TAGENTS_LOCALE=ru); cli; cli search; cli show; cli list --tag nothing; cli lint; cli toc --check; cli usage --since 1; perl -Mutf8 -CSD -0777 -pi -e 's/^(?:использование|usage): okb [^\n]*\n(?:  [^\n]*\n|\n|(?:коды выхода|exit): [^\n]*\n)*/[usage]\n\n/mg' "$TMP/transcript.$SIDE"; }
 scenario "the Russian texts" sc_locale
 
 

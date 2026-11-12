@@ -14,7 +14,7 @@ pub fn serve(input: impl Read) -> u8 {
     match tagents_core::mcp::serve_stdio(tools, SERVER, input) {
         Ok(()) => exit::OK,
         Err(reason) => {
-            eprintln!("tagents-knowledge: {reason}");
+            eprintln!("okb: {reason}");
             exit::ERROR
         }
     }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "okb",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "okb, the knowledge base of the owner's markdown documents (OKF v0.2): the knowledge MCP server for searching and reading them, and the contract of the okb CLI, regenerated from the code.",
   "author": {
     "name": "Aliaksandr Skuratovich"
@@ -17,6 +17,6 @@
     }
   },
   "metadata": {
-    "digest": "sha256:91f842ef102936cf7260e559a018392496f283ce9d7ba9f384836508e1754afa"
+    "digest": "sha256:7ab6e1465533f2be36e01ad11cad23fa14575b66f675c8f481ef0f3b38d2ecf5"
   }
 }
