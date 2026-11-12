@@ -1,6 +1,6 @@
 # lib/tagents/list.sh — the rows — and the tally the status bar shows
 #
-# list() stays one unit: the responsive column fit, the UTF-8-safe width helpers macOS awk forces it to carry, the row format, the two-level tree a child session hangs in, the group headers and the dimmed window rows. grouped/toggle_group (the .flat marker list() reads), byw_on/toggle_order (the .order-window marker it reads) and counts() (the same renderer with TA_MARKS=0, plus the burn rate and the usage line) sit with it because nothing else calls them and both are meaningless without it.
+# list() stays one unit: the responsive column fit, the UTF-8-safe width helpers macOS awk forces it to carry, the row format, the two-level tree a child session hangs in, the group headers and the dimmed window rows. grouped/toggle_group (the .flat marker list() reads), byw_on/toggle_order (the .order-recent marker it reads) and counts() (the same renderer with TA_MARKS=0, plus the burn rate and the usage line) sit with it because nothing else calls them and both are meaningless without it.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -18,10 +18,10 @@ toggle_marker() {  # <file>
 
 toggle_group() { toggle_marker "$STATE_DIR/.flat"; }
 
-# Rows in the order of their tmux window numbers instead of by the last message.
-byw_on() { [ -e "$STATE_DIR/.order-window" ]; }
+# Rows in the order of their tmux window numbers, which is the default: a row that jumps to the top whenever its session gets a prompt is a row you have to find again. The marker turns on the other order, by the last message.
+byw_on() { [ ! -e "$STATE_DIR/.order-recent" ]; }
 
-toggle_order() { toggle_marker "$STATE_DIR/.order-window"; }
+toggle_order() { toggle_marker "$STATE_DIR/.order-recent"; }
 
 list() {
   # Nothing is excluded. There used to be a "skip my own pane" rule that fell
@@ -29,7 +29,7 @@ list() {
   # *attached client*, so it silently hid whichever agent you happened to be
   # looking at. The dashboard pane runs fzf, never Claude, so it can never show
   # up here anyway and needs no special case.
-  local grp=1 cols hidecols tallyto="" rc byw=0
+  local grp=1 cols hidecols tallyto="" rc byw=0 compact=0
   grouped || grp=0
   byw_on && byw=1
   # Joined with $RS, never newlines: awk -v refuses a value with a newline in it
@@ -58,7 +58,9 @@ list() {
   # for more than twice the width it got. Measured anywhere else the number
   # already is the list's own width and stands as it is.
   [ "${TA_MODE:-}" = popup ] && cols=$(( cols * 45 / 100 ))
-  [ "$cols" -lt 34 ] && cols=34
+  # BELOW 34 COLUMNS THE COLUMNS ARE NOT SQUEEZED, THEY ARE LEFT OUT. The fit used to stop at 34 and let fzf cut the rest, which is what a list collapsed beside the viewport looked like: the age, the name and the tee all gone at the right edge. A compact row is a mark, the state glyph and the title (see the compact branches in the awk), 12 columns being the least a title can be read in.
+  compact=0
+  if [ "$cols" -lt 34 ]; then compact=1; [ "$cols" -lt 12 ] && cols=12; fi
 
   # THE TALLY IS WRITTEN HERE, by the one awk that has the finished rows, to a
   # file the refresher turns into the status bar's cache (see refresher_counts).
@@ -74,7 +76,7 @@ list() {
 
   host_once   # in this shell: $(…) below is a subshell, and a failing hostname would run again on every call
   collect | LC_ALL=C awk -F"$TAB" -v now="$(date +%s)" -v ttl="$SUB_TTL" \
-                -v grp="$grp" -v byw="$byw" -v home="$HOME" -v deadttl="$DEAD_TTL" -v cols="$cols" \
+                -v grp="$grp" -v byw="$byw" -v home="$HOME" -v deadttl="$DEAD_TTL" -v cols="$cols" -v compact="$compact" \
                 -v host="$HOST_S" -v hostf="$HOST_F" \
                 -v profs="$(prof_pairs)" -v USC="$US" -v RSC="$RS" \
                 -v hidecols="$hidecols" -v disp="$(usage_display)" "$AWK_UNTITLE"'
@@ -104,6 +106,8 @@ list() {
       if (n > w) return uclip(s, w - 1) "…"
       return (w > n) ? s sprintf("%" (w - n) "s", "") : s
     }
+    # A title cut to w columns with a mark where it was cut, and not padded: the compact rows have no column to the right of it.
+    function cfit(s, w) { return (uclen(s) > w) ? uclip(s, w - 1) "…" : s }
     function agestr(t,   d) {
       d = now - t; if (d < 0) d = 0
       if (d < 3600) return sprintf("%d:%02d", int(d/60), d%60)
@@ -725,6 +729,11 @@ list() {
         # dropped still costs its N spaces. The text columns are padded with
         # ufit rather than %-*s, which pads by bytes: "·", "—" and a Cyrillic
         # session name are several bytes to the character.
+        # A compact row is the glyph and the title. fzf shows cols - 3 columns of a line, and the mark the END block puts in front takes one of them, as does the space after the glyph; a child is one column further in.
+        if (compact) {
+          rbody[i] = col[s] icon[s] R " " cfit(cnm[i], cols - 6 - (rnest[i] ? 1 : 0))
+          continue
+        }
         row = sprintf("%s%s%s%s", col[s], icon[s], (lw ? sprintf(" %-*s", lw, lbl[s]) : ""), R)
         row = row sprintf(" %6s  ", cagt[i])
         # Immediately before the name, where the eye is already going.
@@ -776,7 +785,7 @@ list() {
           gtotal[dmg]++
           standin(dmg, 0, (byw ? 0 : 1), (byw ? wix[dmw] * 1000 : wix[dmw]), dmw, "none", "", (dmf in path) ? path[dmf] : "")
           nd++; dg[nd] = dmg; dk[nd] = dmw; dix[nd] = wix[dmw]
-          dbody[nd] = DIM uclip(wnm[dmw], cols - 10) R
+          dbody[nd] = compact ? DIM "· " cfit(wnm[dmw], cols - 6) R : DIM uclip(wnm[dmw], cols - 10) R
           ddir[nd] = (dmf in path) ? path[dmf] : ""
         }
       }
@@ -802,7 +811,9 @@ list() {
           if (gburn[g] > 0) gbs = gbs (gbs == "" ? "" : " ") money(gburn[g])
           if (gbs != "" && cols >= 60 && !("cost" in hid))
             gbt = sprintf("%s%s/5h%s", DIM, gbs, R)
-          hdr = sprintf("%s▾ %s%s%s  %s%s",
+          # Compact: the marker and the fitted name and nothing after it, not even the two spaces the format keeps before the badges.
+          if (compact) hdr = sprintf("%s▾ %s%s", (gmin[g] < prio["dead"] ? BOLD : DIM), cfit(gname(g), cols - 5), R)
+          else hdr = sprintf("%s▾ %s%s%s  %s%s",
                         (gmin[g] < prio["dead"] ? BOLD : DIM), gname(g), R, gpath, badge, gbt)
           printf "%d\t%s\t0\t0\t0\t%s\t%s\t%s\t%s\t%s\t0\t0\t0\t0\t%d\n",
                  (g == "w:" ? 2 : (gmin[g] < prio["dead"] ? 0 : 1)), g, gfirst[g], hdr,
@@ -854,7 +865,7 @@ list() {
     }' |
     sort -t"$TAB" -k1,1n -k2,2 -k15,15n -k3,3n -k4,4n -k5,5n \
          -k11,11 -k12,12n -k13,13n -k14,14n |
-    LC_ALL=C awk -F"$TAB" -v grp="$grp" -v RSC="$RS" \
+    LC_ALL=C awk -F"$TAB" -v grp="$grp" -v compact="$compact" -v RSC="$RS" \
         -v tallyonly="${TA_TALLY:-0}" -v tallyto="$tallyto" '
       # The marker column is the dash the tree draws, on a group header too. In flat
       # mode there is no tee to borrow from, so the two columns are given to
@@ -893,9 +904,12 @@ list() {
             mk = HOT "\342\226\270" R
             b = body[i]; gsub(/\033\[0m/, "&\033[1m", b); body[i] = "\033[1m" b R
           }
+          if (compact && !(kind[i] == 1 && shown[i])) mk = " "
           last = lastat(i)
           if (depth[i] == 0) parlast = last
-          if (!grp)               tee = mk " "
+          # Compact: the mark alone, and a child one space in.
+          if (compact)            tee = (kind[i] == 0) ? "" : mk (depth[i] > 0 ? " " : "")
+          else if (!grp)          tee = mk " "
           else if (kind[i] == 0)  tee = ""
           else if (depth[i] == 0) tee = DIM "  " (last ? "└" : "├") R mk " "
           # The second level carries the tee of the first level down beside it,

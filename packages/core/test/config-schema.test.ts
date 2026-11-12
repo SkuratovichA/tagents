@@ -142,7 +142,7 @@ test('a document with only the optional parts left out validates', () => {
 
 // ----------------------------------------------------------- the dashboard ---
 
-const ROOTS = ['claude', 'usage', 'notes', 'resurrect', 'keys', 'plugins', 'knowledge'];
+const ROOTS = ['claude', 'usage', 'notes', 'resurrect', 'dashboard', 'keys', 'plugins', 'knowledge'];
 const read = (...parts: string[]): string => fs.readFileSync(path.join(REPO, ...parts), 'utf8');
 
 /** `claude.profiles.$prof.env.$k` as `claude.profiles.*.env.*`: a variable, a number and a wildcard are one segment kind. */

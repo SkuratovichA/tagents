@@ -61,9 +61,9 @@ How a child behaves:
 
 **Projects keep the place their path gives them.** The list is not sorted by urgency: a project does not climb when one of its agents blocks and does not drop back when you answer it, so the thing you were looking at is still where you left it. The only project that moves is one with nothing running in it at all (every agent closed), and it moves once, to the dim section at the bottom. What a project is doing is in its header badge (`⚠1 ✓1 ●1`), which is a thing to read rather than a thing that rearranges the page under you.
 
-**Inside a project, rows are ordered by when you last typed into them.** The newest conversation is on top and closed ones are underneath. The order is not by state, and not by anything that moves during a turn: the state record is rewritten on every tool call, so ordering on it made two working agents trade places while they ran. The clock here moves exactly once per turn, when you press enter, which is also why the agent you just sent something to is the one at the top.
+**Inside a project, rows follow their tmux window numbers.** A dimmed window sits at its number among them and a chat that exits keeps its place, so a session that gets a new prompt does not jump and the place of an agent can be learned. The order is not by state either: the state record is rewritten on every tool call, so ordering on it made two working agents trade places while they ran.
 
-**`ctrl-o` swaps that for window order.** The rows follow their tmux window numbers, a dimmed window sits at its number among them, and a chat that exits keeps its place; the choice is kept until you switch it back. In either order the row of the window on screen carries a `▸` and is drawn bold.
+**`ctrl-o` swaps that for the order of your last message.** The newest conversation is on top and closed ones are underneath. The clock here moves exactly once per turn, when you press enter, which is also why the agent you just sent something to is the one at the top; the choice is kept until you switch it back. In either order the row of the window on screen carries a `▸` and is drawn bold.
 
 ## The clock the rows are sorted on
 

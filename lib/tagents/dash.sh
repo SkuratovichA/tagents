@@ -58,6 +58,8 @@ keyhdr() {  # <cols> <item>... -> the header, one item per line at worst
 # the way out.
 dash_header() {  # <cols> <enter label> [quit item]
   local items=()
+  # A list narrower than the rows can be read in (see compact in list()) has no room for a line of key hints: it would wrap into several rows of a strip a dozen columns wide, and ? shows the keys anyway.
+  case ${1:-80} in ''|*[!0-9]*) ;; *) [ "$1" -lt 34 ] && return 0 ;; esac
   cfg_check   # before resolve_keys: one parse in this process, none per key
   resolve_keys
   [ -n "$K_OPEN" ] && items[${#items[@]}]="$K_OPEN ${2:-open in dashboard}"
@@ -191,8 +193,26 @@ dash() {
   kb "$K_PREVIEW" "$vact"
   kb "$K_TREE"    "execute-silent($SELF --toggle-group)+reload-sync($SELF --list)"
   kb "$K_ORDER"   "execute-silent($SELF --toggle-order)+reload-sync($SELF --list)"
+  kb "$K_COLLAPSE" "execute-silent($SELF --toggle-collapse)+reload-sync($SELF --list)"
   kb "$K_REFRESH" "reload-sync($SELF --list)"
-  kb resize       "reload-sync($SELF --list)"
+  # THE RESIZE BIND SPAWNS A PLAIN sh, NOT THIS PROGRAM. A resize event comes for every pixel of a drag, and `tagents --header` is a bash that loads the libraries and parses the config. The header is written once, for a wide list, and the script picks it or nothing by FZF_COLUMNS (below 34 the rows are compact and there is no room for it). The same script keeps a collapsed list collapsed: tmux spreads a window resize over both panes, so when the marker is there and the pane is not collapsed_width wide it is put back, which is a no-op when it already is, and so cannot loop.
+  # THE FILES HAVE FIXED NAMES, per mode and per whether the list claimed a pane (those two decide the header text, the enter label and the quit item), so a killed pane, a server stop or a reboot leaves at most a handful of small files and no start adds one. Two lists of one kind write the same content; each file is renamed into place, so a reader never sees half of one. keyhdr wraps at cols - 4, so one header is written for each band of widths, and the script shows the widest band the list has room for: the line it picks is never wider than the list.
+  rzb="$STATE_DIR/.resize.$mode$sidebar"; rzs="$rzb.sh"
+  for rzw in 34 40 50 60 80; do
+    dash_header "$rzw" "$enter_lbl" "$quit" >"$rzb.$rzw.$$" 2>/dev/null && mv -f "$rzb.$rzw.$$" "$rzb.$rzw"
+  done
+  cat >"$rzs.$$" <<EOS
+if [ -e '$STATE_DIR/.collapsed' ]; then
+  set -- \$(tmux display -p -t "\$TMUX_PANE" '#{@tagents_cockpit} #{pane_width}' 2>/dev/null)
+  [ "\${1:-}" = 1 ] && [ "\${2:-}" != $(dash_collapsed_width) ] && tmux resize-pane -t "\$TMUX_PANE" -x $(dash_collapsed_width) 2>/dev/null
+fi
+for b in 80 60 50 40 34; do
+  [ "\${FZF_COLUMNS:-0}" -ge \$b ] && { cat '$rzb'.\$b; break; }
+done
+exit 0
+EOS
+  mv -f "$rzs.$$" "$rzs"
+  kb resize       "transform-header(sh '$rzs')+reload-sync($SELF --list)"
   # THE REFRESHER WATCHES FZF, NOT THE BASH AROUND IT. This function's own pid ($$)
   # is the shell that starts fzf again after an abort, and it lives on while fzf
   # comes and goes, so a refresher that watched it outlived every fzf it was
@@ -229,11 +249,14 @@ dash() {
     unset ft
     fl=$(usage_line footer) && [ -n "$fl" ] && ft=(--footer="$fl")
     header=$(dash_header "${TA_COLS:-80}" "$enter_lbl" "$quit")
+    # An unset --header is no line at all, while --header="" is a blank row taken off the list.
+    unset hd
+    [ -n "$header" ] && hd=(--header="$header")
     out=$(printf '%s\n' "$rows" | fzf \
       --ansi --no-sort --delimiter="$TAB" --with-nth=2 \
       --listen --height=100% --layout=reverse --info=inline \
       --prompt='agents> ' \
-      --header="$header" \
+      ${hd[@]+"${hd[@]}"} \
       ${pv[@]+"${pv[@]}"} \
       ${ft[@]+"${ft[@]}"} \
       ${BINDS[@]+"${BINDS[@]}"} \

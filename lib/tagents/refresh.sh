@@ -51,7 +51,7 @@ snap_has_editor() {
 #
 # The paths are what collect() and list() open: the state files (history.tsv is
 # not one), the origin cache, the labels, the hidden-columns file and the .flat
-# and .order-window markers; the sub/, model/ and prompt/ files and the directories that hold them,
+# and .order-recent markers; the sub/, model/ and prompt/ files and the directories that hold them,
 # since an added or removed file changes only its directory; and the config with
 # its per-host overlay. $STATE_DIR itself is NOT among them: the status bar
 # renames .counts.out into it every few seconds, so its time moves whether or not
@@ -65,7 +65,7 @@ refresh_changed() {  # <marker> <overlay config path> [strict] — 0 when someth
   # than the marker is a change there.
   if [ -n "$strict" ]; then
     for f in "$STATE_DIR"/[0-9]*.tsv "$STATE_DIR"/s-*.tsv "$LABELS" "$SESSION_DIRS" "$ORIGINS" "$COLS_FILE" \
-             "$STATE_DIR/.flat" "$STATE_DIR/.order-window" "$STATE_DIR/sub" "$STATE_DIR"/sub/* \
+             "$STATE_DIR/.flat" "$STATE_DIR/.order-recent" "$STATE_DIR/sub" "$STATE_DIR"/sub/* \
              "$STATE_DIR/model" "$STATE_DIR"/model/*.tsv \
              "$STATE_DIR/prompt" "$STATE_DIR"/prompt/* "$STATE_DIR/ratelimit" "$STATE_DIR"/ratelimit/* "$CONFIG_FILE" "$ovl"; do
       [ "$f" -nt "$mark" ] && return 0
@@ -73,7 +73,7 @@ refresh_changed() {  # <marker> <overlay config path> [strict] — 0 when someth
     return 1
   fi
   for f in "$STATE_DIR"/[0-9]*.tsv "$STATE_DIR"/s-*.tsv "$LABELS" "$SESSION_DIRS" "$ORIGINS" "$COLS_FILE" \
-           "$STATE_DIR/.flat" "$STATE_DIR/.order-window" "$STATE_DIR/sub" "$STATE_DIR"/sub/* \
+           "$STATE_DIR/.flat" "$STATE_DIR/.order-recent" "$STATE_DIR/sub" "$STATE_DIR"/sub/* \
            "$STATE_DIR/model" "$STATE_DIR"/model/*.tsv \
            "$STATE_DIR/prompt" "$STATE_DIR"/prompt/* "$STATE_DIR/ratelimit" "$STATE_DIR"/ratelimit/* "$CONFIG_FILE" "$ovl"; do
     ! [ "$mark" -nt "$f" ] && return 0

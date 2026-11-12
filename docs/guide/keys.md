@@ -23,7 +23,11 @@ closed = "ctrl-y"
 send = "alt-s"
 ```
 
-[`config.example.toml`](https://github.com/SkuratovichA/tagents/blob/main/config.example.toml) lists every verb with its default beside it. The names are the verbs of the list: open, beside, new, pick, shell, goto, send, rename, undock, kill, tree, preview, refresh, columns, usage, closed, keys, quit, order and dir. An entry for any other verb is ignored.
+[`config.example.toml`](https://github.com/SkuratovichA/tagents/blob/main/config.example.toml) lists every verb with its default beside it. The names are the verbs of the list: open, beside, new, pick, shell, goto, send, rename, undock, kill, tree, preview, refresh, columns, usage, closed, keys, quit, order, dir and collapse. An entry for any other verb is ignored.
+
+### Collapsing the list
+
+`ctrl-f` (the `collapse` verb) squeezes the list of the cockpit to `collapsed_width` columns of the `[dashboard]` table (24 by default) and, pressed again, back to its `width`. In that narrow column a row is only its state icon and the start of its title, so you can tell which sessions are running while the viewport keeps the room. The choice survives a cockpit that is built or restored later. It gives up fzf's own `ctrl-f` (forward one character in the query).
 
 ### Which names work
 

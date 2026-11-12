@@ -37,7 +37,8 @@ closed ctrl-y K_CLOSED
 keys ? K_KEYS
 quit ctrl-q K_QUIT
 order ctrl-o K_ORDER
-dir ctrl-d K_DIR"
+dir ctrl-d K_DIR
+collapse ctrl-f K_COLLAPSE"
 KEYS_RESOLVED=''
 KEY_NOTES=''
 KEY_TAKEN=' '
@@ -178,8 +179,9 @@ keys_table() {  # key<TAB>verb<TAB>what it does
 "$K_CLOSED${TAB}:closed${TAB}closed sessions — pick one to resume" \
 "$K_KEYS${TAB}:none${TAB}this window — in the cockpit the tmux prefix keys go to the viewport and ctrl-q leaves the cockpit" \
 "$K_QUIT${TAB}:quit${TAB}quit the dashboard — from the list itself, not from here" \
-"$K_ORDER${TAB}:order${TAB}rows in window order, or by your last message" \
+"$K_ORDER${TAB}:order${TAB}rows by your last message, or back in window order" \
 "$K_DIR${TAB}dir${TAB}the directory new agents of this session start in" \
+"$K_COLLAPSE${TAB}:collapse${TAB}the list as a narrow column, or wide again — in the cockpit" \
 "esc${TAB}:quit${TAB}in the popup, close it — from the list itself, not from here" |
     LC_ALL=C awk -F"$TAB" 'length($1) > 0'
 }
@@ -241,6 +243,7 @@ on the row the cursor was on · esc closes")
     :quit|:none) return 0 ;;
     :tree)       toggle_group; post_fzf "$port" "reload-sync($SELF --list)" ;;
     :order)      toggle_order; post_fzf "$port" "reload-sync($SELF --list)" ;;
+    :collapse)   toggle_collapse; post_fzf "$port" "reload-sync($SELF --list)" ;;
     # In the popup list the text preview IS the live view and fzf own toggle is
     # the whole of it. In a sidebar the preview is a popup, and this body is
     # already one — see preview_popup for why that has to go the long way round.

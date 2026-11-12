@@ -81,7 +81,7 @@ The row a header stands in for SHALL be chosen among the rows of the group that 
 - **THEN** the header carries the child's key
 
 #### Scenario: Window order
-- **WHEN** rows are kept in window order and the chat typed into last is in a higher window than another chat of the group
+- **WHEN** rows are kept in window order, which is the default, and the chat typed into last is in a higher window than another chat of the group
 - **THEN** the header carries the key, state, session id and directory of the chat in the lowest window, or of a dimmed window row numbered below every chat, with state none and no session id
 
 ### Requirement: Each state has its own glyph, label and colour
@@ -155,15 +155,15 @@ Session groups SHALL be ordered by session name, not by urgency. A group SHALL N
 - **WHEN** the group `no window` holds a live headless session and a session group holds only closed rows
 - **THEN** `no window` is listed after that session group
 
-### Requirement: Inside a group rows follow the user's last message
-Unless window order is on, rows inside a group SHALL be ordered by when the user last typed into the session, newest first, then the dimmed window rows in window order, then the closed rows, and never by state or by anything that changes during a turn. A child SHALL be placed with its parent, parent first, then its own children. In a flat list the same rule applies to the whole list: open rows before closed, newest conversation first.
+### Requirement: Inside a group rows follow the user's last message when asked to
+When the order of the last message is on (`ctrl-o`), rows inside a group SHALL be ordered by when the user last typed into the session, newest first, then the dimmed window rows in window order, then the closed rows, and never by state or by anything that changes during a turn. A child SHALL be placed with its parent, parent first, then its own children. In a flat list the same rule applies to the whole list: open rows before closed, newest conversation first.
 
 #### Scenario: State changes do not move rows
 - **WHEN** an agent goes from working to blocked and back
 - **THEN** its position among its siblings is unchanged
 
 #### Scenario: Typing moves a row to the top
-- **WHEN** window order is off and the user sends a prompt to an agent that was second in its group
+- **WHEN** the order of the last message is on and the user sends a prompt to an agent that was second in its group
 - **THEN** after the next refresh it is first
 
 #### Scenario: Window rows follow the chats
@@ -220,7 +220,7 @@ When at least one Claude profile is configured, every row SHALL carry a dim badg
 - **THEN** no badge column is drawn at any width
 
 ### Requirement: The list is laid out for the width of its pane
-The width of a list SHALL be taken from `$FZF_COLUMNS` of the running fzf, else `TA_COLS`, else the tmux pane width, else the terminal's, else 100, and never be less than 34. The available width is that minus 5 in the tree and minus 2 in a flat list. A row SHALL NOT be wider than the list it was built for.
+The width of a list SHALL be taken from `$FZF_COLUMNS` of the running fzf, else `TA_COLS`, else the tmux pane width, else the terminal's, else 100, and never be less than 12. The available width is that minus 5 in the tree and minus 2 in a flat list. A row SHALL NOT be wider than the list it was built for.
 
 #### Scenario: No overflow
 - **WHEN** the list is built for 230 columns
@@ -480,17 +480,36 @@ The row of the window the viewport shows SHALL carry a `▸` in the place of the
 - **WHEN** the viewport changes to another window
 - **THEN** the mark is on that window's row once the refresher has reloaded the list
 
-### Requirement: Rows can keep their window's place
-The toggle `ctrl-o`, the verb `order`, SHALL switch the rows of a group between the default order and window order, and the choice SHALL be kept until it is switched back. In window order the rows that are not closed SHALL follow their tmux window numbers, then pane indexes, a dimmed window at its number among the chats, a child with its parent, and a row with no window at the end of its group. Closed rows and groups SHALL keep their place.
+### Requirement: Rows keep their window's place by default
+Window order SHALL be the default. `ctrl-o`, the verb `order`, SHALL switch between it and the order of the last message, until switched back. In window order the rows that are not closed SHALL follow their tmux window numbers, then pane indexes, a dimmed window at its number among the chats, a child with its parent, and a row with no window at the end of its group. Closed rows and groups SHALL keep their place.
 
 #### Scenario: Window order
-- **WHEN** three windows hold chats the user typed into in the order 3, 1, 2 and the user presses `ctrl-o`
+- **WHEN** three windows hold chats the user typed into in the order 3, 1, 2 and the user has not pressed `ctrl-o`
 - **THEN** the rows are listed in the order of the window numbers 1, 2, 3
 
 #### Scenario: A prompt does not move a row
-- **WHEN** window order is on and the user sends a prompt to the chat in the last window
+- **WHEN** the user sends a prompt to the chat in the last window and `ctrl-o` has not been pressed
 - **THEN** its row keeps its place after the next refresh
 
-#### Scenario: Back to the default
-- **WHEN** the user presses `ctrl-o` again
+#### Scenario: The marker
+- **WHEN** the order of the last message is on
+- **THEN** the state directory holds `.order-recent`, and an `.order-window` left by an earlier version is removed on the first start
+
+#### Scenario: Switched to the last message
+- **WHEN** the user presses `ctrl-o`
 - **THEN** the rows are ordered by the user's last message
+
+#### Scenario: Back to window order
+- **WHEN** the user presses `ctrl-o` again
+- **THEN** the rows are in window order
+
+### Requirement: A list narrower than 34 columns is compact
+Below 34 columns a row SHALL be a mark column, the state glyph and the title, clipped with `…` and no wider than the list's width minus 3, with a child one column further in, no tree glyph and no other column. A group header SHALL be its name alone, and the key header SHALL be empty.
+
+#### Scenario: A compact list
+- **WHEN** the list is 20 columns wide
+- **THEN** no row is wider than 17 columns and none carries `├`, `└` or `─`
+
+#### Scenario: The header follows the width
+- **WHEN** the list is resized from 20 to 80 columns
+- **THEN** the key header is drawn again

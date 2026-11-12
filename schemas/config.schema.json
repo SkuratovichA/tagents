@@ -239,6 +239,51 @@
         }
       }
     },
+    "dashboard": {
+      "title": "Dashboard cockpit",
+      "description": "The cockpit: the tmux session `tagents` with the list in one pane and the viewport in the other. A change takes effect the next time the cockpit is built.",
+      "examples": [
+        {
+          "position": "left",
+          "width": 45,
+          "collapsed_width": 24
+        }
+      ],
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "position": {
+          "title": "Side of the list",
+          "description": "Which side of the cockpit the list is on. Default left.",
+          "enum": [
+            "left",
+            "right"
+          ],
+          "examples": [
+            "left"
+          ]
+        },
+        "width": {
+          "title": "Width of the list",
+          "description": "Percent of the cockpit's width the list takes (45 by default, 1 to 90). The environment variable TA_WIDTH wins when it is set.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90,
+          "examples": [
+            45
+          ]
+        },
+        "collapsed_width": {
+          "title": "Width of the collapsed list",
+          "description": "Columns the list takes while it is collapsed with the collapse key (24 by default).",
+          "type": "integer",
+          "minimum": 1,
+          "examples": [
+            24
+          ]
+        }
+      }
+    },
     "keys": {
       "title": "Dashboard keys",
       "description": "Every key of the dashboard, and what it is bound to. Only the ones written here move; the rest keep their defaults, and `tagents --keys` prints where each one ended up. fzf's own names: ctrl-a to ctrl-z, alt-a to alt-z, alt-0 to alt-9, f1 to f12, enter, tab, btab, space, bspace, del, up, down, left, right, home, end, pgup, pgdn, esc, or any single printable character. Anything else, and any key another verb already has, is refused with a message and the default is kept.",
@@ -337,9 +382,16 @@
         },
         "order": {
           "$ref": "#/$defs/key",
-          "description": "Rows in window order, or by your last message. Default ctrl-o.",
+          "description": "Rows by your last message, or back in window order. Default ctrl-o.",
           "examples": [
             "ctrl-o"
+          ]
+        },
+        "collapse": {
+          "$ref": "#/$defs/key",
+          "description": "Collapse the list to a narrow column, or expand it again (cockpit only). Default ctrl-f.",
+          "examples": [
+            "ctrl-f"
           ]
         },
         "preview": {

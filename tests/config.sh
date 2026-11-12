@@ -67,6 +67,9 @@ notes.send	reference
 resurrect.auto	true
 resurrect.every	300
 resurrect.notes	reopen
+dashboard.position	left
+dashboard.width	45
+dashboard.collapsed_width	24
 keys.closed	ctrl-y
 EOF
 )
@@ -373,7 +376,7 @@ ok "...and exit 0"                 0  "$rc"
 ok "...and a header of keys alone" "enter open here · ? keys · ctrl-q quit" "$(hd "$TMP/good.toml")"
 printf '[keys]\norder = "alt-o"\n' >"$TMP/order.toml"
 ok "keys.order is a key of the config: --check has nothing to say" "" "$(ck "$TMP/order.toml")"
-contains "...and it moves the order key" "alt-o${TAB}:order${TAB}rows in window order, or by your last message" \
+contains "...and it moves the order key" "alt-o${TAB}:order${TAB}rows by your last message, or back in window order" \
          "$(TA_CONFIG="$TMP/order.toml" bash "$TA" --keys 2>&1)"
 printf '[keys]\ndir = "alt-d"\n' >"$TMP/dir.toml"
 ok "keys.dir is a key of the config: --check has nothing to say" "" "$(ck "$TMP/dir.toml")"
