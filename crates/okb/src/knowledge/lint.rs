@@ -2,7 +2,7 @@
 //!
 //! The loader is tolerant, as OKF asks of a consumer; this is the strict layer. It reports a rule of the profile that the loader let through (a tag that is not a slug, a status nobody knows, an unknown key) and a claim a document makes about itself that can rot without anybody touching it: a `generated.at` older than the last commit that changed the text, a source that moved on, a link to a document that was renamed, an `index.md` that no longer lists what the folder holds.
 
-use std::{fs, path::Path, process::Command};
+use std::{collections::HashMap, fs, path::Path, process::Command};
 
 use super::doc::{
     self, Document, LEGACY_KEYS, OKF_KEYS, RESERVED_FILES, SCOPES, STATUSES, document_links,
@@ -239,7 +239,9 @@ pub fn lint(dir: &str, t: &Texts, now_ms: i64) -> Result<LintResult, String> {
     let mut issues = Vec::new();
     let mut docs: Vec<(String, Document)> = Vec::new();
     let files = list_files(dir)?;
-    let mut declared_by: Vec<(String, String)> = Vec::new();
+    // The slot of a stem in `docs`, which keeps the order the documents were first seen in.
+    let mut slot_of: HashMap<String, usize> = HashMap::new();
+    let mut declared_by: HashMap<String, String> = HashMap::new();
 
     for file in &files {
         let text = match fs::read(file) {
@@ -279,9 +281,11 @@ pub fn lint(dir: &str, t: &Texts, now_ms: i64) -> Result<LintResult, String> {
                     message: t.t("issueStem", &[("id", declared), ("stem", &stem)]),
                 });
             }
-            match declared_by.iter().find(|(id, _)| id == declared) {
-                None => declared_by.push((declared.clone(), file.clone())),
-                Some((_, owner)) => issues.push(Issue {
+            match declared_by.get(declared) {
+                None => {
+                    declared_by.insert(declared.clone(), file.clone());
+                }
+                Some(owner) => issues.push(Issue {
                     file: file.clone(),
                     message: t.t(
                         "issueDuplicateId",
@@ -302,9 +306,12 @@ pub fn lint(dir: &str, t: &Texts, now_ms: i64) -> Result<LintResult, String> {
                 message,
             });
         }
-        match docs.iter_mut().find(|(s, _)| *s == stem) {
-            Some(slot) => slot.1 = parsed,
-            None => docs.push((stem, parsed)),
+        match slot_of.get(&stem) {
+            Some(&slot) => docs[slot].1 = parsed,
+            None => {
+                slot_of.insert(stem.clone(), docs.len());
+                docs.push((stem, parsed));
+            }
         }
     }
 
@@ -364,9 +371,9 @@ pub fn lint(dir: &str, t: &Texts, now_ms: i64) -> Result<LintResult, String> {
             {
                 continue;
             }
-            let dead = match docs.iter().find(|(stem, _)| *stem == link.id) {
+            let dead = match slot_of.get(&link.id).map(|&slot| &docs[slot].1) {
                 None => true,
-                Some((_, target)) => link.fragment.as_deref().is_some_and(|fragment| {
+                Some(target) => link.fragment.as_deref().is_some_and(|fragment| {
                     !target.chunks.iter().any(|c| {
                         if link.wiki {
                             js::lower(&c.heading) == js::lower(fragment)
