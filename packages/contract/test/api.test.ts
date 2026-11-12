@@ -15,7 +15,7 @@ test('apiReports reports the public API of each public package', { timeout: 120_
   const [core, knowledge] = reports;
   assert.ok(core?.markdown.includes('definePlugin'));
   assert.ok(core?.markdown.includes('CommandSpec'));
-  assert.ok(knowledge?.markdown.includes('createServer'));
+  assert.ok(knowledge?.markdown.includes('openDb'));
   for (const r of reports) {
     assert.ok(!r.markdown.includes(root), r.package);
     assert.ok(!r.markdown.includes('\r'), r.package);

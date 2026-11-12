@@ -687,3 +687,12 @@ test('a usage store that is not there counts as empty and is not made; a damaged
     cleanup();
   }
 });
+
+test('serve and mcp are the binary\'s: node answers with the needs-binary line and exit 69, and prints nothing else', () => {
+  for (const verb of ['serve', 'mcp']) {
+    const r = runCli([verb]);
+    assert.equal(r.code, 69, verb);
+    assert.equal(r.stdout, '', verb);
+    assert.match(r.stderr, new RegExp(`^knowledge ${verb} is served by the tagents-core binary.*tagents update.*cargo build --release -p tagents-core`), verb);
+  }
+});

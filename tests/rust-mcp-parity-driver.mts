@@ -1,7 +1,7 @@
 // The client side of tests/rust-mcp-parity.sh: runs one MCP server command against a script of requests and prints what it said.
 //
 //   node tests/rust-mcp-parity-driver.mts run <script.json> <pids dir> -- <server command> [args...]
-//   node tests/rust-mcp-parity-driver.mts versions <repo root>
+//   node tests/rust-mcp-parity-driver.mts versions <oracle root>
 //
 // `run` starts the server with the environment it was itself started with, so the shell decides what the server sees, and works through the script, a JSON array of steps:
 //
@@ -26,7 +26,7 @@
 //   stderr <bytes>
 //   pids <gone | alive: names>      of the *.pid files in the pids dir, a minute after the server left at the latest
 //
-// `versions` prints the protocol versions the SDK of packages/mcp supports, one per line: the Rust list is pinned to them by the suite.
+// `versions` prints the protocol versions the SDK of packages/mcp of the oracle supports, one per line: the Rust list is pinned to them by the suite.
 //
 // Needs node 22.18 or newer (it runs TypeScript as it is). No dependency of the repo is imported.
 import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
@@ -252,8 +252,8 @@ async function run(scriptFile: string, pidsDir: string, command: readonly string
   process.stdout.write(`${out.join('\n')}\n`);
 }
 
-function versions(repo: string): void {
-  const sdk = createRequire(path.join(repo, 'packages', 'mcp', 'package.json'))('@modelcontextprotocol/sdk/types.js') as unknown;
+function versions(oracle: string): void {
+  const sdk = createRequire(path.join(oracle, 'packages', 'mcp', 'package.json'))('@modelcontextprotocol/sdk/types.js') as unknown;
   const listed = isRecord(sdk) ? sdk['SUPPORTED_PROTOCOL_VERSIONS'] : undefined;
   if (!Array.isArray(listed)) throw new Error('the SDK does not export SUPPORTED_PROTOCOL_VERSIONS');
   const found: unknown[] = listed;
@@ -267,6 +267,6 @@ if (verb === 'versions' && rest[0] !== undefined) {
 } else if (verb === 'run' && rest[0] !== undefined && rest[1] !== undefined && rest[2] === '--') {
   await run(rest[0], rest[1], rest.slice(3));
 } else {
-  process.stderr.write('usage: rust-mcp-parity-driver.mts run <script.json> <pids dir> -- <server command...> | versions <repo root>\n');
+  process.stderr.write('usage: rust-mcp-parity-driver.mts run <script.json> <pids dir> -- <server command...> | versions <oracle root>\n');
   process.exitCode = 2;
 }

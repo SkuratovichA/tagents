@@ -1,6 +1,6 @@
 //! Two copies that must not drift, pinned against their originals.
 //!
-//! The limits of the Rust server are those of the node server (`packages/mcp/src/run.ts`, `main.ts`), which stays in the tree as the oracle `tests/rust-mcp-parity.sh` compares with: the constants are read from those files. And the `tagents-core` program of the bundled `contract.json`, which `tagents-core mcp` serves, is the one `tagents_spec::Spec::bundled()` describes, so the data file the front door reads and the contract the plugin ships say the same about every verb.
+//! The limits of the Rust server are those of the node server that `tests/rust-mcp-parity.sh` compares with (the oracle tag, `packages/mcp/src/run.ts` and `main.ts` there): they are written out here. And the `tagents-core` program of the bundled `contract.json`, which `tagents-core mcp` serves, is the one `tagents_spec::Spec::bundled()` describes, so the data file the front door reads and the contract the plugin ships say the same about every verb.
 
 // Test code: a failed unwrap here is the failure report.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -23,74 +23,26 @@ fn repo_file(path: &str) -> String {
     fs::read_to_string(&file).unwrap_or_else(|e| panic!("cannot read {}: {e}", file.display()))
 }
 
-/// The value of `const NAME = <integer> * <integer> ...;` in TypeScript source: a product of integers, which is all the limits are written as.
-fn ts_constant(source: &str, name: &str) -> Result<u64, String> {
-    let head = format!("const {name} = ");
-    let line = source
-        .lines()
-        .find_map(|line| line.split_once(head.as_str()).map(|(_, rest)| rest))
-        .ok_or_else(|| format!("no `{head}` in the file"))?;
-    let expression = line
-        .split_once(';')
-        .ok_or_else(|| format!("`{head}` is not ended by a semicolon"))?
-        .0;
-    expression.split('*').try_fold(1u64, |product, factor| {
-        let factor: u64 = factor
-            .trim()
-            .parse()
-            .map_err(|_| format!("`{head}{expression}` is not a product of integers"))?;
-        Ok(product * factor)
-    })
+/// The limits of the node server `tests/rust-mcp-parity.sh` compares with (tag `v0.6.7`, `packages/mcp/src/run.ts` and `main.ts`), written out: the node source is not in the tree any more, and a limit moved here must move with a reason.
+#[test]
+fn the_limits_are_those_of_the_node_server() {
+    assert_eq!(MAX_STREAM, 256 * 1024, "run.ts MAX_STREAM");
+    assert_eq!(
+        millis(KILL_GRACE),
+        2000,
+        "KILL_GRACE_MS of run.ts and main.ts"
+    );
+    assert_eq!(millis(DRAIN), 250, "run.ts DRAIN_MS");
+    assert_eq!(
+        millis(CALL_TIMEOUT),
+        5 * 60 * 1000,
+        "main.ts CALL_TIMEOUT_MS"
+    );
+    assert_eq!(millis(SHUTDOWN_MARGIN), 2000, "main.ts SHUTDOWN_MARGIN_MS");
 }
 
 fn millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap()
-}
-
-#[test]
-fn a_constant_that_is_missing_or_not_a_product_of_integers_is_an_error() {
-    assert_eq!(ts_constant("export const A = 2 * 1024;", "A"), Ok(2048));
-    assert_eq!(
-        ts_constant("const A_MS = 5 * 60 * 1000;\n", "A_MS"),
-        Ok(300_000)
-    );
-    assert!(ts_constant("const A = 1;", "B").is_err());
-    assert!(ts_constant("const A = 1 + 2;", "A").is_err());
-    assert!(ts_constant("const A = 1", "A").is_err());
-}
-
-#[test]
-fn the_limits_are_those_of_the_node_server() {
-    let run = repo_file("packages/mcp/src/run.ts");
-    let main = repo_file("packages/mcp/src/main.ts");
-    let read = |source: &str, name: &str| ts_constant(source, name).unwrap();
-
-    assert_eq!(
-        MAX_STREAM as u64,
-        read(&run, "MAX_STREAM"),
-        "run.ts MAX_STREAM"
-    );
-    assert_eq!(
-        millis(KILL_GRACE),
-        read(&run, "KILL_GRACE_MS"),
-        "run.ts KILL_GRACE_MS"
-    );
-    assert_eq!(millis(DRAIN), read(&run, "DRAIN_MS"), "run.ts DRAIN_MS");
-    assert_eq!(
-        millis(CALL_TIMEOUT),
-        read(&main, "CALL_TIMEOUT_MS"),
-        "main.ts CALL_TIMEOUT_MS"
-    );
-    assert_eq!(
-        millis(KILL_GRACE),
-        read(&main, "KILL_GRACE_MS"),
-        "main.ts KILL_GRACE_MS"
-    );
-    assert_eq!(
-        millis(SHUTDOWN_MARGIN),
-        read(&main, "SHUTDOWN_MARGIN_MS"),
-        "main.ts SHUTDOWN_MARGIN_MS"
-    );
 }
 
 fn core_program() -> Program {

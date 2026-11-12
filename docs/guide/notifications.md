@@ -53,11 +53,11 @@ macOS may announce a new background item in System Settings → General → Logi
 
 ### Which program runs the service
 
-The LaunchAgent starts `~/.local/bin/tagents-notify run`, the command `install.sh` wrote, when that command is on the `PATH` of the shell that ran `tagents notify install` and runs this copy of tagents. Otherwise it starts node on `packages/notify/dist/main.js run` itself. The command decides at each start: when the prebuilt Rust binary of this version is on the machine it runs `tagents-core notify run`, and with no binary, or one that is gone or not executable by then, it runs the node program. Only the call `tagents-notify run` goes to the binary; `install`, `uninstall`, `status`, `test` and `send` are always the node program's. Both programs are the same service: the same options file, the same lock, the same notices.
+The LaunchAgent starts `~/.local/bin/tagents-notify run`, the command `install.sh` wrote, when that command is on the `PATH` of the shell that ran `tagents notify install` and runs this copy of tagents. Otherwise it starts node on `packages/notify/dist/main.js run` itself. The command decides at each start: when the prebuilt Rust binary of this version is on the machine it runs `tagents-core notify run`, and with no binary, or one that is gone or not executable by then, the node program prints the needs-binary line and exits 69. Only the call `tagents-notify run` goes to the binary; `install`, `uninstall`, `status`, `test` and `send` are always the node program's.
 
-A binary the daily update removes (its version has no release yet) leaves the next start of the service on node, and the plist is not rewritten. A service that is already running keeps the program it started with: installing the binary does not restart it, and `tagents notify install` or the next login does.
+A binary the daily update could not replace (its version has no release yet) stays and keeps running the service. A plist written before the wrapper existed still names `node packages/notify/dist/main.js run`: that command starts the binary as its child, or prints the needs-binary line and exits 69 when there is none. A service that is already running keeps the program it started with: installing the binary does not restart it, and `tagents notify install` or the next login does.
 
-To see which program runs, take the pid from the `service:` line of `tagents notify status` and run `footprint <pid>`: it names the process, `tagents-core` for the binary and `node` for the node program.
+To see which program runs, take the pid from the `service:` line of `tagents notify status` and run `footprint <pid>`: it names the process: `tagents-core` when the binary runs the service itself. With an old plist or no wrapper the service is a `node` supervisor and the binary is its child, so the footprint shows `node` and, below it, `tagents-core`.
 
 ## Clicking a notice
 

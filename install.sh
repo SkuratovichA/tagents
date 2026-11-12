@@ -10,13 +10,13 @@
 #
 #   ~/.local/bin/tagents tusage tnotes      exec $TAGENTS_HOME/<name>
 #   ~/.local/bin/tagents-core               exec <node> $TAGENTS_HOME/packages/core/dist/cli/main.js
-#                                           or $TAGENTS_HOME/target/release/tagents-core when that binary exists at install time (the node CLI stays the fallback)
+#                                           or $TAGENTS_HOME/target/release/tagents-core when that binary exists at install time (node's CLI answers the verbs the binary serves with a needs-binary line and exit 69)
 #                                           the binary is the prebuilt one of this checkout's version when a release has it (below), or one built by hand
 #   ~/.local/bin/tagents-knowledge          exec <node> $TAGENTS_HOME/packages/knowledge/dist/cli/main.js
 #   ~/.local/bin/tagents-notify             exec <node> $TAGENTS_HOME/packages/notify/dist/main.js
-#                                           or `tagents-core notify run` of the same binary, for the one call `tagents-notify run` and no other (status, install and the rest stay with node), named under the same condition as for tagents-mcp; the LaunchAgent that `tagents notify install` writes runs this wrapper, so a binary that is gone falls through to node at the next start
-#   ~/.local/bin/tagents-mcp                exec <node> $TAGENTS_HOME/packages/mcp/dist/main.js
-#                                           or `tagents-core mcp` of the same binary, named only when it exists at install time and, in a checkout with a Cargo.toml, answers `--version` with the checkout's version (the node server stays the fallback)
+#                                           or `tagents-core notify run` of the same binary, for the one call `tagents-notify run` and no other (status, install and the rest stay with node), named when the binary exists at install time; the LaunchAgent that `tagents notify install` writes runs this wrapper, so a binary that is gone at the next start gives node's needs-binary line and exit 69
+#   ~/.local/bin/tagents-mcp                exec <node> $TAGENTS_HOME/packages/core/dist/cli/main.js mcp
+#                                           or `tagents-core mcp` of the same binary, named when it exists at install time, whatever its version (node answers `mcp` with the needs-binary line and exit 69)
 #   <hooks dir>/<name>.sh                   exec sh $TAGENTS_HOME/hooks/<name>.sh, one per hooks/*.sh
 #   <node> is the node the install found on PATH, or node on the caller's PATH once that file is gone.
 #
@@ -47,7 +47,7 @@
 #   TAGENTS_REF    the branch to follow                 main
 #   TAGENTS_BUILD_CMD  run in the copy after a move     pnpm install --frozen-lockfile && pnpm build
 #   TAGENTS_LAUNCHD_DIR, TAGENTS_NO_LAUNCHCTL=1         where the plist goes, and not loading it
-#   TAGENTS_NO_NATIVE=1   do not fetch the Rust tagents-core, and remove a prebuilt one (a hand-built one stays)
+#   TAGENTS_NO_NATIVE=1   do not fetch the Rust tagents-core, and remove a prebuilt one (a hand-built one stays); without it no path of the fetch removes a binary
 #   TAGENTS_CORE_BASE_URL where the release files are (a directory URL that starts with https:// or file://; when a fetch is due and curl is there, any other scheme is refused with a warning)   https://github.com/SkuratovichA/tagents/releases/download/v<version>
 #   TAGENTS_CORE_TARGET   the target to fetch for: x86_64-unknown-linux-musl, x86_64-apple-darwin or aarch64-apple-darwin   from uname
 #   TAGENTS_MOVED_FROM  internal: the commit the copy left, set by the run that moved it for the run it hands over to
@@ -72,10 +72,10 @@ short() { printf '%s' "$1" | cut -c1-7; }
 xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 
 # A wrapper names the one file to run and passes everything through, stdin included, which is what a hook is fed on; an interpreter given by its absolute path is pinned, so the wrapper runs that file while it is executable and otherwise the interpreter of the same name on the caller's PATH. A native binary, when one is given, is run in place of the file, with the interpreter handed to it as TAGENTS_NODE and, when a word is given too, with that word before the arguments (tagents-mcp runs `tagents-core mcp`). When an argument is given as the sixth parameter, the binary is run only for the wrapper's arguments being exactly that one word, and every other call goes on to the file (tagents-notify runs `tagents-core notify run` for `run` and nothing else, so its other verbs stay with node).
-# A native binary is looked up in the tree and the wrapper cannot tell which source it was built from; fetch_native keeps the one it installed to the version of the checkout, and a binary built by hand goes stale after `tagents update` until the next `cargo build --release`.
-# tagents-knowledge has a rule of its own, given as the seventh and eighth parameters (its binary is also skipped at run time while TAGENTS_NO_NATIVE=1, so the node server is always one variable away): the first word the binary is for with any arguments after it (serve), and the sixth parameter then lists the words it is for as the only argument (join mcp). The eighth is the word whose call as the only argument exits 69 when it did not reach the binary, in every wrapper that names it, so a machine with no binary does not pay a node start for the launcher's probe (packages/knowledge/bin/knowledge-mcp).
-write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary] [word for the native binary] [the one argument the native binary is for] [first word it is for with any arguments] [word whose lone call exits 69 without the binary]
-  dest=$1; target=$2; interp=${3:-}; native=${4:-}; word=${5:-}; only=${6:-}; any=${7:-}; refuse=${8:-}
+# A native binary is looked up in the tree and the wrapper cannot tell which source it was built from; fetch_native replaces the one it installed with the version of the checkout and leaves it in place when no release has that version yet, and a binary built by hand goes stale after `tagents update` until the next `cargo build --release`. The ninth parameter is a word the fallback command is given before the arguments: node's CLI has no `mcp` of its own, and the word makes it answer with the needs-binary line and exit 69.
+# tagents-knowledge has a rule of its own, given as the seventh and eighth parameters (the wrapper tests nothing but the binary at run time): the first word the binary is for with any arguments after it (serve), and the sixth parameter then lists the words it is for as the only argument (join mcp). The eighth is the word whose call as the only argument exits 69 when it did not reach the binary, in every wrapper that names it, so a machine with no binary does not pay a node start for the launcher's probe (packages/knowledge/bin/knowledge-mcp).
+write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary] [word for the native binary] [the one argument the native binary is for] [first word it is for with any arguments] [word whose lone call exits 69 without the binary] [word the fallback command is given first]
+  dest=$1; target=$2; interp=${3:-}; native=${4:-}; word=${5:-}; only=${6:-}; any=${7:-}; refuse=${8:-}; lead=${9:-}
   if [ -L "$dest" ]; then
     rm -f "$dest"
   elif [ -e "$dest" ] && ! grep -q "$MARK" "$dest" 2>/dev/null; then
@@ -96,7 +96,7 @@ write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary] [word f
       alone=
       for w in $only; do alone="${alone:+$alone || }[ \"\$1\" = $w ]"; done
       # shellcheck disable=SC2016 # the text is the wrapper's, not this shell's
-      printf 'r="%s"\nif [ "${TAGENTS_NO_NATIVE:-}" != 1 ] && [ -f "$r" ] && [ -x "$r" ]; then\n  if [ "${1-}" = %s ] || { [ "$#" -eq 1 ] && { %s; }; }; then\n    %sexec "$r" %s"$@"\n  fi\nfi\n' "$native" "$any" "$alone" "$pin" "${word:+$word }"
+      printf 'r="%s"\nif [ -f "$r" ] && [ -x "$r" ]; then\n  if [ "${1-}" = %s ] || { [ "$#" -eq 1 ] && { %s; }; }; then\n    %sexec "$r" %s"$@"\n  fi\nfi\n' "$native" "$any" "$alone" "$pin" "${word:+$word }"
     elif [ -n "$native" ]; then
       guard=
       [ -z "$only" ] || guard="[ \"\$#\" -ne 1 ] || [ \"\$1\" != $only ] || "
@@ -104,7 +104,7 @@ write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary] [word f
     fi
     # shellcheck disable=SC2016
     [ -z "$refuse" ] || printf '[ "$#" -ne 1 ] || [ "$1" != %s ] || exit 69\n' "$refuse"
-    printf 'exec %s"%s" "$@"\n' "$runner" "$target"
+    printf 'exec %s"%s" %s"$@"\n' "$runner" "$target" "${lead:+$lead }"
   } > "$tmp"
   chmod 755 "$tmp"
   mv -f "$tmp" "$dest"
@@ -178,6 +178,15 @@ drop_native() {
   rm -rf "$NATIVE_BIN" "$NATIVE_BIN.release"
 }
 
+# What a run that fetched nothing leaves the machine with. Node no longer serves the verbs of the binary, so a binary that is there stays, even an old one, and the next update replaces it; with none, the line says what will not work.
+keep_native_note() {  # <why>
+  if [ -f "$NATIVE_BIN" ] && [ -x "$NATIVE_BIN" ]; then
+    say "$1, keeping the installed tagents-core"
+  else
+    warn "$1, and this machine has no tagents-core binary: tagents session, sessions, doctor, plugin add, remove and new, notify run and the knowledge server will not work until one is installed (tagents update, or cargo build --release -p tagents-core)"
+  fi
+}
+
 # Checks the download in $1 and puts it in place; 1 after a warning, with nothing installed, when any check fails. The order is the order of trust: the hash of the archive, then the archive's members, then what the binary says it is, and only then the marker (first) and the binary (second, renamed into place), so an interruption between the two leaves a marker that does not match, which the next run removes, and never a binary that looks hand-built.
 check_and_place() {  # <dir> <archive> <version> <triple>
   dir=$1; archive=$2; version=$3; triple=$4
@@ -215,7 +224,6 @@ tagents-core" ]; then
     && printf '%s %s %s\n' "$version" "$triple" "$sha" > "$NATIVE_BIN.release.tmp.$$" && mv -f "$NATIVE_BIN.release.tmp.$$" "$NATIVE_BIN.release" \
     && cp "$unpacked" "$tmp" && chmod 755 "$tmp" && mv -f "$tmp" "$NATIVE_BIN"; }; then
     rm -f "$NATIVE_BIN.release.tmp.$$" "$tmp"
-    drop_native
     warn "could not put the prebuilt tagents-core into $(dirname "$NATIVE_BIN")"
     return 1
   fi
@@ -237,16 +245,19 @@ fetch_native() {
   # A binary with no marker was built by hand: it is not ours to replace or delete, and a download next to it would only be shadowed by it.
   if [ ! -f "$marker" ] && { [ -e "$NATIVE_BIN" ] || [ -L "$NATIVE_BIN" ]; }; then return 0; fi
 
+  # Something at the path that is no binary (a directory, a link) or a marker with nothing beside it is ours to clear; a regular file is never removed on its own.
+  if [ ! -f "$NATIVE_BIN" ] || [ -L "$NATIVE_BIN" ]; then drop_native; fi
+
   version=$(core_version "$TAGENTS_HOME/Cargo.toml")
   triple=$(core_triple)
   if [ -z "$version" ]; then
-    drop_native; say "no workspace version in $TAGENTS_HOME/Cargo.toml, using the node CLI"; return 0
+    keep_native_note "no workspace version in $TAGENTS_HOME/Cargo.toml"; return 0
   fi
   if [ -z "$triple" ]; then
-    drop_native; say "no prebuilt tagents-core for ${TAGENTS_CORE_TARGET:-$(uname -s) $(uname -m)}, using the node CLI"; return 0
+    keep_native_note "no prebuilt tagents-core for ${TAGENTS_CORE_TARGET:-$(uname -s) $(uname -m)}"; return 0
   fi
   if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
-    drop_native; say "neither sha256sum nor shasum is here to check a prebuilt tagents-core with, using the node CLI"; return 0
+    keep_native_note "neither sha256sum nor shasum is here to check a prebuilt tagents-core with"; return 0
   fi
 
   # Fast path: the binary of this version and this machine, unchanged since it was installed. Nothing else happens and the network is not touched.
@@ -256,11 +267,10 @@ fetch_native() {
       return 0
     fi
   fi
-  # Any other state of a marked binary goes before anything is downloaded, so a download that fails leaves the node CLI in use and never a binary of another version.
-  drop_native
+  # A marked binary of another version stays until the new one is placed over it: a download that fails leaves the old binary, which serves more than none.
 
   if ! command -v curl >/dev/null 2>&1; then
-    say "curl is not here to fetch the prebuilt tagents-core with, using the node CLI"; return 0
+    keep_native_note "curl is not here to fetch the prebuilt tagents-core with"; return 0
   fi
   base=${TAGENTS_CORE_BASE_URL:-https://github.com/SkuratovichA/tagents/releases/download/v$version}
   base=${base%/}
@@ -278,7 +288,7 @@ fetch_native() {
     if ! download "$base/$file" "$FETCH_DIR/$file" 2>"$FETCH_DIR/curl.err"; then
       # A release that is not there is the expected case and the line below says it; any other failure (DNS, proxy, TLS) keeps curl's own message.
       grep -Eq 'returned error: 404|^curl: \(37\)' "$FETCH_DIR/curl.err" || cat "$FETCH_DIR/curl.err" >&2
-      say "no prebuilt tagents-core $version for $triple ($base/$file), using the node CLI"
+      keep_native_note "no prebuilt tagents-core $version for $triple ($base/$file)"
       rm -rf "$FETCH_DIR"; FETCH_DIR=''
       return 0
     fi
@@ -294,30 +304,21 @@ install_commands() {
   # The node CLIs pin the node this install found; none on PATH leaves them looking node up at run time.
   node_bin=$(command -v node || true)
   case $node_bin in /*) ;; *) node_bin=node ;; esac
-  for pair in tagents-core:core/dist/cli/main.js tagents-knowledge:knowledge/dist/cli/main.js tagents-notify:notify/dist/main.js tagents-mcp:mcp/dist/main.js; do
+  rust_bin=$TAGENTS_HOME/target/release/tagents-core
+  native=
+  # A binary that is there is named whatever its version: node serves none of the binary's verbs any more, so an older binary serves more than none, and the next update replaces it.
+  if [ -f "$rust_bin" ] && [ -x "$rust_bin" ]; then native=$rust_bin; fi
+  # tagents-core has a Rust front door that serves the verbs ported and hands every other word to the node CLI. tagents-mcp is its verb `mcp` and tagents-notify its verb `notify` for the argument `run` alone, so the four name the same binary; without it node's CLI answers `mcp` with the needs-binary line and `notify run` through the plugin host does the same.
+  for pair in tagents-core:core/dist/cli/main.js tagents-knowledge:knowledge/dist/cli/main.js tagents-notify:notify/dist/main.js tagents-mcp:core/dist/cli/main.js; do
     cli=$TAGENTS_HOME/packages/${pair#*:}
-    native=; word=; only=; any=; refuse=
-    # tagents-core has a Rust front door that serves the verbs ported so far and hands every other word to the node CLI. tagents-mcp is its verb `mcp` and tagents-notify its verb `notify` for the argument `run` alone, so the three name the same binary. It is named here when fetch_native or a `cargo build --release` has put an executable binary in the tree; this function builds and fetches nothing.
-    case ${pair%%:*} in tagents-core|tagents-mcp|tagents-notify|tagents-knowledge)
-      rust_bin=$TAGENTS_HOME/target/release/tagents-core
-      if [ -f "$rust_bin" ] && [ -x "$rust_bin" ]; then native=$rust_bin; fi
-      case ${pair%%:*} in
-        tagents-mcp) word=mcp ;;
-        tagents-notify) word=notify; only=run ;;
-        # TAGENTS_NO_NATIVE=1 at install time leaves this wrapper with no binary even when a hand-built one of the right version is there; the wrapper tests the same variable at run time, which is how the launcher (and the owner) turns the Rust server off for one session.
-        tagents-knowledge) word=knowledge; only='join mcp'; any=serve; refuse='join'; [ "${TAGENTS_NO_NATIVE:-}" != 1 ] || native= ;;
-      esac
-      if [ -n "$word" ]; then
-        # A binary older than the checkout does not serve the word and hands it to the node CLI. That does not know `mcp`, so a session would lose every tool of the plugin; and `notify run` would reach the plugin host of the node CLI, which runs the service only when the person's config names the plugin. fetch_native keeps the binary it installed at the checkout's version; one built by hand is asked once per install, and one that says another version, or cannot say, is not named, which leaves the node program. A checkout with no Cargo.toml has no version to compare and names the binary; a Cargo.toml whose version cannot be read names none.
-        if [ -f "$TAGENTS_HOME/Cargo.toml" ] && [ -n "$native" ]; then
-          want=$(core_version "$TAGENTS_HOME/Cargo.toml")
-          # A version core_version cannot read (a pre-release, an unreadable file) matches no binary.
-          if [ -z "$want" ] || [ "$("$native" --version </dev/null 2>/dev/null)" != "tagents-core $want" ]; then native=; fi
-        fi
-      fi ;;
+    word=; only=; any=; refuse=; lead=
+    case ${pair%%:*} in
+      tagents-mcp) word=mcp; lead=mcp ;;
+      tagents-notify) word=notify; only=run ;;
+      tagents-knowledge) word=knowledge; only='join mcp'; any=serve; refuse='join' ;;
     esac
     if [ -f "$cli" ]; then
-      write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin" "$native" "$word" "$only" "$any" "$refuse"
+      write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin" "$native" "$word" "$only" "$any" "$refuse" "$lead"
     else
       warn "no $cli after the build, so ${pair%%:*} was not installed"
       SKIPPED=$((SKIPPED + 1))
@@ -582,7 +583,7 @@ main() {
     die "$SKIPPED file(s) were left alone, see above"
   fi
   if [ "$NATIVE_FAILED" = 1 ]; then
-    die "the prebuilt tagents-core was not installed, see above, so the node CLI is in use"
+    die "the prebuilt tagents-core was not installed, see above"
   fi
   if [ "$SETUP_FAILED" = 1 ]; then
     die "the Claude Code settings were not all set up, see above; once that is fixed, run: tagents setup"

@@ -1,7 +1,7 @@
 // The markdown references. Every heading and label goes through t(), and the caller hands in the English translator: the references are read by Claude, in the repo, and must not depend on the machine they were generated on.
 //
 // One sentence or paragraph is one physical line.
-import { isTool, toolName } from '../../mcp/src/tools.ts';
+import { isTool, toolName } from './tools.ts';
 import type { Translate } from './i18n/index.ts';
 import { isJsonArray, isJsonObject, type JsonObject, type JsonValue } from './json.ts';
 import type { CliContract, McpServerSpec, McpTool, Script } from './types.ts';

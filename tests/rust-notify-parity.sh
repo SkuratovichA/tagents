@@ -21,15 +21,16 @@ set -o pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(cd "$HERE/.." && pwd -P)
+ORACLE=$(bash "$HERE/parity-oracle.sh") || { echo "rust-notify-parity: no node oracle (tests/parity-oracle.sh)" >&2; exit 2; }
 NODE=${TAGENTS_NODE:-$(command -v node)}
-NOTIFY_JS="$REPO/packages/notify/dist/main.js"
+NOTIFY_JS="$ORACLE/packages/notify/dist/main.js"
 DRIVER="$HERE/rust-notify-parity-driver.mts"
 RUST=${TAGENTS_CORE_BIN:-$REPO/target/debug/tagents-core}
 SELF_TEST=${PARITY_SELF_TEST:-}
 OS=$(uname -s)
 
 [ -n "$NODE" ] && [ -x "$NODE" ] || { echo "rust-notify-parity: no node to run (set TAGENTS_NODE)" >&2; exit 2; }
-[ -f "$NOTIFY_JS" ] || { echo "rust-notify-parity: $NOTIFY_JS is not built; run: pnpm install && pnpm build" >&2; exit 2; }
+[ -f "$NOTIFY_JS" ] || { echo "rust-notify-parity: $NOTIFY_JS is not built; run: bash tests/parity-oracle.sh" >&2; exit 2; }
 [ -x /bin/ps ] || { echo "rust-notify-parity: no /bin/ps, which the node service reads its lock with" >&2; exit 2; }
 if [ -z "$SELF_TEST" ] && [ ! -x "$RUST" ]; then
   if [ -n "${TAGENTS_CORE_BIN:-}" ]; then echo "rust-notify-parity: $RUST is not an executable" >&2; exit 2; fi

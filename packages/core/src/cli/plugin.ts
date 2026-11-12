@@ -1,33 +1,9 @@
-// `tagents-core plugin …` — installing plugins the way a Storybook addon is
-// installed: one command that resolves the package, checks it really is one,
-// and writes the line the host reads.
-//
-//   plugin list [--json]              what the config names, and what each offers
-//   plugin add <package-or-path> [--name N]
-//   plugin remove <name>
-//   plugin new <name> [--dir D]       a package that is already a plugin
-//
-// `add` NEVER IMPORTS THE PACKAGE. It reads package.json and stats the entry
-// file, and that is the whole check — importing a stranger's code to decide
-// whether to install it is the wrong way round. The host imports it later,
-// once the owner has chosen it (host.ts).
-import fs from 'node:fs';
-import path from 'node:path';
+// `tagents-core plugin list [--json]` — what the config names, and what each plugin offers. `plugin add`, `remove` and `new` are the binary's (cli/main.ts answers them with the needs-binary line); a `plugin` word nobody serves is an unknown command.
 import { parseArgs } from 'node:util';
 import type { CoreT } from '../i18n/index.ts';
-import { configFile, loadPlugins } from '../host.ts';
-import {
-  addPluginEntry,
-  defaultPluginName,
-  removePluginEntry,
-  resolvePluginPackage,
-} from '../plugin-config.ts';
+import { loadPlugins } from '../host.ts';
 import { EXIT, json, type Io } from './exit.ts';
-import { scaffoldFiles } from './scaffold.ts';
-import { PLUGIN_ADD, PLUGIN_LIST, PLUGIN_NEW, PLUGIN_REMOVE } from './spec.ts';
-
-/** A config key and a directory name, so it is typeable and greppable. */
-const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+import { PLUGIN_LIST } from './spec.ts';
 
 const listOr = (names: readonly string[] | undefined): string => (names?.length ? names.join(', ') : '—');
 
@@ -80,104 +56,10 @@ async function list(argv: string[], io: Io, t: CoreT): Promise<number> {
   return loaded.errors.length ? EXIT.error : EXIT.ok;
 }
 
-function add(argv: string[], io: Io, t: CoreT, cwd: string): number {
-  const { values, positionals } = parseArgs({
-    args: argv,
-    options: PLUGIN_ADD.options,
-    strict: true,
-    allowPositionals: true,
-  });
-  const spec = positionals[0];
-  if (spec === undefined) {
-    io.err(`${t('missingOption', { option: '<package-or-path>' })}\n`);
-    return EXIT.usage;
-  }
-
-  const resolved = resolvePluginPackage(spec, cwd);
-  if (!resolved.ok) {
-    if (resolved.problem === 'not-found') {
-      io.err(`${t('pluginUnresolved', { spec: resolved.detail })}\n`);
-      return EXIT.error;
-    }
-    // Something IS there and it is not a plugin: a refusal, not a failure.
-    if (resolved.problem === 'no-entry') io.err(`${t('pluginNoEntry', { file: resolved.detail })}\n`);
-    else io.err(`${t('pluginBadManifest', { file: resolved.detail })}\n`);
-    return EXIT.refused;
-  }
-
-  const name = values.name ?? defaultPluginName(resolved.pkg.packageName);
-  if (!NAME.test(name)) {
-    io.err(`${t('pluginBadName', { name })}\n`);
-    return EXIT.usage;
-  }
-
-  const file = configFile();
-  if (addPluginEntry(file, name, resolved.pkg.from) === 'exists') {
-    io.err(`${t('pluginExists', { name, file })}\n`);
-    return EXIT.refused;
-  }
-  io.out(`${t('pluginAdded', { name, from: resolved.pkg.from, file })}\n`);
-  return EXIT.ok;
-}
-
-function remove(argv: string[], io: Io, t: CoreT): number {
-  const { positionals } = parseArgs({ args: argv, options: PLUGIN_REMOVE.options, strict: true, allowPositionals: true });
-  const name = positionals[0];
-  if (name === undefined) {
-    io.err(`${t('missingOption', { option: '<name>' })}\n`);
-    return EXIT.usage;
-  }
-  const file = configFile();
-  if (removePluginEntry(file, name) === 'absent') {
-    io.err(`${t('pluginNotListed', { name, file })}\n`);
-    return EXIT.refused;
-  }
-  io.out(`${t('pluginRemoved', { name, file })}\n`);
-  return EXIT.ok;
-}
-
-function create(argv: string[], io: Io, t: CoreT, cwd: string): number {
-  const { values, positionals } = parseArgs({
-    args: argv,
-    options: PLUGIN_NEW.options,
-    strict: true,
-    allowPositionals: true,
-  });
-  const name = positionals[0];
-  if (name === undefined) {
-    io.err(`${t('missingOption', { option: '<name>' })}\n`);
-    return EXIT.usage;
-  }
-  if (!NAME.test(name)) {
-    io.err(`${t('pluginBadName', { name })}\n`);
-    return EXIT.usage;
-  }
-
-  const dir = path.resolve(cwd, values.dir ?? name);
-  // An existing directory is only in the way when there is something in it:
-  // `plugin new x --dir .` inside an empty repo somebody just cloned is the
-  // case that has to work.
-  if (fs.existsSync(dir) && fs.readdirSync(dir).length > 0) {
-    io.err(`${t('pluginTargetExists', { dir })}\n`);
-    return EXIT.refused;
-  }
-
-  for (const file of scaffoldFiles(name, dir)) {
-    const target = path.join(dir, file.path);
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, file.body);
-  }
-  io.out(`${t('pluginScaffolded', { dir })}\n`);
-  return EXIT.ok;
-}
-
 /** The `plugin` verb, dispatched. Throws nothing main.ts does not already catch. */
-export async function plugin(argv: string[], io: Io, t: CoreT, cwd: string = process.cwd()): Promise<number> {
+export async function plugin(argv: string[], io: Io, t: CoreT): Promise<number> {
   const [verb, ...rest] = argv;
   if (verb === 'list') return await list(rest, io, t);
-  if (verb === 'add') return add(rest, io, t, cwd);
-  if (verb === 'remove') return remove(rest, io, t);
-  if (verb === 'new') return create(rest, io, t, cwd);
   io.err(`${t('unknownCommand', { command: `plugin ${verb ?? ''}`.trim() })}\n${t('usage')}\n`);
   return EXIT.usage;
 }

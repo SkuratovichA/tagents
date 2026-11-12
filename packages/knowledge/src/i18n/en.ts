@@ -11,12 +11,11 @@ export const en = {
     '  lint [--dir D]',
     '  toc [--dir D] [--check]',
     '  usage [--dir D] [--db F] [--usage-db F] [--since Nd] [--top N] [--type T] [--all] [--candidates] [--min-gets N] [--min-days N] [--json]',
-    '  mcp',
-    '  serve [--idle S] [--foreground] [--socket P]',
     '',
     'exit: 0 ok · 1 error · 2 usage · 4 nothing found',
   ].join('\n'),
   unknownCommand: 'unknown command: {{command}}',
+  needsBinary: '{{verb}} is served by the tagents-core binary, and this machine has none: run `tagents update`, or `cargo build --release -p tagents-core` in the checkout',
   missingOption: 'missing required argument {{option}}',
   noDir: [
     'no knowledge directory: set TAGENTS_KNOWLEDGE_DIR, pass --dir, or add to {{config}}',
@@ -72,15 +71,10 @@ export const en = {
     'writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date',
   summaryUsage:
     'reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store',
-  summaryMcp: 'serves the knowledge tools over stdio as an MCP server',
-  summaryServe:
-    'starts the shared MCP server for this environment if it is not running and prints its unix socket; --idle S is how many seconds without a client before it exits (default 600); --foreground runs the server in this process, on --socket P',
   usageColumns: 'id type status gets hits days last',
   noUsageRows: 'nothing to report: no document matches',
   badSince: '--since must be a positive whole number of days followed by d, such as 30d',
   badCount: '--{{flag}} must be a positive whole number',
   usageUnreadable: 'the usage store {{file}} cannot be read: {{reason}}',
   notRecorded: 'not recorded in the usage store {{file}}: {{reason}}',
-  badIdle: '--idle must be a positive number of seconds',
-  serveFailed: 'could not start the shared knowledge server: {{reason}}',
 } as const;

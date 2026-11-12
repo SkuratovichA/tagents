@@ -108,25 +108,7 @@ export const USAGE = {
   tool: false,
 } as const satisfies CommandSpec<KnowledgeKey>;
 
-export const MCP = {
-  path: ['mcp'],
-  positionals: [],
-  options: {},
-  required: [],
-  summary: 'summaryMcp',
-  effect: 'serve',
-} as const satisfies CommandSpec<KnowledgeKey>;
-
-export const SERVE = {
-  path: ['serve'],
-  positionals: [],
-  options: { idle: { type: 'string' }, foreground: { type: 'boolean' }, socket: { type: 'string' } },
-  required: [],
-  summary: 'summaryServe',
-  effect: 'serve',
-} as const satisfies CommandSpec<KnowledgeKey>;
-
-export const KNOWLEDGE_COMMANDS = [INDEX, SEARCH, SHOW, LIST, LINT, TOC, USAGE, MCP, SERVE] as const satisfies readonly CommandSpec<KnowledgeKey>[];
+export const KNOWLEDGE_COMMANDS = [INDEX, SEARCH, SHOW, LIST, LINT, TOC, USAGE] as const satisfies readonly CommandSpec<KnowledgeKey>[];
 
 /** English whatever the machine's locale is: the contract is read by tools, not people. */
 export function knowledgeCliContract(): CliContract {

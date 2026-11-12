@@ -1,6 +1,6 @@
 // The notify plugin: what the host sees, and the five verbs a person types.
 //
-// Registering it in the config (`tagents plugin add`) gives `tagents notify <verb>`; the same verbs run from the package's own bin (main.ts), which the LaunchAgent starts, directly or through the installer's `tagents-notify` command, which may run the Rust binary instead (see `runSpecFor`). The service that actually posts notifications is `run`: under launchd it is the process, and a host that merely lists plugins never starts it.
+// Registering it in the config (`tagents plugin add`) gives `tagents notify <verb>`; the same verbs run from the package's own bin (main.ts), which the LaunchAgent starts, directly or through the installer's `tagents-notify` command, which may run the Rust binary instead (see `runSpecFor`). The service that posts notifications is `run`, which the Rust binary serves (`tagents-core notify run`); here `run` only starts that binary for a LaunchAgent that still says `node main.js run`.
 //
 // Every verb takes its directories from `deps.env` and not from the context, so a test points it at a temporary config and state dir without touching the process's own environment. In production `deps.env` is the process's, and the two agree.
 import { randomUUID } from 'node:crypto';
@@ -19,7 +19,6 @@ import {
   loadPluginOptions,
   POSITIONALS,
   readAgentState,
-  runService,
   setEventsOn,
   stateDir as stateDirOf,
   type AgentEvent,
@@ -30,18 +29,19 @@ import {
   type PluginDef,
 } from '@tagents/core';
 import { NOTIFY_EXIT, SEND_MESSAGE_MAX, SEND_TITLE_MAX } from './cli/spec.ts';
-import { buildNotice, clickFor, eventFromRow, noticeId } from './engine.ts';
+import { buildNotice, clickFor, eventFromRow, noticeId } from './notice.ts';
 import { describe } from './errors.ts';
 import { execText, type Exec } from './exec.ts';
 import type { NoticeKind } from './kinds.ts';
 import type { Notice, Platform, RunSpec, ServiceManager } from './notifier.ts';
 import { NotifyOptionsSchema, type NotifyOptions } from './options.ts';
-import { BUNDLE_ID, MAIN_JS, appPath, installedCommand, logPath, resolveIcon, tagentsScript, type ResolvedIcon } from './paths.ts';
+import { BUNDLE_ID, CORE_BIN, MAIN_JS, appPath, installedCommand, logPath, resolveIcon, tagentsScript, type ResolvedIcon } from './paths.ts';
 import { pickPlatform } from './platform/index.ts';
 import { appState } from './platform/macos/app.ts';
 import { helperStatus } from './platform/macos/helper.ts';
 import { tmuxScreen } from './screen.ts';
-import { LOCK_FILE, SERVICE_NAME, createNotifyService, holds, psProcessStart, readLock, systemBootMs } from './service.ts';
+import { LOCK_FILE, SERVICE_NAME, holds, psProcessStart, readLock, systemBootMs } from './lock.ts';
+import { runBinary } from './run-binary.ts';
 
 type Log = (...parts: string[]) => void;
 
@@ -50,6 +50,8 @@ export interface CommandDeps {
   readonly env?: NodeJS.ProcessEnv;
   readonly home?: string;
   readonly exec?: Exec;
+  /** The binary `run` starts; a test points it at a stub. */
+  readonly coreBin?: string;
   readonly platform?: (backend: NotifyOptions['backend'], log: Log) => Platform | null;
   /** Where a verb's answer goes: stdout, which a test replaces. The log lines go to stderr through the context. */
   readonly out?: (s: string) => void;
@@ -285,7 +287,7 @@ export function createNotifyPlugin(deps: CommandDeps = {}): PluginDef {
    * and "stream: off" about a service a few hundred milliseconds from both. Waits, bounded, until the service runs
    * and the stream is on; false when the bound passed first.
    *
-   * This is the one timer outside clock.ts and launchd.ts: a one-shot wait in a CLI verb that ends, not polling in
+   * This is the one timer outside launchd.ts: a one-shot wait in a CLI verb that ends, not polling in
    * the service, and launchd.ts cannot do it because the stream is the service's own doing and not launchd's.
    */
   async function settle(service: ServiceManager): Promise<boolean> {
@@ -362,30 +364,14 @@ export function createNotifyPlugin(deps: CommandDeps = {}): PluginDef {
   const plugin: PluginDef = definePlugin({
     name: 'notify',
     apiVersion: 1,
-    services: [
-      createNotifyService({
-        os: osName,
-        env,
-        ...(deps.platform !== undefined ? { platform: deps.platform } : {}),
-      }),
-    ],
     commands: [
       verb({
         name: 'run',
-        describe: 'Run the notification service in the foreground.',
+        describe: 'Run the notification service in the foreground (the tagents-core binary serves it).',
         args: z.object({}),
         async run(_a, ctx: PluginContext): Promise<number> {
-          // 0 is for a service that deliberately does not run (another one holds the lock, backend none, an unsupported
-          // OS) and for one a signal stopped: the LaunchAgent's `SuccessfulExit: false` never restarts those. A start
-          // that throws exits 1, which launchd does restart, so a failure that passes is not left dead until login.
-          try {
-            const running = await runService(plugin, SERVICE_NAME, ctx, { signals: true });
-            await running.done;
-          } catch (e) {
-            ctx.log(`the notify service stopped: ${describe(e)}`);
-            return 1;
-          }
-          return 0;
+          // The service is the binary's. This answers for a LaunchAgent that still starts node.
+          return runBinary({ bin: deps.coreBin ?? CORE_BIN, env, err: (text) => ctx.log(text.trimEnd()) });
         },
       }),
       verb({

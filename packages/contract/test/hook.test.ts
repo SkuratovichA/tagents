@@ -23,7 +23,7 @@ test('the hook names the files it regenerates for in one pattern', () => {
 test('the pattern matches the script, its CLI spec, the data file and the schema of tagents-core, a package source, the manifest and the lockfile', () => {
   assert.ok(pattern !== undefined);
   const re = new RegExp(pattern);
-  for (const staged of ['packages/knowledge/bin/knowledge-mcp', 'tagents', BASH_SPEC, CORE_SPEC, CORE_SPEC_SCHEMA, 'packages/mcp/src/tools.ts', 'packages/notify/package.json', 'pnpm-lock.yaml', '.claude-plugin/plugin.json', 'skills/tagents/SKILL.md', 'contract.json']) {
+  for (const staged of ['packages/knowledge/bin/knowledge-mcp', 'tagents', BASH_SPEC, CORE_SPEC, CORE_SPEC_SCHEMA, 'packages/contract/src/tools.ts', 'packages/notify/package.json', 'pnpm-lock.yaml', '.claude-plugin/plugin.json', 'skills/tagents/SKILL.md', 'contract.json']) {
     assert.ok(re.test(staged), `${staged} is staged and the hook would not regenerate`);
   }
 });
@@ -31,7 +31,7 @@ test('the pattern matches the script, its CLI spec, the data file and the schema
 test('the pattern leaves out what the contract is not made from', () => {
   assert.ok(pattern !== undefined);
   const re = new RegExp(pattern);
-  for (const staged of ['README.md', 'docs/guide/accounts.md', 'tests/launch.sh', 'openspec/changes/x/tasks.md', 'packages/mcp/test/tools.test.ts']) {
+  for (const staged of ['README.md', 'docs/guide/accounts.md', 'tests/launch.sh', 'openspec/changes/x/tasks.md', 'packages/contract/test/tool-surface.test.ts']) {
     assert.ok(!re.test(staged), `${staged} would regenerate for nothing`);
   }
 });

@@ -5,7 +5,7 @@
 // loaded exits 3 with "Boot-out failed: 3: No such process", and `print` of one
 // exits 113 with "Could not find service". A bootstrap right after a bootout can
 // fail with "5: Input/output error" while the old process is still exiting, so
-// it is retried; the timers outside `clock.ts` are this retry delay and the settle wait of `install` in `plugin.ts`.
+// it is retried; the timers here are this retry delay and the settle wait of `install` in `plugin.ts`.
 // The three launchctl-print-disabled*.txt fixtures are not captures: they use the
 // format `print-disabled` prints on macOS 13+ (and, in the legacy one, the `=> true`
 // spelling of older systems) with made-up labels.

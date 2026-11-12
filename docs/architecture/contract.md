@@ -9,7 +9,7 @@ The Claude Code plugin tells a session exactly what every tagents command and pa
 | what | read from | lands in |
 |------|-----------|----------|
 | every verb, flag, exit code and effect of `tagents-core`, `tagents-knowledge` and `tagents-notify`, and of the flags of `tagents` that are not interactive | the command specs `parseArgs` itself is handed: `spec/cli/tagents-core.json` for `tagents-core` (read through `packages/core/src/cli/spec.ts`), `packages/knowledge/src/cli/spec.ts` for `tagents-knowledge`, `packages/notify/src/cli/spec.ts` for `tagents-notify`, and `tagents.cli.json` for the bash script | `contract.json`, `references/cli.md` |
-| every MCP tool and its input schema | the knowledge server `createServer()` builds, asked for its tool list the way a client asks, and the tools of the `tagents` server, which `toolSpecs()` derives from the verbs above | `contract.json`, `references/mcp.md` |
+| every MCP tool and its input schema | the frozen tool list of the knowledge server, `crates/tagents-core/src/knowledge/tools.json`, read by `packages/contract/src/sources.ts`, and the tools of the `tagents` server, which `toolSpecs()` derives from the verbs above | `contract.json`, `references/mcp.md` |
 | the public TypeScript API of each package | declarations emitted from the sources, through [API Extractor](https://api-extractor.com/) | `references/*.api.md`, and a hash of each in `contract.json` |
 | the flags of `tagents`, `tusage` and `tnotes` | each script's own `--help` | `references/scripts.md` |
 
@@ -31,7 +31,7 @@ An installed plugin stays on its version until the version changes, which is why
 
 ## The tools follow the verbs
 
-The `tagents` MCP server (`packages/mcp`, and `tagents-core mcp` in the Rust binary, which derives the same tools from `contract.json`) has one tool for each verb that is in a spec above, except the verbs that run until they are stopped and the verbs that say `tool: false`, and it knows no verb by name: `toolSpecs()` derives the tools from the specs, the generator records them in `contract.json` under `mcp.tagents.tools`, and the server derives them again from that file when it starts. A verb added to a spec is therefore a new tool, a new digest and a minor bump after `pnpm plugin:gen`, with no tool code written.
+The `tagents` MCP server (`tagents-core mcp` in the Rust binary, which derives the same tools from `contract.json`) has one tool for each verb that is in a spec above, except the verbs that run until they are stopped and the verbs that say `tool: false`, and it knows no verb by name: `toolSpecs()` derives the tools from the specs, the generator records them in `contract.json` under `mcp.tagents.tools`, and the server derives them again from that file when it starts. A verb added to a spec is therefore a new tool, a new digest and a minor bump after `pnpm plugin:gen`, with no tool code written.
 
 A verb may declare an `effect` (`read`, `write`, `spawn`, `destructive` or `serve`). The effect becomes the tool's annotations, which is what Claude Code's permission prompt shows. A verb that declares none is offered as a tool that is not read-only, and `pnpm plugin:gen` and `pnpm plugin:check` print a `notice:` line naming it, without failing. The verbs of `tagents-core` say it in the data file `spec/cli/tagents-core.json`, whose schema takes the five words and nothing else:
 

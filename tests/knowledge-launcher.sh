@@ -115,16 +115,16 @@ done
 for code in 1 3 127 126 130; do
   launch "exit$code" "$STUBS" "$code" "$SOCK"
   ok "join exits $code: the old arrangement runs" "stub: nc -U $SOCK" "$OUT"
-  ok "...with exactly one line on stderr, naming the code" "knowledge-mcp: tagents-knowledge join exited $code, using the node server (tagents-knowledge join </dev/null shows why)" "$ERR"
-  ok "...and the old arrangement runs with TAGENTS_NO_NATIVE=1, so the wrapper hands serve to node and not to the binary" "join=unset|serve=1|" "$(tr '\n' '|' < "$TMP/envlog")"
+  ok "...with exactly one line on stderr, naming the code" "knowledge-mcp: tagents-knowledge join exited $code, using a server of its own (tagents-knowledge join </dev/null shows why)" "$ERR"
+  ok "...and the launcher sets no TAGENTS_NO_NATIVE: serve goes to the binary, a server that needs no daemon" "join=unset|serve=unset|" "$(tr '\n' '|' < "$TMP/envlog")"
   launch "exit$code-nosock" "$STUBS" "$code" ""
-  ok "join exits $code, no socket: the node server, with the same one line" "stub: mcp|knowledge-mcp: tagents-knowledge join exited $code, using the node server (tagents-knowledge join </dev/null shows why)" "$OUT|$ERR"
-  ok "...and mcp too sees TAGENTS_NO_NATIVE=1" "join=unset|serve=1|mcp=1|" "$(tr '\n' '|' < "$TMP/envlog")"
+  ok "join exits $code, no socket: the node server, with the same one line" "stub: mcp|knowledge-mcp: tagents-knowledge join exited $code, using a server of its own (tagents-knowledge join </dev/null shows why)" "$OUT|$ERR"
+  ok "...and mcp sees no TAGENTS_NO_NATIVE either" "join=unset|serve=unset|mcp=unset|" "$(tr '\n' '|' < "$TMP/envlog")"
 done
 
 # No tagents-knowledge at all: the shell's 127 is a code like any other.
 OUT=$(env -i PATH="$NO_NC/none" /bin/sh "$LAUNCHER" 2> "$TMP/err" </dev/null); RC=$?
-ok "no tagents-knowledge on PATH: the first line of stderr names 127" "knowledge-mcp: tagents-knowledge join exited 127, using the node server (tagents-knowledge join </dev/null shows why)" "$(head -n 1 "$TMP/err")"
+ok "no tagents-knowledge on PATH: the first line of stderr names 127" "knowledge-mcp: tagents-knowledge join exited 127, using a server of its own (tagents-knowledge join </dev/null shows why)" "$(head -n 1 "$TMP/err")"
 
 # ---------------------------------------------------------------------------
 t "2. over a scratch install: the program a session starts"
@@ -149,12 +149,11 @@ else
   (
     cd "$ORIGIN" || exit 1
     git init -q -b main . && git config user.email t@example.com && git config user.name t
-    mkdir -p hooks packages/core/dist/cli packages/notify/dist packages/mcp/dist packages/knowledge
+    mkdir -p hooks packages/core/dist/cli packages/notify/dist packages/knowledge
     for f in tagents tusage tnotes; do printf '#!/bin/sh\nexit 0\n' > "$f"; chmod +x "$f"; done
     cp "$ROOT/hooks/claude-settings.json" hooks/claude-settings.json
     printf '#!/usr/bin/env node\n' > packages/core/dist/cli/main.js
     printf '#!/usr/bin/env node\n' > packages/notify/dist/main.js
-    printf '#!/usr/bin/env node\n' > packages/mcp/dist/main.js
     # The real node server, reached through the copy: node resolves the link, so its modules are the ones of this tree.
     ln -s "$ROOT/packages/knowledge/dist" packages/knowledge/dist
     cp "$ROOT/Cargo.toml" Cargo.toml
@@ -218,21 +217,15 @@ else
   senv "$TAGENTS_BIN/tagents-knowledge" join </dev/null >/dev/null 2>&1; rc=$?
   ok "no binary: the probe is answered with 69" 69 "$rc"
   ok "...and starts no node" 0 "$(starts)"
-  session nobin
-  ok "no binary: the session got an initialize reply" yes "$(grep -q '"result"' "$TMP/out.nobin" && echo yes || echo no)"
-  cmd=$(ps -o command= -p "$SPID" 2>/dev/null)
-  case $cmd in "nc -U "*) got=nc ;; *) got="$cmd" ;; esac
-  ok "...through nc -U, which is the process the session started" nc "$got"
-  ok "...after a serve that the wrapper handed to node" yes "$(grep -q ' serve' "$TMP/node-starts" && echo yes || echo no)"
-  ok "...and no join was started" 0 "$(grep -c ' join' "$TMP/node-starts")"
-  ok "...nothing on stderr" "" "$(cat "$TMP/err.nobin")"
-  ok "...and the session ends: at end of input where nc does (here: $NC_ENDS), at SIGTERM where it does not" "$(ncexpect)" "$(end_nc_session nobin)"
-  stop_scratch_daemons
-  sleep 0.5
+  # The node program no longer serves: the launcher goes on from the failed probe to `serve` and `mcp`, which answer the needs-binary line and exit 69.
+  senv /bin/sh "$LAUNCHER" </dev/null >"$TMP/out.nobin" 2>"$TMP/err.nobin"; rc=$?
+  ok "no binary: the launcher ends with 69" 69 "$rc"
+  ok "...with nothing on stdout" "" "$(cat "$TMP/out.nobin")"
+  ok "...and one line on stderr per node call, naming tagents update and the cargo build" yes "$(grep -q 'tagents update.*cargo build --release -p tagents-core' "$TMP/err.nobin" && echo yes || echo no)"
+  ok "...after node was started for serve and for mcp, and for no join" "2 0" "$(starts) $(grep -c ' join' "$TMP/node-starts")"
 
   # --- the binary -------------------------------------------------------------
   mkdir -p "$TAGENTS_HOME/target/release"; cp "$CORE" "$TAGENTS_HOME/target/release/tagents-core"; chmod 755 "$TAGENTS_HOME/target/release/tagents-core"
-  # the install now names the binary: TAGENTS_NO_NATIVE=1 at install time leaves the knowledge wrapper without one
   unset TAGENTS_NO_NATIVE
   out=$(install); rc=$?
   ok "the install over a binary exits 0" 0 "$rc"
@@ -281,23 +274,21 @@ OLD
     stop_scratch_daemons
   fi
 
-  # --- a binary that fails the probe: the session is answered by node ---------------
-  # The wrapper is the real one and the binary a stub that says the right version and exits 1 on everything else.
+  # --- a binary that fails the probe: the launcher goes on to serve and mcp of the binary ---------
+  # The wrapper is the real one and the binary a stub that says the right version, fails join and serve, and answers mcp.
   want=$(sed -n 's/^version = "\(.*\)"/\1/p' "$ORIGIN/Cargo.toml" | head -n 1)
-  printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core %s"; exit 0; fi\necho "$*" >> "%s/stub-core-calls"\nexit 1\n' "$want" "$TMP" > "$TAGENTS_HOME/target/release/tagents-core"
+  printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core %s"; exit 0; fi\necho "$*" >> "%s/stub-core-calls"\ncase "${2:-}" in mcp) echo mcp-served ;; *) exit 1 ;; esac\n' "$want" "$TMP" > "$TAGENTS_HOME/target/release/tagents-core"
   chmod 755 "$TAGENTS_HOME/target/release/tagents-core"
   out=$(install); rc=$?
   ok "the install over a stub binary exits 0" 0 "$rc"
   rm -f "$TMP/node-starts" "$TMP/stub-core-calls"
-  session failing
-  ok "a binary that fails the probe: the session got an initialize reply" yes "$(grep -q '"result"' "$TMP/out.failing" && echo yes || echo no)"
-  cmd=$(ps -o command= -p "$SPID" 2>/dev/null)
-  case $cmd in "nc -U "*) got=nc ;; *) got="$cmd" ;; esac
-  ok "...through nc -U, to a daemon of node" nc "$got"
-  ok "...node was started for serve" yes "$(grep -q ' serve' "$TMP/node-starts" && echo yes || echo no)"
-  ok "...and the stub binary was run for the probe alone" "knowledge join" "$(cat "$TMP/stub-core-calls")"
-  ok "...one line on stderr, naming the code" "knowledge-mcp: tagents-knowledge join exited 1, using the node server (tagents-knowledge join </dev/null shows why)" "$(cat "$TMP/err.failing")"
-  ok "...and the session ends: at end of input where nc does (here: $NC_ENDS), at SIGTERM where it does not" "$(ncexpect)" "$(end_nc_session failing)"
+  senv /bin/sh "$LAUNCHER" </dev/null >"$TMP/out.failing" 2>"$TMP/err.failing"; rc=$?
+  ok "a binary that fails the probe: the launcher ends in the binary's mcp, exit 0" "0 mcp-served" "$rc $(cat "$TMP/out.failing")"
+  ok "...the binary was asked join, serve and mcp, in this order" "knowledge join
+knowledge serve
+knowledge mcp" "$(cat "$TMP/stub-core-calls")"
+  ok "...no node was started" 0 "$(starts)"
+  ok "...one line on stderr, naming the code" "knowledge-mcp: tagents-knowledge join exited 1, using a server of its own (tagents-knowledge join </dev/null shows why)" "$(cat "$TMP/err.failing")"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

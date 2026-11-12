@@ -36,7 +36,7 @@ pub struct Identity {
 }
 
 impl Identity {
-    /// The plugin's server, `packages/mcp`.
+    /// The plugin's server, once `packages/mcp` (deleted; the oracle tag `v0.6.7` has it).
     pub const PLUGIN: Identity = Identity {
         name: "tagents",
         version: env!("CARGO_PKG_VERSION"),

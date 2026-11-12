@@ -234,6 +234,7 @@ This verb takes no flags.
 | 1 | error |
 | 2 | usage |
 | 4 | notFound |
+| 69 | noBinary |
 
 ### index
 
@@ -347,30 +348,6 @@ Usage: `tagents-knowledge usage [--dir <dir>] [--db <db>] [--usage-db <usage-db>
 | `--min-gets` | string | no | no |
 | `--min-days` | string | no | no |
 | `--json` | boolean | no | no |
-
-### mcp
-
-serves the knowledge tools over stdio as an MCP server
-
-CLI only: no tool runs this verb.
-
-Usage: `tagents-knowledge mcp`
-
-This verb takes no flags.
-
-### serve
-
-starts the shared MCP server for this environment if it is not running and prints its unix socket; --idle S is how many seconds without a client before it exits (default 600); --foreground runs the server in this process, on --socket P
-
-CLI only: no tool runs this verb.
-
-Usage: `tagents-knowledge serve [--idle <idle>] [--foreground] [--socket <socket>]`
-
-| Flag | Type | Required | Repeatable |
-|---|---|---|---|
-| `--idle` | string | no | no |
-| `--foreground` | boolean | no | no |
-| `--socket` | string | no | no |
 
 ## tagents-notify
 

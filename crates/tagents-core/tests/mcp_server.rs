@@ -357,16 +357,6 @@ fn plugin_json_registers_the_server_as_tagents_mcp_reading_the_contract_json_tha
     );
 }
 
-#[test]
-fn the_command_the_manifest_names_is_the_bin_this_package_declares() {
-    let package: Value = serde_json::from_str(
-        &fs::read_to_string(Path::new(REPO).join("packages/mcp/package.json")).unwrap(),
-    )
-    .unwrap();
-    let bins: Vec<&String> = package["bin"].as_object().unwrap().keys().collect();
-    assert_eq!(vec![registered_entry().0.as_str().unwrap()], bins);
-}
-
 // process.test.ts, the half that needs the server as a process
 
 /// The server with a call in flight once the program and its helper have written their pids.

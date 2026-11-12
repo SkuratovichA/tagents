@@ -1,5 +1,5 @@
 // The one place that knows which platforms exist. Adding Linux is a
-// `platform/linux/` directory and one line in `pickPlatform`; the engine only
+// `platform/linux/` directory and one line in `pickPlatform`; the notifier only
 // ever sees a `Notifier`.
 import type { Exec } from '../exec.ts';
 import type { Platform } from '../notifier.ts';

@@ -1,12 +1,13 @@
 // The two things every verb of this CLI needs, in a module neither half has to
 // import the other to get: the exit codes, and where output goes.
 //
-// Exit codes: 0 ok · 1 error · 2 usage · 3 refused · 4 timeout. "Refused" is
+// Exit codes: 0 ok · 1 error · 2 usage · 3 refused · 4 timeout · 69 no binary. "Refused" is
 // the one worth spelling out — it means nothing was done ON PURPOSE (the entry
 // is already there, the package is not a plugin), as opposed to an error, where
-// something went wrong on the way.
+// something went wrong on the way. 69 (EX_UNAVAILABLE) is a verb that only the
+// Rust binary serves, asked of a machine that has none.
 
-export const EXIT = { ok: 0, error: 1, usage: 2, refused: 3, timeout: 4 } as const;
+export const EXIT = { ok: 0, error: 1, usage: 2, refused: 3, timeout: 4, noBinary: 69 } as const;
 
 export interface Io {
   out: (s: string) => void;

@@ -16,13 +16,14 @@ set -o pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO=$(cd "$HERE/.." && pwd -P)
+ORACLE=$(bash "$HERE/parity-oracle.sh") || { echo "rust-parity: no node oracle (tests/parity-oracle.sh)" >&2; exit 2; }
 NODE=${TAGENTS_NODE:-$(command -v node)}
-CORE_JS="$REPO/packages/core/dist/cli/main.js"
+CORE_JS="$ORACLE/packages/core/dist/cli/main.js"
 RUST=${TAGENTS_CORE_BIN:-$REPO/target/debug/tagents-core}
 FIXTURES="$REPO/packages/core/test/fixtures/sessions"
 
 [ -n "$NODE" ] && [ -x "$NODE" ] || { echo "rust-parity: no node to run (set TAGENTS_NODE)" >&2; exit 2; }
-[ -f "$CORE_JS" ] || { echo "rust-parity: $CORE_JS is not built; run: pnpm install && pnpm build" >&2; exit 2; }
+[ -f "$CORE_JS" ] || { echo "rust-parity: $CORE_JS is not built; run: bash tests/parity-oracle.sh" >&2; exit 2; }
 if [ ! -x "$RUST" ]; then
   if [ -n "${TAGENTS_CORE_BIN:-}" ]; then echo "rust-parity: $RUST is not an executable" >&2; exit 2; fi
   (cd "$REPO" && cargo build -p tagents-core >&2) || { echo "rust-parity: cargo build failed" >&2; exit 2; }
@@ -75,6 +76,7 @@ parity() {  # <label> <home-name> <args...>
   local label=$1 home=$2; shift 2
   use "$home"; ARGS=("$@")
   run node "$NODE" "$CORE_JS"
+  oracle_usage_words "$TMP/out.node" "$TMP/err.node"
   run rust "$RUST"
   compare "$label ($home)"
 }
@@ -259,9 +261,9 @@ t "the installer accepts the --version of this binary"
 # install.sh compares the first line of `tagents-core --version` with the workspace version of the copy it installs, and installs nothing that differs. The binary of this checkout is packaged by the real packager, served as a file:// release, and installed by the whole installer in a sandbox: if the Rust side and the installer ever disagree about the shape of that line, the run ends with a warning here and not on a user's machine.
 INST=$TMP/installer
 # The tree holds the four entry files install.sh wraps: a wrapper whose entry is missing after the build is left alone with a warning, and the run ends with status 1.
-ORIGIN=$INST/origin; mkdir -p "$ORIGIN/packages/core/dist/cli" "$ORIGIN/packages/knowledge/dist/cli" "$ORIGIN/packages/notify/dist" "$ORIGIN/packages/mcp/dist" "$INST/home"
+ORIGIN=$INST/origin; mkdir -p "$ORIGIN/packages/core/dist/cli" "$ORIGIN/packages/knowledge/dist/cli" "$ORIGIN/packages/notify/dist" "$INST/home"
 cp "$REPO/Cargo.toml" "$ORIGIN/Cargo.toml"
-printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/core/dist/cli/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/knowledge/dist/cli/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/notify/dist/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/mcp/dist/main.js"
+printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/core/dist/cli/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/knowledge/dist/cli/main.js"; printf '#!/usr/bin/env node\n' > "$ORIGIN/packages/notify/dist/main.js"
 git -C "$ORIGIN" init -q -b main && git -C "$ORIGIN" config user.email t@example.com && git -C "$ORIGIN" config user.name t && git -C "$ORIGIN" add -A && git -C "$ORIGIN" commit -q -m origin
 version=$(sh "$REPO/.github/scripts/core-release.sh" version "$REPO/Cargo.toml")
 sh "$REPO/.github/scripts/core-release.sh" package "$version" aarch64-apple-darwin "$RUST" "$REPO/LICENSE" "$INST/release/v$version" > /dev/null
