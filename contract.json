@@ -1224,7 +1224,6 @@
   },
   "api": {
     "@tagents/core": "sha256:60933253154efd204c03f7b7cc3a2d2c77795557bc9dfe4a1ce4c6b8cace30a3",
-    "@tagents/knowledge": "sha256:dbdf2491e8329de4cd22cc4107f491f46345a88d7636359623ab3c64dfe41e0d",
     "@tagents/notify": "sha256:9fd35c43c5dd7262667bfdd48944a46e39551f1e7441438455c7859a39f8fb7e",
     "@tagents/telegram": "sha256:d4f59d1d38d82f1de0d25aa7fd4f0f68a1906519fbe58e742434f0d1ac1f13c0"
   }

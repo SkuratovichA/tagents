@@ -1,0 +1,205 @@
+{
+  "program": "tagents-knowledge",
+  "exit": {
+    "ok": 0,
+    "error": 1,
+    "usage": 2,
+    "notFound": 4,
+    "noBinary": 69
+  },
+  "commands": [
+    {
+      "path": [
+        "index"
+      ],
+      "positionals": [],
+      "options": {
+        "dir": {
+          "type": "string"
+        },
+        "db": {
+          "type": "string"
+        },
+        "full": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "summary": "brings the index in line with the folder; --full rebuilds it from nothing",
+      "effect": "write"
+    },
+    {
+      "path": [
+        "search"
+      ],
+      "positionals": [
+        "<query…>"
+      ],
+      "options": {
+        "dir": {
+          "type": "string"
+        },
+        "db": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "string"
+        },
+        "json": {
+          "type": "boolean"
+        },
+        "usage-db": {
+          "type": "string"
+        },
+        "verbose": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "summary": "prints one line per hit: id#heading, score and snippet; --type filters by type (--kind is its deprecated alias); deprecated documents come last; each document it returns is recorded as a hit in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)",
+      "effect": "read",
+      "tool": false
+    },
+    {
+      "path": [
+        "show"
+      ],
+      "positionals": [
+        "<id[#heading]>"
+      ],
+      "options": {
+        "dir": {
+          "type": "string"
+        },
+        "db": {
+          "type": "string"
+        },
+        "usage-db": {
+          "type": "string"
+        },
+        "verbose": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "summary": "prints the markdown of a document, or of one section of it; the read is recorded as a get in the usage store (--usage-db F names the file, --verbose says why a read was not recorded)",
+      "effect": "read",
+      "tool": false
+    },
+    {
+      "path": [
+        "list"
+      ],
+      "positionals": [],
+      "options": {
+        "dir": {
+          "type": "string"
+        },
+        "db": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "json": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "summary": "prints one line per document: id, type, updated, title and tags; --type filters by type (--kind is its deprecated alias); deprecated documents come last",
+      "effect": "read",
+      "tool": false
+    },
+    {
+      "path": [
+        "lint"
+      ],
+      "positionals": [],
+      "options": {
+        "dir": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "summary": "checks the claims each document makes about itself",
+      "effect": "read"
+    },
+    {
+      "path": [
+        "toc"
+      ],
+      "positionals": [],
+      "options": {
+        "dir": {
+          "type": "string"
+        },
+        "check": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "summary": "writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date",
+      "effect": "write"
+    },
+    {
+      "path": [
+        "usage"
+      ],
+      "positionals": [],
+      "options": {
+        "dir": {
+          "type": "string"
+        },
+        "db": {
+          "type": "string"
+        },
+        "usage-db": {
+          "type": "string"
+        },
+        "since": {
+          "type": "string"
+        },
+        "top": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "all": {
+          "type": "boolean"
+        },
+        "candidates": {
+          "type": "boolean"
+        },
+        "min-gets": {
+          "type": "string"
+        },
+        "min-days": {
+          "type": "string"
+        },
+        "json": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "summary": "reports what was read: one line per document with its type, status, gets, hits, the UTC days with a get and the date of the last get, the most read first; --since Nd sets the window (default 30d), --top N the number of lines (default 20), --type T keeps one type, --all adds ids that left the folder, --candidates keeps the documents read at least --min-gets times (default 5) on at least --min-days days (default 3), the ones worth turning into a skill; --usage-db F names the usage store",
+      "effect": "read",
+      "tool": false
+    }
+  ]
+}

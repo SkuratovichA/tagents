@@ -1,4 +1,4 @@
-// Where the contract is read from: the code itself. The two CLI specs and the MCP server are imported by relative path, not through the package names, because a package name resolves to a built dist and a stale dist would write a stale contract. The core CLI spec is the data file spec/cli/tagents-core.json, read live by the loader in core's cli/spec.ts; only the English text of its summary keys comes from core's catalogue.
+// Where the contract is read from: the code itself. The specs of core and notify are imported by relative path, not through the package names, because a package name resolves to a built dist and a stale dist would write a stale contract. The core CLI spec is the data file spec/cli/tagents-core.json, read live by the loader in core's cli/spec.ts; only the English text of its summary keys comes from core's catalogue.
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import { coreCliContract } from '../../core/src/cli/spec.ts';
-import { knowledgeCliContract } from '../../knowledge/src/cli/spec.ts';
 import { notifyCliContract } from '../../notify/src/cli/spec.ts';
 import { apiReports } from './api.ts';
 import { parseCliContract } from './contract-file.ts';
@@ -25,15 +24,21 @@ export const SCRIPT_NAMES = ['tagents', 'tusage', 'tnotes'] as const;
 /** The bash script has no argument parser to read, so its verbs are a file of their own, which test/bash-spec.test.ts pins to `tagents --help`. */
 export const BASH_SPEC = 'tagents.cli.json';
 
-/** Every CLI the plugin has: the three packages' own specs and the script's file. */
-export async function cliContracts(root: string, t: Translate = createT()): Promise<readonly CliContract[]> {
-  let script: CliContract;
+/** The verbs of `okb`, which the binary prints with `okb --spec` and a test of the crate pins to the file. */
+export const OKB_SPEC = 'spec/cli/okb.json';
+
+async function readCliFile(root: string, file: string, t: Translate): Promise<CliContract> {
   try {
-    script = parseCliContract(JSON.parse(await readFile(path.join(root, BASH_SPEC), 'utf8')));
+    return parseCliContract(JSON.parse(await readFile(path.join(root, file), 'utf8')));
   } catch (error) {
-    throw new Error(t('cliSpecUnreadable', { file: BASH_SPEC, reason: error instanceof Error ? error.message : String(error) }));
+    throw new Error(t('cliSpecUnreadable', { file, reason: error instanceof Error ? error.message : String(error) }));
   }
-  return [coreCliContract(), knowledgeCliContract(), notifyCliContract(), script];
+}
+
+/** Every CLI the plugin has: the specs of core and notify, the data files of okb and of the script. */
+export async function cliContracts(root: string, t: Translate = createT()): Promise<readonly CliContract[]> {
+  const script = await readCliFile(root, BASH_SPEC, t);
+  return [coreCliContract(), await readCliFile(root, OKB_SPEC, t), notifyCliContract(), script];
 }
 
 function toTool(tool: { name: string; description?: string | undefined; inputSchema: unknown; outputSchema?: unknown; annotations?: unknown }, t: Translate): McpTool {

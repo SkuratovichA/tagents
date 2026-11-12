@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# tests/knowledge-launcher.sh — packages/knowledge/bin/knowledge-mcp, the entry the plugin registers for the knowledge server: which program replaces it, and what reaches stderr.
+# tests/knowledge-launcher.sh — bin/knowledge-mcp, the entry the plugin registers for the knowledge server: which program replaces it, and what reaches stderr.
 #
 # Part one runs the launcher with a stub `tagents-knowledge` (and a stub `nc`) on a PATH of its own in a scratch directory, whose `join` exits with the code a case sets, and checks which program the launcher became and what it wrote to stderr. Part two installs the real wrapper with install.sh into a scratch HOME, TAGENTS_HOME and TAGENTS_BIN around the real binary (target/debug/tagents-core, or $TAGENTS_CORE_BIN) and the real node server, and looks at the processes a session starts. Every server, daemon and join runs under a scratch HOME, TMPDIR and knowledge folder: nothing of the person's is touched, and no real Claude Code is started.
 #
@@ -10,7 +10,7 @@ set -uo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd "$HERE/.." && pwd)
-LAUNCHER=${TAGENTS_LAUNCHER:-$ROOT/packages/knowledge/bin/knowledge-mcp}
+LAUNCHER=${TAGENTS_LAUNCHER:-$ROOT/bin/knowledge-mcp}
 TMP=$(cd -P "$(mktemp -d "${TMPDIR:-/tmp}/tagents-launcher.XXXXXX")" && pwd -P) || exit 1
 # The daemons of this run keep their sockets in a directory of their own under the system temp directory (/tmp/tagents-<uid>), not under TMPDIR, so the scratch directory does not hold them. What names the run is the environment they were started with (TAGENTS_HOME, the knowledge folder and the databases are under $TMP), and for the Rust daemon its command line too. Only a process whose environment or command holds this run's directory is signalled, and never the suite itself. /proc/<pid>/environ where there is a /proc (Linux), `ps -E` where there is not (macOS).
 scratch_pids() {
@@ -245,7 +245,7 @@ else
   sleep 0.5
 
   # --- the launcher of the plugin cache: the old two lines over the new wrapper ----
-  # A machine meets this first: the plugin cache keeps the old launcher until the plugin updates, and the wrapper is rewritten at the next `tagents update`. The two commands are those of 9af0ac1:packages/knowledge/bin/knowledge-mcp, verbatim; `serve` now reaches the Rust daemon and `nc -U` connects to it.
+  # A machine meets this first: the plugin cache keeps the old launcher until the plugin updates, and the wrapper is rewritten at the next `tagents update`. The two commands are those of 9af0ac1:bin/knowledge-mcp, verbatim; `serve` now reaches the Rust daemon and `nc -U` connects to it.
   cat > "$TMP/old-launcher" <<'OLD'
 sock=$(tagents-knowledge serve 2>/dev/null) && [ -S "$sock" ] && command -v nc >/dev/null 2>&1 && exec nc -U "$sock"
 exec tagents-knowledge mcp

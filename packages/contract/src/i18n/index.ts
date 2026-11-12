@@ -1,6 +1,17 @@
-// A typed t() built on the interpolation @tagents/knowledge already ships — not on i18next, whose key typing comes from a global `declare module` that cannot be augmented a second time (see packages/knowledge/src/i18n/index.ts). English only, because what it renders is read by Claude in the repo and must not depend on the machine that generated it. Imported from the source file, not the package name: the package name is a built dist, and importing its index would load the SQLite and MCP modules just to interpolate a string.
-import { interpolate, type Vars } from '../../../knowledge/src/i18n/index.ts';
+// A typed t() with its own interpolation, not i18next, whose key typing comes from a global `declare module` that cannot be augmented a second time. English only, because what it renders is read by Claude in the repo and must not depend on the machine that generated it.
 import { en } from './en.ts';
+
+export type Vars = Readonly<Record<string, string | number>>;
+
+const SLOT = /\{\{(\w+)\}\}/g;
+
+/** Fills the {{slots}} of a template; a slot with no value stays as written. */
+export function interpolate(template: string, vars: Vars): string {
+  return template.replace(SLOT, (whole, name: string) => {
+    const value = vars[name];
+    return value === undefined ? whole : String(value);
+  });
+}
 
 export type ContractKey = keyof typeof en;
 /** Same call shape as i18next's `t`: a key, and the values its {{slots}} take. */

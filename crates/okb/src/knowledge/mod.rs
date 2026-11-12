@@ -25,10 +25,16 @@ use tagents_core::{
     mcp::run::KILL_GRACE,
     messages::{Locale, Texts},
     node,
-    sessions::exit,
+    sessions::{Output, exit},
 };
 
 use paths::Env;
+
+/// The verbs of `okb` as data, in the shape of an entry of the plugin's contract: what `okb --spec` prints. A test pins it to the verbs the program serves.
+pub const SPEC: &str = include_str!("../../../../spec/cli/okb.json");
+
+/// What `okb --version` prints: the version of the workspace, which is the version of the release the binary comes from.
+const VERSION_LINE: &str = concat!("okb ", env!("CARGO_PKG_VERSION"), "\n");
 
 /// What the verbs that run until stopped say about how they are used.
 pub(crate) const USAGE: &str =
@@ -48,6 +54,21 @@ pub fn texts(locale: Locale) -> Result<Texts, serde_json::Error> {
 
 /// Runs the verb named by the first of `args` and returns its exit code. `mcp` ignores every word after it; `serve` and `join` read theirs; the seven verbs that read the folder are in `cli`; no word is the usage text.
 pub fn status(args: &[OsString]) -> u8 {
+    if let [only] = args {
+        let printed = match only.to_str() {
+            Some("--version") => Some(VERSION_LINE),
+            Some("--spec") => Some(SPEC),
+            _ => None,
+        };
+        if let Some(text) = printed {
+            front_door::print(&Output {
+                stdout: text.to_owned(),
+                stderr: String::new(),
+                code: exit::OK,
+            });
+            return exit::OK;
+        }
+    }
     let rest = args.get(1..).unwrap_or_default();
     let spelled = args.first().map(|word| word.to_string_lossy().into_owned());
     let word = spelled.as_deref();

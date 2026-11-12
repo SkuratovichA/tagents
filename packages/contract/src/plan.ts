@@ -15,7 +15,7 @@ export const SKILLS_DIR = 'skills';
 export const REFERENCES_DIR = 'skills/tagents/references';
 
 /** Files outside the generated ones that `plugin.json` starts or points at and that the plugin ships as they are. They are part of the digest, so a change to one reaches an installed copy as a new plugin version; a path named by `${CLAUDE_PLUGIN_ROOT}/` in `plugin.json` is generated, under skills/ or listed here. */
-export const SHIPPED_FILES = ['packages/knowledge/bin/knowledge-mcp'] as const;
+export const SHIPPED_FILES = ['bin/knowledge-mcp'] as const;
 
 /** The files the plan looks at, by path relative to the repo root with POSIX separators: contract.json, both files of .claude-plugin, everything under skills/ and the SHIPPED_FILES. */
 export interface Disk {

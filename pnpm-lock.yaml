@@ -20,9 +20,6 @@ importers:
       '@tagents/core':
         specifier: workspace:*
         version: link:../core
-      '@tagents/knowledge':
-        specifier: workspace:*
-        version: link:../knowledge
       '@tagents/telegram':
         specifier: workspace:*
         version: link:../telegram
@@ -54,25 +51,6 @@ importers:
       ajv:
         specifier: ^8.20
         version: 8.20.0
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-
-  packages/knowledge:
-    dependencies:
-      '@tagents/core':
-        specifier: workspace:*
-        version: link:../core
-      yaml:
-        specifier: ^2.9.1
-        version: 2.9.1
-      zod:
-        specifier: ^4.6.7
-        version: 4.6.7
-    devDependencies:
-      '@types/node':
-        specifier: ^22
-        version: 22.20.5
       typescript:
         specifier: 5.9.3
         version: 5.9.3

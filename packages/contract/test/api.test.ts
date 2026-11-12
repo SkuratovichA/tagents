@@ -10,12 +10,11 @@ const root = fileURLToPath(new URL('../../..', import.meta.url)).replace(/\/$/, 
 
 test('apiReports reports the public API of each public package', { timeout: 120_000 }, async () => {
   const reports = await apiReports(root);
-  assert.deepEqual(reports.map((r) => r.package), ['@tagents/core', '@tagents/knowledge', '@tagents/notify', '@tagents/telegram']);
-  assert.deepEqual(reports.map((r) => r.file), ['core.api.md', 'knowledge.api.md', 'notify.api.md', 'telegram.api.md']);
-  const [core, knowledge] = reports;
+  assert.deepEqual(reports.map((r) => r.package), ['@tagents/core', '@tagents/notify', '@tagents/telegram']);
+  assert.deepEqual(reports.map((r) => r.file), ['core.api.md', 'notify.api.md', 'telegram.api.md']);
+  const [core] = reports;
   assert.ok(core?.markdown.includes('definePlugin'));
   assert.ok(core?.markdown.includes('CommandSpec'));
-  assert.ok(knowledge?.markdown.includes('openDb'));
   for (const r of reports) {
     assert.ok(!r.markdown.includes(root), r.package);
     assert.ok(!r.markdown.includes('\r'), r.package);
