@@ -168,12 +168,14 @@ function parsed<K extends keyof typeof PARSED>(verb: K): Omit<LoadedCommand, 'op
 
 export const PLUGIN_LIST = parsed('plugin list');
 
+/** The groups that are wholly the binary's: every word after them is served by it, whether the spec lists it or not. Any other group (`notify`, `knowledge`) lists only the words the binary serves and node answers the rest. */
+const WHOLE_GROUPS: ReadonlySet<string> = new Set(['session', 'sessions']);
+
 /**
  * The verb a call names when the binary serves it and this CLI does not: `session` and `sessions` are the binary's for any word after them, any other group for the second word the spec lists. Returns the words to print ("plugin add"), or null when node's CLI runs the call.
  */
 export function servedByBinary(verb: string, rest: readonly string[]): string | null {
-  const group = SPEC.commands.filter((c) => c.path[0] === verb);
-  const wholeGroup = group.length > 0 && SPEC.served.filter((p) => p[0] === verb).length === group.length;
+  const wholeGroup = WHOLE_GROUPS.has(verb);
   const word = rest[0];
   const hit = SPEC.served.some((p) => p[0] === verb && (p.length === 1 || wholeGroup || p[1] === word));
   if (!hit) return null;

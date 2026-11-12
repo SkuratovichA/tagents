@@ -87,6 +87,19 @@ test('every verb the spec marks rust gets the line, and no verb marked node does
   }
 });
 
+test('a group the binary serves only in part is not retired for its other words', () => {
+  for (const argv of [['notify', 'status'], ['notify', 'install'], ['notify'], ['knowledge', 'list'], ['knowledge']]) {
+    const r = runCli(argv, withHome());
+    assert.notEqual(r.code, 69, `${argv.join(' ')} is node's, the spec lists only notify run and knowledge mcp|serve|join`);
+  }
+});
+
+test('a group wholly the binary\'s keeps the line for any word after it', () => {
+  for (const argv of [['session', 'bogus'], ['sessions', 'anything']]) {
+    assert.equal(runCli(argv, withHome()).code, 69, `${argv.join(' ')} is the binary's`);
+  }
+});
+
 test('the needs-binary text is translated, and the code is the same', () => {
   const r = runCli(['doctor'], withHome({ TAGENTS_LOCALE: 'ru' }));
   assert.equal(r.code, 69);
