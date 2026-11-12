@@ -6,7 +6,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { BASH_SPEC, KNOWLEDGE_SERVER_NAME as SERVER_NAME, TAGENTS_SERVER_NAME, SCRIPT_NAMES, cliContracts, mcpServers, scriptEnv, scriptHelps, tagentsServer } from '../src/sources.ts';
+import { BASH_SPEC, TAGENTS_SERVER_NAME, SCRIPT_NAMES, cliContracts, mcpServers, scriptEnv, scriptHelps, tagentsServer } from '../src/sources.ts';
+import { KNOWLEDGE_SERVER_NAME as SERVER_NAME } from '../src/plugins.ts';
 import { REPO_ROOT } from '../src/tree.ts';
 
 test('every CLI contract is present, each with verbs and exit codes: the three packages\' and the script\'s', async () => {

@@ -13,6 +13,7 @@ import { parseCliContract } from './contract-file.ts';
 import { createT, type Translate } from './i18n/index.ts';
 import { isJsonObject, toJson } from './json.ts';
 import { byCodeUnit } from './order.ts';
+import { KNOWLEDGE_SERVER_NAME } from './plugins.ts';
 import { toolSpecs } from './tools.ts';
 import type { CliContract, McpServerSpec, McpTool, Script, Sources } from './types.ts';
 
@@ -64,9 +65,8 @@ export function tagentsServer(cli: readonly CliContract[], t: Translate = create
   return { name: TAGENTS_SERVER_NAME, tools: toolSpecs(cli).map((tool) => toTool(tool, t)) };
 }
 
-/** The name each of the two servers goes by in the contract: the plugin's own, and the knowledge server's. */
+/** The name the plugin's own server goes by in the contract; the knowledge server's is in plugins.ts, with the plugin that owns it. */
 export const TAGENTS_SERVER_NAME = 'tagents';
-export const KNOWLEDGE_SERVER_NAME = 'tagents-knowledge';
 
 /** The `tools/list` of the knowledge server, which the binary serves and embeds: the file was written from the node server before it was deleted, and is frozen. */
 export const KNOWLEDGE_TOOLS_FILE = 'crates/okb/src/knowledge/tools.json';
