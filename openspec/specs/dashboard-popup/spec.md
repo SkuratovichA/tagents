@@ -54,7 +54,7 @@ In popup mode these keys SHALL close the list once their action has been issued:
 
 #### Scenario: Window order from the popup
 - **WHEN** the user presses `ctrl-o` in a popup list
-- **THEN** the popup list is still open, redrawn in the other order
+- **THEN** the popup list is still open, redrawn in the other order, window order or the order of the last message
 
 ### Requirement: Prompts are asked inline
 Keys that ask a question — rename, send, kill, new on an account to be asked, pick and the column picker — SHALL run in the popup's own terminal, since a popup cannot open a second popup. The same SHALL hold on a tmux with no `display-popup`, where the dashboard's list asks in place too.

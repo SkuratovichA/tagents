@@ -22,7 +22,7 @@ The dashboard SHALL be the cockpit and nothing else: no list SHALL run in or mov
 - **THEN** the cockpit is made, its viewport shows the chat's window and the popup's terminal shows the session `tagents`
 
 ### Requirement: The dashboard is a session of its own
-The dashboard SHALL be a tmux session named `tagents`, with the session option `@tagents_cockpit` set to `1`, the status line off and `detach-on-destroy` off, holding one window of two full-height panes: the list on the left at `TA_WIDTH` percent of the window's width (default 45), and the viewport on the right. The cockpit is up while that session exists, and its list claims its pane as the `window-rows` capability describes.
+The dashboard SHALL be a tmux session named `tagents`, with the session option `@tagents_cockpit` set to `1`, the status line off and `detach-on-destroy` off, holding one window of two full-height panes: the list on the left at `TA_WIDTH` percent of the window's width (default 45), and the viewport on the right, unless `dashboard.position` says otherwise. The cockpit is up while that session exists, and its list claims its pane as the `window-rows` capability describes.
 
 #### Scenario: A new dashboard
 - **WHEN** the cockpit starts in a terminal 200 columns wide with `TA_WIDTH` unset
@@ -32,6 +32,19 @@ The dashboard SHALL be a tmux session named `tagents`, with the session option `
 #### Scenario: Its terminals outlive it
 - **WHEN** the session `tagents` is killed while a terminal is attached to it and the session `work` exists
 - **THEN** that terminal shows the session `work` and is not detached
+
+
+### Requirement: The list can sit on the right and can be collapsed
+`dashboard.position` (`left`, the default, or `right`) SHALL name the side of the list, and the viewport SHALL take the other. The list's width SHALL be `TA_WIDTH` percent, else `dashboard.width` (1 to 90, default 45). A list or viewport started again in place, and a leftover dashboard rebuilt in place, SHALL keep the side the cockpit was made with.
+
+#### Scenario: The list on the right
+- **WHEN** `dashboard.position` is `right` and the cockpit starts
+- **THEN** the list is the right pane and the viewport is the left pane, and a killed list is started again on the right
+
+#### Scenario: Collapse
+- **WHEN** the user presses `ctrl-f` (the verb `collapse`)
+- **THEN** a marker is set in the state directory and the list pane is resized to `dashboard.collapsed_width` columns (default 24)
+- **AND** pressing it again removes the marker and gives the list its share back; a rebuilt or restored cockpit reads the marker
 
 ### Requirement: A taken name stops the cockpit
 When a session named `tagents` exists that neither carries `@tagents_cockpit` nor is a leftover dashboard, the cockpit SHALL NOT start: `tagents --ensure-dash`, a list started for the cockpit and the restore SHALL print `tagents: session tagents is taken — rename it, and the dashboard can start` on standard error, create nothing and change nothing in that session, and `tagents --ensure-dash` SHALL exit 1.
