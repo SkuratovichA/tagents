@@ -67,9 +67,13 @@ legacy_seats_present() {
   [ -n "$(tmux list-panes -a -F '#{@tagents_slot}#{@tagents_docked}' 2>/dev/null | tr -d '\n ')" ]
 }
 
+# The window order is the default now and the marker that asked for it has no meaning: left in place it would only sit in the state directory. One stat when it is gone.
+migrate_order_marker() { [ -e "$STATE_DIR/.order-window" ] && rm -f "$STATE_DIR/.order-window"; return 0; }
+
 # Idempotent: with the server marked and nothing of the seat model left it returns after one option read and one pane listing. The lock keeps two starters (a list, the refresher and a status bar run can start together) from sending the same chat home twice; the one that waits finds nothing left to do.
 migrate_seats() {
   local locked=""
+  migrate_order_marker
   [ "$(tmux show -gv @tagents_migrated 2>/dev/null)" = 1 ] && ! legacy_seats_present && return 0
   lock_dir "$STATE_DIR/.migrate.lock" 30 100 3 && locked=1
   if [ "$(tmux show -gv @tagents_migrated 2>/dev/null)" = 1 ] && ! legacy_seats_present; then

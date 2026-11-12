@@ -70,6 +70,8 @@ t()    { printf '\n%s\n' "$1"; }
 # ---------------------------------------------------------------------------
 BIN="$ROOT/bin";      mkdir -p "$BIN"
 STATE="$ROOT/state";  mkdir -p "$STATE"
+# The default order is the windows; sections 1 to 10 pin the order of the last message, which the marker asks for. Section 10c switches it off for its own checks and puts it back.
+: >"$STATE/.order-recent"
 REPO="$ROOT/repo";    mkdir -p "$REPO/.git"
 
 # An agent is a process ps calls "claude" — that is the whole of what live_panes
@@ -1108,17 +1110,17 @@ tm set -gu @tagents_viewport_window
 # ---------------------------------------------------------------------------
 t "10c. the order — a switch to the number of the window"
 # ---------------------------------------------------------------------------
-# The default is the last message and stays: that is what section 10 pins. With the marker file present (ctrl-o flips it) a row sits at its window's number, a dimmed window at its own, and typing into a chat moves nothing, so the place of an agent can be learned.
+# The window order is the default and the last message is the switch: sections up to 10 pin the last-message order with the marker file present (ctrl-o flips it), and this one the default, where a row sits at its window's number, a dimmed window at its own, and typing into a chat moves nothing, so the place of an agent can be learned.
 gkeys() {  # <group name> [VAR=value ...] — the pane keys of the rows of one group, in the order they are listed
   local g=$1; shift
   rows_at 140 "$@" | awk -F'\t' -v h="$HDR" -v n="$HDR $g" 'index($2, h) > 0 { on = (index($2, n) == 1); next } on { print $1 }' | tr '\n' ' '
 }
-ONW="$STATE/.order-window"
-rm -f "$ONW"
+ONW="$STATE/.order-recent"
+: >"$ONW"
 ok "fixture: the window of $A is numbered below the window of $A2" 1 \
    "$([ "$(tm display -p -t "$A" '#{window_index}')" -lt "$(tm display -p -t "$A2" '#{window_index}')" ] && echo 1 || echo 0)"
 DEF=$(gkeys tatest-work)
-: >"$ONW"
+rm -f "$ONW"
 BYW=$(gkeys tatest-work)
 ok "the marker changes the order of the group" 1 "$([ "$DEF" != "$BYW" ] && echo 1 || echo 0)"
 ok "marker: rows follow the numbers of their windows, the dimmed one among them" "$WROW $A $A2 " "$BYW"
@@ -1126,10 +1128,10 @@ said "$A" 1
 ok "...and answering a chat moves nothing" "$BYW" "$(gkeys tatest-work)"
 said "$A" 600
 ok "...nor does the group order change" "tatest-dash tatest-work tatest-zeta no " "$(groups)"
-rm -f "$ONW"
+: >"$ONW"
 ok "...and the marker removed leaves the groups where they were" "tatest-dash tatest-work tatest-zeta no " "$(groups)"
 ok "the marker removed: the order is the one from before" "$DEF" "$(gkeys tatest-work)"
-: >"$ONW"
+rm -f "$ONW"
 
 # A DIMMED WINDOW sits between the chats by its number, and a chat that exits does not move it: window 3 a chat, 5 a dimmed window, 7 a chat.
 WM=$(tm new-window -d -t tatest-work:5 -n mid -P -F '#{window_id}' "exec sleep 600" 2>/dev/null)
@@ -1204,17 +1206,17 @@ fline() {  # <group> [VAR=value ...] — the same fields of the first row printe
   local g=$1; shift
   rows_at 140 "$@" | awk -F'\t' -v h="$HDR" -v n="$HDR $g  " 'index($2, n) == 1 { on = 1; next } on && index($2, h) == 0 { print $1 "|" $3 "|" $4 "|" $5; exit }'
 }
-: >"$ONW"
+rm -f "$ONW"
 ok "window order: the first row of a session is the chat in its lowest window" "$HDA_1" "$(fline tatest-hd-a | cut -d'|' -f1)"
 ok "window order: the header carries the key, state, session id and directory of that row" "$(fline tatest-hd-a)" "$(hline tatest-hd-a)"
 ok "...so it is not the chat typed into last, which is in the higher window" 1 "$([ "$(hline tatest-hd-a | cut -d'|' -f1)" != "$HDA_2" ] && echo 1 || echo 0)"
 ok "ctrl-n on that header takes the directory of the first printed row" "$REPO" "$(hline tatest-hd-a | cut -d'|' -f4)"
 ok "window order: a dimmed window printed first is what its header carries, with state none and no session id" "$HDB_W|none||$REPO3" "$(hline tatest-hd-b)"
 ok "...the same fields as the row beneath it" "$(fline tatest-hd-b)" "$(hline tatest-hd-b)"
-rm -f "$ONW"
+: >"$ONW"
 ok "the default order: the header carries the chat typed into last" "$HDA_2|working|sid-hda2|$REPO2" "$(hline tatest-hd-a)"
 ok "...and a chat before a dimmed window of its session" "$HDB_C|working|sid-hdb|$REPO" "$(hline tatest-hd-b)"
-: >"$ONW"
+rm -f "$ONW"
 tm kill-session -t =tatest-hd-a 2>/dev/null; tm kill-session -t =tatest-hd-b 2>/dev/null
 rm -f "$STATE/${HDA_1#%}.tsv" "$STATE/${HDA_2#%}.tsv" "$STATE/${HDB_C#%}.tsv" "$STATE"/prompt/"${HDA_1#%}" "$STATE"/prompt/"${HDA_2#%}" "$STATE"/prompt/"${HDB_C#%}"
 
@@ -1227,7 +1229,7 @@ said %s-h1 300; said %s-h2 400
 NW0=$(gkeys no)
 said %s-h2 1
 ok "rows of the no-window group keep their order when one gets a new prompt" "$NW0" "$(gkeys no)"
-rm -f "$ONW"
+: >"$ONW"
 ok "...which the last-message order does not" "no" "$([ "$(gkeys no)" = "$NW0" ] && echo yes || echo no)"
 rm -f "$STATE/s-h1.tsv" "$STATE/s-h2.tsv" "$STATE/prompt/s-h1" "$STATE/prompt/s-h2"
 
@@ -1235,25 +1237,25 @@ rm -f "$STATE/s-h1.tsv" "$STATE/s-h2.tsv" "$STATE/prompt/s-h1" "$STATE/prompt/s-
 OST="$ROOT/order-state"; mkdir -p "$OST"
 env TMUX="$TMUXV" TA_STATE_DIR="$OST" bash "$TA" --toggle-order >/dev/null 2>&1; rt=$?
 ok "--toggle-order exits 0" 0 "$rt"
-ok "...and creates the marker" yes "$([ -e "$OST/.order-window" ] && echo yes || echo no)"
+ok "...and creates the marker" yes "$([ -e "$OST/.order-recent" ] && echo yes || echo no)"
 env TMUX="$TMUXV" TA_STATE_DIR="$OST" bash "$TA" --toggle-order >/dev/null 2>&1; rt=$?
 ok "...a second run exits 0" 0 "$rt"
-ok "...and removes it" no "$([ -e "$OST/.order-window" ] && echo yes || echo no)"
+ok "...and removes it" no "$([ -e "$OST/.order-recent" ] && echo yes || echo no)"
 KT=$(run --keys); rk=$?
 ok "the key table was printed" 1 "$([ -n "$KT" ] && echo 1 || echo 0)"
-has "ctrl-o is in the ? window: rows in window order, or by your last message" "ctrl-o	:order	rows in window order, or by your last message" "$KT"
+has "ctrl-o is in the ? window: rows by your last message, or back in window order" "ctrl-o	:order	rows by your last message, or back in window order" "$KT"
 
 # PICKING :order IN THE ? WINDOW flips the marker and rings the list: the curl of CURLBIN records the request, and the pick is made with fzf's --filter as for :preview above.
 pick_order() {
-  env TMUX="$TMUXV" PATH="$CURLBIN:$PATH" TA_STATE_DIR="$OST" TA_MODE=popup FZF_DEFAULT_OPTS="--exact --filter=window" \
+  env TMUX="$TMUXV" PATH="$CURLBIN:$PATH" TA_STATE_DIR="$OST" TA_MODE=popup FZF_DEFAULT_OPTS="--exact --filter='back in window'" \
     bash "$TA" --ask-keys 4242 "$A" working sid-live "$REPO" >/dev/null 2>&1
 }
 : >"$ROOT/curl.log"
 pick_order
-ok "picking :order in the ? window creates the marker" yes "$([ -e "$OST/.order-window" ] && echo yes || echo no)"
+ok "picking :order in the ? window creates the marker" yes "$([ -e "$OST/.order-recent" ] && echo yes || echo no)"
 has "...and rings the list" "reload-sync(" "$(cat "$ROOT/curl.log" 2>/dev/null)"
 pick_order
-ok "picking it again removes the marker" no "$([ -e "$OST/.order-window" ] && echo yes || echo no)"
+ok "picking it again removes the marker" no "$([ -e "$OST/.order-recent" ] && echo yes || echo no)"
 
 # PICKING dir IN THE ? WINDOW asks for a directory on the popup's own terminal, saves it for the session of the row and rings the list.
 DSESS=$(tm display-message -p -t "$A" '#{session_name}')
@@ -1266,7 +1268,7 @@ has "...and rings the list" "reload-sync(" "$(cat "$ROOT/curl.log" 2>/dev/null)"
 has "the ? window lists ctrl-d" "ctrl-d	dir	the directory new agents of this session start in" "$KT"
 rm -f "$OST/session-dirs.tsv"
 
-rm -f "$ONW"
+: >"$ONW"
 tm kill-pane -t "$C2" 2>/dev/null; tm kill-window -t "$Z1" 2>/dev/null; tm kill-window -t "$Z2" 2>/dev/null
 tm kill-window -t "$WM" 2>/dev/null
 rm -f "$STATE/${C2#%}.tsv" "$STATE/${Z1#%}.tsv" "$STATE/${Z2#%}.tsv" "$STATE"/prompt/"${C2#%}" "$STATE"/prompt/"${Z1#%}" "$STATE"/prompt/"${Z2#%}"

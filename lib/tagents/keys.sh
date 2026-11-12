@@ -179,7 +179,7 @@ keys_table() {  # key<TAB>verb<TAB>what it does
 "$K_CLOSED${TAB}:closed${TAB}closed sessions — pick one to resume" \
 "$K_KEYS${TAB}:none${TAB}this window — in the cockpit the tmux prefix keys go to the viewport and ctrl-q leaves the cockpit" \
 "$K_QUIT${TAB}:quit${TAB}quit the dashboard — from the list itself, not from here" \
-"$K_ORDER${TAB}:order${TAB}rows in window order, or by your last message" \
+"$K_ORDER${TAB}:order${TAB}rows by your last message, or back in window order" \
 "$K_DIR${TAB}dir${TAB}the directory new agents of this session start in" \
 "$K_COLLAPSE${TAB}:collapse${TAB}the list as a narrow column, or wide again — in the cockpit" \
 "esc${TAB}:quit${TAB}in the popup, close it — from the list itself, not from here" |

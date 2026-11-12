@@ -18,10 +18,10 @@ toggle_marker() {  # <file>
 
 toggle_group() { toggle_marker "$STATE_DIR/.flat"; }
 
-# Rows in the order of their tmux window numbers instead of by the last message.
-byw_on() { [ -e "$STATE_DIR/.order-window" ]; }
+# Rows in the order of their tmux window numbers, which is the default: a row that jumps to the top whenever its session gets a prompt is a row you have to find again. The marker turns on the other order, by the last message.
+byw_on() { [ ! -e "$STATE_DIR/.order-recent" ]; }
 
-toggle_order() { toggle_marker "$STATE_DIR/.order-window"; }
+toggle_order() { toggle_marker "$STATE_DIR/.order-recent"; }
 
 list() {
   # Nothing is excluded. There used to be a "skip my own pane" rule that fell

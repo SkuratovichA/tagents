@@ -706,7 +706,7 @@ act 9  'printf "sid-b\tm\t\tSonnet\n" >"$RF_STATE/model/sid-b.tsv"'
 act 10 'echo 200 >"$RF_STATE/prompt/9"'
 act 11 'echo "x = 2" >"$RF_CFG"'
 act 12 'echo "y = 2" >"${RF_CFG%.toml}.ovlhost.toml"'
-act 13 ': >"$RF_STATE/.order-window"'
+act 13 ': >"$RF_STATE/.order-recent"'
 act 14 'printf "work\t/tmp\n" >"$RF_STATE/session-dirs.tsv"'
 act 15 'mkdir -p "$RF_STATE/ratelimit"; printf "1\t40\t9\t\t\n" >"$RF_STATE/ratelimit/default.tsv"'
 go 16

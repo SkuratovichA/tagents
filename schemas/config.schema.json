@@ -382,7 +382,7 @@
         },
         "order": {
           "$ref": "#/$defs/key",
-          "description": "Rows in window order, or by your last message. Default ctrl-o.",
+          "description": "Rows by your last message, or back in window order. Default ctrl-o.",
           "examples": [
             "ctrl-o"
           ]

@@ -62,7 +62,7 @@ A session counts as **running** only when a Claude process really is alive in th
 
 `$` opens the month's usage per day. With `usage.watch` unset it opens nothing and says `tagents: usage is off — set usage.watch to the profile to track`.
 
-A few more act on the list itself: `ctrl-t` switches between tree and flat, `ctrl-o` puts the rows in window order or back to your last message, `ctrl-l` refreshes now, `ctrl-r` names an agent (`F2` too) and `ctrl-q` quits. Every key can be moved, and `?` lists them all; see [Keys](./keys).
+A few more act on the list itself: `ctrl-t` switches between tree and flat, `ctrl-o` puts the rows in the order of your last message or back in window order, `ctrl-l` refreshes now, `ctrl-r` names an agent (`F2` too) and `ctrl-q` quits. Every key can be moved, and `?` lists them all; see [Keys](./keys).
 
 ### The preview
 
