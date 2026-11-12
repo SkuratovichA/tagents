@@ -155,9 +155,9 @@ W_IN=1; W_CW5=1.25; W_CW1H=2.0; W_CR=0.1; W_OUT=5
 #
 #  Rows: <model> <input $/MTok> <output $/MTok> [<cache read $/MTok>
 #        [<until epoch> <in> <out>]]
-#  The read rate is optional and defaults to 0.1x the input rate, which is what
-#  every model charges except Fable/Mythos 5.1, whose reads are $0.25/MTok —
-#  0.025x their input, and cheaper per token than Opus 5's reads.
+#  The read rate is optional and defaults to 0.1x the input rate, which is what the models up to the 5 generation charge.
+#  The rows that state their own read cheaper: Fable/Mythos 5.1 at $0.25/MTok (0.025x their input), and Opus 5.5, Sonnet 5.5 and Fable/Mythos 5.2 at 0.05x.
+#  A 5.5 or 5.2 row must be in the table: without it the id falls onto the 5 row its name starts with, at that row's rates and 0.1x reads.
 #  The tail after it is introductory pricing, applied to usage at or before that
 #  instant; no model needs it today, and a row that wants one must state its
 #  read rate first.
@@ -180,13 +180,18 @@ W_IN=1; W_CW5=1.25; W_CW1H=2.0; W_CR=0.1; W_OUT=5
 # read rate, ledger/estimate over the eight largest fable-heavy sessions lands at
 # 0.88-1.09 (the ledger runs a few percent high because it counts retries and
 # title requests that never reach a transcript); at 15/75 the same sessions came
-# out at 0.44-0.78, i.e. the estimate was up to twice the bill. There is no
-# long-context premium either: Anthropic prices the whole 1M window at one rate
-# ("a 900k-token request is billed at the same per-token rate as a 9k-token
-# request"), so nothing here needs to vary with context size. Re-derive the same
+# out at 0.44-0.78, i.e. the estimate was up to twice the bill.
+# Every model bills its whole window at one rate except Claude Haiku 5.5, which bills a request whose prompt (input, both writes and the read) is over 100,000 tokens at five times every rate.
+# A facts row sums a bucket of requests, so that step cannot be told apart here: a Haiku 5.5 request over 100,000 tokens is counted at the lower rate, a floor like the unlogged calls.
+# The 5.5 and 5.2 rows are from https://platform.claude.com/docs/en/about-claude/pricing as read on 2026-11-11. Re-derive the same
 # way if a rate ever stops matching: `tusage --session <id>` prints the per-model
 # split, and agent-state/model/<id>.tsv holds the ledger figure to fit against.
 PRICES=${TU_PRICES:-'
+claude-opus-5-5     4 20 0.20
+claude-sonnet-5-5   2 10 0.10
+claude-haiku-5-5    0.10 0.50 0.01
+claude-fable-5-2    8 40 0.20
+claude-mythos-5-2   8 40 0.20
 claude-fable-5-1   10 50 0.25
 claude-mythos-5-1  10 50 0.25
 claude-fable-5     10 50
