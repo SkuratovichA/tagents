@@ -15,12 +15,12 @@ updates:
         update-types: ["version-update:semver-major"]
       # TypeScript 7 drops the compiler API (ts.readConfigFile, ts.sys) that packages/contract uses, and typescript-eslint does not support it yet.
       - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-      # i18next 26.7 changes the interpolation order the committed Rust vectors pin, and sdk 1.32 changes the MCP error text: the Rust port learns it first.
+        versions: [">= 7"]
+      # i18next 26.7 changes the interpolation order and sdk 1.32 the MCP error text that the committed Rust parity vectors pin. Both come out once the vectors are frozen against the oracle tag (OpenSpec change rust-retire-node).
       - dependency-name: "i18next"
-        update-types: ["version-update:semver-minor"]
+        versions: [">= 26.7"]
       - dependency-name: "@modelcontextprotocol/sdk"
-        update-types: ["version-update:semver-minor"]
+        versions: [">= 1.32"]
   - package-ecosystem: npm
     directory: /site
     schedule:
@@ -34,9 +34,9 @@ updates:
       # .node-version pins Node 22, so the typings stay on 22.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
-      # TypeScript 7 drops the compiler API (ts.readConfigFile, ts.sys) that packages/contract uses, and typescript-eslint does not support it yet.
+      # typescript-eslint does not support TypeScript 7 yet.
       - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
+        versions: [">= 7"]
   - package-ecosystem: cargo
     directory: /
     schedule:
