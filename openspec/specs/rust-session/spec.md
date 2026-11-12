@@ -6,7 +6,7 @@ The five `session` verbs (`open`, `list`, `last`, `prompt`, `abort`) as verbs of
 ## Requirements
 
 ### Requirement: The five session verbs are answered by the Rust binary
-`tagents-core session open`, `session prompt`, `session last`, `session list` and `session abort` SHALL be answered by the Rust binary with the node CLI's stdout, stderr, exit code, key order and number format, in `en` and `ru`. A `session` call with no verb, or with a verb that is not one of the five, SHALL stay the node CLI's.
+`tagents-core session open`, `session prompt`, `session last`, `session list` and `session abort` SHALL be answered by the Rust binary with the node CLI's stdout, stderr, exit code, key order and number format, in `en` and `ru`. A `session` call with no verb or with another one SHALL print `unknownCommand` for `session <verb>` and the usage line, with exit 2.
 
 #### Scenario: A served verb
 - **WHEN** `tagents-core session list` runs
@@ -18,33 +18,10 @@ The five `session` verbs (`open`, `list`, `last`, `prompt`, `abort`) as verbs of
 
 #### Scenario: Not one of the five
 - **WHEN** `tagents-core session` or `tagents-core session bogus` runs
-- **THEN** the node CLI receives exactly those arguments, and its output and exit code are the call's
-
-### Requirement: What Rust cannot prove identical goes to node before anything starts
-A call outside the subset Rust answers exactly SHALL be run by the node CLI with the same arguments and environment, before Rust reads a file, writes one or starts `claude`: arguments the node parser rejects, a value that node's `spawn` refuses, an argument that is not UTF-8, and, for a verb that starts a child, an environment entry that is not UTF-8, no node on the machine, and a `spawn` that fails with an errno other than `ENOENT`, `EACCES` or `ENOTDIR`.
-
-#### Scenario: An option node rejects
-- **WHEN** `session open --cwd /x --bogus` runs
-- **THEN** the node CLI receives those arguments and answers with its usage error and exit code 2
-
-#### Scenario: A read verb starts no child
-- **WHEN** `session open`, `session list` or `session last` runs with an environment entry that is not UTF-8, or with no node on the machine
-- **THEN** the binary answers the call itself, because neither class can change what a verb that starts no child prints
-
-#### Scenario: A value spawn refuses
-- **WHEN** `session prompt` is given a reference whose `spec.env` holds a name that contains `=`
-- **THEN** the node CLI answers, and `claude` is started once, by the node CLI
-
-#### Scenario: An argument that is not UTF-8
-- **WHEN** `session list --label` runs with an argument that is not valid UTF-8
-- **THEN** the node CLI receives that argument byte for byte
-
-#### Scenario: No node
-- **WHEN** a `session` call has to go to the node CLI and no node can be found
-- **THEN** the front door's own error for that case is printed, with its exit code
+- **THEN** the node CLI is not started, stderr is the `unknownCommand` line and the usage line node prints, and the exit code is 2
 
 ### Requirement: The options are read the way the node parser reads them
-A string option SHALL take the next argument when that does not start with `-`, or the text after `=`; the last occurrence SHALL win; a flag SHALL take no value; `--` SHALL end the options; a lone `-` SHALL be a positional. Any other argument that starts with `-`, and a positional where the verb takes none, SHALL go to the node CLI, which words its own usage error.
+A string option SHALL take the next argument when that does not start with `-`, or the text after `=`; the last occurrence SHALL win; a flag SHALL take no value; `--` SHALL end the options; a lone `-` SHALL be a positional. Any other argument that starts with `-`, and a positional where the verb takes none, SHALL print the text of the node parser's error on stderr and exit 2.
 
 #### Scenario: An inline value
 - **WHEN** `session open --cwd=/x --label a --label=b` runs
@@ -52,7 +29,7 @@ A string option SHALL take the next argument when that does not start with `-`, 
 
 #### Scenario: A value that looks like an option
 - **WHEN** `session open --cwd -x` runs
-- **THEN** the node CLI answers with its usage error and exit code 2
+- **THEN** stderr is the text node's parser gives for it and the exit code is 2
 
 #### Scenario: A text after the end of the options
 - **WHEN** `session prompt <ref> -- "-x go"` runs
@@ -177,7 +154,7 @@ Every line the five verbs print that is not an outcome, an event or a JSON docum
 - **THEN** stderr equals the node CLI's for the same call
 
 ### Requirement: The binary is kept equal to node by a suite and by vectors
-A suite SHALL run each scenario on the node CLI and on the binary, on copies of one tree, with a stub `claude` and a stub `caffeinate` on `PATH`, and compare stdout, stderr, the exit code, the stub's recorded arguments and environment and the state directory; vectors written by node's own functions SHALL pin the pieces that exist twice.
+A suite SHALL run each scenario on the node CLI and on the binary, on copies of one tree, with a stub `claude` and a stub `caffeinate` on `PATH`, and compare stdout, stderr, the exit code, the stub's recorded arguments and environment and the state directory; a scenario whose words cannot match SHALL state what the binary prints instead, and `docs/architecture/rust-core.md` SHALL list it. Vectors written by node's own functions SHALL pin the pieces that exist twice.
 
 #### Scenario: A binary that hands everything to node
 - **WHEN** a scenario marked as answered by Rust is run against a binary that forwards the call
@@ -186,3 +163,22 @@ A suite SHALL run each scenario on the node CLI and on the binary, on copies of 
 #### Scenario: Stale vectors
 - **WHEN** the vector file is regenerated and differs from the committed one
 - **THEN** the CI step that checks `git diff --exit-code` fails
+
+#### Scenario: A call the words of which differ
+- **WHEN** a reference holds a name that `spawn` refuses
+- **THEN** the suite requires the binary's own line and exit code, and the page lists the scenario
+
+### Requirement: What the binary cannot hold is read lossily or refused
+An argument or an environment entry that is not UTF-8 SHALL be decoded as node decodes it, with U+FFFD for each bad byte. A reference that holds a lone surrogate, a NUL, an empty `bin` or an environment name with `=` SHALL give `badRef` and exit 1 on `last` and `prompt`, and `abort` SHALL do the same. A SIGCHLD ignored at the start of `session prompt` SHALL NOT stop the verb.
+
+#### Scenario: An argument that is not UTF-8
+- **WHEN** `session list --label` runs with an argument that is not valid UTF-8
+- **THEN** the label is the lossy text and the node CLI is not started
+
+#### Scenario: A reference the binary cannot hold
+- **WHEN** `session prompt` is given a reference whose `spec.env` holds a name that contains `=`
+- **THEN** stderr is the `badRef` line for it, the exit code is 1 and `claude` is not started
+
+#### Scenario: No node
+- **WHEN** a `session` call runs on a machine with no node
+- **THEN** the binary answers it, because it asks node nothing

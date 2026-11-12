@@ -144,15 +144,19 @@ The binary SHALL contain a SQLite with full-text search and the tokenizer of the
 - **THEN** the terms are equal, or each difference is listed
 
 ### Requirement: Equality is kept by generated files and a suite
-The tool list and the texts the binary prints SHALL be generated from the node program, and a differential suite SHALL run the same scenarios against the node server and the binary on copies of one corpus, comparing bytes, with each program reading the index and usage store the other wrote. CI SHALL fail when a generated file is stale or the suite fails.
+The tool list and the texts the binary prints (`crates/tagents-core/src/knowledge/tools.json` and `texts.json`) SHALL be frozen files: the generator is gone with the node server they were written from. A differential suite SHALL run the same scenarios against the node server of the oracle tag `v0.6.7` (built by `tests/parity-oracle.sh`) and the binary on copies of one corpus, comparing bytes, with each program reading the index and usage store the other wrote. CI SHALL fail when the suite fails.
 
-#### Scenario: The node list moves
-- **WHEN** a tool description changes in the node server and the generated list is not regenerated
-- **THEN** CI fails
+#### Scenario: The binary drifts from the oracle
+- **WHEN** a tool description or a text of the binary changes and the oracle still answers the old one
+- **THEN** the suite fails, unless the scenario names the difference as `OWN_ERR`
 
 #### Scenario: The wrong process
 - **WHEN** the process the suite starts as the Rust side is the node CLI
 - **THEN** the suite fails at its first check
+
+#### Scenario: The node list moves
+- **WHEN** a tool description changes in the node server of the oracle
+- **THEN** the oracle is a tag and does not move; the frozen list is changed by hand with the suite beside it
 
 ### Requirement: Differences are listed
 Every way the binary's server differs from the node server SHALL be listed in `docs/architecture/rust-core.md` with its reason, and the suite SHALL drop or relax only what the list names.

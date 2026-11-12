@@ -37,7 +37,7 @@ Each command in the file SHALL carry its `path`, `positionals`, `options`, `requ
 - **THEN** the file does not match the schema
 
 ### Requirement: The Rust binary serves the verbs the file marks rust
-`target/release/tagents-core` SHALL serve itself every verb whose `impl` is `"rust"`: `sessions recent`, `search` and `show` (and the bare `sessions`), `plugin add`, `remove` and `new`, `doctor`, and `session open`, `list`, `last`, `prompt` and `abort`. Everything that starts with `sessions` or `doctor` is answered with the node CLI's wording and exit codes; a `plugin` or `session` call that is not one of its verbs, or that the binary cannot prove it answers as node does, is the node CLI's.
+`target/release/tagents-core` SHALL answer itself every call of a verb whose `impl` is `"rust"`: `sessions`, `plugin add`, `remove` and `new`, `doctor`, `notify run` and every `session` call, whatever follows the verb. With no word it SHALL print the usage line and exit 2, with `help`, `--help` or `-h` print it and exit 0. Only `plugin list`, a bare `plugin`, a `plugin` word it does not know and a word the file does not list SHALL reach the node CLI.
 
 #### Scenario: A served verb
 - **WHEN** `target/release/tagents-core sessions recent 3` runs
@@ -61,7 +61,11 @@ Each command in the file SHALL carry its `path`, `positionals`, `options`, `requ
 
 #### Scenario: A session call that is not served
 - **WHEN** `target/release/tagents-core session`, `session bogus` or `session open --bogus` runs
-- **THEN** the node CLI receives exactly those arguments and its output and exit code are the call's
+- **THEN** the node CLI is not started, and stdout, stderr and the exit code are what the node CLI gives for the same call
+
+#### Scenario: The usage words
+- **WHEN** `tagents-core` runs with no word, and with `help`, `--help` and `-h`
+- **THEN** the usage line is printed, the exit code is 2 for no word and 0 for the others, and the node CLI is not started
 
 ### Requirement: --spec prints the table of served verbs
 When its arguments are exactly `--spec`, the Rust binary SHALL print the entries of the data file whose `impl` is `"rust"` as JSON on stdout, exit 0 and start no other program. Any other argument list that contains `--spec` is an ordinary call.

@@ -43,27 +43,8 @@ The plugin verbs and `doctor` as verbs of the Rust binary: `tagents-core plugin 
 - **WHEN** `config.toml` is a link to a file in another directory and `plugin add ./x` runs
 - **THEN** the link is unchanged and the file it points to holds the appended section
 
-### Requirement: What Rust cannot prove identical goes to node untouched
-A config that is not valid UTF-8, exists but cannot be read, or is a symbolic link to nowhere or in a loop, one the parser refuses or with an integer beyond ±(2^53−1), a `plugins` that is no table, an edit that does not parse or a section that cannot be cut, a resolution outside the subset below, and arguments outside the grammar below SHALL go to the node CLI, with the same arguments and environment, before Rust writes. A failed write SHALL remove what Rust wrote and hand the call to node.
-
-#### Scenario: A config with a syntax error
-- **WHEN** `plugin add ./x` runs against a config that does not parse
-- **THEN** the node CLI answers, with its message and exit code 1, and the file is as it was
-
-#### Scenario: An integer beyond 2^53
-- **WHEN** the config holds `big = 9007199254740993`
-- **THEN** the node CLI answers and the file is as it was
-
-#### Scenario: A config that cannot be read
-- **WHEN** `config.toml` is a directory
-- **THEN** the node CLI answers with the error of the read and exit code 1, and nothing is written
-
-#### Scenario: A write that fails
-- **WHEN** the config directory cannot be written
-- **THEN** the node CLI words the error, and no temporary file of Rust's is left
-
 ### Requirement: The arguments are read by a grammar with no error case
-An argument SHALL be a positional when it does not start with `-` (a lone `-` is one), `--` SHALL end the options, `add` SHALL take `--name V` when `V` does not start with `-` and `--name=V`, `new` SHALL take `--dir V` and `--dir=V` the same way, the last occurrence SHALL win and a second positional SHALL be ignored. Any other argument starting with `-` SHALL be handed to the node CLI, which words its own usage error.
+An argument SHALL be a positional when it does not start with `-` (a lone `-` is one), `--` SHALL end the options, `add` SHALL take `--name V` when `V` does not start with `-` and `--name=V`, `new` SHALL take `--dir V` and `--dir=V` the same way, the last occurrence SHALL win and a second positional SHALL be ignored. Any other argument starting with `-` SHALL print the node parser's error text on stderr and exit 2.
 
 #### Scenario: An inline value
 - **WHEN** `plugin add ./x --name=demo` runs
@@ -71,14 +52,14 @@ An argument SHALL be a positional when it does not start with `-` (a lone `-` is
 
 #### Scenario: A value that looks like an option
 - **WHEN** `plugin add ./x --name -x` or `plugin add ./x --nope` runs
-- **THEN** the node CLI answers with its usage error and exit code 2
+- **THEN** stderr is the text node's parser gives for it, the exit code is 2 and the node CLI is not started
 
 #### Scenario: After the terminator
 - **WHEN** `plugin add -- ./x` runs
 - **THEN** `./x` is the package
 
 ### Requirement: plugin add resolves a directory in full and a name by a walk
-A directory (it starts with `.` or `~`, or is absolute) SHALL be resolved as `path.resolve` does with `~` expanded, and stored absolute. A bare npm name SHALL be resolved by Rust only when `NODE_OPTIONS` and `NODE_PRESERVE_SYMLINKS` are unset, no enclosing package of that name has `exports`, and walking up from the working directory finds `node_modules/<name>/package.json` holding JSON without `exports`; any other name, including one not found, SHALL be the node CLI's.
+A directory (it starts with `.` or `~`, or is absolute) SHALL be resolved as `path.resolve` does with `~` expanded, and stored absolute. A bare npm name SHALL be resolved as `require.resolve('<name>/package.json')` is, from the working directory and then the global folder, with `exports` honoured; a name found nowhere SHALL give node's line and exit 1. A `--require` hook is not run.
 
 #### Scenario: A relative path
 - **WHEN** `plugin add ./demo` runs from the parent directory
@@ -90,7 +71,7 @@ A directory (it starts with `.` or `~`, or is absolute) SHALL be resolved as `pa
 
 #### Scenario: A package with exports
 - **WHEN** the package's manifest has an `exports` field
-- **THEN** the node CLI answers, as it does for a name that is found nowhere
+- **THEN** the binary resolves the name against it as node does, or, for a name found nowhere, prints node's line and exits 1, and the node CLI is not started
 
 ### Requirement: Every text comes from the catalogue file
 Each text the verbs print SHALL be a key of `packages/core/src/i18n/en.ts` and `ru.ts`, read by Rust from `spec/cli/messages.json`, which `pnpm messages:gen` writes from those files and `pnpm messages:check` verifies. `{{name}}` SHALL be replaced once, left to right, without rescanning a value; `TAGENTS_LOCALE` exactly `ru` selects Russian and anything else English.
@@ -150,3 +131,18 @@ A SIGTERM, SIGINT or SIGHUP that comes while `doctor` waits for node SHALL stop 
 #### Scenario: Stale vectors
 - **WHEN** a node function the vectors cover changes and the file is not regenerated
 - **THEN** CI fails on `git diff --exit-code`
+
+### Requirement: The config problems are worded in node's frame
+A config that cannot be read, is a link to nowhere or in a loop, or sits in a directory that cannot be written SHALL give the system's line as node words it and exit 1. A document the parser refuses or an edit that does not parse SHALL give `<file>: <reason>` with the Rust parser's words and exit 1, the file as it was. A failed write SHALL remove what the binary wrote and give the line of the error.
+
+#### Scenario: A config with a syntax error
+- **WHEN** `plugin add ./x` runs against a config that does not parse
+- **THEN** stderr begins with the config's path and a colon, the exit code is 1 and the file is as it was
+
+#### Scenario: A config that cannot be read
+- **WHEN** `config.toml` is a directory
+- **THEN** stderr is the line of the read as node words it, the exit code is 1 and nothing is written
+
+#### Scenario: A write that fails
+- **WHEN** the config directory cannot be written
+- **THEN** stderr is the line of the error as node words it, the exit code is 1 and no temporary file is left

@@ -11,16 +11,16 @@ Pull request 1.
 
 ## 2. The oracle
 
-- [ ] 2.1 `tests/parity-oracle.sh` unpacks tag `v0.6.7` and builds it once; every suite reads node's side from there
-- [ ] 2.2 CI fetches the tag and runs the script; the vector generators and their CI steps go, the fixtures are frozen
+- [x] 2.1 `tests/parity-oracle.sh` unpacks tag `v0.6.7` and builds it once; every suite reads node's side from there
+- [x] 2.2 CI fetches the tag and runs the script; the vector generators and their CI steps go, the fixtures are frozen
 
 ## 3. The deletion
 
-- [ ] 3.1 `packages/mcp` goes whole
-- [ ] 3.2 The verbs of `packages/core/src/cli`, `serve` and `mcp` of `packages/knowledge`, and the code only `notify run` reaches in `packages/notify` go, with their tests
-- [ ] 3.3 Node's CLI answers a retired verb with the needs-binary line and exit 69; the wrappers, the installer and the launcher follow the design
+- [x] 3.1 `packages/mcp` goes whole
+- [x] 3.2 The verbs of `packages/core/src/cli`, `serve` and `mcp` of `packages/knowledge`, and the code only `notify run` reaches in `packages/notify` go, with their tests
+- [x] 3.3 Node's CLI answers a retired verb with the needs-binary line and exit 69; the wrappers, the installer and the launcher follow the design
 
 ## 4. Documents and archive
 
-- [ ] 4.1 `docs/architecture/rust-core.md` and the specs say what is true after the deletion
-- [ ] 4.2 The change is archived
+- [x] 4.1 `docs/architecture/rust-core.md` and the specs say what is true after the deletion
+- [x] 4.2 The change is archived

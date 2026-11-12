@@ -266,45 +266,6 @@ A file that is not TOML SHALL be reported as the one problem `options: <file>: I
 - **WHEN** `after = 9007199254740993`
 - **THEN** the file is invalid and the reason says the value cannot be represented losslessly
 
-### Requirement: A start that fails is handed to the node service
-When a step of the start before the `started` line fails, the Rust service SHALL, unless a stop was requested, log `handing over to the node service: <why>`, keep the lock held and replace its process with the node service (`node <root>/packages/notify/dist/main.js run`, the same environment), which runs or fails by its own lines. A stop requested during start SHALL end the process without a `stopping` line, and a failure after `started`, such as a failed watch, SHALL NOT be handed over.
-
-#### Scenario: The steps that hand over
-- **WHEN** registering the handlers of SIGTERM, SIGINT and SIGHUP, creating the state directory, taking the lock (not a held lock), starting the watch, starting the follower or arming the engine from the state rows fails (the node service has no such step: its handlers cannot fail to register)
-- **THEN** the service hands over to the node service
-
-#### Scenario: A watch that cannot be armed
-- **WHEN** the watch on the events file fails at start
-- **THEN** the node service runs in its place, with the same pid, and the lock is held by it
-
-#### Scenario: The lock is kept across the exec
-- **WHEN** the service hands over while a manual `run` starts at the same moment
-- **THEN** the lock never names a dead pid, the manual `run` logs `another notify service holds` and exits 0, and the node service runs
-
-#### Scenario: The exec fails
-- **WHEN** the node program cannot be executed
-- **THEN** the service releases the lock, logs `could not hand over to the node service: <why>` and exits 1
-
-#### Scenario: The node build is missing
-- **WHEN** `packages/notify/dist/main.js` is not there
-- **THEN** the service logs the same line `could not hand over to the node service: <why>`, with no `tagents-core: cannot find` line, releases the lock and exits 1
-
-#### Scenario: A failure that node shares
-- **WHEN** the state directory cannot be created
-- **THEN** the node service fails with its own line `the notify service stopped: <why>` and exit 1, the code launchd retries
-
-#### Scenario: The options directory cannot be watched
-- **WHEN** the watch on the options directory fails at start, as when `plugins` is a regular file (`ENOTDIR`)
-- **THEN** the service logs `options watch failed <dir> <why>`, logs `started` and runs without a reload
-
-#### Scenario: A stop during a failing start
-- **WHEN** SIGTERM arrives while a step of the start fails
-- **THEN** the process writes no `stopping` line, releases the lock, exits 0 and does not start the node service
-
-#### Scenario: A stop during the close of a hand-over
-- **WHEN** SIGTERM arrives while the service closes the follower and the watch for a hand-over
-- **THEN** the process writes no `stopping` line, releases the lock, exits 0 and does not start the node service
-
 ### Requirement: When the watch ends
 The service SHALL stop as a signal stop does when its watch ends (a failed wait, or a failed re-arm of a file watch for a reason other than a missing file or a symlink), with the reason `watch failed: <why>` in the line `stopping (<reason>)`, and exit 1. The stop is written when the engine reads the end, after the post in flight and the wakes queued ahead of it.
 
@@ -374,3 +335,18 @@ Each helper the Rust service has beside a node copy (the options schema and dura
 #### Scenario: An unlisted difference
 - **WHEN** the two differ in a way the page does not name
 - **THEN** the suite fails
+
+### Requirement: A start that fails is logged and exits 1
+When a step of the start before the `started` line fails, the Rust service SHALL, unless a stop was requested, log `could not start: <why>`, release the lock and exit 1, the code launchd retries. A stop requested during the start SHALL end the process without a `stopping` line and with exit 0. A failure after `started`, such as a failed watch, SHALL NOT end the service.
+
+#### Scenario: The steps that fail
+- **WHEN** registering the handlers of SIGTERM, SIGINT and SIGHUP, creating the state directory, taking the lock (not a held lock), starting the watch, starting the follower or arming the engine from the state rows fails
+- **THEN** the service logs `could not start: <why>`, releases the lock and exits 1, and the node service is not started
+
+#### Scenario: The options directory cannot be watched
+- **WHEN** the watch on the options directory fails at start, as when `plugins` is a regular file (`ENOTDIR`)
+- **THEN** the service logs `options watch failed <dir> <why>`, logs `started` and runs without a reload
+
+#### Scenario: A stop during a failing start
+- **WHEN** SIGTERM arrives while a step of the start fails
+- **THEN** the process writes no `stopping` line, releases the lock and exits 0
