@@ -184,7 +184,7 @@ The `claude-statusline` capability SHALL keep the latest `rate_limits` it sees, 
 - **THEN** both reports go to the same record
 
 ### Requirement: A subscription session reads as a share of its week
-For an account with a fresh record, the cost cell SHALL show the session's share of the 7-day window instead of dollars: its transcript list-price spend inside the window (reset minus seven days until now), times the 7d percent, over the account's spend from the window start to the instant the record was written. Both sides SHALL be priced from the same transcripts by one read of the index (`tusage --sessions --windows`).
+For an account with a fresh record, the cost cell SHALL show the session's share of the 7-day window instead of dollars: its transcript list-price spend inside the window (reset minus seven days until the instant the record was written), times the 7d percent, over the account's spend from the window start to the instant the record was written. Both sides SHALL be priced from the same transcripts by one read of the index (`tusage --sessions --windows`).
 
 #### Scenario: A subscription session
 - **WHEN** the record says 40% used, the account priced $100 up to that record and a session priced $5 inside the window
@@ -196,7 +196,7 @@ For an account with a fresh record, the cost cell SHALL show the session's share
 
 #### Scenario: Spend after the record
 - **WHEN** requests are priced after the instant the record was written
-- **THEN** they count toward the session but do not move the account's dollars per percent
+- **THEN** they move neither the account's dollars per percent nor any session's share
 
 ### Requirement: The share is an estimate and is drawn narrow
 The share SHALL always carry `~`, followed by `?` when part of the spend ran on an unrated model, because it is priced from transcripts. It SHALL be shown with one decimal below 10, none from 10, and `<.1%` below 0.1. The `⑂` subagent share and the project header's `/5h` total SHALL convert the same way, and hiding the cost column SHALL hide them all.

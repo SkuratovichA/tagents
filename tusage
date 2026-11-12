@@ -1867,12 +1867,12 @@ sessions() {
     # The windows: what each session priced inside its account window, and what the account priced from the window start to the instant its record was written. Independent of --since, so before the cut.
     w == 1 && $8 + 0 > 0 {
       ac = ($3 in ACC) ? ACC[$3] : ""
-      if ((ac in EP) && $1 + 0 >= EP[ac] && $1 + 0 <= now) {
+      if ((ac in EP) && $1 + 0 >= EP[ac] && $1 + 0 <= RE[ac] && $1 + 0 <= now) {
         wd = usd($7, $1 + 0, $9,$10,$11,$12,$13)
         if (wd > 0) {
           WS[$3] += wd
           if ($4 != "-") WSUB[$3] += wd
-          if ($1 + 0 <= RE[ac]) WA[ac] += wd
+          WA[ac] += wd
         }
       }
     }
@@ -1953,7 +1953,7 @@ daily() {
   sort -t"$TAB" -k1,1 -k2,2
 }
 
-# THE SUBSCRIPTION'S OWN WINDOW. A Pro, Max or Ultra login is limited by a 7-day rate-limit window, not by dollars, and the only place that figure exists is the status line payload, which hooks/claude-statusline.sh keeps per account in <state dir>/ratelimit/<key>.tsv (epoch, 7d percent, 7d resets_at, 5h percent, 5h resets_at; TU_RATELIMIT moves the folder). A percent says nothing about one session on its own, so --windows adds the other half, priced from the same transcripts so that both sides measure the same thing: per account the list-price spend from the window start (resets_at minus a week) up to the instant the record was written, which is the instant the percent was true, and per session the spend inside the window up to now. A session's share of the week is its in-window spend times the 7d percent over the account spend.
+# THE SUBSCRIPTION'S OWN WINDOW. A Pro, Max or Ultra login is limited by a 7-day rate-limit window, not by dollars, and the only place that figure exists is the status line payload, which hooks/claude-statusline.sh keeps per account in <state dir>/ratelimit/<key>.tsv (epoch, 7d percent, 7d resets_at, 5h percent, 5h resets_at; TU_RATELIMIT moves the folder). A percent says nothing about one session on its own, so --windows adds the other half, priced from the same transcripts so that both sides measure the same thing: per account the list-price spend from the window start (resets_at minus a week) up to the instant the record was written, which is the instant the percent was true, and per session the spend inside the window up to that same instant, so a session that runs on without a status line (a headless run, whose record stays old) cannot outgrow the percent. A session's share of the week is its in-window spend times the 7d percent over the account spend.
 # One @w row per account whose 7-day window has not reset yet; none for an account without a record, which is how an Enterprise or API login stays in dollars. The 5h fields are blank once that window has reset too. With --sessions the same pass (one read of the index) appends three columns to every session row: in-window dollars, the subagent part of them, and the account the window belongs to (blank when it has none). No calibration factor is applied, as --sessions and --burn apply none.
 # THE KEY. The hook names an account by CLAUDE_CONFIG_DIR with every trailing slash off, the unset variable and $HOME/.claude both being "default", and every other "/" turned into "_". The raw directory of the account spec is used, never the one account_dirs resolves with pwd -P, which would split a symlinked config dir from the record of the same login.
 RL_KEY=""

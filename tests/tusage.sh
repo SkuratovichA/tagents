@@ -2309,9 +2309,9 @@ if command -v jq >/dev/null 2>&1; then
      "@w${TAB}work${TAB}${RE}${TAB}55${TAB}${RESET31}${TAB}20${TAB}${R5_31}${TAB}30.0000" "$got"
   got=$(tw --sessions --windows)
   ok "the rows come first and the window row last" "@w" "$(printf '%s\n' "$got" | tail -1 | cut -f1)"
-  ok "s-work: in-window dollars (25 + 5 + 5, the pre-window 5 left out), the subagent part, and the account" \
-     "35.000000${TAB}5.000000${TAB}work" "$(printf '%s\n' "$got" | awk -F"$TAB" '$1 == "s-work" { print $15 "\t" $16 "\t" $17 }')"
-  ok "...while its all-time dollars still count the pre-window 5" "40.000000" "$(printf '%s\n' "$got" | awk -F"$TAB" '$1 == "s-work" { print $11 }')"
+  ok "s-work: in-window dollars up to the record (25 + 5; the pre-window 5 and the 5 after the record both left out), the subagent part, and the account" \
+     "30.000000${TAB}5.000000${TAB}work" "$(printf '%s\n' "$got" | awk -F"$TAB" '$1 == "s-work" { print $15 "\t" $16 "\t" $17 }')"
+  ok "...while its all-time dollars still count both" "40.000000" "$(printf '%s\n' "$got" | awk -F"$TAB" '$1 == "s-work" { print $11 }')"
   ok "s-pers has no window: nothing in it and no account" "0.000000${TAB}0.000000${TAB}" "$(printf '%s\n' "$got" | awk -F"$TAB" '$1 == "s-pers" { print $15 "\t" $16 "\t" $17 }')"
   ok "--sessions alone prints neither the columns nor a window row" "14:0" "$(tw --sessions | awk -F"$TAB" 'NR == 1 { n = NF } /^@w/ { w++ } END { print n ":" w + 0 }')"
   ok "...and one read of the index serves both: the session rows are the same with and without --windows" \
