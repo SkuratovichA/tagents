@@ -704,6 +704,28 @@ sc_list_stale() { printf -- '---\ntype: note\nstale_after: 2020-01-01T00:00:00Z\
 scenario "list and search: the stale mark, tags and generated.at" sc_list_stale
 sc_list_empty() { rm -f "$DOCS"/*.md; cli list; cli list --json; cli search x; cli usage; cli lint; cli toc; cli show x; }
 scenario "an empty folder" sc_list_empty
+# An index database that cannot be used: a directory where the file should be, a file that is not SQLite, and a path whose parent is a regular file. Each verb that reads or writes the index says what it met.
+sc_db_unusable() {
+  mkdir -p "$TMP/world/db-is-a-dir"; printf 'this is not a database, only text\n' > "$TMP/world/garbage.sqlite"; : > "$TMP/world/plain-file"
+  local db
+  for db in "$TMP/world/db-is-a-dir" "$TMP/world/garbage.sqlite" "$TMP/world/plain-file/below.sqlite"; do
+    cli index --db "$db"; cli index --full --db "$db"; cli search cafe --db "$db"; cli list --db "$db"; cli list --json --db "$db"; cli toc --db "$db"
+  done
+}
+scenario "an index database that is a directory, garbage, or below a file" sc_db_unusable
+# toc writes index.md into the folder: a directory of that name, and a folder that cannot be written to, make the write fail.
+sc_toc_unwritable() { mkdir -p "$DOCS/index.md"; cli toc; cli toc --check; cli lint; rm -rf "$DOCS/index.md"; chmod 555 "$DOCS"; cli toc; cli toc --check; chmod 755 "$DOCS"; }
+scenario "toc: an index file that cannot be written" sc_toc_unwritable
+# The folder comes from knowledge.dir of config.toml when neither the option nor the variable names one; a relative value is read against the directory of the config file.
+sc_config_dir() {
+  without TAGENTS_KNOWLEDGE_DIR; mkdir -p "$TMP/cfg"
+  printf '[knowledge]\ndir = "%s"\n' "$DOCS" > "$TMP/cfg/config.toml"; cli list; cli index; cli search cafe
+  printf '[knowledge]\ndir = "../world/docs"\n' > "$TMP/cfg/config.toml"; cli list
+  printf '[knowledge]\ndir = "%s/not-here"\n' "$TMP" > "$TMP/cfg/config.toml"; cli list
+  printf 'not [ toml\n' > "$TMP/cfg/config.toml"; cli list
+  printf '[knowledge]\ndir = 3\n' > "$TMP/cfg/config.toml"; cli list
+}
+scenario "the folder comes from knowledge.dir in config.toml" sc_config_dir
 CORPUS=knowledge; EXTRAS=
 
 t "verbs: lint and toc"
