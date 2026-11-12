@@ -36,7 +36,7 @@ must_not() {  # <label> <needle>
   if grep -qF -- "$2" "$TMP/transcript.node"; then bad "tripwire $1: node said what this scenario expects it not to say" "found: $2"; else ok; fi
 }
 
-# The oracle (tag v0.6.7) still words the usage line of `notify run` as handing over to node when the binary cannot start; that hand-over is gone, the line says only that the binary serves it. Put the new words into the oracle's transcript file(s) so the usage text compares as the same (a known difference in docs/architecture/rust-core.md).
+# The oracle (tag v0.6.7) also lists the three `knowledge` verbs in its usage, which moved to the okb binary and are gone from this one; those lines are dropped from its transcript. The oracle (tag v0.6.7) still words the usage line of `notify run` as handing over to node when the binary cannot start; that hand-over is gone, the line says only that the binary serves it. Put the new words into the oracle's transcript file(s) so the usage text compares as the same (a known difference in docs/architecture/rust-core.md).
 oracle_usage_words() {  # <file...>
-  perl -CSD -pi -e 's/the Rust binary serves it and hands over to node when it cannot start/the Rust binary serves it/; s/бинарник на Rust, а если он не может стартовать, управление передаётся node/бинарник на Rust/' "$@"
+  perl -CSD -pi -e 's/the Rust binary serves it and hands over to node when it cannot start/the Rust binary serves it/; s/бинарник на Rust, а если он не может стартовать, управление передаётся node/бинарник на Rust/; $_ = "" if /^  knowledge (mcp|serve|join)\b.*\(.*: Rust binary only\)$/' "$@"
 }

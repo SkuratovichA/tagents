@@ -129,14 +129,14 @@ ok "no tagents-knowledge on PATH: the first line of stderr names 127" "knowledge
 # ---------------------------------------------------------------------------
 t "2. over a scratch install: the program a session starts"
 # ---------------------------------------------------------------------------
-CORE=${TAGENTS_CORE_BIN:-$ROOT/target/debug/tagents-core}
+OKB=${OKB_BIN:-$ROOT/target/debug/okb}
 REAL_NODE=$(command -v node || true)
-if [ ! -x "$CORE" ] || [ -z "$REAL_NODE" ]; then
+if [ ! -x "$OKB" ] || [ -z "$REAL_NODE" ]; then
   # Part two is the part that runs the real binary: in CI a machine that cannot run it is a failure, not a skip that reads as a pass.
   if [ -n "${CI:-}" ]; then
-    fail=$((fail + 1)); printf '  FAIL part two cannot run: no built tagents-core (%s) or no node, and CI is set\n' "$CORE"
+    fail=$((fail + 1)); printf '  FAIL part two cannot run: no built okb (%s) or no node, and CI is set\n' "$OKB"
   else
-    printf '  skip no built tagents-core (%s) or no node\n' "$CORE"
+    printf '  skip no built okb (%s) or no node\n' "$OKB"
   fi
 else
   # A node that writes down every start and then is the real one: a probe or a join that starts node shows in the log.
@@ -149,13 +149,11 @@ else
   (
     cd "$ORIGIN" || exit 1
     git init -q -b main . && git config user.email t@example.com && git config user.name t
-    mkdir -p hooks packages/core/dist/cli packages/notify/dist packages/knowledge
+    mkdir -p hooks packages/core/dist/cli packages/notify/dist
     for f in tagents tusage tnotes; do printf '#!/bin/sh\nexit 0\n' > "$f"; chmod +x "$f"; done
     cp "$ROOT/hooks/claude-settings.json" hooks/claude-settings.json
     printf '#!/usr/bin/env node\n' > packages/core/dist/cli/main.js
     printf '#!/usr/bin/env node\n' > packages/notify/dist/main.js
-    # The real node server, reached through the copy: node resolves the link, so its modules are the ones of this tree.
-    ln -s "$ROOT/packages/knowledge/dist" packages/knowledge/dist
     cp "$ROOT/Cargo.toml" Cargo.toml
     cp "$ROOT/install.sh" install.sh
     git add -A && git commit -q -m v1
@@ -166,7 +164,7 @@ else
   install() { PATH="$TMP/rec:$PATH" sh "$ROOT/install.sh" --quiet --hooks-dir "$TMP/hooks" 2>&1; }
   out=$(install); rc=$?
   ok "the scratch install exits 0" 0 "$rc"
-  cp -R "$ROOT/packages/knowledge/test/fixtures/knowledge" "$TMP/docs"
+  cp -R "$ROOT/crates/okb/tests/fixtures/knowledge" "$TMP/docs"
   mkdir -p "$TMP/tmp" "$TMP/cfg"
   SENV=(env -i PATH="$TAGENTS_BIN:/usr/bin:/bin" HOME="$HOME" TMPDIR="$TMP/tmp" TAGENTS_CONFIG_DIR="$TMP/cfg" TAGENTS_KNOWLEDGE_DIR="$TMP/docs" TAGENTS_KNOWLEDGE_DB="$TMP/index.sqlite" TAGENTS_KNOWLEDGE_USAGE_DB="$TMP/usage.sqlite" TAGENTS_LOCALE=en)
   senv() { "${SENV[@]}" "$@"; }
@@ -217,15 +215,15 @@ else
   senv "$TAGENTS_BIN/tagents-knowledge" join </dev/null >/dev/null 2>&1; rc=$?
   ok "no binary: the probe is answered with 69" 69 "$rc"
   ok "...and starts no node" 0 "$(starts)"
-  # The node program no longer serves: the launcher goes on from the failed probe to `serve` and `mcp`, which answer the needs-binary line and exit 69.
+  # There is no program behind the wrapper: the launcher goes on from the failed probe to `serve` and `mcp`, which answer the needs-binary line and exit 69.
   senv /bin/sh "$LAUNCHER" </dev/null >"$TMP/out.nobin" 2>"$TMP/err.nobin"; rc=$?
   ok "no binary: the launcher ends with 69" 69 "$rc"
   ok "...with nothing on stdout" "" "$(cat "$TMP/out.nobin")"
-  ok "...and one line on stderr per node call, naming tagents update and the cargo build" yes "$(grep -q 'tagents update.*cargo build --release -p tagents-core' "$TMP/err.nobin" && echo yes || echo no)"
-  ok "...after node was started for serve and for mcp, and for no join" "2 0" "$(starts) $(grep -c ' join' "$TMP/node-starts")"
+  ok "...and the needs-binary line on stderr, naming tagents update and the cargo build" yes "$(grep -q 'tagents update.*cargo build --release -p okb' "$TMP/err.nobin" && echo yes || echo no)"
+  ok "...and no node was started" 0 "$(starts)"
 
   # --- the binary -------------------------------------------------------------
-  mkdir -p "$TAGENTS_HOME/target/release"; cp "$CORE" "$TAGENTS_HOME/target/release/tagents-core"; chmod 755 "$TAGENTS_HOME/target/release/tagents-core"
+  mkdir -p "$TAGENTS_HOME/target/release"; cp "$OKB" "$TAGENTS_HOME/target/release/okb"; chmod 755 "$TAGENTS_HOME/target/release/okb"
   unset TAGENTS_NO_NATIVE
   out=$(install); rc=$?
   ok "the install over a binary exits 0" 0 "$rc"
@@ -235,8 +233,8 @@ else
   session bin
   ok "with the binary: the session got an initialize reply" yes "$(grep -q '"result"' "$TMP/out.bin" && echo yes || echo no)"
   cmd=$(ps -o command= -p "$SPID" 2>/dev/null)
-  case $cmd in *"tagents-core knowledge join") got="tagents-core knowledge join" ;; *) got="$cmd" ;; esac
-  ok "...the process the session started is tagents-core knowledge join" "tagents-core knowledge join" "$got"
+  case $cmd in *"/okb join") got="okb join" ;; *) got="$cmd" ;; esac
+  ok "...the process the session started is okb join" "okb join" "$got"
   ok "...no node was started" 0 "$(starts)"
   ok "...no process under it: no node, no nc" "" "$(pgrep -P "$SPID" | tr -d '\n')"
   ok "...nothing on stderr" "" "$(cat "$TMP/err.bin")"
@@ -275,18 +273,18 @@ OLD
   fi
 
   # --- a binary that fails the probe: the launcher goes on to serve and mcp of the binary ---------
-  # The wrapper is the real one and the binary a stub that says the right version, fails join and serve, and answers mcp.
+  # The wrapper is the real one and the binary a stub that fails join and serve, and answers mcp.
   want=$(sed -n 's/^version = "\(.*\)"/\1/p' "$ORIGIN/Cargo.toml" | head -n 1)
-  printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "tagents-core %s"; exit 0; fi\necho "$*" >> "%s/stub-core-calls"\ncase "${2:-}" in mcp) echo mcp-served ;; *) exit 1 ;; esac\n' "$want" "$TMP" > "$TAGENTS_HOME/target/release/tagents-core"
-  chmod 755 "$TAGENTS_HOME/target/release/tagents-core"
+  printf '#!/bin/sh\nif [ "${1:-}" = --version ]; then echo "okb %s"; exit 0; fi\necho "$*" >> "%s/stub-core-calls"\ncase "${1:-}" in mcp) echo mcp-served ;; *) exit 1 ;; esac\n' "$want" "$TMP" > "$TAGENTS_HOME/target/release/okb"
+  chmod 755 "$TAGENTS_HOME/target/release/okb"
   out=$(install); rc=$?
   ok "the install over a stub binary exits 0" 0 "$rc"
   rm -f "$TMP/node-starts" "$TMP/stub-core-calls"
   senv /bin/sh "$LAUNCHER" </dev/null >"$TMP/out.failing" 2>"$TMP/err.failing"; rc=$?
   ok "a binary that fails the probe: the launcher ends in the binary's mcp, exit 0" "0 mcp-served" "$rc $(cat "$TMP/out.failing")"
-  ok "...the binary was asked join, serve and mcp, in this order" "knowledge join
-knowledge serve
-knowledge mcp" "$(cat "$TMP/stub-core-calls")"
+  ok "...the binary was asked join, serve and mcp, in this order" "join
+serve
+mcp" "$(cat "$TMP/stub-core-calls")"
   ok "...no node was started" 0 "$(starts)"
   ok "...one line on stderr, naming the code" "knowledge-mcp: tagents-knowledge join exited 1, using a server of its own (tagents-knowledge join </dev/null shows why)" "$(cat "$TMP/err.failing")"
 fi
