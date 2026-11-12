@@ -1,283 +1,30 @@
 #!/usr/bin/env node
-// tagents-core — the CLI face of this package.
+// tagents-core — the node face of this package, which is what is left of it once the Rust binary serves the verbs.
 //
-// Two kinds of output, and the difference is a contract:
-//   * JSON verbs (session *) print EXACTLY ONE pretty-printed JSON document on
-//     stdout and nothing else — no banner, no progress, no second document. The
-//     one exception is `session prompt --events`, which streams one compact
-//     JSON object per line and makes the TurnOutcome the last of them.
-//   * text verbs (sessions recent|search|show) print what orchestrator's
-//     sessions.mjs printed, byte for byte, because an agent reads that text out
-//     of a shell and the orchestrator's fixtures pin it.
-// Human-facing strings (usage, doctor, plugin) go through i18next; neither of
-// the two contracts above does. `plugin list --json` is a JSON verb by that
-// first rule; `plugin list` without it, and the other plugin verbs, are lines
-// for a person — see cli/plugin.ts.
+// What stays here: `plugin list [--json]`, and the host of plugins. A verb this file does not know is offered to the configured plugins before it is refused: `tagents-core telegram status` runs the `status` CliCommand of the plugin named `telegram` (cli/plugin-run.ts). The core verbs are matched FIRST and always win — what `plugin` and `help` mean must not depend on what somebody has installed.
 //
-// A verb this file does not know is offered to the configured plugins before it
-// is refused: `tagents-core telegram status` runs the `status` CliCommand of the
-// plugin named `telegram` (cli/plugin-run.ts). The core verbs are matched FIRST
-// and always win — what `session`, `sessions`, `plugin`, `doctor` and `help`
-// mean must not depend on what somebody has installed.
+// What went: `session`, `sessions`, `doctor`, `plugin add|remove|new`, `mcp`, `notify run` and the knowledge server verbs are the binary's (`impl: "rust"` in spec/cli/tagents-core.json). Called here they print one line that says so and exit 69.
 //
-// Exit codes: 0 ok · 1 error · 2 usage · 3 refused · 4 timeout.
+// Exit codes: 0 ok · 1 error · 2 usage · 3 refused · 4 timeout · 69 no binary.
 import fs from 'node:fs';
-import path from 'node:path';
-import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import { ClaudeHeadlessDriver, DEFAULT_TIMEOUT_MS, TIMEOUT_WARN_BEFORE_MS } from '../claude-driver.ts';
-import type { SessionRef, SessionSpec, SessionState, StreamEvent } from '../driver.ts';
-import { readAgentState, stateDir } from '../agent-state.ts';
-import { configFile } from '../host.ts';
-import { createT, coreT, type CoreT } from '../i18n/index.ts';
-import { isAlive } from '../pid.ts';
-import { findOnPath } from '../path-lookup.ts';
-import { parseSessionRef } from '../session-ref.ts';
-import { renderRecent, renderSearch, renderShow, SESSIONS_PROGRAM } from '../transcripts.ts';
-import { formatAttemptError, type TurnOutcome } from '../turn-outcome.ts';
-import { EXIT, json, stdio, type Io } from './exit.ts';
+import { createT, coreT } from '../i18n/index.ts';
+import { EXIT, stdio, type Io } from './exit.ts';
 import { plugin } from './plugin.ts';
 import { runPluginCommand } from './plugin-run.ts';
-import { SESSION_LIST, SESSION_OPEN, SESSION_PROMPT } from './spec.ts';
-
-export { EXIT, type Io };
-
-const STATES: readonly SessionState[] = ['new', 'working', 'blocked', 'done', 'gone'];
-
-function isState(s: string): s is SessionState {
-  return (STATES as readonly string[]).includes(s);
-}
-
-/** `session …` */
-async function session(argv: string[], io: Io, t: CoreT): Promise<number> {
-  const verb = argv[0];
-  const rest = argv.slice(1);
-  const driver = new ClaudeHeadlessDriver();
-
-  if (verb === 'open') {
-    const { values } = parseArgs({
-      args: rest,
-      options: SESSION_OPEN.options,
-      strict: true,
-      allowPositionals: false,
-    });
-    if (!values.cwd) {
-      io.err(`${t('missingOption', { option: '--cwd' })}\n`);
-      return EXIT.usage;
-    }
-    if (values['config-dir'] !== undefined && values['no-config-dir']) {
-      io.err(`${t('unknownOption', { option: '--config-dir + --no-config-dir' })}\n`);
-      return EXIT.usage;
-    }
-    const spec: SessionSpec = {
-      kind: 'claude',
-      cwd: path.resolve(values.cwd),
-      skipPermissions: values['skip-permissions'] === true,
-      ...(values.label === undefined ? {} : { label: values.label }),
-      ...(values.model === undefined ? {} : { model: values.model }),
-      ...(values.effort === undefined ? {} : { effort: values.effort }),
-      ...(values['system-prompt-file'] === undefined ? {} : { systemPromptFile: values['system-prompt-file'] }),
-      ...(values['mcp-config'] === undefined ? {} : { mcpConfig: values['mcp-config'] }),
-      ...(values['no-config-dir'] ? { configDir: null } : {}),
-      ...(values['config-dir'] === undefined ? {} : { configDir: values['config-dir'] }),
-    };
-    io.out(json(await driver.open(spec, values.resume ?? null)));
-    return EXIT.ok;
-  }
-
-  if (verb === 'prompt') {
-    const { values, positionals } = parseArgs({
-      args: rest,
-      options: SESSION_PROMPT.options,
-      strict: true,
-      allowPositionals: true,
-    });
-    const [rawRef, text] = positionals;
-    if (!rawRef || text === undefined) {
-      io.err(`${t('missingOption', { option: '<ref> <text>' })}\n`);
-      return EXIT.usage;
-    }
-    if (!text.trim()) {
-      io.err(`${t('noPrompt')}\n`);
-      return EXIT.usage;
-    }
-    const ref = await resolveRef(driver, rawRef);
-    if (!ref) {
-      io.err(`${t('badRef', { ref: rawRef })}\n`);
-      return EXIT.error;
-    }
-    const streaming = values.events === true;
-    const outcome = await driver.prompt(ref, text, {
-      timeoutMs: num(values.timeout, DEFAULT_TIMEOUT_MS),
-      warnBeforeMs: num(values['warn-before'], TIMEOUT_WARN_BEFORE_MS),
-      ...(streaming ? { onEvent: (e: StreamEvent) => io.out(`${JSON.stringify(e)}\n`) } : {}),
-    });
-    io.out(streaming ? `${JSON.stringify(outcome)}\n` : json(outcome));
-    const error = formatAttemptError(outcome);
-    if (error) io.err(`${error}\n`);
-    return exitFor(outcome);
-  }
-
-  if (verb === 'last') {
-    const raw = rest[0];
-    if (!raw) {
-      io.err(`${t('missingOption', { option: '<ref>' })}\n`);
-      return EXIT.usage;
-    }
-    const ref = await resolveRef(driver, raw);
-    if (!ref) {
-      io.err(`${t('badRef', { ref: raw })}\n`);
-      return EXIT.error;
-    }
-    io.out(json(await driver.last(ref)));
-    return EXIT.ok;
-  }
-
-  if (verb === 'list') {
-    const { values } = parseArgs({
-      args: rest,
-      options: SESSION_LIST.options,
-      strict: true,
-      allowPositionals: false,
-    });
-    const wanted = values.state ?? [];
-    const bad = wanted.filter((s) => !isState(s));
-    if (bad.length) {
-      io.err(`${t('unknownOption', { option: `--state ${bad.join(',')}` })}\n`);
-      return EXIT.usage;
-    }
-    io.out(
-      json(
-        await driver.list({
-          ...(values.label === undefined ? {} : { label: values.label }),
-          ...(wanted.length ? { state: wanted.filter(isState) } : {}),
-        })
-      )
-    );
-    return EXIT.ok;
-  }
-
-  if (verb === 'abort') {
-    const raw = rest[0];
-    if (!raw) {
-      io.err(`${t('missingOption', { option: '<ref>' })}\n`);
-      return EXIT.usage;
-    }
-    const ref = await resolveRef(driver, raw);
-    if (!ref) {
-      io.err(`${t('badRef', { ref: raw })}\n`);
-      return EXIT.error;
-    }
-    await driver.abort(ref);
-    // Across processes the only handle on a running turn is the pid the hook
-    // records for a headless row; without one there is nothing here to stop.
-    const row = readAgentState(stateDir()).find((r) => r.key === ref.id || r.sessionId === ref.claudeSessionId);
-    // A pane's key is its number and a session without a pane is keyed 's-<sid>' (hooks/tmux-agent-state.sh): the pid belongs to the second kind, and a row in a pane is somebody's open terminal.
-    if (row !== undefined && !row.key.startsWith('s-')) {
-      io.err(`${t('abortPaneAgent', { ref: raw })}\n`);
-      return EXIT.refused;
-    }
-    const pid = row?.pid ?? null;
-    if (pid === null || !isAlive(pid)) {
-      io.err(`${t('nothingToAbort', { ref: raw })}\n`);
-      return EXIT.refused;
-    }
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {
-      io.err(`${t('nothingToAbort', { ref: raw })}\n`);
-      return EXIT.refused;
-    }
-    io.out(json({ aborted: true, id: ref.id, pid }));
-    return EXIT.ok;
-  }
-
-  io.err(`${t('unknownCommand', { command: `session ${verb ?? ''}`.trim() })}\n${t('usage')}\n`);
-  return EXIT.usage;
-}
-
-function num(raw: string | undefined, fallback: number): number {
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
-
-function exitFor(o: TurnOutcome): number {
-  if (o.kind === 'ok' || o.kind === 'killed-after-result') return EXIT.ok;
-  return o.kind === 'timeout' ? EXIT.timeout : EXIT.error;
-}
-
-/** A ref is either the JSON `session open` printed, or an id the hook knows. */
-async function resolveRef(driver: ClaudeHeadlessDriver, raw: string): Promise<SessionRef | null> {
-  if (raw.trim().startsWith('{')) return parseSessionRef(raw);
-  const known = await driver.list();
-  return (
-    known.find((r) => r.id === raw || r.claudeSessionId === raw) ??
-    known.find((r) => r.claudeSessionId !== null && r.claudeSessionId.startsWith(raw)) ??
-    null
-  );
-}
-
-/**
- * `sessions …` — the text side. Every byte here, including the usage lines and
- * the name in them, is what sessions.mjs printed: the fixtures carried over
- * from the orchestrator are the oracle, and they name sessions.mjs.
- */
-function sessions(argv: string[], io: Io): number {
-  const [cmd, ...args] = argv;
-  if (cmd === 'recent' || cmd === undefined) {
-    io.out(renderRecent(Number(args[0]) || 15));
-    return EXIT.ok;
-  }
-  if (cmd === 'search') {
-    if (!args.length || !args.join(' ').trim()) {
-      io.err(`usage: ${SESSIONS_PROGRAM} search <words…>\n`);
-      return EXIT.error;
-    }
-    io.out(renderSearch(args));
-    return EXIT.ok;
-  }
-  if (cmd === 'show') {
-    const prefix = args[0];
-    if (!prefix) {
-      io.err(`usage: ${SESSIONS_PROGRAM} show <id-prefix>\n`);
-      return EXIT.error;
-    }
-    const text = renderShow(prefix);
-    if (text === null) {
-      io.err(`no session starts with "${prefix}"\n`);
-      return EXIT.error;
-    }
-    io.out(text);
-    return EXIT.ok;
-  }
-  io.out(`usage: ${SESSIONS_PROGRAM} [recent [N] | search <words…> | show <id-prefix>]\n`);
-  return EXIT.ok;
-}
-
-/** Is there a `claude` on PATH? Answered by looking, not by running it. */
-function claudeOnPath(env: NodeJS.ProcessEnv = process.env): string | null {
-  return findOnPath('claude', env['PATH']);
-}
-
-function doctor(io: Io, t: CoreT): number {
-  const dir = stateDir();
-  const file = configFile();
-  const claude = claudeOnPath();
-  io.out(`${t('doctorNode', { version: process.version, path: process.execPath })}\n`);
-  io.out(`${t('doctorStateDir', { dir, count: readAgentState(dir).length })}\n`);
-  io.out(`${t('doctorConfig', { file, status: fs.existsSync(file) ? t('present') : t('missing') })}\n`);
-  io.out(`${t('doctorClaude', { status: claude ?? t('missing') })}\n`);
-  return EXIT.ok;
-}
+import { servedByBinary } from './spec.ts';
 
 export async function main(argv: string[], io: Io = stdio()): Promise<number> {
   const t = coreT(createT());
   const [verb, ...rest] = argv;
   try {
-    if (verb === 'session') return await session(rest, io, t);
-    if (verb === 'sessions') return sessions(rest, io);
+    // A verb the binary serves is not run here: this CLI says so and exits 69, the code `tagents-knowledge join` gives for the same reason. The list is the `impl` column of the spec file, so it cannot drift from the binary's.
+    const retired = verb === undefined ? null : servedByBinary(verb, rest);
+    if (retired !== null) {
+      io.err(`${t('needsBinary', { verb: retired })}\n`);
+      return EXIT.noBinary;
+    }
     if (verb === 'plugin') return await plugin(rest, io, t);
-    if (verb === 'doctor') return doctor(io, t);
     if (verb === undefined || verb === 'help' || verb === '--help' || verb === '-h') {
       io.out(`${t('usage')}\n`);
       return verb === undefined ? EXIT.usage : EXIT.ok;

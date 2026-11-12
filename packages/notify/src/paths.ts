@@ -123,3 +123,6 @@ export function plistPath(home: string = os.homedir()): string {
 export function logPath(home: string = os.homedir()): string {
   return path.join(home, 'Library', 'Logs', 'tagents', 'notify.log');
 }
+
+/** The Rust binary of this checkout, which serves `notify run`: built by `cargo build --release -p tagents-core` or fetched by `tagents update`. */
+export const CORE_BIN: string = path.join(PACKAGE_DIR, '..', '..', 'target', 'release', 'tagents-core');

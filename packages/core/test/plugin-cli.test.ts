@@ -1,4 +1,4 @@
-// `tagents-core plugin list | add | remove | new`.
+// `tagents-core plugin list`, and the library that edits the config file (`add`, `remove` and `new` are the binary's verbs; their tests are crates/tagents-core/tests).
 //
 // Every case runs against a config dir under $TMPDIR, pointed at with
 // TAGENTS_CONFIG_DIR: the owner's real ~/.config/tagents must never be read,
@@ -9,14 +9,12 @@
 // hand-written document with comments in it, and an installer that reflows it
 // is an installer nobody runs twice.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
-import { readPluginList } from '../src/host.ts';
-import { addPluginEntry, defaultPluginName, removePluginEntry, resolvePluginPackage } from '../src/plugin-config.ts';
+import { addPluginEntry, defaultPluginName, removePluginEntry } from '../src/plugin-config.ts';
 import { tmpDir } from '../src/testkit.ts';
-import { FIXTURES, NODE, PKG, parseSingleJson, runCli } from './helpers.ts';
+import { FIXTURES, parseSingleJson, runCli } from './helpers.ts';
 
 const PLUGINS = path.join(FIXTURES, 'plugin');
 const GOOD = path.join(PLUGINS, 'good');
@@ -38,16 +36,12 @@ function tomlDir(body: string): string {
   return dir;
 }
 
-const tomlText = (dir: string): string => fs.readFileSync(path.join(dir, 'config.toml'), 'utf8');
-
 const inDir = (dir: string): Record<string, string> => ({ TAGENTS_CONFIG_DIR: dir });
 
 before(() => {
   tmp = tmpDir('plugin-cli-test');
 });
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
-
-// ------------------------------------------------------------------- list ---
 
 test('plugin list says so in words when nothing is configured', () => {
   const dir = configDir();
@@ -68,7 +62,7 @@ test('plugin list --json is one JSON document, and the JSON is unchanged', () =>
 
 test('plugin list prints the config key and what the plugin offers', () => {
   const dir = configDir();
-  assert.equal(runCli(['plugin', 'add', GOOD], inDir(dir)).code, 0);
+  fs.writeFileSync(path.join(dir, 'config.toml'), `[plugins.fixture-plugin]\nfrom = "${GOOD}"\n`);
   const r = runCli(['plugin', 'list'], inDir(dir));
   assert.equal(r.code, 0);
   assert.equal(
@@ -77,182 +71,10 @@ test('plugin list prints the config key and what the plugin offers', () => {
   );
 });
 
-// -------------------------------------------------------------------- add ---
-
-test('plugin add writes the entry the host then reads back', () => {
-  const dir = configDir();
-  const r = runCli(['plugin', 'add', GOOD], inDir(dir));
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /^added fixture-plugin → /);
-  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'fixture-plugin', from: GOOD }]);
-});
-
-test('a relative path is stored absolute — the host resolves from: against the CONFIG', () => {
-  const dir = configDir();
-  const rel = path.relative(PLUGINS, GOOD);
-  const r = runCli(['plugin', 'add', `./${rel}`], inDir(dir), PLUGINS);
-  assert.equal(r.code, 0);
-  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'fixture-plugin', from: GOOD }]);
-});
-
-test('--name chooses the key, and a second add of the same key is refused', () => {
-  const dir = configDir();
-  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
-  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'demo', from: GOOD }]);
-
-  const again = runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir));
-  assert.equal(again.code, 3, 'already present is a refusal, not an error');
-  assert.match(again.stderr, /demo is already listed in /);
-  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'demo', from: GOOD }], 'nothing changed');
-});
-
-test('a package with no tagents manifest is refused, and a manifest pointing nowhere too', () => {
-  const dir = configDir();
-  const noManifest = runCli(['plugin', 'add', path.join(PLUGINS, 'no-entry')], inDir(dir));
-  assert.equal(noManifest.code, 3);
-  assert.match(noManifest.stderr, /has no "tagents"/);
-
-  const noEntry = runCli(['plugin', 'add', path.join(PLUGINS, 'missing-entry')], inDir(dir));
-  assert.equal(noEntry.code, 3);
-  assert.match(noEntry.stderr, /which does not exist/);
-
-  assert.ok(!fs.existsSync(path.join(dir, 'config.toml')), 'a refusal writes no config file at all');
-});
-
-test('a package that is nowhere is an error, and no argument is a usage error', () => {
-  const dir = configDir();
-  const missing = runCli(['plugin', 'add', './nowhere-at-all'], inDir(dir));
-  assert.equal(missing.code, 1);
-  assert.match(missing.stderr, /no package at /);
-  assert.equal(runCli(['plugin', 'add'], inDir(dir)).code, 2);
-});
-
-test('an installed package name is resolved from the cwd, and stored as the name', () => {
-  const home = path.join(tmp, 'consumer');
-  const pkg = path.join(home, 'node_modules', 'demo-plugin');
-  fs.mkdirSync(pkg, { recursive: true });
-  fs.writeFileSync(path.join(home, 'package.json'), '{"name":"consumer","version":"0.0.0"}\n');
-  fs.writeFileSync(path.join(pkg, 'plugin.js'), 'export default {};\n');
-  fs.writeFileSync(
-    path.join(pkg, 'package.json'),
-    '{"name":"demo-plugin","version":"1.0.0","tagents":{"apiVersion":1,"entry":"./plugin.js"}}\n'
-  );
-
-  const resolved = resolvePluginPackage('demo-plugin', home);
-  assert.ok(resolved.ok);
-  assert.equal(resolved.pkg.from, 'demo-plugin', 'a package name stays a package name');
-  assert.equal(resolved.pkg.entry, path.join(pkg, 'plugin.js'));
-
-  const dir = configDir();
-  const r = runCli(['plugin', 'add', 'demo-plugin'], inDir(dir), home);
-  assert.equal(r.code, 0);
-  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'demo-plugin', from: 'demo-plugin' }]);
-});
-
 test('the default key is the package name without its scope or plugin- prefix', () => {
   assert.equal(defaultPluginName('@tagents/plugin-telegram'), 'telegram');
   assert.equal(defaultPluginName('tagents-plugin-notes'), 'notes');
   assert.equal(defaultPluginName('fixture-plugin'), 'fixture-plugin');
-});
-
-// --------------------------------------------------- edits to the config file ---
-
-const HAND_WRITTEN_TOML = `#:schema https://example.test/config.schema.json
-# tagents — which Claude account an agent is started on.
-[claude]
-args = "--dangerously-skip-permissions"   # a string, or a list of arguments
-
-[claude.profiles.personal]
-config_dir = "~/.claude-personal"          # aligned by hand, and it stays aligned
-
-[usage]
-monthly_limit_usd = 850
-
-# a trailing note nobody may touch
-`;
-
-test('with no config at all, plugin add creates config.toml', () => {
-  const dir = configDir();
-  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
-  assert.equal(tomlText(dir), `[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
-  assert.ok(!fs.existsSync(path.join(dir, 'config.yaml')), 'no other file is born');
-});
-
-test('adding to a TOML config appends one table and changes nothing before it, byte for byte', () => {
-  const dir = tomlDir(HAND_WRITTEN_TOML);
-  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
-
-  const after_ = tomlText(dir);
-  assert.equal(after_, `${HAND_WRITTEN_TOML}\n[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
-  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'demo', from: GOOD }]);
-});
-
-test('a TOML config without a final newline gets exactly one before the new table', () => {
-  const dir = tomlDir('[usage]\nworkdays = true');
-  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
-  assert.equal(tomlText(dir), `[usage]\nworkdays = true\n\n[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
-});
-
-test('a plugin name that is not a bare TOML key is quoted', () => {
-  const dir = configDir();
-  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'my.plugin'], inDir(dir)).code, 0);
-  assert.equal(tomlText(dir), `[plugins."my.plugin"]\nfrom = ${JSON.stringify(GOOD)}\n`);
-  assert.deepEqual(readPluginList(path.join(dir, 'config.toml')), [{ name: 'my.plugin', from: GOOD }]);
-  assert.equal(runCli(['plugin', 'remove', 'my.plugin'], inDir(dir)).code, 0);
-  assert.equal(tomlText(dir), '');
-});
-
-test('a second add of the same key to a TOML config is refused and writes nothing', () => {
-  const dir = tomlDir(`[plugins.demo]\nfrom = "/one"\n`);
-  const r = runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir));
-  assert.equal(r.code, 3);
-  assert.match(r.stderr, /demo is already listed in .*config\.toml/);
-  assert.equal(tomlText(dir), `[plugins.demo]\nfrom = "/one"\n`);
-});
-
-test('a TOML config that does not parse is refused, not rewritten', () => {
-  const broken = '[claude\nargs = 1\n';
-  const dir = tomlDir(broken);
-  const r = runCli(['plugin', 'add', GOOD], inDir(dir));
-  assert.equal(r.code, 1);
-  assert.equal(tomlText(dir), broken);
-});
-
-test('a plugins table written inline cannot take a new table beside it, and the file is left alone', () => {
-  const inline = `plugins = { a = { from = "/one" } }\n`;
-  const dir = tomlDir(inline);
-  const r = runCli(['plugin', 'add', GOOD, '--name', 'b'], inDir(dir));
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /config\.toml/);
-  assert.equal(tomlText(dir), inline);
-});
-
-test('remove takes a TOML entry out and leaves the file as add found it', () => {
-  const dir = tomlDir(HAND_WRITTEN_TOML);
-  assert.equal(runCli(['plugin', 'add', GOOD, '--name', 'demo'], inDir(dir)).code, 0);
-  const r = runCli(['plugin', 'remove', 'demo'], inDir(dir));
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /^removed demo from .*config\.toml\n$/);
-  assert.equal(tomlText(dir), HAND_WRITTEN_TOML);
-});
-
-test('removing one of several TOML entries takes its sub-tables with it and leaves the others and their comments', () => {
-  const dir = tomlDir(
-    `# why\n[plugins.a]\nfrom = "/one"\n\n[plugins.a.extra]\nx = 1\n\n[plugins.b]\nfrom = "/two"   # keep\n\n# after the plugins\n[usage]\nworkdays = true\n`
-  );
-  assert.equal(runCli(['plugin', 'remove', 'a'], inDir(dir)).code, 0);
-  assert.equal(
-    tomlText(dir),
-    `# why\n[plugins.b]\nfrom = "/two"   # keep\n\n# after the plugins\n[usage]\nworkdays = true\n`
-  );
-});
-
-test('removing something that is not in a TOML config is refused and writes nothing', () => {
-  const dir = tomlDir(HAND_WRITTEN_TOML);
-  const r = runCli(['plugin', 'remove', 'nope'], inDir(dir));
-  assert.equal(r.code, 3);
-  assert.match(r.stderr, /nope is not listed in .*config\.toml/);
-  assert.equal(tomlText(dir), HAND_WRITTEN_TOML);
 });
 
 test('the library edits a TOML file the same way', () => {
@@ -262,12 +84,6 @@ test('the library edits a TOML file the same way', () => {
   assert.equal(removePluginEntry(file, 'x'), 'removed');
   assert.equal(removePluginEntry(file, 'x'), 'absent');
   assert.equal(fs.readFileSync(file, 'utf8'), '[usage]\nworkdays = true\n');
-});
-
-test('removing the only TOML entry, with another table after it, leaves the rest and no empty [plugins]', () => {
-  const dir = tomlDir('[plugins.x]\nfrom = "/one"\n\n[usage]\nworkdays = true\n');
-  assert.equal(runCli(['plugin', 'remove', 'x'], inDir(dir)).code, 0);
-  assert.equal(tomlText(dir), '[usage]\nworkdays = true\n');
 });
 
 test('a plugin path with a control character in it is refused for a TOML config, naming the file, and nothing is written', () => {
@@ -289,217 +105,6 @@ test('a plugin path or name with a lone surrogate in it is refused for a TOML co
     assert.equal(fs.readFileSync(file, 'utf8'), '[usage]\nworkdays = true\n');
   }
 });
-
-// ------------------------------------------------ a config behind a symbolic link ---
-
-/** A dotfiles directory holding `body` as `tagents.toml`, and a config directory whose `config.toml` is a relative link to it. */
-function linkedDir(body: string): { dir: string; link: string; real: string } {
-  const dir = configDir();
-  const dotfiles = path.join(tmp, `dotfiles-${++seq}`);
-  fs.mkdirSync(dotfiles, { recursive: true });
-  const real = path.join(dotfiles, 'tagents.toml');
-  fs.writeFileSync(real, body);
-  const link = path.join(dir, 'config.toml');
-  fs.symlinkSync(path.relative(dir, real), link);
-  return { dir, link, real };
-}
-
-const ADD = ['plugin', 'add', GOOD, '--name', 'demo'];
-const REMOVE = ['plugin', 'remove', 'demo'];
-
-test('a config that is a symbolic link stays a link under add and remove, and the file it points to takes the edit', () => {
-  const { dir, link, real } = linkedDir(HAND_WRITTEN_TOML);
-  const target = fs.readlinkSync(link);
-
-  assert.equal(runCli(ADD, inDir(dir)).code, 0);
-  assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the link is still a link after add');
-  assert.equal(fs.readlinkSync(link), target);
-  assert.equal(fs.readFileSync(real, 'utf8'), `${HAND_WRITTEN_TOML}\n[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
-
-  assert.equal(runCli(REMOVE, inDir(dir)).code, 0);
-  assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the link is still a link after remove');
-  assert.equal(fs.readFileSync(real, 'utf8'), HAND_WRITTEN_TOML);
-  assert.deepEqual(fs.readdirSync(path.dirname(real)), ['tagents.toml'], 'no temporary file is left beside the target');
-  assert.deepEqual(fs.readdirSync(dir), ['config.toml'], 'and none beside the link');
-});
-
-test('a chain of links ends at the real file, which takes the edit', () => {
-  const { dir, link, real } = linkedDir('[usage]\nworkdays = true\n');
-  const middle = path.join(path.dirname(real), 'middle.toml');
-  fs.symlinkSync('tagents.toml', middle);
-  fs.rmSync(link);
-  fs.symlinkSync(path.relative(dir, middle), link);
-
-  assert.equal(runCli(ADD, inDir(dir)).code, 0);
-  assert.ok(fs.lstatSync(link).isSymbolicLink() && fs.lstatSync(middle).isSymbolicLink(), 'both links survive');
-  assert.equal(fs.readFileSync(real, 'utf8'), `[usage]\nworkdays = true\n\n[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
-});
-
-test('a link to nowhere is an error with the system text, and nothing is created at its end', () => {
-  const dir = configDir();
-  const missing = path.join(tmp, `nowhere-${seq}`, 'config.toml');
-  const link = path.join(dir, 'config.toml');
-  fs.symlinkSync(missing, link);
-
-  for (const args of [ADD, REMOVE]) {
-    const r = runCli(args, inDir(dir));
-    assert.equal(r.code, 1, args.join(' '));
-    assert.match(r.stderr, /^ENOENT: no such file or directory, /);
-    assert.ok(fs.lstatSync(link).isSymbolicLink(), 'the link was not replaced');
-    assert.ok(!fs.existsSync(path.dirname(missing)), 'no directory was made for the target');
-    assert.deepEqual(fs.readdirSync(dir), ['config.toml'], 'no temporary file');
-  }
-});
-
-test('a link that leads back to itself is an error with the system text', () => {
-  const dir = configDir();
-  const link = path.join(dir, 'config.toml');
-  fs.symlinkSync('config.toml', link);
-
-  for (const args of [ADD, REMOVE]) {
-    const r = runCli(args, inDir(dir));
-    assert.equal(r.code, 1, args.join(' '));
-    assert.match(r.stderr, /^ELOOP: too many symbolic links encountered, /);
-    assert.equal(fs.readlinkSync(link), 'config.toml');
-    assert.deepEqual(fs.readdirSync(dir), ['config.toml']);
-  }
-});
-
-// ------------------------------------------------- a config that cannot be read ---
-
-test('a config that is a directory fails add and remove with the error of the read, and nothing is written', () => {
-  const dir = configDir();
-  const config = path.join(dir, 'config.toml');
-  fs.mkdirSync(config);
-
-  for (const args of [ADD, REMOVE]) {
-    const r = runCli(args, inDir(dir));
-    assert.equal(r.code, 1, args.join(' '));
-    assert.equal(r.stderr, 'EISDIR: illegal operation on a directory, read\n');
-    assert.deepEqual(fs.readdirSync(dir), ['config.toml'], 'no temporary file');
-    assert.deepEqual(fs.readdirSync(config), [], 'the directory is as it was');
-  }
-});
-
-test('a config that is a link to a directory fails the same way and the link stays', () => {
-  const dir = configDir();
-  const elsewhere = path.join(tmp, `elsewhere-${++seq}`);
-  fs.mkdirSync(elsewhere);
-  const link = path.join(dir, 'config.toml');
-  fs.symlinkSync(elsewhere, link);
-
-  for (const args of [ADD, REMOVE]) {
-    const r = runCli(args, inDir(dir));
-    assert.equal(r.code, 1, args.join(' '));
-    assert.equal(r.stderr, 'EISDIR: illegal operation on a directory, read\n');
-  }
-  assert.equal(fs.readlinkSync(link), elsewhere);
-  assert.deepEqual(fs.readdirSync(elsewhere), []);
-  assert.deepEqual(fs.readdirSync(dir), ['config.toml']);
-});
-
-// A mode-000 file is read by root all the same, so the case is skipped there.
-test('a config the user may not read is not replaced', { skip: process.getuid?.() === 0 && 'root reads a mode-000 file' }, () => {
-  const dir = tomlDir(HAND_WRITTEN_TOML);
-  const file = path.join(dir, 'config.toml');
-  fs.chmodSync(file, 0o000);
-  try {
-    for (const args of [ADD, REMOVE]) {
-      const r = runCli(args, inDir(dir));
-      assert.equal(r.code, 1, args.join(' '));
-      assert.match(r.stderr, /^EACCES: permission denied, open '.*config\.toml'\n$/);
-    }
-  } finally {
-    fs.chmodSync(file, 0o644);
-  }
-  assert.equal(tomlText(dir), HAND_WRITTEN_TOML);
-  assert.deepEqual(fs.readdirSync(dir), ['config.toml']);
-});
-
-test('a config directory that is a file fails add and remove with the error of the read', () => {
-  const blocker = path.join(tmp, `blocker-${++seq}`);
-  fs.writeFileSync(blocker, 'a file where the config directory should be\n');
-
-  for (const args of [ADD, REMOVE]) {
-    const r = runCli(args, inDir(path.join(blocker, 'tagents')));
-    assert.equal(r.code, 1, args.join(' '));
-    assert.match(r.stderr, /^ENOTDIR: not a directory, /);
-  }
-  assert.equal(fs.readFileSync(blocker, 'utf8'), 'a file where the config directory should be\n');
-});
-
-test('a missing config is still an empty one: add creates it, remove refuses', () => {
-  const dir = configDir();
-  assert.equal(runCli(REMOVE, inDir(dir)).code, 3);
-  assert.deepEqual(fs.readdirSync(dir), [], 'remove writes nothing');
-  assert.equal(runCli(ADD, inDir(dir)).code, 0);
-  assert.equal(tomlText(dir), `[plugins.demo]\nfrom = ${JSON.stringify(GOOD)}\n`);
-});
-
-// -------------------------------------------------------------------- new ---
-
-test('plugin new scaffolds a package that plugin add then accepts', () => {
-  const dir = path.join(tmp, 'scaffold-roundtrip');
-  const r = runCli(['plugin', 'new', 'demo', '--dir', dir], inDir(configDir()));
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /^wrote .*scaffold-roundtrip — install it with: tagents plugin add /);
-
-  for (const rel of ['package.json', 'tsconfig.json', 'src/plugin.ts', 'test/plugin.test.ts', 'README.md']) {
-    assert.ok(fs.existsSync(path.join(dir, rel)), `the scaffold wrote ${rel}`);
-  }
-  const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as {
-    name: string;
-    tagents: { apiVersion: number; entry: string };
-    dependencies: Record<string, string>;
-  };
-  assert.equal(manifest.name, 'tagents-plugin-demo');
-  assert.deepEqual(manifest.tagents, { apiVersion: 1, entry: './src/plugin.ts' });
-  assert.equal(manifest.dependencies['@tagents/core'], `link:${path.relative(dir, PKG)}`);
-
-  const cfg = configDir();
-  assert.equal(runCli(['plugin', 'add', dir], inDir(cfg)).code, 0, 'its own manifest passes the check add makes');
-  assert.deepEqual(readPluginList(path.join(cfg, 'config.toml')), [{ name: 'demo', from: dir }]);
-});
-
-test('plugin new refuses a directory with something in it, and a name it cannot use', () => {
-  const taken = path.join(tmp, 'taken');
-  fs.mkdirSync(taken, { recursive: true });
-  fs.writeFileSync(path.join(taken, 'README.md'), 'mine\n');
-  const r = runCli(['plugin', 'new', 'demo', '--dir', taken], inDir(configDir()));
-  assert.equal(r.code, 3);
-  assert.match(r.stderr, /exists and is not empty/);
-  assert.equal(fs.readFileSync(path.join(taken, 'README.md'), 'utf8'), 'mine\n');
-
-  assert.equal(runCli(['plugin', 'new', '../escape'], inDir(configDir())).code, 2);
-  assert.equal(runCli(['plugin', 'new'], inDir(configDir())).code, 2);
-});
-
-/**
- * The promise `plugin new` makes is that the package typechecks AS WRITTEN, so
- * the check is tsc on the scaffold itself — core linked out of this workspace,
- * which is exactly what the generated `link:` dependency points at. It needs
- * core's dist/ (that is what @tagents/core's "types" resolves to), so before a
- * build there is nothing here to check.
- */
-const TSC = path.join(PKG, 'node_modules', 'typescript', 'bin', 'tsc');
-const buildable = fs.existsSync(path.join(PKG, 'dist', 'index.d.ts')) && fs.existsSync(TSC);
-
-test('the scaffold typechecks as written', { skip: buildable ? false : 'needs a built core' }, () => {
-  const dir = path.join(tmp, 'scaffold-tsc');
-  assert.equal(runCli(['plugin', 'new', 'demo', '--dir', dir], inDir(configDir())).code, 0);
-
-  const modules = path.join(dir, 'node_modules');
-  fs.mkdirSync(path.join(modules, '@tagents'), { recursive: true });
-  fs.mkdirSync(path.join(modules, '@types'), { recursive: true });
-  fs.symlinkSync(PKG, path.join(modules, '@tagents', 'core'), 'dir');
-  fs.symlinkSync(path.join(PKG, 'node_modules', 'zod'), path.join(modules, 'zod'), 'dir');
-  fs.symlinkSync(path.join(PKG, 'node_modules', '@types', 'node'), path.join(modules, '@types', 'node'), 'dir');
-
-  const r = spawnSync(NODE, [TSC, '--noEmit', '-p', dir], { encoding: 'utf8' });
-  assert.equal(r.status, 0, `tsc on the scaffold:\n${r.stdout}${r.stderr}`);
-});
-
-// ------------------------------------------------------------------ usage ---
 
 test('an unknown plugin verb is a usage error that prints the usage', () => {
   const r = runCli(['plugin', 'install', 'x'], inDir(configDir()));

@@ -29,6 +29,7 @@ export const en = {
     'exit: 0 ok · 1 error · 2 usage · 3 refused · 4 timeout',
   ].join('\n'),
   unknownCommand: 'unknown command: {{command}}',
+  needsBinary: '{{verb}} is served by the tagents-core binary, and this machine has none: run `tagents update`, or `cargo build --release -p tagents-core` in the checkout',
   missingOption: 'missing required option {{option}}',
   unknownOption: 'unknown option {{option}}',
   badRef: 'no session matches {{ref}}',

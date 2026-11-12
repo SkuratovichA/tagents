@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The package's own bin: `tagents-notify <verb>`, and what the LaunchAgent runs (`node dist/main.js run`, directly or through the installer's `tagents-notify` command when no Rust binary serves `run`). The verbs need no entry in the config here, so a service started by launchd works on a machine where the host never ran.
+// The package's own bin: `tagents-notify <verb>`, and what the LaunchAgent runs (through the installer's `tagents-notify` command, or `node dist/main.js run` for a LaunchAgent written before that command existed, which starts the Rust binary). The verbs need no entry in the config here, so a service started by launchd works on a machine where the host never ran.
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { runPluginBin } from '@tagents/core';

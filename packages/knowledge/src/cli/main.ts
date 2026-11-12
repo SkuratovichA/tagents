@@ -9,21 +9,19 @@
 //
 // `search` and `show` also leave a line in the usage store once they have answered (usage.ts says what and why). That is best effort: a store that cannot take it never changes what was printed or the exit code, and `--verbose` is the only way to hear about it.
 //
-// Exit codes: 0 ok · 1 error · 2 usage · 4 nothing found.
+// Exit codes: 0 ok · 1 error · 2 usage · 4 nothing found · 69 the verb is the binary's and there is none (`serve`, `mcp`).
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import { EXIT } from './exit.ts';
-import { INDEX, LINT, LIST, SEARCH, SERVE, SHOW, TOC, USAGE } from './spec.ts';
+import { INDEX, LINT, LIST, SEARCH, SHOW, TOC, USAGE } from './spec.ts';
 import { openDb, reindex, silenceSqliteWarning } from '../db.ts';
 import { createT, type Translate } from '../i18n/index.ts';
 import { loadDir } from '../doc.ts';
 import { lint } from '../lint.ts';
 import { indexState, writeIndex } from '../toc.ts';
-import { DEFAULT_IDLE_SECONDS, defaultSocket, ensureDaemon, runDaemon } from '../mcp/daemon.ts';
-import { runMcp } from '../mcp/server.ts';
 import { dirSnippet, resolveDb, resolveDir, resolveUsageDb } from '../paths.ts';
 import { realClock } from '@tagents/core';
 import { getDoc, getSection, listDocs, parseAddress, search, type Clock, type Filters, type Hit } from '../search.ts';
@@ -401,34 +399,6 @@ function cmdUsage(argv: string[], io: Io, t: Translate, clock: Clock): number {
   });
 }
 
-/**
- * `serve` prints the socket of the shared server for this environment, starting the server first when none answers. `--foreground` is the server itself, which `serve` starts detached.
- */
-async function cmdServe(argv: string[], io: Io, t: Translate): Promise<number> {
-  const { values } = parseArgs({
-    args: argv,
-    options: SERVE.options,
-    strict: true,
-    allowPositionals: false,
-  });
-  const idle = values.idle === undefined ? DEFAULT_IDLE_SECONDS : Number(values.idle);
-  if (!Number.isFinite(idle) || idle <= 0) {
-    io.err(`${t('badIdle')}\n`);
-    return EXIT.usage;
-  }
-  try {
-    if (values.foreground === true) {
-      await runDaemon({ socket: values.socket ?? defaultSocket(), idleMs: idle * 1000 });
-      return EXIT.ok;
-    }
-    io.out(`${await ensureDaemon(process.env, idle)}\n`);
-    return EXIT.ok;
-  } catch (e) {
-    io.err(`${t('serveFailed', { reason: e instanceof Error ? e.message : String(e) })}\n`);
-    return EXIT.error;
-  }
-}
-
 export async function main(argv: string[], io: Io = stdio(), clock: Clock = realClock): Promise<number> {
   // Before anything runs: importing node:sqlite queues Node's experimental
   // notice, and a verb that never opens the index (lint, help) would otherwise
@@ -444,10 +414,10 @@ export async function main(argv: string[], io: Io = stdio(), clock: Clock = real
     if (verb === 'lint') return cmdLint(rest, io, t, clock);
     if (verb === 'toc') return cmdToc(rest, io, t);
     if (verb === 'usage') return cmdUsage(rest, io, t, clock);
-    if (verb === 'serve') return await cmdServe(rest, io, t);
-    if (verb === 'mcp') {
-      await runMcp();
-      return EXIT.ok;
+    // `serve` and `mcp` are the binary's (`tagents-core knowledge serve|mcp`); the wrapper hands them there, and a call that reaches this file has no binary to go to.
+    if (verb === 'serve' || verb === 'mcp') {
+      io.err(`${t('needsBinary', { verb: `knowledge ${verb}` })}\n`);
+      return EXIT.noBinary;
     }
     if (verb === undefined || verb === 'help' || verb === '--help' || verb === '-h') {
       io.out(`${t('usage')}\n`);

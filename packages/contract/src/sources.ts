@@ -3,20 +3,17 @@ import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { coreCliContract } from '../../core/src/cli/spec.ts';
 import { knowledgeCliContract } from '../../knowledge/src/cli/spec.ts';
-import { SERVER_NAME, createServer } from '../../knowledge/src/mcp/server.ts';
-import { parseCliContract } from '../../mcp/src/contract-file.ts';
-import { SERVER_NAME as TAGENTS_SERVER_NAME } from '../../mcp/src/server.ts';
-import { toolSpecs } from '../../mcp/src/tools.ts';
 import { notifyCliContract } from '../../notify/src/cli/spec.ts';
 import { apiReports } from './api.ts';
+import { parseCliContract } from './contract-file.ts';
 import { createT, type Translate } from './i18n/index.ts';
 import { isJsonObject, toJson } from './json.ts';
 import { byCodeUnit } from './order.ts';
+import { toolSpecs } from './tools.ts';
 import type { CliContract, McpServerSpec, McpTool, Script, Sources } from './types.ts';
 
 const run = promisify(execFile);
@@ -61,26 +58,26 @@ export function tagentsServer(cli: readonly CliContract[], t: Translate = create
   return { name: TAGENTS_SERVER_NAME, tools: toolSpecs(cli).map((tool) => toTool(tool, t)) };
 }
 
-/** The tools the knowledge server lists to a client linked to it in memory, sorted by name (no database is opened to list them), and the plugin's own server made from the CLI specs. */
-export async function mcpServers(cli: readonly CliContract[], t: Translate = createT()): Promise<readonly McpServerSpec[]> {
-  const server = createServer({});
-  const client = new Client({ name: 'tagents-contract', version: '0.0.0' });
-  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  try {
-    await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
-    const tools: McpTool[] = [];
-    let cursor: string | undefined;
-    do {
-      const page = await client.listTools(cursor === undefined ? {} : { cursor });
-      tools.push(...page.tools.map((tool) => toTool(tool, t)));
-      cursor = page.nextCursor;
-    } while (cursor !== undefined);
-    tools.sort((a, b) => byCodeUnit(a.name, b.name));
-    return [{ name: SERVER_NAME, tools }, tagentsServer(cli, t)];
-  } finally {
-    await client.close();
-    await server.close();
-  }
+/** The name each of the two servers goes by in the contract: the plugin's own, and the knowledge server's. */
+export const TAGENTS_SERVER_NAME = 'tagents';
+export const KNOWLEDGE_SERVER_NAME = 'tagents-knowledge';
+
+/** The `tools/list` of the knowledge server, which the binary serves and embeds: the file was written from the node server before it was deleted, and is frozen. */
+export const KNOWLEDGE_TOOLS_FILE = 'crates/tagents-core/src/knowledge/tools.json';
+
+/** The tools the knowledge server lists, sorted by name, and the plugin's own server made from the CLI specs. */
+export async function mcpServers(cli: readonly CliContract[], t: Translate = createT(), root: string = fileURLToPath(new URL('../../../', import.meta.url))): Promise<readonly McpServerSpec[]> {
+  const listed: unknown = JSON.parse(await readFile(path.join(root, KNOWLEDGE_TOOLS_FILE), 'utf8'));
+  if (!Array.isArray(listed)) throw new Error(`${KNOWLEDGE_TOOLS_FILE} is not a list of tools`);
+  // The SDK wrote `$schema` after the other keys of an input schema; the file has it first, and the contract keeps the order it had.
+  const schemaLast = (schema: unknown): unknown => {
+    if (typeof schema !== 'object' || schema === null || !('$schema' in schema)) return schema;
+    const { $schema, ...rest } = schema;
+    return { ...rest, $schema };
+  };
+  const tools = listed.map((tool: Parameters<typeof toTool>[0]) => toTool({ ...tool, inputSchema: schemaLast(tool.inputSchema), outputSchema: schemaLast(tool.outputSchema) }, t));
+  tools.sort((a, b) => byCodeUnit(a.name, b.name));
+  return [{ name: KNOWLEDGE_SERVER_NAME, tools }, tagentsServer(cli, t)];
 }
 
 /** The environment a script runs in: the given home and the given `PATH` and nothing else from the parent, so the text cannot depend on the machine and the script cannot touch the real home. */
@@ -110,6 +107,6 @@ export async function scriptHelps(root: string, t: Translate = createT()): Promi
 
 export async function collectSources(root: string, t: Translate = createT()): Promise<Sources> {
   const cli = await cliContracts(root, t);
-  const [mcp, scripts, api] = await Promise.all([mcpServers(cli, t), scriptHelps(root, t), apiReports(root)]);
+  const [mcp, scripts, api] = await Promise.all([mcpServers(cli, t, root), scriptHelps(root, t), apiReports(root)]);
   return { cli, mcp, api, scripts };
 }

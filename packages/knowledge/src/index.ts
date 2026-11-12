@@ -1,6 +1,6 @@
 // @tagents/knowledge — the owner's operational knowledge as documents a
 // machine can search: a frontmatter format, a SQLite FTS5 index over the '## '
-// sections, a CLI and an MCP server. Writes are git's job; nothing here has a
+// sections and a CLI. Writes are git's job; nothing here has a
 // write path into the documents.
 export {
   DocError,
@@ -92,4 +92,3 @@ export type { RecordOptions, ReportOptions, UsageEvent, UsageKind, UsageRow } fr
 export { DEFAULT_LOCALE, createT, interpolate, isLocale, resources } from './i18n/index.ts';
 export type { KnowledgeKey, KnowledgeResource, Locale, Translate, Vars } from './i18n/index.ts';
 
-export { MAX_SESSIONS, SERVER_NAME, SERVER_VERSION, createServer, runMcp } from './mcp/server.ts';

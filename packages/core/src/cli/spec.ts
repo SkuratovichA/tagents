@@ -102,7 +102,13 @@ function refuseSharedPath(commands: readonly { readonly path: readonly string[] 
   }
 }
 
-export function loadSpec(file: URL = SPEC_FILE): { program: string; exit: Readonly<Record<string, number>>; commands: readonly LoadedCommand[] } {
+export function loadSpec(file: URL = SPEC_FILE): {
+  program: string;
+  exit: Readonly<Record<string, number>>;
+  commands: readonly LoadedCommand[];
+  /** The paths of the verbs whose `impl` is `rust`: the ones this CLI no longer runs. */
+  served: readonly (readonly string[])[];
+} {
   // Plain English, not t(): the catalogue is what failed to line up, and a checkout missing its spec has nothing to translate with.
   let text: string;
   try {
@@ -117,6 +123,7 @@ export function loadSpec(file: URL = SPEC_FILE): { program: string; exit: Readon
   return {
     program,
     exit,
+    served: commands.filter((c) => c.impl === 'rust').map((c) => c.path),
     commands: commands.map((c) => ({
       path: c.path,
       positionals: c.positionals,
@@ -135,28 +142,7 @@ const SPEC = loadSpec();
  * `parseArgs` types `values` from the literal option table it is handed, and a JSON import has no literals. So the verbs main.ts and plugin.ts parse keep their tables here as types, and `parsed` refuses to load when the data file says something else: adding a flag means editing the data file and this table, and forgetting either fails the first run, not a user.
  */
 const PARSED = {
-  'session open': {
-    cwd: { type: 'string' },
-    label: { type: 'string' },
-    model: { type: 'string' },
-    effort: { type: 'string' },
-    resume: { type: 'string' },
-    'system-prompt-file': { type: 'string' },
-    'mcp-config': { type: 'string' },
-    'config-dir': { type: 'string' },
-    'no-config-dir': { type: 'boolean' },
-    'skip-permissions': { type: 'boolean' },
-  },
-  'session prompt': {
-    timeout: { type: 'string' },
-    'warn-before': { type: 'string' },
-    events: { type: 'boolean' },
-  },
-  'session list': { label: { type: 'string' }, state: { type: 'string', multiple: true } },
   'plugin list': { json: { type: 'boolean' } },
-  'plugin add': { name: { type: 'string' } },
-  'plugin remove': {},
-  'plugin new': { dir: { type: 'string' } },
 } as const satisfies Record<string, ParseArgsOptionsConfig>;
 
 function sameOptions(a: ParseArgsOptionsConfig, b: ParseArgsOptionsConfig): boolean {
@@ -180,13 +166,19 @@ function parsed<K extends keyof typeof PARSED>(verb: K): Omit<LoadedCommand, 'op
   return { ...command, options: PARSED[verb] };
 }
 
-export const SESSION_OPEN = parsed('session open');
-export const SESSION_PROMPT = parsed('session prompt');
-export const SESSION_LIST = parsed('session list');
 export const PLUGIN_LIST = parsed('plugin list');
-export const PLUGIN_ADD = parsed('plugin add');
-export const PLUGIN_REMOVE = parsed('plugin remove');
-export const PLUGIN_NEW = parsed('plugin new');
+
+/**
+ * The verb a call names when the binary serves it and this CLI does not: `session` and `sessions` are the binary's for any word after them, any other group for the second word the spec lists. Returns the words to print ("plugin add"), or null when node's CLI runs the call.
+ */
+export function servedByBinary(verb: string, rest: readonly string[]): string | null {
+  const group = SPEC.commands.filter((c) => c.path[0] === verb);
+  const wholeGroup = group.length > 0 && SPEC.served.filter((p) => p[0] === verb).length === group.length;
+  const word = rest[0];
+  const hit = SPEC.served.some((p) => p[0] === verb && (p.length === 1 || wholeGroup || p[1] === word));
+  if (!hit) return null;
+  return SPEC.served.some((p) => p.length === 1 && p[0] === verb) ? verb : [verb, word ?? ''].join(' ').trim();
+}
 
 export const CORE_COMMANDS: readonly LoadedCommand[] = SPEC.commands;
 

@@ -6,9 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { SERVER_NAME } from '../../knowledge/src/mcp/server.ts';
-import { SERVER_NAME as TAGENTS_SERVER_NAME } from '../../mcp/src/server.ts';
-import { BASH_SPEC, SCRIPT_NAMES, cliContracts, mcpServers, scriptEnv, scriptHelps, tagentsServer } from '../src/sources.ts';
+import { BASH_SPEC, KNOWLEDGE_SERVER_NAME as SERVER_NAME, TAGENTS_SERVER_NAME, SCRIPT_NAMES, cliContracts, mcpServers, scriptEnv, scriptHelps, tagentsServer } from '../src/sources.ts';
 import { REPO_ROOT } from '../src/tree.ts';
 
 test('every CLI contract is present, each with verbs and exit codes: the three packages\' and the script\'s', async () => {
@@ -48,7 +46,6 @@ test('the verbs that stop or remove something are destructive, the ones that onl
   assert.equal(effectOf('tagents-core', 'session', 'list'), 'read');
   assert.equal(effectOf('tagents-notify', 'status'), 'read');
   assert.equal(effectOf('tagents-notify', 'run'), 'serve');
-  assert.equal(effectOf('tagents-knowledge', 'serve'), 'serve');
   assert.equal(effectOf('tagents', '--new'), 'spawn');
 });
 

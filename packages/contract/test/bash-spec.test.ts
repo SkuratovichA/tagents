@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
-import { parseCliContract } from '../../mcp/src/contract-file.ts';
-import { parsePositional } from '../../mcp/src/tools.ts';
+import { parseCliContract } from '../src/contract-file.ts';
+import { parsePositional } from '../src/tools.ts';
 import { scriptHelps } from '../src/sources.ts';
 import { REPO_ROOT } from '../src/tree.ts';
 

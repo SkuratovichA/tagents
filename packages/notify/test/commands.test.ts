@@ -16,7 +16,7 @@ import type { Platform, RunSpec, ServiceStatus } from '../src/notifier.ts';
 import { installedCommand, tagentsScript } from '../src/paths.ts';
 import { renderPlist } from '../src/platform/macos/launchd.ts';
 import { ALLOWING_NOTIFICATIONS, createNotifyPlugin } from '../src/plugin.ts';
-import { LOCK_FILE } from '../src/service.ts';
+import { LOCK_FILE } from '../src/lock.ts';
 import { recordingNotifier } from './fakes.ts';
 
 const INSTALL_SH = path.join(fileURLToPath(new URL('../../..', import.meta.url)), 'install.sh');
@@ -41,6 +41,7 @@ interface RigOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly exec?: Exec;
   readonly mainJs?: string | null;
+  readonly coreBin?: string;
   readonly service?: Partial<ServiceStatus>;
 }
 
@@ -99,6 +100,7 @@ function rig(o: RigOptions = {}) {
     now: () => clock,
     mainJs: o.mainJs === null ? path.join(home, 'missing.js') : (o.mainJs ?? mainJs),
     ...(o.exec !== undefined ? { exec: o.exec } : {}),
+    ...(o.coreBin !== undefined ? { coreBin: o.coreBin } : {}),
     ...(platform !== undefined ? { platform } : {}),
   });
   return {
@@ -911,18 +913,10 @@ test('install does not wait when the service already runs and the stream is on',
   assert.deepEqual(r.sleeps, []);
 });
 
-test('run exits 1 when the service cannot start, so that launchd starts it again', async () => {
-  const r = rig();
-  // A state directory under a regular file: the service's first step, creating it, throws.
-  const blocker = path.join(r.state, 'blocker');
-  fs.writeFileSync(blocker, '');
-  const logs: string[] = [];
-  const log = (...parts: string[]): void => void logs.push(parts.join(' '));
-  const ctx = createContext({ plugin: r.plugin, log, configDir: r.config, agents: createAgentFeed(path.join(blocker, 'state')) });
-  const run = r.plugin.commands?.find((c) => c.name === 'run');
-  assert.ok(run !== undefined);
-  assert.equal(await run.run({}, ctx), 1);
-  assert.match(logs.join('\n'), /the notify service stopped: .*(ENOTDIR|not a directory)/);
+test('run starts the binary and says there is none, with exit 69, when the binary is not there', async () => {
+  const r = rig({ coreBin: path.join(tmpDir('notify-no-bin'), 'absent') });
+  assert.equal(await r.run('run'), 69);
+  assert.match(r.err(), /notify run is served by the tagents-core binary.*tagents update/);
 });
 
 test('install gives the service the tagents on the installer\'s PATH, as found, and status shows the same script', async () => {

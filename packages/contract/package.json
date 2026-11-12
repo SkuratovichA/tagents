@@ -14,11 +14,11 @@
   },
   "devDependencies": {
     "@microsoft/api-extractor": "^7.60.1",
-    "@modelcontextprotocol/sdk": "^1.30.0",
     "@tagents/core": "workspace:*",
     "@tagents/knowledge": "workspace:*",
     "@tagents/telegram": "workspace:*",
     "@types/node": "^22",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "zod": "^4.6"
   }
 }

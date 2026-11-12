@@ -125,9 +125,9 @@ test('a word no configured plugin answers to is the unknown command it always wa
 test('a core verb wins over a plugin that took its name', () => {
   const env = inDir(configDir([['doctor', GOOD]]));
   const r = runCli(['doctor'], env);
-  assert.equal(r.code, 0);
-  assert.match(r.stdout, /^node v/, 'doctor is doctor, whatever is installed');
-  assert.equal(r.stderr, '');
+  assert.equal(r.code, 69, 'doctor is the binary\'s, whatever is installed');
+  assert.match(r.stderr, /^doctor is served by the tagents-core binary/);
+  assert.equal(r.stdout, '');
 });
 
 test('the usage names the plugin line and the reserved words', () => {
