@@ -80,7 +80,7 @@ fn a_client_is_served_and_the_daemon_leaves_nothing_behind() {
     let hello = client.handshake();
     assert_eq!("tagents-knowledge", hello["result"]["serverInfo"]["name"]);
     let listed = client.ask(2, "tools/list", &json!({}));
-    assert_eq!(6, listed["result"]["tools"].as_array().unwrap().len());
+    assert_eq!(4, listed["result"]["tools"].as_array().unwrap().len());
     drop(client);
 
     assert_eq!(Ok(Outcome::Served), daemon.finish());
@@ -236,7 +236,7 @@ fn a_client_quiet_for_longer_than_the_tick_stays_connected_and_is_answered() {
     client.handshake();
     thread::sleep(Duration::from_millis(1300));
     let listed = client.ask(2, "tools/list", &json!({}));
-    assert_eq!(6, listed["result"]["tools"].as_array().unwrap().len());
+    assert_eq!(4, listed["result"]["tools"].as_array().unwrap().len());
 }
 
 #[test]

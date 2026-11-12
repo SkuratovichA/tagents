@@ -358,6 +358,62 @@ Posts one sample notice of the given kind through the configured backend, which 
 }
 ```
 
+### sessions_recent
+
+The latest sessions across every Claude account on this machine, newest first — the same text the sessions CLI prints.
+
+#### Inputs
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `limit` | integer | no | how many (default 15) |
+
+#### Input schema
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "limit": {
+      "description": "how many (default 15)",
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 50
+    }
+  }
+}
+```
+
+### sessions_search
+
+Sessions whose project path or opening prompt contains every one of these words — the same text the sessions CLI prints.
+
+#### Inputs
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `words` | string | yes | words that must all appear |
+
+#### Input schema
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "words": {
+      "type": "string",
+      "minLength": 1,
+      "description": "words that must all appear"
+    }
+  },
+  "required": [
+    "words"
+  ]
+}
+```
+
 ### tagents_check
 
 Prints what is wrong with the config, one line each, and exits 1 while anything is; prints nothing and exits 0 when it is sound.

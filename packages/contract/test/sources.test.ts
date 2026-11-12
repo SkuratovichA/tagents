@@ -23,7 +23,10 @@ test('the real MCP servers list tools with an object input schema, and the plugi
   const cli = await cliContracts(REPO_ROOT);
   const servers = await mcpServers(cli);
   assert.deepEqual(servers.map((s) => s.name), [SERVER_NAME, TAGENTS_SERVER_NAME]);
-  assert.deepEqual(servers[1], tagentsServer(cli));
+  const sessions = ['sessions_recent', 'sessions_search'];
+  assert.deepEqual(servers[1]?.tools.filter((tool) => !sessions.includes(tool.name)), tagentsServer(cli).tools);
+  assert.deepEqual(servers[1]?.tools.filter((tool) => sessions.includes(tool.name)).map((tool) => tool.name), sessions);
+  assert.deepEqual(servers[0]?.tools.map((tool) => tool.name), ['knowledge_get', 'knowledge_list', 'knowledge_search', 'knowledge_usage']);
   const tools = servers.flatMap((s) => s.tools);
   assert.ok(tools.length >= 1);
   for (const tool of tools) {

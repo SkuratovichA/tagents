@@ -222,7 +222,16 @@ fn a_client_lists_one_tool_per_verb_with_the_hints_of_its_effect() {
     let listed = session.reply(2);
     let tools = listed["result"]["tools"].as_array().unwrap();
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["fake_forget", "fake_show"]);
+    // The two session tools are answered by the server itself and listed among the verbs, by name.
+    assert_eq!(
+        names,
+        [
+            "fake_forget",
+            "fake_show",
+            "sessions_recent",
+            "sessions_search"
+        ]
+    );
     let show = &tools[1];
     assert_eq!(
         show["annotations"],

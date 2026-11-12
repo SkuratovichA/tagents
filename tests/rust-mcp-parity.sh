@@ -149,6 +149,11 @@ norm() {  # <file>
 }
 
 
+# The Rust server lists two tools the node oracle never had, `sessions_recent` and `sessions_search` (they moved here from the knowledge server): they are cut out of its tools/list answers before the transcripts are compared, and a tripwire checks they were there.
+without_session_tools() {  # <file>
+  perl -pe 's/,?\{"name":"sessions_(?:recent|search)"(?:[^{}]|(\{(?:[^{}]|(?1))*\}))*\}//g' "$1"
+}
+
 # play <label> <script> [-- <server arguments>]; $EXTRA_ENV holds extra VAR=value words for the environment of the servers.
 EXTRA_ENV=()
 RAN=1   # whether the last play ran its scenario: the tripwires of one that did not are skipped
@@ -172,7 +177,7 @@ play() {
     fi
     code=$?
     if [ "$code" -ne 0 ]; then bad "$label: the driver failed on the $side server (exit $code)" "$(head -c 400 "$TMP/driver.$side" | tr '\n' '|')"; return; fi
-    norm "$TMP/raw.$side" > "$TMP/transcript.$side"
+    if [ $side = rust ]; then norm "$TMP/raw.$side" | without_session_tools /dev/stdin > "$TMP/transcript.$side"; else norm "$TMP/raw.$side" > "$TMP/transcript.$side"; fi
     if [ -n "${PARITY_SHOW:-}" ]; then printf '  --- %s, %s\n' "$label" "$side"; cut -c1-"$PARITY_SHOW" "$TMP/transcript.$side" | sed 's/^/  | /'; fi
   done
   if cmp -s "$TMP/transcript.node" "$TMP/transcript.rust"; then ok; return; fi
@@ -233,6 +238,7 @@ must_not "tools/list: tool false is no tool" '"name":"fake_hidden"'
 play "tools/list (empty contract)" "$(session "$(req 2 tools/list)" "$(await 2)")" -- --contract "$EMPTY"
 play "tools/list (bundled contract.json)" "$(session "$(req 2 tools/list)" "$(await 2)")" -- --contract "$REPO/contract.json"
 must "bundled contract" '"name":"core_session_list"'
+if [ -n "$RAN" ]; then if grep -q '"name":"sessions_recent"' "$TMP/raw.rust" && grep -q '"name":"sessions_search"' "$TMP/raw.rust"; then ok; else bad "tripwire: the Rust server does not list the two session tools" ""; fi; fi
 play "tools/list (--contract=FILE)" "$(session "$(req 2 tools/list)" "$(await 2)")" -- "--contract=$FIXTURE"
 
 t "tools/call: the command line a call stands for"

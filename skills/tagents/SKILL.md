@@ -14,7 +14,7 @@ tagents is a tmux dashboard for Claude Code sessions plus the packages that driv
 | You need to | Use | Read |
 |---|---|---|
 | open, prompt, read, list or abort a headless Claude Code session; list, add, remove or scaffold a tagents plugin; run `doctor` | `tagents-core` | `references/cli.md` |
-| find a past session by its project or opening prompt | the `sessions_recent` and `sessions_search` tools of the okb plugin's `knowledge` server, or `tagents-core sessions` from a shell | `references/cli.md` |
+| find a past session by its project or opening prompt | the `sessions_recent` and `sessions_search` tools of the tagents plugin's own MCP server, or `tagents-core sessions` from a shell | `references/cli.md` |
 | search or read the owner's knowledge documents | the okb plugin, which this plugin depends on (its own skill) | |
 | send a desktop notification, open another Claude Code session in a tmux window, or run a command in one | the `tagents` MCP tools this plugin registers | [Using the tools](#using-the-tools) |
 | read cost and context accounting per session | `tusage` | `references/scripts.md` |

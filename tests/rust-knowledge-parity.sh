@@ -110,8 +110,9 @@ expect() {  # <label> <got> <want>
   if [ "$2" = "$3" ]; then ok; else bad "$1" "got:    $2
        wanted: $3"; fi
 }
-norm() {  # <file>: the version a server reports is its own
-  sed -e 's/"serverInfo":{"name":"tagents-knowledge","version":"[^"]*"}/"serverInfo":{"name":"tagents-knowledge","version":"-"}/' "$1"
+# The node oracle still lists `sessions_recent` and `sessions_search`, which moved to the tagents server (tests/rust-mcp-parity.sh and crates/tagents-core/tests/session_tools.rs hold them now): they are cut out of its tools/list answers, and nothing calls them here.
+norm() {  # <file>: the version a server reports is its own, and the tools okb does not have
+  sed -e 's/"serverInfo":{"name":"tagents-knowledge","version":"[^"]*"}/"serverInfo":{"name":"tagents-knowledge","version":"-"}/' "$1" | perl -pe 's/,?\{"name":"sessions_(?:recent|search)"(?:[^{}]|(\{(?:[^{}]|(?1))*\}))*\}//g'
 }
 RAN=1
 SKIPPED=0
@@ -170,7 +171,7 @@ for v in $VERSIONS 2099-01-01 ""; do
 done
 must "initialize: the server's name" '"serverInfo":{"name":"tagents-knowledge"'
 play "handshake and list: tools/list, ping, an unknown method, an unknown tool, a malformed line" "$(ksession "$(req 2 tools/list)" "$(await 2)" "$(req 3 ping)" "$(await 3)" "$(req 4 nope/method)" "$(await 4)" "$(kcall 5 nope_tool '{}')" '{"raw":"{not json\n"}' "$(req 6 tools/list)" "$(await 6)")"
-for tool in knowledge_search knowledge_get knowledge_list knowledge_usage sessions_recent sessions_search; do must "tools/list: $tool" "\"name\":\"$tool\""; done
+for tool in knowledge_search knowledge_get knowledge_list knowledge_usage; do must "tools/list: $tool" "\"name\":\"$tool\""; done
 must "ping" '"result":{}'
 must "unknown method" 'Method not found'
 must "unknown tool" 'nope_tool'
@@ -248,15 +249,6 @@ play "usage with every argument" "$(ksession \
   "$(kcall 15 knowledge_usage '{"min_gets":0}')")"
 must "usage: a count" '\"id\": \"deploy-runbook\",\n    \"type\": \"Runbook\",\n    \"status\": \"stable\",\n    \"gets\": 2,'
 must "usage: a bad window" 'since must be'
-play "the two session tools" "$(ksession \
-  "$(kcall 2 sessions_recent '{}')" \
-  "$(kcall 3 sessions_recent '{"limit":1}')" \
-  "$(kcall 4 sessions_recent '{"limit":200}')" \
-  "$(kcall 5 sessions_search '{"words":"nothing here"}')" \
-  "$(kcall 6 sessions_search '{"words":"fixture"}')" \
-  "$(kcall 7 sessions_search '{"words":"   "}')")"
-must "sessions: the recent list names a session" 'Fix the deploy script for the staging cluster'
-must "sessions: a search that finds nothing says so" 'nothing matches \"nothing here\" in the last 400 sessions'
 EXTRAS=; CORPUS=knowledge
 
 t "argument errors"
@@ -270,8 +262,6 @@ play "argument errors" "$(ksession \
   "$(kcall 8 knowledge_get '{"id":null}')" \
   "$(kcall 9 knowledge_list '{"type":3}')" \
   "$(kcall 10 knowledge_usage '{"all":"yes"}')" \
-  "$(kcall 11 sessions_recent '{"limit":0}')" \
-  "$(kcall 12 sessions_search '{"words":5}')" \
   "$(kcall 13 knowledge_search '[]')" \
   "$(kcall 14 knowledge_search 'null')")"
 must "argument errors: a required argument" 'Invalid arguments'
@@ -550,7 +540,7 @@ d_garbage_then_a_client() {
   printf '%s\n' "$sock" > "$TMP/sock.$SIDE"
 }
 if wanted "daemon: garbage, then a real client"; then
-  printf '[%s,%s,%s,%s]\n' "$(handshake | sed 's/^\[//; s/\]$//')" "$(kcall 2 knowledge_search '{"query":"deploy"}')" "$(kcall 3 knowledge_list '{}')" "$(kcall 4 sessions_recent '{}')" > "$TMP/scripts/socket.json"
+  printf '[%s,%s,%s,%s]\n' "$(handshake | sed 's/^\[//; s/\]$//')" "$(kcall 2 knowledge_search '{"query":"deploy"}')" "$(kcall 3 knowledge_list '{}')" "$(kcall 4 knowledge_usage '{}')" > "$TMP/scripts/socket.json"
   for SIDE in node rust; do
     stop_all; reset_world
     d_garbage_then_a_client 2>&1 | mask > "$TMP/facts.$SIDE"

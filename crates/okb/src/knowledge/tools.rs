@@ -1,4 +1,4 @@
-//! The six tools of the knowledge server, over MCP (`packages/knowledge/src/mcp/server.ts`).
+//! The four tools of the knowledge server, over MCP (`packages/knowledge/src/mcp/server.ts`).
 //!
 //! NO TOOL WRITES A DOCUMENT: the documents are a git repository the owner edits, and a tool that wrote them would put an agent's paraphrase into the source of truth without a diff, a review or a commit message. The one thing a read tool leaves behind is an event in the usage store for each document it returns.
 //!
@@ -12,7 +12,6 @@ use rusqlite::Connection;
 use serde_json::{Map, Value, json};
 
 use super::{
-    args,
     index::{open_db, reindex},
     paths::{DirResult, Env},
     search::{self, DocSummary, Filters, Hit, Lifecycle},
@@ -20,18 +19,13 @@ use super::{
 };
 use tagents_core::{
     ending::Stop,
-    js,
     json::pretty,
-    mcp::{rpc::CallResult, server::Tools},
-    node, sessions,
+    mcp::{args, rpc::CallResult, server::Tools},
+    node,
     sync::locked,
-    transcripts::Context,
 };
 
-/// How many sessions `sessions_recent` lists when it is not told.
-const DEFAULT_SESSIONS: f64 = 15.0;
-
-/// The entries of `tools/list`, in the order the node server announces them.
+/// The entries of `tools/list`.
 pub fn listing() -> &'static [Value] {
     static LIST: OnceLock<Vec<Value>> = OnceLock::new();
     LIST.get_or_init(|| serde_json::from_str(include_str!("tools.json")).unwrap_or_default())
@@ -189,23 +183,6 @@ impl KnowledgeTools {
         })?;
         Ok(pretty(&rows.iter().map(row_json).collect::<Vec<_>>()))
     }
-
-    fn sessions_context(&self) -> Context {
-        Context {
-            home: self.env.home.clone(),
-            claude_homes: self.env.claude_homes.clone(),
-            now_ms: (self.clock)(),
-        }
-    }
-
-    fn tool_sessions_search(&self, args: &Map<String, Value>) -> Result<String, String> {
-        let words: Vec<String> = js::split_space(text(args, "words"))
-            .into_iter()
-            .filter(|word| !word.is_empty())
-            .map(str::to_owned)
-            .collect();
-        sessions::search(&self.sessions_context(), &words)
-    }
 }
 
 impl Tools for KnowledgeTools {
@@ -238,12 +215,7 @@ impl Tools for KnowledgeTools {
             "knowledge_search" => self.tool_search(args),
             "knowledge_get" => self.tool_get(args),
             "knowledge_list" => self.tool_list(args),
-            "knowledge_usage" => self.tool_usage(args),
-            "sessions_recent" => sessions::recent(
-                &self.sessions_context(),
-                number(args, "limit").unwrap_or(DEFAULT_SESSIONS),
-            ),
-            _ => self.tool_sessions_search(args),
+            _ => self.tool_usage(args),
         };
         Some(match answer {
             Ok(text) => CallResult::ok(text),

@@ -6,7 +6,7 @@
 
 use serde_json::{Map, Value};
 
-use tagents_core::{js, mcp::server::received};
+use crate::{js, mcp::server::received};
 
 /// The largest integer JavaScript holds exactly, which zod's `int()` takes as the end of its range.
 const MAX_SAFE: f64 = 9_007_199_254_740_991.0;
