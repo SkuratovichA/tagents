@@ -108,7 +108,7 @@ jobs:
         run: bash tests/rust-parity.sh
       - name: Parity of the MCP server with the node one, byte for byte
         run: bash tests/rust-mcp-parity.sh
-      - name: Parity of okb with the node knowledge package, byte for byte: the verbs that read the folder, the MCP server and its daemon
+      - name: Parity of okb with the node knowledge package byte for byte, for the verbs that read the folder, the MCP server and its daemon
         run: bash tests/rust-knowledge-parity.sh
       - name: Parity of the notify daemon with the node one, byte for byte
         run: bash tests/rust-notify-parity.sh
