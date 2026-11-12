@@ -74,7 +74,6 @@ xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/
 
 # A wrapper names the one file to run and passes everything through, stdin included, which is what a hook is fed on; an interpreter given by its absolute path is pinned, so the wrapper runs that file while it is executable and otherwise the interpreter of the same name on the caller's PATH. A native binary, when one is given, is run in place of the file, with the interpreter handed to it as TAGENTS_NODE and, when a word is given too, with that word before the arguments (tagents-mcp runs `tagents-core mcp`). When an argument is given as the sixth parameter, the binary is run only for the wrapper's arguments being exactly that one word, and every other call goes on to the file (tagents-notify runs `tagents-core notify run` for `run` and nothing else, so its other verbs stay with node).
 # A native binary is looked up in the tree and the wrapper cannot tell which source it was built from; fetch_native replaces the one it installed with the version of the checkout and leaves it in place when no release has that version yet, and a binary built by hand goes stale after `tagents update` until the next `cargo build --release`. The ninth parameter is a word the fallback command is given before the arguments: node's CLI has no `mcp` of its own, and the word makes it answer with the needs-binary line and exit 69.
-# tagents-knowledge has a rule of its own, given as the seventh and eighth parameters (the wrapper tests nothing but the binary at run time): the first word the binary is for with any arguments after it (serve), and the sixth parameter then lists the words it is for as the only argument (join mcp). The eighth is the word whose call as the only argument exits 69 when it did not reach the binary, in every wrapper that names it, so a machine with no binary does not pay a node start for the launcher's probe (packages/knowledge/bin/knowledge-mcp).
 # Makes room for a wrapper at $1: a link of ours is removed, a file that is not ours is left alone (1, after a warning), and the directory is made.
 claim_dest() {  # <dest>
   if [ -L "$1" ]; then
@@ -88,8 +87,8 @@ claim_dest() {  # <dest>
 }
 
 # The wrapper of okb: the binary of the checkout, looked up at run time, and with none the needs-binary line and exit 69, which is what a caller (the launcher of the MCP server, tagents-core knowledge) takes for "no binary here". There is no node program behind it.
-write_okb_wrapper() {  # <dest> <binary>
-  claim_dest "$1" || return 0
+write_okb_wrapper() {  # <dest> <binary>; 1 when $1 is not ours and was left alone
+  claim_dest "$1" || return 1
   tmp=$1.tmp.$$
   {
     printf '#!/bin/sh\n# %s, rewritten on every update: do not edit\n' "$MARK"
@@ -110,8 +109,8 @@ write_okb_alias() {  # <dest> <okb wrapper>
   mv -f "$tmp" "$1"
 }
 
-write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary] [word for the native binary] [the one argument the native binary is for] [first word it is for with any arguments] [word whose lone call exits 69 without the binary] [word the fallback command is given first]
-  dest=$1; target=$2; interp=${3:-}; native=${4:-}; word=${5:-}; only=${6:-}; any=${7:-}; refuse=${8:-}; lead=${9:-}
+write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary] [word for the native binary] [the one argument the native binary is for] [word the fallback command is given first]
+  dest=$1; target=$2; interp=${3:-}; native=${4:-}; word=${5:-}; only=${6:-}; lead=${7:-}
   claim_dest "$dest" || return 0
   tmp=$dest.tmp.$$
   {
@@ -121,18 +120,11 @@ write_wrapper() {  # <dest> <path to exec> [interpreter] [native binary] [word f
       *) runner=${interp:+$interp }; pin= ;;
     esac
     # Only a binary that exists now is named, so with none the file is the one this function always wrote. A binary that is gone by run time falls through to the node CLI below.
-    if [ -n "$native" ] && [ -n "$any" ]; then
-      alone=
-      for w in $only; do alone="${alone:+$alone || }[ \"\$1\" = $w ]"; done
-      # shellcheck disable=SC2016 # the text is the wrapper's, not this shell's
-      printf 'r="%s"\nif [ -f "$r" ] && [ -x "$r" ]; then\n  if [ "${1-}" = %s ] || { [ "$#" -eq 1 ] && { %s; }; }; then\n    %sexec "$r" %s"$@"\n  fi\nfi\n' "$native" "$any" "$alone" "$pin" "${word:+$word }"
-    elif [ -n "$native" ]; then
+    if [ -n "$native" ]; then
       guard=
       [ -z "$only" ] || guard="[ \"\$#\" -ne 1 ] || [ \"\$1\" != $only ] || "
       printf 'r="%s"\n[ ! -f "$r" ] || [ ! -x "$r" ] || %s{ %sexec "$r" %s"$@"; }\n' "$native" "$guard" "$pin" "${word:+$word }"
     fi
-    # shellcheck disable=SC2016
-    [ -z "$refuse" ] || printf '[ "$#" -ne 1 ] || [ "$1" != %s ] || exit 69\n' "$refuse"
     printf 'exec %s"%s" %s"$@"\n' "$runner" "$target" "${lead:+$lead }"
   } > "$tmp"
   chmod 755 "$tmp"
@@ -349,20 +341,22 @@ install_commands() {
   # tagents-core has a Rust front door that serves the verbs ported and hands every other word to the node CLI. tagents-mcp is its verb `mcp` and tagents-notify its verb `notify` for the argument `run` alone, so the four name the same binary; without it node's CLI answers `mcp` with the needs-binary line and `notify run` through the plugin host does the same.
   for pair in tagents-core:core/dist/cli/main.js tagents-notify:notify/dist/main.js tagents-mcp:core/dist/cli/main.js; do
     cli=$TAGENTS_HOME/packages/${pair#*:}
-    word=; only=; any=; refuse=; lead=
+    word=; only=; lead=
     case ${pair%%:*} in
       tagents-mcp) word=mcp; lead=mcp ;;
       tagents-notify) word=notify; only=run ;;
     esac
     if [ -f "$cli" ]; then
-      write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin" "$native" "$word" "$only" "$any" "$refuse" "$lead"
+      write_wrapper "$TAGENTS_BIN/${pair%%:*}" "$cli" "$node_bin" "$native" "$word" "$only" "$lead"
     else
       warn "no $cli after the build, so ${pair%%:*} was not installed"
       SKIPPED=$((SKIPPED + 1))
     fi
   done
-  write_okb_wrapper "$TAGENTS_BIN/okb" "$TAGENTS_HOME/target/release/okb"
-  write_okb_alias "$TAGENTS_BIN/tagents-knowledge" "$TAGENTS_BIN/okb"
+  # The alias runs the okb wrapper by its path, so it is written only when that wrapper is ours.
+  if write_okb_wrapper "$TAGENTS_BIN/okb" "$TAGENTS_HOME/target/release/okb"; then
+    write_okb_alias "$TAGENTS_BIN/tagents-knowledge" "$TAGENTS_BIN/okb"
+  fi
 }
 
 install_hooks() {
