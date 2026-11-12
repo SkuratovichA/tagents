@@ -80,7 +80,6 @@ STUB
     printf '#!/usr/bin/env node\n' > packages/core/dist/cli/main.js
     printf '#!/usr/bin/env node\n' > packages/knowledge/dist/cli/main.js
     printf '#!/usr/bin/env node\n' > packages/notify/dist/main.js
-    printf '#!/usr/bin/env node\n' > packages/core/dist/cli/main.js
     # The tree's own installer, so an update that moves the copy hands over to the install.sh of the commit it lands on, as on a real machine.
     cp "$INSTALL" install.sh
     git add -A && git commit -q -m v1
