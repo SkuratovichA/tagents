@@ -168,7 +168,7 @@ export function planGenerate(sources: Sources, disk: Disk, t: Translate = create
       { path: plugin.manifest, content: stringifyJson(withoutOwnKeys(manifest, t)) },
     ];
     const marketplace = disk.files.get(MARKETPLACE_FILE);
-    const entry = marketplace === undefined ? undefined : marketplaceEntry(marketplace, plugin.name);
+    const entry = marketplace === undefined ? undefined : marketplaceEntry(text(marketplace), plugin.name);
     if (entry !== undefined) payload.push({ path: `${MARKETPLACE_FILE}#${plugin.name}`, content: stringifyJson(entry) });
     const digest = digestOf(payload);
     const version = versionOf(manifest, t);
