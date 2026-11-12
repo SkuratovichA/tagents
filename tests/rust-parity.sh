@@ -76,6 +76,7 @@ parity() {  # <label> <home-name> <args...>
   local label=$1 home=$2; shift 2
   use "$home"; ARGS=("$@")
   run node "$NODE" "$CORE_JS"
+  oracle_usage_words "$TMP/out.node" "$TMP/err.node"
   run rust "$RUST"
   compare "$label ($home)"
 }

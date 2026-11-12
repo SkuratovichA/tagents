@@ -280,6 +280,7 @@ sc() {
   fi
   side node "$NODE" "$CORE_JS"
   if [ -n "$SELF_TEST" ]; then side rust "$NODE" "$CORE_JS"; else side rust "$RUST"; fi
+  oracle_usage_words "$TMP/out.node" "$TMP/err.node"; [ -z "$SELF_TEST" ] || oracle_usage_words "$TMP/out.rust" "$TMP/err.rust"
   # With node on both sides there is no binary to word anything itself, so the two are compared in full.
   if [ -n "$SELF_TEST" ]; then OWN_ERR=; OWN_CODE=; fi
 

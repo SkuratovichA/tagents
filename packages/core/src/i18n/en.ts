@@ -19,7 +19,7 @@ export const en = {
     '  plugin new <name> [--dir D]',
     '  doctor',
     '  mcp --contract F   (Rust binary only)',
-    '  notify run   (the notification service: the Rust binary serves it and hands over to node when it cannot start)',
+    '  notify run   (the notification service: the Rust binary serves it)',
     '  knowledge mcp   (the knowledge server of one session on stdin and stdout: Rust binary only)',
     '  knowledge serve [--idle S] [--foreground] [--socket P]   (the shared knowledge server: Rust binary only)',
     '  knowledge join   (a session joined to the shared knowledge server: Rust binary only)',
