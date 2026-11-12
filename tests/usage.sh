@@ -77,6 +77,7 @@ for a in "$@"; do
 done
 for a in "$@"; do
   if [ "$a" = --burn ]; then cat "$TU_ROWS.burn" 2>/dev/null; exit 0; fi
+  if [ "$a" = --windows ]; then cat "$TU_ROWS.win" 2>/dev/null; exit 0; fi
   if [ "$a" = --daily ]; then
     if [ -n "$UNTIL" ]; then
       u=$(date -r "$UNTIL" +%Y-%m-%d 2>/dev/null || date -d "@$UNTIL" +%Y-%m-%d)
@@ -460,6 +461,38 @@ printf '#!/bin/sh\necho x >>"$DATELOG"\nexec /bin/date "$@"\n' >"$BIN/date"; chm
 DATELOG="$ROOT/date.log" fnrun "$CFG" 'usage_line footer' >/dev/null 2>&1
 ok "usage_line footer starts one date" 1 "$(wc -l <"$ROOT/date.log" | tr -d ' ')"
 rm -f "$BIN/date"
+
+# ---------------------------------------------------------------------------
+t "11. a subscription login: the week, not the month"
+# ---------------------------------------------------------------------------
+# With a status-line record for the watched account the footer and the status
+# text are the 7-day window; without one, or with display = usd, they are the
+# month against the limit as before. The stub answers --windows from $ROWS.win,
+# and the ratelimit file only has to exist.
+RESET=$(( $(date +%s) + 86400 ))
+AT=$(date -r "$RESET" '+%a %H:%M')
+printf '@w\twork\t1\t41\t%s\t23\t%s\t100.0000\n' "$RESET" "$RESET" >"$ROWS.win"
+mkdir -p "$STATE/ratelimit"; : >"$STATE/ratelimit/default.tsv"
+mkrows 400
+FT=$(fnrun "$CFG" 'usage_line footer' 2>/dev/null | strip)
+ok  "the footer is the week, with its reset" "work · 7d 41% ↺ $AT · 5h 23%" "$FT"
+ST=$(fnrun "$CFG" 'usage_line status' 2>/dev/null)
+ok  "the status text is the week too" "#[fg=colour244]w 7d 41% #[default]" "$ST"
+fnrun "$CFG" 'usage_line both' >"$ROOT/both.out" 2>/dev/null
+ok  "both is still the status, a \\036 byte and the footer" "$ST" "$(splitpart 1 "$ROOT/both.out")"
+has "...and the month is nowhere on it" "work · 7d" "$(splitpart 2 "$ROOT/both.out" | strip)"
+CFGUSD="$ROOT/config-usd.toml"
+mkcfg "$CFGUSD" "[usage]
+watch = \"work\"
+monthly_limit_usd = 850
+safety_margin_pct = 5
+display = \"usd\""
+has "display = usd keeps the month against the limit" "of \$850" "$(fnrun "$CFGUSD" 'usage_line footer' 2>/dev/null | strip)"
+rm -f "$STATE/ratelimit/default.tsv"
+has "no record (an Enterprise login) keeps the month against the limit" "of \$850" "$(fnrun "$CFG" 'usage_line footer' 2>/dev/null | strip)"
+: >"$STATE/ratelimit/default.tsv"; : >"$ROWS.win"
+has "a record with no window row (it has reset) keeps the month" "of \$850" "$(fnrun "$CFG" 'usage_line footer' 2>/dev/null | strip)"
+rm -rf "$STATE/ratelimit" "$ROWS.win"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

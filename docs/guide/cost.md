@@ -55,6 +55,18 @@ A seat with no meter (a plan, not credits) answers without a spend figure and is
 
 A typed reading from another month, or one implying a correction outside 0.5 to 1.5, is ignored and the footer says so.
 
+## Subscription plans: the week, not the dollar
+
+A Pro, Max or Ultra login has no bill to read a dollar figure off, it has a 7-day rate-limit window, and a session is cheap or dear by how much of that week it took. For such a login the cost column reads as a share of the week (`~4.9%`) and the footer as `work · 7d 41% ↺ Thu 14:00 · 5h 23%`. An Enterprise or API login has no window and stays in dollars.
+
+- **Where the figure comes from**: Claude Code hands the status line its own `rate_limits` (the 7-day and 5-hour percent used, and when each resets). `hooks/claude-statusline.sh` keeps the latest of them per login in `agent-state/ratelimit/<key>.tsv`, one line of epoch, 7d percent, 7d reset, 5h percent, 5h reset. The key is `CLAUDE_CONFIG_DIR` with the trailing slash off and every other `/` turned into `_` (`/Users/me/.claude-work/` is `_Users_me_.claude-work`); the unset variable and `~/.claude` are both `default`. Nothing is fetched, no keychain is read.
+- **How dollars become percent**: `tusage --windows` prices the login's requests since the window began (its reset minus a week) at list price. That sum divided by the 7d percent is what one percent of the week costs, and a session's dollars divided by that is its share. The `⑂` subagent share and the `/5h` figure on a group header convert the same way. The `~` and `?` marks keep their meaning.
+- **It is an estimate at this week's rate.** The rate moves with the plan and with what was run this week, so the same session reads a different percent next week. Under `<.1%` a session that spent something still shows.
+- **When it falls back to dollars**: there is no fresh reading (the window has reset, or the status line has not rendered yet), the 7d percent is under 1 (the quotient would be noise), or nothing was priced inside the window.
+- **Hiding the cost column** hides the percent with it, and the header total.
+
+`usage.display` picks what is shown: `auto` (the default) and `percent` read a subscription login in percent whenever there is a reading, and `usd` always prints dollars. Today `auto` and `percent` behave the same, since the 7-day window is the only source of a percent; they are two names so a second source can tell them apart later.
+
 ## Reports in a terminal
 
 Run by hand, `tusage` answers where the money went. Every table prices each request at the rate of the model that served it, in dollars at list price, from the same index the dashboard reads.

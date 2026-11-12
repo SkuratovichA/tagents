@@ -2278,5 +2278,38 @@ out=$(cal30 --calibrate work 10 --at "2026-09-15 12:00"); rc=$?
 ok "a month with nothing indexed is refused" 1 "$rc"
 contains "...and says which month" "nothing indexed for work in the month of that instant, up to it" "$out"
 
+# ---------------------------------------------------------------------------
+t "31. --windows: the spend inside an account's 7-day window"
+# ---------------------------------------------------------------------------
+# The record is written by the real status-line hook, so the key the hook gives an account and the key tusage looks for are pinned against each other. A fixture of its own: work spent $5 on day 1 (before the window, which starts an hour after it) and $25 on day 2 (inside it); personal spent $2.50 and has no record, which is how an Enterprise login stays in dollars.
+F31="$ROOT/fx31"; mkdir -p "$F31/usage"
+{ printf '%s\tw-slug\ts-work\t-\t-\t-\tclaude-opus-5\t2\t1000000\t0\t0\t0\t0\t1000000\n' "$T1"
+  printf '%s\tw-slug\ts-work\t-\t-\t-\tclaude-opus-5\t3\t0\t0\t0\t0\t1000000\t0\n' "$T2"
+  printf '%s\tp-slug\ts-pers\t-\t-\t-\tclaude-sonnet-5\t1\t0\t1000000\t0\t0\t0\t1000000\n' "$T2"; } >"$F31/usage/facts.tsv"
+cp "$TU_STATE/projects.tsv" "$F31/usage/projects.tsv" 2>/dev/null
+tu() { TU_STATE="$F31/usage" bash "$TU" --no-update "$@" 2>&1; }
+
+HOOK="$HERE/../hooks/claude-statusline.sh"
+if command -v jq >/dev/null 2>&1; then
+  RESET31=$(( T1 + 3600 + 604800 )); R5_31=$(( NOW + 3600 ))
+  pl31=$(printf '{"session_id":"sid-1","model":{"id":"claude-opus-5","display_name":"Opus"},"rate_limits":{"five_hour":{"used_percentage":20,"resets_at":%s},"seven_day":{"used_percentage":55,"resets_at":%s}}}' "$R5_31" "$RESET31")
+  printf '%s' "$pl31" | CLAUDE_CONFIG_DIR="$ROOT/acct/work/" TA_STATE_DIR="$F31" sh "$HOOK" >/dev/null
+  rec31=$(ls "$F31/ratelimit" | head -1)
+  ok "the hook named the record after the work dir, slash stripped" "$(printf '%s' "$ROOT/acct/work" | tr / _).tsv" "$rec31"
+  got=$(tu --windows)
+  ok "one row, for the work account only, with the window's spend" \
+     "@w${TAB}work${TAB}$(cut -f1 "$F31/ratelimit/$rec31")${TAB}55${TAB}${RESET31}${TAB}20${TAB}${R5_31}${TAB}25.0000" "$got"
+  got=$(tu --sessions --windows)
+  ok "with --sessions the window row follows the session rows" "@w" "$(printf '%s\n' "$got" | tail -1 | cut -f1)"
+  ok "...and the session rows come first" "1" "$(printf '%s\n' "$got" | head -1 | grep -c '^s-')"
+  ok "--sessions alone prints no window row" "0" "$(tu --sessions | grep -c '^@w')"
+  # A window that has already reset says nothing about this week.
+  printf '%s' "$pl31" | sed "s/\"resets_at\":$RESET31/\"resets_at\":$(( NOW - 10 ))/" | CLAUDE_CONFIG_DIR="$ROOT/acct/work" TA_STATE_DIR="$F31" sh "$HOOK" >/dev/null
+  ok "an expired window prints nothing" "" "$(tu --windows)"
+  tu() { bash "$TU" --no-update "$@" 2>&1; }
+else
+  echo "  jq missing: section 31 not run"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

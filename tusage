@@ -39,6 +39,11 @@
 #   tusage --rebuild            throw the index away and rescan everything
 #   tusage --json               emit the current window as JSON
 #   tusage --daily              day<TAB>account<TAB>usd<TAB>reqs<TAB>unpriced
+#   tusage --windows            @w<TAB>account<TAB>epoch<TAB>7d%<TAB>7d resets<TAB>5h%<TAB>5h resets<TAB>usd
+#                               one row per subscription account with a live 7-day
+#                               record; usd is the list-price spend since the window
+#                               began. Given with --sessions the rows follow the
+#                               sessions on the same pass.
 #
 # ACCOUNTS. The summary, --by account, --account and --daily split the bill by
 # login. TU_ACCOUNTS is "name=dir;name=dir" (an empty dir means ~/.claude); unset,
@@ -1903,6 +1908,64 @@ daily() {
   sort -t"$TAB" -k1,1 -k2,2
 }
 
+# THE SUBSCRIPTION'S OWN WINDOW. A Pro, Max or Ultra login is limited by a 7-day rate-limit window, not by dollars, and the only place that figure exists is the status line payload, which hooks/claude-statusline.sh keeps per account in <state dir>/ratelimit/<key>.tsv (epoch, 7d percent, 7d resets_at, 5h percent, 5h resets_at; TU_RATELIMIT moves the folder). A percent with no dollars under it says nothing about one session, so this prints the other half: what this index prices at list for the account since the window began (resets_at minus a week). The dashboard divides one by the other to turn a session's dollars into a share of the week.
+# One row per account whose 7-day window has not reset yet; none for an account without a record, which is how an Enterprise or API login stays in dollars. The 5h fields are blank once that window has reset too. No calibration factor is applied, as --sessions and --burn apply none.
+# THE KEY. The hook names an account by CLAUDE_CONFIG_DIR with every trailing slash off, the unset variable and $HOME/.claude both being "default", and every other "/" turned into "_". The raw directory of TU_ACCOUNTS is used (the dashboard hands over the one the profile names, which is the string the session saw), never the one account_dirs resolves with pwd -P, which would split a symlinked config dir from the record of the same login.
+RL_KEY=""
+rl_key() {  # <config dir, empty = the default account> -> RL_KEY, set in this shell so no fork is spent
+  local d=${1:-}
+  while [ -n "$d" ] && [ "${d%/}" != "$d" ]; do d=${d%/}; done
+  [ "$d" = "$HOME/.claude" ] && d=""
+  if [ -z "$d" ]; then RL_KEY=default; else RL_KEY=${d//\//_}; fi
+}
+
+windows() {
+  local rl=${TU_RATELIMIT:-${STATE%/*}/ratelimit} n d ent
+  [ -d "$rl" ] && [ -s "$FACTS" ] || return 0
+  {
+    if [ -n "${TU_ACCOUNTS:-}" ]; then
+      while IFS= read -r ent; do
+        [ -n "$ent" ] || continue
+        rl_key "${ent#*=}"
+        printf '@W\t%s\t%s\n' "${ent%%=*}" "$rl/$RL_KEY.tsv"
+      done <<EOF
+$(printf '%s\n' "$TU_ACCOUNTS" | tr ';' '\n')
+EOF
+    else
+      while IFS="$TAB" read -r n d; do
+        [ -n "$n" ] || continue
+        rl_key "$d"
+        printf '@W\t%s\t%s\n' "$n" "$rl/$RL_KEY.tsv"
+      done <<EOF
+$(account_dirs)
+EOF
+    fi
+    account_map
+  } | LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v facts="$FACTS" -v now="${NOW:-$(date +%s)}" -v prices="$(prices_arg)" "$AWK_PRICE"'
+    FILENAME != facts {
+      if ($1 == "@W") {
+        if ((getline line < $3) > 0) {
+          close($3)
+          split(line, f, "\t")
+          # A window that has reset is over: its percent describes a week that is gone.
+          if (f[2] != "" && f[3] + 0 > now) {
+            N++; NM[N] = $2; EP[$2] = f[3] + 0 - 604800
+            REC[$2] = f[1] "\t" f[2] "\t" f[3]
+            if (f[5] + 0 > now) REC[$2] = REC[$2] "\t" f[4] "\t" f[5]; else REC[$2] = REC[$2] "\t\t"
+          }
+        }
+      } else ACC[$1] = $2
+      next
+    }
+    $8 + 0 == 0 { next }
+    { a = ($3 in ACC) ? ACC[$3] : ""
+      if (!(a in EP) || $1 + 0 < EP[a]) next
+      d = usd($7, $1 + 0, $9, $10, $11, $12, $13)
+      if (d > 0) S[a] += d }
+    END { for (i = 1; i <= N; i++) printf "@w\t%s\t%s\t%.4f\n", NM[i], REC[NM[i]], S[NM[i]] }
+  ' - "$FACTS"
+}
+
 burn() {   # what the last 5h cost, for the tmux status bar
   [ -s "$FACTS" ] || return 0
   LC_ALL=C awk -F"$TAB" -v cut="$(( $(date +%s) - 18000 ))" -v prices="$(prices_arg)" "$AWK_PRICE"'
@@ -2097,7 +2160,7 @@ json() {
 NOW=""; SINCE=""; UNTIL=""; DIM=""; DO_UPDATE=1; CAL_ACCT=""; CAL_AMT=""; CAL_AT=""
 MET_REFRESH=0; MET_FORCE=0
 BYLIST=""; SESSION=""; ACCTS=""; PROJS=""; BREAKDOWN=0; TOPN=12; SORT=""
-COLOR=auto; COMPACT=0; TSV=0
+COLOR=auto; COMPACT=0; TSV=0; WINDOWS=0
 OUT_TTY=0; [ -t 1 ] && OUT_TTY=1   # asked here: inside $( ) standard output is a pipe
 US=$'\037'
 DIMENSIONS="account project session day week month hour agent model workflow"
@@ -2127,6 +2190,7 @@ while [ $# -gt 0 ]; do
     --force)    MET_FORCE=1; shift ;;
     --sessions) DIM=__sessions; shift ;;
     --daily)    DIM=__daily; shift ;;
+    --windows)  WINDOWS=1; shift ;;
     --session)  want_value "$1" $#; [ -n "$2" ] || die_usage "--session needs an id or a name"
                 SESSION=$2; [ -n "$DIM" ] || DIM=__detail; shift 2 ;;
     --burn)     DIM=__burn; shift ;;
@@ -2175,6 +2239,7 @@ check_accounts() {
   done
 }
 
+[ "$WINDOWS" = 1 ] && [ -z "$DIM" ] && DIM=__windows
 [ "$DIM" = __by ] && check_by
 case "$TOPN" in ''|*[!0-9]*) die_usage "--top wants a number of rows, not $TOPN" ;; esac
 [ -z "$SORT" ] || [ "$SORT" = cost ] || die_usage "--sort accepts only cost, not $SORT"
@@ -2186,8 +2251,9 @@ case "$COLOR" in
   auto)   [ "$OUT_TTY" = 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != dumb ] && COLOR_ON=1 ;;
 esac
 if [ -n "$ACCTS" ]; then ensure_accounts
-else case "$DIM" in ""|__by|__daily|__meter|__calibrate) ensure_accounts ;; esac
+else case "$DIM" in ""|__by|__daily|__meter|__calibrate|__windows) ensure_accounts ;; esac
 fi
+[ "$WINDOWS" = 1 ] && [ "$DIM" = __sessions ] && ensure_accounts
 check_accounts
 
 # The window. A table by week or month, or of one session, reaches back as far as the index does unless --since says otherwise: seven days is one row of a week table, and the days of a session are not all in the last week.
@@ -2199,7 +2265,7 @@ wide_window() {
   return 1
 }
 # The reports with a window read the clock once, for the window and for the rows that count the last hour and five; the others have no window to cut.
-case "$DIM" in __sessions|__daily|__json|__by) NOW=$(date +%s) ;; esac
+case "$DIM" in __sessions|__daily|__json|__by|__windows) NOW=$(date +%s) ;; esac
 if [ "${SINCE_SET:-0}" = 1 ]; then
   CUT=$(since_cut "$SINCE") || die_usage "bad --since value $SINCE"
 elif wide_window || [ -z "$NOW" ]; then
@@ -2218,7 +2284,8 @@ case "$DIM" in ""|__by|__sessions|__daily|__burn|__json) filter_facts ;; esac
 
 case "$DIM" in
   "")          summary ;;
-  __sessions)  sessions "$CUT" "$UPTO" ;;
+  __sessions)  sessions "$CUT" "$UPTO"; if [ "$WINDOWS" = 1 ]; then windows; fi ;;
+  __windows)   windows ;;
   __daily)     daily "$CUT" "$UPTO" ;;
   __calibrate) calibrate "$CAL_ACCT" "$CAL_AMT" "$CAL_AT" ;;
   __meter)     if [ "$MET_FORCE" = 1 ]; then meter_refresh --force

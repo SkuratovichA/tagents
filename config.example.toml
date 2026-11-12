@@ -70,6 +70,9 @@ safety_margin_pct = 5
 # Spread the allowance over Monday–Friday only, and measure the pace the same way: a weekend does not spend. `false` counts every calendar day.
 workdays = true
 
+# How a session's cost reads in the list and the footer. A Pro, Max or Ultra login has no dollar bill, it has a 7-day window, and the status line reports how much of it is gone: with "auto" (the default) or "percent" a session reads as its share of that week (`~4.9%`) and the footer as `7d 41% ↺ Thu 14:00`, converted at this week's rate and falling back to dollars when there is no fresh reading. "usd" always prints dollars. An Enterprise or API login has no such reading and stays in dollars either way.
+# display = "auto"
+
 # AN OVERRIDE, NOT THE ROUTINE WAY IN: the meter is fetched automatically and a reading here wins over the fetched one, which is what makes it useful when the account cannot be read (a second login, credentials elsewhere).
 # WHAT THE ACCOUNT ITSELF SAYS IT HAS SPENT, and when it said so. The figure here is priced from transcripts and runs steadily ~10%% over the meter, for no reason the transcripts can see; the ratio between the two at one instant corrects everything on screen and the corrected figures wear a ~. Open /usage, copy the credits spent and the local time you read them, and re-read it now and then. A reading from another month, or one that implies a correction outside 0.5–1.5, is ignored and the footer says so.
 meter = "2026-09-10 15:30 = 684.66"

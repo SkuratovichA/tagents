@@ -42,11 +42,16 @@ line=$(printf '%s' "$payload" | jq -r --arg us "$us" '
   , (.cost.total_cost_usd // 0)
   , ((.context_window.used_percentage // 0) | floor)
   , (.fast_mode // false)
+  # The subscription limits, empty on an account that has none (see the ratelimit record below).
+  , (.rate_limits.seven_day.used_percentage // "")
+  , (.rate_limits.seven_day.resets_at // "")
+  , (.rate_limits.five_hour.used_percentage // "")
+  , (.rate_limits.five_hour.resets_at // "")
   ] | map(tostring | gsub("[\r\n\t]"; " ")) | join($us)
 ' 2>/dev/null) || exit 0
 [ -n "$line" ] || exit 0
 
-IFS="$us" read -r sid mid mname cost ctx fast <<EOF
+IFS="$us" read -r sid mid mname cost ctx fast p7 r7 p5 r5 <<EOF
 $line
 EOF
 
@@ -77,6 +82,35 @@ if [ -n "${sid:-}" ] && [ -n "${mid:-}" ]; then
     tmpf="$d/.$sid.$$"
     if printf '%s\t%s\n' "$(date +%s)" "$new" >"$tmpf" 2>/dev/null; then
       mv -f "$tmpf" "$d/$sid.tsv" 2>/dev/null || rm -f "$tmpf"
+    fi
+  fi
+fi
+
+# THE SUBSCRIPTION LIMITS, per account. A Pro, Max or Ultra login is held back by its 7-day window, not by dollars, and the payload carries `rate_limits` for those logins only (and only after the first API response), so a seven_day figure means a subscription account. The dashboard turns a session's dollars into a share of that window with it. One file per account, named by CLAUDE_CONFIG_DIR: trailing slashes off, the unset variable and $HOME/.claude both the default account, every other "/" an "_" (a Claude session runs this with the variable of its own login, and the dashboard maps a row's config dir with the same rule). Content: epoch, 7d percent, 7d resets_at, 5h percent, 5h resets_at. Written only when a figure changed, like the model file.
+if [ -n "${p7:-}" ]; then
+  cfg=${CLAUDE_CONFIG_DIR:-}
+  while [ -n "$cfg" ] && [ "${cfg%/}" != "$cfg" ]; do cfg=${cfg%/}; done
+  [ "$cfg" = "$HOME/.claude" ] && cfg=
+  key=
+  if [ -z "$cfg" ]; then key=default
+  else
+    while :; do
+      case $cfg in
+        */*) key=$key${cfg%%/*}_; cfg=${cfg#*/} ;;
+        *) key=$key$cfg; break ;;
+      esac
+    done
+  fi
+  d="$dir/ratelimit"
+  tab=$(printf '\t')
+  new="$p7$tab${r7:-}$tab${p5:-}$tab${r5:-}"
+  old=
+  [ -r "$d/$key.tsv" ] && IFS= read -r old <"$d/$key.tsv" 2>/dev/null
+  if [ ! -e "$d/$key.tsv" ] || [ "${old#*"$tab"}" != "$new" ]; then
+    mkdir -p "$d" 2>/dev/null
+    tmpf="$d/.$key.$$"
+    if printf '%s\t%s\n' "$(date +%s)" "$new" >"$tmpf" 2>/dev/null; then
+      mv -f "$tmpf" "$d/$key.tsv" 2>/dev/null || rm -f "$tmpf"
     fi
   fi
 fi

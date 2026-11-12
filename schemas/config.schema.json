@@ -146,6 +146,20 @@
             true
           ]
         },
+        "display": {
+          "title": "Cost display",
+          "description": "How a session's cost reads in the list and the footer. With auto (the default) or percent, a subscription login reads as its share of the 7-day window the status line reports, converted at this week's rate, and falls back to dollars when there is no fresh reading. usd always prints dollars. An Enterprise or API login stays in dollars either way.",
+          "type": "string",
+          "enum": [
+            "auto",
+            "usd",
+            "percent"
+          ],
+          "default": "auto",
+          "examples": [
+            "auto"
+          ]
+        },
         "meter": {
           "title": "Meter reading by hand",
           "description": "An override, not the routine way in: what the account itself says it has spent, and when it said so, as `YYYY-MM-DD HH:MM = dollars`. A reading from another month, or one that implies a correction outside 0.5 to 1.5, is ignored and the footer says so.",

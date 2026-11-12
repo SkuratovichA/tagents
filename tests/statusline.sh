@@ -72,5 +72,35 @@ rm -f "$mf"
 run_one "$sd" "$p1" >/dev/null
 ok "a missing model file is created" "claude-opus-5	Opus	1.25" "$(cut -f2- "$mf")"
 
+# THE RATE-LIMIT RECORD. A payload with rate_limits.seven_day writes ratelimit/<key>.tsv, the key naming the account by CLAUDE_CONFIG_DIR; one without writes nothing; the model file does not change either way.
+rl_payload() {
+  printf '{"session_id":"sid-1","model":{"id":"claude-opus-5","display_name":"Opus"},"cost":{"total_cost_usd":1.25},"context_window":{"used_percentage":10},"rate_limits":{"five_hour":{"used_percentage":23.5,"resets_at":1900003600},"seven_day":{"used_percentage":41,"resets_at":1900600000}}}'
+}
+rl_run() {  # <state dir> <CLAUDE_CONFIG_DIR or -for unset> <payload>
+  mkdir -p "$1"
+  if [ "$2" = - ]; then printf '%s' "$3" | env -u CLAUDE_CONFIG_DIR TA_STATE_DIR="$1" /bin/sh "$HOOK" >/dev/null
+  else printf '%s' "$3" | CLAUDE_CONFIG_DIR="$2" TA_STATE_DIR="$1" /bin/sh "$HOOK" >/dev/null; fi
+}
+sd="$ROOT/state-rl-unset"; rl_run "$sd" - "$(rl_payload)"
+ok "CLAUDE_CONFIG_DIR unset: the record is ratelimit/default.tsv" "41	1900600000	23.5	1900003600" "$(cut -f2- "$sd/ratelimit/default.tsv" 2>/dev/null)"
+ok "the record's first field is an epoch" "1" "$(head -1 "$sd/ratelimit/default.tsv" | grep -Ec '^[0-9]{10}	')"
+ok "the record is one line" "1" "$(wc -l <"$sd/ratelimit/default.tsv" | tr -d ' ')"
+ok "the model file beside it is the old format" "claude-opus-5	Opus	1.25" "$(cut -f2- "$sd/model/sid-1.tsv")"
+ok "no temp file is left in ratelimit/" "1" "$(ls -A "$sd/ratelimit" | wc -l | tr -d ' ')"
+sd="$ROOT/state-rl-slash"; rl_run "$sd" "/Users/x/.claude-shch/" "$(rl_payload)"
+ok "a trailing slash is stripped and each / becomes _" "_Users_x_.claude-shch.tsv" "$(ls "$sd/ratelimit")"
+sd="$ROOT/state-rl-plain"; rl_run "$sd" "/Users/x/.claude-shch" "$(rl_payload)"
+ok "the same dir without the slash names the same file" "_Users_x_.claude-shch.tsv" "$(ls "$sd/ratelimit")"
+sd="$ROOT/state-rl-home"; rl_run "$sd" "$HOME/.claude/" "$(rl_payload)"
+ok "\$HOME/.claude set explicitly is the default account" "default.tsv" "$(ls "$sd/ratelimit")"
+sd="$ROOT/state-rl-none"; rl_run "$sd" - "$(payload 10 false)"
+ok "a payload without rate_limits writes no ratelimit file" "no" "$([ -e "$sd/ratelimit" ] && echo yes || echo no)"
+ok "...and the same model file as always" "claude-opus-5	Opus	1.25" "$(cut -f2- "$sd/model/sid-1.tsv")"
+sd="$ROOT/state-rl-idem"; rl_run "$sd" - "$(rl_payload)"; before=$(stat -f '%i %m' "$sd/ratelimit/default.tsv"); sleep 1.1
+rl_run "$sd" - "$(rl_payload)"
+ok "an unchanged record keeps its inode and mtime" "$before" "$(stat -f '%i %m' "$sd/ratelimit/default.tsv")"
+rl_run "$sd" - "$(rl_payload | sed 's/"used_percentage":41/"used_percentage":42/')"
+ok "a changed 7d percent rewrites it" "42" "$(cut -f2 "$sd/ratelimit/default.tsv")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

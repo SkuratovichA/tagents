@@ -63,6 +63,16 @@ usage_on() {
   [ "$USAGE_ON" = 1 ] && command -v tusage >/dev/null 2>&1
 }
 
+# How the cost column and the footer speak: usd always prints dollars, percent
+# and auto print a subscription login as its share of the 7-day window whenever
+# the status line has reported one (a login without a record has none to print,
+# so it stays in dollars either way). Anything else reads as auto.
+usage_display() {
+  local d
+  d=$(cfg_get usage.display) || d=auto
+  case "$d" in usd|percent|auto) printf '%s' "$d" ;; *) printf auto ;; esac
+}
+
 usage_days() {  # the month so far for the watched account, one day per line
   usage_watch >/dev/null || return 1
   usage_env
@@ -136,9 +146,47 @@ usage_meter() {  # -> "<used><TAB><limit><TAB><fetched at>" for the watched acco
 # the sparkline — the table draws the days itself, right above it. `both` is the
 # status text, a \036 byte and the footer text, from one run of the awk: the
 # refresher wants the two on the same tick, and each is a fetch of the month.
+# THE WEEK, FOR A SUBSCRIPTION LOGIN. A Pro, Max or Ultra login has no monthly
+# dollar limit to be measured against, it has a 7-day window with its own reset,
+# and the status line reports how much of it is gone. When the watched account
+# has a fresh record this prints that in place of the month-vs-limit text and
+# returns 0; for an Enterprise or API login (no record), a stale one, or
+# usage.display = usd it prints nothing and returns 1, and the caller goes on to
+# the month as before. Same four modes as usage_line.
+usage_week_line() {  # <status|footer|summary|both> -> 0 when it printed
+  local mode=$1 watch row p7 r7 p5 r5 badge st rest at ac tc esc=$'\033'
+  [ "$(usage_display)" = usd ] && return 1
+  watch=$(usage_watch) || return 1
+  set -- "$STATE_DIR"/ratelimit/*.tsv
+  [ -e "$1" ] || return 1
+  usage_env
+  row=$(TU_RATELIMIT="$STATE_DIR/ratelimit" tusage --no-update --windows 2>/dev/null |
+        LC_ALL=C awk -F"$TAB" -v w="$watch" '$1 == "@w" && $2 == w { print $4 "\t" $5 "\t" $6 "\t" $7; exit }') || return 1
+  [ -n "$row" ] || return 1
+  IFS="$TAB" read -r p7 r7 p5 r5 <<EOF
+$row
+EOF
+  badge=$(cfg_get "claude.profiles.$watch.badge") || badge=""
+  [ -n "$badge" ] || badge=${watch%"${watch#?}"}
+  at=$(date -r "$r7" '+%a %H:%M' 2>/dev/null) || at=""
+  p7=$(printf '%.0f' "$p7")
+  if [ "$p7" -ge 90 ]; then tc=red; ac="[31m"
+  elif [ "$p7" -ge 70 ]; then tc=yellow; ac="[33m"
+  else tc=colour244; ac="[90m"; fi
+  st=$(printf '#[fg=%s]%s 7d %s%% #[default]' "$tc" "$badge" "$p7")
+  rest="7d ${p7}%${at:+ ↺ $at}"
+  [ -n "$p5" ] && rest="$rest · 5h $(printf '%.0f' "$p5")%"
+  case "$mode" in
+    status) printf '%s' "$st" ;;
+    both)   printf '%s\036%s%s · %s%s\n' "$st" "$esc$ac" "$watch" "$rest" "$esc[0m" ;;
+    *)      printf '%s%s · %s%s\n' "$esc$ac" "$watch" "$rest" "$esc[0m" ;;
+  esac
+}
+
 usage_line() {  # <status|footer|summary|both>
   local mode=${1:-status} watch limit margin badge dy_y dy_mo dy_d dy_mon dy_wd esc=$'\033'
   watch=$(usage_watch) || return 0
+  usage_week_line "$mode" && return 0
   limit=$(cfg_get usage.monthly_limit_usd) || limit=""
   margin=$(cfg_get usage.safety_margin_pct) || margin=""
   badge=$(cfg_get "claude.profiles.$watch.badge") || badge=""
