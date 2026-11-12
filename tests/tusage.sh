@@ -514,6 +514,28 @@ ok "...while fable 5 keeps the 0.1x default"               "1.0000" "$(cr_usd)"
 cr_model claude-opus-5
 ok "...and so does opus 5"                                 "0.5000" "$(cr_usd)"
 
+# The 5.5 generation and Fable 5.2 state their own rates, and each id also starts with a 5 row (claude-opus-5, claude-sonnet-5, claude-fable-5), so a missing row would price it there at that row's rates and 0.1x reads. Opus 5.5 and Sonnet 5.5 read at 0.05x their input, Fable 5.2 at 0.025x, Haiku 5.5 at 0.1x.
+cr_model claude-opus-5-5
+ok "opus 5.5 reads cost \$0.20/MTok, not opus 5's \$0.50"     "0.2000" "$(cr_usd)"
+cr_model claude-sonnet-5-5
+ok "...sonnet 5.5 \$0.10/MTok, not sonnet 5's \$0.20"         "0.1000" "$(cr_usd)"
+cr_model claude-fable-5-2
+ok "...fable 5.2 \$0.20/MTok, not fable 5's \$1.00"           "0.2000" "$(cr_usd)"
+cr_model claude-haiku-5-5
+ok "...and haiku 5.5 \$0.01/MTok, so it is priced at all"     "0.0100" "$(cr_usd)"
+io_model() {  # <model id> - one row, 1M input and 1M output and nothing else
+  cr_model "$1"
+  printf '%s\tc-slug\ts-cr\t-\t-\t-\t%s\t1\t1000000\t0\t0\t0\t1000000\t1000000\n' "$T2" "$1" >"$TU_STATE/facts.tsv"
+}
+io_model claude-opus-5-5
+ok "opus 5.5 is \$4/MTok in and \$20 out, not opus 5's 5 and 25" "24.0000" "$(cr_usd)"
+io_model claude-sonnet-5-5-20261001
+ok "...a dated sonnet 5.5 id is \$2 in and \$10 out"             "12.0000" "$(cr_usd)"
+io_model claude-fable-5-2
+ok "...fable 5.2 is \$8 in and \$40 out"                         "48.0000" "$(cr_usd)"
+io_model claude-haiku-5-5
+ok "...and haiku 5.5 is \$0.10 in and \$0.50 out"                "0.6000" "$(cr_usd)"
+
 # A factor is meter / what this index computed, so it is only valid for the
 # price table it was derived against. Correcting a rate must not leave the old
 # haircut sitting on top of the new prices.

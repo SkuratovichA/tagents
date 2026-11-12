@@ -31,6 +31,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 
 ### Fixed
 
+- `tusage` prices Claude Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable/Mythos 5.2 at their published rates; they had fallen onto the 5 rows their ids start with, which overstated Opus 5.5 and Sonnet 5.5 and left Haiku 5.5 unpriced ([#76](https://github.com/SkuratovichA/tagents/pull/76)).
 - A transcript moved to another project directory while the index updates no longer empties the offsets table, so the next update no longer counts every transcript a second time ([#71](https://github.com/SkuratovichA/tagents/pull/71)).
 - After `/compact` the dashboard's context column shows what the compaction left, and the next answer raises it ([#68](https://github.com/SkuratovichA/tagents/pull/68)).
 - The installer no longer prints curl's `404` above its own `no prebuilt tagents-core` line; any other download failure still shows curl's message ([#54](https://github.com/SkuratovichA/tagents/pull/54)).
