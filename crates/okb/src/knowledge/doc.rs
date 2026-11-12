@@ -3,6 +3,7 @@
 use std::{fs, path::Path};
 
 use sha2::{Digest, Sha256};
+use unicode_normalization::UnicodeNormalization;
 
 use super::front_matter::{self, Yaml};
 use tagents_core::{js, node};
@@ -787,24 +788,42 @@ pub fn document_links(body: &str) -> Vec<DocLink> {
     out
 }
 
-/// The anchor of a heading as GitHub makes it: lowercase, white space to dashes, everything but letters, marks, digits and dashes dropped. Letters are the ones `char::is_alphabetic` knows.
+/// The anchor of a heading as GitHub makes it, as `headingSlug` writes it: NFC, trimmed, lowercase, everything but letters, marks, digits, white space and dashes dropped, white space to dashes.
 fn heading_slug(heading: &str) -> String {
-    js::lower(js::trim(heading))
+    js::lower(js::trim(&nfc(heading)))
         .chars()
-        .filter(|c| c.is_alphanumeric() || js::is_space(*c) || *c == '-' || is_mark(*c))
+        .filter(|c| is_letter_mark_or_number(*c) || js::is_space(*c) || *c == '-')
         .map(|c| if js::is_space(c) { '-' } else { c })
         .collect()
 }
 
-/// The combining marks of the common blocks; `char` has no general category.
-fn is_mark(c: char) -> bool {
-    matches!(c, '\u{300}'..='\u{36f}' | '\u{483}'..='\u{489}' | '\u{591}'..='\u{5bd}' | '\u{64b}'..='\u{65f}' | '\u{1ab0}'..='\u{1aff}' | '\u{1dc0}'..='\u{1dff}' | '\u{20d0}'..='\u{20ff}' | '\u{fe20}'..='\u{fe2f}')
+fn nfc(text: &str) -> String {
+    text.nfc().collect()
 }
 
-/// A markdown-link fragment names a heading when it equals the text (case-insensitive, URL-decoded) or its slug.
+/// `\p{L}`, `\p{M}` and `\p{N}` of a regular expression with the `u` flag: the general categories whose first letter is L, M or N.
+fn is_letter_mark_or_number(c: char) -> bool {
+    use unicode_general_category::{get_general_category, GeneralCategory as G};
+    matches!(
+        get_general_category(c),
+        G::UppercaseLetter
+            | G::LowercaseLetter
+            | G::TitlecaseLetter
+            | G::ModifierLetter
+            | G::OtherLetter
+            | G::NonspacingMark
+            | G::SpacingMark
+            | G::EnclosingMark
+            | G::DecimalNumber
+            | G::LetterNumber
+            | G::OtherNumber
+    )
+}
+
+/// A markdown-link fragment names a heading when it equals the text (NFC, case-insensitive, URL-decoded) or its slug.
 pub fn fragment_matches(fragment: &str, heading: &str) -> bool {
-    let want = js::lower(js::trim(&percent_decoded(fragment)));
-    js::lower(js::trim(heading)) == want || heading_slug(heading) == want
+    let want = js::lower(js::trim(&nfc(&percent_decoded(fragment))));
+    js::lower(js::trim(&nfc(heading))) == want || heading_slug(heading) == want
 }
 
 /// `decodeURIComponent`, or the text as written when an escape is malformed.

@@ -35,6 +35,9 @@ saphyr = { version = "0.3", default-features = false }
 libc = "0.2"
 # sha2 is the hash of a document (the first 32 hex digits of its SHA-256, which the index stores as `hash`); the tree has no hash.
 sha2 = "0.11"
+# The anchor of a heading is made as JavaScript makes it: `normalize('NFC')` and the character classes `\p{L}`, `\p{M}` and `\p{N}`. `unicode-normalization` is the first, `unicode-general-category` the second (a lookup of the general category, where `regex` would bring a whole engine for three classes).
+unicode-normalization = "0.1"
+unicode-general-category = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
