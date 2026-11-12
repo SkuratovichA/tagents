@@ -37932,10 +37932,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR empty",
@@ -37950,10 +37949,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR blank",
@@ -37968,10 +37966,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR padded",
@@ -37986,10 +37983,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR with a trailing slash",
@@ -38004,10 +38000,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR with doubled slashes",
@@ -38022,10 +38017,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR the root",
@@ -38040,10 +38034,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR relative",
@@ -38058,10 +38051,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR with dots",
@@ -38076,10 +38068,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR too long for a socket address",
@@ -38094,10 +38085,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR padded and too long",
@@ -38112,10 +38102,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR short, TMP long",
@@ -38131,10 +38120,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "only TMP",
@@ -38149,10 +38137,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "only TEMP",
@@ -38167,10 +38154,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMP and TEMP",
@@ -38186,10 +38172,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMP empty, TEMP set",
@@ -38205,10 +38190,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR empty, TMP set",
@@ -38224,10 +38208,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR blank, TMP set",
@@ -38243,10 +38226,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMP with a trailing slash",
@@ -38261,10 +38243,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMP with two trailing slashes",
@@ -38279,10 +38260,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TEMP the root",
@@ -38297,10 +38277,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMP long",
@@ -38315,10 +38294,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR with a tab and a newline around it",
@@ -38333,10 +38311,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR of non-ASCII characters",
@@ -38351,10 +38328,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "TMPDIR of non-ASCII characters, too long in bytes and short in characters",
@@ -38369,10 +38345,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         }
       ],
       "key": [
@@ -38387,10 +38362,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         },
         {
           "name": "every variable absolute",
@@ -38400,8 +38374,7 @@
             "XDG_CONFIG_HOME": "/x",
             "TAGENTS_KNOWLEDGE_DIR": "/k",
             "TAGENTS_KNOWLEDGE_DB": "/k.db",
-            "TAGENTS_KNOWLEDGE_USAGE_DB": "/u.db",
-            "CLAUDE_HOMES": "/a,/b"
+            "TAGENTS_KNOWLEDGE_USAGE_DB": "/u.db"
           },
           "cwd": "/",
           "dir": "/tmp/tagents-UID",
@@ -38411,10 +38384,9 @@
             "XDG_CONFIG_HOME=/x",
             "TAGENTS_KNOWLEDGE_DIR=/k",
             "TAGENTS_KNOWLEDGE_DB=/k.db",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=/u.db",
-            "CLAUDE_HOMES=/a,/b"
+            "TAGENTS_KNOWLEDGE_USAGE_DB=/u.db"
           ],
-          "key": "949a43eb8b8d"
+          "key": "5c33851ac449"
         },
         {
           "name": "relative values resolve against the directory",
@@ -38433,10 +38405,9 @@
             "XDG_CONFIG_HOME=/work/dir",
             "TAGENTS_KNOWLEDGE_DIR=/work/dir/docs",
             "TAGENTS_KNOWLEDGE_DB=/work/dir/db/k.sqlite",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=/work/u.sqlite",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB=/work/u.sqlite"
           ],
-          "key": "4b787f13cb53"
+          "key": "c5ac2c06c0c8"
         },
         {
           "name": "the same from the root",
@@ -38452,10 +38423,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=/docs",
             "TAGENTS_KNOWLEDGE_DB=/x",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "9f02d149c538"
+          "key": "ea68a3e9b08d"
         },
         {
           "name": "the same from a directory with a trailing slash",
@@ -38470,18 +38440,16 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=/work/dir/docs",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "fb907dd13673"
+          "key": "136b3fb727b1"
         },
         {
           "name": "a value that is empty or blank stays as it is",
           "env": {
             "TAGENTS_KNOWLEDGE_DIR": "",
             "TAGENTS_KNOWLEDGE_DB": "   ",
-            "TAGENTS_CONFIG_DIR": "\t",
-            "CLAUDE_HOMES": "  "
+            "TAGENTS_CONFIG_DIR": "\t"
           },
           "cwd": "/work/dir",
           "dir": "/tmp/tagents-UID",
@@ -38491,10 +38459,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=   ",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES=  "
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "bbf73783f644"
+          "key": "dc5c56a42531"
         },
         {
           "name": "a tilde stays, whatever follows",
@@ -38512,10 +38479,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=~",
             "TAGENTS_KNOWLEDGE_DB=~/a/../b",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=~other/x",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB=~other/x"
           ],
-          "key": "c202c56e23a5"
+          "key": "bfac872e90d0"
         },
         {
           "name": "an absolute value is not normalised",
@@ -38531,10 +38497,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=/abs/./x//y/../z/",
             "TAGENTS_KNOWLEDGE_DB=//double",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "824500163178"
+          "key": "ee0f3881a634"
         },
         {
           "name": "a value with spaces around it is not trimmed when it is resolved",
@@ -38550,10 +38515,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=/work/dir/  docs  ",
             "TAGENTS_KNOWLEDGE_DB=/work/dir/ /abs ",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "7c92bc4125e7"
+          "key": "8a5126d9e13a"
         },
         {
           "name": "HOME is not resolved",
@@ -38568,64 +38532,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "27b63ce4602f"
-        },
-        {
-          "name": "CLAUDE_HOMES is split, trimmed, filtered and resolved",
-          "env": {
-            "CLAUDE_HOMES": " a , ,b/c,/abs , ~/h ,"
-          },
-          "cwd": "/work/dir",
-          "dir": "/tmp/tagents-UID",
-          "lines": [
-            "HOME=",
-            "TAGENTS_CONFIG_DIR=",
-            "XDG_CONFIG_HOME=",
-            "TAGENTS_KNOWLEDGE_DIR=",
-            "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES=/work/dir/a,/work/dir/b/c,/abs,~/h"
-          ],
-          "key": "1a99c608d8a5"
-        },
-        {
-          "name": "CLAUDE_HOMES of only separators",
-          "env": {
-            "CLAUDE_HOMES": ",,"
-          },
-          "cwd": "/work/dir",
-          "dir": "/tmp/tagents-UID",
-          "lines": [
-            "HOME=",
-            "TAGENTS_CONFIG_DIR=",
-            "XDG_CONFIG_HOME=",
-            "TAGENTS_KNOWLEDGE_DIR=",
-            "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
-          ],
-          "key": "8fc6461e9855"
-        },
-        {
-          "name": "CLAUDE_HOMES of one entry",
-          "env": {
-            "CLAUDE_HOMES": "only"
-          },
-          "cwd": "/work/dir",
-          "dir": "/tmp/tagents-UID",
-          "lines": [
-            "HOME=",
-            "TAGENTS_CONFIG_DIR=",
-            "XDG_CONFIG_HOME=",
-            "TAGENTS_KNOWLEDGE_DIR=",
-            "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES=/work/dir/only"
-          ],
-          "key": "7253e7a96e86"
+          "key": "7054870293e8"
         },
         {
           "name": "a path that climbs above the root",
@@ -38640,10 +38549,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=/x",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "12bc99367f98"
+          "key": "bcb60f8f663c"
         },
         {
           "name": "non-ASCII values",
@@ -38659,10 +38567,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=/work/папка/знания",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "2efb9ec79c9c"
+          "key": "3e0ab38fc19f"
         },
         {
           "name": "variables that are not part of the key do not change it",
@@ -38680,10 +38587,9 @@
             "XDG_CONFIG_HOME=",
             "TAGENTS_KNOWLEDGE_DIR=",
             "TAGENTS_KNOWLEDGE_DB=",
-            "TAGENTS_KNOWLEDGE_USAGE_DB=",
-            "CLAUDE_HOMES="
+            "TAGENTS_KNOWLEDGE_USAGE_DB="
           ],
-          "key": "8fc6461e9855"
+          "key": "3624958629e3"
         }
       ],
       "resolve": [

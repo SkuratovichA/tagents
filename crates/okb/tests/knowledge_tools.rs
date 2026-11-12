@@ -1,4 +1,4 @@
-//! The four tools against the node server: every call the vectors hold, answered by the Rust tools over the same documents, with the same text, the same failure flag and the same events in the usage store. The sessions tools are checked against the bytes the node CLI recorded.
+//! The four tools against the node server: every call the vectors hold, answered by the Rust tools over the same documents, with the same text, the same failure flag and the same events in the usage store.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

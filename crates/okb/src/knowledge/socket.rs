@@ -24,14 +24,13 @@ use super::{doc::hash_of, paths::Env};
 use tagents_core::{js, node};
 
 /// Every variable that changes what a tool answers, in the order the key reads them. `CLAUDE_CONFIG_DIR` is not one: nothing under the server reads it.
-pub const KEY_VARS: [&str; 7] = [
+pub const KEY_VARS: [&str; 6] = [
     "HOME",
     "TAGENTS_CONFIG_DIR",
     "XDG_CONFIG_HOME",
     "TAGENTS_KNOWLEDGE_DIR",
     "TAGENTS_KNOWLEDGE_DB",
     "TAGENTS_KNOWLEDGE_USAGE_DB",
-    "CLAUDE_HOMES",
 ];
 
 /// The variables okb added to the key. They are in a key line only while set, so an environment without them has the key it always had.
@@ -57,7 +56,6 @@ fn var<'a>(env: &'a Env, name: &str) -> Option<&'a str> {
         "TAGENTS_KNOWLEDGE_DIR" => env.knowledge_dir.as_deref(),
         "TAGENTS_KNOWLEDGE_DB" => env.knowledge_db.as_deref(),
         "TAGENTS_KNOWLEDGE_USAGE_DB" => env.knowledge_usage_db.as_deref(),
-        "CLAUDE_HOMES" => env.claude_homes.as_deref(),
         "OKB_CONFIG_DIR" => env.okb_config_dir.as_deref(),
         "OKB_DIR" => env.okb_dir.as_deref(),
         _ => None,
@@ -73,7 +71,7 @@ fn absolute(path: &str, cwd: &str) -> String {
     }
 }
 
-/// The environment as the daemon will see it (`canonicalEnv`): the variables that hold a path are absolute, a blank one is left as it is, and `CLAUDE_HOMES` is a list that is split, trimmed, emptied of its empty entries, resolved and joined again. `HOME` is not a path of the session's and is not touched.
+/// The environment as the daemon will see it (`canonicalEnv`): the variables that hold a path are absolute, a blank one is left as it is. `HOME` is not a path of the session's and is not touched.
 pub fn canonical(env: &Env) -> Env {
     let path = |value: &Option<String>| {
         value.as_ref().map(|value| {
@@ -84,20 +82,6 @@ pub fn canonical(env: &Env) -> Env {
             }
         })
     };
-    let homes = |value: &Option<String>| {
-        value.as_ref().map(|value| {
-            if js::trim(value).is_empty() {
-                return value.clone();
-            }
-            let entries: Vec<String> = value
-                .split(',')
-                .map(js::trim)
-                .filter(|entry| !entry.is_empty())
-                .map(|entry| absolute(entry, &env.cwd))
-                .collect();
-            entries.join(",")
-        })
-    };
     Env {
         tagents_config_dir: path(&env.tagents_config_dir),
         xdg_config_home: path(&env.xdg_config_home),
@@ -106,7 +90,6 @@ pub fn canonical(env: &Env) -> Env {
         knowledge_usage_db: path(&env.knowledge_usage_db),
         okb_config_dir: path(&env.okb_config_dir),
         okb_dir: path(&env.okb_dir),
-        claude_homes: homes(&env.claude_homes),
         ..env.clone()
     }
 }

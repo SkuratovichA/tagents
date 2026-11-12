@@ -68,7 +68,7 @@ fn the_directory_of_every_environment_is_the_one_node_chose() {
 }
 
 #[test]
-fn the_variables_and_the_key_of_every_environment_are_the_ones_node_made() {
+fn the_variables_and_the_key_of_every_environment_are_the_recorded_ones() {
     let cases = socket_cases();
     for case in &cases {
         let env = env_of(case);
@@ -89,11 +89,11 @@ fn the_variables_and_the_key_of_every_environment_are_the_ones_node_made() {
             case["name"]
         );
     }
-    assert!(cases.len() >= 40, "{} cases", cases.len());
+    assert!(cases.len() >= 35, "{} cases", cases.len());
 }
 
 #[test]
-fn the_key_variables_are_the_seven_node_names() {
+fn the_key_variables_are_the_six_names_of_the_node_program_without_the_claude_homes() {
     assert_eq!(
         [
             "HOME",
@@ -101,8 +101,7 @@ fn the_key_variables_are_the_seven_node_names() {
             "XDG_CONFIG_HOME",
             "TAGENTS_KNOWLEDGE_DIR",
             "TAGENTS_KNOWLEDGE_DB",
-            "TAGENTS_KNOWLEDGE_USAGE_DB",
-            "CLAUDE_HOMES"
+            "TAGENTS_KNOWLEDGE_USAGE_DB"
         ],
         KEY_VARS
     );
@@ -118,7 +117,6 @@ fn base() -> Env {
         knowledge_dir: Some("/k".into()),
         knowledge_db: Some("/k.db".into()),
         knowledge_usage_db: Some("/u.db".into()),
-        claude_homes: Some("/a,/b".into()),
         ..Env::default()
     }
 }
@@ -141,7 +139,7 @@ fn the_key_changes_with_each_variable_and_with_the_binary() {
         "the same input, the same key"
     );
 
-    let changes: [(&str, Change); 7] = [
+    let changes: [(&str, Change); 6] = [
         ("HOME", |env| env.home_var = Some("/home/v".into())),
         ("TAGENTS_CONFIG_DIR", |env| {
             env.tagents_config_dir = Some("/c2".into())
@@ -157,9 +155,6 @@ fn the_key_changes_with_each_variable_and_with_the_binary() {
         }),
         ("TAGENTS_KNOWLEDGE_USAGE_DB", |env| {
             env.knowledge_usage_db = Some("/u2.db".into())
-        }),
-        ("CLAUDE_HOMES", |env| {
-            env.claude_homes = Some("/a,/c".into())
         }),
     ];
     for (name, change) in changes {

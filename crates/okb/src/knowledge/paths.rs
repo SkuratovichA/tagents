@@ -37,8 +37,6 @@ pub struct Env {
     pub knowledge_dir: Option<String>,
     pub knowledge_db: Option<String>,
     pub knowledge_usage_db: Option<String>,
-    /// Read by the sessions tools, which list transcripts and know nothing of the paths above.
-    pub claude_homes: Option<String>,
     /// The three variables `os.tmpdir()` reads, in the order it reads them: the socket's directory is under the first that is set.
     pub tmpdir: Option<String>,
     pub tmp: Option<String>,
@@ -93,7 +91,6 @@ impl Env {
             knowledge_dir: var("TAGENTS_KNOWLEDGE_DIR"),
             knowledge_db: var("TAGENTS_KNOWLEDGE_DB"),
             knowledge_usage_db: var("TAGENTS_KNOWLEDGE_USAGE_DB"),
-            claude_homes: var("CLAUDE_HOMES"),
             tmpdir: var("TMPDIR"),
             tmp: var("TMP"),
             temp: var("TEMP"),

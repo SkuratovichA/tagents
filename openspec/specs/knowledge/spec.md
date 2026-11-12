@@ -475,7 +475,7 @@ The MCP knowledge tools SHALL locate the folder and the index from the environme
 - **THEN** it exits 0 without disturbing that server
 
 ### Requirement: One shared server per environment
-Every client of the same environment SHALL be served by one daemon per program, and clients whose environments differ SHALL get separate daemons that answer from their own documents. The environment is `HOME`, `TAGENTS_CONFIG_DIR`, `XDG_CONFIG_HOME`, `TAGENTS_KNOWLEDGE_DIR`, `TAGENTS_KNOWLEDGE_DB`, `TAGENTS_KNOWLEDGE_USAGE_DB` and `CLAUDE_HOMES`, plus the build of the program that runs. The node program and the native program are two programs and never share a daemon.
+Every client of the same environment SHALL be served by one daemon per program, and clients whose environments differ SHALL get separate daemons that answer from their own documents. The environment is `HOME`, `TAGENTS_CONFIG_DIR`, `XDG_CONFIG_HOME`, `TAGENTS_KNOWLEDGE_DIR`, `TAGENTS_KNOWLEDGE_DB`, `TAGENTS_KNOWLEDGE_USAGE_DB`, and `OKB_CONFIG_DIR` and `OKB_DIR` when set, plus the build of the program that runs. The node program and the native program are two programs and never share a daemon.
 
 #### Scenario: Two sessions, one daemon
 - **WHEN** two sessions start at the same moment in the same environment
