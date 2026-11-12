@@ -755,9 +755,9 @@ mkchat tatest-l-ord oc; LOC=$LASTPANE
 mkshell tatest-l-ord d1; LD1=$LASTWIN
 mkshell tatest-l-ord d2; LD2=$LASTWIN
 mkshell tatest-l-ord zz; LZP=$LASTPANE; chatrec "$LZP" sid-zz dead      # a pane left at a shell with a record: a closed row, and that row is its window's row
-ok "L5 chats, dimmed windows in window order, closed rows" "$LOC $LBASE $LD1 $LD2 $LZP " "$(rows_of tatest-l-ord)"
+ok "L5 chats and dimmed windows in window order (the default), closed rows" "$LBASE $LOC $LD1 $LD2 $LZP " "$(rows_of tatest-l-ord)"
 hk=$(lst | strip | awk -F'\t' 'index($2, "\342\226\276") { g = substr($2, index($2, "\342\226\276") + 4); sub(/  .*$/, "", g); if (g == "tatest-l-ord") { print $1; exit } }')
-ok "L6 the header carries the key of the first row" "$LOC" "$hk"
+ok "L6 the header carries the key of the first row" "$LBASE" "$hk"
 newsess tatest-l-only; LONLY=$LASTWIN
 hl=$(lst | strip | awk -F'\t' 'index($2, "\342\226\276") { g = substr($2, index($2, "\342\226\276") + 4); sub(/  .*$/, "", g); if (g == "tatest-l-only") { print $1 "|" $3 "|" $4; exit } }')
 ok "L6 a session of windows only: window id, state none, no session id" "$LONLY|none|" "$hl"
