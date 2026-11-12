@@ -102,13 +102,13 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Unit and integration tests
         run: cargo test --workspace --locked
-      - name: Build the node CLI of tag v0.6.7, which the parity suites compare the Rust binary with (it fetches the tag when the clone lacks it)
+      - name: Build the node CLI of tag v0.6.7, which the parity suites compare the Rust binary with (it fetches the tag when the clone lacks it); the knowledge suite builds its own oracle of tag v0.7.0
         run: bash tests/parity-oracle.sh
       - name: Parity with the node CLI, byte for byte
         run: bash tests/rust-parity.sh
       - name: Parity of the MCP server with the node one, byte for byte
         run: bash tests/rust-mcp-parity.sh
-      - name: Parity of the knowledge MCP server and its daemon with the node ones, transcripts compared byte for byte
+      - name: Parity of okb with the node knowledge package, byte for byte: the verbs that read the folder, the MCP server and its daemon
         run: bash tests/rust-knowledge-parity.sh
       - name: Parity of the notify daemon with the node one, byte for byte
         run: bash tests/rust-notify-parity.sh
