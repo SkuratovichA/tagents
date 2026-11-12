@@ -222,7 +222,7 @@ pub fn drain(wake: &OwnedFd) {
 
 /// The two ends of a pipe that is non-blocking and close-on-exec, for a thread that polls its read end beside what else it waits for.
 #[cfg(target_os = "linux")]
-pub(crate) fn wake_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
+pub fn wake_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
     Ok(pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK)?)
 }
 
