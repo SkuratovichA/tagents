@@ -403,7 +403,7 @@ Keys inside the dashboard:
                      closes the whole window with every pane in it, asking
                      first and listing what runs there
   ctrl-t             toggle tree / flat
-  ctrl-o             rows in window order, or by your last message
+  ctrl-o             rows by your last message, or back in window order
   ctrl-v             the preview in a window of its own: a popup 80% by 85%,
                      the size prefix+C-f, tsess and tneww all open at, with
                      the per-subagent cost breakdown and the tail of the
