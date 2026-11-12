@@ -662,7 +662,7 @@ contains "the warning names the archive and both hashes" "the SHA-256 of tagents
 contains "and says what the run came to" "a prebuilt binary was not installed, see above" "$out"
 kept_binary "the 0.1.0 binary stays beside a failed 0.1.1" 0.1.0
 ok "the wrappers were written all the same" "tagents v1 " "$("$TAGENTS_BIN/tagents")"
-ok "the temporary directory is removed after a failed check as well" 0 "$(ls -A "$TAGENTS_HOME/target" | grep -c '^tagents-core\.' || true)"
+ok "the temporary directory is removed after a failed check as well" 0 "$(ls -A "$TAGENTS_HOME/target" | grep -c '^\(okb\|tagents-core\)\.' || true)"
 ok "...and nothing was made in TMPDIR for it" "" "$(ls -A "$TMP/fetch-tmp")"
 make_release 0.1.1 "$TRIPLE"
 printf '%s  %s\n' "$(printf 0%.0s $(seq 1 64))" "tagents-core-0.1.1-$TRIPLE.tar.gz" > "$RELEASES/v0.1.1/tagents-core-0.1.1-$TRIPLE.tar.gz.sha256"
@@ -674,6 +674,25 @@ make_release 0.1.1 "$TRIPLE"
 out=$(run_native); rc=$?
 ok "the next run, with a release that checks out, installs it and exits 0" 0 "$rc"
 ok "...and the binary is there" "native-core 0.1.1 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+
+# --- the two binaries are fetched one by one: a release that lacks okb, or holds a corrupt one, leaves the other installed ---
+fresh_native 0.1.0
+rm -f "$RELEASES/v0.1.0/okb-0.1.0-$TRIPLE.tar.gz" "$RELEASES/v0.1.0/okb-0.1.0-$TRIPLE.tar.gz.sha256"
+out=$(TMPDIR=$TMP/fetch-tmp run_native); rc=$?
+ok "a release with no okb archive exits 0" 0 "$rc"
+contains "...says there is no prebuilt okb, with the URL it tried" "no prebuilt okb 0.1.0 for $TRIPLE (file://$RELEASES/v0.1.0/okb-0.1.0-$TRIPLE.tar.gz.sha256)" "$out"
+ok "...tagents-core is installed all the same" "native-core 0.1.0 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+ok "...and there is no okb binary" no "$(exists "$OKB_BIN")"
+ok "...nor a download directory of either binary" 0 "$(ls -A "$TAGENTS_HOME/target" | grep -c '^\(okb\|tagents-core\)\.' || true)"
+fresh_native 0.1.0
+printf 'x' >> "$RELEASES/v0.1.0/okb-0.1.0-$TRIPLE.tar.gz"
+out=$(TMPDIR=$TMP/fetch-tmp run_native); rc=$?
+ok "a corrupt okb archive exits 1" 1 "$rc"
+contains "...the warning names the okb archive" "the SHA-256 of okb-0.1.0-$TRIPLE.tar.gz is" "$out"
+contains "...and says what the run came to" "a prebuilt binary was not installed, see above" "$out"
+ok "...tagents-core is installed all the same" "native-core 0.1.0 a" "$(env PATH=/usr/bin:/bin "$TAGENTS_BIN/tagents-core" a)"
+ok "...and there is no okb binary" no "$(exists "$OKB_BIN")"
+ok "...and no download directory is left" 0 "$(ls -A "$TAGENTS_HOME/target" | grep -c '^\(okb\|tagents-core\)\.' || true)"
 
 # --- a checksum file that is not a SHA-256 -------------------------------------
 fresh_native 0.1.0
