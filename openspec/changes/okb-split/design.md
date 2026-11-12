@@ -16,4 +16,5 @@ The knowledge module of `tagents-core` shares its plumbing with the other verbs:
 
 - Byte parity of the ported verbs depends on the oracle tag; if the tag answers differently from main's node, the suite pins the tag that matches and says so.
 - Old plugin copies call `tagents-knowledge join`; the wrapper keeps that working until the plugin updates.
+- Between the merge and its release, `tagents update` finds no `okb` archive of version 0.8.0 and the knowledge server is down on a machine that has no `okb` yet, until the release of the tag exists; with `TAGENTS_NO_NATIVE=1` it stays down for good, because the wrapper has no node fallback. The mitigation is to push the tag `v0.8.0` right after the merge.
 - The usage store is the only record of reads; B copies it and never deletes the old file.

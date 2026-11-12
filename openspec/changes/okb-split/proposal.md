@@ -13,6 +13,8 @@ Pull request A (this branch):
 - The installer installs `okb` beside `tagents-core`; `tagents-knowledge` becomes a wrapper that runs `okb`. The plugin's launcher moves to `bin/knowledge-mcp`.
 - The release carries separate `okb` archives. The workspace version is 0.8.0.
 
+Carried over for byte parity and left to pull request B: `okb --spec` still names the program `tagents-knowledge`, the usage text of `okb` is the old one (it says `tagents-knowledge` and does not list `mcp`, `serve` and `join`), there are two usage texts and a Russian table with gaps.
+
 Pull request B (described here, not built here):
 
 - A second plugin `okb` with the MCP server `knowledge` (tool names unchanged, full names `mcp__plugin_okb_knowledge__knowledge_*`) and a skill of its own; the `tagents` plugin depends on it.

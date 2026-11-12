@@ -52,7 +52,7 @@ The structured CLI specs are those of `tagents-core` and `okb`, which `spec/cli/
 
 #### Scenario: The file and the binary drift
 - **WHEN** a flag is added to the binary and not to `spec/cli/okb.json`
-- **THEN** the check fails naming the file (`pnpm -r test`)
+- **THEN** the check fails naming the file (`cargo test -p okb --test knowledge_spec`, `crates/okb/tests/knowledge_spec.rs`, which compares `okb --spec` with the file and the verbs in it with the ones the program serves)
 
 ### Requirement: The generator knows two plugins
 In the second pull request the generator SHALL keep, for each of `tagents` and `okb`, its manifest, generated files, shipped files, digest and version, and `pnpm plugin:check` SHALL fail when either is stale. `contract.json` SHALL list the tools of the `okb` plugin's server `knowledge` and of the `tagents` server separately.

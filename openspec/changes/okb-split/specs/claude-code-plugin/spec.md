@@ -24,7 +24,7 @@ The script `bin/knowledge-mcp` SHALL join the session to the shared server of th
 
 #### Scenario: No binary
 - **WHEN** `join` exits 69 or 2 and the machine has no binary
-- **THEN** `serve` and `mcp` answer one line that names `tagents update` and `cargo build --release -p tagents-core`, with exit 69, and no daemon is started (`tests/knowledge-launcher.sh`)
+- **THEN** `serve` and `mcp` answer one line that names `tagents update` and `cargo build --release -p okb`, with exit 69, and no daemon is started (`tests/knowledge-launcher.sh`)
 
 #### Scenario: Shared server available
 - **WHEN** `join` exits 69 or 2, `tagents-knowledge serve` prints an existing socket and `nc` is on `PATH`
@@ -122,7 +122,7 @@ When `$TAGENTS_HOME/target/release/okb` is an executable file at install time, t
 - **THEN** every call of the wrapper gives the needs-binary line and exit 69 (`tests/install.sh`)
 
 ### Requirement: The installer provides the okb binary
-The installer SHALL fetch the `okb` binary from the release of the checkout's version in the way it fetches `tagents-core`, and SHALL build it from the checkout when a Rust toolchain is there and no release exists.
+The installer SHALL fetch the `okb` binary from the release of the checkout's version in the way it fetches `tagents-core`, from the archive `okb-<version>-<triple>.tar.gz` of that release. The installer SHALL NOT run cargo: with no release for the version, or with an archive that fails its checksum, it keeps the `okb` it already has, warns, and still installs the other binary; building it is `cargo build --release -p okb` by hand.
 
 #### Scenario: A release exists
 - **WHEN** the installer runs on a copy whose version has a release

@@ -36,7 +36,7 @@ The tool list and the texts the binary prints (`crates/okb/src/knowledge/tools.j
 
 #### Scenario: The usage text
 - **WHEN** `okb`, `okb help`, `okb --help`, `okb -h` and `okb bogus` run
-- **THEN** the text, the stream it goes to and the exit code are the oracle's, except that the program name in a line of the text is `okb` (`tests/rust-knowledge-parity.sh`)
+- **THEN** the text, the stream it goes to and the exit code are the oracle's, byte for byte, so the program name in the text is still `tagents-knowledge` until pull request B renames it (`tests/rust-knowledge-parity.sh`)
 
 #### Scenario: Arguments of mcp and serve
 - **WHEN** `okb mcp extra words` runs, and `okb serve` gets `--idle 0`, an unknown option or a positional word
