@@ -38,6 +38,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 
 ### Fixed
 
+- The installer's build trusts the operating system's CA store when the node on `PATH` can, so `tagents update` no longer fails with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` behind a TLS proxy that re-signs traffic ([#87](https://github.com/SkuratovichA/tagents/pull/87)).
 - `tusage` prices Claude Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable/Mythos 5.2 at their published rates; they had fallen onto the 5 rows their ids start with, which overstated Opus 5.5 and Sonnet 5.5 and left Haiku 5.5 unpriced ([#76](https://github.com/SkuratovichA/tagents/pull/76)).
 - A transcript moved to another project directory while the index updates no longer empties the offsets table, so the next update no longer counts every transcript a second time ([#71](https://github.com/SkuratovichA/tagents/pull/71)).
 - After `/compact` the dashboard's context column shows what the compaction left, and the next answer raises it ([#68](https://github.com/SkuratovichA/tagents/pull/68)).

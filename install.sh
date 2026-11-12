@@ -46,6 +46,7 @@
 #   TAGENTS_REPO   what to clone                        https://github.com/SkuratovichA/tagents.git
 #   TAGENTS_REF    the branch to follow                 main
 #   TAGENTS_BUILD_CMD  run in the copy after a move     pnpm install --frozen-lockfile && pnpm build
+#                      (either way the build runs with --use-system-ca added to NODE_OPTIONS when the node on PATH accepts it, so a TLS proxy whose CA is in the system store does not fail it)
 #   TAGENTS_LAUNCHD_DIR, TAGENTS_NO_LAUNCHCTL=1         where the plist goes, and not loading it
 #   TAGENTS_NO_NATIVE=1   do not fetch the Rust tagents-core, and remove a prebuilt one (a hand-built one stays); without it no path of the fetch removes a binary
 #   TAGENTS_CORE_BASE_URL where the release files are (a directory URL that starts with https:// or file://; when a fetch is due and curl is there, any other scheme is refused with a warning)   https://github.com/SkuratovichA/tagents/releases/download/v<version>
@@ -432,6 +433,15 @@ need_toolchain() {
   fi
 }
 
+# Node trusts only its bundled CA list, so behind a TLS proxy that re-signs traffic with a CA from the system store every registry fetch of the build fails with UNABLE_TO_GET_ISSUER_CERT_LOCALLY while curl works. --use-system-ca (node 22.15 and newer) adds the system store; a node without it, or no node on PATH, leaves NODE_OPTIONS as it was.
+trust_system_ca() {
+  case " ${NODE_OPTIONS:-} " in *" --use-system-ca "*) return 0 ;; esac
+  command -v node >/dev/null 2>&1 || return 0
+  node --use-system-ca -e 0 >/dev/null 2>&1 || return 0
+  NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--use-system-ca"
+  export NODE_OPTIONS
+}
+
 build() {
   ( cd "$TAGENTS_HOME" && sh -c "$BUILD_CMD" ) > "$BUILD_LOG" 2>&1
 }
@@ -558,6 +568,7 @@ main() {
 
   if [ "$fresh" = 1 ] || [ "$prev" != "$target" ] || [ ! -f "$TAGENTS_HOME/packages/core/dist/cli/main.js" ]; then
     if [ "$DEFAULT_BUILD" = 1 ]; then need_toolchain; fi
+    trust_system_ca
     say "building"
     if ! build; then
       tail -n 25 "$BUILD_LOG" >&2
