@@ -110,9 +110,13 @@ expect() {  # <label> <got> <want>
   if [ "$2" = "$3" ]; then ok; else bad "$1" "got:    $2
        wanted: $3"; fi
 }
-# The oracle answers as `tagents-knowledge` and okb as `okb`: the name is put into okb's in both transcripts. The node oracle still lists `sessions_recent` and `sessions_search`, which moved to the tagents server (tests/rust-mcp-parity.sh and crates/tagents-core/tests/session_tools.rs hold them now): they are cut out of its tools/list answers, and nothing calls them here.
-norm() {  # <file>: the version a server reports is its own, and the tools okb does not have
-  sed -e 's/tagents-knowledge/okb/g' -e 's/"serverInfo":{"name":"okb","version":"[^"]*"}/"serverInfo":{"name":"okb","version":"-"}/' "$1" | perl -pe 's/,?\{"name":"sessions_(?:recent|search)"(?:[^{}]|(\{(?:[^{}]|(?1))*\}))*\}//g'
+# The oracle answers as `tagents-knowledge` and okb as `okb`: the name is put into okb's words in the oracle's transcript only, so a stray old name in okb's own output fails. The node oracle still lists `sessions_recent` and `sessions_search`, which moved to the tagents server (tests/rust-mcp-parity.sh and crates/tagents-core/tests/session_tools.rs hold them now): they are cut out of its tools/list answers, and nothing calls them here.
+norm() {  # <file> <side>: the version a server reports is its own; the oracle's old name and its two session tools are put into okb's words, okb's own transcript is left as it is
+  if [ "$2" = node ]; then
+    sed -e 's/tagents-knowledge/okb/g' -e 's/"serverInfo":{"name":"okb","version":"[^"]*"}/"serverInfo":{"name":"okb","version":"-"}/' "$1" | perl -pe 's/,?\{"name":"sessions_(?:recent|search)"(?:[^{}]|(\{(?:[^{}]|(?1))*\}))*\}//g'
+  else
+    sed -e 's/"serverInfo":{"name":"okb","version":"[^"]*"}/"serverInfo":{"name":"okb","version":"-"}/' "$1"
+  fi
 }
 RAN=1
 SKIPPED=0
@@ -139,7 +143,7 @@ run_session() {  # <side> <script file> <server verb and arguments...>
   program_env
   env -i "${PENV[@]}" PARITY_DIR="$W" "$NODE" "$MCP_DRIVER" run "$script" "$W" -- "${SERVER[@]}" > "$TMP/raw.$side" 2> "$TMP/driver.$side"
   code=$?
-  norm "$TMP/raw.$side" > "$TMP/transcript.$side"
+  norm "$TMP/raw.$side" "$side" > "$TMP/transcript.$side"
   return $code
 }
 
@@ -546,7 +550,7 @@ if wanted "daemon: garbage, then a real client"; then
     d_garbage_then_a_client 2>&1 | mask > "$TMP/facts.$SIDE"
     program_env
     env -i "${PENV[@]}" PARITY_DIR="$W" "$NODE" "$MCP_DRIVER" run "$TMP/scripts/socket.json" "$W" -- "$NODE" "$GEN" client "$(cat "$TMP/sock.$SIDE")" > "$TMP/raw.$SIDE" 2> "$TMP/driver.$SIDE" || bad "daemon: garbage, then a real client: the driver failed on the $SIDE socket" "$(head -c 300 "$TMP/driver.$SIDE" | tr '\n' '|')"
-    { cat "$TMP/facts.$SIDE"; norm "$TMP/raw.$SIDE" | sed -e "s#$TMP/world/#WORLD/#g"; echo "daemons at the end: $(count_daemons)"; } > "$TMP/transcript.$SIDE"
+    { cat "$TMP/facts.$SIDE"; norm "$TMP/raw.$SIDE" "$SIDE" | sed -e "s#$TMP/world/#WORLD/#g"; echo "daemons at the end: $(count_daemons)"; } > "$TMP/transcript.$SIDE"
     stop_all
   done
   compare "daemon: garbage, then a real client"
@@ -565,7 +569,7 @@ join_session() {  # <label> <VAR=value ...>: node's `mcp` against Rust's `join`,
     program_env
     if [ "$side" = node ]; then SERVER=("$NODE" "$KJS" mcp); else SERVER=("$RUST_ABS" join); fi
     env -i "${PENV[@]}" $( [ "$side" = rust ] && echo "$over" ) PARITY_DIR="$W" "$NODE" "$MCP_DRIVER" run "$TMP/scripts/join.json" "$W" -- "${SERVER[@]}" > "$TMP/raw.$side" 2> "$TMP/driver.$side" || { bad "$label: the driver failed on the $side server" "$(head -c 300 "$TMP/driver.$side" | tr '\n' '|')"; stop_all; return 0; }
-    norm "$TMP/raw.$side" > "$TMP/transcript.$side"
+    norm "$TMP/raw.$side" "$side" > "$TMP/transcript.$side"
     JOIN_LEFT="daemons: $(count_daemons), pid files: $(count_pidfiles)"  # the last side is Rust
     stop_all
   done
