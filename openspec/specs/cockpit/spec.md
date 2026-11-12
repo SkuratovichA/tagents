@@ -46,6 +46,10 @@ The dashboard SHALL be a tmux session named `tagents`, with the session option `
 - **THEN** a marker is set in the state directory and the list pane is resized to `dashboard.collapsed_width` columns (default 24)
 - **AND** pressing it again removes the marker and gives the list its share back; a rebuilt or restored cockpit reads the marker
 
+#### Scenario: A resize keeps the list collapsed
+- **WHEN** the marker is there and the window is resized so that tmux spreads the change over both panes
+- **THEN** the list's resize event puts the list pane back to `dashboard.collapsed_width` columns
+
 ### Requirement: A taken name stops the cockpit
 When a session named `tagents` exists that neither carries `@tagents_cockpit` nor is a leftover dashboard, the cockpit SHALL NOT start: `tagents --ensure-dash`, a list started for the cockpit and the restore SHALL print `tagents: session tagents is taken — rename it, and the dashboard can start` on standard error, create nothing and change nothing in that session, and `tagents --ensure-dash` SHALL exit 1.
 

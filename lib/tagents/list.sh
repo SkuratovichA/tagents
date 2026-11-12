@@ -1,6 +1,6 @@
 # lib/tagents/list.sh — the rows — and the tally the status bar shows
 #
-# list() stays one unit: the responsive column fit, the UTF-8-safe width helpers macOS awk forces it to carry, the row format, the two-level tree a child session hangs in, the group headers and the dimmed window rows. grouped/toggle_group (the .flat marker list() reads), byw_on/toggle_order (the .order-window marker it reads) and counts() (the same renderer with TA_MARKS=0, plus the burn rate and the usage line) sit with it because nothing else calls them and both are meaningless without it.
+# list() stays one unit: the responsive column fit, the UTF-8-safe width helpers macOS awk forces it to carry, the row format, the two-level tree a child session hangs in, the group headers and the dimmed window rows. grouped/toggle_group (the .flat marker list() reads), byw_on/toggle_order (the .order-recent marker it reads) and counts() (the same renderer with TA_MARKS=0, plus the burn rate and the usage line) sit with it because nothing else calls them and both are meaningless without it.
 #
 # Part of ./tagents; `tagents --help` is the model this implements.
 
@@ -29,7 +29,7 @@ list() {
   # *attached client*, so it silently hid whichever agent you happened to be
   # looking at. The dashboard pane runs fzf, never Claude, so it can never show
   # up here anyway and needs no special case.
-  local grp=1 cols hidecols tallyto="" rc byw=0
+  local grp=1 cols hidecols tallyto="" rc byw=0 compact=0
   grouped || grp=0
   byw_on && byw=1
   # Joined with $RS, never newlines: awk -v refuses a value with a newline in it
@@ -811,9 +811,10 @@ list() {
           if (gburn[g] > 0) gbs = gbs (gbs == "" ? "" : " ") money(gburn[g])
           if (gbs != "" && cols >= 60 && !("cost" in hid))
             gbt = sprintf("%s%s/5h%s", DIM, gbs, R)
-          if (compact) { gpath = ""; badge = ""; gbt = "" }
-          hdr = sprintf("%s▾ %s%s%s  %s%s",
-                        (gmin[g] < prio["dead"] ? BOLD : DIM), (compact ? cfit(gname(g), cols - 5) : gname(g)), R, gpath, badge, gbt)
+          # Compact: the marker and the fitted name and nothing after it, not even the two spaces the format keeps before the badges.
+          if (compact) hdr = sprintf("%s▾ %s%s", (gmin[g] < prio["dead"] ? BOLD : DIM), cfit(gname(g), cols - 5), R)
+          else hdr = sprintf("%s▾ %s%s%s  %s%s",
+                        (gmin[g] < prio["dead"] ? BOLD : DIM), gname(g), R, gpath, badge, gbt)
           printf "%d\t%s\t0\t0\t0\t%s\t%s\t%s\t%s\t%s\t0\t0\t0\t0\t%d\n",
                  (g == "w:" ? 2 : (gmin[g] < prio["dead"] ? 0 : 1)), g, gfirst[g], hdr,
                  gstate[g], gsid[g], gdir[g], (grp ? gnum(g) : 0)

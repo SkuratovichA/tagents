@@ -1303,14 +1303,11 @@ rm -f "$STATE/prompt/${A2#%}"
 hasnt "a session with no prompt file yet does not fall back to the epoch" "h" \
       "$(row_of "$A2" "$(rows_at 140)" | sed 's/[^0-9h:].*//')"
 
-tm kill-pane -t "$A2" 2>/dev/null
-tm kill-pane -t "$B" 2>/dev/null
-
 # ---------------------------------------------------------------------------------------------------------------------------------
 # A COLLAPSED LIST: below 34 columns the rows are a mark, the state glyph and the title, nothing else, and every one fits the pane
 # fzf shows cols - 3 columns of a line (a 2-column gutter and one spare), and a longer one is cut to "··", so that is the budget.
 # ---------------------------------------------------------------------------------------------------------------------------------
-for cw in 20 24; do
+for cw in 12 20 24; do
   CR=$(rows_at "$cw")
   worst=$(printf '%s\n' "$CR" | awk -F'\t' 'NF > 1 { print $2 }' | perl -CS -ne 'chomp; my $l = length($_); print "$l\n"' | sort -n | tail -1)
   [ -n "$worst" ] && [ "$worst" -le $((cw - 3)) ]; fits=$?
@@ -1321,8 +1318,28 @@ for cw in 20 24; do
   has "at $cw columns a row still shows the session name" "repo" "$rowA"
   hasnt "at $cw columns no dash stands in the mark column" "─" "$rowA"
 done
+# At 12 columns the group name is longer than the room it has, and the header is no wider than a row: the marker and the cut name, nothing after it.
+ok "a compact group header is cut with its name and nothing after it" "▾ tatest…" "$(rows_at 12 | awk -F'\t' 'index($2, "▾") == 1 && index($2, "tatest") { print $2; exit }' | sed 's/ *$//')"
+# A nested child is one column further in than its parent, a window on screen keeps its ▸, and 33 columns is compact while 34 is not.
+tm set -g @tagents_viewport_window "$W_A2"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  "$(date +%s)" working sid-kid "$REPO" "" "kid" "" "$$" "" "" "${A2#%}" sid-live2 >"$STATE/s-kid.tsv"
+said %s-kid 30
+CK=$(rows_at 20 TA_MARKS=1)
+indent() { printf '%s' "$1" | awk '{ match($0, /^ */); print RLENGTH }'; }
+ok "a compact child is indented two columns, mark slot and one more" 2 "$(indent "$(row_of %s-kid "$CK")")"
+ok "...and a compact row that is not marked is indented by its mark slot alone" 1 "$(indent "$(row_of "$B" "$CK")")"
+has "the window on screen keeps its mark in a compact list" "$MK" "$(row_of "$A2" "$CK")"
+ok "...and the marked row still fits the 17 columns" 1 "$(printf '%s' "$(row_of "$A2" "$CK")" | perl -CS -ne 'print((length($_) <= 17) ? 1 : 0)')"
+ok "the child row fits too" 1 "$(printf '%s' "$(row_of %s-kid "$CK")" | perl -CS -ne 'print((length($_) <= 17) ? 1 : 0)')"
+hasnt "33 columns is compact: no tree glyph" "├" "$(rows_at 33)"
+has "34 columns is not: the tree is drawn" "├" "$(rows_at 34)"
+rm -f "$STATE/s-kid.tsv" "$STATE/prompt/s-kid"
 ok "a header below the compact threshold is empty, there is no room for key hints" "" "$(env TMUX="$TMUXV" bash "$TA" --header 20)"
 has "a header at 34 columns still carries the keys" "keys" "$(env TMUX="$TMUXV" bash "$TA" --header 34)"
+
+tm kill-pane -t "$A2" 2>/dev/null
+tm kill-pane -t "$B" 2>/dev/null
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

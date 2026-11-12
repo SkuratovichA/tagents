@@ -1139,7 +1139,22 @@ for side in left right; do
   cpcol 96 $side collapsed
   ok "Collapse $side built: the list is 24 columns wide" 24 "$(lwidth)"
   ok "Collapse $side built: the viewport is 175 wide" 175 "$(tm display -p -t "$(rview)" '#{pane_width}')"
+  t "Collapse $side: the collapsed width survives a window resize"
+  tm resize-window -t '=tagents:' -x 300 >/dev/null 2>&1
+  ok "Collapse $side resize: the list is back at 24 columns in a 300-column window" 24 "$(wait_eq_long 24 lwidth)"
+  tm resize-window -t '=tagents:' -x 200 >/dev/null 2>&1
+  ok "Collapse $side resize: ...and at 24 again when the window shrinks" 24 "$(wait_eq_long 24 lwidth)"
 done
+
+# TA_WIDTH is read by the process that builds the cockpit; the expand runs in another one and has to come back to that width, not the configured 45%.
+t "TA_WIDTH is remembered by the cockpit"
+export TA_WIDTH=30
+cpcol 98 left
+unset TA_WIDTH
+ok "the share is stored in @tagents_width" 30 "$(tm show -qv -t '=tagents:' @tagents_width)"
+: >"$CPSTATE/.collapsed"
+ta --toggle-collapse >/dev/null 2>&1
+near "expanding a collapsed list returns to the 30% it was built with, not 45%" 60 "$(wait_eq 60 lwidth)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

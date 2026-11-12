@@ -195,8 +195,18 @@ dash() {
   kb "$K_ORDER"   "execute-silent($SELF --toggle-order)+reload-sync($SELF --list)"
   kb "$K_COLLAPSE" "execute-silent($SELF --toggle-collapse)+reload-sync($SELF --list)"
   kb "$K_REFRESH" "reload-sync($SELF --list)"
-  # The header follows the width too: it is empty below the compact threshold, and a collapse or an expand changes the width without a new fzf.
-  kb resize       "transform-header($SELF --header \$FZF_COLUMNS '$enter_lbl' '$quit')+reload-sync($SELF --list)"
+  # THE RESIZE BIND SPAWNS A PLAIN sh, NOT THIS PROGRAM. A resize event comes for every pixel of a drag, and `tagents --header` is a bash that loads the libraries and parses the config. The header is written once, for a wide list, and the script picks it or nothing by FZF_COLUMNS (below 34 the rows are compact and there is no room for it). The same script keeps a collapsed list collapsed: tmux spreads a window resize over both panes, so when the marker is there and the pane is not collapsed_width wide it is put back, which is a no-op when it already is, and so cannot loop.
+  rzh="$STATE_DIR/.resize.hdr.$$"; rzs="$STATE_DIR/.resize.sh.$$"
+  dash_header 80 "$enter_lbl" "$quit" >"$rzh" 2>/dev/null
+  cat >"$rzs" <<EOS
+if [ -e '$STATE_DIR/.collapsed' ]; then
+  set -- \$(tmux display -p -t "\$TMUX_PANE" '#{@tagents_cockpit} #{pane_width}' 2>/dev/null)
+  [ "\${1:-}" = 1 ] && [ "\${2:-}" != $(dash_collapsed_width) ] && tmux resize-pane -t "\$TMUX_PANE" -x $(dash_collapsed_width) 2>/dev/null
+fi
+[ "\${FZF_COLUMNS:-0}" -ge 34 ] && cat '$rzh'
+exit 0
+EOS
+  kb resize       "transform-header(sh '$rzs')+reload-sync($SELF --list)"
   # THE REFRESHER WATCHES FZF, NOT THE BASH AROUND IT. This function's own pid ($$)
   # is the shell that starts fzf again after an abort, and it lives on while fzf
   # comes and goes, so a refresher that watched it outlived every fzf it was
@@ -271,4 +281,5 @@ dash() {
     fi
     [ "$mode" = popup ] && break
   done
+  rm -f "$rzh" "$rzs"
 }
