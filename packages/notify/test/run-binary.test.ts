@@ -1,12 +1,12 @@
 // node --test run-binary.test.ts
 //
-// `notify run` as node answers it: it starts the Rust binary with the same stdio, passes SIGTERM on, returns the binary's exit code, or says there is no binary and exits 69. Stub binaries are shell scripts in a temp directory.
+// `notify run` as node answers it: it starts the Rust binary with the same stdio, passes SIGTERM and SIGINT on, returns the binary's exit code, or says there is no binary and exits 69. Stub binaries are shell scripts in a temp directory.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import { tmpDir } from '@tagents/core';
-import { NO_BINARY, runBinary } from '../src/run-binary.ts';
+import { FROM_NODE, NO_BINARY, runBinary } from '../src/run-binary.ts';
 
 function stub(body: string): string {
   const file = path.join(tmpDir('notify-run-binary'), 'tagents-core');
@@ -38,6 +38,32 @@ test('a SIGTERM to node reaches the binary, which ends the run with its own word
   assert.ok(fs.existsSync(ready), 'the stub started');
   process.emit('SIGTERM');
   assert.equal(await done, 0);
+});
+
+test('a SIGINT to node reaches the binary too', async () => {
+  const ready = path.join(tmpDir('notify-run-binary'), 'ready');
+  const bin = stub(`trap 'exit 3' INT; : > "${ready}"; while :; do sleep 0.05; done`);
+  const done = runBinary({ bin });
+  for (let n = 0; n < 500 && !fs.existsSync(ready); n += 1) await new Promise<void>((r) => setTimeout(r, 20));
+  assert.ok(fs.existsSync(ready), 'the stub started');
+  process.emit('SIGINT');
+  assert.equal(await done, 3);
+});
+
+test('the binary is started with the recursion guard in its environment', async () => {
+  const out = path.join(tmpDir('notify-run-binary'), 'guard');
+  const bin = stub(`echo "$${FROM_NODE}" > "${out}"`);
+  assert.equal(await runBinary({ bin, env: { ...process.env, [FROM_NODE]: '' } }), 0);
+  assert.equal(fs.readFileSync(out, 'utf8'), '1\n');
+});
+
+test('already started by the binary: node does not start it again, says there is no usable binary and exits 69', async () => {
+  const out = path.join(tmpDir('notify-run-binary'), 'started');
+  const bin = stub(`: > "${out}"`);
+  const lines: string[] = [];
+  assert.equal(await runBinary({ bin, env: { ...process.env, [FROM_NODE]: '1' }, err: (t) => lines.push(t) }), NO_BINARY);
+  assert.equal(fs.existsSync(out), false);
+  assert.match(lines.join(''), /^notify run is served by the tagents-core binary/);
 });
 
 test('a binary that a signal ended without its own word is exit 1, which launchd starts again', async () => {
