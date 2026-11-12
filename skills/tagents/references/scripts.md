@@ -492,9 +492,11 @@ session, per subagent.
   tusage --daily              day<TAB>account<TAB>usd<TAB>reqs<TAB>unpriced
   tusage --windows            @w<TAB>account<TAB>epoch<TAB>7d%<TAB>7d resets<TAB>5h%<TAB>5h resets<TAB>usd
                               one row per subscription account with a live 7-day
-                              record; usd is the list-price spend since the window
-                              began. Given with --sessions the rows follow the
-                              sessions on the same pass.
+                              record; usd is the list-price spend from the window
+                              start to the instant the record was written. With
+                              --sessions the rows follow the sessions on the same
+                              pass, and each session row gains three columns:
+                              dollars inside its window, the subagent part, account.
 
 ACCOUNTS. The summary, --by account, --account and --daily split the bill by
 login. TU_ACCOUNTS is "name=dir;name=dir" (an empty dir means ~/.claude); unset,

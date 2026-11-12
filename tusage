@@ -41,9 +41,11 @@
 #   tusage --daily              day<TAB>account<TAB>usd<TAB>reqs<TAB>unpriced
 #   tusage --windows            @w<TAB>account<TAB>epoch<TAB>7d%<TAB>7d resets<TAB>5h%<TAB>5h resets<TAB>usd
 #                               one row per subscription account with a live 7-day
-#                               record; usd is the list-price spend since the window
-#                               began. Given with --sessions the rows follow the
-#                               sessions on the same pass.
+#                               record; usd is the list-price spend from the window
+#                               start to the instant the record was written. With
+#                               --sessions the rows follow the sessions on the same
+#                               pass, and each session row gains three columns:
+#                               dollars inside its window, the subagent part, account.
 #
 # ACCOUNTS. The summary, --by account, --account and --daily split the bill by
 # login. TU_ACCOUNTS is "name=dir;name=dir" (an empty dir means ~/.claude); unset,
@@ -872,8 +874,9 @@ calibrate() {  # <account> <amount> [at]
 # every ~/.claude-* directory that keeps a history. Dirs are deduped by their
 # real path because ~/.claude-personal is a symlink to ~/.claude-d, and reading
 # both would double-count every personal session.
-account_dirs() {
-  local spec=${TU_ACCOUNTS:-} d n ent
+# The accounts as written: TU_ACCOUNTS, or the default login plus every ~/.claude-NAME that has a history. The directories are as given, not resolved, which is how the status line hook names a login too.
+account_spec() {
+  local spec=${TU_ACCOUNTS:-} d n
   if [ -z "$spec" ]; then
     spec="default="
     for d in "$HOME"/.claude-*/; do
@@ -882,6 +885,12 @@ account_dirs() {
       spec="$spec;$n=${d%/}"
     done
   fi
+  printf '%s' "$spec"
+}
+
+account_dirs() {
+  local spec n d ent
+  spec=$(account_spec)
   # The trailing newline is not decoration: `read` drops a final line that has
   # none, which silently loses the last account in the list.
   printf '%s\n' "$spec" | tr ';' '\n' | while IFS= read -r ent; do
@@ -1833,10 +1842,40 @@ report_by() {  # <the --by list> <cut> <upto>
 sessions() {
   [ -s "$FACTS" ] || return 0
   local now; now=${NOW:-$(date +%s)}
+  # With --windows the window spec goes in on stdin ahead of the index, and the same read of the index prices the windows too.
+  { if [ "$WINDOWS" = 1 ]; then window_spec; fi; } |
   LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v cut="${1:-0}" -v upto="${2:-0}" \
-      -v h1="$(( now - 3600 ))" -v h5="$(( now - 18000 ))" \
+      -v h1="$(( now - 3600 ))" -v h5="$(( now - 18000 ))" -v now="$now" \
+      -v w="$WINDOWS" -v wonly="${WONLY:-0}" -v facts="$FACTS" \
       -v prices="$(prices_arg)" "$AWK_PRICE"'
     function cost(i,c5,c1,cr,o) { return i + 1.25*c5 + 2.0*c1 + 0.1*cr + 5*o }
+    FILENAME != facts {
+      if ($1 == "@W") {
+        if ((getline line < $3) > 0) {
+          close($3)
+          split(line, f, "\t")
+          # A window that has reset is over: its percent describes a week that is gone.
+          if (f[2] != "" && f[3] + 0 > now) {
+            N++; NM[N] = $2; EP[$2] = f[3] + 0 - 604800; RE[$2] = f[1] + 0
+            REC[$2] = f[1] "\t" f[2] "\t" f[3]
+            if (f[5] + 0 > now) REC[$2] = REC[$2] "\t" f[4] "\t" f[5]; else REC[$2] = REC[$2] "\t\t"
+          }
+        }
+      } else ACC[$1] = $2
+      next
+    }
+    # The windows: what each session priced inside its account window, and what the account priced from the window start to the instant its record was written. Independent of --since, so before the cut.
+    w == 1 && $8 + 0 > 0 {
+      ac = ($3 in ACC) ? ACC[$3] : ""
+      if ((ac in EP) && $1 + 0 >= EP[ac] && $1 + 0 <= now) {
+        wd = usd($7, $1 + 0, $9,$10,$11,$12,$13)
+        if (wd > 0) {
+          WS[$3] += wd
+          if ($4 != "-") WSUB[$3] += wd
+          if ($1 + 0 <= RE[ac]) WA[ac] += wd
+        }
+      }
+    }
     $1 + 0 >= cut && (upto == 0 || $1 + 0 <= upto) {
       s = $3; c = cost($9,$10,$11,$12,$13)
       d = usd($7, $1 + 0, $9,$10,$11,$12,$13)
@@ -1857,13 +1896,19 @@ sessions() {
       if (c > 0 && $1 + 0 >= LM[s]) { LM[s] = $1 + 0; MDL[s] = $7 }
       if ($4 != "-") { SUB[s] += c; DSUB[s] += d; NSUB[s SUBSEP $4] = ($1 + 0) }
     }
-    END { for (s in C) {
+    END { if (!wonly) for (s in C) {
         k = 0
         for (q in NSUB) { split(q, a, SUBSEP); if (a[1] == s && NSUB[q] >= h1) k++ }
-        print s, int(C[s]), R[s], int(X[s]), L[s], P[s],
+        line = sprintf("%s\t%d\t%s\t%d\t%s\t%s\t%d\t%d\t%d\t%s\t%.6f\t%.6f\t%.6f\t%d", s, int(C[s]), R[s], int(X[s]), L[s], P[s],
               int(SUB[s]), k, int(C5H[s]),
-              MDL[s], sprintf("%.6f", D[s]), sprintf("%.6f", D5H[s]),
-              sprintf("%.6f", DSUB[s]), UNP[s] + 0 } }' "$FACTS"
+              MDL[s], D[s], D5H[s], DSUB[s], UNP[s] + 0)
+        if (w == 1) {
+          g = (s in ACC) ? ACC[s] : ""
+          if (!(g in EP)) g = ""
+          line = line sprintf("\t%.6f\t%.6f\t%s", WS[s], WSUB[s], g)
+        }
+        print line }
+      for (i = 1; i <= N; i++) printf "@w\t%s\t%s\t%.4f\n", NM[i], REC[NM[i]], WA[NM[i]] }' - "$FACTS"
 }
 
 # day<TAB>account<TAB>usd<TAB>reqs<TAB>unpriced — one row per local day per
@@ -1908,9 +1953,9 @@ daily() {
   sort -t"$TAB" -k1,1 -k2,2
 }
 
-# THE SUBSCRIPTION'S OWN WINDOW. A Pro, Max or Ultra login is limited by a 7-day rate-limit window, not by dollars, and the only place that figure exists is the status line payload, which hooks/claude-statusline.sh keeps per account in <state dir>/ratelimit/<key>.tsv (epoch, 7d percent, 7d resets_at, 5h percent, 5h resets_at; TU_RATELIMIT moves the folder). A percent with no dollars under it says nothing about one session, so this prints the other half: what this index prices at list for the account since the window began (resets_at minus a week). The dashboard divides one by the other to turn a session's dollars into a share of the week.
-# One row per account whose 7-day window has not reset yet; none for an account without a record, which is how an Enterprise or API login stays in dollars. The 5h fields are blank once that window has reset too. No calibration factor is applied, as --sessions and --burn apply none.
-# THE KEY. The hook names an account by CLAUDE_CONFIG_DIR with every trailing slash off, the unset variable and $HOME/.claude both being "default", and every other "/" turned into "_". The raw directory of TU_ACCOUNTS is used (the dashboard hands over the one the profile names, which is the string the session saw), never the one account_dirs resolves with pwd -P, which would split a symlinked config dir from the record of the same login.
+# THE SUBSCRIPTION'S OWN WINDOW. A Pro, Max or Ultra login is limited by a 7-day rate-limit window, not by dollars, and the only place that figure exists is the status line payload, which hooks/claude-statusline.sh keeps per account in <state dir>/ratelimit/<key>.tsv (epoch, 7d percent, 7d resets_at, 5h percent, 5h resets_at; TU_RATELIMIT moves the folder). A percent says nothing about one session on its own, so --windows adds the other half, priced from the same transcripts so that both sides measure the same thing: per account the list-price spend from the window start (resets_at minus a week) up to the instant the record was written, which is the instant the percent was true, and per session the spend inside the window up to now. A session's share of the week is its in-window spend times the 7d percent over the account spend.
+# One @w row per account whose 7-day window has not reset yet; none for an account without a record, which is how an Enterprise or API login stays in dollars. The 5h fields are blank once that window has reset too. With --sessions the same pass (one read of the index) appends three columns to every session row: in-window dollars, the subagent part of them, and the account the window belongs to (blank when it has none). No calibration factor is applied, as --sessions and --burn apply none.
+# THE KEY. The hook names an account by CLAUDE_CONFIG_DIR with every trailing slash off, the unset variable and $HOME/.claude both being "default", and every other "/" turned into "_". The raw directory of the account spec is used, never the one account_dirs resolves with pwd -P, which would split a symlinked config dir from the record of the same login.
 RL_KEY=""
 rl_key() {  # <config dir, empty = the default account> -> RL_KEY, set in this shell so no fork is spent
   local d=${1:-}
@@ -1919,51 +1964,17 @@ rl_key() {  # <config dir, empty = the default account> -> RL_KEY, set in this s
   if [ -z "$d" ]; then RL_KEY=default; else RL_KEY=${d//\//_}; fi
 }
 
-windows() {
-  local rl=${TU_RATELIMIT:-${STATE%/*}/ratelimit} n d ent
-  [ -d "$rl" ] && [ -s "$FACTS" ] || return 0
-  {
-    if [ -n "${TU_ACCOUNTS:-}" ]; then
-      while IFS= read -r ent; do
-        [ -n "$ent" ] || continue
-        rl_key "${ent#*=}"
-        printf '@W\t%s\t%s\n' "${ent%%=*}" "$rl/$RL_KEY.tsv"
-      done <<EOF
-$(printf '%s\n' "$TU_ACCOUNTS" | tr ';' '\n')
+# The lines the sessions pass reads from stdin when it prices windows: "@W<TAB>name<TAB>record file", then the sid-to-account map.
+window_spec() {
+  local rl=${TU_RATELIMIT:-${STATE%/*}/ratelimit} ent
+  while IFS= read -r ent; do
+    [ -n "$ent" ] || continue
+    rl_key "${ent#*=}"
+    printf '@W\t%s\t%s\n' "${ent%%=*}" "$rl/$RL_KEY.tsv"
+  done <<EOF
+$(account_spec | tr ';' '\n')
 EOF
-    else
-      while IFS="$TAB" read -r n d; do
-        [ -n "$n" ] || continue
-        rl_key "$d"
-        printf '@W\t%s\t%s\n' "$n" "$rl/$RL_KEY.tsv"
-      done <<EOF
-$(account_dirs)
-EOF
-    fi
-    account_map
-  } | LC_ALL=C awk -F"$TAB" -v OFS="$TAB" -v facts="$FACTS" -v now="${NOW:-$(date +%s)}" -v prices="$(prices_arg)" "$AWK_PRICE"'
-    FILENAME != facts {
-      if ($1 == "@W") {
-        if ((getline line < $3) > 0) {
-          close($3)
-          split(line, f, "\t")
-          # A window that has reset is over: its percent describes a week that is gone.
-          if (f[2] != "" && f[3] + 0 > now) {
-            N++; NM[N] = $2; EP[$2] = f[3] + 0 - 604800
-            REC[$2] = f[1] "\t" f[2] "\t" f[3]
-            if (f[5] + 0 > now) REC[$2] = REC[$2] "\t" f[4] "\t" f[5]; else REC[$2] = REC[$2] "\t\t"
-          }
-        }
-      } else ACC[$1] = $2
-      next
-    }
-    $8 + 0 == 0 { next }
-    { a = ($3 in ACC) ? ACC[$3] : ""
-      if (!(a in EP) || $1 + 0 < EP[a]) next
-      d = usd($7, $1 + 0, $9, $10, $11, $12, $13)
-      if (d > 0) S[a] += d }
-    END { for (i = 1; i <= N; i++) printf "@w\t%s\t%s\t%.4f\n", NM[i], REC[NM[i]], S[NM[i]] }
-  ' - "$FACTS"
+  account_map
 }
 
 burn() {   # what the last 5h cost, for the tmux status bar
@@ -2284,8 +2295,8 @@ case "$DIM" in ""|__by|__sessions|__daily|__burn|__json) filter_facts ;; esac
 
 case "$DIM" in
   "")          summary ;;
-  __sessions)  sessions "$CUT" "$UPTO"; if [ "$WINDOWS" = 1 ]; then windows; fi ;;
-  __windows)   windows ;;
+  __sessions)  sessions "$CUT" "$UPTO" ;;
+  __windows)   WONLY=1 sessions 0 0 ;;
   __daily)     daily "$CUT" "$UPTO" ;;
   __calibrate) calibrate "$CAL_ACCT" "$CAL_AMT" "$CAL_AT" ;;
   __meter)     if [ "$MET_FORCE" = 1 ]; then meter_refresh --force

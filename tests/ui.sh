@@ -89,11 +89,16 @@ codesign -f -s - "$BIN/claude" >/dev/null 2>&1
 # $ subagents, unpriced requests.
 cat >"$BIN/tusage" <<'EOF'
 #!/bin/sh
-# --windows adds the account window rows, which the test puts in $TA_STATE_DIR/wrow.
+# --windows adds three columns to the session row (dollars inside the window,
+# the subagent part of them, the account) from $TA_STATE_DIR/wcols, and the
+# account window rows from $TA_STATE_DIR/wrow.
 for a in "$@"; do
   if [ "$a" = --sessions ]; then
-    printf 'sid-p\t0\t1\t150000\t0\tslug\t0\t0\t0\tclaude-opus-5\t12.34\t3.5\t1.25\t0\n'
-    case " $* " in *" --windows "*) cat "$TA_STATE_DIR/wrow" 2>/dev/null ;; esac
+    printf 'sid-p\t0\t1\t150000\t0\tslug\t0\t0\t0\tclaude-opus-5\t12.34\t3.5\t1.25\t0'
+    case " $* " in
+      *" --windows "*) printf '\t'; cat "$TA_STATE_DIR/wcols" 2>/dev/null || printf '0\t0\t\n'; cat "$TA_STATE_DIR/wrow" 2>/dev/null ;;
+      *) printf '\n' ;;
+    esac
     exit 0
   fi
 done
@@ -435,21 +440,23 @@ has   "...and the name is still there" "repo" "$(row_of %8001 "$NOBOTH")"
 t "2b. a subscription login reads in percent of its week"
 # ---------------------------------------------------------------------------
 # The window row is what tusage --windows prints for an account with a status-line
-# record: 7d at 40% and $100 priced inside the window make $2.50 a percent, so the
-# session's $12.34 is 4.9%, its $1.25 of subagents 0.5% and the $3.5 of the last
-# five hours 1.4%. The ratelimit file only has to exist: it is what tells the
-# collector to ask, and the stub answers.
+# record: 7d at 40% and $100 priced over the window up to that record make $2.50 a
+# percent. The session priced $5 inside the window (its $12.34 all-time is not what
+# counts), so it is 2.0%, its $1 of subagents 0.4%, and the $3.5 of the last five
+# hours 1.4%. The ratelimit file only has to exist: it is what tells the collector
+# to ask, and the stub answers.
 wrow() {  # <7d percent> <window usd>
   printf '@w\tpersonal\t1\t%s\t9999999999\t23\t9999999999\t%s\n' "$1" "$2" >"$STATE/wrow"
 }
 mkdir -p "$STATE/ratelimit"; : >"$STATE/ratelimit/default.tsv"
 wrow 40 100
+printf '5\t1\tpersonal\n' >"$STATE/wcols"
 PCT=$(rows_at 140)
-has   "the session is a share of the week, still marked as an estimate" '~4.9%' "$(row_of %8001 "$PCT")"
+has   "the session is a share of the week, always marked as an estimate" '~2.0%' "$(row_of %8001 "$PCT")"
 hasnt "...and not dollars"                                               '$12.3' "$(row_of %8001 "$PCT")"
-has   "...the subagent share converts the same way"                      '⑂0.5%' "$(row_of %8001 "$PCT")"
+has   "...the subagent share converts the same way"                      '⑂0.4%' "$(row_of %8001 "$PCT")"
 has   "...and so does the five-hour total on the header"                 '1.4%/5h' "$(hdr_named "$PCT" "no window")"
-hasnt "hiding cost takes the percent with it" '4.9%' "$(row_of %8001 "$(rows_at 140 TA_HIDE_COLS=cost)")"
+hasnt "hiding cost takes the percent with it" '2.0%' "$(row_of %8001 "$(rows_at 140 TA_HIDE_COLS=cost)")"
 hasnt "...and the header's"                   '/5h'  "$(hdr_named "$(rows_at 140 TA_HIDE_COLS=cost)" "no window")"
 
 CFGU="$ROOT/config-usd.toml"
@@ -457,13 +464,15 @@ CFGU="$ROOT/config-usd.toml"
 has "display = usd forces dollars" '$12.3' "$(row_of %8001 "$(rows_at 140 TA_CONFIG="$CFGU")")"
 CFGP="$ROOT/config-percent.toml"
 { cat "$CFGW"; printf 'display = "percent"\n'; } >"$CFGP"
-has "display = percent is the same as auto" '~4.9%' "$(row_of %8001 "$(rows_at 140 TA_CONFIG="$CFGP")")"
+has "display = percent is the same as auto" '~2.0%' "$(row_of %8001 "$(rows_at 140 TA_CONFIG="$CFGP")")"
 
 wrow 0.5 100
 has "under 1% of the week the quotient is noise, so dollars" '$12.3' "$(row_of %8001 "$(rows_at 140)")"
 wrow 40 0
 has "a window with nothing priced in it falls back to dollars" '$12.3' "$(row_of %8001 "$(rows_at 140)")"
-rm -f "$STATE/wrow" "$STATE/ratelimit/default.tsv"
+printf '5\t1\t\n' >"$STATE/wcols"; wrow 40 100
+has "a session in no account window (no account on its row) stays in dollars" '$12.3' "$(row_of %8001 "$(rows_at 140)")"
+rm -f "$STATE/wrow" "$STATE/wcols" "$STATE/ratelimit/default.tsv"
 has "an Enterprise login, with no record, stays in dollars" '$12.3' "$(row_of %8001 "$(rows_at 140)")"
 
 # The picker itself. No port: there is no list listening for this one, which

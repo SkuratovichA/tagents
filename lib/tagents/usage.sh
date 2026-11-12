@@ -153,22 +153,35 @@ usage_meter() {  # -> "<used><TAB><limit><TAB><fetched at>" for the watched acco
 # returns 0; for an Enterprise or API login (no record), a stale one, or
 # usage.display = usd it prints nothing and returns 1, and the caller goes on to
 # the month as before. Same four modes as usage_line.
+# The record is read straight off its file, in bash, with no tusage behind it:
+# this runs on every status-bar tick and everything it prints is in the record.
+# The key is the one hooks/claude-statusline.sh and tusage give the login:
+# CLAUDE_CONFIG_DIR without its trailing slashes, "default" when that is empty
+# or $HOME/.claude, and every other "/" turned into "_". The three are pinned
+# against each other in tests/usage.sh and tests/tusage.sh.
+usage_ratelimit_key() {  # <config dir, empty = the default login> -> the key
+  local d=${1:-}
+  while [ -n "$d" ] && [ "${d%/}" != "$d" ]; do d=${d%/}; done
+  [ "$d" = "$HOME/.claude" ] && d=""
+  if [ -z "$d" ]; then printf default; else printf '%s' "${d//\//_}"; fi
+}
+
 usage_week_line() {  # <status|footer|summary|both> -> 0 when it printed
-  local mode=$1 watch row p7 r7 p5 r5 badge st rest at ac tc esc=$'\033'
+  local mode=$1 watch dir ep p7 r7 p5 r5 now badge st rest at ac tc esc=$'\033' f
   [ "$(usage_display)" = usd ] && return 1
   watch=$(usage_watch) || return 1
-  set -- "$STATE_DIR"/ratelimit/*.tsv
-  [ -e "$1" ] || return 1
-  usage_env
-  row=$(TU_RATELIMIT="$STATE_DIR/ratelimit" tusage --no-update --windows 2>/dev/null |
-        LC_ALL=C awk -F"$TAB" -v w="$watch" '$1 == "@w" && $2 == w { print $4 "\t" $5 "\t" $6 "\t" $7; exit }') || return 1
-  [ -n "$row" ] || return 1
-  IFS="$TAB" read -r p7 r7 p5 r5 <<EOF
-$row
-EOF
+  dir=$(cfg_get "claude.profiles.$watch.config_dir") && dir=$(cfg_expand_dir "$dir") || dir=""
+  f="$STATE_DIR/ratelimit/$(usage_ratelimit_key "$dir").tsv"
+  [ -r "$f" ] || return 1
+  IFS="$TAB" read -r ep p7 r7 p5 r5 <"$f" || [ -n "${p7:-}" ] || return 1
+  now=$(date +%s)
+  case "$p7$r7" in ''|*[!0-9.]*) return 1 ;; esac
+  # A window that has reset is over: its percent describes a week that is gone.
+  [ "${r7%.*}" -gt "$now" ] || return 1
+  case "$r5" in ''|*[!0-9]*) p5="" ;; *) [ "$r5" -gt "$now" ] || p5="" ;; esac
   badge=$(cfg_get "claude.profiles.$watch.badge") || badge=""
   [ -n "$badge" ] || badge=${watch%"${watch#?}"}
-  at=$(date -r "$r7" '+%a %H:%M' 2>/dev/null) || at=""
+  at=$(date -r "${r7%.*}" '+%a %H:%M' 2>/dev/null) || at=""
   p7=$(printf '%.0f' "$p7")
   if [ "$p7" -ge 90 ]; then tc=red; ac="[31m"
   elif [ "$p7" -ge 70 ]; then tc=yellow; ac="[33m"

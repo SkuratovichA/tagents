@@ -155,20 +155,21 @@ list() {
     # A share of the week, narrow enough for the same cell: one decimal below
     # 10%, none from there, and "<.1%" for a session that has spent something.
     function pctfmt(v) {
-      if (v <= 0)     return ""
+      if (v <= 0)     return "0%"
       if (v < 0.1)    return "<.1%"
       if (v < 9.95)   return sprintf("%.1f%%", v)
       return sprintf("%d%%", v + 0.5)
     }
-    # Dollars to a share of the subscription week. The dollars a percent of the
-    # week cost is this account list-price spend since its 7d window began over
-    # the 7d percent Claude Code reported, so the figure is an estimate at this
-    # week rate. Nothing (the caller falls back to dollars) when the setting says
-    # usd, the account has no fresh record, the percent is under 1 (the quotient
-    # would be noise) or nothing was spent in the window.
+    # Transcript dollars to a share of the subscription week: what the session
+    # priced inside its account window (tusage prices both sides from the same
+    # transcripts, so they measure the same thing) times the 7d percent over what
+    # the account priced from the window start to the moment that percent was
+    # read. -1 (the caller falls back to dollars) when the setting says usd, the
+    # session has no fresh window, the percent is under 1 (the quotient would be
+    # noise) or the account priced nothing in the window.
     function pctof(d, an) {
-      if (disp == "usd" || an == "" || !(an in wp7)) return ""
-      if (wp7[an] < 1 || wusd[an] <= 0) return ""
+      if (disp == "usd" || an == "" || !(an in wp7)) return -1
+      if (wp7[an] < 1 || wusd[an] <= 0) return -1
       return d * wp7[an] / wusd[an]
     }
     # claude-opus-4-8 -> opus4.8, claude-haiku-4-5-20251001 -> haiku4.5. The
@@ -455,7 +456,7 @@ list() {
     $1=="U" && $2=="@w" { wp7[$3]=$5+0; wr7[$3]=$6+0; wp5[$3]=$7; wr5[$3]=$8+0; wusd[$3]=$9+0; next }
     $1=="U" { uctx[$2]=$5+0; u5h[$2]=$10+0; usub[$2]=$8+0; utot[$2]=$3+0
               umdl[$2]=$11; uusd[$2]=$12+0; uusd5h[$2]=$13+0; uusdsub[$2]=$14+0
-              uunp[$2]=$15+0; next }
+              uunp[$2]=$15+0; uws[$2]=$16+0; uwsub[$2]=$17+0; uacct[$2]=$18; next }
     END {
       # A session id that is running right now must not also be offered as a
       # closed one: resuming re-registers under a new pane, and the old record
@@ -634,9 +635,13 @@ list() {
         if (exact) ud = scost[sq]
         udsub = (sq in uusdsub) ? uusdsub[sq] : 0
         unp = (sq in uunp) ? uunp[sq] : 0
-        an = acctname((p in cfgd) ? cfgd[p] : "", (p in hascfg) ? hascfg[p] : 0)
+        # The window belongs to the account tusage placed the session in, which
+        # is the account its transcripts were written under, not the one the pane
+        # was launched as.
+        an = (sq in uacct) ? uacct[sq] : ""
         pv = (sq in uusd5h) ? uusd5h[sq] : 0
-        if (pv > 0 && pctof(pv, an) != "") gburnp[grpkey] += pctof(pv, an)
+        pw = pctof(pv, an)
+        if (pv > 0 && pw >= 0) gburnp[grpkey] += pw
         else gburn[grpkey] += pv
         # What this session has cost, priced per request at the model that ran
         # it. A trailing ? means some of it ran on a model with no published
@@ -650,17 +655,26 @@ list() {
         # when there is a figure to mark: money() returns nothing at all below a
         # cent, and prefixing that left a lone "~" sitting in the column of every
         # session that had not spent anything yet.
-        udtxt = (ud > 0 && pctof(ud, an) != "") ? pctfmt(pctof(ud, an)) : money(ud)
-        if (udtxt != "")
-          udtxt = (exact ? "" : "~") udtxt (!exact && unp > 0 ? "?" : "")
+        # A share of the week is always an estimate, so it always wears the ~, and
+        # it is measured on transcript dollars even where Claude Code reported an
+        # exact total: both sides of the division must be the same kind of figure.
+        pw = pctof((sq in uws) ? uws[sq] : 0, an)
+        if (ud > 0 && pw >= 0) {
+          udtxt = "~" pctfmt(pw) (unp > 0 ? "?" : "")
+        } else {
+          udtxt = money(ud)
+          if (udtxt != "")
+            udtxt = (exact ? "" : "~") udtxt (!exact && unp > 0 ? "?" : "")
+        }
         # THE CELLS ARE KEPT, NOT DRAWN. How wide a column is depends on what
         # every row puts in it, so each row is measured here and drawn after the
         # loop, once fitcols has seen them all.
         cagt[n] = agetxt; cnm[n] = nm; ccx[n] = cx; cud[n] = udtxt
         cbdg[n] = badgeof((p in cfgd) ? cfgd[p] : "", (p in hascfg) ? hascfg[p] : 0)
         cmdl[n] = curmodel(sq)
-        cacct[n] = an
-        cusubt[n] = (udsub > 0 && pctof(udsub, an) != "") ? pctfmt(pctof(udsub, an)) : money(udsub)
+        cacct[n] = acctname((p in cfgd) ? cfgd[p] : "", (p in hascfg) ? hascfg[p] : 0)
+        pw = pctof((sq in uwsub) ? uwsub[sq] : 0, an)
+        cusubt[n] = (udsub > 0 && pw >= 0) ? pctfmt(pw) : money(udsub)
         cwhere[n] = where; cpre[n] = pre; cusub[n] = udsub; cdtl[n] = subp d
         if (cx > 0) mxctx = 1
         if (udtxt != "") mxcost = 1
