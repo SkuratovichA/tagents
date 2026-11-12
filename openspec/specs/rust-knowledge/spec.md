@@ -6,7 +6,7 @@ The knowledge MCP server, its shared daemon and the relay a session runs in fron
 ## Requirements
 
 ### Requirement: Each tool answers as the node server does
-For the same documents, index and usage store, every result of the six tools SHALL be the bytes the node server answers: ranking, scores, snippets, the lines for a missing document or section, and the `isError` results for an unknown tool or invalid arguments, with the node server's wording. `tools/list` SHALL be the node server's list, in its order.
+For the same documents, index and usage store, every result of the four tools SHALL be the bytes the node server answers: ranking, scores, snippets, the lines for a missing document or section, and the `isError` results for an unknown tool or invalid arguments, with the node server's wording. `tools/list` SHALL be the node server's list, in its order.
 
 #### Scenario: Equal ranks
 - **WHEN** two sections rank equally for a query and one document is deprecated
@@ -25,7 +25,7 @@ For the same documents, index and usage store, every result of the six tools SHA
 - **THEN** the result is `isError` with the node server's line
 
 ### Requirement: The handshake names the server
-`initialize` SHALL be answered as the node server answers it: the server name `tagents-knowledge`, the capability `tools` with `listChanged`, and the protocol version the node server would negotiate for the same client. The server version SHALL be the version of the binary.
+`initialize` SHALL be answered as the node server answers it: the server name `okb`, the capability `tools` with `listChanged`, and the protocol version the node server would negotiate for the same client. The server version SHALL be the version of the binary.
 
 #### Scenario: A client of an older protocol
 - **WHEN** a client asks for a protocol version both programs support, and then for one neither supports
@@ -76,7 +76,7 @@ A document SHALL be parsed to the same fields, sections, legacy mapping and date
 The shared server of the binary SHALL listen on a socket named and placed as the `knowledge` capability says, with a key that is never a key of the node program, so that a node daemon and a native daemon of one environment are two servers on two sockets and neither serves the other's. A replaced binary SHALL get a new key.
 
 #### Scenario: Both programs, one environment
-- **WHEN** `tagents-knowledge serve` runs once through each program in one environment
+- **WHEN** `serve` runs once through each program in one environment
 - **THEN** two different sockets are printed and two daemons run, each serving its own clients
 
 #### Scenario: A replaced binary
@@ -159,7 +159,7 @@ Every way the binary's server differs from the node server SHALL be listed in `d
 
 #### Scenario: The usage text
 - **WHEN** `okb`, `okb help`, `okb --help`, `okb -h` and `okb bogus` run
-- **THEN** the text, the stream it goes to and the exit code are the oracle's, byte for byte, so the program name in the text is still `tagents-knowledge` until pull request B renames it (`tests/rust-knowledge-parity.sh`)
+- **THEN** the text, the stream it goes to and the exit code are the oracle's, byte for byte once the oracle's program name is replaced by `okb`, and the text has no Russian (`tests/rust-knowledge-parity.sh`)
 
 #### Scenario: Arguments of mcp and serve
 - **WHEN** `okb mcp extra words` runs, and `okb serve` gets `--idle 0`, an unknown option or a positional word

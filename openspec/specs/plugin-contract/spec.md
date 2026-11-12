@@ -87,7 +87,7 @@ The generator SHALL accept `--check` and nothing else: any other option prints `
 - **THEN** the message names that script and the exit code is 1
 
 ### Requirement: The plugin version follows what the plugin ships
-`.claude-plugin/plugin.json` SHALL carry a `version` and a `metadata.digest`, both maintained by the generator. The digest SHALL be a `sha256:` hash over the paths and contents of the payload: the generated files, every file under `skills/` outside `references/`, the launcher `bin/knowledge-mcp`, `.claude-plugin/marketplace.json` when present, and `plugin.json` without its `version` and `digest`. The version SHALL move only when the digest moved.
+`.claude-plugin/plugin.json` SHALL carry a `version` and a `metadata.digest`, both maintained by the generator. The digest SHALL be a `sha256:` hash over the paths and contents of the payload: the generated files, every file under `skills/` outside `references/`, the plugin's launcher, if it has one, its own entry in `.claude-plugin/marketplace.json`, and `plugin.json` without its `version` and `digest`. The version SHALL move only when the digest moved.
 
 #### Scenario: The first run
 - **WHEN** `plugin.json` has no stored digest
@@ -102,7 +102,7 @@ The generator SHALL accept `--check` and nothing else: any other option prints `
 - **THEN** the digest does not move
 
 #### Scenario: The knowledge launcher changes
-- **WHEN** only `bin/knowledge-mcp` changed
+- **WHEN** only the launcher of the plugin changed
 - **THEN** the digest moves, the version takes a patch step, and the pre-commit hook regenerates the contract for a commit that stages that file
 
 ### Requirement: Minor and patch moves
@@ -302,7 +302,7 @@ The verbs of `tagents-core` SHALL be read from `spec/cli/tagents-core.json`, whi
 - **THEN** the check fails naming the file (`cargo test -p okb --test knowledge_spec`, `crates/okb/tests/knowledge_spec.rs`, which compares `okb --spec` with the file and the verbs in it with the ones the program serves)
 
 ### Requirement: The generator knows two plugins
-In the second pull request the generator SHALL keep, for each of `tagents` and `okb`, its manifest, generated files, shipped files, digest and version, and `pnpm plugin:check` SHALL fail when either is stale. `contract.json` SHALL list the tools of the `okb` plugin's server `knowledge` and of the `tagents` server separately.
+The generator SHALL keep, for each of `tagents` and `okb`, its manifest, generated files, shipped files, digest and version, and `pnpm plugin:check` SHALL fail when either is stale. `contract.json` SHALL list the tools of the `okb` plugin's server `knowledge` and of the `tagents` server separately.
 
 #### Scenario: Only okb's launcher changes
 - **WHEN** only `plugins/okb/bin/okb-mcp` changes
