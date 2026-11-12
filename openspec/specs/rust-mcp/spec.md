@@ -1,7 +1,7 @@
 # rust-mcp Specification
 
 ## Purpose
-The plugin's MCP server as a verb of the Rust binary: `tagents-core mcp --contract <contract.json>` derives its tools from the generated contract, runs the same programs and tells the same results as the node server in `packages/mcp`, which stays as the fallback and as the reference that the differential suite compares it with byte for byte; how a call is run and ended, and where the two servers knowingly differ.
+The plugin's MCP server as a verb of the Rust binary: `tagents-core mcp --contract <contract.json>` derives its tools from the generated contract, runs the same programs and tells the same results as the node server of the oracle tag `v0.6.7` (`packages/mcp` is deleted), which the differential suite compares it with byte for byte; how a call is run and ended, and where the two servers knowingly differ.
 
 ## Requirements
 

@@ -57,7 +57,7 @@ The LaunchAgent starts `~/.local/bin/tagents-notify run`, the command `install.s
 
 A binary the daily update could not replace (its version has no release yet) stays and keeps running the service. A plist written before the wrapper existed still names `node packages/notify/dist/main.js run`: that command starts the binary as its child, or prints the needs-binary line and exits 69 when there is none. A service that is already running keeps the program it started with: installing the binary does not restart it, and `tagents notify install` or the next login does.
 
-To see which program runs, take the pid from the `service:` line of `tagents notify status` and run `footprint <pid>`: it names the process, `tagents-core` for the binary and `node` for the node program.
+To see which program runs, take the pid from the `service:` line of `tagents notify status` and run `footprint <pid>`: it names the process: `tagents-core` when the binary runs the service itself. With an old plist or no wrapper the service is a `node` supervisor and the binary is its child, so the footprint shows `node` and, below it, `tagents-core`.
 
 ## Clicking a notice
 

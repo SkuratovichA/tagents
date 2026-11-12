@@ -121,7 +121,7 @@ The plugin SHALL register no Claude Code hooks and no status line, because a plu
 - **THEN** it refuses to run instead of half-working
 
 ### Requirement: The parts of the ecosystem
-The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeScript packages: `@tagents/core` (headless sessions and plugins, behind `tagents-core`), `@tagents/knowledge` (the owner's notes as markdown, a CLI and an MCP server), `@tagents/telegram` (a typed Bot API client), `@tagents/notify` (desktop notifications), `@tagents/mcp` (the MCP server of the contract's tools) and `@tagents/contract` (the contract generator). Plugins are further packages the config names.
+The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeScript packages: `@tagents/core` (headless sessions and plugins, behind `tagents-core`), `@tagents/knowledge` (the owner's notes as markdown, a CLI and an MCP server), `@tagents/telegram` (a typed Bot API client), `@tagents/notify` (desktop notifications), `@tagents/contract` (the contract generator). Plugins are further packages the config names.
 
 #### Scenario: One name reaches all of it
 - **WHEN** a user types `tagents plugin list`, `tagents session list` or `tagents doctor`
