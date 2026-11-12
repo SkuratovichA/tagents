@@ -65,10 +65,13 @@ export const SAMPLE_PLUGIN = {
   mcpServers: { knowledge: { command: 'demo', args: ['mcp'] } },
 };
 
+export const SAMPLE_OKB_PLUGIN = { name: 'demo-okb', version: '1.0.0', description: 'a second demo plugin', mcpServers: { knowledge: { command: 'sh', args: ['${CLAUDE_PLUGIN_ROOT}/bin/okb-mcp'] } } };
+
 export function sampleDisk(): Disk {
   return {
     files: new Map<string, string | Uint8Array>([
       ['.claude-plugin/plugin.json', JSON.stringify(SAMPLE_PLUGIN)],
+      ['plugins/okb/.claude-plugin/plugin.json', JSON.stringify(SAMPLE_OKB_PLUGIN)],
       ['.claude-plugin/marketplace.json', '{"name":"demo"}\n'],
       ['skills/tagents/SKILL.md', '# the skill\n'],
     ]),

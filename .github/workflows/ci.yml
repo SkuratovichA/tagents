@@ -40,6 +40,6 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Validate the manifests and the skill
         run: |
-          for target in . .claude-plugin/plugin.json skills; do
+          for target in . .claude-plugin/plugin.json skills plugins/okb plugins/okb/.claude-plugin/plugin.json plugins/okb/skills; do
             claude plugin validate "$target" --strict || exit 1
           done

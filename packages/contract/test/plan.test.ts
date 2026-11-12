@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createT } from '../src/i18n/index.ts';
 import { parseJson, stringifyJson } from '../src/json.ts';
-import { REFERENCES_DIR, SHIPPED_FILES, planGenerate, type Disk } from '../src/plan.ts';
+import { REFERENCES_DIR, planGenerate, type Disk } from '../src/plan.ts';
+import { OKB, OKB_PROGRAM, KNOWLEDGE_SERVER_NAME } from '../src/plugins.ts';
 import type { Sources } from '../src/types.ts';
 import { SAMPLE_PLUGIN, applied, sampleCli, sampleDisk, sampleSources } from './sample.ts';
 
@@ -34,7 +35,10 @@ test('the first plan writes the contract, the references and the digest, and kee
   const plan = planGenerate(sampleSources(), sampleDisk(), t);
   assert.deepEqual([...plan.writes.keys()], [
     PLUGIN,
+    'plugins/okb/.claude-plugin/plugin.json',
     'contract.json',
+    `${OKB.referencesDir}/cli.md`,
+    `${OKB.referencesDir}/mcp.md`,
     `${REFERENCES_DIR}/cli.md`,
     `${REFERENCES_DIR}/core.api.md`,
     `${REFERENCES_DIR}/mcp.md`,
@@ -105,21 +109,52 @@ test('a file under skills outside references is part of the payload, never delet
   assert.deepEqual([...plan.writes.keys()], [PLUGIN]);
 });
 
-test('a changed launcher in SHIPPED_FILES is a patch: it reaches an installed copy only as a new version', () => {
+const okbOf = (plan: ReturnType<typeof planGenerate>) => plan.plugins.find((p) => p.plugin === 'okb');
+
+test('a changed launcher in the shipped files of a plugin is a patch of that plugin only: it reaches an installed copy only as a new version', () => {
   const { sources, disk } = generated();
-  const launcher = SHIPPED_FILES[0];
+  const launcher = OKB.shipped[0] ?? '';
   const first = planGenerate(sources, withDisk(disk, { [launcher]: '#!/bin/sh\nexec one\n' }), t);
-  assert.deepEqual([first.move, first.versionTo], ['patch', '0.1.1']);
+  assert.deepEqual([okbOf(first)?.move, okbOf(first)?.versionTo], ['patch', '1.0.1']);
+  assert.equal(first.move, 'same', 'the plugin that does not ship the launcher keeps its version');
   const placed = applied(withDisk(disk, { [launcher]: '#!/bin/sh\nexec one\n' }), first);
-  assert.equal(planGenerate(sources, placed, t).move, 'same');
+  assert.equal(okbOf(planGenerate(sources, placed, t))?.move, 'same');
   const second = planGenerate(sources, withDisk(placed, { [launcher]: '#!/bin/sh\nexec two\n' }), t);
-  assert.deepEqual([second.move, second.versionTo], ['patch', '0.1.2']);
+  assert.deepEqual([okbOf(second)?.move, okbOf(second)?.versionTo], ['patch', '1.0.2']);
 });
 
-test('a changed marketplace.json is a patch', () => {
+test('each plugin has the references of the programs and servers it owns, and the other plugin has none of them', () => {
+  const okbCli = { ...sampleCli, program: OKB_PROGRAM };
+  const sources: Sources = { ...sampleSources(), cli: [sampleCli, okbCli], mcp: [{ name: KNOWLEDGE_SERVER_NAME, tools: [] }, ...sampleSources().mcp] };
+  const plan = planGenerate(sources, sampleDisk(), t);
+  const own = (path: string): string => String(plan.writes.get(path));
+  assert.match(own(`${OKB.referencesDir}/cli.md`), new RegExp(`## ${OKB_PROGRAM}`));
+  assert.doesNotMatch(own(`${OKB.referencesDir}/cli.md`), /## demo-cli/);
+  assert.match(own(`${REFERENCES_DIR}/cli.md`), /## demo-cli/);
+  assert.doesNotMatch(own(`${REFERENCES_DIR}/cli.md`), new RegExp(`## ${OKB_PROGRAM}`));
+  assert.match(own(`${OKB.referencesDir}/mcp.md`), new RegExp(`## ${KNOWLEDGE_SERVER_NAME}`));
+  assert.doesNotMatch(own(`${REFERENCES_DIR}/mcp.md`), new RegExp(`## ${KNOWLEDGE_SERVER_NAME}`));
+  assert.equal(plan.writes.has(`${OKB.referencesDir}/scripts.md`), false, 'scripts and API reports belong to the plugin that is the root');
+});
+
+test('a stray file under the references directory of the second plugin is deleted, and a skill file of it is part of its digest only', () => {
   const { sources, disk } = generated();
-  const plan = planGenerate(sources, withDisk(disk, { '.claude-plugin/marketplace.json': '{"name":"other"}\n' }), t);
-  assert.deepEqual([plan.move, plan.versionTo], ['patch', '0.1.1']);
+  const stray = `${OKB.referencesDir}/old.md`;
+  assert.deepEqual(planGenerate(sources, withDisk(disk, { [stray]: 'x' }), t).deletes, [stray]);
+  const skill = 'plugins/okb/skills/okb/SKILL.md';
+  const plan = planGenerate(sources, withDisk(disk, { [skill]: '# okb\n' }), t);
+  assert.deepEqual([okbOf(plan)?.move, plan.move], ['patch', 'same']);
+});
+
+test('the entry of a plugin in the marketplace is in the digest of that plugin only', () => {
+  const market = (tagents: string, okb: string): string =>
+    `${JSON.stringify({ name: 'demo', plugins: [{ name: 'tagents', description: tagents }, { name: 'okb', description: okb }] })}\n`;
+  const first = planGenerate(sampleSources(), withDisk(sampleDisk(), { '.claude-plugin/marketplace.json': market('a', 'b') }), t);
+  const disk = applied(withDisk(sampleDisk(), { '.claude-plugin/marketplace.json': market('a', 'b') }), first);
+  const okbChanged = planGenerate(sampleSources(), withDisk(disk, { '.claude-plugin/marketplace.json': market('a', 'b2') }), t);
+  assert.deepEqual([okbChanged.move, okbOf(okbChanged)?.move], ['same', 'patch']);
+  const tagentsChanged = planGenerate(sampleSources(), withDisk(disk, { '.claude-plugin/marketplace.json': market('a2', 'b') }), t);
+  assert.deepEqual([tagentsChanged.move, okbOf(tagentsChanged)?.move], ['patch', 'same']);
 });
 
 test('a changed key of plugin.json other than the version and the digest is a patch', () => {

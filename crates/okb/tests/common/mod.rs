@@ -8,7 +8,6 @@ pub mod knowledge;
 // The process helpers are the file the tests of tagents-core use, so that they exist once.
 #[path = "../../../tagents-core/tests/common/rig.rs"]
 pub mod rig;
-pub mod sessions;
 pub mod shared;
 
 /// The root of the checkout, where the contract, the fixtures and the node packages are.

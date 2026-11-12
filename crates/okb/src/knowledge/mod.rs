@@ -1,6 +1,5 @@
 //! The knowledge package in Rust: the index, the search, the usage store and the MCP tools over them.
 
-pub mod args;
 pub mod cli;
 pub mod daemon;
 pub mod doc;

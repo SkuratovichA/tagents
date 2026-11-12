@@ -136,8 +136,7 @@ jobs:
               unpacked=$(mktemp -d)
               tar -xzf "dist/$archive" -C "$unpacked"
               test "$("$unpacked/$prog" --version)" = "$prog $VERSION"
-              case $prog in tagents-core) spec=tagents-core ;; okb) spec=tagents-knowledge ;; esac
-              "$unpacked/$prog" --spec | grep -q '"program": "'"$spec"'"'
+              "$unpacked/$prog" --spec | grep -q '"program": "'"$prog"'"'
             fi
           done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

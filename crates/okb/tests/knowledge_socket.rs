@@ -16,8 +16,8 @@ use okb::knowledge::{
     doc::hash_of,
     paths::Env,
     socket::{
-        KEY_VARS, canonical, code_stamp, ensure_private_dir, key_lines, lock_dir_of, pid_file_of,
-        program_stamp, server_key, socket_dir, socket_path,
+        KEY_VARS, canonical, code_stamp, ensure_private_dir, exported, key_lines, lock_dir_of,
+        pid_file_of, program_stamp, server_key, socket_dir, socket_path,
     },
 };
 use rustix::process::geteuid;
@@ -68,7 +68,7 @@ fn the_directory_of_every_environment_is_the_one_node_chose() {
 }
 
 #[test]
-fn the_variables_and_the_key_of_every_environment_are_the_ones_node_made() {
+fn the_variables_and_the_key_of_every_environment_are_the_recorded_ones() {
     let cases = socket_cases();
     for case in &cases {
         let env = env_of(case);
@@ -89,11 +89,11 @@ fn the_variables_and_the_key_of_every_environment_are_the_ones_node_made() {
             case["name"]
         );
     }
-    assert!(cases.len() >= 40, "{} cases", cases.len());
+    assert!(cases.len() >= 35, "{} cases", cases.len());
 }
 
 #[test]
-fn the_key_variables_are_the_seven_node_names() {
+fn the_key_variables_are_the_six_names_of_the_node_program_without_the_claude_homes() {
     assert_eq!(
         [
             "HOME",
@@ -101,8 +101,7 @@ fn the_key_variables_are_the_seven_node_names() {
             "XDG_CONFIG_HOME",
             "TAGENTS_KNOWLEDGE_DIR",
             "TAGENTS_KNOWLEDGE_DB",
-            "TAGENTS_KNOWLEDGE_USAGE_DB",
-            "CLAUDE_HOMES"
+            "TAGENTS_KNOWLEDGE_USAGE_DB"
         ],
         KEY_VARS
     );
@@ -118,7 +117,6 @@ fn base() -> Env {
         knowledge_dir: Some("/k".into()),
         knowledge_db: Some("/k.db".into()),
         knowledge_usage_db: Some("/u.db".into()),
-        claude_homes: Some("/a,/b".into()),
         ..Env::default()
     }
 }
@@ -141,7 +139,7 @@ fn the_key_changes_with_each_variable_and_with_the_binary() {
         "the same input, the same key"
     );
 
-    let changes: [(&str, Change); 7] = [
+    let changes: [(&str, Change); 6] = [
         ("HOME", |env| env.home_var = Some("/home/v".into())),
         ("TAGENTS_CONFIG_DIR", |env| {
             env.tagents_config_dir = Some("/c2".into())
@@ -157,9 +155,6 @@ fn the_key_changes_with_each_variable_and_with_the_binary() {
         }),
         ("TAGENTS_KNOWLEDGE_USAGE_DB", |env| {
             env.knowledge_usage_db = Some("/u2.db".into())
-        }),
-        ("CLAUDE_HOMES", |env| {
-            env.claude_homes = Some("/a,/c".into())
         }),
     ];
     for (name, change) in changes {
@@ -348,4 +343,59 @@ fn a_file_a_link_or_a_directory_of_another_owner_is_refused() {
             ensure_private_dir(Path::new("/"))
         );
     }
+}
+
+fn plain_env() -> Env {
+    Env {
+        home: "/home/me".into(),
+        cwd: "/work/here".into(),
+        ..Env::default()
+    }
+}
+
+#[test]
+fn okbs_own_variables_change_the_key_and_unset_ones_leave_it_as_it_was() {
+    let base = plain_env();
+    let key = |env: &Env| server_key(env, "stamp");
+    let unset = key(&base);
+    // Unset: no OKB line, the lines are exactly the ones of the node program.
+    assert!(
+        key_lines(&base)
+            .iter()
+            .all(|line| !line.starts_with("OKB_"))
+    );
+    assert_eq!(key_lines(&base).len(), KEY_VARS.len());
+    let with_config = Env {
+        okb_config_dir: Some("/cfg/okb".into()),
+        ..base.clone()
+    };
+    let with_dir = Env {
+        okb_dir: Some("/notes".into()),
+        ..base.clone()
+    };
+    assert_ne!(key(&with_config), unset);
+    assert_ne!(key(&with_dir), unset);
+    assert_ne!(key(&with_config), key(&with_dir));
+    assert!(key_lines(&with_config).contains(&"OKB_CONFIG_DIR=/cfg/okb".to_owned()));
+    assert!(key_lines(&with_dir).contains(&"OKB_DIR=/notes".to_owned()));
+}
+
+#[test]
+fn okbs_own_variables_are_made_absolute_and_exported_to_the_daemon() {
+    let env = Env {
+        okb_config_dir: Some("rel/cfg".into()),
+        okb_dir: Some("~/notes".into()),
+        ..plain_env()
+    };
+    let canon = canonical(&env);
+    assert_eq!(canon.okb_config_dir.as_deref(), Some("/work/here/rel/cfg"));
+    assert_eq!(canon.okb_dir.as_deref(), Some("~/notes"));
+    let listed = exported(&env);
+    assert!(listed.contains(&("OKB_CONFIG_DIR", "/work/here/rel/cfg".to_owned())));
+    assert!(listed.contains(&("OKB_DIR", "~/notes".to_owned())));
+    assert!(
+        exported(&plain_env())
+            .iter()
+            .all(|(name, _)| !name.starts_with("OKB_"))
+    );
 }

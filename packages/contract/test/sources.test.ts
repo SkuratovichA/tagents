@@ -6,12 +6,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { BASH_SPEC, KNOWLEDGE_SERVER_NAME as SERVER_NAME, TAGENTS_SERVER_NAME, SCRIPT_NAMES, cliContracts, mcpServers, scriptEnv, scriptHelps, tagentsServer } from '../src/sources.ts';
+import { BASH_SPEC, TAGENTS_SERVER_NAME, SCRIPT_NAMES, cliContracts, mcpServers, scriptEnv, scriptHelps, tagentsServer } from '../src/sources.ts';
+import { KNOWLEDGE_SERVER_NAME as SERVER_NAME } from '../src/plugins.ts';
 import { REPO_ROOT } from '../src/tree.ts';
 
 test('every CLI contract is present, each with verbs and exit codes: the three packages\' and the script\'s', async () => {
   const contracts = await cliContracts(REPO_ROOT);
-  assert.deepEqual(contracts.map((c) => c.program), ['tagents-core', 'tagents-knowledge', 'tagents-notify', 'tagents']);
+  assert.deepEqual(contracts.map((c) => c.program), ['tagents-core', 'okb', 'tagents-notify', 'tagents']);
   for (const c of contracts) {
     assert.ok(c.commands.length > 0, c.program);
     assert.equal(c.exit['ok'], 0, c.program);
@@ -22,7 +23,10 @@ test('the real MCP servers list tools with an object input schema, and the plugi
   const cli = await cliContracts(REPO_ROOT);
   const servers = await mcpServers(cli);
   assert.deepEqual(servers.map((s) => s.name), [SERVER_NAME, TAGENTS_SERVER_NAME]);
-  assert.deepEqual(servers[1], tagentsServer(cli));
+  const sessions = ['sessions_recent', 'sessions_search'];
+  assert.deepEqual(servers[1]?.tools.filter((tool) => !sessions.includes(tool.name)), tagentsServer(cli).tools);
+  assert.deepEqual(servers[1]?.tools.filter((tool) => sessions.includes(tool.name)).map((tool) => tool.name), sessions);
+  assert.deepEqual(servers[0]?.tools.map((tool) => tool.name), ['knowledge_get', 'knowledge_list', 'knowledge_search', 'knowledge_usage']);
   const tools = servers.flatMap((s) => s.tools);
   assert.ok(tools.length >= 1);
   for (const tool of tools) {

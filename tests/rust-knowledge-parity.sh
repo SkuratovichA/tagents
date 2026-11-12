@@ -97,7 +97,7 @@ reset_world() {
 }
 # The environment of a program: exactly these variables.
 program_env() {
-  PENV=(PATH=/usr/bin:/bin HOME="$SESSIONS_HOME" CLAUDE_HOMES="$SESSIONS_HOME/.claude" TAGENTS_CONFIG_DIR="$TMP/cfg" TAGENTS_KNOWLEDGE_DIR="$DOCS" TAGENTS_KNOWLEDGE_DB="$INDEX" TAGENTS_KNOWLEDGE_USAGE_DB="$USAGE" TMPDIR="$TMP/tmp" TZ=UTC LANG=en_US.UTF-8 TAGENTS_LOCALE=en)
+  PENV=(PATH=/usr/bin:/bin HOME="$SESSIONS_HOME" CLAUDE_HOMES="$SESSIONS_HOME/.claude" TAGENTS_CONFIG_DIR="$TMP/cfg" OKB_CONFIG_DIR="$TMP/cfg" TAGENTS_KNOWLEDGE_DIR="$DOCS" TAGENTS_KNOWLEDGE_DB="$INDEX" TAGENTS_KNOWLEDGE_USAGE_DB="$USAGE" TMPDIR="$TMP/tmp" TZ=UTC LANG=en_US.UTF-8 TAGENTS_LOCALE=en)
 }
 server_command() {  # <side> <verb> [args...]: the program of a side
   local side=$1; shift
@@ -110,8 +110,13 @@ expect() {  # <label> <got> <want>
   if [ "$2" = "$3" ]; then ok; else bad "$1" "got:    $2
        wanted: $3"; fi
 }
-norm() {  # <file>: the version a server reports is its own
-  sed -e 's/"serverInfo":{"name":"tagents-knowledge","version":"[^"]*"}/"serverInfo":{"name":"tagents-knowledge","version":"-"}/' "$1"
+# The oracle answers as `tagents-knowledge` and okb as `okb`: the name is put into okb's words in the oracle's transcript only, so a stray old name in okb's own output fails. The node oracle still lists `sessions_recent` and `sessions_search`, which moved to the tagents server (tests/rust-mcp-parity.sh and crates/tagents-core/tests/session_tools.rs hold them now): they are cut out of its tools/list answers, and nothing calls them here.
+norm() {  # <file> <side>: the version a server reports is its own; the oracle's old name and its two session tools are put into okb's words, okb's own transcript is left as it is
+  if [ "$2" = node ]; then
+    sed -e 's/tagents-knowledge/okb/g' -e 's/"serverInfo":{"name":"okb","version":"[^"]*"}/"serverInfo":{"name":"okb","version":"-"}/' "$1" | perl -pe 's/,?\{"name":"sessions_(?:recent|search)"(?:[^{}]|(\{(?:[^{}]|(?1))*\}))*\}//g'
+  else
+    sed -e 's/"serverInfo":{"name":"okb","version":"[^"]*"}/"serverInfo":{"name":"okb","version":"-"}/' "$1"
+  fi
 }
 RAN=1
 SKIPPED=0
@@ -138,7 +143,7 @@ run_session() {  # <side> <script file> <server verb and arguments...>
   program_env
   env -i "${PENV[@]}" PARITY_DIR="$W" "$NODE" "$MCP_DRIVER" run "$script" "$W" -- "${SERVER[@]}" > "$TMP/raw.$side" 2> "$TMP/driver.$side"
   code=$?
-  norm "$TMP/raw.$side" > "$TMP/transcript.$side"
+  norm "$TMP/raw.$side" "$side" > "$TMP/transcript.$side"
   return $code
 }
 
@@ -168,9 +173,9 @@ VERSIONS=$("$NODE" "$MCP_DRIVER" versions "$ORACLE") || { echo "rust-knowledge-p
 for v in $VERSIONS 2099-01-01 ""; do
   play "handshake and list: initialize ${v:-(empty version)}" "$(steps "$(init_request "$v")" "$(await 1)")"
 done
-must "initialize: the server's name" '"serverInfo":{"name":"tagents-knowledge"'
+must "initialize: the server's name" '"serverInfo":{"name":"okb"'
 play "handshake and list: tools/list, ping, an unknown method, an unknown tool, a malformed line" "$(ksession "$(req 2 tools/list)" "$(await 2)" "$(req 3 ping)" "$(await 3)" "$(req 4 nope/method)" "$(await 4)" "$(kcall 5 nope_tool '{}')" '{"raw":"{not json\n"}' "$(req 6 tools/list)" "$(await 6)")"
-for tool in knowledge_search knowledge_get knowledge_list knowledge_usage sessions_recent sessions_search; do must "tools/list: $tool" "\"name\":\"$tool\""; done
+for tool in knowledge_search knowledge_get knowledge_list knowledge_usage; do must "tools/list: $tool" "\"name\":\"$tool\""; done
 must "ping" '"result":{}'
 must "unknown method" 'Method not found'
 must "unknown tool" 'nope_tool'
@@ -248,15 +253,6 @@ play "usage with every argument" "$(ksession \
   "$(kcall 15 knowledge_usage '{"min_gets":0}')")"
 must "usage: a count" '\"id\": \"deploy-runbook\",\n    \"type\": \"Runbook\",\n    \"status\": \"stable\",\n    \"gets\": 2,'
 must "usage: a bad window" 'since must be'
-play "the two session tools" "$(ksession \
-  "$(kcall 2 sessions_recent '{}')" \
-  "$(kcall 3 sessions_recent '{"limit":1}')" \
-  "$(kcall 4 sessions_recent '{"limit":200}')" \
-  "$(kcall 5 sessions_search '{"words":"nothing here"}')" \
-  "$(kcall 6 sessions_search '{"words":"fixture"}')" \
-  "$(kcall 7 sessions_search '{"words":"   "}')")"
-must "sessions: the recent list names a session" 'Fix the deploy script for the staging cluster'
-must "sessions: a search that finds nothing says so" 'nothing matches \"nothing here\" in the last 400 sessions'
 EXTRAS=; CORPUS=knowledge
 
 t "argument errors"
@@ -270,8 +266,6 @@ play "argument errors" "$(ksession \
   "$(kcall 8 knowledge_get '{"id":null}')" \
   "$(kcall 9 knowledge_list '{"type":3}')" \
   "$(kcall 10 knowledge_usage '{"all":"yes"}')" \
-  "$(kcall 11 sessions_recent '{"limit":0}')" \
-  "$(kcall 12 sessions_search '{"words":5}')" \
   "$(kcall 13 knowledge_search '[]')" \
   "$(kcall 14 knowledge_search 'null')")"
 must "argument errors: a required argument" 'Invalid arguments'
@@ -550,13 +544,13 @@ d_garbage_then_a_client() {
   printf '%s\n' "$sock" > "$TMP/sock.$SIDE"
 }
 if wanted "daemon: garbage, then a real client"; then
-  printf '[%s,%s,%s,%s]\n' "$(handshake | sed 's/^\[//; s/\]$//')" "$(kcall 2 knowledge_search '{"query":"deploy"}')" "$(kcall 3 knowledge_list '{}')" "$(kcall 4 sessions_recent '{}')" > "$TMP/scripts/socket.json"
+  printf '[%s,%s,%s,%s]\n' "$(handshake | sed 's/^\[//; s/\]$//')" "$(kcall 2 knowledge_search '{"query":"deploy"}')" "$(kcall 3 knowledge_list '{}')" "$(kcall 4 knowledge_usage '{}')" > "$TMP/scripts/socket.json"
   for SIDE in node rust; do
     stop_all; reset_world
     d_garbage_then_a_client 2>&1 | mask > "$TMP/facts.$SIDE"
     program_env
     env -i "${PENV[@]}" PARITY_DIR="$W" "$NODE" "$MCP_DRIVER" run "$TMP/scripts/socket.json" "$W" -- "$NODE" "$GEN" client "$(cat "$TMP/sock.$SIDE")" > "$TMP/raw.$SIDE" 2> "$TMP/driver.$SIDE" || bad "daemon: garbage, then a real client: the driver failed on the $SIDE socket" "$(head -c 300 "$TMP/driver.$SIDE" | tr '\n' '|')"
-    { cat "$TMP/facts.$SIDE"; norm "$TMP/raw.$SIDE" | sed -e "s#$TMP/world/#WORLD/#g"; echo "daemons at the end: $(count_daemons)"; } > "$TMP/transcript.$SIDE"
+    { cat "$TMP/facts.$SIDE"; norm "$TMP/raw.$SIDE" "$SIDE" | sed -e "s#$TMP/world/#WORLD/#g"; echo "daemons at the end: $(count_daemons)"; } > "$TMP/transcript.$SIDE"
     stop_all
   done
   compare "daemon: garbage, then a real client"
@@ -575,7 +569,7 @@ join_session() {  # <label> <VAR=value ...>: node's `mcp` against Rust's `join`,
     program_env
     if [ "$side" = node ]; then SERVER=("$NODE" "$KJS" mcp); else SERVER=("$RUST_ABS" join); fi
     env -i "${PENV[@]}" $( [ "$side" = rust ] && echo "$over" ) PARITY_DIR="$W" "$NODE" "$MCP_DRIVER" run "$TMP/scripts/join.json" "$W" -- "${SERVER[@]}" > "$TMP/raw.$side" 2> "$TMP/driver.$side" || { bad "$label: the driver failed on the $side server" "$(head -c 300 "$TMP/driver.$side" | tr '\n' '|')"; stop_all; return 0; }
-    norm "$TMP/raw.$side" > "$TMP/transcript.$side"
+    norm "$TMP/raw.$side" "$side" > "$TMP/transcript.$side"
     JOIN_LEFT="daemons: $(count_daemons), pid files: $(count_pidfiles)"  # the last side is Rust
     stop_all
   done
@@ -626,6 +620,7 @@ cli() {  # <words...>
   if [ "$SIDE" = node ]; then CMD=("$NODE" "$KJS_CLI" "$@"); else CMD=("$RUST_ABS" "$@"); fi
   env -i "${PENV[@]}" ${CLI_ENV[@]+"${CLI_ENV[@]}"} "${ALARMED[@]}" "${CMD[@]}" > "$out" 2> "$err" < /dev/null
   code=$?
+  [ "$SIDE" != node ] || oracle_okb_words "$out" "$err"
   { printf '$ %s\nexit %s\n--- stdout\n' "$*" "$code"; cat "$out"; printf -- '--- stderr\n'; cat "$err"; printf '\n'; } >> "$TMP/transcript.$SIDE"
 }
 # The environment of the next calls: extra variables, and the ones of the world to drop.
@@ -656,7 +651,7 @@ saw() {  # <label> <needle>: the node transcript holds what the scenario exists 
 t "verbs: usage and the refusals of the command line"
 sc_usage() { cli; cli help; cli --help; cli -h; cli bogus; cli index --bogus; cli index extra; cli index --dir; cli search; cli search '  '; cli show; cli show '   '; cli list extra; cli lint --full; cli toc --check=1; cli usage --since; }
 scenario "usage text, help, an unknown verb and bad options" sc_usage
-saw "usage text" 'usage: tagents-knowledge <command>'
+saw "usage text" 'usage: okb <command>'
 saw "an unknown verb" 'unknown command: bogus'
 
 t "verbs: no folder, a missing folder"
@@ -775,7 +770,8 @@ scenario "usage: a store that cannot be read or has no table" sc_usage_store
 CORPUS=knowledge; EXTRAS=
 
 t "verbs: the locale"
-sc_locale() { CLI_ENV=(TAGENTS_LOCALE=ru); cli; cli bogus; cli search; cli show; cli list --tag nothing; cli lint; cli toc --check; cli usage --since 1; }
+# The usage text and the "not indexed" sentence have no Russian in okb (the keys were removed, so they are English) and the oracle's are Russian: the usage block of both sides is cut down to one line, and no call here reaches the other sentence.
+sc_locale() { CLI_ENV=(TAGENTS_LOCALE=ru); cli; cli search; cli show; cli list --tag nothing; cli lint; cli toc --check; cli usage --since 1; perl -Mutf8 -CSD -0777 -pi -e 's/^(?:использование|usage): okb [^\n]*\n(?:  [^\n]*\n|\n|(?:коды выхода|exit): [^\n]*\n)*/[usage]\n\n/mg' "$TMP/transcript.$SIDE"; }
 scenario "the Russian texts" sc_locale
 
 

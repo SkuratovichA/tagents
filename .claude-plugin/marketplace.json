@@ -1,12 +1,17 @@
 {
   "name": "tagents",
   "owner": { "name": "Aliaksandr Skuratovich" },
-  "metadata": { "description": "The tagents plugin: the contract of the tagents CLIs, MCP tools and TypeScript API, regenerated from the code." },
+  "metadata": { "description": "The tagents plugin (the contract of the tagents CLIs, MCP tools and TypeScript API) and the okb plugin (the knowledge base), regenerated from the code." },
   "plugins": [
     {
       "name": "tagents",
       "source": "./",
-      "description": "Every tagents-core and tagents-knowledge verb and flag, every MCP tool schema and the public TypeScript API, regenerated from the code, plus the tagents tool server and the tagents-knowledge MCP server."
+      "description": "Every tagents-core verb and flag, every MCP tool schema and the public TypeScript API, regenerated from the code, plus the tagents tool server. Depends on the okb plugin."
+    },
+    {
+      "name": "okb",
+      "source": "./plugins/okb",
+      "description": "okb, the knowledge base of the owner's markdown documents: the knowledge MCP server and the contract of the okb CLI, regenerated from the code."
     }
   ]
 }

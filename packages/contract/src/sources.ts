@@ -13,6 +13,7 @@ import { parseCliContract } from './contract-file.ts';
 import { createT, type Translate } from './i18n/index.ts';
 import { isJsonObject, toJson } from './json.ts';
 import { byCodeUnit } from './order.ts';
+import { KNOWLEDGE_SERVER_NAME } from './plugins.ts';
 import { toolSpecs } from './tools.ts';
 import type { CliContract, McpServerSpec, McpTool, Script, Sources } from './types.ts';
 
@@ -59,17 +60,21 @@ function toTool(tool: { name: string; description?: string | undefined; inputSch
   };
 }
 
-/** The plugin's own server: a tool for each verb of the CLI specs, made by the same function the server runs on at start, so what contract.json records is what a client is offered. */
-export function tagentsServer(cli: readonly CliContract[], t: Translate = createT()): McpServerSpec {
-  return { name: TAGENTS_SERVER_NAME, tools: toolSpecs(cli).map((tool) => toTool(tool, t)) };
+/** The plugin's own server: a tool for each verb of the CLI specs, made by the same function the server runs on at start, and the tools the server answers itself (`answered`), so what contract.json records is what a client is offered. */
+export function tagentsServer(cli: readonly CliContract[], t: Translate = createT(), answered: readonly McpTool[] = []): McpServerSpec {
+  const tools = [...toolSpecs(cli).map((tool) => toTool(tool, t)), ...answered];
+  tools.sort((a, b) => byCodeUnit(a.name, b.name));
+  return { name: TAGENTS_SERVER_NAME, tools };
 }
 
-/** The name each of the two servers goes by in the contract: the plugin's own, and the knowledge server's. */
+/** The name the plugin's own server goes by in the contract; the knowledge server's is in plugins.ts, with the plugin that owns it. */
 export const TAGENTS_SERVER_NAME = 'tagents';
-export const KNOWLEDGE_SERVER_NAME = 'tagents-knowledge';
 
 /** The `tools/list` of the knowledge server, which the binary serves and embeds: the file was written from the node server before it was deleted, and is frozen. */
 export const KNOWLEDGE_TOOLS_FILE = 'crates/okb/src/knowledge/tools.json';
+
+/** The `tools/list` entries of the two session tools, which the tagents server answers itself and which no CLI verb stands behind. */
+export const SESSION_TOOLS_FILE = 'crates/tagents-core/src/mcp/sessions_tools.json';
 
 /** One entry of the frozen tool list: the fields `toTool` reads; the schemas are checked there. */
 const FrozenTool = z.object({
@@ -80,19 +85,24 @@ const FrozenTool = z.object({
   annotations: z.unknown().optional(),
 });
 
-/** The tools the knowledge server lists, sorted by name, and the plugin's own server made from the CLI specs. */
-export async function mcpServers(cli: readonly CliContract[], t: Translate = createT(), root: string = fileURLToPath(new URL('../../../', import.meta.url))): Promise<readonly McpServerSpec[]> {
-  const parsed = z.array(FrozenTool).safeParse(JSON.parse(await readFile(path.join(root, KNOWLEDGE_TOOLS_FILE), 'utf8')));
-  if (!parsed.success) throw new Error(`${KNOWLEDGE_TOOLS_FILE} is not a list of tools: ${parsed.error.message}`);
+/** The tools of a frozen list, with `$schema` last in each schema unless `keepOrder` says the server lists them as the file has them. */
+async function frozenTools(root: string, file: string, t: Translate, keepOrder = false): Promise<McpTool[]> {
+  const parsed = z.array(FrozenTool).safeParse(JSON.parse(await readFile(path.join(root, file), 'utf8')));
+  if (!parsed.success) throw new Error(`${file} is not a list of tools: ${parsed.error.message}`);
   // The SDK wrote `$schema` after the other keys of an input schema; the file has it first, and the contract keeps the order it had.
   const schemaLast = (schema: unknown): unknown => {
-    if (typeof schema !== 'object' || schema === null || !('$schema' in schema)) return schema;
+    if (keepOrder || typeof schema !== 'object' || schema === null || !('$schema' in schema)) return schema;
     const { $schema, ...rest } = schema;
     return { ...rest, $schema };
   };
-  const tools = parsed.data.map((tool) => toTool({ ...tool, inputSchema: schemaLast(tool.inputSchema), outputSchema: schemaLast(tool.outputSchema) }, t));
+  return parsed.data.map((tool) => toTool({ ...tool, inputSchema: schemaLast(tool.inputSchema), outputSchema: schemaLast(tool.outputSchema) }, t));
+}
+
+/** The tools the knowledge server lists, sorted by name, and the plugin's own server made from the CLI specs and the session tools. */
+export async function mcpServers(cli: readonly CliContract[], t: Translate = createT(), root: string = fileURLToPath(new URL('../../../', import.meta.url))): Promise<readonly McpServerSpec[]> {
+  const tools = await frozenTools(root, KNOWLEDGE_TOOLS_FILE, t);
   tools.sort((a, b) => byCodeUnit(a.name, b.name));
-  return [{ name: KNOWLEDGE_SERVER_NAME, tools }, tagentsServer(cli, t)];
+  return [{ name: KNOWLEDGE_SERVER_NAME, tools }, tagentsServer(cli, t, await frozenTools(root, SESSION_TOOLS_FILE, t, true))];
 }
 
 /** The environment a script runs in: the given home and the given `PATH` and nothing else from the parent, so the text cannot depend on the machine and the script cannot touch the real home. */

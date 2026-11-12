@@ -5,10 +5,12 @@
 //! `contract` reads the file, `tools` turns it into tools and builds the command line of a call, `run` runs one, `server` is the loop, and `rpc` is the wire. Stdout carries JSON-RPC lines and nothing else: the module denies `print_stdout`, and `rpc::Out` is the only writer.
 #![deny(clippy::print_stdout, clippy::dbg_macro)]
 
+pub mod args;
 pub mod contract;
 pub mod rpc;
 pub mod run;
 pub mod server;
+pub mod sessions_tools;
 pub mod tools;
 
 use std::collections::HashMap;
@@ -17,11 +19,15 @@ use std::io::{self, Read};
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use crate::ending::Stop;
 use crate::sessions::exit;
 use crate::{ending, parse_args};
+use rpc::CallResult;
 use rpc::Out;
 use run::{KILL_GRACE, RunDeps, Runner};
+use serde_json::{Map, Value};
 use server::{Config, Identity, SHUTDOWN_MARGIN, Server, Tools};
+use sessions_tools::SessionTools;
 
 const USAGE: &str = "usage: tagents-core mcp --contract <contract.json>\n";
 
@@ -51,13 +57,48 @@ fn serve(path: &OsString) -> Result<(), String> {
         .map_err(|e| format!("cannot read the contract {}: {e}", path.to_string_lossy()))?;
     let tools = tools::tool_specs(&contract::parse(&text)?)?;
     let env: HashMap<OsString, OsString> = std::env::vars_os().collect();
-    let runner = Arc::new(Runner::new(tools, RunDeps::standard(env)));
+    let runner = Arc::new(PluginTools {
+        runner: Runner::new(tools, RunDeps::standard(env)),
+        sessions: SessionTools::new(),
+    });
     let config = Config {
         identity: Identity::PLUGIN,
         kill_grace: KILL_GRACE,
         shutdown_margin: SHUTDOWN_MARGIN,
     };
     serve_stdio(runner, config, io::stdin().lock())
+}
+
+/// What the plugin's server offers: a tool for each verb of the contract, run as a child, and the two session tools, answered in this process. They are listed in the order of their names, as the contract lists them.
+pub struct PluginTools {
+    pub runner: Runner,
+    pub sessions: SessionTools,
+}
+
+impl Tools for PluginTools {
+    fn list(&self) -> Vec<Value> {
+        let mut tools = self.runner.list();
+        tools.extend(sessions_tools::listing().iter().cloned());
+        let name = |tool: &Value| tool["name"].as_str().unwrap_or("").to_owned();
+        tools.sort_by(|a, b| crate::js::cmp16(&name(a), &name(b)));
+        tools
+    }
+
+    fn connected(&self, client: &str) {
+        self.runner.connected(client);
+    }
+
+    fn call(
+        &self,
+        name: &str,
+        args: Option<&Map<String, Value>>,
+        stop: &Stop,
+    ) -> Option<CallResult> {
+        if SessionTools::has(name) {
+            return self.sessions.call(name, args);
+        }
+        self.runner.call(name, args, stop)
+    }
 }
 
 /// Serve `tools` to the client on `input` and this process's stdout until the input ends. The client may also go away by a signal: the calls in flight are stopped first, then the process leaves.

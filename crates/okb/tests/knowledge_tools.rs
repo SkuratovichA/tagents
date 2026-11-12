@@ -1,4 +1,4 @@
-//! The six tools against the node server: every call the vectors hold, answered by the Rust tools over the same documents, with the same text, the same failure flag and the same events in the usage store. The sessions tools are checked against the bytes the node CLI recorded.
+//! The four tools against the node server: every call the vectors hold, answered by the Rust tools over the same documents, with the same text, the same failure flag and the same events in the usage store.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -15,10 +15,8 @@ use tagents_core::{
 };
 
 use common::{
-    REPO,
     knowledge::{vectors, write_file, write_files},
     scratch,
-    sessions::seed_sessions,
 };
 
 /// The fixed clock of the vectors: 2026-10-31T12:00:00Z.
@@ -169,12 +167,17 @@ fn scenario_env(dir: &Path, vars: &Map<String, Value>) -> Env {
         home: text.into(),
         cwd: format!("{text}/cwd"),
         tagents_config_dir: Some(format!("{text}/config")),
+        okb_config_dir: Some(format!("{text}/config")),
         ..Env::default()
     };
     for (name, value) in vars {
         let value = value.as_str().map(|v| v.replace("<dir>", text));
         match name.as_str() {
-            "TAGENTS_CONFIG_DIR" => env.tagents_config_dir = value,
+            // The vectors know one config directory: tagents's, which okb reads the folder from, and where it kept the index. okb's own is the same directory here.
+            "TAGENTS_CONFIG_DIR" => {
+                env.okb_config_dir.clone_from(&value);
+                env.tagents_config_dir = value;
+            }
             "XDG_CONFIG_HOME" => env.xdg_config_home = value,
             "TAGENTS_KNOWLEDGE_DIR" => env.knowledge_dir = value,
             "TAGENTS_KNOWLEDGE_DB" => env.knowledge_db = value,
@@ -228,11 +231,16 @@ fn where_the_folder_the_index_and_the_store_are_is_what_node_works_out() {
                     result.is_error(),
                     "{what}"
                 );
-                assert_eq!(
-                    step["text"].as_str().unwrap().replace("<dir>", text),
-                    result.body(),
-                    "{what}"
-                );
+                // The one sentence okb says differently: where the folder is named.
+                let want = step["text"]
+                    .as_str()
+                    .unwrap()
+                    .replace("<dir>", text)
+                    .replace(
+                        "set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in",
+                        "set OKB_DIR or dir in",
+                    );
+                assert_eq!(want, result.body(), "{what}");
             } else if let Some(write) = step["write"].as_object() {
                 write_file(
                     folder.as_ref().unwrap(),
@@ -289,63 +297,8 @@ fn every_call_of_the_battery_the_loop_hands_to_a_tool_is_answered_as_node_answer
         unknown += usize::from(result.body().ends_with(" not found"));
     }
     assert!(
-        replayed >= 100 && told_no >= 95 && unknown >= 5,
+        replayed >= 90 && told_no >= 80 && unknown >= 5,
         "{replayed} calls, {told_no} failures, {unknown} unknown tools"
-    );
-}
-
-const RECORDED: &str = "packages/core/test/fixtures/sessions";
-
-fn recorded(fixture: &str) -> String {
-    fs::read_to_string(Path::new(REPO).join(format!("{RECORDED}/{fixture}.txt"))).unwrap()
-}
-
-#[test]
-fn the_session_tools_print_what_the_sessions_cli_printed() {
-    let home = scratch("knowledge-tools-sessions");
-    seed_sessions(&home.join(".claude"));
-    let env = Env {
-        home: home.to_str().unwrap().into(),
-        cwd: home.to_str().unwrap().into(),
-        claude_homes: Some(home.join(".claude").to_str().unwrap().into()),
-        ..Env::default()
-    };
-    let tools = KnowledgeTools::new(env, clock);
-    for (tool, args, fixture) in [
-        ("sessions_recent", json!({}), "recent"),
-        ("sessions_recent", json!({"limit": 1}), "recent-1"),
-        (
-            "sessions_search",
-            json!({"words": "deploy"}),
-            "search-deploy",
-        ),
-        (
-            "sessions_search",
-            json!({"words": " deploy\t"}),
-            "search-deploy",
-        ),
-        (
-            "sessions_search",
-            json!({"words": "zzzznothing"}),
-            "search-miss",
-        ),
-    ] {
-        let result = call(&tools, tool, Some(&args));
-        assert_eq!(recorded(fixture), result.body(), "{tool} {args}");
-        assert!(!result.is_error(), "{tool} {args}");
-        // A result that is not a failure leaves out the flag, as the node server does.
-        assert_eq!(
-            None,
-            serde_json::to_value(&result).unwrap().get("isError"),
-            "{tool} {args}"
-        );
-    }
-    // Words that are only white space are no words, and then every session matches.
-    let all = call(&tools, "sessions_search", Some(&json!({"words": " "})));
-    assert!(
-        all.body().contains("aaaaaaaa") && all.body().contains("ffffffff"),
-        "{}",
-        all.body()
     );
 }
 
@@ -359,8 +312,6 @@ fn a_list_of_the_tools_is_what_the_server_announces() {
             "knowledge_get",
             "knowledge_list",
             "knowledge_usage",
-            "sessions_recent",
-            "sessions_search",
         ],
         listed
             .iter()

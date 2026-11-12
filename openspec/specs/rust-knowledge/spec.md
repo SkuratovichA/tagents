@@ -5,27 +5,8 @@ The knowledge MCP server, its shared daemon and the relay a session runs in fron
 
 ## Requirements
 
-### Requirement: The knowledge server is three verbs of tagents-core
-`tagents-core knowledge mcp`, `knowledge serve` and `knowledge join` SHALL be verbs of the binary with `impl: rust` and `effect: serve`, so none of them is a tool of the plugin's `tagents` server. `mcp` SHALL do what `tagents-knowledge mcp` does and `serve` what `tagents-knowledge serve` does, with the same options, exit codes and standard output. Any other word after `knowledge` SHALL reach the node CLI untouched.
-
-#### Scenario: The verbs in the table
-- **WHEN** `tagents-core --spec` runs
-- **THEN** it lists `knowledge mcp`, `knowledge serve` and `knowledge join`, and the generated tool list of the plugin gains none
-
-#### Scenario: Another word
-- **WHEN** `tagents-core knowledge search x` runs
-- **THEN** the node CLI answers it
-
-#### Scenario: Arguments of mcp
-- **WHEN** `tagents-core knowledge mcp extra words` runs
-- **THEN** the words are ignored and the server runs, as `tagents-knowledge mcp extra words` does
-
-#### Scenario: Arguments of serve
-- **WHEN** `serve` is given `--idle 0`, an unknown option or a positional word
-- **THEN** it exits 2, and for `--idle` its message names `--idle`
-
 ### Requirement: Each tool answers as the node server does
-For the same documents, index and usage store, every result of the six tools SHALL be the bytes the node server answers: ranking, scores, snippets, the lines for a missing document or section, and the `isError` results for an unknown tool or invalid arguments, with the node server's wording. `tools/list` SHALL be the node server's list, in its order.
+For the same documents, index and usage store, every result of the four tools SHALL be the bytes the node server answers: ranking, scores, snippets, the lines for a missing document or section, and the `isError` results for an unknown tool or invalid arguments, with the node server's wording. `tools/list` SHALL be the node server's list, in its order.
 
 #### Scenario: Equal ranks
 - **WHEN** two sections rank equally for a query and one document is deprecated
@@ -44,7 +25,7 @@ For the same documents, index and usage store, every result of the six tools SHA
 - **THEN** the result is `isError` with the node server's line
 
 ### Requirement: The handshake names the server
-`initialize` SHALL be answered as the node server answers it: the server name `tagents-knowledge`, the capability `tools` with `listChanged`, and the protocol version the node server would negotiate for the same client. The server version SHALL be the version of the binary.
+`initialize` SHALL be answered as the node server answers it: the server name `okb`, the capability `tools` with `listChanged`, and the protocol version the node server would negotiate for the same client. The server version SHALL be the version of the binary.
 
 #### Scenario: A client of an older protocol
 - **WHEN** a client asks for a protocol version both programs support, and then for one neither supports
@@ -95,7 +76,7 @@ A document SHALL be parsed to the same fields, sections, legacy mapping and date
 The shared server of the binary SHALL listen on a socket named and placed as the `knowledge` capability says, with a key that is never a key of the node program, so that a node daemon and a native daemon of one environment are two servers on two sockets and neither serves the other's. A replaced binary SHALL get a new key.
 
 #### Scenario: Both programs, one environment
-- **WHEN** `tagents-knowledge serve` runs once through each program in one environment
+- **WHEN** `serve` runs once through each program in one environment
 - **THEN** two different sockets are printed and two daemons run, each serving its own clients
 
 #### Scenario: A replaced binary
@@ -144,7 +125,7 @@ The binary SHALL contain a SQLite with full-text search and the tokenizer of the
 - **THEN** the terms are equal, or each difference is listed
 
 ### Requirement: Equality is kept by generated files and a suite
-The tool list and the texts the binary prints (`crates/tagents-core/src/knowledge/tools.json` and `texts.json`) SHALL be frozen files: the generator is gone with the node server they were written from. A differential suite SHALL run the same scenarios against the node server of the oracle tag `v0.6.7` (built by `tests/parity-oracle.sh`) and the binary on copies of one corpus, comparing bytes, with each program reading the index and usage store the other wrote. CI SHALL fail when the suite fails.
+The tool list and the texts the binary prints (`tools.json` and `texts.json` of `crates/okb/src/knowledge`) SHALL be frozen files. A differential suite SHALL run the same scenarios against the node server of the oracle tag `v0.6.7` (`tests/parity-oracle.sh`) and `okb` on copies of one corpus, with the verbs of the command line and the servers, comparing bytes, with each program reading the index and usage store the other wrote. CI SHALL fail when the suite fails.
 
 #### Scenario: The binary drifts from the oracle
 - **WHEN** a tool description or a text of the binary changes and the oracle still answers the old one
@@ -164,3 +145,26 @@ Every way the binary's server differs from the node server SHALL be listed in `d
 #### Scenario: A new difference
 - **WHEN** the suite shows a difference that is not on the list
 - **THEN** it fails until the list names it or the code is fixed
+
+### Requirement: okb serves every verb of the knowledge base
+`okb` SHALL serve `index`, `search`, `show`, `list`, `lint`, `toc`, `usage`, `mcp`, `serve` and `join` from its own crate, and no verb SHALL start a node program. The first seven SHALL print the same bytes on standard output and standard error and exit with the same code as the node program of the oracle tag, for the same arguments, environment and files, errors included. `mcp`, `serve` and `join` SHALL do what `tagents-core knowledge` did with them.
+
+#### Scenario: A read verb
+- **WHEN** `okb search`, `show`, `list`, `lint`, `toc` or `usage` runs on a copy of the corpus the suite holds, with a flag, with `--json` and with a bad flag
+- **THEN** standard output, standard error and the exit code equal those of the node program of the oracle (`tests/rust-knowledge-parity.sh`)
+
+#### Scenario: A write verb
+- **WHEN** `okb index` and `okb index --full` run, and `okb toc` writes `index.md`
+- **THEN** the files they write and the lines they print are the oracle's, and the index file is read by both programs (`tests/rust-knowledge-parity.sh`)
+
+#### Scenario: The usage text
+- **WHEN** `okb`, `okb help`, `okb --help`, `okb -h` and `okb bogus` run
+- **THEN** the text, the stream it goes to and the exit code are the oracle's, byte for byte once the oracle's program name is replaced by `okb`, and the text has no Russian (`tests/rust-knowledge-parity.sh`)
+
+#### Scenario: Arguments of mcp and serve
+- **WHEN** `okb mcp extra words` runs, and `okb serve` gets `--idle 0`, an unknown option or a positional word
+- **THEN** `mcp` ignores the words and runs; `serve` exits 2, and for `--idle` its message names `--idle` (`cargo test -p okb`)
+
+#### Scenario: tagents-core holds no knowledge code
+- **WHEN** the workspace is built without the `okb` crate
+- **THEN** `tagents-core` builds and passes its tests (`cargo test --workspace --locked`)

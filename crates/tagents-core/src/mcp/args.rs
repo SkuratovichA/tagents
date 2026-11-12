@@ -6,10 +6,20 @@
 
 use serde_json::{Map, Value};
 
-use tagents_core::{js, mcp::server::received};
+use crate::{js, mcp::server::received};
 
 /// The largest integer JavaScript holds exactly, which zod's `int()` takes as the end of its range.
 const MAX_SAFE: f64 = 9_007_199_254_740_991.0;
+
+/// A string argument the check let through, or an empty one for a call that left it out.
+pub fn text<'a>(args: &'a Map<String, Value>, key: &str) -> &'a str {
+    args.get(key).and_then(Value::as_str).unwrap_or("")
+}
+
+/// A number argument, as the double JavaScript reads it.
+pub fn number(args: &Map<String, Value>, key: &str) -> Option<f64> {
+    args.get(key).and_then(Value::as_f64)
+}
 
 /// The text a failed call answers, one line per issue, or none when the arguments pass.
 pub fn refusal(tool: &str, schema: &Value, args: Option<&Map<String, Value>>) -> Option<String> {

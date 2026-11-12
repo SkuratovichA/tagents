@@ -1,11 +1,12 @@
-//! The check of a call's arguments against what the node server says: every refusal the MCP SDK's zod 4 wrote for the arguments of the six tools, in its words and in its order.
+//! The check of a call's arguments against what the node server says: every refusal the MCP SDK's zod 4 wrote for the arguments of the four tools, in its words and in its order.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 mod common;
 
-use okb::knowledge::{args::refusal, tools::listing};
+use okb::knowledge::tools::listing;
 use serde_json::{Map, Value};
+use tagents_core::mcp::args::refusal;
 
 use common::knowledge::vectors;
 
@@ -56,7 +57,7 @@ fn every_refusal_and_every_pass_of_the_node_server_is_the_same() {
     }
     // A replay that skipped its entries proves nothing.
     assert!(
-        replayed >= 100 && refusals >= 90,
+        replayed >= 80 && refusals >= 70,
         "replayed {replayed} calls, {refusals} of them refused"
     );
 }
@@ -104,7 +105,6 @@ fn an_infinite_number_is_named_as_such() {
     line("knowledge_search", "limit", "-1e999", "-Infinity");
     line("knowledge_usage", "top", "1e999", "Infinity");
     line("knowledge_usage", "min_days", "-1e999", "-Infinity");
-    line("sessions_recent", "limit", "1e999", "Infinity");
 }
 
 /// The minimum of a string reads `length` of whatever it is given, as `length >= 1` does in JavaScript: an object with a `length` that converts to a number of 1 or more passes it, and a list counts its items. The cases are the ones the vectors hold, pinned here as the rule they follow.
@@ -142,7 +142,7 @@ fn the_minimum_of_a_string_is_the_comparison_javascript_makes() {
 /// The checker handles the keywords the list has and no others: a keyword added to the list that nothing checks would let a bad call through, so this fails first.
 #[test]
 fn the_checks_cover_every_keyword_of_the_list() {
-    assert_eq!(6, listing().len());
+    assert_eq!(4, listing().len());
     for entry in listing() {
         let tool = entry["name"].as_str().unwrap();
         let schema = entry["inputSchema"].as_object().unwrap();

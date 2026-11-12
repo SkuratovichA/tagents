@@ -36,7 +36,7 @@ use tagents_core::{sessions::exit, sync::locked, watch};
 pub const REPLAY_CAP: usize = 64 * 1024;
 
 /// The line `join` ends with when the server goes after it has answered.
-pub const WENT_AWAY: &str = "tagents-knowledge: the shared server went away";
+pub const WENT_AWAY: &str = "okb: the shared server went away";
 
 /// How much is copied at a time.
 const CHUNK: usize = 8 * 1024;

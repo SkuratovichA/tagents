@@ -1,7 +1,7 @@
 # knowledge Specification
 
 ## Purpose
-The owner's operational knowledge kept as small markdown documents and made searchable through a full-text index, from a terminal (`tagents-knowledge`) and from any MCP client, either one server process per client or one server shared by every client of the same environment. Documents are only ever read by this capability; writes go through git.
+The owner's operational knowledge kept as small markdown documents and made searchable through a full-text index, from a terminal (`okb`) and from any MCP client, either one server process per client or one server shared by every client of the same environment. Documents are only ever read by this capability; writes go through git.
 
 ## Requirements
 
@@ -123,30 +123,30 @@ The forms `[[id]]` and `[[id#Heading]]` SHALL be recognised as links to a docume
 - **THEN** it is not a link and `lint` does not report it as dead
 
 ### Requirement: Locating the documents folder
-The folder of documents SHALL be chosen, in order of precedence, from the `--dir` flag, the `TAGENTS_KNOWLEDGE_DIR` environment variable, then `knowledge.dir` in the tagents config (`config.toml`, in the tagents config directory, `~/.config/tagents` unless `TAGENTS_CONFIG_DIR` moves it). There SHALL be no default folder, and a blank value is treated as not given.
+The folder of documents SHALL be chosen, in order of precedence, from the `--dir` flag, `OKB_DIR`, `TAGENTS_KNOWLEDGE_DIR` (the old variable), `dir` in okb's `config.toml`, then `knowledge.dir` in the tagents config, which is only read. There SHALL be no default folder, and a blank value is treated as not given.
 
 #### Scenario: Environment beats config, flag beats both
-- **WHEN** config names folder A, `TAGENTS_KNOWLEDGE_DIR` names folder B and `--dir` names folder C
+- **WHEN** config names folder A, `OKB_DIR` names folder B and `--dir` names folder C
 - **THEN** the CLI uses C; without `--dir` it uses B; with neither it uses A
 
 #### Scenario: Config alone is enough
-- **WHEN** only `config.toml` holds `[knowledge]` with `dir = "./knowledge"`
-- **THEN** `tagents-knowledge list` reads the `knowledge` folder next to the config file
+- **WHEN** only the `config.toml` of okb holds `dir = "./knowledge"`
+- **THEN** `okb list` reads the `knowledge` folder next to the config file
 
 #### Scenario: Blank value ignored
-- **WHEN** `TAGENTS_KNOWLEDGE_DIR` is set to an empty or whitespace string and config names a folder
+- **WHEN** `OKB_DIR` is set to an empty or whitespace string and config names a folder
 - **THEN** the config folder is used
 
 #### Scenario: Nobody said where
 - **WHEN** no flag, variable or config key names a folder
-- **THEN** the command exits 1 and stderr explains that `TAGENTS_KNOWLEDGE_DIR`, `--dir` or the `knowledge.dir` key of the config must be set, names the config file and shows the lines to add to it, as a `[knowledge]` table
+- **THEN** the command exits 1 and stderr explains that `OKB_DIR`, `--dir` or the `dir` key of okb's config must be set, names the config file and shows the line to add to it, `dir = "..."`
 
 #### Scenario: The chosen folder does not exist
 - **WHEN** the chosen path does not exist
 - **THEN** the command exits 1 and stderr says the knowledge directory does not exist
 
 ### Requirement: Path forms in the folder setting
-A leading `~` in `--dir`, `TAGENTS_KNOWLEDGE_DIR` or `knowledge.dir` SHALL be expanded to the home directory, and only at the start. A relative `knowledge.dir` SHALL be resolved against the directory that holds the config file. A config file that is missing, unparseable, or without `knowledge.dir` SHALL count as not set, and its other keys (such as `plugins:`) SHALL be ignored.
+A leading `~` in `--dir`, `OKB_DIR`, `TAGENTS_KNOWLEDGE_DIR` or a `dir` key SHALL be expanded to the home directory, and only at the start. A relative `dir` SHALL be resolved against the directory that holds the config file. A config file that is missing, unparseable, or without the key SHALL count as not set, and its other keys SHALL be ignored.
 
 #### Scenario: Tilde in config
 - **WHEN** config holds `dir = "~/knowledge"` under `[knowledge]`
@@ -157,10 +157,10 @@ A leading `~` in `--dir`, `TAGENTS_KNOWLEDGE_DIR` or `knowledge.dir` SHALL be ex
 - **THEN** the folder counts as not set
 
 ### Requirement: Locating the index
-The search index SHALL be a single SQLite file chosen from the `--db` flag, then the `TAGENTS_KNOWLEDGE_DB` environment variable, then `knowledge.sqlite` in the tagents config directory. Unlike the documents folder, the index has a default. The file and its parent directories SHALL be created when missing.
+The search index SHALL be a single SQLite file chosen from the `--db` flag, then the `TAGENTS_KNOWLEDGE_DB` environment variable, then `knowledge.sqlite` in the okb config directory. Unlike the documents folder, the index has a default. The file and its parent directories SHALL be created when missing.
 
 #### Scenario: Default location
-- **WHEN** neither `--db` nor `TAGENTS_KNOWLEDGE_DB` is given and `TAGENTS_CONFIG_DIR` is `/cfg`
+- **WHEN** neither `--db` nor `TAGENTS_KNOWLEDGE_DB` is given and `OKB_CONFIG_DIR` is `/cfg`
 - **THEN** the index is `/cfg/knowledge.sqlite`
 
 #### Scenario: Environment moves the index
@@ -319,11 +319,11 @@ Reading by address SHALL accept `id` for the whole document (the file as it is o
 - **THEN** the output is the preamble text without a heading line
 
 ### Requirement: CLI verbs and flags
-The `tagents-knowledge` program SHALL provide the verbs `index [--dir D] [--db F] [--full]`, `search <query…> [--dir] [--db] [--usage-db F] [--verbose] [--tag T] [--type T] [--kind K] [--limit N] [--json]`, `show <id[#heading]> [--dir] [--db] [--usage-db F] [--verbose]`, `list [--dir] [--db] [--type T] [--kind K] [--tag T] [--json]`, `lint [--dir D]`, `toc [--dir D] [--check]`, `usage` (its flags are in the arguments of the usage verb), `mcp` and `serve [--idle S] [--foreground] [--socket P]`.
+The `okb` program SHALL provide the verbs `index [--dir D] [--db F] [--full]`, `search <query…> [--dir] [--db] [--usage-db F] [--verbose] [--tag T] [--type T] [--kind K] [--limit N] [--json]`, `show <id[#heading]> [--dir] [--db] [--usage-db F] [--verbose]`, `list [--dir] [--db] [--type T] [--kind K] [--tag T] [--json]`, `lint [--dir D]`, `toc [--dir D] [--check]`, `usage`, `mcp`, `serve [--idle S] [--foreground] [--socket P]` and `join`.
 
 #### Scenario: Verbs match the generated contract
 - **WHEN** the CLI contract is generated
-- **THEN** it lists exactly `index`, `search`, `show`, `list`, `lint`, `toc`, `usage`, `mcp`, `serve`, in English, with exit codes 0, 1, 2 and 4
+- **THEN** it lists exactly `index`, `search`, `show`, `list`, `lint`, `toc`, `usage`, `mcp`, `serve`, `join`, in English, with exit codes 0, 1, 2 and 4
 
 ### Requirement: CLI help
 `help`, `--help` and `-h` SHALL print the usage text on stdout.
@@ -443,21 +443,21 @@ A `dead-link` finding SHALL mean that a link to a document of the folder, in the
 - **THEN** `lint` reports `dead link [the plan](/no-such-doc.md)`
 
 ### Requirement: MCP server
-`tagents-knowledge mcp` SHALL serve the MCP protocol over stdio only, as server `tagents-knowledge`, and exit when the client closes the pipe. It SHALL expose exactly six tools: `knowledge_search`, `knowledge_get`, `knowledge_list`, `knowledge_usage`, `sessions_recent`, `sessions_search`. It SHALL offer no tool that writes, edits, deletes or generates a document or an `index.md`. Tool output is English text, and the server SHALL write nothing to stdout besides the protocol.
+`okb mcp` SHALL serve the MCP protocol over stdio only, as server `okb`, and exit when the client closes the pipe. It SHALL expose exactly four tools: `knowledge_search`, `knowledge_get`, `knowledge_list`, `knowledge_usage`. It SHALL offer no tool that writes, edits, deletes or generates a document or an `index.md`. Tool output is English text, and the server SHALL write nothing to stdout besides the protocol.
 
 #### Scenario: Tool inventory
 - **WHEN** a client lists the tools
 - **THEN** it sees exactly those six names
 
 ### Requirement: MCP document source
-The MCP knowledge tools SHALL locate the folder and the index from the environment alone (`TAGENTS_KNOWLEDGE_DIR` or config `knowledge.dir`, and `TAGENTS_KNOWLEDGE_DB`), SHALL refresh the index on each call, and SHALL return a tool error (`isError: true`) with a message naming `TAGENTS_KNOWLEDGE_DIR` and the config file when no folder is configured, or saying the directory does not exist when it is configured but absent.
+The MCP knowledge tools SHALL locate the folder and the index from the environment alone (`OKB_DIR` or the config files, and `TAGENTS_KNOWLEDGE_DB`), SHALL refresh the index on each call, and SHALL return a tool error (`isError: true`) with a message naming `OKB_DIR` and the config file when no folder is configured, or saying the directory does not exist when it is configured but absent.
 
 #### Scenario: Unconfigured server
 - **WHEN** a client calls `knowledge_list` with no folder configured
-- **THEN** the result is an error whose text mentions `TAGENTS_KNOWLEDGE_DIR`
+- **THEN** the result is an error whose text mentions `OKB_DIR`
 
 ### Requirement: The serve verb
-`tagents-knowledge serve` SHALL print on stdout the unix socket of the shared server for the caller's environment and exit 0, starting that server first, detached, when nothing answers on the socket. `--idle S` SHALL be a positive number of seconds, default 600; any other value SHALL exit 2 with a message naming `--idle`. A server that cannot be started SHALL exit 1 with a message on stderr.
+`okb serve` SHALL print on stdout the unix socket of the shared server for the caller's environment and exit 0, starting that server first, detached, when nothing answers on the socket. `--idle S` SHALL be a positive number of seconds, default 600; any other value SHALL exit 2 with a message naming `--idle`. A server that cannot be started SHALL exit 1 with a message on stderr.
 
 #### Scenario: The same socket twice
 - **WHEN** `serve` runs twice while the server lives
@@ -475,7 +475,7 @@ The MCP knowledge tools SHALL locate the folder and the index from the environme
 - **THEN** it exits 0 without disturbing that server
 
 ### Requirement: One shared server per environment
-Every client of the same environment SHALL be served by one daemon per program, and clients whose environments differ SHALL get separate daemons that answer from their own documents. The environment is `HOME`, `TAGENTS_CONFIG_DIR`, `XDG_CONFIG_HOME`, `TAGENTS_KNOWLEDGE_DIR`, `TAGENTS_KNOWLEDGE_DB`, `TAGENTS_KNOWLEDGE_USAGE_DB` and `CLAUDE_HOMES`, plus the build of the program that runs. The node program and the native program are two programs and never share a daemon.
+Every client of the same environment SHALL be served by one daemon per program, and clients whose environments differ SHALL get separate daemons that answer from their own documents. The environment is `HOME`, `TAGENTS_CONFIG_DIR`, `XDG_CONFIG_HOME`, `TAGENTS_KNOWLEDGE_DIR`, `TAGENTS_KNOWLEDGE_DB`, `TAGENTS_KNOWLEDGE_USAGE_DB`, and `OKB_CONFIG_DIR` and `OKB_DIR` when set, plus the build of the program that runs. The node program and the native program are two programs and never share a daemon.
 
 #### Scenario: Two sessions, one daemon
 - **WHEN** two sessions start at the same moment in the same environment
@@ -494,7 +494,7 @@ Every client of the same environment SHALL be served by one daemon per program, 
 - **THEN** they listen on two sockets, and each serves the clients that reached it
 
 ### Requirement: What makes a different environment
-Relative values of `TAGENTS_CONFIG_DIR`, `XDG_CONFIG_HOME`, `TAGENTS_KNOWLEDGE_DIR`, `TAGENTS_KNOWLEDGE_DB`, `TAGENTS_KNOWLEDGE_USAGE_DB` and the entries of `CLAUDE_HOMES` SHALL count as absolute from the caller's directory, `HOME` and values beginning with `~` count as written, and unset counts as empty. Other variables SHALL NOT split daemons, except that a different `TMPDIR` names a different socket directory and so gets a daemon of its own.
+Relative values of `OKB_CONFIG_DIR`, `OKB_DIR`, `TAGENTS_CONFIG_DIR`, `XDG_CONFIG_HOME`, `TAGENTS_KNOWLEDGE_DIR`, `TAGENTS_KNOWLEDGE_DB` and `TAGENTS_KNOWLEDGE_USAGE_DB` SHALL count as absolute from the caller's directory, `HOME` and values beginning with `~` count as written, and unset counts as empty. Other variables SHALL NOT split daemons, except that a different `TMPDIR` names a different socket directory and so gets a daemon of its own.
 
 #### Scenario: A variable the server does not read
 - **WHEN** a session differs only in `CLAUDE_CONFIG_DIR`
@@ -538,18 +538,18 @@ The daemon SHALL exit after `--idle` seconds (default 600) with no client connec
 - **THEN** it exits after the idle time
 
 ### Requirement: One bad client does not stop the others
-A client that sends rubbish (text that is not JSON, JSON that is not a request, bytes that are not text, an unknown method, a cut-off line) or whose connection fails while it is set up SHALL cost only its own connection. An exception or rejection nobody caught SHALL be reported on stderr as a line starting `tagents-knowledge:` that names what failed, followed by the error's detail, a stack where the program has one, and the daemon SHALL go on serving. A signal SHALL stop it.
+A client that sends rubbish (text that is not JSON, JSON that is not a request, bytes that are not text, an unknown method, a cut-off line) or whose connection fails while it is set up SHALL cost only its own connection. An exception or rejection nobody caught SHALL be reported on stderr as a line starting `okb:` that names what failed, followed by the error's detail, a stack where the program has one, and the daemon SHALL go on serving. A signal SHALL stop it.
 
 #### Scenario: Garbage, then a real client
 - **WHEN** a client sends rubbish and disconnects, and a session then connects
-- **THEN** the daemon pid is unchanged and the session lists the six tools
+- **THEN** the daemon pid is unchanged and the session lists the four tools
 
 ### Requirement: The shared server speaks the same protocol
-Each connection to the daemon SHALL get its own MCP server over newline-delimited JSON-RPC, exposing the same six tools with the same behaviour as `tagents-knowledge mcp`.
+Each connection to the daemon SHALL get its own MCP server over newline-delimited JSON-RPC, exposing the same four tools with the same behaviour as `okb mcp`.
 
 #### Scenario: Through the bridge
 - **WHEN** a session reaches the daemon through the plugin's server entry
-- **THEN** it lists exactly the six tools of the MCP server requirement, and closing its stdin ends its connection
+- **THEN** it lists exactly the four tools of the MCP server requirement, and closing its stdin ends its connection
 
 ### Requirement: Tool knowledge_search
 `knowledge_search` SHALL take `query` (required, non-empty string), `tag`, `type` and `kind` (optional strings, `kind` being a deprecated alias of `type`) and `limit` (optional integer from 1 to 50, default 10), with the same matching, filtering and ranking as the CLI.
@@ -596,19 +596,11 @@ Each connection to the daemon SHALL get its own MCP server over newline-delimite
 - **THEN** the array is the same as for `kind: runbook`
 
 ### Requirement: Session tools
-`sessions_recent` SHALL take an optional integer `limit` from 1 to 50 (default 15) and return the latest Claude sessions across every Claude account on the machine, newest first. `sessions_search` SHALL take a required non-empty string `words`, split on whitespace, and return the sessions whose project path or opening prompt contains every word. Both return the same text the sessions CLI prints, as the `session-history` capability defines it.
+The tools `sessions_recent` and `sessions_search` SHALL NOT be tools of the okb server. They are tools of the `tagents` MCP server, and the `claude-code-plugin` capability specifies them.
 
-#### Scenario: No Claude homes
-- **WHEN** the machine has no Claude account directories
-- **THEN** the tools still answer with text rather than failing
-
-#### Scenario: Recent sessions
-- **WHEN** `sessions_recent` is called with `limit: 3`
-- **THEN** the text is the sessions listing and ends with the hint about `sessions.mjs show <id-prefix>`
-
-#### Scenario: No matching session
-- **WHEN** `sessions_search` is called with words that match nothing
-- **THEN** the text says that nothing matches
+#### Scenario: Not listed by okb
+- **WHEN** the okb MCP server lists its tools
+- **THEN** neither `sessions_recent` nor `sessions_search` is among them
 
 ### Requirement: Legacy document form
 A document with a `kind` key and no `type` key SHALL be read as a legacy document, whose keys are `id`, `title`, `kind`, `tags`, `updated`, and optionally `generated_from` and `scope`. A legacy document SHALL be loaded, searchable and listable, and `lint` SHALL report it as `legacy`. The package SHALL NOT write the legacy form, and a folder in the legacy form SHALL load without being migrated first.
@@ -772,7 +764,7 @@ Reads SHALL be recorded in a usage store: a SQLite file of its own, apart from t
 - **THEN** every recorded event is still in the usage store
 
 ### Requirement: Locating the usage store
-The usage store SHALL be the file named by `--usage-db`, else by `TAGENTS_KNOWLEDGE_USAGE_DB`, else `knowledge-usage.sqlite` in the directory of the index in use, however that index was chosen. `~` SHALL be expanded. The MCP tools have no flags and SHALL locate the store from the environment alone. The file and its directory SHALL be created when the first event is recorded.
+The usage store SHALL be the file named by `--usage-db`, else by `TAGENTS_KNOWLEDGE_USAGE_DB`, else `knowledge-usage.sqlite` in the directory of the index in use, however that index was chosen; the history tagents kept is brought into okb's own default file as the requirement "The usage store moves by copy" says. `~` SHALL be expanded. The MCP tools have no flags and SHALL locate the store from the environment alone. The file and its directory SHALL be created when the first event is recorded.
 
 #### Scenario: Beside the index
 - **WHEN** `show` runs with `--db /tmp/x/index.sqlite` and no usage setting
@@ -953,3 +945,28 @@ A program that opens the index SHALL wait up to 5000 ms for a lock that another 
 #### Scenario: A writer holds the index briefly
 - **WHEN** another process holds a write transaction on the index for 400 ms and a program opens the index in that time
 - **THEN** the open waits for the commit and succeeds, and the index holds what the other process wrote
+
+### Requirement: The program is okb
+The knowledge base SHALL be served by one program, `okb`, whose verbs are the ones of the requirement "CLI verbs and flags". `okb --spec` SHALL print the machine-readable description of its verbs, flags, exit codes and effects that `spec/cli/okb.json` holds, and `okb --version` the version of the workspace. A word that is not a verb SHALL be a usage error with exit 2 and the usage text on stderr, and no word the usage text on stdout with exit 2.
+
+#### Scenario: The description is the file
+- **WHEN** `okb --spec` runs
+- **THEN** its output equals `spec/cli/okb.json` and a check of the contract package fails when the two differ (`pnpm -r test`)
+
+#### Scenario: The old name
+- **WHEN** `tagents-knowledge search x` runs
+- **THEN** it answers as `okb search x` (`tests/install.sh`)
+
+### Requirement: okb has a config directory of its own
+`okb` SHALL read its configuration from `OKB_CONFIG_DIR`, else `$XDG_CONFIG_HOME/okb`, else `~/.config/okb`, and keep its index `knowledge.sqlite` and its usage store there. The folder SHALL be chosen as the requirement "Locating the documents folder" says.
+
+#### Scenario: The old variable
+- **WHEN** only `TAGENTS_KNOWLEDGE_DIR` is set
+- **THEN** it names the documents folder, after `OKB_DIR`
+
+### Requirement: The usage store moves by copy
+The default usage store SHALL be `knowledge-usage.sqlite` in the okb config directory. When it is missing or holds no event and the tagents config directory holds one, `okb` SHALL bring its events in without replacing a store that has any, retry after a failure, and leave the old file, the only record of earlier reads.
+
+#### Scenario: The usage store moves by copy
+- **WHEN** `okb usage` runs for the first time with an `OKB_CONFIG_DIR` that holds no usage store and the tagents directory holds one
+- **THEN** the report counts the old events and the old file is still there (`tests/rust-knowledge-parity.sh`)

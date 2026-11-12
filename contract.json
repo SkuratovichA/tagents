@@ -269,7 +269,7 @@
         }
       ]
     },
-    "tagents-knowledge": {
+    "okb": {
       "exit": {
         "ok": 0,
         "error": 1,
@@ -697,7 +697,7 @@
     }
   },
   "mcp": {
-    "tagents-knowledge": {
+    "okb": {
       "tools": [
         {
           "name": "knowledge_get",
@@ -820,40 +820,6 @@
                 "maximum": 9007199254740991
               }
             },
-            "$schema": "http://json-schema.org/draft-07/schema#"
-          }
-        },
-        {
-          "name": "sessions_recent",
-          "description": "The latest sessions across every Claude account on this machine, newest first — the same text the sessions CLI prints.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "limit": {
-                "description": "how many (default 15)",
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 50
-              }
-            },
-            "$schema": "http://json-schema.org/draft-07/schema#"
-          }
-        },
-        {
-          "name": "sessions_search",
-          "description": "Sessions whose project path or opening prompt contains every one of these words — the same text the sessions CLI prints.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "words": {
-                "type": "string",
-                "minLength": 1,
-                "description": "words that must all appear"
-              }
-            },
-            "required": [
-              "words"
-            ],
             "$schema": "http://json-schema.org/draft-07/schema#"
           }
         }
@@ -1003,71 +969,6 @@
           }
         },
         {
-          "name": "knowledge_index",
-          "description": "Brings the index in line with the folder; --full rebuilds it from nothing.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "dir": {
-                "type": "string"
-              },
-              "db": {
-                "type": "string"
-              },
-              "full": {
-                "type": "boolean"
-              }
-            },
-            "required": [],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": false,
-            "destructiveHint": false,
-            "openWorldHint": false
-          }
-        },
-        {
-          "name": "knowledge_lint",
-          "description": "Checks the claims each document makes about itself.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "dir": {
-                "type": "string"
-              }
-            },
-            "required": [],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": true,
-            "openWorldHint": false
-          }
-        },
-        {
-          "name": "knowledge_toc",
-          "description": "Writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date.",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "dir": {
-                "type": "string"
-              },
-              "check": {
-                "type": "boolean"
-              }
-            },
-            "required": [],
-            "additionalProperties": false
-          },
-          "annotations": {
-            "readOnlyHint": false,
-            "destructiveHint": false,
-            "openWorldHint": false
-          }
-        },
-        {
           "name": "notify_send",
           "description": "Posts a desktop notification with this message (the words are joined with a space) through the configured backend, which shows it on the screen; a click docks the pane the command runs in; a title over 256 characters or a message over 2048 is refused.",
           "inputSchema": {
@@ -1126,6 +1027,105 @@
             "readOnlyHint": false,
             "destructiveHint": false,
             "openWorldHint": false
+          }
+        },
+        {
+          "name": "okb_index",
+          "description": "Brings the index in line with the folder; --full rebuilds it from nothing.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dir": {
+                "type": "string"
+              },
+              "db": {
+                "type": "string"
+              },
+              "full": {
+                "type": "boolean"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "okb_lint",
+          "description": "Checks the claims each document makes about itself.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dir": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": true,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "okb_toc",
+          "description": "Writes index.md, the OKF table of contents of the folder, grouped by type; --check writes nothing and exits 1 when index.md is absent or out of date.",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "dir": {
+                "type": "string"
+              },
+              "check": {
+                "type": "boolean"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "annotations": {
+            "readOnlyHint": false,
+            "destructiveHint": false,
+            "openWorldHint": false
+          }
+        },
+        {
+          "name": "sessions_recent",
+          "description": "The latest sessions across every Claude account on this machine, newest first — the same text the sessions CLI prints.",
+          "inputSchema": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "limit": {
+                "description": "how many (default 15)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 50
+              }
+            }
+          }
+        },
+        {
+          "name": "sessions_search",
+          "description": "Sessions whose project path or opening prompt contains every one of these words — the same text the sessions CLI prints.",
+          "inputSchema": {
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+              "words": {
+                "type": "string",
+                "minLength": 1,
+                "description": "words that must all appear"
+              }
+            },
+            "required": [
+              "words"
+            ]
           }
         },
         {

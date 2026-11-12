@@ -1,5 +1,5 @@
 {
-  "program": "tagents-knowledge",
+  "program": "okb",
   "exit": {
     "ok": 0,
     "error": 1,

@@ -1,7 +1,7 @@
 # claude-code-plugin Specification
 
 ## Purpose
-The tagents repository is also a Claude Code plugin and its own marketplace, giving a Claude Code session the tagents skill and the knowledge MCP server. This capability covers the plugin's manifest and marketplace entry, the skill, the MCP registration, the fact that the plugin registers no hooks, and how tagents itself is installed.
+The tagents repository is also a Claude Code plugin and its own marketplace, giving a Claude Code session the tagents skill and MCP server, and, as a plugin of its own, `okb`, with the knowledge MCP server. This capability covers the plugin's manifest and marketplace entry, the skill, the MCP registration, the fact that the plugin registers no hooks, and how tagents itself is installed.
 
 ## Requirements
 
@@ -23,7 +23,7 @@ With Claude Code 2.1.275 or later the plugin SHALL be installable with `/plugin 
 The plugin SHALL ship one skill, `tagents`, in `skills/tagents/SKILL.md`. Its description SHALL say when to load it: driving tagents from a session or a script, and writing code or a plugin against `@tagents/core`, `@tagents/knowledge`, `@tagents/notify` or `@tagents/telegram`. Its body is a hand-written index that sends the reader to the generated reference for the surface in question.
 
 #### Scenario: When it applies
-- **WHEN** a session opens, prompts, lists or aborts headless sessions, finds a past session, searches the knowledge documents, reads cost with `tusage`, or calls a flag of the dashboard or of `tnotes`
+- **WHEN** a session opens, prompts, lists or aborts headless sessions, finds a past session, searches the knowledge documents with `okb`, reads cost with `tusage`, or calls a flag of the dashboard or of `tnotes`
 - **THEN** the skill's description matches the task
 
 #### Scenario: Which reference
@@ -39,7 +39,7 @@ The plugin SHALL ship one skill, `tagents`, in `skills/tagents/SKILL.md`. Its de
 - **THEN** the skill names `contract.json` in the plugin root as the same contract as data
 
 ### Requirement: What the skill says holds everywhere
-The skill SHALL state four things: a verb the `tagents` script has no flag for is handed to `tagents-core` unchanged; a JSON verb prints one pretty-printed document on stdout, except `session prompt --events`, which prints one compact JSON line per event and then the outcome; exit codes carry the outcome and are checked before output is parsed; `tagents-core`, `tagents-knowledge`, `tagents-notify` and `tagents-mcp` must be on `PATH`.
+The skill SHALL state four things: a verb the `tagents` script has no flag for is handed to `tagents-core` unchanged; a JSON verb prints one pretty-printed document on stdout, except `session prompt --events`, which prints one compact JSON line per event and then the outcome; exit codes carry the outcome and are checked before output is parsed; `tagents-core`, `tagents-notify` and `tagents-mcp` must be on `PATH`.
 
 #### Scenario: Common mistakes
 - **WHEN** the skill lists the mistakes to avoid
@@ -49,39 +49,38 @@ The skill SHALL state four things: a verb the `tagents` script has no flag for i
 - **WHEN** a session reads the skill
 - **THEN** it learns that `tagents session list` and `tagents-core session list` are the same call, as the `cli-dispatch` capability specifies
 
-### Requirement: The plugin registers the knowledge MCP server
-The plugin manifest SHALL register an MCP server `knowledge`, started as the command `sh` with the argument `${CLAUDE_PLUGIN_ROOT}/packages/knowledge/bin/knowledge-mcp`. The tools it offers are those of the `knowledge` capability. A server of the same kind registered by hand with `claude mcp add` SHALL be removed, or the tools appear twice. The manifest registers one more server, `tagents`, which another requirement specifies.
+### Requirement: The okb plugin registers the knowledge MCP server
+The manifest of the `okb` plugin SHALL register an MCP server `knowledge`, started as the command `sh` with the argument `${CLAUDE_PLUGIN_ROOT}/bin/okb-mcp`. Its tools are the four of the `knowledge` capability. A server of the same kind registered by hand with `claude mcp add` SHALL be removed, or the tools appear twice. The `tagents` plugin registers the other server, `tagents`.
 
 #### Scenario: Registered by the manifest
 - **WHEN** the plugin is installed and a session starts
-- **THEN** a `knowledge` MCP server is started with `sh ${CLAUDE_PLUGIN_ROOT}/packages/knowledge/bin/knowledge-mcp`
+- **THEN** a `knowledge` MCP server is started with `sh ${CLAUDE_PLUGIN_ROOT}/bin/okb-mcp`
 
 #### Scenario: Registered twice
 - **WHEN** a hand-made registration of the same server exists as well
 - **THEN** its tools appear twice
 
 ### Requirement: The server entry falls back to a server of its own
-The script `packages/knowledge/bin/knowledge-mcp` SHALL join the session to the shared server of the `knowledge` capability. When `tagents-knowledge join` exits 0 on empty input it SHALL replace itself with `tagents-knowledge join`. After any other code it SHALL go on to `tagents-knowledge serve` and, when that prints an existing socket and `nc` is available, replace itself with `nc -U` on it, and else run `tagents-knowledge mcp`. With no binary both give the needs-binary line and exit 69.
+The script `plugins/okb/bin/okb-mcp` SHALL join the session to the shared server of the `knowledge` capability. When `okb join` exits 0 on empty input it SHALL replace itself with `okb join`. After any other code it SHALL go on to `okb serve` and, when that prints an existing socket and `nc` is available, replace itself with `nc -U` on it, and else run `okb mcp`.
 
 #### Scenario: The native program is installed
-- **WHEN** `tagents-knowledge join` exits 0 on empty input
-- **THEN** the process the session started is `tagents-knowledge join`, nothing is written to standard error, and no node program and no `nc` runs
-
-#### Scenario: A plugin older than the install
-- **WHEN** the wrapper is called with `serve` or `mcp` by a plugin that predates `join`
-- **THEN** the wrapper accepts both words and hands them to the binary (`tests/install.sh`)
-
-#### Scenario: No binary
-- **WHEN** `join` exits 69 or 2 and the machine has no binary
-- **THEN** `serve` and `mcp` answer one line that names `tagents update` and `cargo build --release -p tagents-core`, with exit 69, and no daemon is started (`tests/knowledge-launcher.sh`)
+- **WHEN** `okb join` exits 0 on empty input
+- **THEN** the process the session started is `okb join`, nothing is written to standard error, and no `nc` runs
 
 #### Scenario: Shared server available
-- **WHEN** `join` exits 69 or 2, `tagents-knowledge serve` prints an existing socket and `nc` is on `PATH`
+- **WHEN** `join` exits 69 or 2, `okb serve` prints an existing socket and `nc` is on `PATH`
 - **THEN** the process the session started is `nc -U` on that socket, and nothing is written to standard error
 
 #### Scenario: No shared server
 - **WHEN** `join` exits 69 or 2 and `serve` fails or there is no `nc`
-- **THEN** the session gets `tagents-knowledge mcp`, which is the binary's when one is installed, and nothing is written to standard error
+- **THEN** the session gets `okb mcp`, and nothing is written to standard error
+
+### Requirement: The server entry without okb says so
+When `okb` is not on `PATH` the script `okb-mcp` SHALL write one line to standard error that says okb is not on `PATH` and names `tagents update`, write nothing to standard output and exit 69.
+
+#### Scenario: No okb
+- **WHEN** the launcher runs on a machine where `command -v okb` fails
+- **THEN** one such line is on standard error, standard output is empty and the exit code is 69 (`tests/knowledge-launcher.sh`)
 
 ### Requirement: The plugin registers no hooks
 The plugin SHALL register no Claude Code hooks and no status line, because a plugin cannot set a status line. `tagents setup` registers the agent-state hook and the status line in the user's `settings.json` files, as the `claude-settings` capability specifies.
@@ -121,17 +120,17 @@ The plugin SHALL register no Claude Code hooks and no status line, because a plu
 - **THEN** it refuses to run instead of half-working
 
 ### Requirement: The parts of the ecosystem
-The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeScript packages: `@tagents/core` (headless sessions and plugins, behind `tagents-core`), `@tagents/knowledge` (the owner's notes as markdown, a CLI and an MCP server), `@tagents/telegram` (a typed Bot API client), `@tagents/notify` (desktop notifications), `@tagents/contract` (the contract generator). Plugins are further packages the config names.
+The repository SHALL pair the bash dashboard `tagents` (tmux and fzf) with TypeScript packages: `@tagents/core` (headless sessions and plugins, behind `tagents-core`), `@tagents/telegram` (a typed Bot API client), `@tagents/notify` (desktop notifications), `@tagents/contract` (the contract generator). Plugins are further packages the config names.
 
 #### Scenario: One name reaches all of it
 - **WHEN** a user types `tagents plugin list`, `tagents session list` or `tagents doctor`
 - **THEN** it works from the dashboard's name, because the verb is forwarded to `tagents-core`
 
 ### Requirement: The node commands run with the node that installed them
-`install.sh` SHALL write into `tagents-core`, `tagents-knowledge`, `tagents-notify` and `tagents-mcp`, the four commands it installs that run a node program, the absolute path of the `node` the installing shell finds on its `PATH`, and SHALL write it again on every install and every `tagents update`. Each of the four SHALL run that node while it is an executable file, and otherwise the `node` on the caller's `PATH`.
+`install.sh` SHALL write into `tagents-core`, `tagents-notify` and `tagents-mcp`, the three commands it installs that run a node program, the absolute path of the `node` the installing shell finds on its `PATH`, and SHALL write it again on every install and every `tagents update`. Each of the three SHALL run that node while it is an executable file, and otherwise the `node` on the caller's `PATH`.
 
 #### Scenario: A caller whose PATH holds no node
-- **WHEN** tagents was installed from a shell that finds node at `/opt/node/bin/node`, and a process whose `PATH` is `/usr/bin:/bin` runs `tagents-knowledge lint`
+- **WHEN** tagents was installed from a shell that finds node at `/opt/node/bin/node`, and a process whose `PATH` is `/usr/bin:/bin` runs `tagents-core plugin list`
 - **THEN** the command runs on `/opt/node/bin/node`
 
 #### Scenario: The pinned node is gone
@@ -166,7 +165,7 @@ When an update moves the managed copy to another commit, `install.sh` SHALL hand
 - **THEN** the running installer builds the copy and writes the wrappers itself, and the update exits 0
 
 ### Requirement: The installer writes wrappers, not symlinks
-`install.sh` SHALL write a real-file wrapper into `~/.local/bin` for each of `tagents`, `tusage`, `tnotes`, `tagents-core`, `tagents-knowledge`, `tagents-notify` and `tagents-mcp`, and one per `hooks/*.sh` into `~/.claude/hooks` or each repeatable `--hooks-dir DIR`; a wrapper runs the same file of the managed copy.
+`install.sh` SHALL write a real-file wrapper into `~/.local/bin` for each of `tagents`, `tusage`, `tnotes`, `tagents-core`, `okb`, `tagents-knowledge`, `tagents-notify` and `tagents-mcp`, and one per `hooks/*.sh` into `~/.claude/hooks` or each repeatable `--hooks-dir DIR`; a wrapper runs the same file of the managed copy.
 
 #### Scenario: Two Claude config directories
 - **WHEN** `install.sh --hooks-dir ~/.claude/hooks --hooks-dir ~/.claude-work/hooks` runs
@@ -200,7 +199,7 @@ The plugin manifest SHALL register the MCP server `tagents`, started as the comm
 - **THEN** it prints the problem on stderr and exits 2 for a missing option and 1 for an unreadable file, and writes nothing to stdout
 
 ### Requirement: The server knows no verb
-The server SHALL list one tool for each verb of each structured CLI spec recorded in the contract, except the verbs whose effect is `serve` and the verbs recorded with `"tool": false`, and SHALL contain no knowledge of any verb. A verb added to a spec is therefore a tool once the contract is regenerated and the plugin updated.
+The server SHALL list one tool for each verb of each structured CLI spec recorded in the contract, except the verbs whose effect is `serve` and the verbs recorded with `"tool": false`, and SHALL contain no knowledge of any verb. It also lists the two tools that find a past session, `sessions_recent` and `sessions_search`, which it answers itself. A verb added to a spec is therefore a tool once the contract is regenerated and the plugin updated.
 
 #### Scenario: A verb in the contract
 - **WHEN** `contract.json` records a verb that is not `serve`
@@ -513,48 +512,14 @@ A failed or refused fetch and a version without a release SHALL leave the `tagen
 - **THEN** the binary is removed and `tagents-notify run` gives the needs-binary line (`tests/install.sh` section 14)
 
 ### Requirement: The server entry names the failure of the native program
-After `tagents-knowledge join` exits with a code other than 0, 69 and 2, the script `packages/knowledge/bin/knowledge-mcp` SHALL write one line naming the code to its standard error before it goes on to `serve` and `mcp`. After 0, 69 and 2 it SHALL write nothing.
+After `okb join` exits with a code other than 0, 69 and 2, the script `okb-mcp` SHALL write one line naming the code to its standard error before it goes on to `okb serve` and `okb mcp`. After 0, 69 and 2 it SHALL write nothing.
 
 #### Scenario: The native program failed
 - **WHEN** `join` exits 1, 3 or 127
-- **THEN** exactly one line naming that code is written to standard error, and the script goes on to the binary's `serve` and `mcp` (`tests/knowledge-launcher.sh`)
-
-### Requirement: The tagents-knowledge command runs the native server for join, mcp and serve when the binary is installed
-When `$TAGENTS_HOME/target/release/tagents-core` is an executable file at install time, the `tagents-knowledge` wrapper SHALL run it as `tagents-core knowledge <word>` for `join` or `mcp` alone and for `serve` with any arguments. Every other call, and every call once the binary is gone, SHALL run the node program, except that `join` alone then exits 69 and starts nothing. The wrapper SHALL NOT read `TAGENTS_NO_NATIVE` when it runs.
-
-#### Scenario: The binary is installed
-- **WHEN** the binary is installed and `tagents-knowledge join`, `mcp` or `serve` runs
-- **THEN** the binary receives `knowledge` and that word (`tests/install.sh`)
-
-#### Scenario: serve with options
-- **WHEN** `tagents-knowledge serve --idle 30` or `serve --foreground --socket P` runs over an installed binary
-- **THEN** the binary receives `knowledge serve` and the options, whole (`tests/install.sh`)
-
-#### Scenario: Any other arguments
-- **WHEN** `tagents-knowledge mcp extra`, `join x`, `search x` or no arguments runs over an installed binary
-- **THEN** the node program receives the arguments whole (`tests/install.sh`)
-
-#### Scenario: The binary vanishes after the install
-- **WHEN** the file is removed or loses its executable bit
-- **THEN** `join` exits 69 and starts no program, and `serve` and `mcp` run the node program, which answers the needs-binary line and exit 69 (`tests/install.sh`)
-
-#### Scenario: A binary of another version
-- **WHEN** the binary in the tree says a version other than the checkout's, or cannot say
-- **THEN** the wrapper still names it (`tests/install.sh`)
-
-### Requirement: The tagents-knowledge wrapper without a binary answers join with 69
-With no executable binary at install time the installer SHALL write the `tagents-knowledge` wrapper with no line that names a binary: it exits 69 when its only argument is `join`, and otherwise `exec`s the node program with the wrapper's arguments, so a machine without the binary starts no node for the probe. A failed or refused fetch and a version without a release leave an installed binary named, and the wrapper without one only when the machine has none.
-
-#### Scenario: No binary
-- **WHEN** the installer runs on a machine without the binary and `tagents-knowledge join` runs with a stub `node` on `PATH`
-- **THEN** it exits 69, the stub was not started, and `tagents-knowledge serve` runs the node program, which exits 69 with the needs-binary line (`tests/install.sh`)
-
-#### Scenario: No release for the version
-- **WHEN** the installer runs on a copy whose version has no release, over an installed binary
-- **THEN** the binary is kept and `tagents-knowledge serve` runs it (`tests/install.sh`)
+- **THEN** exactly one line naming that code is written to standard error, and the script goes on to `okb serve` and `okb mcp` (`tests/knowledge-launcher.sh`)
 
 ### Requirement: Node answers a retired verb with the needs-binary line
-The node CLI SHALL answer `session`, `sessions` (any word after it), `doctor`, `plugin add`, `plugin remove`, `plugin new` and `mcp`, which the file `spec/cli/tagents-core.json` marks `impl: "rust"`, with one line on standard error that names `tagents update` and `cargo build --release -p tagents-core`, nothing on standard output and exit 69. The set SHALL be read from the file, so it cannot drift from it. `tagents-knowledge serve` and `mcp` and `tagents-notify run` SHALL answer the same way.
+The node CLI SHALL answer `session`, `sessions` (any word after it), `doctor`, `plugin add`, `plugin remove`, `plugin new` and `mcp`, which the file `spec/cli/tagents-core.json` marks `impl: "rust"`, with one line on standard error that names `tagents update` and `cargo build --release -p tagents-core`, nothing on standard output and exit 69. The set SHALL be read from the file, so it cannot drift from it. `tagents-notify run` SHALL answer the same way.
 
 #### Scenario: A machine with no binary
 - **WHEN** `node packages/core/dist/cli/main.js session list` runs
@@ -574,3 +539,54 @@ The node CLI SHALL answer `session`, `sessions` (any word after it), `doctor`, `
 #### Scenario: No binary
 - **WHEN** the old command runs and the binary is missing
 - **THEN** the needs-binary line is written and the exit code is 69 (`packages/notify/test/commands.test.ts`)
+
+### Requirement: The okb command runs the native binary
+When `$TAGENTS_HOME/target/release/okb` is an executable file at install time, the installer SHALL write an `okb` wrapper into `~/.local/bin` that runs it with the wrapper's arguments, whole. With no executable binary the wrapper SHALL print one line on standard error that names `tagents update` and `cargo build --release -p okb`, nothing on standard output, and exit 69. The wrapper SHALL NOT read `TAGENTS_NO_NATIVE` when it runs.
+
+#### Scenario: The binary is installed
+- **WHEN** the binary is installed and `okb search x`, `okb join` or `okb serve --idle 30` runs
+- **THEN** the binary receives those arguments whole (`tests/install.sh`)
+
+#### Scenario: No binary
+- **WHEN** the installer runs on a machine without the binary and `okb join` runs
+- **THEN** it exits 69, writes the needs-binary line and starts no other program (`tests/install.sh`)
+
+#### Scenario: The binary vanishes after the install
+- **WHEN** the file is removed or loses its executable bit
+- **THEN** every call of the wrapper gives the needs-binary line and exit 69 (`tests/install.sh`)
+
+### Requirement: The installer provides the okb binary
+The installer SHALL fetch the `okb` binary from the release of the checkout's version in the way it fetches `tagents-core`, from the archive `okb-<version>-<triple>.tar.gz` of that release. The installer SHALL NOT run cargo: with no release for the version, or with an archive that fails its checksum, it keeps the `okb` it already has, warns, and still installs the other binary; building it is `cargo build --release -p okb` by hand.
+
+#### Scenario: A release exists
+- **WHEN** the installer runs on a copy whose version has a release
+- **THEN** `target/release/okb` is the binary of that release and `okb --version` says the version (`tests/install.sh`)
+
+### Requirement: The tagents-knowledge command is okb
+The `tagents-knowledge` wrapper SHALL write one line to standard error that says the name is now `okb` and goes away in the next release, then run `okb` with the arguments, whole, so that its exit code and standard output are okb's and a plugin installed before the split, a script and a person who types the old name keep working.
+
+#### Scenario: The old name
+- **WHEN** `tagents-knowledge serve --idle 30` or `tagents-knowledge search x` runs over an installed binary
+- **THEN** `okb` receives `serve --idle 30` or `search x`, whole (`tests/install.sh`)
+
+#### Scenario: A plugin that predates the split
+- **WHEN** the plugin's launcher calls `tagents-knowledge join`, `serve` or `mcp`
+- **THEN** the call is okb's, with the one line on standard error, and the launcher's fallbacks behave as before (`tests/knowledge-launcher.sh`)
+
+### Requirement: The launcher lives in the plugin
+The launcher the `okb` manifest starts SHALL be the script `bin/okb-mcp` inside `plugins/okb`, so that it is shipped with that plugin. The digest of the plugin SHALL cover it.
+
+#### Scenario: The manifest names the launcher
+- **WHEN** `plugins/okb/.claude-plugin/plugin.json` is read
+- **THEN** the `knowledge` server runs `sh ${CLAUDE_PLUGIN_ROOT}/bin/okb-mcp` and the file exists (`packages/contract` tests)
+
+### Requirement: okb is a plugin of its own and tagents depends on it
+The marketplace SHALL list a second plugin `okb`, whose manifest is `plugins/okb/.claude-plugin/plugin.json` and which registers the MCP server `knowledge` through `plugins/okb/bin/okb-mcp`. The `tagents` plugin SHALL declare `"dependencies": ["okb"]` with no version range and register the MCP server `tagents` only. `claude plugin validate --strict` SHALL accept both manifests. 
+
+#### Scenario: One install brings both
+- **WHEN** `claude plugin install tagents@tagents` runs
+- **THEN** the `okb` plugin is installed as well and the tools `mcp__plugin_okb_knowledge__knowledge_search`, `knowledge_get`, `knowledge_list` and `knowledge_usage` exist (CI `claude plugin validate`, `tests/knowledge-launcher.sh`)
+
+#### Scenario: The okb plugin alone
+- **WHEN** only `okb@tagents` is installed
+- **THEN** the knowledge tools work and no tagents tool exists

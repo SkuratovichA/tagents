@@ -179,10 +179,7 @@ impl Client {
 
 pub fn serves(socket: &Path) {
     let mut client = Client::connect(socket);
-    assert_eq!(
-        "tagents-knowledge",
-        client.handshake()["result"]["serverInfo"]["name"]
-    );
+    assert_eq!("okb", client.handshake()["result"]["serverInfo"]["name"]);
 }
 
 /// A starter that runs the daemon on a thread of this process and counts how often it was asked to.

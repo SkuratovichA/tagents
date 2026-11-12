@@ -1,0 +1,44 @@
+[
+  {
+    "name": "sessions_recent",
+    "title": "Recent Claude sessions on this machine",
+    "description": "The latest sessions across every Claude account on this machine, newest first — the same text the sessions CLI prints.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "limit": {
+          "description": "how many (default 15)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 50
+        }
+      }
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "sessions_search",
+    "title": "Find a Claude session",
+    "description": "Sessions whose project path or opening prompt contains every one of these words — the same text the sessions CLI prints.",
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "words": {
+          "type": "string",
+          "minLength": 1,
+          "description": "words that must all appear"
+        }
+      },
+      "required": [
+        "words"
+      ]
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  }
+]

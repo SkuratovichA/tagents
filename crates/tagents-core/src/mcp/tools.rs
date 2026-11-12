@@ -247,7 +247,7 @@ pub fn tool_specs(programs: &[Program]) -> Result<Vec<Tool>, String> {
             });
         }
     }
-    tools.sort_by(|a, b| a.name.encode_utf16().cmp(b.name.encode_utf16()));
+    tools.sort_by(|a, b| crate::js::cmp16(&a.name, &b.name));
     Ok(tools)
 }
 

@@ -78,9 +78,9 @@ fn a_client_is_served_and_the_daemon_leaves_nothing_behind() {
 
     let mut client = Client::connect(&daemon.socket);
     let hello = client.handshake();
-    assert_eq!("tagents-knowledge", hello["result"]["serverInfo"]["name"]);
+    assert_eq!("okb", hello["result"]["serverInfo"]["name"]);
     let listed = client.ask(2, "tools/list", &json!({}));
-    assert_eq!(6, listed["result"]["tools"].as_array().unwrap().len());
+    assert_eq!(4, listed["result"]["tools"].as_array().unwrap().len());
     drop(client);
 
     assert_eq!(Ok(Outcome::Served), daemon.finish());
@@ -236,7 +236,7 @@ fn a_client_quiet_for_longer_than_the_tick_stays_connected_and_is_answered() {
     client.handshake();
     thread::sleep(Duration::from_millis(1300));
     let listed = client.ask(2, "tools/list", &json!({}));
-    assert_eq!(6, listed["result"]["tools"].as_array().unwrap().len());
+    assert_eq!(4, listed["result"]["tools"].as_array().unwrap().len());
 }
 
 #[test]
@@ -248,10 +248,7 @@ fn rubbish_and_a_cut_off_line_cost_only_their_connection() {
     let mut garbled = Client::connect(&daemon.socket);
     garbled.send("this is not json");
     garbled.send("{\"jsonrpc\":");
-    assert_eq!(
-        "tagents-knowledge",
-        garbled.handshake()["result"]["serverInfo"]["name"]
-    );
+    assert_eq!("okb", garbled.handshake()["result"]["serverInfo"]["name"]);
 
     let mut cut = Client::connect(&daemon.socket);
     cut.writer
@@ -327,9 +324,7 @@ fn a_panic_while_a_connection_is_set_up_is_reported_and_survived() {
     assert_eq!(1, reported.len(), "{reported:?}");
     // The line of the daemon's faults, then the panic's message and where it was.
     assert!(
-        reported[0].starts_with(
-            "tagents-knowledge: a connection could not be set up: boom while setting up"
-        ),
+        reported[0].starts_with("okb: a connection could not be set up: boom while setting up"),
         "{}",
         reported[0]
     );
@@ -363,8 +358,7 @@ fn a_panic_while_a_connection_is_served_is_reported_and_survived() {
     let reported = reports.lock().unwrap().clone();
     assert_eq!(1, reported.len(), "{reported:?}");
     assert!(
-        reported[0]
-            .starts_with("tagents-knowledge: a connection could not be served: boom while serving"),
+        reported[0].starts_with("okb: a connection could not be served: boom while serving"),
         "{}",
         reported[0]
     );

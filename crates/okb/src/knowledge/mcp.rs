@@ -8,13 +8,13 @@ use std::{
 use super::{SERVER, paths::Env, tools::KnowledgeTools};
 use tagents_core::{node, sessions::exit};
 
-/// Serves the six tools to the client on `input` and this process's stdout until `input` ends, and returns the exit code.
+/// Serves the four tools to the client on `input` and this process's stdout until `input` ends, and returns the exit code.
 pub fn serve(input: impl Read) -> u8 {
     let tools = Arc::new(KnowledgeTools::new(Env::from_process(), node::now_ms));
     match tagents_core::mcp::serve_stdio(tools, SERVER, input) {
         Ok(()) => exit::OK,
         Err(reason) => {
-            eprintln!("tagents-knowledge: {reason}");
+            eprintln!("okb: {reason}");
             exit::ERROR
         }
     }

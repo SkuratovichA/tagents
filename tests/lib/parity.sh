@@ -40,3 +40,8 @@ must_not() {  # <label> <needle>
 oracle_usage_words() {  # <file...>
   perl -CSD -pi -e 's/the Rust binary serves it and hands over to node when it cannot start/the Rust binary serves it/; s/бинарник на Rust, а если он не может стартовать, управление передаётся node/бинарник на Rust/; $_ = "" if /^  knowledge (mcp|serve|join)\b.*\(.*: Rust binary only\)$/' "$@"
 }
+
+# The oracle (tag v0.7.0) is the program `tagents-knowledge` and tells where the folder is named in the words of tagents: its variable and a `[knowledge]` table in the config. okb is called `okb`, names its own variable and keeps `dir` at the top of its own config; the program name, the sentence and the snippet are put into okb's words in the oracle's transcript.
+oracle_okb_words() {  # <file...>
+  perl -CSD -pi -e 's/tagents-knowledge/okb/g; s/no knowledge directory: set TAGENTS_KNOWLEDGE_DIR, pass --dir/no knowledge directory: set OKB_DIR, pass --dir/; $_ = "" if /^  \[knowledge\]$/' "$@"
+}

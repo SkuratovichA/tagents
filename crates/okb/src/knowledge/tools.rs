@@ -1,4 +1,4 @@
-//! The six tools of the knowledge server, over MCP (`packages/knowledge/src/mcp/server.ts`).
+//! The four tools of the knowledge server, over MCP (`packages/knowledge/src/mcp/server.ts`).
 //!
 //! NO TOOL WRITES A DOCUMENT: the documents are a git repository the owner edits, and a tool that wrote them would put an agent's paraphrase into the source of truth without a diff, a review or a commit message. The one thing a read tool leaves behind is an event in the usage store for each document it returns.
 //!
@@ -12,7 +12,6 @@ use rusqlite::Connection;
 use serde_json::{Map, Value, json};
 
 use super::{
-    args,
     index::{open_db, reindex},
     paths::{DirResult, Env},
     search::{self, DocSummary, Filters, Hit, Lifecycle},
@@ -20,18 +19,17 @@ use super::{
 };
 use tagents_core::{
     ending::Stop,
-    js,
     json::pretty,
-    mcp::{rpc::CallResult, server::Tools},
-    node, sessions,
+    mcp::{
+        args::{self, number, text},
+        rpc::CallResult,
+        server::Tools,
+    },
+    node,
     sync::locked,
-    transcripts::Context,
 };
 
-/// How many sessions `sessions_recent` lists when it is not told.
-const DEFAULT_SESSIONS: f64 = 15.0;
-
-/// The entries of `tools/list`, in the order the node server announces them.
+/// The entries of `tools/list`.
 pub fn listing() -> &'static [Value] {
     static LIST: OnceLock<Vec<Value>> = OnceLock::new();
     LIST.get_or_init(|| serde_json::from_str(include_str!("tools.json")).unwrap_or_default())
@@ -68,7 +66,7 @@ impl KnowledgeTools {
             DirResult::Found(dir) => dir,
             DirResult::Unset { config } => {
                 return Err(format!(
-                    "no knowledge directory: set TAGENTS_KNOWLEDGE_DIR or knowledge.dir in {config}"
+                    "no knowledge directory: set OKB_DIR or dir in {config}"
                 ));
             }
             DirResult::Missing { dir, .. } => {
@@ -83,11 +81,7 @@ impl KnowledgeTools {
 
     /// Leave the events of a read in the usage store. Silent: a tool has nobody to tell, and a store that fails never changes an answer.
     fn record(&self, events: &[usage::UsageEvent], index_file: &str) {
-        let _ = usage::record_reads(
-            &self.env.resolve_usage_db(index_file),
-            events,
-            (self.clock)(),
-        );
+        let _ = usage::record_reads(&self.env.usage_file(index_file), events, (self.clock)());
     }
 
     fn tool_search(&self, args: &Map<String, Value>) -> Result<String, String> {
@@ -179,7 +173,7 @@ impl KnowledgeTools {
             min_days: number(args, "min_days").map(|n| n as i64),
         };
         let rows = self.with_db(|db, index_file| {
-            let file = self.env.resolve_usage_db(index_file);
+            let file = self.env.usage_file(index_file);
             usage::read_usage_rows(db, &file, &options, (self.clock)()).map_err(|e| match e {
                 ReportError::Store(e) => {
                     format!("the usage store {} cannot be read: {}", e.file, e.reason)
@@ -188,23 +182,6 @@ impl KnowledgeTools {
             })
         })?;
         Ok(pretty(&rows.iter().map(row_json).collect::<Vec<_>>()))
-    }
-
-    fn sessions_context(&self) -> Context {
-        Context {
-            home: self.env.home.clone(),
-            claude_homes: self.env.claude_homes.clone(),
-            now_ms: (self.clock)(),
-        }
-    }
-
-    fn tool_sessions_search(&self, args: &Map<String, Value>) -> Result<String, String> {
-        let words: Vec<String> = js::split_space(text(args, "words"))
-            .into_iter()
-            .filter(|word| !word.is_empty())
-            .map(str::to_owned)
-            .collect();
-        sessions::search(&self.sessions_context(), &words)
     }
 }
 
@@ -238,28 +215,13 @@ impl Tools for KnowledgeTools {
             "knowledge_search" => self.tool_search(args),
             "knowledge_get" => self.tool_get(args),
             "knowledge_list" => self.tool_list(args),
-            "knowledge_usage" => self.tool_usage(args),
-            "sessions_recent" => sessions::recent(
-                &self.sessions_context(),
-                number(args, "limit").unwrap_or(DEFAULT_SESSIONS),
-            ),
-            _ => self.tool_sessions_search(args),
+            _ => self.tool_usage(args),
         };
         Some(match answer {
             Ok(text) => CallResult::ok(text),
             Err(text) => CallResult::fail(text),
         })
     }
-}
-
-/// A string argument the check let through, or an empty one for a call that left it out.
-fn text<'a>(args: &'a Map<String, Value>, key: &str) -> &'a str {
-    args.get(key).and_then(Value::as_str).unwrap_or("")
-}
-
-/// A number argument, as the double JavaScript reads it.
-fn number(args: &Map<String, Value>, key: &str) -> Option<f64> {
-    args.get(key).and_then(Value::as_f64)
 }
 
 fn filters_of(args: &Map<String, Value>) -> Filters<'_> {

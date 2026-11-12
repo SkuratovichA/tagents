@@ -1,10 +1,10 @@
-//! The shared knowledge server: one process for every session of an environment, listening on a unix socket and serving each connection as `tagents-knowledge mcp` serves its stdio. It is `runDaemon` of `packages/knowledge/src/mcp/daemon.ts`.
+//! The shared knowledge server: one process for every session of an environment, listening on a unix socket and serving each connection as `okb mcp` serves its stdio. It is `runDaemon` of `packages/knowledge/src/mcp/daemon.ts`.
 //!
 //! One accept loop polls the listener and a wake pipe, and a thread of its own serves each connection. Only the loop adds connections, and it is also the one that decides to leave: it drains the backlog and then reads the count. A connection that reached the socket before the drain is counted and served, however long it waited there; one that comes after the drain is closed with no reply when the listener closes. The caller that connected in that gap is `join`, which retries once.
 //!
 //! The daemon leaves after `idle` with nobody connected, counted from the last disconnect or from the start, and at the end of its `Stop`. It never leaves while a client is connected. It removes its socket and its pid file when it goes, a failure of the loop included.
 //!
-//! One bad connection costs only itself: a failure while a connection is being set up or served (a refused clone of the stream, a panic of the thread) is reported on stderr as `tagents-knowledge: <what>: <detail>` followed by where the panic was, the connection is closed and counted out, and the daemon goes on. The daemon is shared, and a session whose daemon died has no server of its own to fall back on.
+//! One bad connection costs only itself: a failure while a connection is being set up or served (a refused clone of the stream, a panic of the thread) is reported on stderr as `okb: <what>: <detail>` followed by where the panic was, the connection is closed and counted out, and the daemon goes on. The daemon is shared, and a session whose daemon died has no server of its own to fall back on.
 
 use std::{
     cell::RefCell,
@@ -376,7 +376,7 @@ fn admit(stream: UnixStream, shared: &Arc<Shared>, options: &Arc<Options>) {
     let id = shared.admit(kept);
     let (shared_here, options_here) = (Arc::clone(shared), Arc::clone(options));
     let spawned = thread::Builder::new()
-        .name("tagents-knowledge-connection".into())
+        .name("okb-connection".into())
         .spawn(move || connection(id, &stream, &shared_here, &options_here));
     if let Err(e) = spawned {
         (options.report)(&Fault::io(SET_UP, &e).line());
@@ -456,9 +456,9 @@ impl Fault {
         }
     }
 
-    /// `tagents-knowledge: <what>: <detail>`, where a panic's detail is its message and then the place it happened.
+    /// `okb: <what>: <detail>`, where a panic's detail is its message and then the place it happened.
     fn line(&self) -> String {
-        format!("tagents-knowledge: {}: {}", self.what, self.detail)
+        format!("okb: {}: {}", self.what, self.detail)
     }
 }
 

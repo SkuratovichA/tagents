@@ -4,7 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createT, type Translate } from './i18n/index.ts';
 import { isMissing } from './missing.ts';
-import { CONTRACT_FILE, MARKETPLACE_FILE, PLUGIN_FILE, SHIPPED_FILES, SKILLS_DIR, planGenerate, type Disk, type Plan } from './plan.ts';
+import { CONTRACT_FILE, MARKETPLACE_FILE, planGenerate, type Disk, type Plan } from './plan.ts';
+import { PLUGINS } from './plugins.ts';
 import { collectSources } from './sources.ts';
 
 /** The repo root: this file is `<root>/packages/contract/src/tree.ts`. */
@@ -13,10 +14,10 @@ export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url
 /** Files an operating system drops into a folder; they are no part of what the plugin ships. */
 const IGNORED = new Set(['.DS_Store']);
 
-/** Every file under skills/, relative to the root with POSIX separators. */
-async function skillFiles(root: string): Promise<string[]> {
+/** Every file under a skills directory, relative to the root with POSIX separators. */
+async function skillFiles(root: string, skillsDir: string): Promise<string[]> {
   try {
-    const entries = await fs.readdir(path.join(root, SKILLS_DIR), { recursive: true, withFileTypes: true });
+    const entries = await fs.readdir(path.join(root, skillsDir), { recursive: true, withFileTypes: true });
     return entries
       .filter((entry) => entry.isFile() && !IGNORED.has(entry.name))
       .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join('/'));
@@ -35,7 +36,8 @@ export async function readDisk(root: string): Promise<Disk> {
       if (!isMissing(error)) throw error;
     }
   };
-  await Promise.all([CONTRACT_FILE, PLUGIN_FILE, MARKETPLACE_FILE, ...SHIPPED_FILES, ...(await skillFiles(root))].map(add));
+  const skills = await Promise.all(PLUGINS.map((plugin) => skillFiles(root, plugin.skillsDir)));
+  await Promise.all([CONTRACT_FILE, MARKETPLACE_FILE, ...PLUGINS.flatMap((plugin) => [plugin.manifest, ...plugin.shipped]), ...skills.flat()].map(add));
   return { files };
 }
 
@@ -69,8 +71,10 @@ export function changeLines(plan: Plan, t: Translate): string[] {
     ...[...plan.writes.keys()].map((p) => t('wrote', { path: p })),
     ...plan.deletes.map((p) => t('deleted', { path: p })),
   ];
-  if (plan.move === 'first') lines.push(t('versionFirst', { digest: plan.digest, version: plan.versionTo }));
-  if (plan.move === 'minor') lines.push(t('versionMinor', { from: plan.versionFrom, to: plan.versionTo }));
-  if (plan.move === 'patch') lines.push(t('versionPatch', { from: plan.versionFrom, to: plan.versionTo }));
+  for (const move of plan.plugins) {
+    if (move.move === 'first') lines.push(t('versionFirst', { plugin: move.plugin, digest: move.digest, version: move.versionTo }));
+    if (move.move === 'minor') lines.push(t('versionMinor', { plugin: move.plugin, from: move.versionFrom, to: move.versionTo }));
+    if (move.move === 'patch') lines.push(t('versionPatch', { plugin: move.plugin, from: move.versionFrom, to: move.versionTo }));
+  }
   return lines.length === 0 ? [t('upToDate')] : lines;
 }
