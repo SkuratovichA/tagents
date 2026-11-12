@@ -27,7 +27,14 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 
 ### Removed
 
+- Node gives up the verbs the Rust binary serves: `packages/mcp`, `session`, `sessions`, `doctor`, `plugin add|remove|new` of `packages/core`, `serve` and `mcp` of `tagents-knowledge` and the notification service of `packages/notify` are deleted, and the node CLI answers each of them with one line that names `tagents update` and `cargo build --release -p tagents-core`, and exit 69. A machine needs the `tagents-core` binary for them. The parity suites read node's side from the tag `v0.6.7`, and the vector generators are gone ([#28](https://github.com/SkuratovichA/tagents/issues/28)).
+- `TAGENTS_NO_NATIVE` is read only by the installer, and no wrapper reads it when it runs.
 - YAML config files are no longer read, and the `config convert` verb is gone with them: `config.toml`, `config.<host>.toml` and `plugins/<name>.toml` are the only config files, so a machine that has only `config.yaml` has no configuration until it is converted by hand ([#37](https://github.com/SkuratovichA/tagents/pull/37)).
+
+### Changed
+
+- The installer never removes the installed `tagents-core` for want of a newer one: with no prebuilt for the new version the binary stays and one line says so, and with no binary a warning names what will not work. Only `TAGENTS_NO_NATIVE=1` removes a prebuilt binary.
+- The knowledge launcher goes on to the binary's `serve` and `mcp` after a failed probe and no longer sets `TAGENTS_NO_NATIVE`. A LaunchAgent that still runs `node packages/notify/dist/main.js run` starts the binary as its child.
 
 ### Fixed
 

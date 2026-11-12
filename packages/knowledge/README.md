@@ -88,8 +88,8 @@ that says how to set it.
 | `lint [--dir D]` | the claims each document makes about itself, checked |
 | `toc [--dir D] [--check]` | write `index.md`; `--check` writes nothing and exits 1 when it is absent or out of date |
 | `usage [--dir D] [--db F] [--usage-db F] [--since Nd] [--top N] [--type T] [--all] [--candidates] [--min-gets N] [--min-days N] [--json]` | what was read: `id  type  status  gets  hits  days  last` per document, the most read first; `--candidates` keeps the ones worth turning into a skill (see Usage) |
-| `mcp` | serve the tools below over stdio, one process for this one client |
-| `serve [--idle S] [--foreground] [--socket P]` | make sure the shared MCP server for this environment is running and print the unix socket it listens on; `--idle S` is the quiet time in seconds before it exits (default 600); `--foreground` runs the server in this process instead, on `--socket P` |
+| `mcp` | retired: the Rust binary serves the tools below (`tagents-core knowledge mcp`); node answers with the needs-binary line and exit code 69 |
+| `serve` | retired like `mcp`; the binary's daemon is reached with `join` |
 
 Exit codes: **0** ok · **1** error · **2** usage · **4** nothing found (a search
 with no hits, a `show` of an id or heading that does not exist, an empty
@@ -128,30 +128,7 @@ Recording is best effort. A store that cannot be opened, stays locked for more t
 
 ## MCP
 
-```sh
-claude mcp add tagents -- tagents-knowledge mcp
-```
-
-or, for a headless run that must see exactly these tools and nothing else:
-
-```jsonc
-// mcp.json
-{
-  "mcpServers": {
-    "tagents": {
-      "command": "tagents-knowledge",
-      "args": ["mcp"],
-      "env": { "TAGENTS_KNOWLEDGE_DIR": "/Users/you/git/personal/knowledge" }
-    }
-  }
-}
-```
-
-```sh
-claude -p "where do the backups go?" --mcp-config mcp.json --strict-mcp-config
-```
-
-Built on `@modelcontextprotocol/sdk` **1.x** (current stable major; input schemas are zod shapes the SDK turns into JSON Schema). The framing is stdio, newline-delimited JSON-RPC, and there are two ways to reach it: `tagents-knowledge mcp` is a process of its own for one client, and the shared server below is one process for every client with the same environment.
+The server is the Rust binary's: `tagents-core knowledge mcp` for one client, `tagents-core knowledge join` for a session of the plugin (it connects to the one daemon of the environment). Node keeps the one-shot verbs above and no server. `tagents-knowledge mcp` and `serve` answer one line naming `tagents update` and `cargo build --release -p tagents-core`, and exit 69.
 
 | tool | input | returns |
 | --- | --- | --- |
@@ -164,23 +141,15 @@ Built on `@modelcontextprotocol/sdk` **1.x** (current stable major; input schema
 
 No tool writes a document, and none will. `knowledge_get` and `knowledge_search` leave an event in the usage store (see Usage), located from the environment alone because the tools have no flags: `TAGENTS_KNOWLEDGE_USAGE_DB`, else beside the index in use.
 
-## The shared server
+## The plugin's server
 
-A `tagents-knowledge mcp` process holds tens of megabytes by `footprint` (the table in [docs/architecture/rust-core.md](../../docs/architecture/rust-core.md#what-a-knowledge-session-holds)), and a Claude session would start one of its own. The plugin therefore registers `packages/knowledge/bin/knowledge-mcp` instead (`sh ${CLAUDE_PLUGIN_ROOT}/packages/knowledge/bin/knowledge-mcp`), a POSIX script that probes which program serves this machine and becomes it, best first:
+The plugin registers `packages/knowledge/bin/knowledge-mcp` (`sh ${CLAUDE_PLUGIN_ROOT}/packages/knowledge/bin/knowledge-mcp`), a POSIX script that probes the machine and becomes the best server it finds:
 
-1. **The Rust binary.** `tagents-knowledge join </dev/null` exits 0 when the `tagents-knowledge` wrapper that `install.sh` writes names `tagents-core` (a regular executable whose `--version` is the checkout's). The script then `exec`s `tagents-knowledge join`, which is `tagents-core knowledge join`: it connects to the one shared Rust daemon of this environment, starts it when it is not running, and relays the session's stdin and stdout to it. The session is one small process, with no node and no `nc`.
-2. **The shared node daemon.** The wrapper answers `join` with exit code 69 when it has no binary (none installed, another version, `TAGENTS_NO_NATIVE=1`), without starting node, and so does a node program that does not know `join` (exit code 2). The script then asks `tagents-knowledge serve` for the socket of the shared server and `exec`s `nc -U` on it, so a session is left with one `nc` and the node daemon holds the index.
-3. **A server of the session's own.** If `serve` fails, a checkout predates it, or there is no `nc`, the script runs `tagents-knowledge mcp`.
+1. **The Rust binary.** `tagents-knowledge join </dev/null` exits 0 when the `tagents-knowledge` wrapper that `install.sh` writes names `tagents-core`. The script then `exec`s `tagents-knowledge join`, which is `tagents-core knowledge join`: it connects to the one shared Rust daemon of this environment, starts it when it is not running, and relays the session's stdin and stdout to it. The session is one small process, with no node and no `nc`.
+2. **No binary.** The wrapper answers `join` with exit code 69 when it has no binary, without starting node, and so does a node program that does not know `join` (exit code 2). The script then calls `tagents-knowledge serve` and `mcp`, which node answers with the needs-binary line and exit 69: node has no knowledge server any more, and the session has none until a binary is installed (`tagents update`, or `cargo build --release -p tagents-core`).
+3. **A plugin older than the install** calls `serve` and `mcp` straight; the wrappers accept both.
 
-Any other exit code of the probe (1, 3, 126, 127, a signal) means the binary was there and failed: the script writes one line naming the code to stderr, which Claude Code keeps in the log of an MCP server, sets `TAGENTS_NO_NATIVE=1` (with which the wrapper names no binary, so `serve` and `mcp` reach node) and runs arrangement 2 or 3. The same variable in a session's environment turns the Rust server off for that session. `tagents-knowledge join </dev/null; echo $?` shows the code, and `footprint <pid>` on the session's process shows what it holds.
-
-`serve` prints the socket and exits 0. If something already answers on it, that is all it does. Otherwise it starts the server detached (its own process group, so it outlives the session that happened to start it), waits until the socket accepts a connection and prints the path. The server gives every connection its own MCP server over the same stdio framing, and exits after 10 minutes without a connection: a one-shot timer, armed when the last connection closes and cleared by the next, so nothing polls.
-
-One server per environment, not per session. The socket is `$TMPDIR/tagents-<uid>/knowledge-<key>.sock` in a directory of mode 0700 (under `/tmp` when `$TMPDIR` is too long for a socket address), and `<key>` is a hash of `HOME`, `TAGENTS_CONFIG_DIR`, `XDG_CONFIG_HOME`, `TAGENTS_KNOWLEDGE_DIR`, `TAGENTS_KNOWLEDGE_DB`, `TAGENTS_KNOWLEDGE_USAGE_DB` and `CLAUDE_HOMES`, the variables the server and the session renderers behind it read, plus a stamp of the running build, so a rebuilt checkout starts a server of its own instead of joining the previous build's. Relative paths in those variables are made absolute against the starter's directory, because the server starts elsewhere. `test/socket.test.ts` scans the sources and fails when they read a variable that is neither in the key nor on its list of reasons not to be. Beside each socket the server keeps `<socket>.pid`, written once it listens and removed when it leaves.
-
-Starters that race are settled by the kernel: the loser's `listen` fails with `EADDRINUSE`, it finds a live server and leaves. A socket file that refuses connections (its server was killed) is removed and replaced under a lock, in the same critical section as the new `listen`, so two servers that both see the dead file cannot unlink each other's fresh one.
-
-Two limits worth knowing. A session that connects in the few milliseconds when the server is already leaving gets a connection refused, and its MCP server fails to start for that session. And the build stamp is the modification time of `dist/cli/main.js`, which `pnpm build` rewrites; running from `src/` does not notice an edit to another file.
+Any other exit code of the probe (1, 3, 126, 127, a signal) means the binary was there and failed: the script writes one line naming the code to stderr, which Claude Code keeps in the log of an MCP server, and goes on to the binary's `serve` and `mcp`. `tagents-knowledge join </dev/null; echo $?` shows the code, and `footprint <pid>` on the session's process shows what it holds.
 
 ## The tokenizer decision
 
@@ -234,7 +203,4 @@ pnpm -r test
 
 No `any`, anywhere: `test/lint-no-any.test.ts` is the gate. Erasable syntax
 only. The suites are hermetic — a temp folder, a temp index, a fixture corpus in
-Russian and English under `test/fixtures/knowledge/`, and an MCP round trip that
-spawns the real binary and kills it again. The shared-server suite
-(`test/shared-server.test.ts`) runs the bridge script against real daemons in a
-scratch `TMPDIR` and stops every process whose command line names that directory.
+Russian and English under `test/fixtures/knowledge/`, and the launcher suite (`tests/knowledge-launcher.sh`) runs the bridge script against a stub binary.
