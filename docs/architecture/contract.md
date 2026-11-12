@@ -8,8 +8,8 @@ The Claude Code plugin tells a session exactly what every tagents command and pa
 
 | what | read from | lands in |
 |------|-----------|----------|
-| every verb, flag, exit code and effect of `tagents-core`, `okb` (whose program name stays `tagents-knowledge`) and `tagents-notify`, and of the flags of `tagents` that are not interactive | the command specs `parseArgs` itself is handed: `spec/cli/tagents-core.json` for `tagents-core` (read through `packages/core/src/cli/spec.ts`), `spec/cli/okb.json` for `okb`, printed by `okb --spec`, `packages/notify/src/cli/spec.ts` for `tagents-notify`, and `tagents.cli.json` for the bash script | `contract.json`, `references/cli.md` |
-| every MCP tool and its input schema | the frozen tool list of the knowledge server, `crates/okb/src/knowledge/tools.json`, read by `packages/contract/src/sources.ts`, and the tools of the `tagents` server, which `toolSpecs()` derives from the verbs above | `contract.json`, `references/mcp.md` |
+| every verb, flag, exit code and effect of `tagents-core`, `okb` and `tagents-notify`, and of the flags of `tagents` that are not interactive | the command specs `parseArgs` itself is handed: `spec/cli/tagents-core.json` for `tagents-core` (read through `packages/core/src/cli/spec.ts`), `spec/cli/okb.json` for `okb`, printed by `okb --spec`, `packages/notify/src/cli/spec.ts` for `tagents-notify`, and `tagents.cli.json` for the bash script | `contract.json`, `references/cli.md` |
+| every MCP tool and its input schema | the frozen tool list of the knowledge server, `crates/okb/src/knowledge/tools.json`, read by `packages/contract/src/sources.ts`, and the tools of the `tagents` server: the two session tools frozen in `sessions_tools.json` and the rest, which `toolSpecs()` derives from the verbs above | `contract.json`, `references/mcp.md` |
 | the public TypeScript API of each package | declarations emitted from the sources, through [API Extractor](https://api-extractor.com/) | `references/*.api.md`, and a hash of each in `contract.json` |
 | the flags of `tagents`, `tusage` and `tnotes` | each script's own `--help` | `references/scripts.md` |
 
@@ -48,7 +48,7 @@ A verb may declare an `effect` (`read`, `write`, `spawn`, `destructive` or `serv
 }
 ```
 
-The verbs of `tagents-knowledge` and `tagents-notify` say it in their TypeScript spec:
+The verbs of `okb` and `tagents-notify` say it in their TypeScript spec:
 
 ```ts
 export const INDEX = { path: ['index'], summary: 'summaryIndex', effect: 'write', /* … */ } as const satisfies CommandSpec<KnowledgeKey>;

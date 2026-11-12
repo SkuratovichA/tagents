@@ -11,7 +11,7 @@ Pull request A (this branch):
 - `packages/knowledge` is deleted. **BREAKING** for the library `@tagents/knowledge`: it was never published and has no importer outside this repository, and its API report goes with it. The contract package reads `spec/cli/okb.json` and a JSON of okb's texts instead of the package source.
 - `tagents-core knowledge <args>` runs `okb <args>`, or prints a line naming `okb` and `tagents update` and exits 69.
 - The installer installs `okb` beside `tagents-core`; `tagents-knowledge` becomes a wrapper that runs `okb`. The plugin's launcher moves to `bin/knowledge-mcp`.
-- The release carries separate `okb` archives. The workspace version is 0.8.0.
+- The release carries separate `okb` archives. The workspace version is 0.8.0 for the binary and 0.9.0 for the plugin.
 
 Carried over for byte parity and left to pull request B: `okb --spec` still names the program `tagents-knowledge`, the usage text of `okb` is the old one (it says `tagents-knowledge` and does not list `mcp`, `serve` and `join`), there are two usage texts and a Russian table with gaps.
 

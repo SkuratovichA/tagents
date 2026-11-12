@@ -266,8 +266,8 @@ A pull request that changes the workflow, the scripts or an input of the binary 
 
 ```sh
 git switch main && git pull --ff-only          # the commit that holds the bump
-sh .github/scripts/core-release.sh version     # 0.8.0
-git tag v0.8.0 && git push origin v0.8.0       # starts the release workflow
+sh .github/scripts/core-release.sh version     # 0.9.0
+git tag v0.9.0 && git push origin v0.9.0       # starts the release workflow
 ```
 
 **When `main` is ahead of the last release,** a managed copy that follows `main` holds a version with no release yet. Its installer finds nothing to download, says so, keeps the binary it already has, and the wrappers keep naming it until the tag of that version is pushed. With no binary at all it warns what will not work. Nothing releases on a push to `main`: the person who merges the bump pushes the tag.
