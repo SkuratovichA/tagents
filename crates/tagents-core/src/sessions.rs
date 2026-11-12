@@ -26,6 +26,7 @@ pub mod exit {
     pub const USAGE: u8 = 2;
     pub const REFUSED: u8 = 3;
     pub const TIMEOUT: u8 = 4;
+    pub const NO_BINARY: u8 = 69;
     pub const CANNOT_EXECUTE: u8 = 126;
     pub const NOT_FOUND: u8 = 127;
 }

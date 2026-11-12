@@ -8,13 +8,15 @@
 use std::{
     ffi::{OsStr, OsString},
     io::Write,
-    process::ExitCode,
+    os::unix::process::CommandExt,
+    path::PathBuf,
+    process::{Command, ExitCode},
 };
 
 use tagents_spec::Spec;
 
 use crate::{
-    doctor, knowledge, mcp,
+    doctor, mcp,
     messages::Locale,
     node,
     notify::service,
@@ -66,8 +68,10 @@ const GROUPS: &[Group] = &[
 const MCP: &str = "mcp";
 /// The verb that runs the notification service in this process until a signal stops it. It has an arm of its own because it runs until stopped, and it matches both words and nothing after them: the rest of `notify` (`install`, `status`, and a `run` with an argument) is the node CLI's.
 const NOTIFY_RUN: &[&str] = &["notify", "run"];
-/// The first word of the knowledge verbs, which stream or run until stopped, so they have an arm of their own. Only the words `knowledge::VERBS` names are served; every other word after `knowledge` is the node CLI's.
+/// The first word of the knowledge base, which `okb` serves: the front door runs `okb` with the words after it, or says there is none.
 const KNOWLEDGE: &str = "knowledge";
+/// The program that serves `knowledge`.
+const OKB: &str = "okb";
 /// The words that ask for the usage line.
 const HELP: &[&str] = &["help", "--help", "-h"];
 /// The verbs served apart from the groups.
@@ -82,7 +86,6 @@ pub fn served_spec() -> Result<String, String> {
             .iter()
             .flat_map(|g| g.verbs)
             .chain(STREAMING)
-            .chain(knowledge::VERBS)
             .any(|verb| verb.iter().copied().eq(c.path.iter().map(String::as_str)))
     });
     let mut text = serde_json::to_string_pretty(&spec).map_err(|e| e.to_string())?;
@@ -115,7 +118,7 @@ pub(crate) fn emit_stderr(text: &str) {
 }
 
 /// Write what was produced: stdout, then stderr.
-pub(crate) fn print(out: &Output) {
+pub fn print(out: &Output) {
     emit_stdout(&out.stdout);
     emit_stderr(&out.stderr);
 }
@@ -124,6 +127,50 @@ pub(crate) fn print(out: &Output) {
 fn emit(out: &Output) -> ExitCode {
     print(out);
     ExitCode::from(out.code)
+}
+
+/// Where `okb` is: next to this binary, else on `PATH`.
+fn find_okb() -> Option<PathBuf> {
+    let beside = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join(OKB)))
+        .filter(|file| file.to_str().is_some_and(node::is_executable_file));
+    beside.or_else(|| {
+        let path = node::env_text("PATH")?;
+        node::find_on_path(OKB, &path).map(PathBuf::from)
+    })
+}
+
+/// Replace this process with `okb` given `args`, or say that this machine has none and exit 69, the code of a verb whose binary is missing. Only returns when that could not be done; a stderr that went away does not change the exit code.
+fn exec_okb(args: &[OsString]) -> ExitCode {
+    let Some(okb) = find_okb() else {
+        return emit(&needs_okb());
+    };
+    let err = Command::new(&okb).args(args).exec();
+    emit(&Output {
+        stdout: String::new(),
+        stderr: format!("tagents-core: cannot run {}: {err}\n", okb.display()),
+        code: if err.kind() == std::io::ErrorKind::NotFound {
+            sessions::exit::NOT_FOUND
+        } else {
+            sessions::exit::CANNOT_EXECUTE
+        },
+    })
+}
+
+/// The line that names `okb` and `tagents update`, with exit 69.
+fn needs_okb() -> Output {
+    let line = sessions::texts(Locale::current())
+        .map(|texts| texts.t("needsOkb", &[]))
+        .unwrap_or_else(|_| {
+            "knowledge is served by the okb binary, and this machine has none: run `tagents update`"
+                .to_owned()
+        });
+    Output {
+        stdout: String::new(),
+        stderr: format!("{line}\n"),
+        code: sessions::exit::NO_BINARY,
+    }
 }
 
 /// Replace this process with the node program at `relative` below the root, given `args`. Only returns when that could not be done, after saying why; a stderr that went away does not change the exit code.
@@ -198,12 +245,8 @@ pub fn run(args: Vec<OsString>) -> ExitCode {
     if args.iter().eq(NOTIFY_RUN) {
         return service::run();
     }
-    if first == Some(KNOWLEDGE)
-        && args
-            .get(1)
-            .is_some_and(|verb| knowledge::VERBS.iter().any(|v| verb.to_str() == Some(v[1])))
-    {
-        return knowledge::run(&args[1..]);
+    if first == Some(KNOWLEDGE) {
+        return exec_okb(&args[1..]);
     }
     if args.is_empty() || first.is_some_and(|word| HELP.contains(&word)) {
         return emit(&usage(args.is_empty()));

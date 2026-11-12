@@ -678,6 +678,7 @@ export const resources: {
             readonly usage: string;
             readonly unknownCommand: "unknown command: {{command}}";
             readonly needsBinary: "{{verb}} is served by the tagents-core binary, and this machine has none: run `tagents update`, or `cargo build --release -p tagents-core` in the checkout";
+            readonly needsOkb: "knowledge is served by the okb binary, and this machine has none: run `tagents update`, or `cargo build --release -p okb` in the checkout";
             readonly missingOption: "missing required option {{option}}";
             readonly unknownOption: "unknown option {{option}}";
             readonly badRef: "no session matches {{ref}}";
@@ -725,13 +726,10 @@ export const resources: {
             readonly summaryDoctor: "prints the node version, the state directory, the config file and whether claude is on PATH";
             readonly summaryMcp: "serves the tools of a contract file to an MCP client over stdin and stdout until the client closes them";
             readonly summaryNotifyRun: "runs the notification service in this process until a signal stops it: it follows the event stream of the agents and posts a notice for each turn that ends, each question and each permission prompt";
-            readonly summaryKnowledgeMcp: "serves the six knowledge tools to an MCP client over stdin and stdout in this process until the client closes them";
-            readonly summaryKnowledgeServe: "prints the socket of the shared knowledge server of this environment and starts that server when nothing answers; with --foreground it is the server itself";
-            readonly summaryKnowledgeJoin: "connects stdin and stdout to the shared knowledge server, starting it when none runs, and serves in this process when none can be started";
         };
     };
     readonly ru: {
-        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "needsBinary" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "abortPaneAgent" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "doctorNodeMissing" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryDoctor" | "summaryMcp" | "summaryNotifyRun" | "summaryKnowledgeMcp" | "summaryKnowledgeServe" | "summaryKnowledgeJoin", string>>;
+        readonly core: Partial<Record<"present" | "missing" | "usage" | "unknownCommand" | "needsBinary" | "needsOkb" | "missingOption" | "unknownOption" | "badRef" | "noPrompt" | "nothingToAbort" | "abortPaneAgent" | "pluginNone" | "pluginFailed" | "pluginEntry" | "pluginOffers" | "pluginAdded" | "pluginExists" | "pluginRemoved" | "pluginNotListed" | "pluginUnresolved" | "pluginBadManifest" | "pluginNoEntry" | "pluginBadName" | "pluginTargetExists" | "pluginScaffolded" | "pluginCommands" | "pluginCommandEntry" | "pluginNoCommands" | "pluginBadFlag" | "pluginNoPositionals" | "doctorNode" | "doctorStateDir" | "doctorConfig" | "doctorClaude" | "doctorNodeMissing" | "summarySessionOpen" | "summarySessionPrompt" | "summarySessionLast" | "summarySessionList" | "summarySessionAbort" | "summarySessionsRecent" | "summarySessionsSearch" | "summarySessionsShow" | "summaryPluginList" | "summaryPluginAdd" | "summaryPluginRemove" | "summaryPluginNew" | "summaryDoctor" | "summaryMcp" | "summaryNotifyRun", string>>;
     };
 };
 

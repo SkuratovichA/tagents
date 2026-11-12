@@ -390,11 +390,7 @@ fn a_verb_the_front_door_serves_is_not_forwarded() {
     fs::create_dir_all(config.join("plugins")).unwrap();
     fs::write(config.join("plugins/notify.toml"), "backend = \"none\"\n").unwrap();
     // Every verb the data file gives to Rust, run without its arguments: each answers on its own, and the node CLI never runs. `doctor` does start node, once, to ask it what it is, which is not the CLI: `reached_cli` looks for the CLI's script among the arguments the stub node was given.
-    // The three `knowledge` verbs are left to their own test: `serve` and `join` start a server that outlives the call, which this loop has no environment to keep inside the scratch directory.
-    for command in data_file()
-        .served_by(Implementation::Rust)
-        .filter(|c| c.path[0] != "knowledge")
-    {
+    for command in data_file().served_by(Implementation::Rust) {
         let _ = fs::remove_file(&checkout.argv);
         let out = run(checkout
             .command()
@@ -412,55 +408,55 @@ fn a_verb_the_front_door_serves_is_not_forwarded() {
     }
 }
 
-#[test]
-fn the_knowledge_verbs_are_served_and_every_other_word_after_knowledge_reaches_node() {
-    let checkout = Checkout::new("knowledge-verbs");
-    let home = checkout.root.join("home");
-    fs::create_dir_all(&home).unwrap();
-    // No `packages/core/dist`: the only way a verb can answer is by being served here.
-    fs::remove_file(checkout.root.join("packages/core/dist/cli/main.js")).unwrap();
-    let knowledge = |args: &[&str]| {
-        let mut command = checkout.command();
-        command
-            .env("HOME", &home)
-            .env("TMPDIR", &home)
-            .env("TAGENTS_CONFIG_DIR", home.join("config"))
-            .args(["knowledge"])
-            .args(args);
-        command
-    };
-    // `mcp` ignores the words after it and ends with its input.
-    let out = run_with_stdin(knowledge(&["mcp", "--whatever"]), "");
-    assert_eq!(
-        (Some(0), ""),
-        (out.status.code(), &*String::from_utf8_lossy(&out.stderr))
+/// A stub `okb` in `dir` that writes its arguments to `$ARGV_FILE` and exits 7.
+fn stub_okb(dir: &Path) {
+    fs::create_dir_all(dir).unwrap();
+    write_executable(
+        &dir.join("okb"),
+        "#!/bin/sh\nprintf 'arg=%s\\n' \"$@\" > \"$ARGV_FILE\"\nexit 7\n",
     );
-    // The other two refuse what node refuses, with exit 2: `join` with the usage line, `serve` with the sentence of its parser.
-    let out = run(&mut knowledge(&["join", "x"]));
-    assert_eq!(Some(2), out.status.code());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("usage: tagents-core knowledge"));
-    let out = run(&mut knowledge(&["serve", "--bogus"]));
-    assert_eq!(Some(2), out.status.code());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("--bogus"));
-    // Every other word goes to the node CLI, which this checkout lacks: the front door's own line, exit 2.
-    let out = run(&mut knowledge(&["search", "x"]));
-    assert_eq!(Some(2), out.status.code());
-    assert!(
-        String::from_utf8_lossy(&out.stderr)
-            .contains("cannot find packages/core/dist/cli/main.js:")
-    );
-    assert!(!checkout.argv.exists());
 }
 
 #[test]
-fn knowledge_search_reaches_the_node_cli_with_its_arguments() {
-    let checkout = Checkout::new("knowledge-search");
-    let out = run(checkout.command().args(["knowledge", "search", "x"]));
-    assert_eq!(Some(0), out.status.code());
-    assert_eq!(
-        ["arg=knowledge", "arg=search", "arg=x"],
-        checkout.recorded()[4..]
-    );
+fn knowledge_runs_okb_beside_the_binary_with_the_words_after_it() {
+    let checkout = Checkout::new("knowledge-beside");
+    stub_okb(&checkout.root.join("target/debug"));
+    let out = run(checkout
+        .command()
+        .args(["knowledge", "search", "x", "--json"]));
+    assert_eq!(Some(7), out.status.code());
+    assert_eq!(checkout.recorded(), ["arg=search", "arg=x", "arg=--json"]);
+    assert!(!checkout.reached_cli());
+}
+
+#[test]
+fn knowledge_runs_okb_found_on_path() {
+    let checkout = Checkout::new("knowledge-path");
+    let bin = checkout.root.join("bin");
+    stub_okb(&bin);
+    let out = run(checkout
+        .command()
+        .env("PATH", &bin)
+        .args(["knowledge", "mcp"]));
+    assert_eq!(Some(7), out.status.code());
+    assert_eq!(checkout.recorded(), ["arg=mcp"]);
+}
+
+#[test]
+fn knowledge_without_okb_names_it_and_exits_69_and_never_reaches_node() {
+    let checkout = Checkout::new("knowledge-none");
+    for words in [&["knowledge", "search", "x"][..], &["knowledge"][..]] {
+        let out = run(checkout.command().args(words));
+        assert_eq!(Some(69), out.status.code(), "{words:?}");
+        assert_eq!("", String::from_utf8_lossy(&out.stdout));
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            err.contains("okb") && err.contains("tagents update"),
+            "{err}"
+        );
+        assert_eq!(1, err.lines().count());
+    }
+    assert!(!checkout.argv.exists());
 }
 
 #[test]

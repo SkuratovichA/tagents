@@ -67,7 +67,7 @@ struct Issue {
 }
 
 /// The zod word for what `value` is, `None` being a key that is not there.
-pub(crate) fn received(value: Option<&Value>) -> &'static str {
+pub fn received(value: Option<&Value>) -> &'static str {
     match value {
         None => "undefined",
         Some(Value::Null) => "null",

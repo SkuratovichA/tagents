@@ -222,6 +222,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "okb"
+version = "0.7.0"
+dependencies = [
+ "libc",
+ "rusqlite",
+ "rustix",
+ "saphyr",
+ "serde",
+ "serde_json",
+ "sha2",
+ "signal-hook",
+ "tagents-core",
+ "toml",
+]
+
+[[package]]
 name = "ordered-float"
 version = "5.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -416,12 +432,9 @@ version = "0.7.0"
 dependencies = [
  "kqueue",
  "libc",
- "rusqlite",
  "rustix",
- "saphyr",
  "serde",
  "serde_json",
- "sha2",
  "signal-hook",
  "tagents-spec",
  "toml",

@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "tagents",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "The tagents contract for Claude Code: every tagents-core and tagents-knowledge verb and flag, every MCP tool schema and the public TypeScript API of the packages, regenerated from the code on every change, plus the tagents tool server and the tagents-knowledge MCP server.",
   "author": {
     "name": "Aliaksandr Skuratovich"
@@ -24,6 +24,6 @@
     }
   },
   "metadata": {
-    "digest": "sha256:166b3c87b3b466085f4334a28a6416d2d78028de096231ffaba9eacf1db0e728"
+    "digest": "sha256:2658ebd86b9224192a48cd79cf20cbd917e3762d93b08b5a78489878e7a7e343"
   }
 }

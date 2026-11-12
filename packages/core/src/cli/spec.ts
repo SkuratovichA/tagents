@@ -168,7 +168,7 @@ function parsed<K extends keyof typeof PARSED>(verb: K): Omit<LoadedCommand, 'op
 
 export const PLUGIN_LIST = parsed('plugin list');
 
-/** The groups that are wholly the binary's: every word after them is served by it, whether the spec lists it or not. Any other group (`notify`, `knowledge`) lists only the words the binary serves and node answers the rest. */
+/** The groups that are wholly the binary's: every word after them is served by it, whether the spec lists it or not. Any other group (`notify`) lists only the words the binary serves and node answers the rest. */
 const WHOLE_GROUPS: ReadonlySet<string> = new Set(['session', 'sessions']);
 
 /**

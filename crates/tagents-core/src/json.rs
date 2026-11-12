@@ -209,7 +209,7 @@ pub fn quote_prefix16(text: &str, n: usize) -> String {
 }
 
 /// `JSON.stringify(value, null, 2)` of anything serde can write. The value goes through its JSON text and this parser, so that `stringify` is the one writer and a number and the order of the keys come out as JavaScript holds them. What is written is strings, numbers, and documents that were just parsed or built: there is nothing in it to fail on.
-pub(crate) fn pretty<T: Serialize + ?Sized>(value: &T) -> String {
+pub fn pretty<T: Serialize + ?Sized>(value: &T) -> String {
     match serde_json::to_string(value) {
         Ok(text) => match parse(&text) {
             Some(parsed) => stringify(&parsed, true),

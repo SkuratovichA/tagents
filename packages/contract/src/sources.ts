@@ -64,7 +64,7 @@ export const TAGENTS_SERVER_NAME = 'tagents';
 export const KNOWLEDGE_SERVER_NAME = 'tagents-knowledge';
 
 /** The `tools/list` of the knowledge server, which the binary serves and embeds: the file was written from the node server before it was deleted, and is frozen. */
-export const KNOWLEDGE_TOOLS_FILE = 'crates/tagents-core/src/knowledge/tools.json';
+export const KNOWLEDGE_TOOLS_FILE = 'crates/okb/src/knowledge/tools.json';
 
 /** One entry of the frozen tool list: the fields `toTool` reads; the schemas are checked there. */
 const FrozenTool = z.object({
