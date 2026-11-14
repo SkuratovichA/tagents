@@ -17,7 +17,7 @@
     "@tagents/core": "workspace:*",
     "@tagents/telegram": "workspace:*",
     "@types/node": "^22",
-    "typescript": "5.9.3",
+    "typescript": "6.0.3",
     "zod": "^4.6"
   }
 }
