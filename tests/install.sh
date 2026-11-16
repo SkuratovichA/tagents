@@ -74,6 +74,8 @@ STUB
     chmod +x tagents
     # The registration `tagents setup` reads. install_hooks wraps hooks/*.sh and nothing else, so the file has to be inert to it.
     cp "$ROOT/hooks/claude-settings.json" hooks/claude-settings.json
+    # The plugin's SessionStart hook is registered by hooks/hooks.json and lives in hooks/plugin/, which the glob of install_hooks does not reach.
+    mkdir -p hooks/plugin; cp "$ROOT/hooks/plugin/session-start.sh" hooks/plugin/session-start.sh
     # The hook echoes its stdin: a wrapper that dropped it would break every hook.
     printf '#!/bin/sh\necho "state v1 $* <$(cat)>"\n' > hooks/tmux-agent-state.sh
     printf '#!/bin/sh\necho "notes v1"\n' > hooks/notes-context.sh
@@ -1018,6 +1020,7 @@ ok "a fresh install: exit status" 0 "$rc"
 ok "...runs setup once" 1 "$(setup_count)"
 ok "...with the hooks directories it installed into, in the order given" "--hooks-dir $HOOKS_A --hooks-dir $HOOKS_B" "$(setup_argv)"
 ok "...after the hook wrappers were written" "notes-context.sh tmux-agent-state.sh" "$(cat "$HOME_DIR/setup.hooks")"
+ok "...and the plugin's SessionStart hook is not wrapped as a hook either, in any directory" "no no" "$([ -e "$HOOKS_A/session-start.sh" ] && echo yes || echo no) $([ -e "$HOOKS_B/session-start.sh" ] && echo yes || echo no)"
 ok "...and the registration is not wrapped as a hook, there or in the second directory" "no no" "$([ -e "$HOOKS_A/claude-settings.json" ] && echo yes || echo no) $([ -e "$HOOKS_B/claude-settings.json" ] && echo yes || echo no)"
 out=$(run); rc=$?
 ok "a run that moves nothing: exit status" 0 "$rc"

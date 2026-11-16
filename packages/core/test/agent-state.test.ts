@@ -189,9 +189,9 @@ test('labels.tsv is read per key exactly as label_of reads it', () => {
     );
     const root = fileURLToPath(new URL('../../..', import.meta.url));
     for (const key of ['sess-a', '%12', 'sess-b', 'sess-c', 'no-tab-here', 'k', 'missing']) {
-      const r = spawnSync('bash', ['-c', `TAB=$'\\t'; . "$1/lib/tagents/names.sh" && label_of "$2"`, '_', root, key], {
+      const r = spawnSync('bash', ['-c', `TAB=$'\\t'; . "$1/lib/tagents/core.sh" && . "$1/lib/tagents/names.sh" && label_of "$2"`, '_', root, key], {
         encoding: 'utf8',
-        env: { ...process.env, STATE_DIR: ldir },
+        env: { ...process.env, STATE_DIR: ldir, TA_STATE_DIR: ldir },
       });
       assert.equal(r.status, 0, r.stderr);
       assert.equal(labels.get(key) ?? '', r.stdout.replace(/\n$/, ''), key);

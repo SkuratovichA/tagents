@@ -31,6 +31,30 @@
       "effect": "write"
     },
     {
+      "path": ["--tags"],
+      "positionals": ["<K>"],
+      "options": {},
+      "required": [],
+      "summary": "prints the tags of a session on one line, separated by spaces, or nothing when it has none; K is its session id or pane id",
+      "effect": "read"
+    },
+    {
+      "path": ["--tags-add"],
+      "positionals": ["<K>", "<TAGS>"],
+      "options": {},
+      "required": [],
+      "summary": "adds TAGS (words separated by spaces or commas, 1 to 32 characters of a-z, 0-9 and . _ : / -, case ignored) to the tags of a session and prints the result; a session keeps at most 10, and the dashboard's search finds it by them; K is its session id or pane id",
+      "effect": "write"
+    },
+    {
+      "path": ["--tags-set"],
+      "positionals": ["<K>", "<TAGS>"],
+      "options": {},
+      "required": [],
+      "summary": "replaces the tags of a session with TAGS and prints the result; an empty TAGS clears them; K is its session id or pane id",
+      "effect": "write"
+    },
+    {
       "path": ["--profile-for"],
       "positionals": ["<DIR>", "[SESSION]"],
       "options": {},

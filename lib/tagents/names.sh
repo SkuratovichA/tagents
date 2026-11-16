@@ -20,11 +20,7 @@ set_label() {  # <key> <name> [<the agent's other key, whose label this one repl
   signal_ev   # labels are drawn, and the file is not a tmux event
 }
 
-label_of() {
-  local keyv=$1
-  [ -e "$LABELS" ] || return 0
-  LC_ALL=C awk -F"$TAB" -v k="$keyv" '$1 == k { print $2; exit }' "$LABELS"
-}
+label_of() { tsv_get "$LABELS" "$1"; }
 
 # THE LABEL OF ONE AGENT, in the order its row and the sweep read it: the one typed for the session, else the one typed for the pane. A label stays under the pane when the agent was named before its first hook event, and a dialog that asks for `${sid:-$pane}` misses it and opens on the pane title while the row shows the name.
 label_for() {  # <sid> <pane>
@@ -105,10 +101,8 @@ pane_for_sid() { panes_for_sid "$1" | head -1 | cut -f1; }
 
 # THE ONE WAY A NAME IS GIVEN, from ctrl-r and from --label alike. A pane whose record names a session files the name under that session, because a label under the pane sits behind any label the session already has: an agent renaming itself by $TMUX_PANE moved its window and left its row and the dialog on the older name. The pane's own entry goes with it, or clearing the name would bring that entry back instead of the title.
 name_agent() {  # <sid or pane> <pane, when known> <name>
-  local keyv=$1 pane=$2 name=$3 sid=
-  case "$keyv" in
-    %[0-9]*) IFS="$US" read -r sid _ < <(rec_row "$keyv"); keyv=${sid:-$keyv} ;;
-  esac
+  local keyv=$1 pane=$2 name=$3 sid
+  if is_pane_id "$keyv"; then sid=$(pane_sid "$keyv"); keyv=${sid:-$keyv}; fi
   set_label "$keyv" "$name" "$pane"
   [ -n "$pane" ] && name_window "$pane" "$name"
   return 0

@@ -20,6 +20,7 @@ others are built on `STATE_DIR` and `TAB`.
 | `usage.sh` | 324 | the monthly limit, on screen |
 | `state.sh` | 447 | the raw data every view reads |
 | `names.sh` | 404 | what an agent is called, and the window it names |
+| `tags.sh` | 75 | the words a session is found by |
 | `columns.sh` | 135 | which columns are on screen |
 | `list.sh` | 1004 | the rows — and the tally the status bar shows |
 | `timeline.sh` | 166 | which agent worked when |
@@ -46,7 +47,7 @@ at all, or the same key with two fields more for a CHILD — a `claude -p` an
 agent started from its own Bash tool, which names the agent it belongs to), appends start/turn/end lines to `history.tsv`, and keeps the
 per-subagent records under `sub/`. `labels.tsv` beside them is the dashboard's
 own: the names you type on ctrl-r, keyed by session id so they survive
-moving and resuming. `collect()` in `state.sh` is the one pass that joins those
+moving and resuming; `tags.tsv` holds the tags of a session the same way, and the list hides them behind the end of its row so the search finds them. `collect()` in `state.sh` is the one pass that joins those
 files with the live world — `tmux list-panes`, a `ps` ancestry walk that proves
 a Claude is really running in a pane, the transcript's first cwd for the
 session's true origin, `tusage` rows for money — and emits one tagged line

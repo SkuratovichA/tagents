@@ -5,7 +5,7 @@
 # Part of ./tagents; `tagents --help` is the model this implements.
 
 preview() {
-  local pane=$1 state=${2:-} f ts st sid cwd tr detail cfgd hascfg parkey acct rprof rsess log
+  local pane=$1 state=${2:-} f ts st sid cwd tr detail cfgd hascfg parkey acct rprof rsess log tg
   [ "$pane" = "-" ] && return 0
   f="$STATE_DIR/${pane#%}.tsv"
   if [ -e "$f" ]; then
@@ -18,6 +18,7 @@ preview() {
     [ -n "$cwd" ] && printf '\033[90mcwd now: %s\033[0m\n' "$cwd"
     printf '\033[90m%s · %s\033[0m\n' "$st" "$detail"
     [ -n "$sid" ] && printf '\033[90msession %s\033[0m\n' "$sid"
+    [ -n "$sid" ] && tg=$(tags_of "$sid") && [ -n "$tg" ] && printf '\033[90mtags: %s\033[0m\n' "$tg"
     # WHOSE SESSION THIS IS. A child was started by another agent and belongs
     # with it — the row is already drawn under that agent, and this says which
     # one it is by name rather than by key, the way every other heading here

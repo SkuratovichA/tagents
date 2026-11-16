@@ -33,6 +33,7 @@ TA_LABEL=ticket-agent TA_LOG=/tmp/ticket-agent.log \
 - `TA_LOG` is what `ctrl-v` follows.
 - Neither is required. Without them the row is named after the title the session gave itself, or after its directory.
 - A name can still be given from outside with `tagents --label <session id> NAME`.
+- Tags are given the same way, see [Tags](dashboard#tags).
 
 To spawn, prompt and read headless sessions from code, see [`@tagents/core`](../architecture/overview#sessions-with-no-pane).
 

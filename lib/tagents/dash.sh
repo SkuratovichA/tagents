@@ -253,7 +253,7 @@ EOS
     unset hd
     [ -n "$header" ] && hd=(--header="$header")
     out=$(printf '%s\n' "$rows" | fzf \
-      --ansi --no-sort --delimiter="$TAB" --with-nth=2 \
+      --ansi --no-sort --no-hscroll --delimiter="$TAB" --with-nth=2 \
       --listen --height=100% --layout=reverse --info=inline \
       --prompt='agents> ' \
       ${hd[@]+"${hd[@]}"} \

@@ -47,7 +47,7 @@ If that server is already registered by hand with `claude mcp add`, remove the h
 
 ### The `tagents` MCP server
 
-The server gives a session a tool for each verb of the contract that is meant for a model, nineteen of them, and two that find a past session, so Claude can do from a conversation what you do from a shell: send a desktop notification, open another Claude Code session on an account of your choice as a window of your tmux (several in a row is how a day can start), open a window running a command, or list and read sessions and notes.
+The server gives a session a tool for each verb of the contract that is meant for a model, twenty-two of them, and two that find a past session, so Claude can do from a conversation what you do from a shell: send a desktop notification, open another Claude Code session on an account of your choice as a window of your tmux (several in a row is how a day can start), open a window running a command, or list and read sessions and notes.
 
 | ask Claude to | tool | runs |
 |---|---|---|
@@ -56,9 +56,11 @@ The server gives a session a tool for each verb of the contract that is meant fo
 | open a window running a command | `tagents_window` | `tagents --window` |
 | see what is running | `core_session_list`, `core_session_last`, `core_sessions_show` | `tagents-core session …` |
 | find a past session by its project or opening prompt | `sessions_recent`, `sessions_search` | answered by the server itself, as `tagents-core sessions` prints them |
+| tag a session so you can find it in the dashboard's search | `tagents_tags_add`, `tagents_tags`, `tagents_tags_set` | `tagents --tags-add`, `--tags`, `--tags-set` |
 | run a prompt without a window | `tagents_window` | `tagents --window DIR "tagents-core session prompt …"` |
 
 - A tool is named after its verb and takes its arguments, so the list grows with the commands: a verb added to a spec is a new tool once the plugin updates ([how](../architecture/contract#the-tools-follow-the-verbs)). A verb that opens a session or sends a prompt, and the verbs that need a dialog or run until stopped, are left out on purpose: they stay commands of the CLI.
+- The plugin registers a `SessionStart` hook (`hooks/hooks.json`) that tells a session started by hand in a tmux pane its own session id and that it can tag itself with `tagents_tags_add`. A session started with `claude -p`, or outside tmux, hears nothing.
 - `tagents_new` and `tagents_window` open windows in the tmux server Claude Code runs in. Outside tmux they refuse with exit 3 and open nothing. A tool opens its window in the background: the window you are looking at stays selected, the answer says which pane and window it opened, and `detach: false` selects the new one instead. `tagents_new` with the profile `ask` is refused with exit 2 and the list of profiles, because a tool call cannot answer a dialog.
 - Nothing a call starts outlives the call. If you cancel it, if it has not ended after five minutes, or if the session closes, the program and everything it started in its process group are stopped; a process that starts a session of its own, as a daemon does, is not. The output of a call is cut at 256 KiB with a line that says so.
 - The server runs in the prebuilt Rust binary (`tagents-core mcp`) when the installer has put one on the machine, and answers with the needs-binary line and exit 69 otherwise: node no longer has an MCP server of its own.
@@ -67,7 +69,7 @@ The server gives a session a tool for each verb of the contract that is meant fo
 
 ## What it does not do
 
-The plugin registers no hooks and no status line. The state hook and the status line stay [steps of the install](./getting-started#tell-claude-code-about-it), because a plugin cannot set a status line.
+The plugin registers one hook, `SessionStart`, and no status line. The state hook and the status line stay [steps of the install](./getting-started#tell-claude-code-about-it), because a plugin cannot set a status line.
 
 ## Where the rest is documented
 
