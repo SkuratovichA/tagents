@@ -1,6 +1,6 @@
 ---
 name: tagents
-description: Use when driving tagents from a session or a script — opening, prompting, listing or aborting headless Claude Code sessions with tagents-core, finding a past session, sending a desktop notification, opening Claude Code sessions or a command in tmux windows, reading session cost with tusage, calling a flag of the tagents dashboard or of tnotes, or writing code or a tagents plugin (definePlugin) against @tagents/core, @tagents/notify or @tagents/telegram.
+description: Use when driving tagents from a session or a script — opening, prompting, listing or aborting headless Claude Code sessions with tagents-core, finding a past session, sending a desktop notification, opening Claude Code sessions or a command in tmux windows, reading session cost with tusage, tagging a session so the owner can find it by typing a tag into the dashboard's search, calling a flag of the tagents dashboard or of tnotes, or writing code or a tagents plugin (definePlugin) against @tagents/core, @tagents/notify or @tagents/telegram.
 ---
 
 # tagents
@@ -39,6 +39,7 @@ The plugin registers an MCP server, `tagents`, with one tool for each verb of th
 - To run a command in a window the owner can watch, call `tagents_window` with `dir` and `command`, one string for the shell. The window closes when the command ends.
 - To see what the sessions are doing, call `core_session_list`, then `core_session_last` for the last answer of one and `core_sessions_show` for a whole transcript.
 - To run a prompt without a window, run `tagents-core session open` and then `tagents-core session prompt` with the reference it printed, in a window the owner can watch, through `tagents_window`. These two verbs are CLI only and have no tool, because the message of an arbitrary prompt can carry anything and an unattended turn can run for a long time.
+- To make this session findable in the dashboard's search, call `tagents_tags_add` with `k` and `tags`, words separated by spaces: a ticket key, the repository, a topic. Do it once you know what the session is about, and again when the work moves on. `k` is the session id the SessionStart line gave, or this session's `$TMUX_PANE`. A session keeps at most 10 tags: `tagents_tags` reads them, `tagents_tags_set` replaces the list, and a call that would leave more than 10 changes nothing. `/clear` drops the tags; resuming a session keeps them.
 - `tagents_new` and `tagents_window` need this session to run inside tmux; outside it they answer exit 3 and open nothing.
 - Claude Code asks the owner before each of these tools runs. Say in plain words what the call will start before making it, and do not repeat a call the owner refused.
 

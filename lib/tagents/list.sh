@@ -410,6 +410,7 @@ list() {
     $1=="L" { live[$2]=1; next }
     $1=="R" { root[$2]=$3; next }
     $1=="N" { lab[$2]=$3; next }
+    $1=="K" { tg[$2]=$3; next }   # the tags of a session, which ride behind its row (field 17 of what is sorted)
     # A SESSION WITH NO PANE. hlive is the kill -0 the shell made of the pid the
     # hook recorded (awk cannot ask) and hlbl is its $TA_LABEL — the two answers
     # a pane would have given for anybody else. par/psid are the two fields only
@@ -851,18 +852,19 @@ list() {
           if (j != "") { fam = runder[i]; kid = 1; sd = rdead[j]; sa = (byw && !sd) ? ordkey(runder[i]) : rage[j] }
         }
         # Without groups nothing keeps the sessions apart in window order, so the group goes in fields 2 and 15 as in tree mode and the sort keeps each session together, in the order of the names.
-        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n",
+        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\n",
                (grp ? (rg[i] == "w:" ? 2 : (gmin[rg[i]] < prio["dead"] ? 0 : 1)) : rdead[i]),
                ((grp || (byw && !sd)) ? rg[i] : ""),
                (sd ? 2 : 0), sa, rp[i], rbody[i], rs[i], rsid[i], rr[i],
                fam, kid, rdead[i], rage[i],
                ((grp || (byw && !sd)) ? gnum(rg[i]) : 0),
-               ((rp[i] in pwin && wshown[pwin[rp[i]]]) ? 1 : 0)
+               ((rp[i] in pwin && wshown[pwin[rp[i]]]) ? 1 : 0),
+               (rsid[i] in tg ? tg[rsid[i]] : "")
       }
     }' |
     sort -t"$TAB" -k1,1n -k2,2 -k15,15n -k3,3n -k4,4n -k5,5n \
          -k11,11 -k12,12n -k13,13n -k14,14n |
-    LC_ALL=C awk -F"$TAB" -v grp="$grp" -v compact="$compact" -v RSC="$RS" \
+    LC_ALL=C awk -F"$TAB" -v grp="$grp" -v compact="$compact" -v cols="$cols" -v RSC="$RS" \
         -v tallyonly="${TA_TALLY:-0}" -v tallyto="$tallyto" '
       # The marker column is the dash the tree draws, on a group header too. In flat
       # mode there is no tee to borrow from, so the two columns are given to
@@ -884,7 +886,7 @@ list() {
         return 1
       }
       { g[NR]=$2; kind[NR]=$3; pane[NR]=$6; body[NR]=$7; state[NR]=$8; sid[NR]=$9
-        dir[NR]=$10; depth[NR]=$12+0; shown[NR]=$16+0 }
+        dir[NR]=$10; depth[NR]=$12+0; shown[NR]=$16+0; tags[NR]=$17 }
       END {
         for (i = 1; i <= NR; i++) {
           if (kind[i] == 0)       mk = DIM "─" R
@@ -918,7 +920,10 @@ list() {
           # counting every row showed a single blocked agent twice; the header is
           # the row with the marker (UTF-8 for it below) in what is drawn.
           if (index(tee body[i], "\342\226\276") == 0) tn[state[i]]++
-          if (!tallyonly) print pane[i] "\t" tee body[i] "\t" state[i] "\t" sid[i] "\t" dir[i]
+          # THE TAGS RIDE BEHIND THE ROW, pushed past the right edge by spaces (as many as the list is wide, and at least 300) so nothing of them is drawn while fzf still matches the whole line; the upper-case copy is for a query with a capital letter, which fzf matches case-sensitively. Added here and not to body[], so the width measured above is the row as it was.
+          sfx = ""
+          if (tags[i] != "") sfx = sprintf("%" ((cols > 300) ? cols : 300) "s", "") tags[i] " " toupper(tags[i])
+          if (!tallyonly) print pane[i] "\t" tee body[i] sfx "\t" state[i] "\t" sid[i] "\t" dir[i]
         }
         tally = ""
         if (tn["blocked"]) tally = tally sprintf("#[fg=yellow]⚠%d ", tn["blocked"])

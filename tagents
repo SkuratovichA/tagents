@@ -22,6 +22,14 @@
 #   tagents --flat          same, but ungrouped regardless of the saved mode
 #   tagents --label K NAME  name an agent from outside; K is its session id (or
 #                           pane id), an empty NAME clears it back to the title
+#   tagents --tags K        print the tags of a session (K as for --label), on one line
+#   tagents --tags-add K TAGS
+#                           add TAGS (every word after K, split on spaces and commas) to the tags
+#                           of a session, up to 10, and print the result; the
+#                           dashboard's search finds a session by its tags
+#   tagents --tags-set K TAGS
+#                           replace the tags of a session with every word after K;
+#                           none, or an empty TAGS, clears them
 #   tagents --counts        compact summary, for the tmux status bar
 #   tagents --preview PANE  live view of a pane, for the fzf preview window
 #   tagents --preview-popup PANE [STATE]
@@ -486,7 +494,7 @@ if [ "${1:-}" != -h ] && [ "${1:-}" != --help ]; then
   # Readability is what is checked, not the exit status of `.`: that status is
   # the module's own last line and says nothing about whether it was found.
   if [ "${1:-}" != --version ] && [ "${1:-}" != -V ]; then
-    for ta_mod in core config accounts usage state names columns list \
+    for ta_mod in core config accounts usage state names tags columns list \
                   timeline preview actions refresh sidebar follow migrate setup rows closed \
                   resurrect launch keys cockpit dash; do
       if [ ! -r "$TA_LIB/$ta_mod.sh" ]; then
@@ -541,6 +549,9 @@ case "${1:-}" in
   --toggle-collapse) toggle_collapse ;;
   --timeline)     timeline ;;
   --label)        label_cmd "${2:-}" "${3:-}" ;;
+  --tags)         tags_cmd show "${2:-}" ;;
+  --tags-add)     tags_cmd add "${2:-}" "${*:3}" ;;
+  --tags-set)     tags_cmd set "${2:-}" "${*:3}" ;;
   --ask-rename)   ask_rename "${2:-}" "${3:-}" ;;
   --ask-send)     ask_send "${2:-}" ;;
   --ask-dir)      ask_dir "${2:-}" "${3:-}" ;;

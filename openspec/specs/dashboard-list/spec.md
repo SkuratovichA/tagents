@@ -6,7 +6,7 @@ What the tagents dashboard list shows: one row per Claude Code session, grouped 
 ## Requirements
 
 ### Requirement: The list is produced by `tagents --list`
-`tagents --list` SHALL print one line per row of the list for fzf to read, each line made of five TAB-separated fields: the row key (the pane id of a chat, the window id of a dimmed window row), the text of the row with its colours, the row's state, the session id and the directory. `tagents --flat` SHALL print the same list ungrouped whatever mode is saved.
+`tagents --list` SHALL print one line per row of the list for fzf to read, each line made of five TAB-separated fields: the row key (the pane id of a chat, the window id of a dimmed window row), the text of the row with its colours, the row's state, the session id and the directory. The second field of a tagged session ends with its tags, hidden past the edge (see `session-tags`). `tagents --flat` SHALL print the same list ungrouped whatever mode is saved.
 
 #### Scenario: Row fields
 - **WHEN** a session in `~/projects/app` is running in pane `%12` with session id `a1b2c3d4-…`
@@ -19,6 +19,10 @@ What the tagents dashboard list shows: one row per Claude Code session, grouped 
 #### Scenario: A dimmed window row
 - **WHEN** a window of a group runs no chat
 - **THEN** its line starts with the window id, for example `@7`, and its third and fourth fields are `none` and empty
+
+#### Scenario: A tagged session
+- **WHEN** a session has tags
+- **THEN** its line still has five fields and its second field ends with the tags after as many spaces as the list is wide, at least 300
 
 ### Requirement: ctrl-t switches between the tree and a flat list
 `ctrl-t` SHALL switch between the tree and a flat list without headers, and the choice SHALL persist across restarts in a marker file in the state directory; switching rings the refresher's channel. `TA_FLAT=1` SHALL force the flat list for one run. A flat list SHALL hold chats only, with no dimmed window rows. A flat row SHALL carry the name of its group, the session or `no window`, in a column of its own, which hiding the `loc` column does not remove.
@@ -345,7 +349,7 @@ Hiding `cost` SHALL remove the cost column, the `⑂$` subagent share and the pr
 - **THEN** the context and model columns are still drawn
 
 ### Requirement: The preview shows a row up close
-`tagents --preview PANE [STATE]` SHALL print, for a pane with a record: the directory the session started in in bold, `cwd now:` when known, `<state> · <detail>`, `session <id>`, `parent: <name>` for a child, `account: <profile> (<config dir>)` when the record names one, the cost table per subagent and model from `tusage` when usage tracking is on, and a separator line. For the pane key `-` it SHALL print nothing.
+`tagents --preview PANE [STATE]` SHALL print, for a pane with a record: the directory the session started in in bold, `cwd now:` when known, `<state> · <detail>`, `session <id>`, `tags:` when the session has some, `parent: <name>` for a child, `account: <profile> (<config dir>)` when the record names one, the cost table per subagent and model from `tusage` when usage tracking is on, and a separator line. For the pane key `-` it SHALL print nothing.
 
 #### Scenario: Header block
 - **WHEN** the preview is asked for a session with an account recorded
@@ -354,6 +358,10 @@ Hiding `cost` SHALL remove the cost column, the `⑂$` subagent share and the pr
 #### Scenario: Child session
 - **WHEN** the preview is asked for a child session
 - **THEN** it names the parent by name and pane key
+
+#### Scenario: Tags
+- **WHEN** the preview is asked for a session with tags
+- **THEN** it shows `tags:` and the tags after the session id
 
 ### Requirement: The preview body depends on what the row is
 After the separator the preview SHALL show: for a live pane the last 60 lines of its screen; for a closed row the words `no Claude running in this pane any more`, the exact command `enter` would run, or a note that `enter` asks which account first, and the last three lines of its transcript; for a pane-less row the last 60 lines of its `$TA_LOG`, else the last turns of its transcript, else a note that there is nothing to show.

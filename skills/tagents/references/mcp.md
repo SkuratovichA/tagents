@@ -549,6 +549,97 @@ Prints which account profile the config rules pick for DIR (and the tmux SESSION
 }
 ```
 
+### tagents_tags
+
+Prints the tags of a session on one line, separated by spaces, or nothing when it has none; K is its session id or pane id.
+
+#### Inputs
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `k` | string | yes |  |
+
+#### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "k": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "k"
+  ],
+  "additionalProperties": false
+}
+```
+
+### tagents_tags_add
+
+Adds TAGS (words separated by spaces or commas, 1 to 32 characters of a-z, 0-9 and . _ : / -, case ignored) to the tags of a session and prints the result; a session keeps at most 10, and the dashboard's search finds it by them; K is its session id or pane id.
+
+#### Inputs
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `k` | string | yes |  |
+| `tags` | string | yes |  |
+
+#### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "k": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "k",
+    "tags"
+  ],
+  "additionalProperties": false
+}
+```
+
+### tagents_tags_set
+
+Replaces the tags of a session with TAGS and prints the result; an empty TAGS clears them; K is its session id or pane id.
+
+#### Inputs
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `k` | string | yes |  |
+| `tags` | string | yes |  |
+
+#### Input schema
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "k": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "k",
+    "tags"
+  ],
+  "additionalProperties": false
+}
+```
+
 ### tagents_window
 
 Opens a tmux window in DIR that runs COMMAND, one string for the shell, and prints the new pane and where it is; the window closes when the command ends, and it lands in the session that owns DIR on the tmux server this runs in; detach (the default for a tool call) does not show or select the window.

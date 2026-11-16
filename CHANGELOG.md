@@ -8,6 +8,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 
 ### Added
 
+- A session carries up to 10 tags, set with `tagents --tags-add`, `--tags-set` and `--tags` (the plugin's `tagents_tags_add`, `tagents_tags_set` and `tagents_tags` tools), found by typing one into the dashboard's search, shown in the preview and dropped by `/clear`; the plugin's `SessionStart` hook tells a session its id and that it can tag itself ([#92](https://github.com/SkuratovichA/tagents/pull/92)).
 - `ctrl-d` (the `dir` key) saves a default directory for the session under the cursor, and `ctrl-n` and `ctrl-p` on any row of that session start the agent exactly there, with no lift to the repository root. The header shows the saved path in the normal colour. Nothing saved, or the directory gone from disk, and they work as before; `--new`, `--window`, `ctrl-a`, the MCP tools and a resumed chat do not read it ([#70](https://github.com/SkuratovichA/tagents/pull/70)).
 - The list marks the row of the window on screen with a `▸` and draws it bold, and `ctrl-o` (the `order` key) puts the rows of a group in the order of their tmux window numbers, or back to your last message ([#69](https://github.com/SkuratovichA/tagents/pull/69)).
 - `tagents --version` (and `-V`) prints the workspace version and the short commit of the copy ([#54](https://github.com/SkuratovichA/tagents/pull/54)).

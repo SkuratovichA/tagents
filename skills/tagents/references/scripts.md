@@ -29,6 +29,14 @@ stays worth reacting to.
   tagents --flat          same, but ungrouped regardless of the saved mode
   tagents --label K NAME  name an agent from outside; K is its session id (or
                           pane id), an empty NAME clears it back to the title
+  tagents --tags K        print the tags of a session (K as for --label), on one line
+  tagents --tags-add K TAGS
+                          add TAGS (every word after K, split on spaces and commas) to the tags
+                          of a session, up to 10, and print the result; the
+                          dashboard's search finds a session by its tags
+  tagents --tags-set K TAGS
+                          replace the tags of a session with every word after K;
+                          none, or an empty TAGS, clears them
   tagents --counts        compact summary, for the tmux status bar
   tagents --preview PANE  live view of a pane, for the fzf preview window
   tagents --preview-popup PANE [STATE]

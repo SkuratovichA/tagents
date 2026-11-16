@@ -44,7 +44,7 @@ export const TAGENTS: PluginDef = {
   manifest: '.claude-plugin/plugin.json',
   skillsDir: 'skills',
   referencesDir: 'skills/tagents/references',
-  shipped: [],
+  shipped: ['hooks/hooks.json', 'hooks/plugin/session-start.sh'],
   programs: undefined,
   servers: undefined,
   slice: (contract) => contract,

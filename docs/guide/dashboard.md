@@ -122,6 +122,15 @@ Closing a chat's pane or window is plain tmux: there are no seats and no placeho
 
 A layout saved by an earlier version can bring back idle shells titled `tagents-sidebar` where the list used to sit; `tagents --resurrect` closes those shells after the restore.
 
+## Tags
+
+A session can carry up to 10 tags, short words such as a ticket key, the repository or a topic. Type one into the dashboard's search and the session's row is found, although the tag is not drawn on the row. A query in all lower case or all upper case finds a tag; a query that mixes the two, such as `Proj-123`, does not, because the search is case-sensitive as soon as the query has a capital letter and a mixed one matches neither copy of the tag. The preview shows them on a `tags:` line.
+
+- `tagents --tags-add K TAGS` adds tags and prints the result, `tagents --tags-set K TAGS` replaces them (an empty `TAGS` clears them) and `tagents --tags K` prints them. `K` is a session id or a pane id, as for `--label`.
+- A tag is 1 to 32 characters: letters, digits and `. _ : / -`, the first a letter or digit. `TAGS` is split on spaces and commas, upper case is stored as lower case, and an invalid tag or an eleventh tag refuses the whole call and changes nothing.
+- A session started by hand in tmux is told its id and that it can tag itself by the plugin's `SessionStart` hook, through the `tagents_tags_add` tool.
+- `/clear` drops the tags of the session it ends. Every other ending keeps them, so a resumed or restored session comes back with its tags.
+
 ## Windows are named after their agents
 
 The dashboard is one way to find an agent. `prefix+w`, the status bar and `tmux ls` are the other, and they work when the dashboard is not on screen, so the tmux window an agent lives in is named after that agent.

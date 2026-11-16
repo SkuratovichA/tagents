@@ -310,6 +310,36 @@ Usage: `tagents --label <K> <NAME>`
 
 This verb takes no flags.
 
+### --tags
+
+prints the tags of a session on one line, separated by spaces, or nothing when it has none; K is its session id or pane id
+
+Tool: `tagents_tags`
+
+Usage: `tagents --tags <K>`
+
+This verb takes no flags.
+
+### --tags-add
+
+adds TAGS (words separated by spaces or commas, 1 to 32 characters of a-z, 0-9 and . _ : / -, case ignored) to the tags of a session and prints the result; a session keeps at most 10, and the dashboard's search finds it by them; K is its session id or pane id
+
+Tool: `tagents_tags_add`
+
+Usage: `tagents --tags-add <K> <TAGS>`
+
+This verb takes no flags.
+
+### --tags-set
+
+replaces the tags of a session with TAGS and prints the result; an empty TAGS clears them; K is its session id or pane id
+
+Tool: `tagents_tags_set`
+
+Usage: `tagents --tags-set <K> <TAGS>`
+
+This verb takes no flags.
+
 ### --profile-for
 
 prints which account profile the config rules pick for DIR (and the tmux SESSION, when given), or ask, without starting anything; prints nothing and exits 1 when no profiles are configured
