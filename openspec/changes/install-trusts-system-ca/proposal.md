@@ -4,12 +4,13 @@ Node trusts only the CA list it ships with. Behind a TLS proxy that re-signs tra
 
 ## What Changes
 
-- `install.sh` adds `--use-system-ca` to `NODE_OPTIONS` before the build, when the node on `PATH` accepts the flag (node 22.15 and newer), for the default build and for a `TAGENTS_BUILD_CMD` alike.
-- A `NODE_OPTIONS` that already holds the flag is left as it is, and a node that refuses the flag, or no node on `PATH`, leaves `NODE_OPTIONS` untouched.
+- `install.sh` adds `--use-system-ca` to `NODE_OPTIONS` before the default build, when the node on `PATH` accepts the flag (node 22.15 and newer).
+- A `NODE_OPTIONS` that already holds the flag is left as it is, and a node that refuses the flag leaves `NODE_OPTIONS` untouched.
+- An overridden build (`TAGENTS_BUILD_CMD`) brings its own toolchain: the installer starts no node for it and leaves its environment alone.
 
 ## Impact
 
 - Specs: `claude-code-plugin` gets one ADDED requirement.
-- Code: `install.sh` (`trust_system_ca`, called in `main` before the build).
+- Code: `install.sh` (`trust_system_ca`, called in `main` in the default build's branch, after `need_toolchain`).
 - Tests: `tests/install.sh`, section 17.
 - Docs: `CHANGELOG.md`.
