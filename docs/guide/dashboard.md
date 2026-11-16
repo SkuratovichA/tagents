@@ -10,18 +10,18 @@ Sessions are grouped by project. Each group has a header, and each session is a 
 
 ```
 ▾ .dotfiles    ~/git/.dotfiles           ●1
-  └─ ● working   0:31  p dotfiles   71k  $44.0  opus5    personal  %3
+  └─ ●   0:31  p dotfiles   71k  $44.0  opus5    personal  %3
 ▾ storefront   ~/git/storefront          ⚠1 ✓1 ●1   $31.4/5h
-  ├─ ● working   0:08  w web        38k   $9.1  sonnet5  work      %44  ⑂2
-  ├─ ⚠ BLOCKED   2:14  w api       142k  $38.3  opus5    work      %31
-  └─ ✓ IDLE     17:02  w worker     12k   $2.7  haiku4.5 work      %12
+  ├─ ●   0:08  w web        38k   $9.1  sonnet5  work      %44  ⑂2
+  ├─ ⚠   2:14  w api       142k  $38.3  opus5    work      %31
+  └─ ✓  17:02  w worker     12k   $2.7  haiku4.5 work      %12
 ```
 
 ### The columns, left to right
 
 | column | what it says |
 |--------|--------------|
-| state | `⚠ BLOCKED`, `✓ IDLE`, `● working` and the others; see [States and order](./states) |
+| state | the glyph alone, `⚠`, `✓`, `●` and the others, in the colour of its state; no word follows it. See [States and order](./states) |
 | time | how long since **you** last typed into that session. It doubles as the clock of the one-hour prompt cache, see [States and order](./states#the-clock-the-rows-are-sorted-on) |
 | badge | one or two characters naming the Claude login the session is on |
 | name | the label you gave it with `ctrl-r`, else the title the session gave itself |
@@ -44,9 +44,9 @@ Both say which Claude login the session is on, named after the profile in your [
 
 ### How wide the columns are
 
-Every column is as wide as the widest thing it has to say. A column with nothing to say on any row takes no room at all: with no usage tracked there is no context or cost column, and the width goes to the detail. Columns are let in one at a time, in the order of what they answer: the context size first, which decides between going on and `/compact`, then the cost, the state word, the project of a flat row, the location, the model and the account. Each one comes in only while the detail keeps ten columns, or all of its widest line when that is shorter, so the last tool line is never squeezed out, and a column that does not fit is skipped while a narrower one after it may still come in.
+Every column is as wide as the widest thing it has to say. A column with nothing to say on any row takes no room at all: with no usage tracked there is no context or cost column, and the width goes to the detail. Columns are let in one at a time, in the order of what they answer: the context size first, which decides between going on and `/compact`, then the cost, the project of a flat row, the location, the model and the account. Each one comes in only while the detail keeps ten columns, or all of its widest line when that is shorter, so the last tool line is never squeezed out, and a column that does not fit is skipped while a narrower one after it may still come in.
 
-The context and cost figures and the state word keep their full width whenever they are drawn, so a figure growing a digit never shifts the columns after it. The state word is let in only while the longest name can still grow to its full width beside it, since the glyph's colour already says the state: on a narrow list with long names, the name wins. The badge is shown at every width. The order the columns are drawn in never changes, and a column you hide with `ctrl-w` is never let back in.
+The context and cost figures keep their full width whenever they are drawn, so a figure growing a digit never shifts the columns after it. The badge is shown at every width. The order the columns are drawn in never changes, and a column you hide with `ctrl-w` is never let back in.
 
 ### How a project is chosen
 

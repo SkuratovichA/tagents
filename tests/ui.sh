@@ -306,7 +306,7 @@ ok "...at every width"            "" "$(cell %8001 "$(rows_at 60 TA_CONFIG=/none
 # ...and nothing else is on the rows either. With no profiles there is no badge
 # column, and with no usage watched there is no context, cost or model column
 # and no room kept for one. What is left is as wide as the widest value in it:
-# the state word seven, the location four (`:1.0` in the tree, which leaves its
+# the location four (`:1.0` in the tree, which leaves its
 # session to the header), the account ten at most, so claude-personal is cut,
 # and the name as wide as the longest name, ten for "live agent". The age is the
 # one field that moves between two runs, so it is normalised away, and so is the
@@ -316,23 +316,23 @@ agenorm() { sed -e 's/[0-9]*:[0-9][0-9]/AGE/g' -e "s|$REPO|REPO|g"; }
 W0=$(where tatest-work:0)
 want=$(printf '%b' "$(cat <<EOF
 $A\t▾ tatest-work  REPO  ●1 \tworking\tsid-live\tREPO
-$A\t  ├─ ● working   AGE  live agent claude-pe… :1.0 on it\tworking\tsid-live\tREPO
+$A\t  ├─ ●   AGE  live agent claude-pe… :1.0 on it\tworking\tsid-live\tREPO
 $W0\t  └─ bash\tnone\t\tREPO
 %8001\t▾ no window  ✗4 \tdead\tsid-p\tREPO
-%8001\t  ├─ ✗ closed    AGE  repo       claude-pe… —    closed — enter resumes it\tdead\tsid-p\tREPO
-%8002\t  ├─ ✗ closed    AGE  repo       default    —    closed — enter resumes it\tdead\tsid-w\tREPO
-%8003\t  ├─ ✗ closed    AGE  repo       claude-no… —    closed — enter resumes it\tdead\tsid-u\tREPO
-%8004\t  └─ ✗ closed    AGE  repo                  —    closed — enter resumes it\tdead\tsid-o\tREPO
+%8001\t  ├─ ✗   AGE  repo       claude-pe… —    closed — enter resumes it\tdead\tsid-p\tREPO
+%8002\t  ├─ ✗   AGE  repo       default    —    closed — enter resumes it\tdead\tsid-w\tREPO
+%8003\t  ├─ ✗   AGE  repo       claude-no… —    closed — enter resumes it\tdead\tsid-u\tREPO
+%8004\t  └─ ✗   AGE  repo                  —    closed — enter resumes it\tdead\tsid-o\tREPO
 EOF
 )")
 ok "no config: no badge, context, cost or model column, and the others as wide as their widest value" \
    "$want" "$(rows_at 140 TA_CONFIG=/nonexistent/config.toml | awk -F'\t' -v k="$DWIN" '$1 != k' | agenorm)"
 
-# THE CASE THE WIDTH TABLE GOT WRONG: a pane of about 95 columns with no usage tracked. The table dropped the location below its breakpoint and kept six columns for a context figure that never comes, so the row lost the one thing that says where the agent is and spent the room on blanks. Now nothing is reserved for a column with no values in it, and the location stays.
-NINETY=$(row_of "$A" "$(rows_at 95 TA_CONFIG="$CFG")" | agenorm)
-has "95 columns, no usage tracked: the location column is kept" " :1.0 " "$NINETY"
+# THE CASE THE WIDTH TABLE GOT WRONG: a narrow pane with no usage tracked, pinned at 63 columns, the narrowest width at which this row still has both its account and its location. The table dropped the location below its breakpoint and kept six columns for a context figure that never comes, so the row lost the one thing that says where the agent is and spent the room on blanks. Now nothing is reserved for a column with no values in it, and the location stays.
+NOUSAGE=$(row_of "$A" "$(rows_at 63 TA_CONFIG="$CFG")" | agenorm)
+has "63 columns, no usage tracked: the location column is kept" " :1.0 " "$NOUSAGE"
 ok  "...and the room goes to what is there, not to empty context and cost columns" \
-    "  ├─ ● working   AGE  p live agent personal   :1.0 on it" "$NINETY"
+    "  ├─ ●   AGE  p live agent personal   :1.0 on it" "$NOUSAGE"
 
 # ---------------------------------------------------------------------------
 t "1b. a pane wider than the table"
@@ -350,13 +350,13 @@ printf 'sid-wide\t%s\n' "$LONG" >>"$STATE/labels.tsv"
 
 WIDE=$(rows_at 230)
 # THE NAME COLUMN GROWS INTO WHATEVER THE DETAIL DOES NOT NEED. With every
-# column shown, 110 columns leave the name no room and it is cut; hide the
-# columns and the same 110 spell it out — the freed width goes to the name
+# column shown, 100 columns leave the name no room and it is cut; hide the
+# columns and the same 100 spell it out — the freed width goes to the name
 # before it goes to the detail. At 140 the detail already has spare columns,
 # and at 230 there is room for anything.
-hasnt "at 110 columns with every column shown the long name is cut" "$LONG" "$(row_of %8009 "$(rows_at 110)")"
+hasnt "at 100 columns with every column shown the long name is cut" "$LONG" "$(row_of %8009 "$(rows_at 100)")"
 has   "...but with the columns hidden it is spelled out" "$LONG" \
-      "$(row_of %8009 "$(rows_at 110 TA_HIDE_COLS=ctx,cost,model,acct,loc)")"
+      "$(row_of %8009 "$(rows_at 100 TA_HIDE_COLS=ctx,cost,model,acct,loc)")"
 has   "at 140 columns the detail has spare room, so it is spelled out too" "$LONG" "$(row_of %8009 "$(rows_at 140)")"
 # A 61-column list with the columns hidden: the tier would give the name 18;
 # the names get everything but the columns the detail needs.
@@ -364,12 +364,11 @@ has   "on a 61-column list with the columns hidden the name gets the width" "${L
       "$(row_of %8009 "$(rows_at 61 TA_HIDE_COLS=ctx,cost,model,acct,loc)")"
 has   "...and at 230 it is spelled out in full"   "$LONG" "$(row_of %8009 "$WIDE")"
 
-# THE STATE WORD YIELDS TO THE NAME. Its glyph already says the state in colour, so on a list where the name could not be shown whole beside the word, the word is the one left out.
+# A ROW SHOWS ITS STATE BY THE GLYPH ALONE. No state word is drawn at any width, so a long name keeps the room the word used to take.
 HIDE5=ctx,cost,model,acct,loc
 has   "at 70 columns the long name is spelled out in full" "$LONG" "$(row_of %8009 "$(rows_at 70 TA_HIDE_COLS=$HIDE5)")"
-hasnt "...and the state word is not drawn, there being no room for both" "✗ closed" "$(row_of %8009 "$(rows_at 70 TA_HIDE_COLS=$HIDE5)")"
-has   "at 80 columns there is room for both, and the name is whole" "$LONG" "$(row_of %8009 "$(rows_at 80 TA_HIDE_COLS=$HIDE5)")"
-has   "...and the state word is drawn" "✗ closed" "$(row_of %8009 "$(rows_at 80 TA_HIDE_COLS=$HIDE5)")"
+has   "at 80 columns the name is whole" "$LONG" "$(row_of %8009 "$(rows_at 80 TA_HIDE_COLS=$HIDE5)")"
+hasnt "...and no state word is drawn" "✗ closed" "$(row_of %8009 "$(rows_at 80 TA_HIDE_COLS=$HIDE5)")"
 
 # THE DETAIL KEEPS AS MANY COLUMNS AS ITS WIDEST LINE, up to ten, and the name takes the rest. With one row whose detail is `on it`, five columns, a 66-column list spells the long name out; a floor of ten for the detail would have cut it at 37.
 ONE="$ROOT/state-one"; mkdir -p "$ONE"; cp "$STATE/${A#%}.tsv" "$ONE/"

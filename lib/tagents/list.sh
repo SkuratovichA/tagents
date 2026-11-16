@@ -250,8 +250,8 @@ list() {
     }
     # COLUMNS AS WIDE AS WHAT IS IN THEM. A row that does not fit is not merely ugly: fzf hard-truncates it. The columns used to come from a table of widths per breakpoint, each one sized for the longest thing it might hold and dropped whole below its breakpoint, so a 95-column list lost the location to a reservation of 14 for `git:1.1`, cut `sonnet5.5` to eight, and kept six columns of context figure with no figure in them on a machine that tracks no usage. Now the rows are built first and measured, and every column is as wide as the widest thing it has to say. A column with nothing to say on any row takes no room at all.
     #
-    # They are let in one at a time, in the order of what they answer: the context size first, which decides between going on and /compact, then the money, the state word (its glyph already says it in colour, so it also gives way to a long name), the project of a flat row, the location, the model and the account, which is checked once and then trusted. The context needs only room for itself; every other column comes in only while the detail keeps as many columns as its widest line, up to ten, so the last tool line is never squeezed out by a column further down the list. A column that does not fit is skipped, and a narrower one after it may still come in. The two figure columns and the state word keep their full width whenever they are drawn, so a figure growing a digit or an agent going idle never shifts the columns after them.
-    function fitcols(   avail, want) {
+    # They are let in one at a time, in the order of what they answer: the context size first, which decides between going on and /compact, then the money, the project of a flat row, the location, the model and the account, which is checked once and then trusted. The context needs only room for itself; every other column comes in only while the detail keeps as many columns as its widest line, up to ten, so the last tool line is never squeezed out by a column further down the list. A column that does not fit is skipped, and a narrower one after it may still come in. The two figure columns keep their full width whenever they are drawn, so a figure growing a digit never shifts the columns after them. The state is the glyph and its colour alone, with no word beside it.
+    function fitcols(   avail) {
       # The tree prefix, or in flat mode the two columns the marker column is
       # drawn in, are both added after this and both have to be paid for here.
       # The tree gets its mark for nothing — it is drawn where the tee was
@@ -273,15 +273,12 @@ list() {
       # is zero when nothing is configured, so a user with no config file gets
       # no column at all rather than an empty one.
       bdgw = ("badge" in hid) ? 0 : badgew
-      lw = 0; ctxw = 0; burnw = 0; projw = 0; locw = 0; mdlw = 0; acctw = 0
+      ctxw = 0; burnw = 0; projw = 0; locw = 0; mdlw = 0; acctw = 0
       room = avail - fixedw() - 1
       dmin = (mxdet < 10) ? mxdet : 10
       # A hidden column is never let in, so its width goes to the detail exactly as a narrow pane would give it there. Nothing moves: the order the columns are drawn in never changes.
       if (mxctx  && !("ctx"   in hid)) ctxw  = admit(5, 0)
       if (mxcost && !("cost"  in hid)) burnw = admit(7, dmin)
-      # The state word says again what the colour of the glyph says, so it gives way to a name that would otherwise be cut: it is let in only while the longest name can still grow to its full width beside it.
-      want = capw(maxnm, 64) - namew
-      lw = admit(7, dmin + (want > 0 ? want : 0))
       # THE PROJECT COLUMN OF A FLAT ROW IS NOT THE LOCATION COLUMN. Flat mode
       # has no group headers, so this column is the only thing on the row that
       # says which project the agent belongs to, and hiding `loc` ("which pane
@@ -313,8 +310,8 @@ list() {
     # What every column but the detail costs, at the widths fitcols has settled
     # on so far — asked while it is still deciding, and once more when it has.
     function fixedw() {
-      # 2 icon, lw + its space, 6 age + 2, badge + 1, name + 1, then what is left
-      return 2 + (lw ? lw + 1 : 0) + 8 + (bdgw ? bdgw + 1 : 0) + namew + 1 \
+      # 2 icon and its space, 6 age + 2, badge + 1, name + 1, then what is left
+      return 2 + 8 + (bdgw ? bdgw + 1 : 0) + namew + 1 \
              + (projw ? projw + 1 : 0) \
              + (ctxw ? ctxw + 1 : 0) + (burnw ? burnw + 1 : 0) \
              + (mdlw ? mdlw + 1 : 0) + (acctw ? acctw + 1 : 0) \
@@ -399,12 +396,12 @@ list() {
       # and cannot go on until you answer. A turn that simply ended is IDLE —
       # nothing is stuck, it is just your move — and the hook folds Claude Code
       # idle ping into the same state, since it says nothing "done" did not.
-      prio["blocked"]=0; icon["blocked"]="⚠"; lbl["blocked"]="BLOCKED"; col["blocked"]="\033[1;33m"
-      prio["done"]   =1; icon["done"]   ="✓"; lbl["done"]   ="IDLE";    col["done"]   ="\033[36m"
-      prio["working"]=2; icon["working"]="●"; lbl["working"]="working"; col["working"]="\033[32m"
-      prio["new"]    =3; icon["new"]    ="○"; lbl["new"]    ="new";     col["new"]    ="\033[90m"
-      prio["?"]      =4; icon["?"]      ="·"; lbl["?"]      ="?";       col["?"]      ="\033[90m"
-      prio["dead"]   =5; icon["dead"]   ="✗"; lbl["dead"]   ="closed";  col["dead"]   ="\033[90m"
+      prio["blocked"]=0; icon["blocked"]="⚠"; col["blocked"]="\033[1;33m"
+      prio["done"]   =1; icon["done"]   ="✓"; col["done"]   ="\033[36m"
+      prio["working"]=2; icon["working"]="●"; col["working"]="\033[32m"
+      prio["new"]    =3; icon["new"]    ="○"; col["new"]    ="\033[90m"
+      prio["?"]      =4; icon["?"]      ="·"; col["?"]      ="\033[90m"
+      prio["dead"]   =5; icon["dead"]   ="✗"; col["dead"]   ="\033[90m"
       norder = split("blocked done working new ? dead", ORD, " ")
     }
     $1=="P" { alive[$2]=1; loc[$2]=$3; title[$2]=$4; path[$2]=$5; pwin[$2]=$6; psb[$2]=$7 + 0; ppi[$2]=$8 + 0; next }
@@ -734,7 +731,7 @@ list() {
           rbody[i] = col[s] icon[s] R " " cfit(cnm[i], cols - 6 - (rnest[i] ? 1 : 0))
           continue
         }
-        row = sprintf("%s%s%s%s", col[s], icon[s], (lw ? sprintf(" %-*s", lw, lbl[s]) : ""), R)
+        row = sprintf("%s%s%s", col[s], icon[s], R)
         row = row sprintf(" %6s  ", cagt[i])
         # Immediately before the name, where the eye is already going.
         if (bdgw)  row = row DIM ufit(cbdg[i], bdgw) R " "
