@@ -1166,5 +1166,31 @@ TAGENTS_NO_NATIVE=1 run_rec >/dev/null
 ok "...and TAGENTS_NO_NATIVE=1 at install time leaves it, as the hand-built binary stays" "handbuilt-okb join" "$(kn join)"
 ok "...the unmarked binary is still there, not ours to delete" yes "$([ -x "$OKB_BIN" ] && echo yes || echo no)"
 
+# ---------------------------------------------------------------------------
+t "17. the default build trusts the system CA store when the node on PATH can, and an overridden build is left alone"
+# ---------------------------------------------------------------------------
+# A fake node and a fake pnpm stand in for the real ones. The node answers need_toolchain's version question and the probe `node --use-system-ca -e 0`, and writes down every start; the pnpm writes the NODE_OPTIONS it was given.
+mkdir -p "$TMP/node-ca-yes" "$TMP/node-ca-no"
+for d in node-ca-yes node-ca-no; do
+  { printf '#!/bin/sh\necho x >> "$TMP/node-starts"\n'
+    [ "$d" = node-ca-yes ] || printf '[ "${1:-}" != --use-system-ca ] || exit 9\n'
+    printf '[ "${1:-}" != -p ] || echo 24.0.0\nexit 0\n'; } > "$TMP/$d/node"
+  printf '#!/bin/sh\nprintf "%%s" "${NODE_OPTIONS:-}" > "$TMP/build-node-options"\n' > "$TMP/$d/pnpm"
+  chmod +x "$TMP/$d/node" "$TMP/$d/pnpm"
+done
+build_node_options() {  # <stub dir> [build command] — a fresh install; prints the NODE_OPTIONS the build saw. No command: the default build.
+  mkorigin; fresh_env
+  rm -f "$TMP/build-node-options" "$TMP/node-starts"
+  TAGENTS_BUILD_CMD=${2:-} PATH="$1:$PATH" TMP="$TMP" run >/dev/null
+  cat "$TMP/build-node-options" 2>/dev/null || echo "build did not run"
+}
+unset NODE_OPTIONS
+ok "a node that accepts the flag: the default build sees it alone" "--use-system-ca" "$(build_node_options "$TMP/node-ca-yes")"
+ok "...after the NODE_OPTIONS the caller had" "--max-old-space-size=4096 --use-system-ca" "$(NODE_OPTIONS=--max-old-space-size=4096 build_node_options "$TMP/node-ca-yes")"
+ok "...and not twice when the caller already had it" "--use-system-ca" "$(NODE_OPTIONS=--use-system-ca build_node_options "$TMP/node-ca-yes")"
+ok "a node that refuses the flag: the default build sees NODE_OPTIONS as it was" "" "$(build_node_options "$TMP/node-ca-no")"
+ok "an overridden build sees NODE_OPTIONS as it was" "--max-old-space-size=4096" "$(NODE_OPTIONS=--max-old-space-size=4096 build_node_options "$TMP/node-ca-yes" 'printf "%s" "${NODE_OPTIONS:-}" > "$TMP/build-node-options"')"
+ok "...and the installer started no node for it" "no" "$([ -e "$TMP/node-starts" ] && echo yes || echo no)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
