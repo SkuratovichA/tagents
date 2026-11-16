@@ -75,11 +75,16 @@ follow() {  # [client, ignored]
     [ "$sess" = tagents ] && return 0
   fi
   viewport_shown_push "$sid"
-  if [ "$win" != "$(tmux show -gqv @tagents_viewport_window 2>/dev/null)" ]; then
-    tmux set -g @tagents_viewport_window "$win" 2>/dev/null
-    signal_ev   # the mark of the window on screen is drawn, and the refresher reloads only when its snapshot differs
-    cursor_to_window "$win"
-  fi
+  viewport_window_record "$win" && cursor_to_window "$win"
+  return 0
+}
+
+# Writes the window the viewport shows into @tagents_viewport_window, which the list draws its mark from, and rings the refresher, which reloads only when its snapshot differs. Succeeds when the window is a new one and fails when the option already held it, so a caller moves the cursor only on a change.
+viewport_window_record() {  # <window id>
+  [ -n "${1:-}" ] || return 1
+  [ "$1" != "$(tmux show -gqv @tagents_viewport_window 2>/dev/null)" ] || return 1
+  tmux set -g @tagents_viewport_window "$1" 2>/dev/null
+  signal_ev
   return 0
 }
 

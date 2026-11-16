@@ -690,7 +690,7 @@ ok "A window change in the viewport: the mark moves to the new window's row" "$(
 vgo personal
 ok "A session change: the mark moves to the row of personal" "$(rowof '=personal:')" "$(wait_eq_long "$(rowof '=personal:')" lmarked)"
 
-# Only the session tagents is left and the viewport is idle: a client's session and the session of a command run from a pane both read tagents. The viewport's shell is stopped for the case, so that a session made here is not picked up and the dashboard stays the only one a lookup can name.
+# Only the session tagents is left and the viewport is idle: a client's session and the session of a command run from a pane both read tagents. The viewport is idle when the chat is made; it takes the last resort session up once that exists, and the last case below makes it idle again.
 t "The dashboard is never where a chat or a shell lands"
 cpstart
 kclient 41 work;                                           U=$KC
@@ -698,19 +698,21 @@ ta --ensure-dash >/dev/null 2>&1
 wait_eq work:2 vwin >/dev/null
 for s in personal scratch work; do tm kill-session -t "=$s:"; done
 wait_eq_long "tagents: no session to show" vp_text >/dev/null
-VPID=$(tm display -p -t "$(vpane)" '#{pane_pid}')
-kill -STOP "$VPID"
 TA_NEW_CMD="sleep 600" ta --new "$HOME" >/dev/null 2>&1
 ok "No home for a chat: the session tagents still has one window" 1 "$(tm list-windows -t '=tagents:' | wc -l | tr -d ' ')"
 ok "No home for a chat: ...with the list and the viewport only" 2 "$(tm list-panes -t '=tagents:' | wc -l | tr -d ' ')"
 ok "No home for a chat: it went to the last resort session" "agents tagents " "$(cplist)"
 ok "No home for a chat: launch_session does not answer tagents" agents "$(cpout launch_session '')"
-tm new-session -d -s scratch -x 200 -y 50 "exec sleep 600"; tm new-window -d -t '=scratch:' "exec sleep 600"
+# The viewport must show nothing while a chat's pane is joined, and it takes any session it can show as soon as there is one. Stopping its shell does not hold that: tmux resumes a stopped pane process at once. So the last resort session goes, and the session that holds the chat is marked as a dashboard, which the viewport never shows, in the same command list that makes it.
+tm kill-session -t '=agents:'
+wait_eq_long 0 present "$(vtty)" >/dev/null
+tm new-session -d -s scratch -x 200 -y 50 "exec sleep 600" \; set -t '=scratch:' @tagents_cockpit 1 \; new-window -d -t '=scratch:' "exec sleep 600"
 SPANE=$(tm list-panes -t '=scratch:' -F '#{pane_id}' | head -1)
+sleep 1
+ok "No window to put it beside: the viewport shows no session" "" "$(vshows)"
 cpout open_beside "$SPANE"
 ok "No window to put it beside: the dashboard keeps its two panes" 2 "$(tm list-panes -t '=tagents:' | wc -l | tr -d ' ')"
 ok "No window to put it beside: the chat's pane stayed in its session" scratch "$(tm display -p -t "$SPANE" '#{session_name}')"
-kill -CONT "$VPID"
 tm set-hook -gu 'client-session-changed[44]'
 
 t "A session named with a space, A session named 0"
