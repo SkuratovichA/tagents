@@ -276,9 +276,9 @@ machine were the ones you could not see. They are now recorded under their
 session id (`s-<id>.tsv`) and listed in the group of the directory they were
 launched in, exactly like everybody else, with "headless" where the location
 column would name a pane. Liveness is the pid of their claude process, which
-the hook writes into the record, so the row shows the real state — ● working,
-✓ IDLE, ⚠ BLOCKED — while that process lives and sinks to a dimmed ✗ closed
-when it does not; a closed one is never offered for resume, having no pane to
+the hook writes into the record, so the row shows the real state by its glyph
+alone — ● working, ✓ idle, ⚠ blocked — while that process lives and sinks to a
+dimmed ✗ when it does not; a closed one is never offered for resume, having no pane to
 come back into. Nothing that acts on a pane can act on such a row, so enter,
 ctrl-s, ctrl-e and ctrl-r refuse with one line. ctrl-v is the
 exception and the point: it follows $TA_LOG, the log the thing that started

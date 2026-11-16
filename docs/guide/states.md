@@ -20,7 +20,7 @@ Claude Code also pings a notification after about a minute of silence, which say
 
 A `claude -p` started by a daemon, a launchd job or a `nohup` has no tmux pane anywhere in its ancestry. It is listed all the same, in the group of the directory it was launched in, with `headless` where the location column names a pane for everybody else.
 
-It shows the ordinary states. Liveness is the pid of its claude process, recorded by the hook, rather than a pane, and the row dims to `✗ closed` when that process is gone, without offering a resume it has nowhere to put.
+It shows the ordinary states. Liveness is the pid of its claude process, recorded by the hook, rather than a pane, and the row dims and shows the `✗` glyph alone when that process is gone, without offering a resume it has nowhere to put.
 
 What you cannot do with one is anything that needs a pane: `enter`, `ctrl-s`, `ctrl-e` and `ctrl-r` refuse with a one-line notice. `ctrl-v` is the exception, and the reason to look at such a row at all: it follows `$TA_LOG` with a live `tail -f`, and the list's preview shows the tail of the same file. So export the two variables before starting one:
 
@@ -44,8 +44,8 @@ Such a session is listed **under** the agent that started it: one level deeper i
 
 ```
 ▾ tagents  ~/git/tagents                      ●2
-  └─ ● working   2:14  dashboard      …   1.0     Edit list.sh
-     └─ ● working   0:41  the nightly sweep   …   child   ▸ Bash ls -la
+  └─ ●   2:14  dashboard      …   1.0     Edit list.sh
+     └─ ●   0:41  the nightly sweep   …   child   ▸ Bash ls -la
 ```
 
 How a child behaves:

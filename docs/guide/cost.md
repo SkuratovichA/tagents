@@ -3,7 +3,7 @@
 With cost on, each row shows what its session has spent and which model it is on, and the footer shows the month against your limit. `tusage` is the program behind it: it reads the transcripts Claude Code writes and prices them.
 
 ```
-├─ ⚠ BLOCKED   2:14  api      142k  $38.3  fable5  %31  ⑂$6.94
+├─ ⚠   2:14  api      142k  $38.3  fable5  %31  ⑂$6.94
 ```
 
 ## Switching it on

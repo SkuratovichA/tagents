@@ -782,7 +782,8 @@ hrec gone done "$DEADPID" "" iteration
 t "6. a live headless row shows what it is doing"
 # ---------------------------------------------------------------------------
 LIVEROW=$(row_of "%s-live")
-has "the state is the one the record says" "● working" "$LIVEROW"
+has "the state is the one the record says" "●" "$LIVEROW"
+hasnt "...and is the glyph alone, with no word beside it" "● working" "$LIVEROW"
 has "TA_LABEL is the name" "ticket-agent" "$LIVEROW"
 has "the location column says there is no pane" "headless" "$LIVEROW"
 has "the detail is the hook detail" "Bash ls" "$LIVEROW"
@@ -791,7 +792,8 @@ has "the detail is the hook detail" "Bash ls" "$LIVEROW"
 t "7. a headless row whose process is gone is closed, and not resumable"
 # ---------------------------------------------------------------------------
 DEADROW=$(row_of "%s-gone")
-has "a dead pid reads as closed" "✗ closed" "$DEADROW"
+has "a dead pid reads as closed" "✗" "$DEADROW"
+hasnt "...by the glyph alone, with no word beside it" "closed" "$DEADROW"
 has "and says why enter will not help" "nothing to resume" "$DEADROW"
 hasnt "...rather than offering a resume" "enter resumes it" "$DEADROW"
 ok "the closed one sorts below the live one" "%s-live" \
@@ -1115,7 +1117,8 @@ t "D7. a dead child says so, and does not linger for a day"
 # ---------------------------------------------------------------------------
 crec kidx done "$DEADPID" "" "$MUMK" sid-mum 0 "$REPO2" ""
 DROW=$(rowfor "%s-kidx")
-has "a dead pid reads as closed here too" "✗ closed" "$DROW"
+has "a dead pid reads as closed here too" "✗" "$DROW"
+hasnt "...by the glyph alone, with no word beside it" "closed" "$DROW"
 has "and says why there is nothing to press" "child ended" "$DROW"
 hasnt "...rather than offering a resume" "enter resumes it" "$DROW"
 # An hour old: past SUB_TTL, nowhere near DEAD_TTL.
