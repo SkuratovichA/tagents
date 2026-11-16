@@ -638,5 +638,21 @@ NP=$(tm new-window -d -t tatest-work: -P -F '#{pane_id}' -c "$REPO" "exec '$BIN/
 run --label "$NP" 'no-record-yet' >/dev/null 2>&1
 ok "a pane with no record keeps the name itself" "no-record-yet" "$(lab "$NP")"
 
+# ---------------------------------------------------------------------------
+t "label_of runs with names.sh alone, and answers as tsv_get does"
+# ---------------------------------------------------------------------------
+# The Rust reader and the node reader of labels.tsv are pinned to label_of by tests that source lib/tagents/names.sh and nothing else, so label_of keeps a lookup of its own beside tsv_get in core.sh. The first check keeps the file loadable alone (it fails with "command not found" the day label_of calls another module), and the others hold the two lookups together, on the lines those readers are tested with.
+LO_TAB=$(printf '\t')
+LO_DIR="$ROOT/label-alone"; mkdir -p "$LO_DIR"
+printf '%s\n' "sess-a${LO_TAB}Renamed agent" "%12${LO_TAB}pane name" 'no-tab-here' "${LO_TAB}no key" "sess-b${LO_TAB}" \
+  "sess-a${LO_TAB}later line" "sess-c${LO_TAB}name${LO_TAB}extra" "k${LO_TAB}" "k${LO_TAB}x" >"$LO_DIR/labels.tsv"
+lo_alone()  { STATE_DIR="$LO_DIR" bash -c 'TAB=$(printf "\t"); . "$1/lib/tagents/names.sh" && label_of "$2"' _ "$HERE/.." "$1" 2>&1; }
+lo_shared() { STATE_DIR="$LO_DIR" TA_STATE_DIR="$LO_DIR" bash -c 'TAB=$(printf "\t"); . "$1/lib/tagents/core.sh" && tsv_get "$STATE_DIR/labels.tsv" "$2"' _ "$HERE/.." "$1" 2>&1; }
+ok "names.sh sourced alone answers for a key" "Renamed agent" "$(lo_alone sess-a)"
+ok "...with the first line of a key, empty or not" "" "$(lo_alone k)"
+for LO_KEY in sess-a %12 sess-b sess-c no-tab-here k missing; do
+  ok "label_of and tsv_get give the same for $LO_KEY" "$(lo_shared "$LO_KEY")" "$(lo_alone "$LO_KEY")"
+done
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

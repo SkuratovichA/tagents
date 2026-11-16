@@ -20,7 +20,12 @@ set_label() {  # <key> <name> [<the agent's other key, whose label this one repl
   signal_ev   # labels are drawn, and the file is not a tmux event
 }
 
-label_of() { tsv_get "$LABELS" "$1"; }
+# ITS OWN LOOKUP AND NOT tsv_get, on purpose: the Rust reader and the node reader of labels.tsv are pinned to this function by tests that source this file and nothing else (crates/tagents-core/src/notify/state/tests.rs, packages/core/test/agent-state.test.ts), so it may call nothing another module defines. tests/names.sh holds it against tsv_get, the same rule for every other file, so the two copies cannot drift.
+label_of() {
+  local keyv=$1
+  [ -e "$LABELS" ] || return 0
+  LC_ALL=C awk -F"$TAB" -v k="$keyv" '$1 == k { print $2; exit }' "$LABELS"
+}
 
 # THE LABEL OF ONE AGENT, in the order its row and the sweep read it: the one typed for the session, else the one typed for the pane. A label stays under the pane when the agent was named before its first hook event, and a dialog that asks for `${sid:-$pane}` misses it and opens on the pane title while the row shows the name.
 label_for() {  # <sid> <pane>
