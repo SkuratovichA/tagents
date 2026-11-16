@@ -12,7 +12,7 @@ A background subagent that asks for a permission raises a notification with no a
 
 ## Impact
 
-- Specs: `agent-state` gets one ADDED requirement and three MODIFIED ones (subagent files, SessionEnd, a parent taking its children).
+- Specs: `agent-state` gets two ADDED requirements (the row stops warning, a waiting call of the main conversation keeps it) and four MODIFIED ones (subagent files, the ring of a subagent file, SessionEnd, a parent taking its children).
 - Code: `hooks/tmux-agent-state.sh` (`perm_remember`, `perm_agent_went`, the shared ring helpers, the session end), `lib/tagents/actions.sh` (`forget_agent`, `end_agent`).
 - Tests: `tests/events.sh`, sections s to s16, and `tests/window-rows.sh`, R23 and R26.
 - Docs: `CHANGELOG.md`, `docs/guide/states.md`, `lib/tagents/README.md`, the header of the hook, the comment of `packages/core/src/agent-state.ts`.
