@@ -366,7 +366,11 @@ t "R23 R24 R25 R27 ctrl-x"
 newsess tatest-k1; KB=$LASTWIN
 mkchat tatest-k1 k; KW=$LASTWIN; KP=$LASTPANE
 to tatest-k1; tm select-window -t "$KB"; tm select-window -t "$KW"
+mkdir -p "$WRSTATE/sub" "$WRSTATE/perm"
+printf '1\tBash x\n' >"$WRSTATE/sub/${KP#%}.a1"; printf 'done\n\n a1 \n' >"$WRSTATE/perm/${KP#%}"
 modrun end_agent "$KP"
+ok "R23 hanging up a chat drops what was remembered for a subagent's warning" none "$([ -e "$WRSTATE/perm/${KP#%}" ] && echo kept || echo none)"
+ok "R23 ...with its subagent files" none "$([ -e "$WRSTATE/sub/${KP#%}.a1" ] && echo kept || echo none)"
 ok "R23 the window is closed" no "$(winlive "$KW")"
 ok "R23 the client lands on another window" "$KB" "$(cwin)"
 mkchat tatest-k1 k2; KW2=$LASTWIN; KP2=$LASTPANE
@@ -380,6 +384,10 @@ modrun end_agent "$KP3"
 ok "R25 a chat in a window not on screen dies" no "$(paneok "$KP3")"
 ok "R25 the client did not move" "$KW2" "$(cwin)"
 SB=$(fake_sidebar "$KW2"); tm display-message reset
+printf '1\tBash x\n' >"$WRSTATE/sub/9990.a1"; printf 'done\n\n a1 \n' >"$WRSTATE/perm/9990"; printf '1\tdone\tsid-f\t/w\t\t\t\n' >"$WRSTATE/9990.tsv"
+modrun forget_agent "%9990"
+ok "R26 forgetting a closed chat drops what was remembered for a subagent's warning" none "$([ -e "$WRSTATE/perm/9990" ] && echo kept || echo none)"
+ok "R26 ...with its record and subagent files" none "$([ -e "$WRSTATE/9990.tsv" ] || [ -e "$WRSTATE/sub/9990.a1" ] && echo kept || echo none)"
 modrun kill_agent "$SB" sid-x
 has "R27 the dashboard itself" "tagents: that is the dashboard itself" "$(msgs)"
 ok "R27 the pane survives" 1 "$(nsbs)"

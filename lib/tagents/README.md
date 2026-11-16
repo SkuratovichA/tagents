@@ -45,7 +45,7 @@ others are built on `STATE_DIR` and `TAB`.
 (`<pane>.tsv`, `s-<session id>.tsv` for a headless `claude -p` that has no pane
 at all, or the same key with two fields more for a CHILD — a `claude -p` an
 agent started from its own Bash tool, which names the agent it belongs to), appends start/turn/end lines to `history.tsv`, and keeps the
-per-subagent records under `sub/`. `labels.tsv` beside them is the dashboard's
+per-subagent records under `sub/`, and under `perm/` the state a row goes back to when the subagent whose permission prompt blocked it goes on. `labels.tsv` beside them is the dashboard's
 own: the names you type on ctrl-r, keyed by session id so they survive
 moving and resuming; `tags.tsv` holds the tags of a session the same way, and the list hides them behind the end of its row so the search finds them. `collect()` in `state.sh` is the one pass that joins those
 files with the live world — `tmux list-panes`, a `ps` ancestry walk that proves

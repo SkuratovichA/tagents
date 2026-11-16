@@ -1,0 +1,5 @@
+## 1. A warning a subagent asked for goes away when that subagent goes on
+
+- [x] 1.1 Write failing checks in `tests/events.sh`, sections s to s16 and `tests/window-rows.sh` (R23, R26): the background case, two subagents in flight, a subagent whose call had finished, a pending AskUserQuestion or Bash call of the main conversation, an Agent call in flight, the main conversation going on or ending, a record that changed hands, a headless and a child record, two subagents that both ask, a subagent file past its time-to-live, and the programs a subagent event starts. Proof: each check fails once with its piece of the fix undone.
+- [x] 1.2 Add `perm_remember` before the record is written and `perm_agent_went` in the subagent branch of `hooks/tmux-agent-state.sh`; remove `perm/<key>` wherever `sub/<key>.*` goes at the end of a session, in the hook and in `lib/tagents/actions.sh`. Proof: `sh tests/events.sh` on a scratch tmux.
+- [x] 1.3 Say what is now true in `docs/guide/states.md`, `lib/tagents/README.md`, the header of the hook and `packages/core/src/agent-state.ts`, and keep the `CHANGELOG.md` line true. Proof: `pnpm spec:check`.
