@@ -591,6 +591,8 @@ perm_put() {  # <state> <detail> <list>
 perm_agent_went() {
   pstate=; pdetail=; plist=
   { IFS= read -r pstate; IFS= read -r pdetail; IFS= read -r plist; } <"$dir/perm/$key" 2>/dev/null
+  # a memory that cannot be read or was cut short names no state to go back to
+  [ -n "$pstate" ] || { rm -f "$dir/perm/$key"; return 0; }
   case "$plist" in *" $agent "*) ;; *) return 0 ;; esac
   plist="${plist%%" $agent "*} ${plist#*" $agent "}"
   case "$plist" in
@@ -618,12 +620,14 @@ perm_agent_went() {
 # ---------------------------------------------------------------------------
 rung=
 if [ -n "${agent:-}" ]; then
-  [ -e "$dir/perm/$key" ] && perm_agent_went
   had=; [ -e "$dir/sub/$key.$agent" ] && had=1
   case "$state" in
     subdone|gone) rm -f "$dir/sub/$key.$agent" ;;
     *) printf '%s\t%s\n' "$now" "${detail:-}" >"$dir/sub/$key.$agent" 2>/dev/null ;;
   esac
+  # After the file: the restore rings, and a reload that the ring wakes must not
+  # find the row restored while it still counts the subagent that went.
+  [ -e "$dir/perm/$key" ] && perm_agent_went
   # The dashboard draws how many subagents a session has, so a file that appeared
   # or went is announced. A rewrite of one that was already there is not: a busy
   # subagent calls a tool several times a second, and none of those changes the
@@ -728,8 +732,8 @@ esac
 # the last of them goes on. A second notification while a memory exists keeps the
 # state and detail it holds and adds the subagents in flight now.
 #   No call of the main conversation waits when the record was "done", or was
-#   "working" with a finished call ("<Tool> ✓"), a detail that starts with "Agent "
-#   or "Task " (a subagent is a call the owner is not asked about), or an empty
+#   "working" with a finished call ("<Tool> ✓"), a detail that is "Agent" or "Task" or
+#   starts with "Agent " or "Task " (the detail has no argument when the call has none; a subagent is a call the owner is not asked about), or an empty
 #   sidecar of the turn's calls (the detail is then the prompt).
 #   A subagent has a call in flight when its sub/ file is younger than SUB_TTL and
 #   its detail is not a finished call.
@@ -752,6 +756,7 @@ perm_remember() {
     # add the subagents that have a call in flight now.
     pstate=; pdetail=; plist=
     { IFS= read -r pstate; IFS= read -r pdetail; IFS= read -r plist; } <"$dir/perm/$key" 2>/dev/null
+    [ -n "$pstate" ] || { rm -f "$dir/perm/$key"; return 0; }
     [ -n "$plist" ] || plist=" "
     for pid in $pa; do
       case "$plist" in *" $pid "*) ;; *) plist="$plist$pid " ;; esac
@@ -768,7 +773,7 @@ PERM
     working)
       if ! is_fin "$pdetail"; then
         case "$pdetail" in
-          'Agent '*|'Task '*) ;;
+          Agent|'Agent '*|Task|'Task '*) ;;
           *) [ -s "$tools" ] && return 0 ;;
         esac
       fi ;;

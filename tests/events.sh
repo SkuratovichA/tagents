@@ -753,15 +753,77 @@ ok "the next one finds it" 0 "$(nmk "$(count "$HOOK" "$ROOT/pf" "$NT")")"
 c=$(count "$HOOK" "$ROOT/pa" "$PA")
 ok "a subagent event starts no mkdir, find or sed" 0 "$(( $(ncall "$c" mkdir) + $(ncall "$c" find) + $(ncall "$c" sed) ))"
 
-t "s16. a perm file that cannot be read is read from clean variables"
+t "s16. a memory that was cut short names no state to go back to"
 done_turn
 agpre a1
 ask
-:>/dev/null; chmod 000 "$P"
+: >"$P"
 run_hook "$HOOK" "$S" "$(payload PostToolUse '{"agent_id":"a1","tool_name":"Bash","tool_use_id":"t-a1"}')" plist=" a1 " pstate=working
-ok "an unreadable perm file names nobody, whatever the environment holds" blocked "$(rec_state)"
-ok "...and nothing is removed or half done (set -u would stop the hook on an unset name)" 1 "$(perm_has)"
-chmod 600 "$P"
+ok "an empty perm file is dropped, whatever the environment holds, and the row stays as it was" "blocked 0" "$(rec_state) $(perm_has)"
+done_turn
+agpre a1
+ask
+: >"$P"
+ask
+ok "a second notification over an empty memory does not write one of empty lines" 0 "$(perm_has)"
+ok "...and the row stays blocked" blocked "$(rec_state)"
+done_turn
+agpre a1
+ask
+printf 'done\n' >"$P"
+agpost a1
+ok "a memory with a state and no list names nobody: nothing changes" blocked "$(rec_state)"
+
+t "s17. the two rings of the subagent branch"
+RING='set -gF @tagents_evgen #{e|+|:#{@tagents_evgen},1} ; wait-for -S tagents-ev'
+tev()  { run_hook "$HOOK" "$S" "$(payload "$@")" PATH="$TSHIM:$PATH"; }
+tlog() { tr '\n' ' ' <"$TLOG" | sed 's/ $//'; }
+fresh "$S"; : >"$TLOG"
+tev PreToolUse '{"agent_id":"a1","tool_name":"Bash","tool_input":{"command":"ls"},"tool_use_id":"t-a1"}'
+ok "a new agent_id rings once, and sets no pane option" "$RING" "$(tlog)"
+: >"$TLOG"
+tev PreToolUse '{"agent_id":"a1","tool_name":"Read","tool_input":{"file_path":"/x"},"tool_use_id":"t-a1b"}'
+ok "a second event of the same agent logs nothing" "" "$(tlog)"
+tev SubagentStop '{"agent_id":"a1","agent_type":"Explore"}'
+ok "a SubagentStop of an existing file rings once" "$RING" "$(tlog)"
+: >"$TLOG"
+tev SubagentStop '{"agent_id":"a1","agent_type":"Explore"}'
+ok "a SubagentStop with no file logs nothing" "" "$(tlog)"
+
+t "s18. the subagent's file is settled before the restore rings"
+TSHIM2="$ROOT/tshim2"; mkdir -p "$TSHIM2"; TLOG2="$ROOT/tmux2.log"
+cat >"$TSHIM2/tmux" <<'SH'
+#!/bin/sh
+printf '%s|exists=%s|detail=%s\n' "$*" "$([ -e "$SUBF" ] && echo yes || echo no)" "$(cut -f2 "$SUBF" 2>/dev/null)" >>"$TLOG2"
+exit 1
+SH
+chmod +x "$TSHIM2/tmux"
+tev2() { run_hook "$HOOK" "$S" "$(payload "$@")" PATH="$TSHIM2:$PATH" SUBF="$S/sub/7.a1" TLOG2="$TLOG2"; }
+done_turn
+agpre a1
+ask
+: >"$TLOG2"
+tev2 SubagentStop '{"agent_id":"a1","agent_type":"Explore"}'
+ok "at the restore's ring a stopped subagent's file is already gone" "yes" "$(grep -c 'set -p -t %7 @agent done|exists=no|detail=$' "$TLOG2" | sed 's/1/yes/')"
+done_turn
+agpre a1
+ask
+: >"$TLOG2"
+tev2 PostToolUse '{"agent_id":"a1","tool_name":"Bash","tool_use_id":"t-a1"}'
+ok "...and a rewritten one already holds its new detail" "yes" "$(grep -c 'set -p -t %7 @agent done|exists=yes|detail=Bash ✓$' "$TLOG2" | sed 's/1/yes/')"
+
+t "s19. an Agent or Task call with no argument is still a call of the main conversation that nobody is asked about"
+for tool in Agent Task; do
+  fresh "$S"
+  ev UserPromptSubmit '{"prompt":"go"}'
+  ev PreToolUse "$(jq -nc --arg t "$tool" '{tool_name:$t,tool_input:{},tool_use_id:"g1"}')"
+  ok "$tool with no argument has the bare tool name as its detail" "$tool" "$(rec_detail)"
+  agpre a1
+  ask
+  ok "...and is remembered" 1 "$(perm_has)"
+  agpost a1
+  ok "...and the subagent's next event puts it back" "working|$tool" "$(rec_state)|$(rec_detail)"
+done
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
