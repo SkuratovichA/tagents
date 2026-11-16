@@ -29,6 +29,14 @@ stays worth reacting to.
   tagents --flat          same, but ungrouped regardless of the saved mode
   tagents --label K NAME  name an agent from outside; K is its session id (or
                           pane id), an empty NAME clears it back to the title
+  tagents --tags K        print the tags of a session (K as for --label), on one line
+  tagents --tags-add K TAGS
+                          add TAGS (every word after K, split on spaces and commas) to the tags
+                          of a session, up to 10, and print the result; the
+                          dashboard's search finds a session by its tags
+  tagents --tags-set K TAGS
+                          replace the tags of a session with every word after K;
+                          none, or an empty TAGS, clears them
   tagents --counts        compact summary, for the tmux status bar
   tagents --preview PANE  live view of a pane, for the fzf preview window
   tagents --preview-popup PANE [STATE]
@@ -276,9 +284,9 @@ machine were the ones you could not see. They are now recorded under their
 session id (`s-<id>.tsv`) and listed in the group of the directory they were
 launched in, exactly like everybody else, with "headless" where the location
 column would name a pane. Liveness is the pid of their claude process, which
-the hook writes into the record, so the row shows the real state — ● working,
-✓ IDLE, ⚠ BLOCKED — while that process lives and sinks to a dimmed ✗ closed
-when it does not; a closed one is never offered for resume, having no pane to
+the hook writes into the record, so the row shows the real state by its glyph
+alone — ● working, ✓ idle, ⚠ blocked — while that process lives and sinks to a
+dimmed ✗ when it does not; a closed one is never offered for resume, having no pane to
 come back into. Nothing that acts on a pane can act on such a row, so enter,
 ctrl-s, ctrl-e and ctrl-r refuse with one line. ctrl-v is the
 exception and the point: it follows $TA_LOG, the log the thing that started

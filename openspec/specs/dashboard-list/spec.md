@@ -6,7 +6,7 @@ What the tagents dashboard list shows: one row per Claude Code session, grouped 
 ## Requirements
 
 ### Requirement: The list is produced by `tagents --list`
-`tagents --list` SHALL print one line per row of the list for fzf to read, each line made of five TAB-separated fields: the row key (the pane id of a chat, the window id of a dimmed window row), the text of the row with its colours, the row's state, the session id and the directory. `tagents --flat` SHALL print the same list ungrouped whatever mode is saved.
+`tagents --list` SHALL print one line per row of the list for fzf to read, each line made of five TAB-separated fields: the row key (the pane id of a chat, the window id of a dimmed window row), the text of the row with its colours, the row's state, the session id and the directory. The second field of a tagged session ends with its tags, hidden past the edge (see `session-tags`). `tagents --flat` SHALL print the same list ungrouped whatever mode is saved.
 
 #### Scenario: Row fields
 - **WHEN** a session in `~/projects/app` is running in pane `%12` with session id `a1b2c3d4-…`
@@ -19,6 +19,10 @@ What the tagents dashboard list shows: one row per Claude Code session, grouped 
 #### Scenario: A dimmed window row
 - **WHEN** a window of a group runs no chat
 - **THEN** its line starts with the window id, for example `@7`, and its third and fourth fields are `none` and empty
+
+#### Scenario: A tagged session
+- **WHEN** a session has tags
+- **THEN** its line still has five fields and its second field ends with the tags after as many spaces as the list is wide, at least 300
 
 ### Requirement: ctrl-t switches between the tree and a flat list
 `ctrl-t` SHALL switch between the tree and a flat list without headers, and the choice SHALL persist across restarts in a marker file in the state directory; switching rings the refresher's channel. `TA_FLAT=1` SHALL force the flat list for one run. A flat list SHALL hold chats only, with no dimmed window rows. A flat row SHALL carry the name of its group, the session or `no window`, in a column of its own, which hiding the `loc` column does not remove.
@@ -84,12 +88,12 @@ The row a header stands in for SHALL be chosen among the rows of the group that 
 - **WHEN** rows are kept in window order, which is the default, and the chat typed into last is in a higher window than another chat of the group
 - **THEN** the header carries the key, state, session id and directory of the chat in the lowest window, or of a dimmed window row numbered below every chat, with state none and no session id
 
-### Requirement: Each state has its own glyph, label and colour
-The list SHALL draw states as follows: `⚠` BLOCKED in bold yellow, `✓` IDLE in cyan, `●` working in green, `○` new in grey, `·` with the word `?` in grey for a running Claude with no hook event yet, and `✗` closed in grey. The state word SHALL appear only when the list is wide enough for the label column; the glyph and colour always appear. Which state a session is in, and when, is decided by the `agent-state` capability.
+### Requirement: Each state has its own glyph and colour
+The list SHALL draw states as follows: `⚠` blocked in bold yellow, `✓` idle in cyan, `●` working in green, `○` new in grey, `·` in grey for a running Claude with no hook event yet, and `✗` closed in grey. A row SHALL show its state by the glyph and its colour alone, at every width, with no state word beside the glyph. Which state a session is in, and when, is decided by the `agent-state` capability.
 
 #### Scenario: Idle is not blocked
 - **WHEN** a session's last turn ended with nothing pending
-- **THEN** it is drawn `✓ IDLE`, not `⚠ BLOCKED`
+- **THEN** it is drawn with the cyan `✓`, not the bold yellow `⚠`, and no word follows the glyph
 
 #### Scenario: Running without a record
 - **WHEN** a pane runs Claude but no state record exists for it
@@ -115,7 +119,7 @@ A session started with `claude -p` by a daemon, a job or `nohup`, with no tmux p
 
 #### Scenario: Ended headless session
 - **WHEN** the process of a headless session has exited
-- **THEN** its row is dimmed `✗ closed` and its detail reads `headless, ended — nothing to resume`
+- **THEN** its row is dimmed with the `✗` glyph and its detail reads `headless, ended — nothing to resume`
 
 #### Scenario: Its name
 - **WHEN** a headless session has no label of its own
@@ -231,11 +235,11 @@ The width of a list SHALL be taken from `$FZF_COLUMNS` of the running fzf, else 
 - **THEN** it is built for 45% of the window, since the preview takes the rest
 
 ### Requirement: Columns are as wide as what is in them
-Every column SHALL be as wide as the widest thing it has to say on any row, and a column with nothing to say on any row SHALL take no room. Columns are let in one at a time in the order of what they answer: context size, cost, state word, the project of a flat row, location, model, account. The context needs only room for itself; every other column comes in only while the detail keeps ten columns, and a column that does not fit is skipped while a narrower one after it may still come in.
+Every column SHALL be as wide as the widest thing it has to say on any row, and a column with nothing to say on any row SHALL take no room. Columns are let in one at a time in the order of what they answer: context size, cost, the project of a flat row, location, model, account. The context needs only room for itself; every other column comes in only while the detail keeps ten columns, and a column that does not fit is skipped while a narrower one after it may still come in.
 
 #### Scenario: Wide list
 - **WHEN** the list is built for 140 columns and every column has something to say
-- **THEN** state word, age, badge, name, context, cost, model, account and location are all shown
+- **THEN** age, badge, name, context, cost, model, account and location are all shown
 
 #### Scenario: Nothing to say
 - **WHEN** usage is off, so no session has a cost or a context size
@@ -246,7 +250,7 @@ Every column SHALL be as wide as the widest thing it has to say on any row, and 
 - **THEN** the context column is drawn, the cost column is not, and the detail keeps its width
 
 ### Requirement: The figure columns keep their width
-The context and cost columns and the state word SHALL keep their full width whenever they are drawn, so that a figure growing a digit or an agent going idle never shifts the columns after them. A hidden column (`ctrl-w`) SHALL never be let in, its width going to the detail, and the order the columns are drawn in SHALL never change. The account badge SHALL be shown at every width unless it is hidden.
+The context and cost columns SHALL keep their full width whenever they are drawn, so that a figure growing a digit never shifts the columns after them. A hidden column (`ctrl-w`) SHALL never be let in, its width going to the detail, and the order the columns are drawn in SHALL never change. The account badge SHALL be shown at every width unless it is hidden.
 
 #### Scenario: A figure grows a digit
 - **WHEN** a session's context grows from 99k to 100k tokens
@@ -255,13 +259,6 @@ The context and cost columns and the state word SHALL keep their full width when
 #### Scenario: A hidden column
 - **WHEN** the user hides the model column with `ctrl-w`
 - **THEN** the model column is not drawn, however wide the pane is, and its width goes to the detail
-
-### Requirement: The state word yields to the name
-The state word SHALL be let in only while the longest name can still grow to its full width, up to 64 columns, beside it, because the glyph already says the state in colour. On a narrow list with long names the name wins.
-
-#### Scenario: The name wins over the state word
-- **WHEN** the pane has room for a session's thirty-character name in full or for the state word beside a shortened one, but not both
-- **THEN** the state word is not drawn and the name is spelled out in full
 
 ### Requirement: The name column grows to the names that exist
 The name SHALL keep what it needs before any other column is let in: 22 columns from 80 available, 18 from 50, 14 from 38, else 12, and no more than the longest name needs. Once the columns are in, it SHALL grow to the longest name present, up to 64 columns and leaving the detail as many columns as its widest line, up to ten, so that hiding other columns lets a long name be shown in full.
@@ -352,7 +349,7 @@ Hiding `cost` SHALL remove the cost column, the `⑂$` subagent share and the pr
 - **THEN** the context and model columns are still drawn
 
 ### Requirement: The preview shows a row up close
-`tagents --preview PANE [STATE]` SHALL print, for a pane with a record: the directory the session started in in bold, `cwd now:` when known, `<state> · <detail>`, `session <id>`, `parent: <name>` for a child, `account: <profile> (<config dir>)` when the record names one, the cost table per subagent and model from `tusage` when usage tracking is on, and a separator line. For the pane key `-` it SHALL print nothing.
+`tagents --preview PANE [STATE]` SHALL print, for a pane with a record: the directory the session started in in bold, `cwd now:` when known, `<state> · <detail>`, `session <id>`, `tags:` when the session has some, `parent: <name>` for a child, `account: <profile> (<config dir>)` when the record names one, the cost table per subagent and model from `tusage` when usage tracking is on, and a separator line. For the pane key `-` it SHALL print nothing.
 
 #### Scenario: Header block
 - **WHEN** the preview is asked for a session with an account recorded
@@ -361,6 +358,10 @@ Hiding `cost` SHALL remove the cost column, the `⑂$` subagent share and the pr
 #### Scenario: Child session
 - **WHEN** the preview is asked for a child session
 - **THEN** it names the parent by name and pane key
+
+#### Scenario: Tags
+- **WHEN** the preview is asked for a session with tags
+- **THEN** it shows `tags:` and the tags after the session id
 
 ### Requirement: The preview body depends on what the row is
 After the separator the preview SHALL show: for a live pane the last 60 lines of its screen; for a closed row the words `no Claude running in this pane any more`, the exact command `enter` would run, or a note that `enter` asks which account first, and the last three lines of its transcript; for a pane-less row the last 60 lines of its `$TA_LOG`, else the last turns of its transcript, else a note that there is nothing to show.

@@ -1,7 +1,7 @@
 # claude-code-plugin Specification
 
 ## Purpose
-The tagents repository is also a Claude Code plugin and its own marketplace, giving a Claude Code session the tagents skill and MCP server, and, as a plugin of its own, `okb`, with the knowledge MCP server. This capability covers the plugin's manifest and marketplace entry, the skill, the MCP registration, the fact that the plugin registers no hooks, and how tagents itself is installed.
+The tagents repository is also a Claude Code plugin and its own marketplace, giving a Claude Code session the tagents skill and MCP server, and, as a plugin of its own, `okb`, with the knowledge MCP server. This capability covers the plugin's manifest and marketplace entry, the skill, the MCP registration, the one hook the plugin registers (`SessionStart`) and the status line it cannot set, and how tagents itself is installed.
 
 ## Requirements
 
@@ -82,12 +82,12 @@ When `okb` is not on `PATH` the script `okb-mcp` SHALL write one line to standar
 - **WHEN** the launcher runs on a machine where `command -v okb` fails
 - **THEN** one such line is on standard error, standard output is empty and the exit code is 69 (`tests/knowledge-launcher.sh`)
 
-### Requirement: The plugin registers no hooks
-The plugin SHALL register no Claude Code hooks and no status line, because a plugin cannot set a status line. `tagents setup` registers the agent-state hook and the status line in the user's `settings.json` files, as the `claude-settings` capability specifies.
+### Requirement: The plugin registers one session hook
+The plugin SHALL register one Claude Code hook, `SessionStart`, in `hooks/hooks.json`, and no status line, because a plugin cannot set a status line. `tagents setup` registers the agent-state hook and the status line in the user's `settings.json` files, as the `claude-settings` capability specifies.
 
 #### Scenario: Nothing hooked
 - **WHEN** the plugin's manifest and files are inspected
-- **THEN** there is no hooks declaration and no `hooks/hooks.json`; `hooks/claude-settings.json` is what `tagents setup` writes into settings files, not a registration Claude Code reads from the plugin, and the hook scripts under `hooks/` reach `~/.claude/hooks` through `install.sh`
+- **THEN** `hooks/hooks.json` registers `SessionStart` and no other event; `hooks/claude-settings.json` is what `tagents setup` writes into settings files, not a registration Claude Code reads from the plugin, and the hook scripts under `hooks/` reach `~/.claude/hooks` through `install.sh`
 
 ### Requirement: Installing tagents
 `sh install.sh` from a clone, or `curl -fsSL https://raw.githubusercontent.com/SkuratovichA/tagents/main/install.sh | sh`, SHALL install ONE managed copy in `$TAGENTS_HOME` (default `~/.local/share/tagents`): a clone detached on `origin/main`, made when absent, built with `pnpm install --frozen-lockfile && pnpm build`, not moved while it has local changes. It needs `git`, `node` 22.18 or newer and `pnpm`. The hook and the status line are registered by `tagents setup` (see `claude-settings`).
@@ -590,3 +590,23 @@ The marketplace SHALL list a second plugin `okb`, whose manifest is `plugins/okb
 #### Scenario: The okb plugin alone
 - **WHEN** only `okb@tagents` is installed
 - **THEN** the knowledge tools work and no tagents tool exists
+
+### Requirement: The default build trusts the system CA store
+Before the default build, `install.sh` SHALL add `--use-system-ca` to `NODE_OPTIONS` when the `node` on `PATH` accepts that flag, so a TLS proxy whose CA is in the operating system's store does not fail the registry fetches. It SHALL NOT add the flag twice. An overridden build (`TAGENTS_BUILD_CMD`) SHALL run with the environment as before, and the installer SHALL start no node for it.
+
+#### Scenario: A node that accepts the flag
+- **WHEN** the default build runs and `node --use-system-ca -e 0` exits 0
+- **THEN** the build sees `--use-system-ca` in `NODE_OPTIONS`, after any options the caller had set
+
+#### Scenario: The flag is already there
+- **WHEN** the default build runs and `NODE_OPTIONS` already holds `--use-system-ca`
+- **THEN** the build sees `--use-system-ca` once
+
+#### Scenario: A node that refuses the flag
+- **WHEN** the default build runs and `node --use-system-ca -e 0` exits non-zero
+- **THEN** the build sees `NODE_OPTIONS` as the caller left it
+
+#### Scenario: An overridden build
+- **WHEN** `TAGENTS_BUILD_CMD` is set
+- **THEN** the installer starts no node for this
+- **AND** the build sees `NODE_OPTIONS` as the caller left it

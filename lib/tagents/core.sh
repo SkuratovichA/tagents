@@ -189,6 +189,12 @@ tsv_put() {  # <file> <key> [value] [other key]
     [ -z "$val" ] || printf '%s\t%s\n' "$key" "$val"; } >"$tmp" 2>/dev/null && mv -f "$tmp" "$file" 2>/dev/null || { rm -f "$tmp"; return 1; }
 }
 
+# THE VALUE OF ONE KEY of a file tsv_put writes: the text after the first tab of the first line for <key>, nothing when there is none or no file. The key travels in the environment, as in tsv_put.
+tsv_get() {  # <file> <key>
+  [ -e "$1" ] || return 0
+  K=${2:-} LC_ALL=C awk -F"$TAB" 'BEGIN { k = ENVIRON["K"] } $1 == k { print $2; exit }' "$1"
+}
+
 # ONE WAIT FOR A RING, for the refresher's loop and the cockpit's viewport alike. The condition and the wait are one tmux command, evaluated in the server one after the other with nothing in between: the count of rings is compared with <seen>, and only if it has not moved does the wait begin. Moved already, the command ends at once. Output is dropped; the status is tmux's own.
 ring_wait() {  # <seen: the @tagents_evgen the caller last read, 0 when unset>
   tmux if-shell -F "#{==:#{?@tagents_evgen,#{@tagents_evgen},0},${1:-0}}" 'wait-for tagents-ev' >/dev/null 2>&1

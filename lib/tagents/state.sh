@@ -63,6 +63,22 @@ rec_row() {  # <pane key> -> sid US cwd US transcript US cfgd US hascfg (hascfg:
   LC_ALL=C awk -F"$TAB" -v OFS="$US" 'NR == 1 { print $3, $4, $5, $7, (NF >= 7 ? 1 : 0); exit }' "$STATE_DIR/${1#%}.tsv" 2>/dev/null
 }
 
+# IS THIS KEY A PANE ID: a percent sign and digits, and nothing else. A session id never starts with one, and a headless record's key (`%s-abc`) is not one.
+is_pane_id() {  # <key>
+  case ${1:-} in
+    ''|%|%*[!0-9]*) return 1 ;;
+    %*) return 0 ;;
+  esac
+  return 1
+}
+
+# THE SESSION ID THE RECORD OF A PANE NAMES, empty when the pane has no record or its record names no session.
+pane_sid() {  # <pane key>
+  local sid
+  IFS="$US" read -r sid _ < <(rec_row "$1")
+  printf '%s' "$sid"
+}
+
 # Running right now, by session id: resuming re-registers a conversation under
 # a new pane and the old record lingers, so the id is what settles whether a
 # conversation is already up — never the pane.
@@ -333,6 +349,7 @@ collect() {
   live_panes | sed "s/^/L${TAB}/"
   dir_roots
   [ -e "$LABELS" ] && LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '{ print "N", $1, $2 }' "$LABELS"
+  [ -e "$TAGS" ] && LC_ALL=C awk -F"$TAB" -v OFS="$TAB" '{ print "K", $1, $2 }' "$TAGS"
 
   local f key ts st sid cwd tr det cfgd hascfg orig hlbl hpar hpsid hl pid ttl th tz
   # ONE AWK FOR ALL THE STATE FILES, and for the origin cache beside them: a

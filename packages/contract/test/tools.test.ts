@@ -146,6 +146,9 @@ test('the plugin offers exactly these tools: the verbs of the CLI specs that are
     'tagents_label',
     'tagents_new',
     'tagents_profile_for',
+    'tagents_tags',
+    'tagents_tags_add',
+    'tagents_tags_set',
     'tagents_window',
   ]);
 });

@@ -8,6 +8,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 
 ### Added
 
+- A session carries up to 10 tags, set with `tagents --tags-add`, `--tags-set` and `--tags` (the plugin's `tagents_tags_add`, `tagents_tags_set` and `tagents_tags` tools), found by typing one into the dashboard's search, shown in the preview and dropped by `/clear`; the plugin's `SessionStart` hook tells a session its id and that it can tag itself ([#92](https://github.com/SkuratovichA/tagents/pull/92)).
 - `ctrl-d` (the `dir` key) saves a default directory for the session under the cursor, and `ctrl-n` and `ctrl-p` on any row of that session start the agent exactly there, with no lift to the repository root. The header shows the saved path in the normal colour. Nothing saved, or the directory gone from disk, and they work as before; `--new`, `--window`, `ctrl-a`, the MCP tools and a resumed chat do not read it ([#70](https://github.com/SkuratovichA/tagents/pull/70)).
 - The list marks the row of the window on screen with a `▸` and draws it bold, and `ctrl-o` (the `order` key) puts the rows of a group in the order of their tmux window numbers, or back to your last message ([#69](https://github.com/SkuratovichA/tagents/pull/69)).
 - `tagents --version` (and `-V`) prints the workspace version and the short commit of the copy ([#54](https://github.com/SkuratovichA/tagents/pull/54)).
@@ -30,6 +31,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 - Node gives up the verbs the Rust binary serves: `packages/mcp`, `session`, `sessions`, `doctor`, `plugin add|remove|new` of `packages/core`, `serve` and `mcp` of `tagents-knowledge` and the notification service of `packages/notify` are deleted, and the node CLI answers each of them with one line that names `tagents update` and `cargo build --release -p tagents-core`, and exit 69. A machine needs the `tagents-core` binary for them. The parity suites read node's side from the tag `v0.6.7`, and the vector generators are gone ([#28](https://github.com/SkuratovichA/tagents/issues/28)).
 - `TAGENTS_NO_NATIVE` is read only by the installer, and no wrapper reads it when it runs.
 - YAML config files are no longer read, and the `config convert` verb is gone with them: `config.toml`, `config.<host>.toml` and `plugins/<name>.toml` are the only config files, so a machine that has only `config.yaml` has no configuration until it is converted by hand ([#37](https://github.com/SkuratovichA/tagents/pull/37)).
+- The state word beside a row's glyph (`BLOCKED`, `IDLE`, `working`, `new`, `closed`) is gone: a row shows its state by the glyph and its colour alone, and the width the word took goes to the name and the detail ([#91](https://github.com/SkuratovichA/tagents/pull/91)).
 
 ### Changed
 
@@ -38,6 +40,8 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 
 ### Fixed
 
+- A freshly started cockpit marks the row of the window its viewport shows at once, where the mark used to wait for the first window or session switch ([#93](https://github.com/SkuratovichA/tagents/pull/93)).
+- The installer's default build trusts the operating system's CA store when the node on `PATH` can, so `tagents update` no longer fails with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` behind a TLS proxy that re-signs traffic ([#87](https://github.com/SkuratovichA/tagents/pull/87)).
 - `tusage` prices Claude Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable/Mythos 5.2 at their published rates; they had fallen onto the 5 rows their ids start with, which overstated Opus 5.5 and Sonnet 5.5 and left Haiku 5.5 unpriced ([#76](https://github.com/SkuratovichA/tagents/pull/76)).
 - A transcript moved to another project directory while the index updates no longer empties the offsets table, so the next update no longer counts every transcript a second time ([#71](https://github.com/SkuratovichA/tagents/pull/71)).
 - After `/compact` the dashboard's context column shows what the compaction left, and the next answer raises it ([#68](https://github.com/SkuratovichA/tagents/pull/68)).

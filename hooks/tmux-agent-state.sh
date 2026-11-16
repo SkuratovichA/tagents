@@ -563,6 +563,11 @@ fi
 [ "$state" = "subdone" ] && exit 0
 
 if [ "$state" = "gone" ]; then
+  # /CLEAR DROPS THE TAGS of the session it ends, and no other ending does: a resumed or resurrected session keeps its id and has to come back with them. Not inside the owner guard below, which is about the pane record. The file name is lib/tagents/tags.sh's (tests/tags.sh pins the two), and this is the only cost of any other event: none, the branch is a string test.
+  if [ "$esub" = "clear" ] && [ -n "${sid:-}" ] && [ -e "$dir/tags.tsv" ]; then
+    K=$sid LC_ALL=C awk -F'	' 'BEGIN { k = ENVIRON["K"] } $1 == k { hit = 1; next } { print } END { exit !hit }' "$dir/tags.tsv" >"$dir/tags.tsv.$$" 2>/dev/null &&
+      mv -f "$dir/tags.tsv.$$" "$dir/tags.tsv" 2>/dev/null || rm -f "$dir/tags.tsv.$$"
+  fi
   # A PARENT TAKES ITS FINISHED CHILDREN WITH IT. Off the hot path, so it can
   # afford a pass over the pane-less records: every child of this session whose
   # own claude is gone is a row nobody can do anything with. A child still

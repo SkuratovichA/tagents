@@ -234,7 +234,13 @@ cockpit_keys_install() {
   tmux set -t '=tagents:' prefix None \; set -t '=tagents:' prefix2 None \; set -t '=tagents:' key-table tagents-cockpit 2>/dev/null
 }
 
-# Wait for the viewport pane to have attached its client: the tty it stored is its own pane's and a client of that name is listed.
+# The window the viewport's client shows, recorded for the list's mark: a cockpit that has just started has had no window switch, so no follow hook has run, and the mark would be missing until the first one. Only the record of follow() is done here: the list's cursor is not moved (the list may not have read its input yet, and a cursor posted before that is lost), no client is switched and no shown session is pushed. The viewport never attaches to the dashboard, so no dashboard window is recorded.
+cockpit_record_window() {  # <viewport tty>
+  viewport_window_record "$(client_raw '#{window_id}' "$1")"
+  return 0
+}
+
+# Wait for the viewport pane to have attached its client: the tty it stored is its own pane's and a client of that name is listed. Then the window that client shows is recorded.
 cockpit_await_viewport() {
   local i=0 vp ptty vtty
   while [ "$i" -lt 100 ]; do
@@ -242,7 +248,10 @@ cockpit_await_viewport() {
     if [ -n "$vp" ]; then
       ptty=$(tmux display -p -t "$vp" '#{pane_tty}' 2>/dev/null)
       vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
-      [ -n "$vtty" ] && [ "$vtty" = "$ptty" ] && tmux list-clients -F '#{client_name}' 2>/dev/null | grep -qxF "$vtty" && return 0
+      if [ -n "$vtty" ] && [ "$vtty" = "$ptty" ] && tmux list-clients -F '#{client_name}' 2>/dev/null | grep -qxF "$vtty"; then
+        cockpit_record_window "$vtty"
+        return 0
+      fi
     fi
     sleep 0.1; i=$((i + 1))
   done

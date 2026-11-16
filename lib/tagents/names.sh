@@ -20,6 +20,7 @@ set_label() {  # <key> <name> [<the agent's other key, whose label this one repl
   signal_ev   # labels are drawn, and the file is not a tmux event
 }
 
+# ITS OWN LOOKUP AND NOT tsv_get, on purpose: the Rust reader and the node reader of labels.tsv are pinned to this function by tests that source this file and nothing else (crates/tagents-core/src/notify/state/tests.rs, packages/core/test/agent-state.test.ts), so it may call nothing another module defines. tests/names.sh holds it against tsv_get, the same rule for every other file, so the two copies cannot drift.
 label_of() {
   local keyv=$1
   [ -e "$LABELS" ] || return 0
@@ -105,10 +106,8 @@ pane_for_sid() { panes_for_sid "$1" | head -1 | cut -f1; }
 
 # THE ONE WAY A NAME IS GIVEN, from ctrl-r and from --label alike. A pane whose record names a session files the name under that session, because a label under the pane sits behind any label the session already has: an agent renaming itself by $TMUX_PANE moved its window and left its row and the dialog on the older name. The pane's own entry goes with it, or clearing the name would bring that entry back instead of the title.
 name_agent() {  # <sid or pane> <pane, when known> <name>
-  local keyv=$1 pane=$2 name=$3 sid=
-  case "$keyv" in
-    %[0-9]*) IFS="$US" read -r sid _ < <(rec_row "$keyv"); keyv=${sid:-$keyv} ;;
-  esac
+  local keyv=$1 pane=$2 name=$3 sid
+  if is_pane_id "$keyv"; then sid=$(pane_sid "$keyv"); keyv=${sid:-$keyv}; fi
   set_label "$keyv" "$name" "$pane"
   [ -n "$pane" ] && name_window "$pane" "$name"
   return 0
