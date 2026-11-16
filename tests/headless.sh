@@ -72,6 +72,8 @@ TAB=$(printf '\t')
 BIN="$ROOT/bin";     mkdir -p "$BIN"
 SHIM="$ROOT/shim";   mkdir -p "$SHIM"
 STATE="$ROOT/state"; mkdir -p "$STATE"
+# The default order is the windows; the tree checks of sections D pin the order of the last message, where a session's chats come before its dimmed window rows, and the marker asks for it. tests/ui.sh and tests/window-rows.sh hold the window order.
+: >"$STATE/.order-recent"
 REPO="$ROOT/repo";   mkdir -p "$REPO/.git"
 TMUXLOG="$ROOT/tmux.log"
 : >"$TMUXLOG"
