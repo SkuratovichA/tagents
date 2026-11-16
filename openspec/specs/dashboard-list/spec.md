@@ -84,12 +84,12 @@ The row a header stands in for SHALL be chosen among the rows of the group that 
 - **WHEN** rows are kept in window order, which is the default, and the chat typed into last is in a higher window than another chat of the group
 - **THEN** the header carries the key, state, session id and directory of the chat in the lowest window, or of a dimmed window row numbered below every chat, with state none and no session id
 
-### Requirement: Each state has its own glyph, label and colour
-The list SHALL draw states as follows: `⚠` BLOCKED in bold yellow, `✓` IDLE in cyan, `●` working in green, `○` new in grey, `·` with the word `?` in grey for a running Claude with no hook event yet, and `✗` closed in grey. The state word SHALL appear only when the list is wide enough for the label column; the glyph and colour always appear. Which state a session is in, and when, is decided by the `agent-state` capability.
+### Requirement: Each state has its own glyph and colour
+The list SHALL draw states as follows: `⚠` blocked in bold yellow, `✓` idle in cyan, `●` working in green, `○` new in grey, `·` in grey for a running Claude with no hook event yet, and `✗` closed in grey. A row SHALL show its state by the glyph and its colour alone, at every width, with no state word beside the glyph. Which state a session is in, and when, is decided by the `agent-state` capability.
 
 #### Scenario: Idle is not blocked
 - **WHEN** a session's last turn ended with nothing pending
-- **THEN** it is drawn `✓ IDLE`, not `⚠ BLOCKED`
+- **THEN** it is drawn with the cyan `✓`, not the bold yellow `⚠`, and no word follows the glyph
 
 #### Scenario: Running without a record
 - **WHEN** a pane runs Claude but no state record exists for it
@@ -115,7 +115,7 @@ A session started with `claude -p` by a daemon, a job or `nohup`, with no tmux p
 
 #### Scenario: Ended headless session
 - **WHEN** the process of a headless session has exited
-- **THEN** its row is dimmed `✗ closed` and its detail reads `headless, ended — nothing to resume`
+- **THEN** its row is dimmed with the `✗` glyph and its detail reads `headless, ended — nothing to resume`
 
 #### Scenario: Its name
 - **WHEN** a headless session has no label of its own
@@ -231,11 +231,11 @@ The width of a list SHALL be taken from `$FZF_COLUMNS` of the running fzf, else 
 - **THEN** it is built for 45% of the window, since the preview takes the rest
 
 ### Requirement: Columns are as wide as what is in them
-Every column SHALL be as wide as the widest thing it has to say on any row, and a column with nothing to say on any row SHALL take no room. Columns are let in one at a time in the order of what they answer: context size, cost, state word, the project of a flat row, location, model, account. The context needs only room for itself; every other column comes in only while the detail keeps ten columns, and a column that does not fit is skipped while a narrower one after it may still come in.
+Every column SHALL be as wide as the widest thing it has to say on any row, and a column with nothing to say on any row SHALL take no room. Columns are let in one at a time in the order of what they answer: context size, cost, the project of a flat row, location, model, account. The context needs only room for itself; every other column comes in only while the detail keeps ten columns, and a column that does not fit is skipped while a narrower one after it may still come in.
 
 #### Scenario: Wide list
 - **WHEN** the list is built for 140 columns and every column has something to say
-- **THEN** state word, age, badge, name, context, cost, model, account and location are all shown
+- **THEN** age, badge, name, context, cost, model, account and location are all shown
 
 #### Scenario: Nothing to say
 - **WHEN** usage is off, so no session has a cost or a context size
@@ -246,7 +246,7 @@ Every column SHALL be as wide as the widest thing it has to say on any row, and 
 - **THEN** the context column is drawn, the cost column is not, and the detail keeps its width
 
 ### Requirement: The figure columns keep their width
-The context and cost columns and the state word SHALL keep their full width whenever they are drawn, so that a figure growing a digit or an agent going idle never shifts the columns after them. A hidden column (`ctrl-w`) SHALL never be let in, its width going to the detail, and the order the columns are drawn in SHALL never change. The account badge SHALL be shown at every width unless it is hidden.
+The context and cost columns SHALL keep their full width whenever they are drawn, so that a figure growing a digit never shifts the columns after them. A hidden column (`ctrl-w`) SHALL never be let in, its width going to the detail, and the order the columns are drawn in SHALL never change. The account badge SHALL be shown at every width unless it is hidden.
 
 #### Scenario: A figure grows a digit
 - **WHEN** a session's context grows from 99k to 100k tokens
@@ -255,13 +255,6 @@ The context and cost columns and the state word SHALL keep their full width when
 #### Scenario: A hidden column
 - **WHEN** the user hides the model column with `ctrl-w`
 - **THEN** the model column is not drawn, however wide the pane is, and its width goes to the detail
-
-### Requirement: The state word yields to the name
-The state word SHALL be let in only while the longest name can still grow to its full width, up to 64 columns, beside it, because the glyph already says the state in colour. On a narrow list with long names the name wins.
-
-#### Scenario: The name wins over the state word
-- **WHEN** the pane has room for a session's thirty-character name in full or for the state word beside a shortened one, but not both
-- **THEN** the state word is not drawn and the name is spelled out in full
 
 ### Requirement: The name column grows to the names that exist
 The name SHALL keep what it needs before any other column is let in: 22 columns from 80 available, 18 from 50, 14 from 38, else 12, and no more than the longest name needs. Once the columns are in, it SHALL grow to the longest name present, up to 64 columns and leaving the detail as many columns as its widest line, up to ten, so that hiding other columns lets a long name be shown in full.
