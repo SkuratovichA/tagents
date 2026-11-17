@@ -422,7 +422,7 @@ refresher() {
         # seconds apart, is a list that never answers, which is a list that has
         # really gone (or, when it has, kill -0 above has said so already). Nothing
         # is posted when nothing is due: a list that is not asked is not tested.
-        if ! post_fzf "$port" "reload-sync($SELF --list)"; then
+        if ! post_fzf "$port" "$(list_reload)"; then
           fails=$((fails + 1))
           # A list that does not answer is not one whose tally is current: the stamp
           # stops here, and the bar takes the counting back within COUNTS_EVERY.

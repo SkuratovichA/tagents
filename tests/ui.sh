@@ -1106,6 +1106,30 @@ ok "...and the mark stays on its chat" "$A2 " "$(marked)"
 said "$A" 600
 tm set -gu @tagents_viewport_window
 
+# THE MARK COMES FROM THE VIEWPORT'S CLIENT WHEN THERE IS ONE: a list that starts after a window switch and before --follow has written the option must not draw the old window's mark. The keeper client stands for the viewport and is moved to the window of $A2 while the option still holds another window.
+VCL=$(tm list-clients -F '#{client_name}' | head -1)
+WORK_WAS=$(where "=tatest-work:")
+# The follow hooks the list's refresher installed fire on every switch below and, with the viewport's tty set, write the option themselves: the tty is set only once the client has settled, and the option after it.
+follow_idle() { local k=0; sleep 0.5; while ps -A -o command= | grep -v grep | grep -q -- ' --follow' && [ "$k" -lt 50 ]; do k=$((k + 1)); sleep 0.2; done; }   # the hooks of a switch have run (and, with no tty set, did nothing)
+tm select-window -t "$A2"
+tm switch-client -c "$VCL" -t "=tatest-work:"
+follow_idle
+tm set -g @tagents_viewport_tty "$VCL"
+tm set -g @tagents_viewport_window "$W_A"
+ok "a stale option: the window the viewport's client shows is the one marked" "$A2 " "$(marked)"
+ok "a stale option: ...and in a flat list" "$A2 " "$(marked TA_FLAT=1)"
+tm set -gu @tagents_viewport_tty
+ok "no viewport client: the option decides" "$A " "$(marked)"
+tm switch-client -c "$VCL" -t "=tagents:"
+follow_idle
+tm set -g @tagents_viewport_tty "$VCL"
+tm set -g @tagents_viewport_window "$W_A"
+ok "a client on the session tagents is not a viewport: the option decides" "$A " "$(marked)"
+tm set -gu @tagents_viewport_tty
+tm switch-client -c "$VCL" -t "=tatest-dash:"
+tm select-window -t "$WORK_WAS"
+tm set -gu @tagents_viewport_window
+
 # ---------------------------------------------------------------------------
 t "10c. the order — a switch to the number of the window"
 # ---------------------------------------------------------------------------

@@ -327,6 +327,13 @@ for mode in grouped flat; do
   ok "$mode: a list without marks (the status bar's) leaves no tally" no "$([ -e "$STATE/.counts.tally" ] && echo yes || echo no)"
   TA_TALLY=1 "$TA" --list >/dev/null 2>&1
   ok "$mode: nor does one that only wants the tally" no "$([ -e "$STATE/.counts.tally" ] && echo yes || echo no)"
+  rm -f "$STATE/.rows.kept"
+  TA_MARKS=0 "$TA" --list >/dev/null 2>&1
+  ok "$mode: a list nobody asked to keep leaves no rows" no "$([ -e "$STATE/.rows.kept" ] && echo yes || echo no)"
+  TA_MARKS=0 TA_KEEP_ROWS=1 "$TA" --list >"$ROOT/kept.out" 2>/dev/null
+  ok "$mode: a list asked to keep leaves one kept line for each line it drew" "$(wc -l <"$ROOT/kept.out" | tr -d ' ')" "$(wc -l <"$STATE/.rows.kept" 2>/dev/null | tr -d ' ')"
+  ok "$mode: ...and no temp file behind it" 0 "$(ls -A "$STATE" | grep -c '^\.rows\.kept\.')"
+  rm -f "$STATE/.rows.kept"
 done
 unset TA_FLAT
 fresh

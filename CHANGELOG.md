@@ -40,6 +40,7 @@ A version here is a release of `tagents-core`: the tag `v<version>`, where the v
 
 ### Fixed
 
+- The list's `▸` and cursor follow a window switch in the viewport at once: `--follow` repaints the list from the rows the dashboard drew last, where it used to wait for a full reload (up to the refresher's second look and two-second throttle) and then run a second `--list` for the cursor, and a list built between the switch and `--follow` marks the new window ([#NNN](https://github.com/SkuratovichA/tagents/pull/NNN)).
 - A freshly started cockpit marks the row of the window its viewport shows at once, where the mark used to wait for the first window or session switch ([#93](https://github.com/SkuratovichA/tagents/pull/93)).
 - A row that a background subagent's permission prompt turned to `⚠` goes back to its idle or working state as soon as that subagent goes on, instead of keeping the warning until the main conversation's next event; with several subagents in flight it waits for all of them ([#95](https://github.com/SkuratovichA/tagents/pull/95)).
 - The installer's default build trusts the operating system's CA store when the node on `PATH` can, so `tagents update` no longer fails with `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` behind a TLS proxy that re-signs traffic ([#87](https://github.com/SkuratovichA/tagents/pull/87)).

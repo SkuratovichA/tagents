@@ -625,6 +625,44 @@ vgo tagents
 ok "Picked in the chooser: a pick of tagents from work shows personal" personal "$(wait_eq_long personal vshows)"
 ok "Picked in the chooser: the dashboard's terminal stayed on tagents" tagents "$(csess "$U")"
 
+t "A switch repaints the list from the kept rows before the option is written"
+# The follow hooks are taken off: the switch below is followed by hand, with the post to the list logged together with what the option held at that moment.
+tm set-hook -gu 'session-window-changed[43]'; tm set-hook -gu 'client-session-changed[43]'; tm set-hook -gu 'client-session-changed[44]'
+ok "the dashboard's loads kept their rows" 1 "$(wait_eq_long 1 sh -c "[ -s '$CPSTATE/.rows.kept' ] && echo 1")"
+vgo work; wait_eq work vshows >/dev/null
+tm select-window -t '=work:two'
+tm set -g @tagents_viewport_window "$(vwid)"
+OLDW=$(opt @tagents_viewport_window)
+tm select-window -t '=work:one'
+sleep 1.5                                                  # a follow hook that the refresher put back runs for this switch: let it end, then put the option back as the viewport left it
+tm set -g @tagents_viewport_window "$OLDW"
+NEWW=$(wid '=work:one')
+POSTLOG="$CPROOT/post.log"; : >"$POSTLOG"
+env TMUX="$CPSOCK,0,0" TA_STATE_DIR="$CPSTATE" TA_CONFIG="$CPCONF" SELF="$TA" \
+    /bin/bash -c 'for m in '"$LISTED_MODS"'; do . "'"$HERE"'/../lib/tagents/$m.sh"; done
+                  post_fzf() { printf "%s|%s\n" "$2" "$(tmux show -gqv @tagents_viewport_window)" >>"'"$POSTLOG"'"; }
+                  follow' >/dev/null 2>&1
+POSTED=$(cat "$POSTLOG")
+ok "one action was posted to the list" 1 "$(printf '%s\n' "$POSTED" | grep -c .)"
+ok "it is a reload from the kept rows with the cursor in it" 1 "$(printf '%s' "$POSTED" | grep -c '^reload-sync(.*)+pos([0-9]*)|')"
+ok "it starts no list of its own" 0 "$(printf '%s' "$POSTED" | grep -c -- '--list')"
+ok "it went out while the option still held the window the viewport left" "$OLDW" "${POSTED##*|}"
+ok "...and the option holds the new window after it" "$NEWW" "$(opt @tagents_viewport_window)"
+ok "the cursor goes to the row of the window the list would choose" "$(rowof '=work:one')" "$(printf '%s' "$POSTED" | sed -n 's/.*+pos(\([0-9]*\))|.*/\1/p')"
+INNER=${POSTED#reload-sync(}; INNER=${INNER%%)+pos(*}
+ok "the rows it draws have the mark on the new window's row" "$(ta --list 2>/dev/null | awk -F'\t' 'index($2, "\342\226\270") { print $1 }' | sort | tr '\n' ' ')" \
+   "$(sh -c "$INNER" | awk -F'\t' 'index($2, "\342\226\270") { print $1 }' | sort | tr '\n' ' ')"
+
+t "The start does not record a viewport that shows the dashboard"
+tm set -gu @tagents_viewport_window
+tm switch-client -c "$(vtty)" -t '=tagents:'
+ok "the viewport's client is on the session tagents" tagents "$(wait_eq tagents vshows)"
+cpmods cockpit_await_viewport
+ok "the window of the dashboard is not recorded" "" "$(opt @tagents_viewport_window)"
+tm switch-client -c "$(vtty)" -t '=work:'
+cpmods cockpit_await_viewport
+ok "a viewport on another session is recorded" "$(vwid)" "$(opt @tagents_viewport_window)"
+
 t "Round the end of the order"
 cpstart
 tm new-session -d -s alpha -x 200 -y 50 "exec sleep 600"; tm new-session -d -s beta -x 200 -y 50 "exec sleep 600"
@@ -1012,6 +1050,8 @@ lrunning() {  # the list runs in the left pane of the dashboard
   [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo 1
 }
 vrunning() { tm display -p -t "$(vpane)" '#{@tagents_viewport}' 2>/dev/null; }
+# "same" once @tagents_viewport_window holds the window the viewport's client shows, which a start has to record by itself: no window switch has happened for --follow to do it.
+optvwin() { local w; w=$(vwid); [ -n "$w" ] && [ "$w" = "$(opt @tagents_viewport_window)" ] && echo same; }
 # What a rebuild in place has to leave: the two shells now run the halves, nothing was made or detached, the terminal is still on the dashboard.
 leftover_rebuilt() {  # <label> <n>
   ok "$1: the left pane runs the list" 1 "$(wait_eq_long 1 lrunning)"
@@ -1028,6 +1068,7 @@ cpleft 81
 ta --resurrect --from "$CPROOT/snap.tsv" >"$CPROOT/r81.log" 2>&1
 leftover_rebuilt "Restored in the cockpit" 81
 ok "Restored in the cockpit: the viewport shows work:2" work:2 "$(wait_eq_long work:2 vwin)"
+ok "Restored in the cockpit: the option holds the window the viewport shows" same "$(wait_eq_long same optvwin)"
 has "Restored in the cockpit: the report says dashboard" "✓ dashboard" "$(cat "$CPROOT/r81.log")"
 
 t "Restored in the cockpit through --ensure-dash"
@@ -1035,6 +1076,7 @@ cpleft 83
 ta --ensure-dash >"$CPROOT/r83.log" 2>&1; ok "Restored in the cockpit through --ensure-dash: exit 0" 0 "$?"
 leftover_rebuilt "Restored in the cockpit through --ensure-dash" 83
 ok "Restored in the cockpit through --ensure-dash: the viewport has a client" 1 "$(present "$(vtty)")"
+ok "Restored in the cockpit through --ensure-dash: the option holds the window the viewport shows" same "$(wait_eq_long same optvwin)"
 
 # ---------------------------------------------------------------------------------------------------------------------------------
 # [dashboard] position = "right": the list is the right pane, the viewport the left one, on every way the cockpit is built or restored

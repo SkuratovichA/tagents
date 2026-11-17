@@ -330,6 +330,7 @@ newrun quiet
 go 5
 ok "one reload, the first pass's: four rings with nothing changed post nothing" "1" "$(reloads)"
 ok "a wake where nothing moved asks tmux once (the snapshot)" "2:1 3:1 4:1 5:1" "$(tmuxn 2 3 4 5)"
+ok "the reload it posted keeps the dashboard's rows" 1 "$(grep -c "reload-sync(TA_KEEP_ROWS=1 .* --list)" "$D/curl.log")"
 ok "no notes editors, no notes sync"                   "" "$(cat "$D/tnotes.log")"
 ok "no markers are left when the loop ends"            0  "$(markers)"
 ok "the hooks of install_event_hooks are in the server, at [42], with the count first" 18 \

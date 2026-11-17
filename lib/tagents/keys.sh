@@ -241,9 +241,9 @@ on the row the cursor was on · esc closes")
   export TA_MODE
   case $verb in
     :quit|:none) return 0 ;;
-    :tree)       toggle_group; post_fzf "$port" "reload-sync($SELF --list)" ;;
-    :order)      toggle_order; post_fzf "$port" "reload-sync($SELF --list)" ;;
-    :collapse)   toggle_collapse; post_fzf "$port" "reload-sync($SELF --list)" ;;
+    :tree)       toggle_group; post_fzf "$port" "$(list_reload)" ;;
+    :order)      toggle_order; post_fzf "$port" "$(list_reload)" ;;
+    :collapse)   toggle_collapse; post_fzf "$port" "$(list_reload)" ;;
     # In the popup list the text preview IS the live view and fzf own toggle is
     # the whole of it. In a sidebar the preview is a popup, and this body is
     # already one — see preview_popup for why that has to go the long way round.
@@ -255,7 +255,7 @@ on the row the cursor was on · esc closes")
       else
         tmux run-shell -b "'$SELF' --preview-popup '$pane' '$state'" 2>/dev/null
       fi ;;
-    :refresh)    post_fzf "$port" "reload-sync($SELF --list)" ;;
+    :refresh)    post_fzf "$port" "$(list_reload)" ;;
     # Straight into ask_columns rather than through prompt(): this is already a
     # terminal of its own — a popup, or an inline body that has the screen — and
     # a popup cannot open a second popup at all.
@@ -267,7 +267,7 @@ on the row the cursor was on · esc closes")
     # resumes on its own rather than reporting a verb back to the list.
     :closed)     ask_closed "$port" "$(row_session "$pane")" ;;
     *)           "$SELF" --act "$verb" "$pane" "$state" "$sid" "$dir"
-                 post_fzf "$port" "reload-sync($SELF --list)" ;;
+                 post_fzf "$port" "$(list_reload)" ;;
   esac
   return 0
 }

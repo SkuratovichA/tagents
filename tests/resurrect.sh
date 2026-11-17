@@ -615,10 +615,16 @@ has "nothing recorded" "nothing recorded" "$(run --resurrect --from "$SNAP/empty
 t "13. a D row brings the cockpit back"
 # ---------------------------------------------------------------------------
 # What a restore leaves behind: the session tagents, the viewport client's tty and the hook that follows it. Test 13 leaves the cockpit up on purpose (test 14 counts on it); test 16 and test 17b take it down.
+# "same" once @tagents_viewport_window holds the window the viewport's client shows: a restore starts a cockpit no switch has happened in, so no follow could have written it.
+ckvsame() {
+  local w; w=$(tm list-clients -F '#{client_name} #{window_id}' 2>/dev/null | awk -v c="$(tm show -gqv @tagents_viewport_tty)" '$1 == c { print $2 }')
+  [ -n "$w" ] && [ "$w" = "$(tm show -gqv @tagents_viewport_window)" ] && echo same
+}
 printf 'D\ttatest-dash\t0\n' >"$SNAP/dash.tsv"
 out=$(run --resurrect --from "$SNAP/dash.tsv")
 has "the report says so" "✓ dashboard" "$out"
 ok "the session tagents is the cockpit" 1 "$(tm show -qv -t '=tagents:' @tagents_cockpit 2>/dev/null)"
+ok "the option holds the window the viewport shows" same "$(k=0; while [ "$k" -lt 80 ] && [ "$(ckvsame)" != same ]; do k=$((k + 1)); sleep 0.1; done; ckvsame)"
 
 # ---------------------------------------------------------------------------
 t "13b. a snapshot written by the seat-based version still restores"
@@ -957,6 +963,7 @@ out=$(run --resurrect --from "$SNAP/ck.tsv" 2>&1); ok "the cockpit restore succe
 has "the report says dashboard" "✓ dashboard" "$out"
 tm has-session -t '=tagents:' 2>/dev/null; ok "the session tagents exists" 0 "$?"
 ok "its viewport shows the window the row names" tatest-ck:2 "$(waitck tatest-ck:2 ckviewport)"
+ok "the option holds the window the viewport shows" same "$(waitck same ckvsame)"
 ok "the terminal attached to the session still shows it" tatest-ck "$(ckterminal)"
 booted; run --resurrect-save; rows=$(cat "$STATE/resurrect/$(newest)")
 ok "the snapshot of the cockpit holds the window the viewport shows" "$(printf 'D\ttatest-ck\t2')" "$(printf '%s\n' "$rows" | awk -F'\t' '$1 == "D"')"

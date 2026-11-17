@@ -338,8 +338,13 @@ collect() {
       { n = split($0, a, "\\|@\\|")
         t = a[8]; for (i = 9; i <= n; i++) t = t "|@|" a[i]
         print a[2], a[3], a[4], t, a[5], a[6], ((a[1] != "" && index(pids, " " a[1] " ")) ? 1 : 0), a[7] }'
-  tmux list-windows -a -F "W|@|#{window_id}|@|#{session_name}|@|#{window_index}|@|#{?#{@tagents_cockpit},1,0}|@|#{==:#{window_id},#{@tagents_viewport_window}}|@|#{window_name}" 2>/dev/null |
-    LC_ALL=C awk -v OFS="$TAB" '{ n = split($0, a, "\\|@\\|"); if (a[5] == 1) next; t = a[7]; for (i = 8; i <= n; i++) t = t "|@|" a[i]; print a[1], a[2], a[3], a[4], a[6], t }'
+  # THE WINDOW ON SCREEN IS READ FROM THE VIEWPORT'S CLIENT, in this same call (the V line comes first, so the W lines that follow can use it): the option --follow writes (the W line's 6th field says whether a window is the one it names) is written by a bash the hook starts, a moment after the switch, and a list that runs in that moment would draw the mark on the old row. The option decides only when there is no viewport client, or it is on the dashboard's own session (follow ignores that one too).
+  tmux list-clients -F "V|@|#{client_name}|@|#{window_id}|@|#{@tagents_viewport_tty}|@|#{session_name}" \; \
+       list-windows -a -F "W|@|#{window_id}|@|#{session_name}|@|#{window_index}|@|#{?#{@tagents_cockpit},1,0}|@|#{==:#{window_id},#{@tagents_viewport_window}}|@|#{window_name}" 2>/dev/null |
+    LC_ALL=C awk -v OFS="$TAB" '
+      { n = split($0, a, "\\|@\\|") }
+      a[1] == "V" { if (a[3] != "" && a[2] == a[4]) { vsess = a[5]; for (i = 6; i <= n; i++) vsess = vsess "|@|" a[i]; if (vsess != "tagents") vwin = a[3] } next }
+      { if (a[5] == 1) next; t = a[7]; for (i = 8; i <= n; i++) t = t "|@|" a[i]; print a[1], a[2], a[3], a[4], (vwin != "" ? (a[2] == vwin) : a[6]), t }'
   # G and not S: the S records are the state files.
   # The fourth field is the directory saved for the session (session-dirs.tsv), read by the awk that is here anyway.
   tmux list-sessions -F "G|@|#{session_name}|@|#{session_path}|@|#{?#{@tagents_cockpit},1,0}" 2>/dev/null |
