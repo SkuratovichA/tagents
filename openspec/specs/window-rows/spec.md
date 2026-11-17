@@ -2,7 +2,9 @@
 
 ## Purpose
 Every row of the dashboard is a tmux window and every group is a tmux session. Selecting a row shows its window in the cockpit's viewport (the `cockpit` capability) and no pane ever changes window, so there are no seats, no docking and no placeholder panes.
+
 ## Requirements
+
 ### Requirement: A row is a tmux window
 The dashboard SHALL show every chat as a row that stands for the tmux window its pane is in. The chat is the window's first pane. A chat joined into another window by `ctrl-s` has a row of its own that stands for the window it is in now. Selecting a row acts on the window, not on the pane alone.
 
@@ -256,7 +258,7 @@ A running list SHALL set `@tagents_dash` to `1` on its pane, taking it from any 
 - **AND** a Claude chat later started in that pane is never taken for the list
 
 ### Requirement: The list cursor follows the window the viewport shows
-When the viewport comes to show a window, by a selection, a switch made in the viewport or `--ensure-dash`, the list SHALL put its cursor on that window's row: the chat row when the window's first pane is a chat, the window row otherwise.
+When the viewport comes to show a window, by a selection or a switch made in the viewport, the list SHALL put its cursor on that window's row: the chat row when the window's first pane is a chat, the window row otherwise. It SHALL repaint from the rows the dashboard kept, with the mark and the cursor on that window's row, without waiting for a load; with no kept rows the cursor is placed from a list of its own. A start of the cockpit marks the row and leaves the cursor where the list began.
 
 #### Scenario: Switching with tmux's own keys
 - **WHEN** the user presses `prefix+n` in the viewport from the window of the chat "release notes" to the window of the chat "billing"
@@ -265,6 +267,10 @@ When the viewport comes to show a window, by a selection, a switch made in the v
 #### Scenario: A window outside the groups
 - **WHEN** the user switches the viewport with `prefix s` to session `scratch`, whose only window `shell` runs no chat and which tagents never created
 - **THEN** the viewport shows `shell` and the cursor is on the dimmed row `shell`, because every session is a group and no window is outside them
+
+#### Scenario: A repaint before the next load
+- **WHEN** the viewport changes window and the dashboard has kept rows
+- **THEN** the mark and the cursor are on the new window's row before any load of the list has run
 
 ### Requirement: ctrl-x on a dimmed row kills the window after asking
 `ctrl-x` on a dimmed window row SHALL ask `kill this window?`, in the popup a chat's kill asks in or inline where there is no popup, and SHALL act only on `y`, `yes` or their capitals; anything else, or no answer within 60 seconds, cancels. Confirming SHALL close the window with every pane in it, ring the refresher's channel and retake the resurrect snapshot.

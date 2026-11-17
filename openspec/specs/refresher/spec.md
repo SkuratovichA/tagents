@@ -71,7 +71,7 @@ On a wake the refresher SHALL ask tmux one question, the snapshot of every pane 
 - **THEN** the tmux programs started are about the passes made, fewer than half the rings
 
 ### Requirement: When a reload is posted
-The refresher SHALL post `reload-sync(<tagents> --list)` on its first pass; on a pass where the tmux snapshot, a file the list reads or the number of state files differs from the last reload; on a slow pass; and on the retry after a reload was refused. On any other pass it SHALL post nothing. A reload due within the minimum interval is held back as the next requirement says.
+The refresher SHALL post `reload-sync(TA_KEEP_ROWS=1 <tagents> --list)` on its first pass, so that the load keeps the dashboard's rows; on a pass where the tmux snapshot, a file the list reads or the number of state files differs from the last reload; on a slow pass; and on the retry after a reload was refused. On any other pass it SHALL post nothing. A reload due within the minimum interval is held back as the next requirement says.
 
 #### Scenario: A quiet minute
 - **WHEN** a refresher runs five passes with no change
