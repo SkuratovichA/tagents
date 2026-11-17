@@ -82,6 +82,18 @@
 # command that can. EV_BUMP is a copy of the one in lib/tagents/core.sh, which this
 # POSIX sh script cannot source; tests/refresh.sh pins the two to each other.
 
+# A WARNING A SUBAGENT ASKED FOR. A permission prompt of a background subagent
+# arrives as a Notification with no agent id, so it blocks the session's record,
+# and the subagent's own events never touch that record again. So that the row
+# does not keep its warning until the main conversation speaks, a notification that
+# blocks the record while the main conversation has no call of its own waiting
+# writes <state dir>/perm/<key>: the state and detail to go back to, and the
+# subagents that had a call in flight (a second notification adds its own to the
+# list). The last of them to send an event puts the
+# state back (see perm_agent_went); any event of the main conversation that rewrites
+# the record, and SessionEnd, remove the file. No file, no cost: a subagent event
+# tests for it with a shell builtin.
+
 set -u
 
 EV_BUMP='#{e|+|:#{@tagents_evgen},1}'
@@ -536,24 +548,93 @@ if [ -e "$dir/events.on" ]; then
   fi
 fi
 
+# THE RING, in the two shapes this hook needs. ring_only wakes the dashboard and
+# touches no pane option (a subagent file that came or went, a session with no
+# pane); ring_agent is the call that ends every event that rewrote a record: with a
+# pane it also mirrors the state onto @agent <state>. The signal is the first
+# command of the call, ahead of the option write (see the top of this file).
+ring_only() {
+  tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev 2>/dev/null
+}
+ring_agent() {  # <state>
+  if [ -n "$pane" ]; then
+    tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev \; set -p -t "$pane" @agent "$1" 2>/dev/null
+  else
+    ring_only
+  fi
+}
+
+# A call is FINISHED when the detail is exactly "<Tool> ✓", which is what a
+# PostToolUse writes. Text that merely ends in " ✓" (a command line, a prompt) is not.
+is_fin() {  # <detail>
+  case "$1" in
+    *' ✓') case "${1%' ✓'}" in ''|*' '*) return 1 ;; esac; return 0 ;;
+  esac
+  return 1
+}
+
+# perm/<key>: what a warning that a subagent asked for goes back to. Three lines:
+# the state, its detail, and the agents that had a call in flight, each between
+# spaces (" a1 a2 "). Written through a temp file, like a record.
+perm_put() {  # <state> <detail> <list>
+  [ -d "$dir/perm" ] || mkdir -p "$dir/perm" 2>/dev/null
+  printf '%s\n%s\n%s\n' "$1" "$2" "$3" >"$dir/perm/.$key.$$" 2>/dev/null &&
+    { mv -f "$dir/perm/.$key.$$" "$dir/perm/$key" 2>/dev/null || rm -f "$dir/perm/.$key.$$"; }
+}
+
+# A SUBAGENT THAT ASKED GOES ON — the other half of perm_remember further down.
+# Called only when perm/<key> exists. An event of a subagent on the list takes it
+# off the list; when the list is empty and the record is still the blocked one of
+# this session, the state and detail from before the notification go back into it.
+# The tmux call is the one the end of this hook makes, so it sets rung and the
+# bump below is skipped.
+perm_agent_went() {
+  pstate=; pdetail=; plist=
+  { IFS= read -r pstate; IFS= read -r pdetail; IFS= read -r plist; } <"$dir/perm/$key" 2>/dev/null
+  # a memory that cannot be read or was cut short names no state to go back to
+  [ -n "$pstate" ] || { rm -f "$dir/perm/$key"; return 0; }
+  case "$plist" in *" $agent "*) ;; *) return 0 ;; esac
+  plist="${plist%%" $agent "*} ${plist#*" $agent "}"
+  case "$plist" in
+    *[!\ ]*) perm_put "$pstate" "$pdetail" "$plist"; return 0 ;;
+  esac
+  rm -f "$dir/perm/$key"
+  tmpf="$dir/.$key.$$"
+  if TA_PSTATE=$pstate TA_PDETAIL=$pdetail LC_ALL=C awk -F'\t' -v OFS='\t' -v sid="${sid:-}" '
+       NR == 1 { if ($2 != "blocked" || $3 != sid) exit; $2 = ENVIRON["TA_PSTATE"]; $6 = ENVIRON["TA_PDETAIL"]; ok = 1 }
+       { print }
+       END { exit !ok }' "$dir/$key.tsv" >"$tmpf" 2>/dev/null; then
+    mv -f "$tmpf" "$dir/$key.tsv" 2>/dev/null || rm -f "$tmpf"
+    rung=1
+    ring_agent "$pstate"
+  else
+    rm -f "$tmpf"
+  fi
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # Subagents are tracked per (key, agent_id) so the dashboard can show how much
 # is fanned out under a session without clobbering the session's own state. A
 # child's key is its own, so its subagents no longer wipe the parent's.
 # ---------------------------------------------------------------------------
+rung=
 if [ -n "${agent:-}" ]; then
   had=; [ -e "$dir/sub/$key.$agent" ] && had=1
   case "$state" in
     subdone|gone) rm -f "$dir/sub/$key.$agent" ;;
     *) printf '%s\t%s\n' "$now" "${detail:-}" >"$dir/sub/$key.$agent" 2>/dev/null ;;
   esac
+  # After the file: the restore rings, and a reload that the ring wakes must not
+  # find the row restored while it still counts the subagent that went.
+  [ -e "$dir/perm/$key" ] && perm_agent_went
   # The dashboard draws how many subagents a session has, so a file that appeared
   # or went is announced. A rewrite of one that was already there is not: a busy
   # subagent calls a tool several times a second, and none of those changes the
   # count, so the line stays what it was (a program per tool call, for nothing).
   case "$state" in
-    subdone|gone) [ -n "$had" ] && tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev 2>/dev/null ;;
-    *)            [ -n "$had" ] || tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev 2>/dev/null ;;
+    subdone|gone) [ -n "$had" ] && [ -z "$rung" ] && ring_only ;;
+    *)            [ -n "$had" ] || [ -n "$rung" ] || ring_only ;;
   esac
   exit 0
 fi
@@ -587,7 +668,7 @@ EOF
       kidkey=${kidf##*/}; kidkey=${kidkey%.tsv}
       rm -f "$kidf"
       rm -f "$dir/sub/$kidkey".* 2>/dev/null
-      rm -f "$dir/prompt/$kidkey" 2>/dev/null
+      rm -f "$dir/prompt/$kidkey" "$dir/perm/$kidkey" 2>/dev/null
     done
   fi
   # SID-GUARDED WHATEVER THIS SESSION TURNED OUT TO BE: a record that names
@@ -595,7 +676,7 @@ EOF
   # counters, and its pane option) on our way out is the bug this hook had.
   gowner=$(LC_ALL=C awk -F'	' 'NR==1 { print $3 }' "$dir/$key.tsv" 2>/dev/null)
   if [ -z "$gowner" ] || [ "$gowner" = "${sid:-}" ]; then
-    rm -f "$dir/$key.tsv" "$dir/$key.tools"
+    rm -f "$dir/$key.tsv" "$dir/$key.tools" "$dir/perm/$key"
     rm -f "$dir/sub/$key".* 2>/dev/null
     # ...and when you last typed into it, which is what the row was ordered on.
     rm -f "$dir/prompt/$key" 2>/dev/null
@@ -604,7 +685,7 @@ EOF
     if [ -n "$pane" ]; then
       tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev \; set -up -t "$pane" @agent 2>/dev/null
     else
-      tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev 2>/dev/null
+      ring_only
     fi
   fi
   exit 0
@@ -638,6 +719,74 @@ case "$event" in
       esac
     fi ;;
 esac
+
+# A WARNING ASKED FOR BY A SUBAGENT. The record below is about to change, so this
+# is the last moment to look at what it was. Any event of the main conversation
+# that rewrites it ends what perm/<key> remembers (the test is a shell builtin, so
+# the common path starts nothing); a notification that is not the idle ping may
+# start a memory, or add to the one there is.
+#
+# perm_remember writes perm/<key> (see perm_put) when the notification may come
+# from a subagent: the main conversation has no call of its own waiting, and some
+# subagent has one in flight. The subagent branch above puts the state back when
+# the last of them goes on. A second notification while a memory exists keeps the
+# state and detail it holds and adds the subagents in flight now.
+#   No call of the main conversation waits when the record was "done", or was
+#   "working" with a finished call ("<Tool> ✓"), a detail that is "Agent" or "Task" or
+#   starts with "Agent " or "Task " (the detail has no argument when the call has none; a subagent is a call the owner is not asked about), or an empty
+#   sidecar of the turn's calls (the detail is then the prompt).
+#   A subagent has a call in flight when its sub/ file is younger than SUB_TTL and
+#   its detail is not a finished call.
+perm_remember() {
+  pa=" "
+  for pf in "$dir/sub/$key".*; do
+    [ -e "$pf" ] || continue
+    pl=; IFS= read -r pl <"$pf" 2>/dev/null
+    pts=${pl%%[!0-9]*}
+    pdet=${pl#"$pts"}; pdet=${pdet#?}
+    # a file nobody has touched for SUB_TTL seconds is a subagent that is gone
+    [ -n "$pts" ] && [ $((now - pts)) -gt "${TA_SUB_TTL:-1800}" ] && continue
+    [ -n "$pdet" ] || continue
+    is_fin "$pdet" && continue
+    pa="$pa${pf#"$dir/sub/$key."} "
+  done
+  [ "$pa" != " " ] || return 0
+  if [ -e "$dir/perm/$key" ]; then
+    # A SECOND NOTIFICATION while one is remembered: keep what to go back to and
+    # add the subagents that have a call in flight now.
+    pstate=; pdetail=; plist=
+    { IFS= read -r pstate; IFS= read -r pdetail; IFS= read -r plist; } <"$dir/perm/$key" 2>/dev/null
+    [ -n "$pstate" ] || { rm -f "$dir/perm/$key"; return 0; }
+    [ -n "$plist" ] || plist=" "
+    for pid in $pa; do
+      case "$plist" in *" $pid "*) ;; *) plist="$plist$pid " ;; esac
+    done
+    perm_put "$pstate" "$pdetail" "$plist"
+    return 0
+  fi
+  pstate=; pdetail=
+  IFS="$us" read -r pstate pdetail <<PERM
+$(LC_ALL=C awk -F'\t' -v OFS="$us" -v s="${sid:-}" 'NR==1 && $3==s { print $2, $6; exit }' "$dir/$key.tsv" 2>/dev/null)
+PERM
+  case "$pstate" in
+    done) ;;
+    working)
+      if ! is_fin "$pdetail"; then
+        case "$pdetail" in
+          Agent|'Agent '*|Task|'Task '*) ;;
+          *) [ -s "$tools" ] && return 0 ;;
+        esac
+      fi ;;
+    *) return 0 ;;
+  esac
+  perm_put "$pstate" "$pdetail" "$pa"
+  return 0
+}
+if [ "$event" = Notification ] && [ "$state" = blocked ]; then
+  perm_remember
+elif [ -e "$dir/perm/$key" ]; then
+  rm -f "$dir/perm/$key"
+fi
 
 # WHICH ACCOUNT THIS SESSION IS ON, as the 7th field. A hook runs inside
 # Claude's own process, so it is the only thing that can see the CLAUDE_CONFIG_DIR
@@ -689,9 +838,5 @@ fi
 # are one tmux call, the signal first (see the top of this file).
 # A child has none on purpose: the pane it inherited belongs to its parent, and
 # writing this session's state there is what made the parent's row lie.
-if [ -n "$pane" ]; then
-  tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev \; set -p -t "$pane" @agent "$state" 2>/dev/null
-else
-  tmux set -gF @tagents_evgen "$EV_BUMP" \; wait-for -S tagents-ev 2>/dev/null
-fi
+ring_agent "$state"
 exit 0

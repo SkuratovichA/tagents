@@ -20,6 +20,8 @@
 //                 label (TA_LABEL), cwd — plus, for a child and nobody else, a
 //                 seventh column with the parent's session id
 //   sub/<key>.<agent_id>   one subagent, at + detail
+//   perm/<key>    what a warning a subagent asked for goes back to: three lines, the
+//                 state, its detail, and the agents in flight as " a1 a2 ". Not a record
 //   events.on     the switch, an empty file: while it exists the hook also appends
 //                 every event the notify plugin wants to events.tsv (agent-events.ts
 //                 creates and removes it)

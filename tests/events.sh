@@ -274,7 +274,7 @@ t "l. no new process, SessionStart excepted"
 # Every external program the hook can run, logged by name and then exec'd for
 # real; the real paths are resolved before PATH changes.
 LSHIM="$ROOT/lshim"; mkdir -p "$LSHIM"; CALLS="$ROOT/calls.log"
-for prog in jq date tmux ps awk cat wc mv rm; do
+for prog in jq date tmux ps awk cat wc mv rm mkdir find sed; do
   real=$(command -v "$prog") || { echo "events.sh: no $prog"; exit 1; }
   printf '#!/bin/sh\nprintf "%%s\\n" %s >>"%s"\nexec "%s" "$@"\n' "$prog" "$CALLS" "$real" >"$LSHIM/$prog"
   chmod +x "$LSHIM/$prog"
@@ -444,6 +444,386 @@ printf '{"type":"user","message":{"content":"a"}}\n{"type":"assistant","message"
 run_hook "$HOOK" "$S" "$(payload Stop "$(jq -nc --arg p "$ROOT/cut.jsonl" '{transcript_path:$p}')")"
 ok "the state record is written" done "$(rec_state)"
 ok "...and names the transcript" "$ROOT/cut.jsonl" "$(field 5 "$S/7.tsv")"
+
+t "s. a warning a subagent asked for goes away when that subagent goes on"
+# A Notification that is not the idle ping blocks the record. When it may have come from a subagent (the main conversation has no call of its own waiting), the hook remembers the state to go back to in perm/<key>, with the subagents that had a call in flight; an event of the last of them puts it back.
+P="$S/perm/7"
+# a TMUX shim that logs what it is asked, for the checks that name the tmux call
+TSHIM="$ROOT/tshim"; mkdir -p "$TSHIM"; TLOG="$ROOT/tmux.log"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >>"%s"\nexit 1\n' "$TLOG" >"$TSHIM/tmux"; chmod +x "$TSHIM/tmux"
+rec_detail() { field 6 "$S/7.tsv"; }
+ev()    { run_hook "$HOOK" "$S" "$(payload "$@")"; }
+agpre() { ev PreToolUse "$(jq -nc --arg a "$1" '{agent_id:$a,tool_name:"Bash",tool_input:{command:("sleep " + $a)},tool_use_id:("t-" + $a)}')"; }
+agpost() { ev PostToolUse "$(jq -nc --arg a "$1" '{agent_id:$a,tool_name:"Bash",tool_use_id:("t-" + $a)}')"; }
+ask() { ev Notification '{"notification_type":"permission_prompt","message":"Claude needs your permission to use Bash"}'; }
+perm_has() { [ -e "$P" ] && echo 1 || echo 0; }
+done_turn() { fresh "$S"; ev UserPromptSubmit '{"prompt":"go"}'; ev Stop; }
+
+done_turn
+agpre a1
+ask
+ok "background: the notification blocks the record" blocked "$(rec_state)"
+ok "...and perm/<key> is written" 1 "$(perm_has)"
+ok "...line 1 is the state to go back to" done "$(sed -n 1p "$P")"
+ok "...line 2 is its detail" "" "$(sed -n 2p "$P")"
+ok "...line 3 lists the agents in flight between spaces" " a1 " "$(sed -n 3p "$P")"
+ok "...three lines" 3 "$(wc -l <"$P" | tr -d ' ')"
+: >"$TLOG"
+run_hook "$HOOK" "$S" "$(payload PostToolUse '{"agent_id":"a1","tool_name":"Bash","tool_use_id":"t-a1"}')" PATH="$TSHIM:$PATH"
+ok "...the asker's PostToolUse puts done back" done "$(rec_state)"
+ok "...the perm file is gone" 0 "$(perm_has)"
+ok "...one tmux call rings the channel and sets @agent" "set -gF @tagents_evgen #{e|+|:#{@tagents_evgen},1} ; wait-for -S tagents-ev ; set -p -t %7 @agent done" "$(cat "$TLOG" | tr '\n' ' ' | sed 's/ $//')"
+
+# the detail of the record comes back too, and the other fields stay
+fresh "$S"
+ev UserPromptSubmit '{"prompt":"go"}'
+ev PreToolUse '{"tool_name":"Read","tool_input":{"file_path":"/x"},"tool_use_id":"m1"}'
+ev PostToolUse '{"tool_name":"Read","tool_use_id":"m1"}'
+agpre a1
+BEFORE=$(cat "$S/7.tsv")
+ask
+ok "a working record with a finished call: remembered" 1 "$(perm_has)"
+agpost a1
+ok "...the state is working again" working "$(rec_state)"
+ok "...with the old detail" "Read ✓" "$(rec_detail)"
+ok "...and every other field as it was, but the time" "$(printf '%s' "$BEFORE" | cut -f2-)" "$(cut -f2- "$S/7.tsv")"
+
+t "s2. two subagents in flight: the first to go on keeps the warning, the second clears it"
+done_turn
+agpre a1; agpre a2
+ask
+ok "both are listed" " a1 a2 " "$(sed -n 3p "$P")"
+agpost a1
+ok "the first one's event keeps blocked" blocked "$(rec_state)"
+ok "...and the file lists the other one" " a2 " "$(sed -n 3p "$P")"
+agpost a1
+ok "...an event of the one that is already off the list changes nothing" blocked "$(rec_state)"
+agpost a2
+ok "the second one's event clears it" done "$(rec_state)"
+ok "...and the file is gone" 0 "$(perm_has)"
+
+t "s3. a subagent whose call had finished before the notification is not on the list"
+done_turn
+agpre a1; agpre a2; agpost a2
+ask
+ok "only the one with a call in flight is listed" " a1 " "$(sed -n 3p "$P")"
+agpre a2; agpost a2
+ok "events of the other one change nothing" blocked "$(rec_state)"
+ok "...and the file stays as it was" " a1 " "$(sed -n 3p "$P")"
+done_turn
+agpre a1; agpost a1
+ask
+ok "with every subagent's call finished nothing is remembered" 0 "$(perm_has)"
+done_turn
+ask
+ok "with no subagent at all nothing is remembered" 0 "$(perm_has)"
+
+t "s4. a call of the main conversation is waiting"
+fresh "$S"
+ev UserPromptSubmit '{"prompt":"go"}'
+ev PreToolUse '{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Pick?"}]},"tool_use_id":"q1"}'
+agpre a1
+ask
+ok "AskUserQuestion pending: nothing is remembered" 0 "$(perm_has)"
+agpost a1
+ok "...and the subagent's call ending leaves the row blocked" blocked "$(rec_state)"
+fresh "$S"
+ev UserPromptSubmit '{"prompt":"go"}'
+ev PreToolUse '{"tool_name":"Bash","tool_input":{"command":"rm x"},"tool_use_id":"b1"}'
+agpre a1
+ask
+ok "a Bash call in flight in the main conversation: nothing is remembered" 0 "$(perm_has)"
+agpost a1
+ok "...and the row stays blocked" blocked "$(rec_state)"
+
+t "s5. an Agent call in flight in the main conversation is not a prompt for the owner"
+fresh "$S"
+ev UserPromptSubmit '{"prompt":"go"}'
+ev PreToolUse '{"tool_name":"Agent","tool_input":{"description":"look around"},"tool_use_id":"g1"}'
+agpre a1
+ask
+ok "remembered" 1 "$(perm_has)"
+agpost a1
+ok "the subagent's next event puts working back" working "$(rec_state)"
+ok "...with the detail of the Agent call" "Agent look around" "$(rec_detail)"
+
+t "s6. the main conversation goes on, or ends"
+done_turn
+agpre a1
+ask
+ev PreToolUse '{"tool_name":"Bash","tool_input":{"command":"ls"},"tool_use_id":"x1"}'
+ok "a main-conversation event removes the file" 0 "$(perm_has)"
+agpost a1
+ok "...and the row is left as that event made it" working "$(rec_state)"
+done_turn
+agpre a1
+ask
+ev Notification '{"notification_type":"idle_prompt","message":"Claude is waiting for your input"}'
+ok "an idle ping removes it as well" 0 "$(perm_has)"
+done_turn
+agpre a1
+ask
+ev SessionEnd '{"reason":"clear"}'
+ok "SessionEnd removes it" 0 "$(perm_has)"
+ok "...with the record" 0 "$([ -e "$S/7.tsv" ] && echo 1 || echo 0)"
+# a finished child goes with its parent, and so does what was remembered for it
+done_turn
+mkdir -p "$S/perm"
+printf '1\tblocked\tsid-kid\t/w\t/t\tm\t\t99999999\t\t\t7\tsid-1\n' >"$S/s-sid-kid.tsv"
+printf 'done\n\n a1 \n' >"$S/perm/s-sid-kid"
+ev SessionEnd '{"reason":"clear"}'
+ok "a finished child's record goes with the parent's SessionEnd" 0 "$([ -e "$S/s-sid-kid.tsv" ] && echo 1 || echo 0)"
+ok "...and so does its perm file" 0 "$([ -e "$S/perm/s-sid-kid" ] && echo 1 || echo 0)"
+# a late PostToolUse of an old turn rewrites nothing and so forgets nothing
+fresh "$S"
+ev UserPromptSubmit '{"prompt":"go"}'
+ev PreToolUse '{"tool_name":"Bash","tool_input":{"command":"ls"},"tool_use_id":"m0"}'
+ev Stop
+agpre a1
+ask
+ev PostToolUse '{"tool_name":"Bash","tool_use_id":"m0"}'
+ok "a late PostToolUse that the record drops keeps the file" 1 "$(perm_has)"
+ok "...and the row stays blocked" blocked "$(rec_state)"
+
+t "s7. the record changed hands, or is no longer blocked"
+done_turn
+agpre a1
+ask
+awk -F"$TAB" -v OFS="$TAB" '{ $3="sid-2"; print }' "$S/7.tsv" >"$S/x.tsv" && mv "$S/x.tsv" "$S/7.tsv"
+BEFORE=$(cat "$S/7.tsv")
+agpost a1
+ok "another session id under the same key: the file is removed" 0 "$(perm_has)"
+ok "...and the record is left alone" "$BEFORE" "$(cat "$S/7.tsv")"
+done_turn
+agpre a1
+ask
+awk -F"$TAB" -v OFS="$TAB" '{ $2="working"; $6="Edit x"; print }' "$S/7.tsv" >"$S/x.tsv" && mv "$S/x.tsv" "$S/7.tsv"
+BEFORE=$(cat "$S/7.tsv")
+agpost a1
+ok "a record that is no longer blocked: the file is removed" 0 "$(perm_has)"
+ok "...and the record is left alone" "$BEFORE" "$(cat "$S/7.tsv")"
+ok "...no temp file is left in the state directory" 0 "$(ls -a "$S" | grep -c '^\.7\.')"
+
+t "s8. a headless record keeps its ten fields"
+fresh "$S"
+hl() { printf '%s' "$(payload "$@")" | env -u TMUX_PANE PATH="$SHIM:$PATH" TMUX="$DEAD" TA_STATE_DIR="$S" TA_LABEL=job TA_LOG=/log/x sh "$HOOK" >/dev/null 2>&1; }
+hl UserPromptSubmit '{"prompt":"go"}'
+hl Stop
+hl PreToolUse '{"agent_id":"a1","tool_name":"Bash","tool_input":{"command":"sleep"},"tool_use_id":"t-a1"}'
+hl Notification '{"notification_type":"permission_prompt","message":"needs you"}'
+HR="$S/s-sid-1.tsv"; HP="$S/perm/s-sid-1"
+ok "the notification blocks it" blocked "$(field 2 "$HR")"
+ok "...and remembers under the session's key" 1 "$([ -e "$HP" ] && echo 1 || echo 0)"
+hl PostToolUse '{"agent_id":"a1","tool_name":"Bash","tool_use_id":"t-a1"}'
+ok "the state is back" done "$(field 2 "$HR")"
+ok "...still ten fields" 10 "$(nf "$HR")"
+ok "...with the log and the label" "/log/x job" "$(field 9 "$HR") $(field 10 "$HR")"
+ok "...and the file is gone" 0 "$([ -e "$HP" ] && echo 1 || echo 0)"
+
+t "s9. a subagent event starts no program when there is nothing remembered"
+fresh "$ROOT/pa"; mkdir -p "$ROOT/pa/sub" "$ROOT/pa/prompt"; printf '1\tBash x\n' >"$ROOT/pa/sub/7.a1"
+PA=$(payload PostToolUse '{"agent_id":"a1","tool_name":"Bash","tool_use_id":"t-a1"}')
+new=$(count "$HOOK" "$ROOT/pa" "$PA")
+BASE_CALLS="awk jq"   # the awk is the read of the record every event starts; the jq reads the payload
+ok "a PostToolUse of a subagent with no perm file: what every event starts, nothing more" "$BASE_CALLS" "$(printf '%s' "$new" | sed 's/ $//')"
+if [ "$HAVE_REF" = 1 ]; then
+  fresh "$ROOT/pb"; mkdir -p "$ROOT/pb/sub" "$ROOT/pb/prompt"; printf '1\tBash x\n' >"$ROOT/pb/sub/7.a1"
+  ok "...the programs the merge-base hook starts" "$(count "$HOOK_MAIN" "$ROOT/pb" "$PA")" "$new"
+fi
+fresh "$ROOT/pc"; mkdir -p "$ROOT/pc/sub" "$ROOT/pc/prompt" "$ROOT/pc/perm"; printf '1\tBash x\n' >"$ROOT/pc/sub/7.a1"; printf 'done\n\n a9 \n' >"$ROOT/pc/perm/7"
+ok "an agent that is not on the list: the same programs" "$BASE_CALLS" "$(count "$HOOK" "$ROOT/pc" "$PA" | sed 's/ $//')"
+ok "...and the file is untouched" " a9 " "$(sed -n 3p "$ROOT/pc/perm/7")"
+NT=$(payload Notification '{"notification_type":"permission_prompt","message":"m"}')
+fresh "$ROOT/pe"; printf '1\tdone\tsid-1\t/w\t/t\t\t\n' >"$ROOT/pe/7.tsv"
+n0=$(ncall "$(count "$HOOK" "$ROOT/pe" "$NT")" awk)
+if [ "$HAVE_REF" = 1 ]; then
+  fresh "$ROOT/pb"; printf '1\tdone\tsid-1\t/w\t/t\t\t\n' >"$ROOT/pb/7.tsv"
+  ok "a Notification with no subagent starts no more awk than the merge-base hook" "$(ncall "$(count "$HOOK_MAIN" "$ROOT/pb" "$NT")" awk)" "$n0"
+fi
+fresh "$ROOT/pd"; mkdir -p "$ROOT/pd/sub" "$ROOT/pd/prompt"; printf '%s\tBash x\n' "$(date +%s)" >"$ROOT/pd/sub/7.a1"; printf '1\tdone\tsid-1\t/w\t/t\t\t\n' >"$ROOT/pd/7.tsv"
+c=$(count "$HOOK" "$ROOT/pd" "$NT")
+ok "a Notification with a subagent in flight: one awk more (the read of the record), and two mv (record, perm file)" "$((n0+1)) 2" "$(ncall "$c" awk) $(ncall "$c" mv)"
+
+t "s10. two subagents that both ask"
+done_turn
+agpre a1
+ask
+agpre a2
+ask
+ok "a second notification keeps the state to go back to" done "$(sed -n 1p "$P")"
+ok "...and its detail" "" "$(sed -n 2p "$P")"
+ok "...and lists both agents" " a1 a2 " "$(sed -n 3p "$P")"
+agpost a1
+ok "the first one going on keeps the warning" blocked "$(rec_state)"
+agpost a2
+ok "the second one going on clears it" done "$(rec_state)"
+ok "...and the file is gone" 0 "$(perm_has)"
+ev UserPromptSubmit '{"prompt":"go"}'
+ev PreToolUse '{"tool_name":"Read","tool_input":{"file_path":"/x"},"tool_use_id":"m1"}'
+ev PostToolUse '{"tool_name":"Read","tool_use_id":"m1"}'
+agpre a1
+ask
+agpre a2
+ask
+ok "a second notification of a working record keeps its detail" "Read ✓" "$(sed -n 2p "$P")"
+ev Stop
+ok "a main-conversation event still forgets the pair" 0 "$(perm_has)"
+
+t "s11. what a subagent event of an agent that is gone, or a command that ends in a tick, mean"
+done_turn
+mkdir -p "$S/sub"; printf '%s\tBash sleep\n' "$(( $(date +%s) - 4000 ))" >"$S/sub/7.old"
+ask
+ok "a subagent file older than SUB_TTL is not an asker" 0 "$(perm_has)"
+done_turn
+agpre a1
+ev PreToolUse '{"agent_id":"a2","tool_name":"Bash","tool_input":{"command":"echo ✓"},"tool_use_id":"t-a2"}'
+ask
+ok "a command line that ends in a tick is still a call in flight" " a1 a2 " "$(sed -n 3p "$P")"
+fresh "$S"
+ev UserPromptSubmit '{"prompt":"go"}'
+ev PreToolUse '{"tool_name":"Bash","tool_input":{"command":"echo ✓"},"tool_use_id":"b9"}'
+agpre a1
+ask
+ok "...and so is one of the main conversation: nothing is remembered" 0 "$(perm_has)"
+fresh "$S"
+ev UserPromptSubmit '{"prompt":"go"}'
+ev PreToolUse '{"tool_name":"Bash","tool_input":{"command":"ls"},"tool_use_id":"b8"}'
+ev PostToolUse '{"tool_name":"Bash","tool_use_id":"b8"}'
+agpre a1
+ask
+ok "a main call that finished (<Tool> ✓) is not in the way" 1 "$(perm_has)"
+
+t "s12. the user's prompt, the Task tool and the other ways a subagent can go on"
+fresh "$S"
+ev UserPromptSubmit '{"prompt":"Bash ls -la"}'
+agpre a1
+ask
+ok "a working record holding the user's prompt, with an empty sidecar: remembered" 1 "$(perm_has)"
+agpost a1
+ok "...and the prompt comes back as the detail" "Bash ls -la" "$(rec_detail)"
+fresh "$S"
+ev UserPromptSubmit '{"prompt":"go"}'
+ev PreToolUse '{"tool_name":"Task","tool_input":{"description":"look around"},"tool_use_id":"g2"}'
+agpre a1
+ask
+ok "a Task call in flight in the main conversation: remembered" 1 "$(perm_has)"
+agpost a1
+ok "...and the subagent's next event puts working back" "working|Task look around" "$(rec_state)|$(rec_detail)"
+done_turn
+agpre a1
+ask
+: >"$TLOG"
+run_hook "$HOOK" "$S" "$(payload SubagentStop '{"agent_id":"a1","agent_type":"Explore"}')" PATH="$TSHIM:$PATH"
+ok "...restoring with one tmux call" 1 "$(wc -l <"$TLOG" | tr -d ' ')"
+ok "...that rings the channel and sets @agent" "set -gF @tagents_evgen #{e|+|:#{@tagents_evgen},1} ; wait-for -S tagents-ev ; set -p -t %7 @agent done" "$(tr '\n' ' ' <"$TLOG" | sed 's/ $//')"
+ok "...and the subagent's file is gone" 0 "$([ -e "$S/sub/7.a1" ] && echo 1 || echo 0)"
+
+t "s13. a headless restore rings and sets no pane option"
+fresh "$S"
+hl UserPromptSubmit '{"prompt":"go"}'
+hl Stop
+hl PreToolUse '{"agent_id":"a1","tool_name":"Bash","tool_input":{"command":"sleep"},"tool_use_id":"t-a1"}'
+hl Notification '{"notification_type":"permission_prompt","message":"needs you"}'
+: >"$TLOG"
+printf '%s' "$(payload PostToolUse '{"agent_id":"a1","tool_name":"Bash","tool_use_id":"t-a1"}')" |
+  env -u TMUX_PANE PATH="$TSHIM:$PATH" TMUX="$DEAD" TA_STATE_DIR="$S" TA_LABEL=job TA_LOG=/log/x sh "$HOOK" >/dev/null 2>&1
+ok "the headless row is back to done" done "$(field 2 "$S/s-sid-1.tsv")"
+ok "...with one tmux call that only rings" "set -gF @tagents_evgen #{e|+|:#{@tagents_evgen},1} ; wait-for -S tagents-ev" "$(tr '\n' ' ' <"$TLOG" | sed 's/ $//')"
+
+t "s14. a child record keeps its twelve fields"
+fresh "$S"
+printf '%s\t%s\t%s\t%s\t\t\t\t%s\t\t%s\t%s\t%s\n' 1 done sid-kid /work "$$" own s-sid-par sid-par >"$S/s-sid-kid.tsv"
+kev() { printf '%s' "$(payload "$1" "$(jq -nc --argjson x "${2:-{\}}" '$x + {session_id:"sid-kid"}')")" |
+  env -u TMUX_PANE PATH="$SHIM:$PATH" TMUX="$DEAD" TA_STATE_DIR="$S" sh "$HOOK" >/dev/null 2>&1; }
+kev PreToolUse '{"agent_id":"a1","tool_name":"Bash","tool_input":{"command":"sleep"},"tool_use_id":"t-a1"}'
+kev Notification '{"notification_type":"permission_prompt","message":"needs you"}'
+ok "the child's record is blocked and remembered under its own key" "blocked 1" "$(field 2 "$S/s-sid-kid.tsv") $([ -e "$S/perm/s-sid-kid" ] && echo 1 || echo 0)"
+kev PostToolUse '{"agent_id":"a1","tool_name":"Bash","tool_use_id":"t-a1"}'
+ok "the state is back" done "$(field 2 "$S/s-sid-kid.tsv")"
+ok "...still twelve fields" 12 "$(nf "$S/s-sid-kid.tsv")"
+ok "...with the parent's key and session id" "s-sid-par sid-par own" "$(field 11 "$S/s-sid-kid.tsv") $(field 12 "$S/s-sid-kid.tsv") $(field 10 "$S/s-sid-kid.tsv")"
+
+t "s15. perm/ is made only when it is missing"
+NT=$(payload Notification '{"notification_type":"permission_prompt","message":"m"}')
+nmk() { printf '%s' "$1" | tr ' ' '\n' | grep -c '^mkdir$'; }
+fresh "$ROOT/pf"; mkdir -p "$ROOT/pf/sub" "$ROOT/pf/prompt"; printf '%s\tBash x\n' "$(date +%s)" >"$ROOT/pf/sub/7.a1"; printf '1\tdone\tsid-1\t/w\t/t\t\t\n' >"$ROOT/pf/7.tsv"
+ok "the first memory makes the directory" 1 "$(nmk "$(count "$HOOK" "$ROOT/pf" "$NT")")"
+rm -f "$ROOT/pf/perm/7"; printf '1\tdone\tsid-1\t/w\t/t\t\t\n' >"$ROOT/pf/7.tsv"
+ok "the next one finds it" 0 "$(nmk "$(count "$HOOK" "$ROOT/pf" "$NT")")"
+c=$(count "$HOOK" "$ROOT/pa" "$PA")
+ok "a subagent event starts no mkdir, find or sed" 0 "$(( $(ncall "$c" mkdir) + $(ncall "$c" find) + $(ncall "$c" sed) ))"
+
+t "s16. a memory that was cut short names no state to go back to"
+done_turn
+agpre a1
+ask
+: >"$P"
+run_hook "$HOOK" "$S" "$(payload PostToolUse '{"agent_id":"a1","tool_name":"Bash","tool_use_id":"t-a1"}')" plist=" a1 " pstate=working
+ok "an empty perm file is dropped, whatever the environment holds, and the row stays as it was" "blocked 0" "$(rec_state) $(perm_has)"
+done_turn
+agpre a1
+ask
+: >"$P"
+ask
+ok "a second notification over an empty memory does not write one of empty lines" 0 "$(perm_has)"
+ok "...and the row stays blocked" blocked "$(rec_state)"
+done_turn
+agpre a1
+ask
+printf 'done\n' >"$P"
+agpost a1
+ok "a memory with a state and no list names nobody: nothing changes" blocked "$(rec_state)"
+
+t "s17. the two rings of the subagent branch"
+RING='set -gF @tagents_evgen #{e|+|:#{@tagents_evgen},1} ; wait-for -S tagents-ev'
+tev()  { run_hook "$HOOK" "$S" "$(payload "$@")" PATH="$TSHIM:$PATH"; }
+tlog() { tr '\n' ' ' <"$TLOG" | sed 's/ $//'; }
+fresh "$S"; : >"$TLOG"
+tev PreToolUse '{"agent_id":"a1","tool_name":"Bash","tool_input":{"command":"ls"},"tool_use_id":"t-a1"}'
+ok "a new agent_id rings once, and sets no pane option" "$RING" "$(tlog)"
+: >"$TLOG"
+tev PreToolUse '{"agent_id":"a1","tool_name":"Read","tool_input":{"file_path":"/x"},"tool_use_id":"t-a1b"}'
+ok "a second event of the same agent logs nothing" "" "$(tlog)"
+tev SubagentStop '{"agent_id":"a1","agent_type":"Explore"}'
+ok "a SubagentStop of an existing file rings once" "$RING" "$(tlog)"
+: >"$TLOG"
+tev SubagentStop '{"agent_id":"a1","agent_type":"Explore"}'
+ok "a SubagentStop with no file logs nothing" "" "$(tlog)"
+
+t "s18. the subagent's file is settled before the restore rings"
+TSHIM2="$ROOT/tshim2"; mkdir -p "$TSHIM2"; TLOG2="$ROOT/tmux2.log"
+cat >"$TSHIM2/tmux" <<'SH'
+#!/bin/sh
+printf '%s|exists=%s|detail=%s\n' "$*" "$([ -e "$SUBF" ] && echo yes || echo no)" "$(cut -f2 "$SUBF" 2>/dev/null)" >>"$TLOG2"
+exit 1
+SH
+chmod +x "$TSHIM2/tmux"
+tev2() { run_hook "$HOOK" "$S" "$(payload "$@")" PATH="$TSHIM2:$PATH" SUBF="$S/sub/7.a1" TLOG2="$TLOG2"; }
+done_turn
+agpre a1
+ask
+: >"$TLOG2"
+tev2 SubagentStop '{"agent_id":"a1","agent_type":"Explore"}'
+ok "at the restore's ring a stopped subagent's file is already gone" "yes" "$(grep -c 'set -p -t %7 @agent done|exists=no|detail=$' "$TLOG2" | sed 's/1/yes/')"
+done_turn
+agpre a1
+ask
+: >"$TLOG2"
+tev2 PostToolUse '{"agent_id":"a1","tool_name":"Bash","tool_use_id":"t-a1"}'
+ok "...and a rewritten one already holds its new detail" "yes" "$(grep -c 'set -p -t %7 @agent done|exists=yes|detail=Bash ✓$' "$TLOG2" | sed 's/1/yes/')"
+
+t "s19. an Agent or Task call with no argument is still a call of the main conversation that nobody is asked about"
+for tool in Agent Task; do
+  fresh "$S"
+  ev UserPromptSubmit '{"prompt":"go"}'
+  ev PreToolUse "$(jq -nc --arg t "$tool" '{tool_name:$t,tool_input:{},tool_use_id:"g1"}')"
+  ok "$tool with no argument has the bare tool name as its detail" "$tool" "$(rec_detail)"
+  agpre a1
+  ask
+  ok "...and is remembered" 1 "$(perm_has)"
+  agpost a1
+  ok "...and the subagent's next event puts it back" "working|$tool" "$(rec_state)|$(rec_detail)"
+done
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
