@@ -467,7 +467,7 @@ A session started in a subdirectory of its repository SHALL show the subdirector
 - **THEN** its detail text starts with `src`
 
 ### Requirement: The row on screen is marked
-The row of the window the viewport shows SHALL carry a `▸` in the place of the tree's dash and be drawn bold, in the tree and in a flat list, on a chat row and a dimmed window row alike. A header and a child without a pane in that window SHALL NOT be marked. The mark SHALL not change the width of any row or the tally. It SHALL be taken from the window the viewport's client shows when the list is built (from `@tagents_viewport_window` when there is none).
+The row of the window the viewport shows SHALL carry a `▸` in the place of the tree's dash and be drawn bold, in the tree and in a flat list, on a chat row and a dimmed window row alike. A header and a child without a pane in that window SHALL NOT be marked. The mark SHALL not change the width of any row or the tally. It SHALL be taken from the window the viewport's client shows when the list is built (from `@tagents_viewport_window` when there is none, or when it shows the session `tagents`).
 
 #### Scenario: The window on screen
 - **WHEN** the viewport shows a window that holds a chat

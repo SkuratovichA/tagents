@@ -233,6 +233,12 @@ export TA_CONFIG="$CPCONF"
 unset TA_MODE TA_FLAT TA_COLS TA_NEW_CMD TA_RESUME_CMD TA_HOME TA_SESSION TA_WIDTH CLAUDE_CONFIG_DIR CLAUDE_PID
 
 ta()    { env TMUX="$CPSOCK,0,0" bash "$TA" "$@"; }
+# A follow of this suite's own program is running: the hooks of a switch start one, and one that is late writes the option under a check. Looks at the command lines that name this tree's tagents and nothing else, so another dashboard on the machine is no business of the suite.
+follow_idle() {  # waits, bounded, until none is left
+  local k=0 real; real=$(cd "$HERE/.." && pwd -P)/tagents
+  /bin/sleep 0.3
+  while [ "$k" -lt 100 ] && ps -A -o command= | grep -F -e "$TA" -e "$real" | grep -F -- ' --follow' | grep -qv 'grep'; do k=$((k + 1)); /bin/sleep 0.1; done
+}
 cplist() { tm list-sessions -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' '; }
 
 # A fresh server with work (windows 1 and 2, the second one a shell), personal and scratch, no client, no hooks and no config file.
@@ -634,14 +640,14 @@ tm select-window -t '=work:two'
 tm set -g @tagents_viewport_window "$(vwid)"
 OLDW=$(opt @tagents_viewport_window)
 tm select-window -t '=work:one'
-sleep 1.5                                                  # a follow hook that the refresher put back runs for this switch: let it end, then put the option back as the viewport left it
+follow_idle                                                 # a follow hook that the refresher put back runs for this switch: let it end, then put the option back as the viewport left it
 tm set -g @tagents_viewport_window "$OLDW"
 NEWW=$(wid '=work:one')
 POSTLOG="$CPROOT/post.log"; : >"$POSTLOG"
 env TMUX="$CPSOCK,0,0" TA_STATE_DIR="$CPSTATE" TA_CONFIG="$CPCONF" SELF="$TA" \
     /bin/bash -c 'for m in '"$LISTED_MODS"'; do . "'"$HERE"'/../lib/tagents/$m.sh"; done
                   post_fzf() { printf "%s|%s\n" "$2" "$(tmux show -gqv @tagents_viewport_window)" >>"'"$POSTLOG"'"; }
-                  follow' >/dev/null 2>&1
+                  TA_CONFIRM_TICKS=0 follow' >/dev/null 2>&1
 POSTED=$(cat "$POSTLOG")
 ok "one action was posted to the list" 1 "$(printf '%s\n' "$POSTED" | grep -c .)"
 ok "it is a reload from the kept rows with the cursor in it" 1 "$(printf '%s' "$POSTED" | grep -c '^reload-sync(.*)+pos([0-9]*)|')"
@@ -652,6 +658,37 @@ ok "the cursor goes to the row of the window the list would choose" "$(rowof '=w
 INNER=${POSTED#reload-sync(}; INNER=${INNER%%)+pos(*}
 ok "the rows it draws have the mark on the new window's row" "$(ta --list 2>/dev/null | awk -F'\t' 'index($2, "\342\226\270") { print $1 }' | sort | tr '\n' ' ')" \
    "$(sh -c "$INNER" | awk -F'\t' 'index($2, "\342\226\270") { print $1 }' | sort | tr '\n' ' ')"
+
+t "A refused repaint leaves the cursor to the list the old way"
+# The list's port refuses a post while fzf is between reloads: the repaint is then no repaint, and the cursor is placed from the kept rows once the option is written, as it was before the repaint existed.
+tm select-window -t '=work:two'
+follow_idle
+tm set -g @tagents_viewport_window "$NEWW"
+NEWW2=$(wid '=work:two')
+POSTLOG="$CPROOT/post.log"; : >"$POSTLOG"
+env TMUX="$CPSOCK,0,0" TA_STATE_DIR="$CPSTATE" TA_CONFIG="$CPCONF" SELF="$TA" \
+    /bin/bash -c 'for m in '"$LISTED_MODS"'; do . "'"$HERE"'/../lib/tagents/$m.sh"; done
+                  post_fzf() { printf "%s|%s\n" "$2" "$(tmux show -gqv @tagents_viewport_window)" >>"'"$POSTLOG"'"; case $2 in reload-sync*) return 1 ;; esac; }
+                  TA_CONFIRM_TICKS=0 follow' >/dev/null 2>&1
+POSTED=$(cat "$POSTLOG")
+ok "the repaint was tried, and then the cursor was posted" 2 "$(printf '%s\n' "$POSTED" | grep -c .)"
+ok "the first post is the repaint" 1 "$(printf '%s\n' "$POSTED" | sed -n 1p | grep -c '^reload-sync(')"
+ok "the second is the cursor, posted after the option was written" "pos($(rowof '=work:two'))|$NEWW2" "$(printf '%s\n' "$POSTED" | sed -n 2p)"
+
+t "A repaint sent to the real list marks the window's row there and nowhere else"
+# What the log of a stubbed post cannot show: that fzf accepts the action and draws the kept rows with the mark where the repaint put it. The window it marks is not the one the viewport shows, so the mark can only come from the kept file, not from a full load.
+tm set-hook -gu 'session-window-changed[43]'; tm set-hook -gu 'client-session-changed[43]'; tm set-hook -gu 'client-session-changed[44]'
+marklines() { tm capture-pane -p -t "$(lpane)" 2>/dev/null | grep -n '▸' | cut -d: -f1 | tr '\n' ' '; }
+SCR_OFF=$(( $(tm capture-pane -p -t "$(lpane)" | grep -n '▾' | head -1 | cut -d: -f1) - 1 ))   # the screen line before the list's first row, which is a group header
+tm set -g @tagents_viewport_window "$NEWW2"
+ROW_TWO=$(rowof '=work:two'); ROW_ONE=$(rowof '=work:one')
+ok "the list marks the window the viewport shows" "$((ROW_TWO + SCR_OFF)) " "$(wait_eq_long "$((ROW_TWO + SCR_OFF)) " marklines)"
+# The loads the follow before this started have ended when the kept file stops being replaced; a post fzf refuses (it is between reloads) is tried again, which is what repaint_to_window's status is for.
+SAME=0; KI=$(cpout kept_inode); for k in $(seq 1 60); do sleep 0.1; N=$(cpout kept_inode); if [ "$N" = "$KI" ]; then SAME=$((${SAME:-0} + 1)); else SAME=0; KI=$N; fi; [ "${SAME:-0}" -ge 15 ] && break; done
+for k in 1 2 3 4 5 6 7 8 9 10; do cpmods 'repaint_to_window "'"$(wid '=work:one')"'"' && break; sleep 0.3; done
+MARK_WANT=$((ROW_ONE + SCR_OFF))
+ok "the mark stands on the row of the other window, and on no other" "$MARK_WANT " "$(wait_eq_long "$MARK_WANT " marklines)"
+ok "...and the cursor went with it" "$ROW_ONE" "$(wait_eq_long "$ROW_ONE" curpos)"
 
 t "The start does not record a viewport that shows the dashboard"
 tm set -gu @tagents_viewport_window

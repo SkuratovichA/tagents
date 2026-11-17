@@ -1110,7 +1110,12 @@ tm set -gu @tagents_viewport_window
 VCL=$(tm list-clients -F '#{client_name}' | head -1)
 WORK_WAS=$(where "=tatest-work:")
 # The follow hooks the list's refresher installed fire on every switch below and, with the viewport's tty set, write the option themselves: the tty is set only once the client has settled, and the option after it.
-follow_idle() { local k=0; sleep 0.5; while ps -A -o command= | grep -v grep | grep -q -- ' --follow' && [ "$k" -lt 50 ]; do k=$((k + 1)); sleep 0.2; done; }   # the hooks of a switch have run (and, with no tty set, did nothing)
+# A follow of this suite's own program is running: the hooks of a switch start one, and one that is late writes the option under a check. Looks at the command lines that name this tree's tagents and nothing else, so another dashboard on the machine is no business of the suite.
+follow_idle() {  # waits, bounded, until none is left
+  local k=0 real; real=$(cd "$HERE/.." && pwd -P)/tagents
+  /bin/sleep 0.3
+  while [ "$k" -lt 100 ] && ps -A -o command= | grep -F -e "$TA" -e "$real" | grep -F -- ' --follow' | grep -qv 'grep'; do k=$((k + 1)); /bin/sleep 0.1; done
+}
 tm select-window -t "$A2"
 tm switch-client -c "$VCL" -t "=tatest-work:"
 follow_idle

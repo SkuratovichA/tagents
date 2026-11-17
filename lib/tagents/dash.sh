@@ -240,7 +240,7 @@ EOS
   stty -ixon 2>/dev/null || true
 
   while :; do
-    rows=$(TA_KEEP_ROWS=1 list)
+    rows=$(list_kept)
     [ -z "$rows" ] && rows="-${TAB}$(printf '\033[90m')no claude sessions running$(printf '\033[0m')${TAB}none"
     started=$SECONDS
     # THE FOOTER IS THE ONLY FIXED LINE LEFT. --header is spent on key hints and

@@ -84,13 +84,35 @@ repaint_to_window() {  # <window-id>
   [ -n "$port" ] || return 0
   n=$(kept_rows | list_line_of_window "$1")
   [ -n "$n" ] || return 1
-  post_fzf "$port" "reload-sync($(repaint_cmd "$1"))+pos($n)"
+  post_fzf "$port" "reload-sync($(repaint_cmd "$1"))+pos($n)" || return 1
+  REPAINT_LINE=$n
   return 0
 }
 
-# --follow: the client it is given is no use (the hook's is whichever tmux finds best), so it reads the viewport's client. It keeps @tagents_viewport_shown, takes a viewport whose session was closed to the newest one that still exists, and acts only when the window the viewport shows is not the one the option holds. It then repaints the list at once from the rows the dashboard kept (the mark on the window's rows, the cursor on its row) and writes the option, which rings the refresher for the full load that follows; with no kept rows, or none for the window, the cursor is moved from a list of its own instead. Nothing without the cockpit.
+# The inode of the kept file, which a load replaces by renaming a new file onto it: it tells a file that is the one a line was counted in from the file of a later load.
+kept_inode() {
+  local i
+  read -r i _ <<<"$(ls -i "$ROWS_KEPT" 2>/dev/null)"
+  printf '%s' "$i"
+}
+
+# THE CURSOR AFTER THE LOAD THAT FOLLOWS A REPAINT. The line a repaint posted was counted in the rows the dashboard kept at its last load, and those can be one load old: a row above the window that went away with the switch (its window was closed) is in them, the load that follows draws the list without it, fzf keeps the cursor's index across a reload, and the cursor stands one row below the window's. So the line is counted again in the rows of the next load, once the kept file has been replaced (waiting up to TA_CONFIRM_TICKS tenths of a second, 50 by default: the refresher's second look, its throttle and a load), and posted only when it differs from the one already posted and the option still holds this window, since a later switch owns the cursor. A file that is never replaced means no load came, and the rows on screen are those the line was counted in. No list is run for it.
+cursor_confirm() {  # <window-id> <line posted> <inode of the kept file that line was counted in>
+  local k=0 n
+  while [ "$k" -lt "${TA_CONFIRM_TICKS:-50}" ] && [ "$(kept_inode)" = "$3" ]; do
+    sleep 0.1
+    k=$((k + 1))
+  done
+  [ "$(kept_inode)" != "$3" ] || return 0
+  [ "$(tmux show -gqv @tagents_viewport_window 2>/dev/null)" = "$1" ] || return 0
+  n=$(kept_rows | list_line_of_window "$1")
+  [ -n "$n" ] && [ "$n" != "$2" ] && post_fzf "$(dash_port)" "pos($n)"
+  return 0
+}
+
+# --follow: the client it is given is no use (the hook's is whichever tmux finds best), so it reads the viewport's client. It keeps @tagents_viewport_shown, takes a viewport whose session was closed to the newest one that still exists, and acts only when the window the viewport shows is not the one the option holds. It then repaints the list at once from the rows the dashboard kept (the mark on the window's rows, the cursor on its row) and writes the option, which rings the refresher for the full load that follows, and puts the cursor right once that load has replaced the kept rows (cursor_confirm); with no kept rows, none for the window, or a post that fzf refused, the cursor is moved from a list of its own instead. Nothing without the cockpit.
 follow() {  # [client, ignored]
-  local vtty info sid sess win newest target kept
+  local vtty info sid sess win newest target kept ino
   cockpit_up || return 0
   vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
   [ -n "$vtty" ] || return 0
@@ -111,17 +133,20 @@ follow() {  # [client, ignored]
   viewport_shown_push "$sid"
   viewport_window_changed "$win" || return 0
   # THE REPAINT GOES OUT BEFORE THE OPTION IS WRITTEN. A reload that fzf is running is stopped by the next one, and the refresher counts a reload it posted as drawn: a load that started after the write, from a snapshot that holds the new window, would be cut by the repaint and nothing would draw it again. Written after the repaint, the option moves the snapshot, and the ring that follows finds a load to make. A list that runs between the two draws the window from the viewport's client (collect), so the mark is right in both. With no kept row for the window the cursor is placed after the write, from a list, as it always was.
+  REPAINT_LINE=
+  ino=$(kept_inode)   # read before the line is counted: a file replaced in between only makes the confirmation look again
   repaint_to_window "$win"; kept=$?
   viewport_window_record "$win" || return 0
-  [ "$kept" = 0 ] || cursor_to_window "$win"
+  if [ "$kept" != 0 ]; then cursor_to_window "$win"; elif [ -n "$REPAINT_LINE" ]; then cursor_confirm "$win" "$REPAINT_LINE" "$ino"; fi
   return 0
 }
 
-# Writes the window the viewport shows into @tagents_viewport_window, which the list draws its mark from, and rings the refresher, which reloads only when its snapshot differs. Succeeds when the window is a new one and fails when the option already held it, so a caller moves the cursor only on a change.
-viewport_window_changed() {  # <window id> — is it not the window the option holds
+# Is the window one the option @tagents_viewport_window does not hold yet.
+viewport_window_changed() {  # <window id>
   [ -n "${1:-}" ] && [ "$1" != "$(tmux show -gqv @tagents_viewport_window 2>/dev/null)" ]
 }
 
+# Writes the window the viewport shows into @tagents_viewport_window, which the list draws its mark from, and rings the refresher, which reloads only when its snapshot differs. Succeeds when the window is a new one and fails when the option already held it, so a caller moves the cursor only on a change.
 viewport_window_record() {  # <window id>
   viewport_window_changed "${1:-}" || return 1
   tmux set -g @tagents_viewport_window "$1" 2>/dev/null

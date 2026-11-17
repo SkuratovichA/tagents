@@ -159,13 +159,13 @@ refresh_changed() {  # <marker> <overlay config path> [strict] — 0 when someth
 # itself at all (see counts).
 # WHAT A KILLED PROCESS LEFT IN THE STATE DIRECTORY: the refresher's markers
 # (.refresher.<pid>, .cfg, .start) and the temp files the list and the bar write
-# before a rename (.counts.tally.<pid>, .counts.out.<pid>). Each is removed when
+# before a rename (.counts.tally.<pid>, .counts.out.<pid>, .rows.kept.<pid>, which a load cancelled between its awk and the rename leaves). Each is removed when
 # its pid fails kill -0, one rm per stale file, and only at a refresher's start.
 refresher_sweep() {
   local f n pid
-  for f in "$STATE_DIR"/.refresher.[0-9]* "$STATE_DIR"/.counts.tally.[0-9]* "$STATE_DIR"/.counts.out.[0-9]*; do
+  for f in "$STATE_DIR"/.refresher.[0-9]* "$STATE_DIR"/.counts.tally.[0-9]* "$STATE_DIR"/.counts.out.[0-9]* "$STATE_DIR"/.rows.kept.[0-9]*; do
     [ -e "$f" ] || continue
-    n=${f##*/}; n=${n#.refresher.}; n=${n#.counts.tally.}; n=${n#.counts.out.}
+    n=${f##*/}; n=${n#.refresher.}; n=${n#.counts.tally.}; n=${n#.counts.out.}; n=${n#.rows.kept.}
     pid=${n%%.*}
     case $pid in ''|*[!0-9]*) continue ;; esac
     kill -0 "$pid" 2>/dev/null || rm -f "$f" 2>/dev/null

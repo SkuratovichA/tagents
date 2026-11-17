@@ -633,7 +633,14 @@ t "13b. a snapshot written by the seat-based version still restores"
 transcript sid-old
 OLDSNAP="$SNAP/old-seat.tsv"
 { printf 'D\ttatest-old\t0\n'; arow sid-old "" 1 tatest-old 0 0 old-w old-t "$NOR" 1 "" "" claude; } >"$OLDSNAP"
+# The follow hooks are off and the list's refresher, which puts them back, is gone, so that the option can only have been written by the restore itself.
+for f in "$STATE"/.refresher.[0-9]*; do case ${f##*.} in ''|*[!0-9]*) ;; *) kill "${f##*.}" 2>/dev/null ;; esac; done
+sleep 0.5
+tm set-hook -gu 'session-window-changed[43]'; tm set-hook -gu 'client-session-changed[43]'
+BEFORE_W=$(tm show -gqv @tagents_viewport_window)
 out=$(run --resurrect --from "$OLDSNAP"); ok "--resurrect succeeds" 0 "$?"
+ok "the restore into the cockpit that is up: the option holds the window the viewport shows" same "$(k=0; while [ "$k" -lt 80 ] && [ "$(ckvsame)" != same ]; do k=$((k + 1)); sleep 0.1; done; ckvsame)"
+ok "...and it is not the window the viewport showed before" yes "$([ "$(tm show -gqv @tagents_viewport_window)" != "$BEFORE_W" ] && echo yes || echo no)"
 ok "the chat was started where its row says" yes "$(grep -q '^tatest-old$' <<< "$(tm list-panes -a -F '#{session_name}')" && echo yes || echo no)"
 ok "the docked flag was ignored: no pane carries a seat option" "" "$(tm list-panes -a -F '#{@tagents_slot}#{@tagents_docked}#{@tagents_parked}' | tr -d '\n')"
 

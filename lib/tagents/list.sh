@@ -26,8 +26,11 @@ toggle_order() { toggle_marker "$STATE_DIR/.order-recent"; }
 # THE ROWS OF THE DASHBOARD'S LAST LOAD, kept for a repaint (follow.sh, repaint_to_window): one line per row of the list, <window id of the row, or empty><US><1 when the row can carry the mark, else 0><US><the row without the mark><US><the row with it>, each row as fzf holds it (tabs inside). Written by list() when TA_KEEP_ROWS=1, and so by every load the dashboard itself makes and by no other list.
 ROWS_KEPT="$STATE_DIR/.rows.kept"
 
-# THE ACTION THAT LOADS THE DASHBOARD'S LIST, for every reload it posts or binds: the one place that says a load keeps its rows, so a load that forgets to cannot be written (tests/cockpit.sh scans the libraries for a --list that does not come through here). The first load of dash() asks the same way, with TA_KEEP_ROWS=1 in front of list.
+# THE ACTION THAT LOADS THE DASHBOARD'S LIST, for every reload it posts or binds: the one place that says a load keeps its rows, so a load that forgets to cannot be written (tests/window-rows.sh scans the libraries for a --list that does not come through here). The first load of dash() is list_kept.
 list_reload() { printf 'reload-sync(TA_KEEP_ROWS=1 %s --list)' "$SELF"; }
+
+# The first load of the dashboard, drawn in the shell that starts fzf: the same keeping, asked in-process.
+list_kept() { TA_KEEP_ROWS=1 list; }
 
 list() {
   # Nothing is excluded. There used to be a "skip my own pane" rule that fell

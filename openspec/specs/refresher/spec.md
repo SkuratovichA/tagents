@@ -191,7 +191,7 @@ When the loop ends it SHALL free the wait it has outstanding so that no `tmux` p
 - **THEN** `@tagents_counts` is unset; with another refresher alive it is left alone
 
 ### Requirement: The refresher's markers
-A refresher SHALL keep five files in the state directory named by its own process id: `.refresher.<pid>` (the time of the last reload), `.cfg` (the last config read), `.start`, and the FIFOs `.evq` and `.nap`, each after `.refresher.<pid>`. At its start it SHALL delete the files named after dead process ids: those five and `.counts.tally.<pid>` and `.counts.out.<pid>`; a live process's files stay. It SHALL remove its own when the loop ends.
+A refresher SHALL keep five files in the state directory named by its own process id: `.refresher.<pid>` (the time of the last reload), `.cfg` (the last config read), `.start`, and the FIFOs `.evq` and `.nap`, each after `.refresher.<pid>`. At its start it SHALL delete the files named after dead process ids: those five, `.counts.tally.<pid>`, `.counts.out.<pid>` and `.rows.kept.<pid>`; a live process's files stay. It SHALL remove its own when the loop ends.
 
 #### Scenario: A dead refresher left files
 - **WHEN** a refresher starts and the directory holds the files of a pid that has exited and those of a live one

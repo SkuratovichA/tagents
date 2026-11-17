@@ -258,7 +258,7 @@ A running list SHALL set `@tagents_dash` to `1` on its pane, taking it from any 
 - **AND** a Claude chat later started in that pane is never taken for the list
 
 ### Requirement: The list cursor follows the window the viewport shows
-When the viewport comes to show a window, by a selection or a switch made in the viewport, the list SHALL put its cursor on that window's row: the chat row when the window's first pane is a chat, the window row otherwise. It SHALL repaint from the rows the dashboard kept, with the mark and the cursor on that window's row, without waiting for a load; with no kept rows the cursor is placed from a list of its own. A start of the cockpit marks the row and leaves the cursor where the list began.
+When the viewport comes to show a window, by a selection or a switch made in it, the list SHALL put its cursor on that window's row: the chat row when the window's first pane is a chat, the window row otherwise. It SHALL repaint from the rows the dashboard kept, with the mark and the cursor on that row, without waiting for a load; with no kept row for it the cursor is placed from a list of its own once the option is written. A start of the cockpit marks the row and leaves the cursor.
 
 #### Scenario: Switching with tmux's own keys
 - **WHEN** the user presses `prefix+n` in the viewport from the window of the chat "release notes" to the window of the chat "billing"
@@ -271,6 +271,17 @@ When the viewport comes to show a window, by a selection or a switch made in the
 #### Scenario: A repaint before the next load
 - **WHEN** the viewport changes window and the dashboard has kept rows
 - **THEN** the mark and the cursor are on the new window's row before any load of the list has run
+
+### Requirement: The cursor is put right after the load that follows a repaint
+After a repaint from kept rows, `--follow` SHALL wait up to five seconds for the dashboard to keep a new set of rows, then put the cursor on the window's row in that set when it is another line, unless the option `@tagents_viewport_window` holds another window by then. It SHALL start no list for it and, with no new set, post nothing.
+
+#### Scenario: A row above the window went away with the switch
+- **WHEN** the viewport shows window B of the rows A, B, C, D and B is closed, so that it moves to C before the next load has drawn A, C, D
+- **THEN** once that load has drawn, the cursor is on C and not on D
+
+#### Scenario: Another switch came first
+- **WHEN** the viewport shows a third window when the next set of rows arrives
+- **THEN** the first follow moves the cursor no more
 
 ### Requirement: ctrl-x on a dimmed row kills the window after asking
 `ctrl-x` on a dimmed window row SHALL ask `kill this window?`, in the popup a chat's kill asks in or inline where there is no popup, and SHALL act only on `y`, `yes` or their capitals; anything else, or no answer within 60 seconds, cancels. Confirming SHALL close the window with every pane in it, ring the refresher's channel and retake the resurrect snapshot.

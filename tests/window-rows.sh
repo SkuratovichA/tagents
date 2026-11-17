@@ -729,6 +729,10 @@ ok "R35 the row with the mark is the line the list draws when its window is on s
    "$(awk -F$'\037' -v w="$WKEEP" '$1 == w && $2 == 1 { print $4; next } { print $3 }' "$KEPT" | mask)"
 ok "R35 no reload of the list is spelled out outside list_reload" 1 "$(grep -h 'reload' "$HERE"/../lib/tagents/*.sh "$TA" | grep -v '^[[:space:]]*#' | grep -c -- '--list')"
 ok "R35 the one that is, keeps rows" 1 "$(modrun list_reload | grep -c '^reload-sync(TA_KEEP_ROWS=1 .* --list)$')"
+rm -f "$KEPT"; modrun list_kept >/dev/null 2>&1
+ok "R35 the first load of the dashboard keeps rows" kept "$([ -s "$KEPT" ] && echo kept || echo none)"
+ok "R35 the dashboard's first load is list_kept" 1 "$(grep -v '^[[:space:]]*#' "$HERE"/../lib/tagents/dash.sh | grep -c 'rows=\$(list_kept)')"
+ok "R35 only list_reload and list_kept spell the flag out" 2 "$(grep -h 'TA_KEEP_ROWS=1' "$HERE"/../lib/tagents/*.sh "$TA" | grep -v '^[[:space:]]*#' | grep -c .)"
 
 t "R36 the cursor and the mark are repainted from the kept rows, with no list started"
 SB=$(fake_sidebar "$WKEEP"); tm set -p -t "$SB" @tagents_port 9
@@ -754,6 +758,37 @@ ok "R36 a window with no kept row: the repaint fails and posts nothing" "1|" "$r
 rm -f "$KEPT"
 WR_PRE='post_fzf() { echo "$2" >>"'"$WRROOT"'/post.log"; }' modrun repaint_to_window "$WKEEP"; rc=$?
 ok "R36 no kept rows: the repaint fails and posts nothing" "1|" "$rc|$(cat "$WRROOT/post.log")"
+
+t "R37 the cursor is put right after the load that follows a repaint"
+# The kept rows a repaint counted its line in can be one load old: a row above the window went away with the switch. The next load draws the list without it and fzf keeps the index, so the line is counted again in the rows of that load.
+tm set -gu @tagents_viewport_window; keptlist TA_KEEP_ROWS=1 >/dev/null
+lineof() { awk -F$'\037' '{ print $3 }' "$1" | awk -F'\t' -v k="$PKEEP" 'index($2, "\342\226\276") == 0 && $1 == k { print NR; exit }'; }
+L1=$(lineof "$KEPT")
+awk 'NR > 1' "$KEPT" >"$WRROOT/kept.up"           # the first row is gone in the next load
+L2=$(lineof "$WRROOT/kept.up")
+ok "R37 the fixture: the window's line moves up when the first row goes" 1 "$([ -n "$L1" ] && [ "$L2" = "$((L1 - 1))" ] && echo 1 || echo 0)"
+cp "$KEPT" "$WRROOT/kept.same"
+confirm() {  # <replacement file or none> <seconds before it> <option> [ticks]; the posts it made are left in post.log
+  local ino; : >"$WRROOT/post.log"
+  tm set -g @tagents_viewport_window "$3"; ino=$(modrun kept_inode)
+  if [ "$1" != none ]; then ( sleep "$2"; cp "$1" "$WRROOT/kept.mv"; mv -f "$WRROOT/kept.mv" "$KEPT" ) & fi
+  TA_CONFIRM_TICKS=${4:-40} WR_PRE='post_fzf() { echo "$2" >>"'"$WRROOT"'/post.log"; }' modrun cursor_confirm "$WKEEP" "$L1" "$ino"; CONFIRM_RC=$?
+  wait
+}
+confirm "$WRROOT/kept.up" 0.4 "$WKEEP"
+ok "R37 rows replaced with the window one line up: the cursor goes there" "pos($L2)" "$(cat "$WRROOT/post.log")"
+ok "R37 ...and the confirmation ends well" 0 "$CONFIRM_RC"
+cp "$WRROOT/kept.same" "$KEPT"
+confirm "$WRROOT/kept.same" 0.4 "$WKEEP"
+ok "R37 rows replaced with the window on the same line: nothing is posted" "" "$(cat "$WRROOT/post.log")"
+cp "$WRROOT/kept.same" "$KEPT"
+confirm "$WRROOT/kept.up" 0.4 "@999"
+ok "R37 rows replaced while the option holds another window: nothing is posted" "" "$(cat "$WRROOT/post.log")"
+cp "$WRROOT/kept.same" "$KEPT"
+SECONDS=0; confirm none 0 "$WKEEP" 3
+ok "R37 a file that is never replaced: nothing is posted" "" "$(cat "$WRROOT/post.log")"
+ok "R37 ...and the wait ends at its bound" 1 "$([ "$SECONDS" -le 3 ] && echo 1 || echo 0)"
+cp "$WRROOT/kept.same" "$KEPT"
 kill_sidebars; tm set -gu @tagents_viewport_window
 
 t "W1 window names: a chat's window is named after it, a window of a list pane alone keeps its name"
