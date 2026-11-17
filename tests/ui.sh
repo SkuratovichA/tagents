@@ -1116,6 +1116,8 @@ follow_idle() {  # waits, bounded, until none is left
   /bin/sleep 0.3
   while [ "$k" -lt 100 ] && ps -A -o command= | grep -F -e "$TA" -e "$real" | grep -F -- ' --follow' | grep -qv 'grep'; do k=$((k + 1)); /bin/sleep 0.1; done
 }
+follow_hooks_off() { tm set-hook -gu 'session-window-changed[43]'; tm set-hook -gu 'client-session-changed[43]'; }   # a slow pass of the refresher puts them back: off again before each switch, so a switch starts no follow that could be late
+follow_hooks_off
 tm select-window -t "$A2"
 tm switch-client -c "$VCL" -t "=tatest-work:"
 follow_idle
@@ -1125,6 +1127,7 @@ ok "a stale option: the window the viewport's client shows is the one marked" "$
 ok "a stale option: ...and in a flat list" "$A2 " "$(marked TA_FLAT=1)"
 tm set -gu @tagents_viewport_tty
 ok "no viewport client: the option decides" "$A " "$(marked)"
+follow_hooks_off
 tm switch-client -c "$VCL" -t "=tagents:"
 follow_idle
 tm set -g @tagents_viewport_tty "$VCL"
