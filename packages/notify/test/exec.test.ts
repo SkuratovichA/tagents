@@ -43,15 +43,23 @@ test('a program that outlives the timeout is killed, and nothing is left running
   const dir = tmpDir('notify-exec');
   const pidFile = path.join(dir, 'pid');
   try {
-    const t0 = Date.now();
-    // `exec` keeps the shell's pid for the sleep, so the pid in the file is the one that must die.
-    const r = await execText('/bin/sh', ['-c', 'echo $$ > "$1"; exec /bin/sleep 10', '_', pidFile], { timeoutMs: 200 });
-    assert.equal(r.timedOut, true);
-    assert.equal(r.code, null);
-    assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
-    const pid = Number(fs.readFileSync(pidFile, 'utf8').trim());
-    assert.ok(Number.isInteger(pid) && pid > 1);
-    assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+    // The shell has to write its pid before the timeout kills it, and on a busy machine starting a shell can take longer than the timeout. A run that left no pid shows only that the kill came first, so it is repeated with more time.
+    for (const timeoutMs of [200, 1000, 5000]) {
+      const t0 = Date.now();
+      // `exec` keeps the shell's pid for the sleep, so the pid in the file is the one that must die.
+      const r = await execText('/bin/sh', ['-c', 'echo $$ > "$1"; exec /bin/sleep 10', '_', pidFile], { timeoutMs });
+      assert.equal(r.timedOut, true);
+      assert.equal(r.code, null);
+      assert.ok(Date.now() - t0 < timeoutMs + 1800, `took ${Date.now() - t0} ms`);
+      // The redirection creates the file before `echo` fills it, so an empty file is a shell killed in between.
+      const written = fs.existsSync(pidFile) ? fs.readFileSync(pidFile, 'utf8').trim() : '';
+      if (written === '') continue;
+      const pid = Number(written);
+      assert.ok(Number.isInteger(pid) && pid > 1);
+      assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
+      return;
+    }
+    assert.fail('the shell wrote no pid in any run, the last one with 5 s before the kill');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

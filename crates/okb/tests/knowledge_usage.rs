@@ -224,7 +224,7 @@ fn a_store_that_is_not_what_it_should_be_is_empty_or_refused_as_node_does() {
     }
 }
 
-/// The node test of the same name holds the lock from the same thread for as long as the call lasts; here another thread lets go when the call is over or after three seconds, whichever is first, so a call that waited for it would end late and the assertion on the time would say so.
+/// The node test of the same name holds the lock from the same thread for as long as the call lasts; here another thread lets go when the call is over or after ten seconds, whichever is first, so a call that waited for it would end late and the assertion on the time would say so. The call is given five seconds, not one: a busy runner has taken more than a second to give up, and the bound only has to stay well under the holder's ten.
 #[test]
 fn a_store_that_stays_locked_is_given_up_on_after_the_busy_timeout() {
     let dir = scratch("knowledge-usage-locked");
@@ -239,7 +239,7 @@ fn a_store_that_stays_locked_is_given_up_on_after_the_busy_timeout() {
             let other = open_usage_db(&file).unwrap();
             other.execute_batch("begin immediate").unwrap();
             locked.send(()).unwrap();
-            let _ = release.recv_timeout(Duration::from_secs(3));
+            let _ = release.recv_timeout(Duration::from_secs(10));
             other.execute_batch("rollback").unwrap();
         })
     };
@@ -254,7 +254,7 @@ fn a_store_that_stays_locked_is_given_up_on_after_the_busy_timeout() {
         "gave up before the busy timeout: {waited:?}"
     );
     assert!(
-        waited < Duration::from_secs(1),
+        waited < Duration::from_secs(5),
         "waited for the holder instead of giving up: {waited:?}"
     );
     assert_eq!(Some("database is locked".to_string()), reason);
