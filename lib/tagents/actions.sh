@@ -172,7 +172,7 @@ forget_agent() {  # <pane-key> — drop a closed session's record from the list
   local key=${1#%}
   [ -n "$key" ] || return 0
   rm -f "$STATE_DIR/$key.tsv" "$STATE_DIR/$key.tools" 2>/dev/null
-  rm -f "$STATE_DIR/sub/$key".* 2>/dev/null
+  rm -f "$STATE_DIR/sub/$key".* "$STATE_DIR/perm/$key" 2>/dev/null
   # ...and when you last typed into it, which is what the row was ordered on.
   rm -f "$STATE_DIR/prompt/$key" 2>/dev/null
   signal_ev   # a deleted record is not a tmux event, and the row has to go
@@ -181,10 +181,11 @@ forget_agent() {  # <pane-key> — drop a closed session's record from the list
 
 
 end_agent() {  # <pane> — hang up the agent running in it
-  local pane=$1 key=${pane#%}
+  local pane=$1 key
+  key=${pane#%}   # a second word of the same local would be expanded before pane is set, in bash 3.2
   tmux kill-pane -t "$pane" 2>/dev/null || return 1
-  # SessionEnd cannot fire for a pane that has been killed, so do the half of its cleanup that would otherwise show: the subagent files, which keep claiming this session has work fanned out under it. Its own record is kept on purpose — that is what leaves the row as "closed, enter resumes it".
-  [ -n "$key" ] && rm -f "$STATE_DIR/sub/$key".* "$STATE_DIR/$key.tools" 2>/dev/null
+  # SessionEnd cannot fire for a pane that has been killed, so do the half of its cleanup that would otherwise show: the subagent files, which keep claiming this session has work fanned out under it, and the memory of a warning a subagent asked for. Its own record is kept on purpose — that is what leaves the row as "closed, enter resumes it".
+  [ -n "$key" ] && rm -f "$STATE_DIR/sub/$key".* "$STATE_DIR/$key.tools" "$STATE_DIR/perm/$key" 2>/dev/null
   signal_ev   # the pane's own death rang once already, before these files went
   # A chat hung up on purpose must not come back after the next reboot: the snapshot is retaken now rather than at the next status-bar tick.
   resurrect_soon

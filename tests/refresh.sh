@@ -750,7 +750,7 @@ HOOKB=$(sed -n "s/^EV_BUMP='\(.*\)'\$/\1/p" "$HOOK")
 ok "the hook's EV_BUMP is core.sh's, character for character" "$EVB" "$HOOKB"
 ok "no ring in the hook is a bare signal: the count comes first" 0 \
    "$(grep -c 'tmux wait-for -S tagents-ev' "$HOOK" | tr -d ' ')"
-ok "...six rings: the subagent pair, the removal pair and the event pair" 6 \
+ok "...three ring sites: ring_only, ring_agent and the removal one (every other ring calls a helper)" 3 \
    "$(grep -c 'tmux set -gF @tagents_evgen "\$EV_BUMP" \\; wait-for -S tagents-ev' "$HOOK" | tr -d ' ')"
 g0=$(tm show -gv @tagents_evgen 2>/dev/null); g0=${g0:-0}
 env TMUX="$SOCK,0,0" TMUX_PANE="$HKP" TA_STATE_DIR="$STATE" sh "$HOOK" <"$D/pre.json"
