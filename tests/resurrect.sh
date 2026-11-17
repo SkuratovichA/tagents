@@ -634,8 +634,9 @@ transcript sid-old
 OLDSNAP="$SNAP/old-seat.tsv"
 { printf 'D\ttatest-old\t0\n'; arow sid-old "" 1 tatest-old 0 0 old-w old-t "$NOR" 1 "" "" claude; } >"$OLDSNAP"
 # The follow hooks are off and the list's refresher, which puts them back, is gone, so that the option can only have been written by the restore itself.
-for f in "$STATE"/.refresher.[0-9]*; do case ${f##*.} in ''|*[!0-9]*) ;; *) kill "${f##*.}" 2>/dev/null ;; esac; done
-sleep 0.5
+RPIDS=; for f in "$STATE"/.refresher.[0-9]*; do case ${f##*.} in ''|*[!0-9]*) ;; *) kill "${f##*.}" 2>/dev/null; RPIDS="$RPIDS ${f##*.}" ;; esac; done
+k=0; while [ "$k" -lt 50 ]; do ALIVE=; for rp in $RPIDS; do kill -0 "$rp" 2>/dev/null && ALIVE="$ALIVE $rp"; done; [ -z "$ALIVE" ] && break; k=$((k + 1)); sleep 0.1; done
+ok "the refreshers are gone before the hooks are taken off" "" "${ALIVE# }"
 tm set-hook -gu 'session-window-changed[43]'; tm set-hook -gu 'client-session-changed[43]'
 BEFORE_W=$(tm show -gqv @tagents_viewport_window)
 out=$(run --resurrect --from "$OLDSNAP"); ok "--resurrect succeeds" 0 "$?"

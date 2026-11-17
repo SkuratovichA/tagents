@@ -768,11 +768,11 @@ awk 'NR > 1' "$KEPT" >"$WRROOT/kept.up"           # the first row is gone in the
 L2=$(lineof "$WRROOT/kept.up")
 ok "R37 the fixture: the window's line moves up when the first row goes" 1 "$([ -n "$L1" ] && [ "$L2" = "$((L1 - 1))" ] && echo 1 || echo 0)"
 cp "$KEPT" "$WRROOT/kept.same"
-confirm() {  # <replacement file or none> <seconds before it> <option> [ticks]; the posts it made are left in post.log
+confirm() {  # <replacement file or none> <seconds before it> <option> [ticks] [line posted, the window's line in the first file by default]; the posts it made are left in post.log
   local ino; : >"$WRROOT/post.log"
   tm set -g @tagents_viewport_window "$3"; ino=$(modrun kept_inode)
   if [ "$1" != none ]; then ( sleep "$2"; cp "$1" "$WRROOT/kept.mv"; mv -f "$WRROOT/kept.mv" "$KEPT" ) & fi
-  TA_CONFIRM_TICKS=${4:-40} WR_PRE='post_fzf() { echo "$2" >>"'"$WRROOT"'/post.log"; }' modrun cursor_confirm "$WKEEP" "$L1" "$ino"; CONFIRM_RC=$?
+  TA_CONFIRM_TICKS=${4:-40} WR_PRE='post_fzf() { echo "$2" >>"'"$WRROOT"'/post.log"; }' modrun cursor_confirm "$WKEEP" "${5:-$L1}" "$ino"; CONFIRM_RC=$?
   wait
 }
 confirm "$WRROOT/kept.up" 0.4 "$WKEEP"
@@ -785,9 +785,10 @@ cp "$WRROOT/kept.same" "$KEPT"
 confirm "$WRROOT/kept.up" 0.4 "@999"
 ok "R37 rows replaced while the option holds another window: nothing is posted" "" "$(cat "$WRROOT/post.log")"
 cp "$WRROOT/kept.same" "$KEPT"
-SECONDS=0; confirm none 0 "$WKEEP" 3
-ok "R37 a file that is never replaced: nothing is posted" "" "$(cat "$WRROOT/post.log")"
-ok "R37 ...and the wait ends at its bound" 1 "$([ "$SECONDS" -le 3 ] && echo 1 || echo 0)"
+confirm none 0 "$WKEEP" 3 "$((L1 + 1))"
+ok "R37 a file that is never replaced: nothing is posted, whatever line was posted before" "" "$(cat "$WRROOT/post.log")"
+SECONDS=0; confirm none 0 "$WKEEP" 12
+ok "R37 ...and the wait lasts its ticks and ends at that bound" 1 "$([ "$SECONDS" -ge 1 ] && [ "$SECONDS" -le 4 ] && echo 1 || echo 0)"
 cp "$WRROOT/kept.same" "$KEPT"
 kill_sidebars; tm set -gu @tagents_viewport_window
 

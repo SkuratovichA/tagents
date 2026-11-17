@@ -18,7 +18,7 @@ When the viewport comes to show a window, by a selection or a switch made in it,
 ## ADDED Requirements
 
 ### Requirement: The cursor is put right after the load that follows a repaint
-After a repaint from kept rows, `--follow` SHALL wait up to five seconds for the dashboard to keep a new set of rows, then put the cursor on the window's row in that set when it is another line, unless the option `@tagents_viewport_window` holds another window by then. It SHALL start no list for it and, with no new set, post nothing.
+After a repaint from kept rows, `--follow` SHALL look every tenth of a second, 50 times by default, each look taking its own time, for the dashboard to keep a new set of rows, then put the cursor on the window's row in that set when it is another line, unless the option `@tagents_viewport_window` holds another window by then. It SHALL start no list for it and, with no new set, post nothing.
 
 #### Scenario: A row above the window went away with the switch
 - **WHEN** the viewport shows window B of the rows A, B, C, D and B is closed, so that it moves to C before the next load has drawn A, C, D
