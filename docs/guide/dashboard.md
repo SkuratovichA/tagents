@@ -86,7 +86,7 @@ A row is a tmux window and a group is a tmux session. Every session is a group, 
 
 ### The cursor follows the viewport
 
-tmux's own switches made in the viewport (`prefix n`, `prefix s`, a click on its status bar) fire `session-window-changed` and `client-session-changed`. tagents hooks both with `tagents --follow`, which moves the list's cursor onto the row of the window the viewport now shows. It moves nothing else, and does nothing when the dashboard is not up.
+tmux's own switches made in the viewport (`prefix n`, `prefix s`, a click on its status bar) fire `session-window-changed` and `client-session-changed`. tagents hooks both with `tagents --follow`, which repaints the list at once from the rows the dashboard drew last, with the `▸` on the window the viewport now shows and the cursor on its row; the full reload that follows draws the list afresh, and when that load shows the window on another row (a row above it went away with the switch) the cursor is moved there. It moves nothing else, and does nothing when the dashboard is not up. A list that starts between the switch and the repaint already marks the new window, because it reads the window the viewport shows from tmux itself.
 
 ### Two chats side by side
 

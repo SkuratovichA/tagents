@@ -83,7 +83,7 @@ dash_header() {  # <cols> <enter label> [quit item]
 dash() {
   local mode=${TA_MODE:-dash} out key rows
   local rc started fails=0 esc_act=ignore quit fl ft
-  local header
+  local header reload
   local enter_lbl='open in dashboard' preview_win='' sidebar=0 after='' vact
   # The --preview pair, present only where ctrl-v still toggles one. An empty
   # array cannot be expanded under `set -u` in bash 3.2 without the
@@ -171,6 +171,8 @@ dash() {
   # execute-silent choice) that a loop over keys_table could only encode
   # verbatim. Aliases nobody needs a row in the table for follow the verb they
   # alias: double-click is enter, f2 is the rename key.
+  # Every load of the dashboard's list keeps its rows (list_reload): the first one below asks the same way.
+  reload=$(list_reload)
   BINDS=()
   kb "$K_OPEN"    "execute-silent($SELF --act open {1} {3} {4} {5} {2})$after"
   kb double-click "execute-silent($SELF --act open {1} {3} {4} {5} {2})$after"
@@ -180,7 +182,7 @@ dash() {
   kb "$K_RENAME"  "$ask($SELF --act rename {1} {3} {4})"
   kb f2           "$ask($SELF --act rename {1} {3} {4})"
   kb "$K_DIR"     "$ask($SELF --act dir {1} {3} {4} {5})"
-  kb "$K_UNDOCK"  "execute-silent($SELF --act undock {1})+reload-sync($SELF --list)"
+  kb "$K_UNDOCK"  "execute-silent($SELF --act undock {1})+$reload"
   kb "$K_KILL"    "$ask($SELF --act kill {1} {3} {4})"
   kb "$K_NEW"     "$ask($SELF --act new {1} {3} {4} {5})$after"
   kb "$K_PICK"    "$ask($SELF --act pick {1} {3} {4} {5})$after"
@@ -191,10 +193,10 @@ dash() {
   kb "$K_KEYS"    "$ask($SELF --act keys {1} {3} {4} {5})$after"
   kb esc          "$esc_act"
   kb "$K_PREVIEW" "$vact"
-  kb "$K_TREE"    "execute-silent($SELF --toggle-group)+reload-sync($SELF --list)"
-  kb "$K_ORDER"   "execute-silent($SELF --toggle-order)+reload-sync($SELF --list)"
-  kb "$K_COLLAPSE" "execute-silent($SELF --toggle-collapse)+reload-sync($SELF --list)"
-  kb "$K_REFRESH" "reload-sync($SELF --list)"
+  kb "$K_TREE"    "execute-silent($SELF --toggle-group)+$reload"
+  kb "$K_ORDER"   "execute-silent($SELF --toggle-order)+$reload"
+  kb "$K_COLLAPSE" "execute-silent($SELF --toggle-collapse)+$reload"
+  kb "$K_REFRESH" "$reload"
   # THE RESIZE BIND SPAWNS A PLAIN sh, NOT THIS PROGRAM. A resize event comes for every pixel of a drag, and `tagents --header` is a bash that loads the libraries and parses the config. The header is written once, for a wide list, and the script picks it or nothing by FZF_COLUMNS (below 34 the rows are compact and there is no room for it). The same script keeps a collapsed list collapsed: tmux spreads a window resize over both panes, so when the marker is there and the pane is not collapsed_width wide it is put back, which is a no-op when it already is, and so cannot loop.
   # THE FILES HAVE FIXED NAMES, per mode and per whether the list claimed a pane (those two decide the header text, the enter label and the quit item), so a killed pane, a server stop or a reboot leaves at most a handful of small files and no start adds one. Two lists of one kind write the same content; each file is renamed into place, so a reader never sees half of one. keyhdr wraps at cols - 4, so one header is written for each band of widths, and the script shows the widest band the list has room for: the line it picks is never wider than the list.
   rzb="$STATE_DIR/.resize.$mode$sidebar"; rzs="$rzb.sh"
@@ -212,7 +214,7 @@ done
 exit 0
 EOS
   mv -f "$rzs.$$" "$rzs"
-  kb resize       "transform-header(sh '$rzs')+reload-sync($SELF --list)"
+  kb resize       "transform-header(sh '$rzs')+$reload"
   # THE REFRESHER WATCHES FZF, NOT THE BASH AROUND IT. This function's own pid ($$)
   # is the shell that starts fzf again after an abort, and it lives on while fzf
   # comes and goes, so a refresher that watched it outlived every fzf it was
@@ -238,7 +240,7 @@ EOS
   stty -ixon 2>/dev/null || true
 
   while :; do
-    rows=$(list)
+    rows=$(list_kept)
     [ -z "$rows" ] && rows="-${TAB}$(printf '\033[90m')no claude sessions running$(printf '\033[0m')${TAB}none"
     started=$SECONDS
     # THE FOOTER IS THE ONLY FIXED LINE LEFT. --header is spent on key hints and

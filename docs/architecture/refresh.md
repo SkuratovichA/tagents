@@ -46,7 +46,7 @@ Why index 42:
 - Installing them again is installing them once.
 - They are put in at every refresher start and every slow pass, so a `.tmux.conf` that sets one of those events without an index (which wipes the event's list, ours with it) is healed within `TA_REFRESH_SLOW` seconds.
 
-The follow hooks (`tagents --follow` on `session-window-changed` and `client-session-changed`) sit beside them at `[43]` and move the list's cursor onto the window the viewport now shows.
+The follow hooks (`tagents --follow` on `session-window-changed` and `client-session-changed`) sit beside them at `[43]`. They repaint the list from the rows the dashboard kept at its last load (the mark on the window the viewport now shows and the cursor on its row) and, once the load that follows has replaced those rows, put the cursor right again if a row above had gone away.
 
 tmux 3.7 has no `after-swap-pane`, `after-join-pane`, `after-break-pane`, `after-move-window` or `after-respawn-pane`. `window-layout-changed` fires for a swap, a join and a break (for both windows when they differ), and a respawned pane changes nothing the list draws until the slow pass.
 
@@ -83,7 +83,7 @@ It runs on the first wake after `TA_REFRESH_SLOW` seconds (10) since the last on
 
 It watches fzf itself. The start bind hands it `$PPID` of the shell fzf starts, not the bash that restarts fzf after an abort. The check happens at every wake, at every timeout and again after the delay, and closing the list rings the channel on the way out.
 
-A refresher that is killed, not asked, leaves its markers in the state directory; the next one sweeps them. The list that closes takes `@tagents_counts` down if no refresher is left to.
+A refresher that is killed, not asked, leaves its markers in the state directory, and a load that was cancelled before it renamed its kept rows leaves `.rows.kept.<pid>`; the next refresher sweeps them. The list that closes takes `@tagents_counts` down if no refresher is left to.
 
 ## The status bar is fed from the same loop
 

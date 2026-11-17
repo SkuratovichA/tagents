@@ -615,10 +615,16 @@ has "nothing recorded" "nothing recorded" "$(run --resurrect --from "$SNAP/empty
 t "13. a D row brings the cockpit back"
 # ---------------------------------------------------------------------------
 # What a restore leaves behind: the session tagents, the viewport client's tty and the hook that follows it. Test 13 leaves the cockpit up on purpose (test 14 counts on it); test 16 and test 17b take it down.
+# "same" once @tagents_viewport_window holds the window the viewport's client shows: a restore starts a cockpit no switch has happened in, so no follow could have written it.
+ckvsame() {
+  local w; w=$(tm list-clients -F '#{client_name} #{window_id}' 2>/dev/null | awk -v c="$(tm show -gqv @tagents_viewport_tty)" '$1 == c { print $2 }')
+  [ -n "$w" ] && [ "$w" = "$(tm show -gqv @tagents_viewport_window)" ] && echo same
+}
 printf 'D\ttatest-dash\t0\n' >"$SNAP/dash.tsv"
 out=$(run --resurrect --from "$SNAP/dash.tsv")
 has "the report says so" "✓ dashboard" "$out"
 ok "the session tagents is the cockpit" 1 "$(tm show -qv -t '=tagents:' @tagents_cockpit 2>/dev/null)"
+ok "the option holds the window the viewport shows" same "$(k=0; while [ "$k" -lt 80 ] && [ "$(ckvsame)" != same ]; do k=$((k + 1)); sleep 0.1; done; ckvsame)"
 
 # ---------------------------------------------------------------------------
 t "13b. a snapshot written by the seat-based version still restores"
@@ -627,7 +633,15 @@ t "13b. a snapshot written by the seat-based version still restores"
 transcript sid-old
 OLDSNAP="$SNAP/old-seat.tsv"
 { printf 'D\ttatest-old\t0\n'; arow sid-old "" 1 tatest-old 0 0 old-w old-t "$NOR" 1 "" "" claude; } >"$OLDSNAP"
+# The follow hooks are off and the list's refresher, which puts them back, is gone, so that the option can only have been written by the restore itself.
+RPIDS=; for f in "$STATE"/.refresher.[0-9]*; do case ${f##*.} in ''|*[!0-9]*) ;; *) kill "${f##*.}" 2>/dev/null; RPIDS="$RPIDS ${f##*.}" ;; esac; done
+k=0; while [ "$k" -lt 50 ]; do ALIVE=; for rp in $RPIDS; do kill -0 "$rp" 2>/dev/null && ALIVE="$ALIVE $rp"; done; [ -z "$ALIVE" ] && break; k=$((k + 1)); sleep 0.1; done
+ok "the refreshers are gone before the hooks are taken off" "" "${ALIVE# }"
+tm set-hook -gu 'session-window-changed[43]'; tm set-hook -gu 'client-session-changed[43]'
+BEFORE_W=$(tm show -gqv @tagents_viewport_window)
 out=$(run --resurrect --from "$OLDSNAP"); ok "--resurrect succeeds" 0 "$?"
+ok "the restore into the cockpit that is up: the option holds the window the viewport shows" same "$(k=0; while [ "$k" -lt 80 ] && [ "$(ckvsame)" != same ]; do k=$((k + 1)); sleep 0.1; done; ckvsame)"
+ok "...and it is not the window the viewport showed before" yes "$([ "$(tm show -gqv @tagents_viewport_window)" != "$BEFORE_W" ] && echo yes || echo no)"
 ok "the chat was started where its row says" yes "$(grep -q '^tatest-old$' <<< "$(tm list-panes -a -F '#{session_name}')" && echo yes || echo no)"
 ok "the docked flag was ignored: no pane carries a seat option" "" "$(tm list-panes -a -F '#{@tagents_slot}#{@tagents_docked}#{@tagents_parked}' | tr -d '\n')"
 
@@ -957,6 +971,7 @@ out=$(run --resurrect --from "$SNAP/ck.tsv" 2>&1); ok "the cockpit restore succe
 has "the report says dashboard" "✓ dashboard" "$out"
 tm has-session -t '=tagents:' 2>/dev/null; ok "the session tagents exists" 0 "$?"
 ok "its viewport shows the window the row names" tatest-ck:2 "$(waitck tatest-ck:2 ckviewport)"
+ok "the option holds the window the viewport shows" same "$(waitck same ckvsame)"
 ok "the terminal attached to the session still shows it" tatest-ck "$(ckterminal)"
 booted; run --resurrect-save; rows=$(cat "$STATE/resurrect/$(newest)")
 ok "the snapshot of the cockpit holds the window the viewport shows" "$(printf 'D\ttatest-ck\t2')" "$(printf '%s\n' "$rows" | awk -F'\t' '$1 == "D"')"

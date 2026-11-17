@@ -247,7 +247,7 @@ ask_closed() {  # <port> [session] — the picker itself, normally the body of t
   prof=${line%%$TAB*}
   dir=${line#*$TAB}
   resume_closed "$sid" "$dir" "$prof" "$sess"
-  post_fzf "$port" "reload-sync($SELF --list)" || :   # a failed post must not change the exit status
+  post_fzf "$port" "$(list_reload)" || :   # a failed post must not change the exit status
 }
 
 closed_window() {  # ctrl-y [key of the row under the cursor] — the modal, or the same body inline where a popup cannot open

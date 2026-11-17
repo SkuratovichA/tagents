@@ -234,7 +234,11 @@ resurrect_cockpit() {  # <window id>
   tmux select-window -t "$win" 2>/dev/null
   if cockpit_up; then
     vtty=$(tmux show -gqv @tagents_viewport_tty 2>/dev/null)
-    [ -z "$vtty" ] || tmux switch-client -c "$vtty" -t "=$sess:" 2>/dev/null
+    if [ -n "$vtty" ]; then
+      tmux switch-client -c "$vtty" -t "=$sess:" 2>/dev/null
+      # The window the viewport now shows is the one just selected: recorded here, with the cursor, as --follow would, since a cockpit that was only just rebuilt has no follow hook yet and the rebuild recorded the window it started on; a follow that comes after finds the window recorded and does nothing more.
+      viewport_window_record "$win" && cursor_to_window "$win"
+    fi
     return 0
   fi
   read -r w h <<<"$(client_raw '#{client_width} #{client_height}')"

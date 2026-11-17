@@ -29,7 +29,7 @@ others are built on `STATE_DIR` and `TAB`.
 | `refresh.sh` | 671 | keeping a list current |
 | `sidebar.sh` | 147 | which pane is the dashboard right now |
 | `cockpit.sh` | 375 | the dashboard as a session of its own, the viewport beside the list |
-| `follow.sh` | 97 | the list cursor following the viewport, and the hooks that do it |
+| `follow.sh` | 168 | the list's mark and cursor following the viewport, repainted from the rows the dashboard kept, and the hooks that do it |
 | `migrate.sh` | 88 | the one pass that sent the previous version's seats home |
 | `rows.sh` | 127 | what a key does to a row: select, go to, join, break out, kill |
 | `closed.sh` | 258 | the sessions that stopped running |
@@ -69,7 +69,7 @@ re-enters the program through `$SELF`:
    names, notes, the `[42]` and `[43]` hooks — is the slow pass: the first wake
    after `TA_REFRESH_SLOW` seconds (10) since the last, and always at the idle timeout
    `TA_REFRESH_IDLE` (60 s). It exits with its fzf (`TA_LIST_PID` is fzf's pid), or
-   after five failed posts;
+   after five failed posts. Every load the dashboard makes of its own (the first one, `list_kept`, this loop's reload and a key's reload, `list_reload`, both in `list.sh`) runs with `TA_KEEP_ROWS=1` and leaves `.rows.kept` in the state directory, each row with and without the mark, which `--follow` repaints from the moment the viewport changes window, with no wait for the reload;
 3. one short-lived child per keypress: fzf's `execute-silent($SELF --act …)`;
 4. popups (`tmux display-popup -E "$SELF --ask-…"`), which are independent
    terminals because a blocking child under fzf's alternate screen wedges it;

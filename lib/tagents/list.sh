@@ -23,13 +23,22 @@ byw_on() { [ ! -e "$STATE_DIR/.order-recent" ]; }
 
 toggle_order() { toggle_marker "$STATE_DIR/.order-recent"; }
 
+# THE ROWS OF THE DASHBOARD'S LAST LOAD, kept for a repaint (follow.sh, repaint_to_window): one line per row of the list, <window id of the row, or empty><US><1 when the row can carry the mark, else 0><US><the row without the mark><US><the row with it>, each row as fzf holds it (tabs inside). Written by list() when TA_KEEP_ROWS=1, and so by every load the dashboard itself makes and by no other list.
+ROWS_KEPT="$STATE_DIR/.rows.kept"
+
+# THE ACTION THAT LOADS THE DASHBOARD'S LIST, for every reload it posts or binds: the one place that says a load keeps its rows, so a load that forgets to cannot be written (tests/window-rows.sh scans the libraries for a --list that does not come through here). The first load of dash() is list_kept.
+list_reload() { printf 'reload-sync(TA_KEEP_ROWS=1 %s --list)' "$SELF"; }
+
+# The first load of the dashboard, drawn in the shell that starts fzf: the same keeping, asked in-process.
+list_kept() { TA_KEEP_ROWS=1 list; }
+
 list() {
   # Nothing is excluded. There used to be a "skip my own pane" rule that fell
   # back to #{pane_id} when $TMUX_PANE was unset — which resolves through the
   # *attached client*, so it silently hid whichever agent you happened to be
   # looking at. The dashboard pane runs fzf, never Claude, so it can never show
   # up here anyway and needs no special case.
-  local grp=1 cols hidecols tallyto="" rc byw=0 compact=0
+  local grp=1 cols hidecols tallyto="" keepto="" rc byw=0 compact=0
   grouped || grp=0
   byw_on && byw=1
   # Joined with $RS, never newlines: awk -v refuses a value with a newline in it
@@ -72,6 +81,8 @@ list() {
   if [ "${TA_MARKS:-1}" = 1 ] && [ "${TA_TALLY:-0}" != 1 ] &&
      [ -d "$STATE_DIR" ] && [ -w "$STATE_DIR" ]; then
     tallyto="$STATE_DIR/.counts.tally.$$"
+    # THE ROWS ARE KEPT BY THE DASHBOARD'S OWN LOADS, and by no other list: a person's --list, a test, the popup (its rows are 45% as wide) draw rows the dashboard does not hold, and a repaint of them would put rows of another width into its fzf. A load asks with TA_KEEP_ROWS=1 (list_reload, and dash for its first frame).
+    if [ "${TA_KEEP_ROWS:-0}" = 1 ] && [ "${TA_MODE:-}" != popup ]; then keepto="$STATE_DIR/.rows.kept.$$"; fi
   fi
 
   host_once   # in this shell: $(…) below is a subshell, and a failing hostname would run again on every call
@@ -819,9 +830,9 @@ list() {
         }
       }
       for (i = 1; i <= nd; i++)
-        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\tnone\t\t%s\t%s\t0\t0\t%d\t%d\t%d\n",
+        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\tnone\t\t%s\t%s\t0\t0\t%d\t%d\t%d\t\t%s\n",
                (gmin[dg[i]] < prio["dead"] ? 0 : 1), dg[i], (byw ? 0 : 1), (byw ? dix[i] * 1000 : dix[i]), dk[i], dbody[i], ddir[i], dk[i], dix[i], gnum(dg[i]),
-               (wshown[dk[i]] ? 1 : 0)
+               (wshown[dk[i]] ? 1 : 0), dk[i]
       # THE ORDER, and the two things it is deliberately NOT sensitive to:
       # state, and anything that moves during a turn. Projects keep the place
       # their path puts them (field 1 is only open-or-closed, field 2 the path),
@@ -852,20 +863,20 @@ list() {
           if (j != "") { fam = runder[i]; kid = 1; sd = rdead[j]; sa = (byw && !sd) ? ordkey(runder[i]) : rage[j] }
         }
         # Without groups nothing keeps the sessions apart in window order, so the group goes in fields 2 and 15 as in tree mode and the sort keeps each session together, in the order of the names.
-        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\n",
+        printf "%d\t%s\t1\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s\n",
                (grp ? (rg[i] == "w:" ? 2 : (gmin[rg[i]] < prio["dead"] ? 0 : 1)) : rdead[i]),
                ((grp || (byw && !sd)) ? rg[i] : ""),
                (sd ? 2 : 0), sa, rp[i], rbody[i], rs[i], rsid[i], rr[i],
                fam, kid, rdead[i], rage[i],
                ((grp || (byw && !sd)) ? gnum(rg[i]) : 0),
                ((rp[i] in pwin && wshown[pwin[rp[i]]]) ? 1 : 0),
-               (rsid[i] in tg ? tg[rsid[i]] : "")
+               (rsid[i] in tg ? tg[rsid[i]] : ""), (rp[i] in pwin ? pwin[rp[i]] : "")
       }
     }' |
     sort -t"$TAB" -k1,1n -k2,2 -k15,15n -k3,3n -k4,4n -k5,5n \
          -k11,11 -k12,12n -k13,13n -k14,14n |
-    LC_ALL=C awk -F"$TAB" -v grp="$grp" -v compact="$compact" -v cols="$cols" -v RSC="$RS" \
-        -v tallyonly="${TA_TALLY:-0}" -v tallyto="$tallyto" '
+    LC_ALL=C awk -F"$TAB" -v grp="$grp" -v compact="$compact" -v cols="$cols" -v RSC="$RS" -v USC="$US" \
+        -v tallyonly="${TA_TALLY:-0}" -v tallyto="$tallyto" -v keepto="$keepto" '
       # The marker column is the dash the tree draws, on a group header too. In flat
       # mode there is no tee to borrow from, so the two columns are given to
       # every row instead and come out of the body — fitcols says what that
@@ -885,46 +896,61 @@ list() {
         }
         return 1
       }
+      # THE LINE OF ROW i, drawn with its window marked (sh = 1) or not (sh = 0): the two differ in the slot of the dash and in the bold of the body, and in nothing else, which is what lets the rows kept for a repaint be marked afresh without a list. The text a row is counted by (tee and body, see below) is left in TB.
+      function build(i, sh, last, plast,   mk, b, tee, sfx) {
+        if (kind[i] == 0)       mk = DIM "─" R
+        else                    mk = grp ? DIM "─" R : " "
+        if (depth[i] > 0) mk = DIM "─" R
+        # THE ROW OF THE WINDOW ON SCREEN is marked with a ▸ in the slot of the
+        # dash, and the whole row turns bold: the cursor goes wherever the user
+        # browses, so it cannot say which session is open. A header (field 16
+        # absent, so 0) is never marked, though the row it stands in for may be.
+        # The ▸ (U+25B8) is as wide as the dash and is not the ▾ of a header, so
+        # no column moves and the tally below still counts the same rows. The
+        # gsub puts bold back after every reset inside the body.
+        b = body[i]
+        if (sh) {
+          mk = HOT "\342\226\270" R
+          gsub(/\033\[0m/, "&\033[1m", b); b = "\033[1m" b R
+        }
+        if (compact && !sh) mk = " "
+        # Compact: the mark alone, and a child one space in.
+        if (compact)            tee = (kind[i] == 0) ? "" : mk (depth[i] > 0 ? " " : "")
+        else if (!grp)          tee = mk " "
+        else if (kind[i] == 0)  tee = ""
+        else if (depth[i] == 0) tee = DIM "  " (last ? "└" : "├") R mk " "
+        # The second level carries the tee of the first level down beside it,
+        # unless the parent was the last row of its group and there is nothing
+        # left to carry.
+        else tee = DIM (plast ? "     " : "  │  ") (last ? "└" : "├") R mk " "
+        TB = tee b
+        # THE TAGS RIDE BEHIND THE ROW, pushed past the right edge by spaces (as many as the list is wide, and at least 300) so nothing of them is drawn while fzf still matches the whole line; the upper-case copy is for a query with a capital letter, which fzf matches case-sensitively. Added here and not to body[], so the width measured above is the row as it was.
+        sfx = ""
+        if (tags[i] != "") sfx = sprintf("%" ((cols > 300) ? cols : 300) "s", "") tags[i] " " toupper(tags[i])
+        return pane[i] "\t" tee b sfx "\t" state[i] "\t" sid[i] "\t" dir[i]
+      }
       { g[NR]=$2; kind[NR]=$3; pane[NR]=$6; body[NR]=$7; state[NR]=$8; sid[NR]=$9
-        dir[NR]=$10; depth[NR]=$12+0; shown[NR]=$16+0; tags[NR]=$17 }
+        dir[NR]=$10; depth[NR]=$12+0; shown[NR]=$16+0; tags[NR]=$17; wid[NR]=$18 }
       END {
+        # A kept file exists after every load, empty when there are no rows, so no list of an earlier time is left in it.
+        if (keepto != "") printf "" > keepto
         for (i = 1; i <= NR; i++) {
-          if (kind[i] == 0)       mk = DIM "─" R
-          else                    mk = grp ? DIM "─" R : " "
-          if (depth[i] > 0) mk = DIM "─" R
-          # THE ROW OF THE WINDOW ON SCREEN is marked with a ▸ in the slot of the
-          # dash, and the whole row turns bold: the cursor goes wherever the user
-          # browses, so it cannot say which session is open. A header (field 16
-          # absent, so 0) is never marked, though the row it stands in for may be.
-          # The ▸ (U+25B8) is as wide as the dash and is not the ▾ of a header, so
-          # no column moves and the tally below still counts the same rows. The
-          # gsub puts bold back after every reset inside the body.
-          if (kind[i] == 1 && shown[i]) {
-            mk = HOT "\342\226\270" R
-            b = body[i]; gsub(/\033\[0m/, "&\033[1m", b); body[i] = "\033[1m" b R
-          }
-          if (compact && !(kind[i] == 1 && shown[i])) mk = " "
           last = lastat(i)
           if (depth[i] == 0) parlast = last
-          # Compact: the mark alone, and a child one space in.
-          if (compact)            tee = (kind[i] == 0) ? "" : mk (depth[i] > 0 ? " " : "")
-          else if (!grp)          tee = mk " "
-          else if (kind[i] == 0)  tee = ""
-          else if (depth[i] == 0) tee = DIM "  " (last ? "└" : "├") R mk " "
-          # The second level carries the tee of the first level down beside it,
-          # unless the parent was the last row of its group and there is nothing
-          # left to carry.
-          else tee = DIM (parlast ? "     " : "  │  ") (last ? "└" : "├") R mk " "
+          line = build(i, (kind[i] == 1 && shown[i]), last, parlast)
           # THE STATUS BAR COUNTS WHAT IS PRINTED HERE, in the one place that has
           # it. A group header carries the state of its most urgent member, so
           # counting every row showed a single blocked agent twice; the header is
           # the row with the marker (UTF-8 for it below) in what is drawn.
-          if (index(tee body[i], "\342\226\276") == 0) tn[state[i]]++
-          # THE TAGS RIDE BEHIND THE ROW, pushed past the right edge by spaces (as many as the list is wide, and at least 300) so nothing of them is drawn while fzf still matches the whole line; the upper-case copy is for a query with a capital letter, which fzf matches case-sensitively. Added here and not to body[], so the width measured above is the row as it was.
-          sfx = ""
-          if (tags[i] != "") sfx = sprintf("%" ((cols > 300) ? cols : 300) "s", "") tags[i] " " toupper(tags[i])
-          if (!tallyonly) print pane[i] "\t" tee body[i] sfx "\t" state[i] "\t" sid[i] "\t" dir[i]
+          if (index(TB, "\342\226\276") == 0) tn[state[i]]++
+          if (!tallyonly) print line
+          # THE ROWS KEPT FOR A REPAINT: the window of the row, whether it can carry the mark (a chat or a window row of a window that exists), the row without the mark and the row with it. Anything else is the same line twice.
+          if (keepto != "") {
+            can = (kind[i] == 1 && wid[i] != "")
+            print wid[i] USC (can ? 1 : 0) USC (can ? build(i, 0, last, parlast) : line) USC (can ? build(i, 1, last, parlast) : line) > keepto
+          }
         }
+        if (keepto != "") close(keepto)
         tally = ""
         if (tn["blocked"]) tally = tally sprintf("#[fg=yellow]⚠%d ", tn["blocked"])
         if (tn["done"])    tally = tally sprintf("#[fg=cyan]✓%d ",   tn["done"])
@@ -938,6 +964,9 @@ list() {
   # The status the pipeline ended with is list()'s own, whatever the rename does.
   if [ -n "$tallyto" ]; then
     mv -f "$tallyto" "$STATE_DIR/.counts.tally" 2>/dev/null || rm -f "$tallyto"
+  fi
+  if [ -n "$keepto" ]; then
+    if [ "$rc" = 0 ]; then mv -f "$keepto" "$ROWS_KEPT" 2>/dev/null || rm -f "$keepto"; else rm -f "$keepto"; fi
   fi
   return "$rc"
 }
@@ -957,7 +986,7 @@ list() {
 #   stopped answering, a tally that was never written. Then it is due again after
 #   COUNTS_EVERY seconds and counts_now computes the lot, as it always did.
 # The numbers in the bar may lag by up to COUNTS_EVERY seconds whoever keeps them
-# — that is accepted for these and for nothing else, so list() is never cached.
+# — that is accepted for these and for nothing else. list() itself is never cached: the one thing kept of it is the rows of the dashboard's own last load (ROWS_KEPT), which --follow repaints with the mark moved when the window on screen changes, and every reload after it draws the list afresh.
 # due_every stamps before the work, so a client redrawing a moment after another
 # reads that one's output; two at the very same instant can both be due, which is
 # why each writes a temp file of its own. The output is written to a temp file and

@@ -171,7 +171,7 @@ The viewport's client SHALL never stay on the session `tagents`. A step onto it 
 - **AND** once a session `scratch` is created the viewport shows it
 
 ### Requirement: Changes inside the viewport move only the cursor
-A window or session change of the viewport's client SHALL move the list's cursor to the window the viewport then shows and SHALL move no pane. A change of any other client SHALL move no pane while the cockpit is up, and SHALL move the cursor only when it changes the window the viewport shows. The `tagents --follow` hooks of the `window-rows` capability SHALL do this move and nothing else.
+A window or session change of the viewport's client SHALL move the list's cursor to the window the viewport then shows and SHALL move no pane. A change of any other client SHALL move no pane while the cockpit is up, and SHALL move the cursor only when it changes the window the viewport shows. The `tagents --follow` hooks of the `window-rows` capability SHALL do this move and redraw the mark from the rows the dashboard kept, and nothing else.
 
 #### Scenario: A tab click
 - **WHEN** the user clicks the tab of window 3 in the viewport's status line

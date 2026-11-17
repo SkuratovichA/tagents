@@ -71,7 +71,7 @@ On a wake the refresher SHALL ask tmux one question, the snapshot of every pane 
 - **THEN** the tmux programs started are about the passes made, fewer than half the rings
 
 ### Requirement: When a reload is posted
-The refresher SHALL post `reload-sync(<tagents> --list)` on its first pass; on a pass where the tmux snapshot, a file the list reads or the number of state files differs from the last reload; on a slow pass; and on the retry after a reload was refused. On any other pass it SHALL post nothing. A reload due within the minimum interval is held back as the next requirement says.
+The refresher SHALL post `reload-sync(TA_KEEP_ROWS=1 <tagents> --list)` on its first pass, so that the load keeps the dashboard's rows; on a pass where the tmux snapshot, a file the list reads or the number of state files differs from the last reload; on a slow pass; and on the retry after a reload was refused. On any other pass it SHALL post nothing. A reload due within the minimum interval is held back as the next requirement says.
 
 #### Scenario: A quiet minute
 - **WHEN** a refresher runs five passes with no change
@@ -191,7 +191,7 @@ When the loop ends it SHALL free the wait it has outstanding so that no `tmux` p
 - **THEN** `@tagents_counts` is unset; with another refresher alive it is left alone
 
 ### Requirement: The refresher's markers
-A refresher SHALL keep five files in the state directory named by its own process id: `.refresher.<pid>` (the time of the last reload), `.cfg` (the last config read), `.start`, and the FIFOs `.evq` and `.nap`, each after `.refresher.<pid>`. At its start it SHALL delete the files named after dead process ids: those five and `.counts.tally.<pid>` and `.counts.out.<pid>`; a live process's files stay. It SHALL remove its own when the loop ends.
+A refresher SHALL keep five files in the state directory named by its own process id: `.refresher.<pid>` (the time of the last reload), `.cfg` (the last config read), `.start`, and the FIFOs `.evq` and `.nap`, each after `.refresher.<pid>`. At its start it SHALL delete the files named after dead process ids: those five, `.counts.tally.<pid>`, `.counts.out.<pid>` and `.rows.kept.<pid>`; a live process's files stay. It SHALL remove its own when the loop ends.
 
 #### Scenario: A dead refresher left files
 - **WHEN** a refresher starts and the directory holds the files of a pid that has exited and those of a live one

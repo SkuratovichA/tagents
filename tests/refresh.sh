@@ -330,6 +330,7 @@ newrun quiet
 go 5
 ok "one reload, the first pass's: four rings with nothing changed post nothing" "1" "$(reloads)"
 ok "a wake where nothing moved asks tmux once (the snapshot)" "2:1 3:1 4:1 5:1" "$(tmuxn 2 3 4 5)"
+ok "the reload it posted keeps the dashboard's rows" 1 "$(grep -c "reload-sync(TA_KEEP_ROWS=1 .* --list)" "$D/curl.log")"
 ok "no notes editors, no notes sync"                   "" "$(cat "$D/tnotes.log")"
 ok "no markers are left when the loop ends"            0  "$(markers)"
 ok "the hooks of install_event_hooks are in the server, at [42], with the count first" 18 \
@@ -672,17 +673,17 @@ sh -c 'exit 0' & deadpid=$!; wait "$deadpid" 2>/dev/null
 for n in "$deadpid" "$$"; do
   : >"$STATE/.refresher.$n"; : >"$STATE/.refresher.$n.cfg"; : >"$STATE/.refresher.$n.start"
   : >"$STATE/.refresher.$n.evq"; : >"$STATE/.refresher.$n.nap"
-  : >"$STATE/.counts.tally.$n"; : >"$STATE/.counts.out.$n"
+  : >"$STATE/.counts.tally.$n"; : >"$STATE/.counts.out.$n"; : >"$STATE/.rows.kept.$n"
 done
 act 2 'ls -A "$RF_STATE" >"$RF_DIR/ls.2"'
 go 2
 ok "the files of the dead pid are all gone" "0" "$(ls -A "$STATE" | grep -c "\.$deadpid")"
-ok "the files of the live pid are all kept" "7" "$(ls -A "$STATE" | grep -c "\.$$")"
+ok "the files of the live pid are all kept" "8" "$(ls -A "$STATE" | grep -c "\.$$")"
 ok "while it runs the loop has its markers, the FIFOs among them, named by its pid and not by the port" "5" \
    "$(grep -v "\.$$" "$D/ls.2" | grep -c '^\.refresher\.[0-9][0-9]*\(\.cfg\|\.start\|\.evq\|\.nap\)\{0,1\}$')"
 ok "...of which none is the port's" "0" "$(grep -c "^\.refresher\.$PORT" "$D/ls.2")"
 ok "...and its own are gone again when it ends (the five of the live pid stay)" "5" "$(markers)"
-rm -f "$STATE"/.refresher.* "$STATE"/.counts.*.[0-9]*
+rm -f "$STATE"/.refresher.* "$STATE"/.counts.*.[0-9]* "$STATE"/.rows.kept.[0-9]*
 
 # ---------------------------------------------------------------------------
 t "18. every kind of path collect() and list() read reloads the list when written"
